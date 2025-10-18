@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package spotify.login5.v3;
+option csharp_namespace = "Wavee.Protocol.Login";
+
+message ClientInfo {
+    string client_id = 1;
+    string device_id = 2;
+}

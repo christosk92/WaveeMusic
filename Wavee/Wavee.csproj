@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Folder Include="Audio\" />
+      <Folder Include="Connect\" />
+      <Folder Include="Core\Authentication\" />
+      <Folder Include="Core\Connection\" />
+      <Folder Include="Core\Http\" />
+      <Folder Include="Core\Session\" />
+      <Folder Include="Core\Utilities\" />
+      <Folder Include="Extensions\" />
+      <Folder Include="Metadata\" />
+      <Folder Include="OAuth\" />
+      <Folder Include="Playback\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Protobuf" Version="3.33.0" />
+      <PackageReference Include="Grpc.Tools" Version="2.72.0">
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Auto-generate C# code from all .proto files with internal access -->
+      <Protobuf Include="Protocol\Protos\**\*.proto"
+                GrpcServices="None"
+                Access="Internal"
+                ProtoRoot="Protocol\Protos"
+                OutputDir="Protocol\Generated"
+                CompileOutputs="true" />
+    </ItemGroup>
+
+</Project>
