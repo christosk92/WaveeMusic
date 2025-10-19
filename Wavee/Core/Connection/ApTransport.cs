@@ -1,4 +1,5 @@
 using System.IO.Pipelines;
+using Microsoft.Extensions.Logging;
 
 namespace Wavee.Core.Connection;
 
@@ -35,18 +36,20 @@ public sealed class ApTransport : IAsyncDisposable
 {
     private readonly Stream _stream;
     private readonly ApCodec _codec;
+    private readonly ILogger? _logger;
     private readonly PipeReader _reader;
     private readonly PipeWriter _writer;
     private readonly CancellationTokenSource _disposeCts = new();
     private bool _disposed;
 
-    private ApTransport(Stream stream, ApCodec codec)
+    private ApTransport(Stream stream, ApCodec codec, ILogger? logger)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(codec);
 
         _stream = stream;
         _codec = codec;
+        _logger = logger;
 
         // Wrap the stream with Pipelines for efficient buffering
         _reader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: false));
@@ -59,10 +62,11 @@ public sealed class ApTransport : IAsyncDisposable
     /// </summary>
     /// <param name="stream">The connected network stream.</param>
     /// <param name="codec">The configured ApCodec with encryption keys.</param>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
     /// <returns>A ready-to-use transport.</returns>
-    public static ApTransport Create(Stream stream, ApCodec codec)
+    public static ApTransport Create(Stream stream, ApCodec codec, ILogger? logger = null)
     {
-        return new ApTransport(stream, codec);
+        return new ApTransport(stream, codec, logger);
     }
 
     /// <summary>
@@ -117,16 +121,17 @@ public sealed class ApTransport : IAsyncDisposable
             try
             {
                 // Try to decode a complete packet
-                if (_codec.TryDecode(ref buffer, out var consumed, out var command, out var payload))
+                var decodeSuccess = _codec.TryDecode(ref buffer, out var consumed, out var command, out var payload);
+                if (decodeSuccess)
                 {
                     // Success! Mark the consumed bytes
                     _reader.AdvanceTo(consumed);
                     return (command, payload);
                 }
 
-                // Tell the pipe we examined everything but consumed nothing
-                // This allows more data to be buffered
-                _reader.AdvanceTo(buffer.Start, buffer.End);
+                // Partial decode: consume what the codec says is safe (e.g., header)
+                // while allowing the pipe to continue buffering more data.
+                _reader.AdvanceTo(consumed, buffer.End);
 
                 // Check if the connection was closed
                 if (result.IsCompleted)
@@ -135,9 +140,11 @@ public sealed class ApTransport : IAsyncDisposable
                     if (buffer.Length > 0)
                     {
                         // Unexpected: partial packet at end of stream
+                        _logger?.LogWarning("Connection closed with {RemainingBytes} bytes remaining (incomplete packet)", buffer.Length);
                         throw new ApCodecException($"Connection closed with {buffer.Length} bytes remaining (incomplete packet)");
                     }
 
+                    _logger?.LogDebug("Connection closed gracefully");
                     return null; // Clean connection close
                 }
             }
@@ -159,6 +166,7 @@ public sealed class ApTransport : IAsyncDisposable
             return;
 
         _disposed = true;
+        _logger?.LogTrace("Disposing transport");
 
         // Signal cancellation to any pending operations
         _disposeCts.Cancel();

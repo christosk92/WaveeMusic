@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using Microsoft.Extensions.Logging;
 using Wavee.Core.Crypto;
 
 namespace Wavee.Core.Connection;
@@ -25,6 +26,7 @@ public sealed class ApCodec : IDisposable
 
     private readonly ShannonCipher _encodeCipher;
     private readonly ShannonCipher _decodeCipher;
+    private readonly ILogger? _logger;
     private uint _encodeNonce;
     private uint _decodeNonce;
 
@@ -38,11 +40,13 @@ public sealed class ApCodec : IDisposable
     /// </summary>
     /// <param name="sendKey">32-byte key for encoding (sending) packets.</param>
     /// <param name="receiveKey">32-byte key for decoding (receiving) packets.</param>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
     /// <exception cref="ArgumentException">Thrown if keys are not 32 bytes.</exception>
-    public ApCodec(ReadOnlySpan<byte> sendKey, ReadOnlySpan<byte> receiveKey)
+    public ApCodec(ReadOnlySpan<byte> sendKey, ReadOnlySpan<byte> receiveKey, ILogger? logger = null)
     {
         _encodeCipher = new ShannonCipher(sendKey);
         _decodeCipher = new ShannonCipher(receiveKey);
+        _logger = logger;
         _encodeNonce = 0;
         _decodeNonce = 0;
         _state = DecodeState.Header;
@@ -59,6 +63,8 @@ public sealed class ApCodec : IDisposable
     {
         if (payload.Length > ushort.MaxValue)
             throw new ArgumentException($"Payload too large: {payload.Length} bytes (max {ushort.MaxValue})", nameof(payload));
+
+        _logger?.LogTrace("Encoding packet (command=0x{Command:X2}, payload={PayloadSize} bytes)", command, payload.Length);
 
         int totalSize = HeaderSize + payload.Length + MacSize;
 
@@ -143,7 +149,13 @@ public sealed class ApCodec : IDisposable
         {
             int requiredSize = _pendingPayloadSize + MacSize;
             if (reader.Remaining < requiredSize)
+            {
+                // We have already consumed and decrypted the header in this codec state,
+                // but the caller's buffer may still contain those header bytes. Signal that
+                // the header bytes can be consumed so subsequent calls start at the payload.
+                consumed = reader.Position; // position is after header advance
                 return false;
+            }
 
             // Read and decrypt payload
             payload = new byte[_pendingPayloadSize];
@@ -162,7 +174,11 @@ public sealed class ApCodec : IDisposable
                 throw new ApCodecException("Failed to read MAC from buffer sequence");
 
             if (!receivedMac.SequenceEqual(expectedMac))
+            {
+                _logger?.LogWarning("MAC verification failed for packet (command=0x{Command:X2}, payload={PayloadSize} bytes)",
+                    _pendingCommand, _pendingPayloadSize);
                 throw new ApCodecException("MAC verification failed - packet corrupted or tampered");
+            }
 
             reader.Advance(MacSize);
 
@@ -170,6 +186,8 @@ public sealed class ApCodec : IDisposable
             command = _pendingCommand;
             consumed = reader.Position;
             _state = DecodeState.Header;
+
+            _logger?.LogTrace("Decoded packet (command=0x{Command:X2}, payload={PayloadSize} bytes)", command, payload.Length);
             return true;
         }
 

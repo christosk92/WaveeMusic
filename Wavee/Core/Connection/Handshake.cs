@@ -4,13 +4,13 @@ using System.IO.Pipelines;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Google.Protobuf;
+using Microsoft.Extensions.Logging;
 using Wavee.Protocol;
 
 namespace Wavee.Core.Connection;
 
 /// <summary>
 /// Spotify connection handshake implementation using Diffie-Hellman key exchange.
-/// Based on librespot implementation (core/src/connection/handshake.rs).
 /// </summary>
 /// <remarks>
 /// Handshake Process:
@@ -33,44 +33,62 @@ public static class Handshake
     /// Performs the complete handshake with a Spotify Access Point server.
     /// </summary>
     /// <param name="stream">Connected network stream to Spotify AP.</param>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Configured ApTransport ready for sending/receiving packets.</returns>
     /// <exception cref="HandshakeException">Thrown if handshake fails or server verification fails.</exception>
     public static async Task<ApTransport> PerformHandshakeAsync(
         Stream stream,
+        ILogger? logger = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            logger?.LogDebug("Handshake starting");
+
             // Generate DH key pair
             var localKeys = DiffieHellmanKeys.GenerateRandom();
+            logger?.LogTrace("Generated DH public key ({KeyLength} bytes)", localKeys.PublicKey.Length);
 
             // Send ClientHello and accumulate packets for key derivation
+            logger?.LogDebug("Sending ClientHello");
             var accumulator = await SendClientHelloAsync(stream, localKeys.PublicKey, cancellationToken);
 
             // Receive server response
+            logger?.LogDebug("Receiving server response");
             var response = await ReceiveServerResponseAsync(stream, accumulator, cancellationToken);
+            logger?.LogDebug("Received server response ({ServerKeyLength} bytes)", response.Gs.Length);
 
             // Verify server signature to prevent MITM attacks
-            VerifyServerSignature(response.Gs, response.GsSignature);
+            logger?.LogDebug("Verifying server signature");
+            VerifyServerSignature(response.Gs, response.GsSignature, logger);
+            logger?.LogDebug("Server signature verified");
 
             // Compute shared secret and derive keys
             var sharedSecret = localKeys.ComputeSharedSecret(response.Gs);
             var (challenge, sendKey, receiveKey) = DeriveKeys(sharedSecret, accumulator);
+            logger?.LogTrace("Derived encryption keys (send={SendKeyLength} bytes, receive={ReceiveKeyLength} bytes)",
+                sendKey.Length, receiveKey.Length);
 
             // Send client response with challenge
+            logger?.LogDebug("Sending ClientResponsePlaintext");
             await SendClientResponseAsync(stream, challenge, cancellationToken);
 
             // Create codec and wrap in transport
-            var codec = new ApCodec(sendKey, receiveKey);
-            return ApTransport.Create(stream, codec);
+            var codec = new ApCodec(sendKey, receiveKey, logger);
+            var transport = ApTransport.Create(stream, codec, logger);
+
+            logger?.LogInformation("Handshake complete, connection encrypted");
+            return transport;
         }
-        catch (HandshakeException)
+        catch (HandshakeException ex)
         {
+            logger?.LogError(ex, "Handshake failed: {Reason}", ex.Reason);
             throw;
         }
         catch (Exception ex)
         {
+            logger?.LogError(ex, "Handshake failed with unexpected error");
             throw new HandshakeException(HandshakeReason.ProtocolError, "Handshake failed", ex);
         }
     }
@@ -273,13 +291,20 @@ public static class Handshake
         return buffer;
     }
 
-    private static void VerifyServerSignature(byte[] serverPublicKey, byte[] signature)
+    private static void VerifyServerSignature(byte[] serverPublicKey, byte[] signature, ILogger? logger)
     {
         try
         {
-            // Import RSA public key (PKCS#1 format)
+            // Import RSA public key from raw modulus bytes
+            // The ServerPublicKey is the raw 2048-bit modulus in big-endian format
+            // The exponent is hardcoded as 65537 (0x010001)
             using var rsa = RSA.Create();
-            rsa.ImportRSAPublicKey(ConnectionConstants.ServerPublicKey, out _);
+            var parameters = new RSAParameters
+            {
+                Modulus = ConnectionConstants.ServerPublicKey.ToArray(),
+                Exponent = [0x01, 0x00, 0x01] // 65537 in big-endian
+            };
+            rsa.ImportParameters(parameters);
 
             // Hash server's DH public key
             var hash = SHA1.HashData(serverPublicKey);
@@ -288,7 +313,10 @@ public static class Handshake
             bool isValid = rsa.VerifyHash(hash, signature, HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1);
 
             if (!isValid)
+            {
+                logger?.LogWarning("Server signature verification failed - potential MITM attack");
                 throw new HandshakeException(HandshakeReason.ServerVerificationFailed, "Server signature verification failed - potential MITM attack");
+            }
         }
         catch (HandshakeException)
         {
@@ -296,6 +324,7 @@ public static class Handshake
         }
         catch (Exception ex)
         {
+            logger?.LogError(ex, "Exception during server signature verification");
             throw new HandshakeException(HandshakeReason.ServerVerificationFailed, "Failed to verify server signature", ex);
         }
     }

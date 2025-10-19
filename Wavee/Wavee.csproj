@@ -26,16 +26,12 @@
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-rc.2.25502.107" />
     </ItemGroup>
 
     <ItemGroup>
       <!-- Auto-generate C# code from all .proto files with internal access -->
-      <Protobuf Include="Protocol\Protos\**\*.proto"
-                GrpcServices="None"
-                Access="Internal"
-                ProtoRoot="Protocol\Protos"
-                OutputDir="Protocol\Generated"
-                CompileOutputs="true" />
+      <Protobuf Include="Protocol\Protos\**\*.proto" GrpcServices="None" Access="Internal" ProtoRoot="Protocol\Protos" OutputDir="Protocol\Generated" CompileOutputs="true" />
     </ItemGroup>
 
 </Project>

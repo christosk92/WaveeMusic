@@ -72,6 +72,7 @@ public sealed class ShannonCipher
         LoadKey(nonceBytes, 4);
         GenKonst();
         _nbuf = 0;
+        _mbuf = 0;  // Reset MAC accumulator for new packet
     }
 
     /// <summary>
