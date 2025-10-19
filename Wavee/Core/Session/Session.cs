@@ -4,6 +4,7 @@ using System.Xml;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
+using Wavee.Core.Http;
 
 namespace Wavee.Core.Session;
 
@@ -49,9 +50,9 @@ public sealed class Session : IAsyncDisposable
     private Session(SessionConfig config, ILogger? logger)
     {
         _config = config;
-        _data = new SessionData(config);
         _logger = logger;
         _httpClient = new HttpClient();
+        _data = new SessionData(config, _httpClient, logger);
 
         // Bounded channel for send queue (backpressure)
         _sendQueue = Channel.CreateBounded<(byte, byte[])>(new BoundedChannelOptions(100)
@@ -76,10 +77,12 @@ public sealed class Session : IAsyncDisposable
     /// Connects to Spotify and authenticates.
     /// </summary>
     /// <param name="credentials">Authentication credentials.</param>
+    /// <param name="credentialsCache">Optional credentials cache for storing reusable credentials.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <exception cref="SessionException">Thrown if connection or authentication fails.</exception>
     public async Task ConnectAsync(
         Credentials credentials,
+        ICredentialsCache? credentialsCache = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credentials);
@@ -148,7 +151,15 @@ public sealed class Session : IAsyncDisposable
             _data.SetUserData(userData);
             _data.SetTransport(transport, connectedAp);
 
-            // 5. Start packet dispatcher
+            // 5. Save stored credentials
+            _data.SetStoredCredentials(reusableCredentials);
+            if (credentialsCache != null)
+            {
+                await credentialsCache.SaveCredentialsAsync(reusableCredentials, cancellationToken);
+                _logger?.LogInformation("Stored credentials saved to cache");
+            }
+
+            // 6. Start packet dispatcher
             _dispatchCts = new CancellationTokenSource();
             _dispatchTask = Task.Run(() => DispatchLoop(_dispatchCts.Token), _dispatchCts.Token);
 
@@ -192,6 +203,15 @@ public sealed class Session : IAsyncDisposable
     public bool IsConnected() => _data.IsConnected();
 
     /// <summary>
+    /// Gets the SpClient for making authenticated metadata requests.
+    /// </summary>
+    /// <remarks>
+    /// SpClient automatically obtains and refreshes access tokens using login5.
+    /// </remarks>
+    /// <returns>SpClient instance.</returns>
+    public SpClient SpClient => new SpClient(this, _httpClient, _logger);
+
+    /// <summary>
     /// Waits for the country code to be received from the server.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -209,6 +229,54 @@ public sealed class Session : IAsyncDisposable
     public Task<AccountType> GetAccountTypeAsync(CancellationToken cancellationToken = default)
     {
         return _data.GetAccountTypeAsync().WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets a valid access token for SpClient requests, refreshing if necessary.
+    /// </summary>
+    /// <remarks>
+    /// This method automatically refreshes expired tokens using login5.
+    /// Requires that the session is connected and has stored credentials from authentication.
+    /// </remarks>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A valid access token.</returns>
+    /// <exception cref="SessionException">Thrown if session is not authenticated or credentials are missing.</exception>
+    /// <exception cref="Login5Exception">Thrown if token refresh fails.</exception>
+    public async Task<AccessToken> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+    {
+        var token = _data.GetAccessToken();
+
+        // Check if we need to refresh
+        if (token == null || token.ShouldRefresh())
+        {
+            _logger?.LogDebug("Access token expired or missing, refreshing via login5");
+
+            var userData = _data.GetUserData();
+            if (userData == null)
+                throw new SessionException(
+                    SessionFailureReason.Disposed,
+                    "Session not authenticated");
+
+            // Get stored credentials from session
+            var storedCredentials = _data.GetStoredCredentials();
+            if (storedCredentials == null)
+                throw new SessionException(
+                    SessionFailureReason.Disposed,
+                    "No stored credentials available");
+
+            // Exchange for access token via login5
+            var login5 = _data.GetLogin5Client();
+            token = await login5.GetAccessTokenAsync(
+                storedCredentials.Username!,
+                storedCredentials.AuthData,
+                clientToken: null, // TODO: Add ClientToken manager when implementing SpClient
+                cancellationToken);
+
+            _data.SetAccessToken(token);
+            _logger?.LogInformation("Access token refreshed (expires {ExpiresAt})", token.ExpiresAt);
+        }
+
+        return token;
     }
 
     private async Task<ApTransport> ConnectToApAsync(

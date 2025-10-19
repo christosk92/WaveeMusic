@@ -3,56 +3,55 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Wavee.Core.OAuth;
+namespace Wavee.Core.Authentication;
 
 /// <summary>
-/// Interface for OAuth token storage and retrieval.
+/// Interface for storing and retrieving cached credentials.
 /// </summary>
-public interface ITokenCache
+public interface ICredentialsCache
 {
     /// <summary>
-    /// Loads a cached token for the specified username.
+    /// Loads cached credentials for the specified username.
     /// </summary>
     /// <param name="username">The Spotify username (or null for default).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Cached token, or null if not found or invalid.</returns>
-    Task<OAuthToken?> LoadTokenAsync(string? username = null, CancellationToken cancellationToken = default);
+    /// <returns>Cached credentials, or null if not found or invalid.</returns>
+    Task<Credentials?> LoadCredentialsAsync(string? username = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Saves a token to the cache.
+    /// Saves credentials to the cache.
     /// </summary>
-    /// <param name="token">The token to save.</param>
-    /// <param name="username">The Spotify username (or null for default).</param>
+    /// <param name="credentials">The credentials to save.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task SaveTokenAsync(OAuthToken token, string? username = null, CancellationToken cancellationToken = default);
+    Task SaveCredentialsAsync(Credentials credentials, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clears a cached token.
+    /// Clears cached credentials.
     /// </summary>
     /// <param name="username">The Spotify username (or null for default).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task ClearTokenAsync(string? username = null, CancellationToken cancellationToken = default);
+    Task ClearCredentialsAsync(string? username = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Default token cache implementation that stores encrypted tokens in the user's app data folder.
+/// Default credentials cache implementation that stores encrypted credentials in the user's app data folder.
 /// Uses DPAPI (Data Protection API) on Windows for encryption, falls back to unencrypted on other platforms.
 /// </summary>
-public sealed class TokenCache : ITokenCache
+public sealed class CredentialsCache : ICredentialsCache
 {
     private readonly string _cacheDirectory;
     private readonly ILogger? _logger;
     private readonly bool _useEncryption;
 
     /// <summary>
-    /// Creates a new token cache.
+    /// Creates a new credentials cache.
     /// </summary>
     /// <param name="cacheDirectory">
-    /// Directory to store token files. If null, uses default location
-    /// (%APPDATA%/Wavee/tokens on Windows, ~/.wavee/tokens on Unix).
+    /// Directory to store credentials files. If null, uses default location
+    /// (%APPDATA%/Wavee/credentials on Windows, ~/.wavee/credentials on Unix).
     /// </param>
     /// <param name="logger">Optional logger for diagnostics.</param>
-    public TokenCache(string? cacheDirectory = null, ILogger? logger = null)
+    public CredentialsCache(string? cacheDirectory = null, ILogger? logger = null)
     {
         _cacheDirectory = cacheDirectory ?? GetDefaultCacheDirectory();
         _logger = logger;
@@ -63,7 +62,7 @@ public sealed class TokenCache : ITokenCache
         if (!_useEncryption)
         {
             _logger?.LogWarning(
-                "Token encryption not available on this platform. Tokens will be stored unencrypted.");
+                "Credentials encryption not available on this platform. Credentials will be stored unencrypted.");
         }
 
         // Ensure cache directory exists
@@ -71,21 +70,21 @@ public sealed class TokenCache : ITokenCache
     }
 
     /// <inheritdoc/>
-    public async Task<OAuthToken?> LoadTokenAsync(
+    public async Task<Credentials?> LoadCredentialsAsync(
         string? username = null,
         CancellationToken cancellationToken = default)
     {
-        var filePath = GetTokenFilePath(username);
+        var filePath = GetCredentialsFilePath(username);
 
         if (!File.Exists(filePath))
         {
-            _logger?.LogDebug("No cached token found at {FilePath}", filePath);
+            _logger?.LogDebug("No cached credentials found at {FilePath}", filePath);
             return null;
         }
 
         try
         {
-            _logger?.LogDebug("Loading cached token from {FilePath}", filePath);
+            _logger?.LogDebug("Loading cached credentials from {FilePath}", filePath);
 
             // Read file
             var encryptedData = await File.ReadAllBytesAsync(filePath, cancellationToken);
@@ -104,55 +103,51 @@ public sealed class TokenCache : ITokenCache
                 decryptedData = encryptedData;
             }
 
-            // Deserialize
+            // Deserialize (using source-generated context for AOT)
             var json = Encoding.UTF8.GetString(decryptedData);
-            var token = JsonSerializer.Deserialize<OAuthToken>(json);
+            var credentials = JsonSerializer.Deserialize(json, AuthenticationJsonSerializerContext.Default.Credentials);
 
-            if (token == null)
+            if (credentials == null)
             {
-                _logger?.LogWarning("Failed to deserialize token from {FilePath}", filePath);
+                _logger?.LogWarning("Failed to deserialize credentials from {FilePath}", filePath);
                 return null;
             }
 
-            _logger?.LogInformation("Loaded cached token (expires {ExpiresAt})", token.ExpiresAt);
-            return token;
+            _logger?.LogInformation("Loaded cached credentials for user: {Username}", credentials.Username ?? "<unknown>");
+            return credentials;
         }
         catch (CryptographicException ex)
         {
-            _logger?.LogError(ex, "Failed to decrypt token (may be corrupted)");
+            _logger?.LogError(ex, "Failed to decrypt credentials (may be corrupted)");
             return null;
         }
         catch (JsonException ex)
         {
-            _logger?.LogError(ex, "Failed to parse token JSON");
+            _logger?.LogError(ex, "Failed to parse credentials JSON");
             return null;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected error loading token");
+            _logger?.LogError(ex, "Unexpected error loading credentials");
             return null;
         }
     }
 
     /// <inheritdoc/>
-    public async Task SaveTokenAsync(
-        OAuthToken token,
-        string? username = null,
+    public async Task SaveCredentialsAsync(
+        Credentials credentials,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(token);
+        ArgumentNullException.ThrowIfNull(credentials);
 
-        var filePath = GetTokenFilePath(username);
+        var filePath = GetCredentialsFilePath(credentials.Username);
 
         try
         {
-            _logger?.LogDebug("Saving token to {FilePath}", filePath);
+            _logger?.LogDebug("Saving credentials to {FilePath}", filePath);
 
-            // Serialize
-            var json = JsonSerializer.Serialize(token, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            // Serialize (using source-generated context for AOT)
+            var json = JsonSerializer.Serialize(credentials, AuthenticationJsonSerializerContext.Default.Credentials);
             var jsonBytes = Encoding.UTF8.GetBytes(json);
 
             // Encrypt (if available)
@@ -172,47 +167,47 @@ public sealed class TokenCache : ITokenCache
             // Write to file
             await File.WriteAllBytesAsync(filePath, dataToWrite, cancellationToken);
 
-            _logger?.LogInformation("Saved token to cache (expires {ExpiresAt})", token.ExpiresAt);
+            _logger?.LogInformation("Saved credentials to cache for user: {Username}", credentials.Username ?? "<unknown>");
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to save token to cache");
-            throw new OAuthException(
-                OAuthFailureReason.Unknown,
-                "Failed to save token to cache",
+            _logger?.LogError(ex, "Failed to save credentials to cache");
+            throw new AuthenticationException(
+                AuthenticationFailureReason.ProtocolError,
+                "Failed to save credentials to cache",
                 ex);
         }
     }
 
     /// <inheritdoc/>
-    public Task ClearTokenAsync(string? username = null, CancellationToken cancellationToken = default)
+    public Task ClearCredentialsAsync(string? username = null, CancellationToken cancellationToken = default)
     {
-        var filePath = GetTokenFilePath(username);
+        var filePath = GetCredentialsFilePath(username);
 
         try
         {
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
-                _logger?.LogInformation("Cleared cached token at {FilePath}", filePath);
+                _logger?.LogInformation("Cleared cached credentials at {FilePath}", filePath);
             }
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to clear cached token");
+            _logger?.LogError(ex, "Failed to clear cached credentials");
         }
 
         return Task.CompletedTask;
     }
 
     /// <summary>
-    /// Gets the file path for a token cache file.
+    /// Gets the file path for a credentials cache file.
     /// </summary>
-    private string GetTokenFilePath(string? username)
+    private string GetCredentialsFilePath(string? username)
     {
         var fileName = string.IsNullOrWhiteSpace(username)
-            ? "default_token.dat"
-            : $"{SanitizeFilename(username)}_token.dat";
+            ? "default_credentials.dat"
+            : $"{SanitizeFilename(username)}_credentials.dat";
 
         return Path.Combine(_cacheDirectory, fileName);
     }
@@ -223,7 +218,7 @@ public sealed class TokenCache : ITokenCache
     private static string GetDefaultCacheDirectory()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "Wavee", "tokens");
+        return Path.Combine(appData, "Wavee", "credentials");
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Wavee.Core.OAuth;
+namespace Wavee.OAuth;
 
 /// <summary>
 /// Represents an OAuth 2.0 access token for Spotify API authentication.

@@ -2,8 +2,8 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
 using Wavee.Core.Authentication;
-using Wavee.Core.OAuth;
 using Wavee.Core.Session;
+using Wavee.OAuth;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -177,7 +177,6 @@ static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensi
             clientId,
             ["streaming", "user-read-playback-state", "user-modify-playback-state"],
             flow: OAuthFlow.DeviceCode,
-            tokenCache: null,  // Disable cache for fresh authorization
             logger: logger);
 
         newToken = await client.GetAccessTokenAsync();
@@ -193,7 +192,6 @@ static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensi
             ["streaming", "user-read-playback-state", "user-modify-playback-state"],
             flow: OAuthFlow.AuthorizationCode,
             openBrowser: true,
-            tokenCache: null,  // Disable cache for fresh authorization
             logger: logger);
 
         newToken = await client.GetAccessTokenAsync();

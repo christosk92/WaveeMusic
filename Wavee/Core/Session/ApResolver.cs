@@ -42,8 +42,9 @@ internal static class ApResolver
         {
             logger?.LogDebug("Resolving Access Points from {Url}", ApResolveUrl);
 
-            var response = await httpClient.GetFromJsonAsync<ApResolveResponse>(
+            var response = await httpClient.GetFromJsonAsync(
                 ApResolveUrl,
+                SessionJsonSerializerContext.Default.ApResolveResponse,
                 cancellationToken);
 
             if (response?.AccessPoint is { Length: > 0 })
@@ -62,7 +63,7 @@ internal static class ApResolver
         }
     }
 
-    private sealed record ApResolveResponse
+    internal sealed record ApResolveResponse
     {
         [JsonPropertyName("accesspoint")]
         public string[] AccessPoint { get; init; } = [];

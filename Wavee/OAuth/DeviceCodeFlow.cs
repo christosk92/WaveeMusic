@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Wavee.Core.OAuth;
+namespace Wavee.OAuth;
 
 /// <summary>
 /// Implements OAuth 2.0 Device Code Flow (RFC 8628).

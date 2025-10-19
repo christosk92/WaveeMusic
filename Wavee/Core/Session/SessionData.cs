@@ -1,4 +1,6 @@
+using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
+using Wavee.Core.Http;
 
 namespace Wavee.Core.Session;
 
@@ -29,6 +31,10 @@ internal sealed class SessionData : IDisposable
     // User data
     private UserData? _userData;
 
+    // Authentication data
+    private Credentials? _storedCredentials;
+    private AccessToken? _accessToken;
+
     // Awaitable data from packets
     private readonly TaskCompletionSource<string> _countryCodeTcs = new();
     private readonly TaskCompletionSource<AccountType> _accountTypeTcs = new();
@@ -37,15 +43,23 @@ internal sealed class SessionData : IDisposable
     private readonly Lazy<object> _mercury;      // TODO: Replace with MercuryManager
     private readonly Lazy<object> _channel;      // TODO: Replace with ChannelManager
     private readonly Lazy<object> _audioKey;     // TODO: Replace with AudioKeyManager
+    private readonly Lazy<Login5Client> _login5Client;
 
-    public SessionData(SessionConfig config)
+    private readonly SessionConfig _config;
+
+    public SessionData(SessionConfig config, HttpClient httpClient, Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(httpClient);
+
+        _config = config;
 
         // Lazy initialization for managers (thread-safe by default)
         _mercury = new Lazy<object>(() => CreateMercuryManager());
         _channel = new Lazy<object>(() => CreateChannelManager());
         _audioKey = new Lazy<object>(() => CreateAudioKeyManager());
+        _login5Client = new Lazy<Login5Client>(() =>
+            new Login5Client(httpClient, config.GetClientId(), config.DeviceId, logger));
     }
 
     /// <summary>
@@ -225,6 +239,82 @@ internal sealed class SessionData : IDisposable
     /// </summary>
     /// <returns>A task that completes when the product info packet (0x50) is received.</returns>
     public Task<AccountType> GetAccountTypeAsync() => _accountTypeTcs.Task;
+
+    /// <summary>
+    /// Sets the stored credentials after successful authentication.
+    /// </summary>
+    public void SetStoredCredentials(Credentials credentials)
+    {
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        _lock.EnterWriteLock();
+        try
+        {
+            _storedCredentials = credentials;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets the stored credentials (or null if not authenticated).
+    /// </summary>
+    public Credentials? GetStoredCredentials()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _storedCredentials;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Sets the current access token.
+    /// </summary>
+    public void SetAccessToken(AccessToken token)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+
+        _lock.EnterWriteLock();
+        try
+        {
+            _accessToken = token;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets the current access token (or null if not obtained).
+    /// </summary>
+    public AccessToken? GetAccessToken()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _accessToken;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets the Login5Client for obtaining access tokens.
+    /// </summary>
+    public Login5Client GetLogin5Client()
+    {
+        return _login5Client.Value;
+    }
 
     private object CreateMercuryManager()
     {

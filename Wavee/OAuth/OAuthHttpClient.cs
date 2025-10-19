@@ -1,9 +1,8 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Wavee.Core.OAuth;
+namespace Wavee.OAuth;
 
 /// <summary>
 /// Internal HTTP client for making OAuth 2.0 requests to Spotify.

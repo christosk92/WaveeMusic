@@ -1,4 +1,4 @@
-namespace Wavee.Core.OAuth;
+namespace Wavee.OAuth;
 
 /// <summary>
 /// Exception thrown when OAuth 2.0 authentication or token operations fail.

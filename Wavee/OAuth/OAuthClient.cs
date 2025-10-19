@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Wavee.Core.OAuth;
+namespace Wavee.OAuth;
 
 /// <summary>
 /// Main OAuth 2.0 client for obtaining Spotify access tokens.
@@ -16,7 +16,6 @@ public sealed class OAuthClient : IDisposable
     private readonly OAuthFlow _flow;
     private readonly string? _redirectUri;
     private readonly bool _openBrowser;
-    private readonly ITokenCache? _tokenCache;
     private readonly ILogger? _logger;
     private readonly OAuthHttpClient _httpClient;
 
@@ -32,7 +31,6 @@ public sealed class OAuthClient : IDisposable
         OAuthFlow flow,
         string? redirectUri,
         bool openBrowser,
-        ITokenCache? tokenCache,
         ILogger? logger)
     {
         _clientId = clientId;
@@ -40,7 +38,6 @@ public sealed class OAuthClient : IDisposable
         _flow = flow;
         _redirectUri = redirectUri ?? DefaultRedirectUri;
         _openBrowser = openBrowser;
-        _tokenCache = tokenCache;
         _logger = logger;
         _httpClient = new OAuthHttpClient(logger: logger);
     }
@@ -65,7 +62,6 @@ public sealed class OAuthClient : IDisposable
             OAuthFlow.AuthorizationCode,
             redirectUri: null,
             openBrowser,
-            tokenCache: new TokenCache(logger: logger),
             logger);
     }
 
@@ -77,7 +73,6 @@ public sealed class OAuthClient : IDisposable
     /// <param name="flow">OAuth flow to use (Authorization Code or Device Code).</param>
     /// <param name="redirectUri">Custom redirect URI (Authorization Code Flow only).</param>
     /// <param name="openBrowser">Whether to automatically open browser (Authorization Code Flow only).</param>
-    /// <param name="tokenCache">Custom token cache implementation (null to disable caching).</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
     /// <returns>Configured OAuth client.</returns>
     public static OAuthClient CreateCustom(
@@ -86,7 +81,6 @@ public sealed class OAuthClient : IDisposable
         OAuthFlow flow = OAuthFlow.AuthorizationCode,
         string? redirectUri = null,
         bool openBrowser = true,
-        ITokenCache? tokenCache = null,
         ILogger? logger = null)
     {
         return new OAuthClient(
@@ -95,38 +89,22 @@ public sealed class OAuthClient : IDisposable
             flow,
             redirectUri,
             openBrowser,
-            tokenCache,
             logger);
     }
 
     /// <summary>
     /// Obtains a new access token using the configured OAuth flow.
-    /// If a cached valid token exists, returns it immediately.
     /// </summary>
-    /// <param name="username">Optional username for token caching (null uses default cache).</param>
+    /// <remarks>
+    /// This method always executes the full OAuth flow and does not cache tokens.
+    /// The returned token should be used immediately to create a Spotify session,
+    /// which will return stored credentials that can be cached for future use.
+    /// </remarks>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>OAuth token with access and refresh tokens.</returns>
     /// <exception cref="OAuthException">Thrown if authorization fails.</exception>
-    public async Task<OAuthToken> GetAccessTokenAsync(
-        string? username = null,
-        CancellationToken cancellationToken = default)
+    public async Task<OAuthToken> GetAccessTokenAsync(CancellationToken cancellationToken = default)
     {
-        // Try to load from cache first
-        if (_tokenCache != null)
-        {
-            var cachedToken = await _tokenCache.LoadTokenAsync(username, cancellationToken);
-            if (cachedToken != null && !cachedToken.IsExpired())
-            {
-                _logger?.LogInformation("Using cached token (expires {ExpiresAt})", cachedToken.ExpiresAt);
-                return cachedToken;
-            }
-
-            if (cachedToken != null)
-            {
-                _logger?.LogInformation("Cached token expired, will obtain new token");
-            }
-        }
-
         // Execute OAuth flow
         var token = _flow switch
         {
@@ -135,26 +113,22 @@ public sealed class OAuthClient : IDisposable
             _ => throw new OAuthException(OAuthFailureReason.Unknown, "Invalid OAuth flow")
         };
 
-        // Cache the token
-        if (_tokenCache != null)
-        {
-            await _tokenCache.SaveTokenAsync(token, username, cancellationToken);
-        }
-
         return token;
     }
 
     /// <summary>
     /// Refreshes an existing access token using a refresh token.
     /// </summary>
+    /// <remarks>
+    /// This method is rarely needed since OAuth tokens are not cached.
+    /// Stored credentials from the session should be used instead of refreshing OAuth tokens.
+    /// </remarks>
     /// <param name="refreshToken">Refresh token from a previous authorization.</param>
-    /// <param name="username">Optional username for token caching.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>New OAuth token with refreshed access token.</returns>
     /// <exception cref="OAuthException">Thrown if refresh fails.</exception>
     public async Task<OAuthToken> RefreshTokenAsync(
         string refreshToken,
-        string? username = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(refreshToken);
@@ -177,12 +151,6 @@ public sealed class OAuthClient : IDisposable
 
             var token = ParseTokenResponse(response, refreshToken);
 
-            // Cache the refreshed token
-            if (_tokenCache != null)
-            {
-                await _tokenCache.SaveTokenAsync(token, username, cancellationToken);
-            }
-
             _logger?.LogInformation("Token refreshed successfully");
             return token;
         }
@@ -193,22 +161,6 @@ public sealed class OAuthClient : IDisposable
                 OAuthFailureReason.InvalidRefreshToken,
                 "Refresh token is invalid or has been revoked. Please authorize again.",
                 ex);
-        }
-    }
-
-    /// <summary>
-    /// Explicitly clears the cached token.
-    /// </summary>
-    /// <param name="username">Optional username for token caching.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task ClearCachedTokenAsync(
-        string? username = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (_tokenCache != null)
-        {
-            await _tokenCache.ClearTokenAsync(username, cancellationToken);
-            _logger?.LogInformation("Cleared cached token");
         }
     }
 
