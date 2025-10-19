@@ -14,7 +14,7 @@ namespace Wavee.Core.Crypto;
 /// <remarks>
 /// Implementation details:
 /// - Algorithm: AES-128 in CTR mode with Big Endian counter increment
-/// - IV: Fixed 16-byte value (same as librespot)
+/// - IV: Fixed 16-byte value
 /// - Counter: IV + (position / 16) in big endian
 /// - Some Spotify audio files are unencrypted; pass null key for pass-through mode
 /// </remarks>
