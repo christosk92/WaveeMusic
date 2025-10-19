@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Threading.Channels;
 using System.Xml;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
@@ -47,11 +48,18 @@ public sealed class Session : IAsyncDisposable
     /// </summary>
     public event EventHandler? Disconnected;
 
-    private Session(SessionConfig config, ILogger? logger)
+    /// <summary>
+    /// Gets the session configuration.
+    /// </summary>
+    public SessionConfig Config => _config;
+
+    private Session(SessionConfig config, IHttpClientFactory httpClientFactory, ILogger? logger)
     {
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
+
         _config = config;
         _logger = logger;
-        _httpClient = new HttpClient();
+        _httpClient = httpClientFactory.CreateClient("Wavee");
         _data = new SessionData(config, _httpClient, logger);
 
         // Bounded channel for send queue (backpressure)
@@ -65,12 +73,14 @@ public sealed class Session : IAsyncDisposable
     /// Creates a new session with the specified configuration.
     /// </summary>
     /// <param name="config">Session configuration.</param>
+    /// <param name="httpClientFactory">HTTP client factory for creating HttpClient instances.</param>
     /// <param name="logger">Optional logger for diagnostic output.</param>
     /// <returns>A new session instance.</returns>
-    public static Session Create(SessionConfig config, ILogger? logger = null)
+    public static Session Create(SessionConfig config, IHttpClientFactory httpClientFactory, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(config);
-        return new Session(config, logger);
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
+        return new Session(config, httpClientFactory, logger);
     }
 
     /// <summary>
@@ -203,6 +213,12 @@ public sealed class Session : IAsyncDisposable
     public bool IsConnected() => _data.IsConnected();
 
     /// <summary>
+    /// Gets the current preferred locale override (or null if using Spotify's default).
+    /// </summary>
+    /// <returns>The 2-character locale code or null.</returns>
+    public string? GetPreferredLocale() => _data.GetPreferredLocale();
+
+    /// <summary>
     /// Gets the SpClient for making authenticated metadata requests.
     /// </summary>
     /// <remarks>
@@ -277,6 +293,57 @@ public sealed class Session : IAsyncDisposable
         }
 
         return token;
+    }
+
+    /// <summary>
+    /// Updates the preferred locale and publishes it to Spotify's servers.
+    /// </summary>
+    /// <param name="locale">2-character ISO 639-1 language code (e.g., "en", "es", "fr").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="ArgumentException">Thrown if locale is not exactly 2 characters.</exception>
+    /// <exception cref="SessionException">Thrown if session is not connected.</exception>
+    public async Task UpdateLocaleAsync(string locale, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(locale, nameof(locale));
+
+        if (locale.Length != 2)
+            throw new ArgumentException("Locale must be exactly 2 characters (ISO 639-1 language code)", nameof(locale));
+
+        if (!_data.IsConnected())
+            throw new SessionException(SessionFailureReason.Disposed, "Session not connected");
+
+        _logger?.LogDebug("Updating preferred locale to: {Locale}", locale);
+
+        // Send Unknown_0x0f packet (20 random bytes, purpose unknown but required by protocol)
+        var randomBytes = new byte[20];
+        Random.Shared.NextBytes(randomBytes);
+        await SendAsync(PacketType.Unknown0x0f, randomBytes, cancellationToken);
+        _logger?.LogTrace("Sent Unknown_0x0f packet");
+
+        // Send PreferredLocale packet
+        var localeBytes = System.Text.Encoding.UTF8.GetBytes(locale);
+        var payload = new byte[5 + 16 + localeBytes.Length];
+
+        // Header: 0x00 0x00 0x10 0x00 0x02
+        payload[0] = 0x00;
+        payload[1] = 0x00;
+        payload[2] = 0x10;
+        payload[3] = 0x00;
+        payload[4] = 0x02;
+
+        // "preferred-locale" string (16 bytes)
+        var keyBytes = System.Text.Encoding.UTF8.GetBytes("preferred-locale");
+        Array.Copy(keyBytes, 0, payload, 5, keyBytes.Length);
+
+        // Locale value (2 bytes)
+        Array.Copy(localeBytes, 0, payload, 5 + 16, localeBytes.Length);
+
+        await SendAsync(PacketType.PreferredLocale, payload, cancellationToken);
+
+        // Update session state
+        _data.SetPreferredLocale(locale);
+
+        _logger?.LogInformation("Published preferred locale to Spotify: {Locale}", locale);
     }
 
     private async Task<ApTransport> ConnectToApAsync(
@@ -436,10 +503,11 @@ public sealed class Session : IAsyncDisposable
 
                     var attributes = ParseProductInfoXml(xml);
 
-                    // Extract and set account type
+                    // Extract account type
+                    var accountType = AccountType.Premium;
                     if (attributes.TryGetValue("type", out var accountTypeStr))
                     {
-                        var accountType = accountTypeStr.ToLowerInvariant() switch
+                        accountType = accountTypeStr.ToLowerInvariant() switch
                         {
                             "premium" => AccountType.Premium,
                             "free" => AccountType.Free,
@@ -447,7 +515,6 @@ public sealed class Session : IAsyncDisposable
                             "artist" => AccountType.Artist,
                             _ => AccountType.Unknown
                         };
-                        _data.SetAccountType(accountType);
                         _logger?.LogInformation("Account type: {AccountType}", accountType);
 
                         // Warn if not premium (librespot only supports premium)
@@ -459,8 +526,36 @@ public sealed class Session : IAsyncDisposable
                     else
                     {
                         _logger?.LogWarning("ProductInfo XML missing 'type' field, assuming Premium");
-                        _data.SetAccountType(AccountType.Premium);
                     }
+
+                    // Extract additional fields
+                    attributes.TryGetValue("head-files-url", out var headFilesUrl);
+                    attributes.TryGetValue("image-url", out var imageUrl);
+                    attributes.TryGetValue("preferred-locale", out var preferredLocale);
+                    attributes.TryGetValue("video-keyframe-url", out var videoKeyframeUrl);
+
+                    var filterExplicitContent = attributes.TryGetValue("filter-explicit-content", out var filterStr)
+                        && filterStr == "1";
+
+                    // Update UserData with ProductInfo fields
+                    var currentUserData = _data.GetUserData();
+                    if (currentUserData != null)
+                    {
+                        var updatedUserData = currentUserData with
+                        {
+                            AccountType = accountType,
+                            HeadFilesUrl = headFilesUrl,
+                            ImageUrl = imageUrl,
+                            FilterExplicitContent = filterExplicitContent,
+                            PreferredLocale = preferredLocale,
+                            VideoKeyframeUrl = videoKeyframeUrl
+                        };
+                        _data.SetUserData(updatedUserData);
+                        _logger?.LogDebug("Updated UserData with ProductInfo fields");
+                    }
+
+                    // Set account type TCS for backward compatibility
+                    _data.SetAccountType(accountType);
                 }
                 catch (Exception ex)
                 {

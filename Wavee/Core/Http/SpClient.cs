@@ -104,6 +104,13 @@ public sealed class SpClient
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-protobuf"));
         request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
 
+        // Add Accept-Language header if locale is available
+        var locale = GetEffectiveLocale();
+        if (!string.IsNullOrEmpty(locale))
+        {
+            request.Headers.AcceptLanguage.ParseAdd(locale);
+        }
+
         // TODO: Add client-token header from ClientToken manager when implemented
 
         // Send request with retry logic
@@ -136,6 +143,24 @@ public sealed class SpClient
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets the effective locale for API requests.
+    /// </summary>
+    /// <returns>Locale string (e.g., "en", "es", "fr") or null if not available.</returns>
+    private string? GetEffectiveLocale()
+    {
+        // 1. Use session override if set (via UpdateLocaleAsync)
+        var sessionLocale = _session.GetPreferredLocale();
+        if (!string.IsNullOrEmpty(sessionLocale))
+        {
+            return sessionLocale;
+        }
+
+        // 2. Fall back to Spotify's locale from ProductInfo packet
+        var userData = _session.GetUserData();
+        return userData?.PreferredLocale;
     }
 
     /// <summary>

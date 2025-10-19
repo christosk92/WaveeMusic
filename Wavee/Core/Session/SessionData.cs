@@ -35,6 +35,9 @@ internal sealed class SessionData : IDisposable
     private Credentials? _storedCredentials;
     private AccessToken? _accessToken;
 
+    // User preferences
+    private string? _preferredLocale;
+
     // Awaitable data from packets
     private readonly TaskCompletionSource<string> _countryCodeTcs = new();
     private readonly TaskCompletionSource<AccountType> _accountTypeTcs = new();
@@ -314,6 +317,38 @@ internal sealed class SessionData : IDisposable
     public Login5Client GetLogin5Client()
     {
         return _login5Client.Value;
+    }
+
+    /// <summary>
+    /// Sets the preferred locale for the session.
+    /// </summary>
+    public void SetPreferredLocale(string? locale)
+    {
+        _lock.EnterWriteLock();
+        try
+        {
+            _preferredLocale = locale;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Gets the preferred locale for the session (or null if not set).
+    /// </summary>
+    public string? GetPreferredLocale()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _preferredLocale;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
     }
 
     private object CreateMercuryManager()

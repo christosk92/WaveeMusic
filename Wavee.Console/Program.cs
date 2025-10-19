@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
@@ -24,6 +26,15 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 
 var logger = loggerFactory.CreateLogger<Program>();
 
+// Setup dependency injection with HttpClient
+var services = new ServiceCollection();
+services.AddHttpClient("Wavee", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+var serviceProvider = services.BuildServiceProvider();
+var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+
 try
 {
     // 1. Create session configuration
@@ -47,7 +58,7 @@ try
 
     // 4. Create and connect session
     Log.Information("Creating session...");
-    await using var session = Session.Create(config, logger);
+    await using var session = Session.Create(config, httpClientFactory, logger);
 
     // Subscribe to events
     session.PacketReceived += (sender, e) =>
