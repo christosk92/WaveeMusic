@@ -10,6 +10,7 @@ public sealed class OAuthException : Exception
     /// </summary>
     public OAuthFailureReason Reason { get; }
 
+    
     /// <summary>
     /// Creates a new OAuth exception with a specific failure reason and message.
     /// </summary>
