@@ -32,7 +32,7 @@ namespace Wavee.Core.Connection;
 /// }
 /// </code>
 /// </remarks>
-public sealed class ApTransport : IAsyncDisposable
+public sealed class ApTransport : IApTransport
 {
     private readonly Stream _stream;
     private readonly ApCodec _codec;

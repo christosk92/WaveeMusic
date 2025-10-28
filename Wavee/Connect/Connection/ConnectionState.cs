@@ -3,7 +3,7 @@ namespace Wavee.Connect.Connection;
 /// <summary>
 /// WebSocket connection state.
 /// </summary>
-internal enum ConnectionState : byte
+public enum ConnectionState : byte
 {
     /// <summary>
     /// Not connected.

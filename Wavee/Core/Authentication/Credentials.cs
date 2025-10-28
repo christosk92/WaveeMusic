@@ -31,16 +31,16 @@ public sealed record Credentials
     /// <summary>
     /// Authentication type from Protocol.Authentication.AuthenticationType enum.
     /// </summary>
-    [JsonPropertyName("auth_type")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    internal AuthenticationType AuthType { get; init; }
+    [JsonPropertyName("authType")]
+    [JsonConverter(typeof(JsonStringEnumConverter<AuthenticationType>))]
+    public AuthenticationType AuthType { get; init; }
 
     /// <summary>
     /// Authentication data (password bytes, token bytes, or decrypted blob).
     /// </summary>
-    [JsonPropertyName("auth_data")]
+    [JsonPropertyName("authData")]
     [JsonConverter(typeof(Base64ByteArrayConverter))]
-    internal byte[] AuthData { get; init; } = Array.Empty<byte>();
+    public byte[] AuthData { get; init; } = Array.Empty<byte>();
 
     /// <summary>
     /// Internal constructor - use factory methods instead.

@@ -10,7 +10,9 @@ namespace Wavee.Core.Authentication;
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-    GenerationMode = JsonSourceGenerationMode.Default)]
+    GenerationMode = JsonSourceGenerationMode.Metadata | JsonSourceGenerationMode.Serialization,
+    IncludeFields = false,
+    Converters = [typeof(Base64ByteArrayConverter)])]
 internal partial class AuthenticationJsonSerializerContext : JsonSerializerContext
 {
 }

@@ -36,12 +36,18 @@
       </PackageReference>
       <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0-rc.2.25502.107" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-rc.2.25502.107" />
+      <PackageReference Include="System.Reactive" Version="6.0.1" />
       <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0-rc.2.25502.107" />
     </ItemGroup>
 
     <ItemGroup>
-      <!-- Auto-generate C# code from all .proto files with internal access -->
-      <Protobuf Include="Protocol\Protos\**\*.proto" GrpcServices="None" Access="Internal" ProtoRoot="Protocol\Protos" OutputDir="Protocol\Generated" CompileOutputs="true" />
+      <!-- Auto-generate C# code from all .proto files with public access -->
+      <Protobuf Include="Protocol\Protos\**\*.proto" GrpcServices="None" Access="Public" ProtoRoot="Protocol\Protos" OutputDir="Protocol\Generated" CompileOutputs="true" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Allow test project to access internal types -->
+      <InternalsVisibleTo Include="Wavee.Tests" />
     </ItemGroup>
 
 </Project>

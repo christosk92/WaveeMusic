@@ -43,7 +43,7 @@ internal static class Authenticator
     /// <exception cref="ArgumentException">Thrown if deviceId is null or whitespace.</exception>
     /// <exception cref="AuthenticationException">Thrown if login fails.</exception>
     public static async Task<Credentials> AuthenticateAsync(
-        ApTransport transport,
+        IApTransport transport,
         Credentials credentials,
         string deviceId,
         ILogger? logger = null,

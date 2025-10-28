@@ -17,6 +17,7 @@ namespace Wavee.Core.Session;
 internal static class ApResolver
 {
     private const string ApResolveUrl = "https://apresolve.spotify.com/?type=accesspoint";
+    private const string DealerResolveUrl = "https://apresolve.spotify.com/?type=dealer";
 
     private static readonly string[] FallbackAps =
     [
@@ -24,6 +25,11 @@ internal static class ApResolver
         "ap.spotify.com:4070",
         "ap-gew4.spotify.com:443",
         "ap-gew4.spotify.com:4070"
+    ];
+
+    private static readonly string[] FallbackDealers =
+    [
+        "dealer.spotify.com:443"
     ];
 
     /// <summary>
@@ -60,6 +66,43 @@ internal static class ApResolver
         {
             logger?.LogWarning(ex, "Failed to resolve Access Points, using fallback APs");
             return FallbackAps;
+        }
+    }
+
+    /// <summary>
+    /// Resolves available Dealer WebSocket URLs.
+    /// </summary>
+    /// <param name="httpClient">HTTP client for making requests.</param>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of Dealer URLs in priority order.</returns>
+    public static async Task<IReadOnlyList<string>> ResolveDealerAsync(
+        HttpClient httpClient,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            logger?.LogDebug("Resolving Dealer endpoints from {Url}", DealerResolveUrl);
+
+            var response = await httpClient.GetFromJsonAsync(
+                DealerResolveUrl,
+                SessionJsonSerializerContext.Default.ApResolveResponse,
+                cancellationToken);
+
+            if (response?.Dealer is { Length: > 0 })
+            {
+                logger?.LogInformation("Resolved {Count} Dealer endpoints", response.Dealer.Length);
+                return response.Dealer;
+            }
+
+            logger?.LogWarning("ApResolve returned empty dealer list, using fallback");
+            return FallbackDealers;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to resolve Dealer endpoints, using fallback");
+            return FallbackDealers;
         }
     }
 
