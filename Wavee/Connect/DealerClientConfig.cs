@@ -27,4 +27,35 @@ public sealed class DealerClientConfig
     /// Default is false.
     /// </summary>
     public bool AutoConnect { get; init; } = false;
+
+    /// <summary>
+    /// Interval between client-initiated PING messages. Default is 30 seconds.
+    /// </summary>
+    public TimeSpan PingInterval { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Maximum time to wait for PONG response before considering connection dead.
+    /// Default is 3 seconds.
+    /// </summary>
+    public TimeSpan PongTimeout { get; init; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Whether to enable automatic reconnection on connection failure. Default is true.
+    /// </summary>
+    public bool EnableAutoReconnect { get; init; } = true;
+
+    /// <summary>
+    /// Initial delay before first reconnection attempt. Default is 1 second.
+    /// </summary>
+    public TimeSpan InitialReconnectDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Maximum delay between reconnection attempts. Default is 300 seconds (5 minutes).
+    /// </summary>
+    public TimeSpan MaxReconnectDelay { get; init; } = TimeSpan.FromSeconds(300);
+
+    /// <summary>
+    /// Maximum number of reconnection attempts. Null means unlimited. Default is unlimited.
+    /// </summary>
+    public int? MaxReconnectAttempts { get; init; } = null;
 }

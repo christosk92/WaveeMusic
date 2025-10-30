@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Connect.Connection;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Session;
+using Wavee.Core.Utilities;
 
 namespace Wavee.Connect;
 
@@ -17,15 +18,32 @@ public sealed class DealerClient : IAsyncDisposable
 {
     private readonly ILogger<DealerClient>? _logger;
     private readonly DealerConnection _connection;
+    private readonly DealerClientConfig _config;
 
     // Hot observables (Subject<T> pushes to subscribers)
     private readonly Subject<DealerMessage> _messages = new();
     private readonly Subject<DealerRequest> _requests = new();
     private readonly BehaviorSubject<Connection.ConnectionState> _connectionState = new(Connection.ConnectionState.Disconnected);
 
+    // Managers for heartbeat and reconnection
+    private HeartbeatManager? _heartbeatManager;
+    private ReconnectionManager? _reconnectionManager;
+
+    // AsyncWorker for non-blocking message/request dispatch
+    private AsyncWorker<DealerMessage>? _messageWorker;
+    private AsyncWorker<DealerRequest>? _requestWorker;
+
+    // Session and HttpClient for reconnection
+    private Core.Session.Session? _session;
+    private HttpClient? _httpClient;
+
     // Cached PONG message (zero allocation on send)
     private static readonly ReadOnlyMemory<byte> PongMessageBytes =
         Encoding.UTF8.GetBytes("{\"type\":\"pong\"}");
+
+    // Cached PING message (zero allocation on send)
+    private static readonly ReadOnlyMemory<byte> PingMessageBytes =
+        Encoding.UTF8.GetBytes("{\"type\":\"ping\"}");
 
     private CancellationTokenSource? _cts;
     private bool _disposed;
@@ -56,11 +74,32 @@ public sealed class DealerClient : IAsyncDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="DealerClient"/> class.
     /// </summary>
+    /// <param name="config">Configuration for dealer client behavior.</param>
     /// <param name="logger">Optional logger for diagnostic output.</param>
-    public DealerClient(ILogger<DealerClient>? logger = null)
+    public DealerClient(DealerClientConfig? config = null, ILogger<DealerClient>? logger = null)
     {
-        _logger = logger;
+        _config = config ?? new DealerClientConfig();
+        _logger = logger ?? _config.Logger as ILogger<DealerClient>;
         _connection = new DealerConnection(logger as ILogger<DealerConnection>);
+
+        // Create AsyncWorkers for message and request dispatch
+        _messageWorker = new AsyncWorker<DealerMessage>(
+            "DealerMessages",
+            msg =>
+            {
+                _messages.OnNext(msg);
+                return ValueTask.CompletedTask;
+            },
+            _logger as ILogger);
+
+        _requestWorker = new AsyncWorker<DealerRequest>(
+            "DealerRequests",
+            req =>
+            {
+                _requests.OnNext(req);
+                return ValueTask.CompletedTask;
+            },
+            _logger as ILogger);
 
         // Subscribe to connection events
         _connection.MessageReceived += OnRawMessageReceivedAsync;
@@ -117,6 +156,17 @@ public sealed class DealerClient : IAsyncDisposable
 
                     _connectionState.OnNext(Connection.ConnectionState.Connected);
                     _logger?.LogInformation("Connected to dealer: {Dealer}", dealer);
+
+                    // Store session and httpClient for reconnection
+                    _session = session;
+                    _httpClient = httpClient;
+
+                    // Start heartbeat manager
+                    InitializeHeartbeat();
+
+                    // Initialize reconnection manager
+                    InitializeReconnection();
+
                     return;
                 }
                 catch (Exception ex)
@@ -206,16 +256,18 @@ public sealed class DealerClient : IAsyncDisposable
                     break;
 
                 case Protocol.MessageType.Pong:
-                    // Server acknowledged our PONG (keep-alive confirmation)
+                    // Notify heartbeat manager that PONG was received
+                    _heartbeatManager?.RecordPong();
                     _logger?.LogTrace("Received PONG from server");
                     break;
 
                 case Protocol.MessageType.Message:
-                    // Parse and push to Messages observable
-                    if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message))
+                    // Parse and dispatch via AsyncWorker
+                    if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message) && message != null)
                     {
                         _logger?.LogTrace("Received MESSAGE: {Uri}", message.Uri);
-                        _messages.OnNext(message);
+                        if (_messageWorker != null)
+                            await _messageWorker.SubmitAsync(message);
                     }
                     else
                     {
@@ -224,12 +276,13 @@ public sealed class DealerClient : IAsyncDisposable
                     break;
 
                 case Protocol.MessageType.Request:
-                    // Parse and push to Requests observable
-                    if (Protocol.MessageParser.TryParseRequest(rawBytes.Span, out var request))
+                    // Parse and dispatch via AsyncWorker
+                    if (Protocol.MessageParser.TryParseRequest(rawBytes.Span, out var request) && request != null)
                     {
                         _logger?.LogTrace("Received REQUEST: {MessageIdent} (key: {Key})",
                             request.MessageIdent, request.Key);
-                        _requests.OnNext(request);
+                        if (_requestWorker != null)
+                            await _requestWorker.SubmitAsync(request);
                     }
                     else
                     {
@@ -264,6 +317,15 @@ public sealed class DealerClient : IAsyncDisposable
     {
         _logger?.LogInformation("Dealer connection closed: {Status}", closeStatus);
         _connectionState.OnNext(Connection.ConnectionState.Disconnected);
+
+        // Stop heartbeat
+        _ = StopHeartbeatAsync();
+
+        // Trigger reconnection if enabled
+        if (_config.EnableAutoReconnect && !_disposed)
+        {
+            _reconnectionManager?.TriggerReconnection();
+        }
     }
 
     /// <summary>
@@ -273,6 +335,125 @@ public sealed class DealerClient : IAsyncDisposable
     {
         _logger?.LogError(ex, "Dealer connection error");
         _connectionState.OnNext(Connection.ConnectionState.Disconnected);
+
+        // Stop heartbeat
+        _ = StopHeartbeatAsync();
+
+        // Trigger reconnection if enabled
+        if (_config.EnableAutoReconnect && !_disposed)
+        {
+            _reconnectionManager?.TriggerReconnection();
+        }
+    }
+
+    /// <summary>
+    /// Initializes and starts the heartbeat manager.
+    /// </summary>
+    private void InitializeHeartbeat()
+    {
+        _heartbeatManager = new HeartbeatManager(
+            _config.PingInterval,
+            _config.PongTimeout,
+            SendPingAsync,
+            _logger as ILogger);
+
+        _heartbeatManager.HeartbeatTimeout += OnHeartbeatTimeout;
+        _heartbeatManager.Start();
+
+        _logger?.LogDebug("Heartbeat manager initialized and started");
+    }
+
+    /// <summary>
+    /// Initializes the reconnection manager.
+    /// </summary>
+    private void InitializeReconnection()
+    {
+        _reconnectionManager = new ReconnectionManager(
+            _config.InitialReconnectDelay,
+            _config.MaxReconnectDelay,
+            _config.MaxReconnectAttempts,
+            ReconnectInternalAsync,
+            _logger as ILogger);
+
+        _reconnectionManager.ReconnectionSucceeded += OnReconnectionSucceeded;
+        _reconnectionManager.ReconnectionFailed += OnReconnectionFailed;
+
+        _logger?.LogDebug("Reconnection manager initialized");
+    }
+
+    /// <summary>
+    /// Handles heartbeat timeout event.
+    /// </summary>
+    private void OnHeartbeatTimeout(object? sender, EventArgs e)
+    {
+        _logger?.LogWarning("Heartbeat timeout detected, triggering reconnection");
+
+        // Close current connection
+        _ = _connection.CloseAsync();
+
+        // Trigger reconnection
+        if (_config.EnableAutoReconnect && !_disposed)
+        {
+            _reconnectionManager?.TriggerReconnection();
+        }
+    }
+
+    /// <summary>
+    /// Internal reconnection logic called by ReconnectionManager.
+    /// </summary>
+    private async ValueTask ReconnectInternalAsync()
+    {
+        if (_session == null || _httpClient == null)
+            throw new InvalidOperationException("Session and HttpClient not available for reconnection");
+
+        _logger?.LogDebug("Attempting reconnection...");
+
+        // Cleanup old connection
+        await StopHeartbeatAsync();
+
+        // Attempt to connect
+        await ConnectAsync(_session, _httpClient, _cts?.Token ?? CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Handles successful reconnection.
+    /// </summary>
+    private void OnReconnectionSucceeded(object? sender, EventArgs e)
+    {
+        _logger?.LogInformation("Reconnection succeeded");
+        _connectionState.OnNext(Connection.ConnectionState.Connected);
+    }
+
+    /// <summary>
+    /// Handles failed reconnection (all attempts exhausted).
+    /// </summary>
+    private void OnReconnectionFailed(object? sender, EventArgs e)
+    {
+        _logger?.LogError("Reconnection failed after all attempts exhausted");
+        _connectionState.OnNext(Connection.ConnectionState.Disconnected);
+    }
+
+    /// <summary>
+    /// Stops the heartbeat manager.
+    /// </summary>
+    private async ValueTask StopHeartbeatAsync()
+    {
+        if (_heartbeatManager != null)
+        {
+            await _heartbeatManager.StopAsync();
+            _heartbeatManager.HeartbeatTimeout -= OnHeartbeatTimeout;
+            await _heartbeatManager.DisposeAsync();
+            _heartbeatManager = null;
+        }
+    }
+
+    /// <summary>
+    /// Sends a PING message to the server.
+    /// Uses cached message bytes for zero allocation.
+    /// </summary>
+    private ValueTask SendPingAsync()
+    {
+        return _connection.SendAsync(PingMessageBytes);
     }
 
     /// <summary>
@@ -286,6 +467,33 @@ public sealed class DealerClient : IAsyncDisposable
         _disposed = true;
 
         _logger?.LogDebug("Disposing DealerClient");
+
+        // Stop heartbeat and reconnection
+        await StopHeartbeatAsync();
+
+        if (_reconnectionManager != null)
+        {
+            await _reconnectionManager.CancelReconnectionAsync();
+            _reconnectionManager.ReconnectionSucceeded -= OnReconnectionSucceeded;
+            _reconnectionManager.ReconnectionFailed -= OnReconnectionFailed;
+            await _reconnectionManager.DisposeAsync();
+            _reconnectionManager = null;
+        }
+
+        // Complete and dispose workers
+        if (_messageWorker != null)
+        {
+            await _messageWorker.CompleteAsync();
+            await _messageWorker.DisposeAsync();
+            _messageWorker = null;
+        }
+
+        if (_requestWorker != null)
+        {
+            await _requestWorker.CompleteAsync();
+            await _requestWorker.DisposeAsync();
+            _requestWorker = null;
+        }
 
         // Stop observables
         _messages.OnCompleted();
