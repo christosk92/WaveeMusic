@@ -200,20 +200,28 @@ public sealed class Session : ISession, IAsyncDisposable
     /// </summary>
     private async Task InitializeConnectSubsystemAsync(CancellationToken cancellationToken)
     {
+        // Skip if Connect is disabled in config
+        if (!_config.EnableConnect)
+        {
+            _logger?.LogInformation("Spotify Connect subsystem disabled by configuration");
+            return;
+        }
+
         try
         {
             _logger?.LogDebug("Initializing Spotify Connect subsystem");
 
-            // Create and connect DealerClient
-            _dealerClient = new DealerClient(logger: _logger as ILogger<DealerClient>);
+            // Create and connect DealerClient with config containing logger
+            _dealerClient = new DealerClient(config: new DealerClientConfig { Logger = _logger });
             await _dealerClient.ConnectAsync(this, _httpClient, cancellationToken);
             _logger?.LogDebug("DealerClient connected");
 
-            // Create DeviceStateManager (subscribes to DealerClient connection ID)
+            // Create DeviceStateManager with configured initial volume
             _deviceStateManager = new DeviceStateManager(
                 this,
                 SpClient,
                 _dealerClient,
+                initialVolume: _config.InitialVolume,
                 logger: _logger);
 
             // Set device as active to announce presence
@@ -279,6 +287,93 @@ public sealed class Session : ISession, IAsyncDisposable
         _httpClient,
         _spClientEndpoint ?? "spclient.wg.spotify.com:443",
         _logger);
+
+    /// <summary>
+    /// Gets the Spotify Connect dealer client for real-time communication.
+    /// </summary>
+    /// <remarks>
+    /// The dealer client provides WebSocket connection to Spotify's dealer service
+    /// for real-time messages, requests, and connection ID management.
+    /// Available only if EnableConnect is true in SessionConfig.
+    /// </remarks>
+    /// <returns>DealerClient instance, or null if Connect is disabled.</returns>
+    public DealerClient? Dealer => _dealerClient;
+
+    /// <summary>
+    /// Gets the Spotify Connect device state manager.
+    /// </summary>
+    /// <remarks>
+    /// DeviceStateManager coordinates device state with Spotify's cloud API,
+    /// including volume control, active state, and device announcements.
+    /// Available only if EnableConnect is true in SessionConfig.
+    /// </remarks>
+    /// <returns>DeviceStateManager instance, or null if Connect is disabled.</returns>
+    public DeviceStateManager? DeviceState => _deviceStateManager;
+
+    /// <summary>
+    /// Sets the device active or inactive state for Spotify Connect.
+    /// </summary>
+    /// <param name="active">True to make device visible and controllable, false to hide.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if state was changed, false if Connect is disabled.</returns>
+    /// <exception cref="SpClientException">Thrown if the PUT state request fails.</exception>
+    public async Task<bool> SetDeviceActiveAsync(bool active, CancellationToken cancellationToken = default)
+    {
+        if (_deviceStateManager == null)
+            return false;
+
+        await _deviceStateManager.SetActiveAsync(active, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Sets the device volume (Spotify's 0-65535 range).
+    /// </summary>
+    /// <param name="volume">Volume level (0-65535).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if volume was set, false if Connect is disabled.</returns>
+    /// <exception cref="SpClientException">Thrown if the PUT state request fails.</exception>
+    public async Task<bool> SetVolumeAsync(int volume, CancellationToken cancellationToken = default)
+    {
+        if (_deviceStateManager == null)
+            return false;
+
+        await _deviceStateManager.SetVolumeAsync(volume, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Gets the current device volume as a percentage (0-100).
+    /// </summary>
+    /// <returns>Volume percentage, or null if Connect is disabled.</returns>
+    public int? GetVolumePercentage()
+    {
+        if (_deviceStateManager == null)
+            return null;
+
+        return ConnectStateHelpers.VolumeToPercentage(_deviceStateManager.CurrentVolume);
+    }
+
+    /// <summary>
+    /// Sets the device volume from a percentage (0-100).
+    /// </summary>
+    /// <param name="percentage">Volume percentage (0-100).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if volume was set, false if Connect is disabled.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if percentage is not 0-100.</exception>
+    /// <exception cref="SpClientException">Thrown if the PUT state request fails.</exception>
+    public async Task<bool> SetVolumePercentageAsync(int percentage, CancellationToken cancellationToken = default)
+    {
+        if (percentage < 0 || percentage > 100)
+            throw new ArgumentOutOfRangeException(nameof(percentage), "Volume percentage must be 0-100");
+
+        if (_deviceStateManager == null)
+            return false;
+
+        var volume = ConnectStateHelpers.VolumeFromPercentage(percentage);
+        await _deviceStateManager.SetVolumeAsync(volume, cancellationToken);
+        return true;
+    }
 
     /// <summary>
     /// Waits for the country code to be received from the server.

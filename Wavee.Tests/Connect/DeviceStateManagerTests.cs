@@ -198,9 +198,9 @@ public sealed class DeviceStateManagerTests
     }
 
     [Fact]
-    public async Task SetActiveAsync_True_ShouldUseSpircHelloReason()
+    public async Task SetActiveAsync_True_ShouldUseNewDeviceReason()
     {
-        // WHY: SPIRC_HELLO reason signals device joining the Connect cluster
+        // WHY: NEW_DEVICE reason signals device joining the Connect cluster (modern Connect State API)
 
         // Arrange
         var tracker = new MockSpClientHelpers.PutStateCallTracker();
@@ -229,8 +229,8 @@ public sealed class DeviceStateManagerTests
         // Assert
         var activeCall = tracker.Calls.LastOrDefault(c => c.Request.IsActive);
         activeCall.Should().NotBeNull("PUT state called with IsActive=true");
-        activeCall!.Request.PutStateReason.Should().Be(PutStateReason.SpircHello,
-            "SPIRC_HELLO reason used when activating");
+        activeCall!.Request.PutStateReason.Should().Be(PutStateReason.NewDevice,
+            "NEW_DEVICE reason used when activating (modern Connect State API)");
     }
 
     [Fact]

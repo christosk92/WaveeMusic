@@ -52,6 +52,25 @@ public sealed record SessionConfig
     public IWebProxy? Proxy { get; init; }
 
     /// <summary>
+    /// Enable Spotify Connect subsystem (dealer WebSocket and device state management).
+    /// </summary>
+    /// <remarks>
+    /// When enabled, the session will automatically connect to Spotify's dealer service
+    /// and announce the device for remote control. Disable if you only need API access.
+    /// </remarks>
+    public bool EnableConnect { get; init; } = true;
+
+    /// <summary>
+    /// Initial volume level for Spotify Connect (0-65535 range).
+    /// </summary>
+    /// <remarks>
+    /// Spotify uses a 16-bit unsigned integer for volume (0-65535).
+    /// Use ConnectStateHelpers.VolumeFromPercentage() to convert from percentage.
+    /// Default is 32767 (approximately 50%).
+    /// </remarks>
+    public int InitialVolume { get; init; } = 32767;
+
+    /// <summary>
     /// Gets the effective client ID (user-provided or platform default).
     /// </summary>
     public string GetClientId()

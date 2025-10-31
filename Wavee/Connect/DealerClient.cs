@@ -16,7 +16,7 @@ namespace Wavee.Connect;
 /// </summary>
 public sealed class DealerClient : IAsyncDisposable
 {
-    private readonly ILogger<DealerClient>? _logger;
+    private readonly ILogger? _logger;
     private readonly IDealerConnection _connection;
     private readonly DealerClientConfig _config;
 
@@ -90,17 +90,16 @@ public sealed class DealerClient : IAsyncDisposable
     /// Initializes a new instance of the <see cref="DealerClient"/> class.
     /// </summary>
     /// <param name="config">Configuration for dealer client behavior.</param>
-    /// <param name="logger">Optional logger for diagnostic output.</param>
     /// <param name="connection">Optional dealer connection (for testing). If null, creates a new DealerConnection.</param>
-    public DealerClient(DealerClientConfig? config = null, ILogger<DealerClient>? logger = null, IDealerConnection? connection = null)
+    public DealerClient(DealerClientConfig? config = null, IDealerConnection? connection = null)
     {
         _config = config ?? new DealerClientConfig();
-        _logger = logger ?? _config.Logger as ILogger<DealerClient>;
-        _connection = connection ?? new DealerConnection(logger as ILogger<DealerConnection>);
+        _logger = _config.Logger;
+        _connection = connection ?? new DealerConnection(_config.Logger);
 
         // Initialize SafeSubjects with logger for exception isolation
-        _messages = new SafeSubject<DealerMessage>(_logger as ILogger);
-        _requests = new SafeSubject<DealerRequest>(_logger as ILogger);
+        _messages = new SafeSubject<DealerMessage>(_logger);
+        _requests = new SafeSubject<DealerRequest>(_logger);
 
         // Create AsyncWorkers for message and request dispatch
         // SafeSubject handles exception isolation, so no try-catch needed here
@@ -111,7 +110,7 @@ public sealed class DealerClient : IAsyncDisposable
                 _messages.OnNext(msg);
                 return ValueTask.CompletedTask;
             },
-            _logger as ILogger);
+            _logger);
 
         _requestWorker = new AsyncWorker<DealerRequest>(
             "DealerRequests",
@@ -120,7 +119,7 @@ public sealed class DealerClient : IAsyncDisposable
                 _requests.OnNext(req);
                 return ValueTask.CompletedTask;
             },
-            _logger as ILogger);
+            _logger);
 
         // Subscribe to connection events
         _connection.MessageReceived += OnRawMessageReceivedAsync;
@@ -283,10 +282,24 @@ public sealed class DealerClient : IAsyncDisposable
                     break;
 
                 case Protocol.MessageType.Message:
+                    // Log raw message JSON for debugging
+                    _logger?.LogTrace("Parsing MESSAGE: size={Size} bytes, json={Json}",
+                        rawBytes.Length,
+                        System.Text.Encoding.UTF8.GetString(rawBytes.Span));
+
                     // Parse and dispatch via AsyncWorker
                     if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message) && message != null)
                     {
-                        _logger?.LogTrace("Received MESSAGE: {Uri}", message.Uri);
+                        _logger?.LogTrace("Received MESSAGE: uri={Uri}, headerCount={HeaderCount}, payloadSize={PayloadSize}",
+                            message.Uri, message.Headers.Count, message.Payload.Length);
+
+                        // Log all headers for pusher messages to debug connection ID
+                        if (message.Uri.StartsWith("hm://pusher/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger?.LogDebug("PUSHER MESSAGE: {Uri} | Headers: {Headers}",
+                                message.Uri,
+                                message.Headers.Count > 0 ? string.Join(", ", message.Headers.Select(h => $"{h.Key}={h.Value}")) : "(none)");
+                        }
 
                         // Check for connection ID message
                         if (message.Uri.StartsWith("hm://pusher/v1/connections/", StringComparison.OrdinalIgnoreCase))
@@ -295,7 +308,11 @@ public sealed class DealerClient : IAsyncDisposable
                         }
 
                         if (_messageWorker != null)
+                        {
+                            _logger?.LogTrace("Submitting message to worker: uri={Uri}", message.Uri);
                             await _messageWorker.SubmitAsync(message);
+                            _logger?.LogTrace("Message submitted to worker successfully");
+                        }
                     }
                     else
                     {
@@ -383,7 +400,7 @@ public sealed class DealerClient : IAsyncDisposable
             _config.PingInterval,
             _config.PongTimeout,
             SendPingAsync,
-            _logger as ILogger);
+            _logger);
 
         _heartbeatManager.HeartbeatTimeout += OnHeartbeatTimeout;
         _heartbeatManager.Start();
@@ -401,7 +418,7 @@ public sealed class DealerClient : IAsyncDisposable
             _config.MaxReconnectDelay,
             _config.MaxReconnectAttempts,
             ReconnectInternalAsync,
-            _logger as ILogger);
+            _logger);
 
         _reconnectionManager.ReconnectionSucceeded += OnReconnectionSucceeded;
         _reconnectionManager.ReconnectionFailed += OnReconnectionFailed;
@@ -490,14 +507,23 @@ public sealed class DealerClient : IAsyncDisposable
     /// </summary>
     private void HandleConnectionIdMessage(DealerMessage message)
     {
+        _logger?.LogTrace("HandleConnectionIdMessage called: uri={Uri}, headerCount={HeaderCount}",
+            message.Uri, message.Headers.Count);
+
+        _logger?.LogTrace("Looking for Spotify-Connection-Id header. Available headers: {Headers}",
+            string.Join(", ", message.Headers.Keys));
+
         if (message.Headers.TryGetValue("Spotify-Connection-Id", out var connectionId))
         {
             _logger?.LogInformation("Received connection ID: {ConnectionId}", connectionId);
+            _logger?.LogTrace("Emitting connection ID to ConnectionId observable: {ConnectionId}", connectionId);
             _connectionId.OnNext(connectionId);
+            _logger?.LogTrace("Connection ID observable OnNext completed successfully");
         }
         else
         {
-            _logger?.LogWarning("Connection message received but Spotify-Connection-Id header not found");
+            _logger?.LogWarning("Connection message received but Spotify-Connection-Id header not found. Available headers: {Headers}",
+                string.Join(", ", message.Headers.Keys));
         }
     }
 

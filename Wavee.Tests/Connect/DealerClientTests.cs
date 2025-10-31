@@ -32,8 +32,10 @@ public class DealerClientTests
     {
         // Arrange & Act
         var client = new DealerClient(
-            DealerTestHelpers.CreateTestConfig(),
-            TestHelpers.CreateMockLogger<DealerClient>().Object);
+            new DealerClientConfig
+            {
+                Logger = TestHelpers.CreateMockLogger<DealerClient>().Object
+            });
 
         // Assert
         client.CurrentState.Should().Be(ConnectionState.Disconnected, "initial state should be Disconnected");

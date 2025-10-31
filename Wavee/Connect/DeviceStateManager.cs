@@ -81,14 +81,17 @@ public sealed class DeviceStateManager : IAsyncDisposable
 
         _volumeSubject = new BehaviorSubject<int>(_currentVolume);
 
-        // Subscribe to connection ID updates
+        // Subscribe to connection ID updates (filter out null values from BehaviorSubject)
         _connectionIdSubscription = _dealerClient.ConnectionId
+            .Where(id => id != null)
             .Subscribe(OnConnectionIdReceived);
+        _logger?.LogTrace("Subscribed to DealerClient.ConnectionId observable (with null filter)");
 
         // Subscribe to volume change messages
         _messageSubscription = _dealerClient.Messages
             .Where(m => m.Uri.StartsWith("hm://connect-state/v1/connect/volume", StringComparison.OrdinalIgnoreCase))
             .Subscribe(OnVolumeMessage);
+        _logger?.LogTrace("Subscribed to volume messages from DealerClient.Messages observable");
 
         _logger?.LogDebug("DeviceStateManager initialized for device {DeviceId}", session.Config.DeviceId);
     }
@@ -98,6 +101,9 @@ public sealed class DeviceStateManager : IAsyncDisposable
     /// </summary>
     private async void OnConnectionIdReceived(string? connectionId)
     {
+        _logger?.LogTrace("OnConnectionIdReceived called: connectionId={ConnectionId}, isNull={IsNull}",
+            connectionId ?? "<null>", connectionId == null);
+
         if (connectionId == null)
         {
             _logger?.LogDebug("Connection ID cleared");
@@ -107,6 +113,7 @@ public sealed class DeviceStateManager : IAsyncDisposable
 
         _logger?.LogInformation("Connection ID received: {ConnectionId}", connectionId);
         _connectionId = connectionId;
+        _logger?.LogTrace("Connection ID stored in _connectionId field: {ConnectionId}", _connectionId);
 
         // Announce device presence with NEW_CONNECTION reason
         try
@@ -124,6 +131,9 @@ public sealed class DeviceStateManager : IAsyncDisposable
     /// </summary>
     private async void OnVolumeMessage(DealerMessage message)
     {
+        _logger?.LogTrace("OnVolumeMessage called: uri={Uri}, payloadSize={Size}",
+            message.Uri, message.Payload.Length);
+
         try
         {
             // Parse SetVolumeCommand protobuf
@@ -131,13 +141,18 @@ public sealed class DeviceStateManager : IAsyncDisposable
             var newVolume = (int)volumeCommand.Volume;
 
             _logger?.LogInformation("Volume changed to {Volume}", newVolume);
+            _logger?.LogTrace("Updating device info volume: old={OldVolume}, new={NewVolume}",
+                _deviceInfo.Volume, newVolume);
 
             // Update device info volume
             _deviceInfo.Volume = (uint)newVolume;
             _currentVolume = newVolume;
 
+            _logger?.LogTrace("Device info volume updated, notifying subscribers");
+
             // Notify subscribers
             _volumeSubject.OnNext(newVolume);
+            _logger?.LogTrace("Volume observable OnNext called with {Volume}", newVolume);
 
             // Update state with VOLUME_CHANGED reason
             await UpdateStateAsync(PutStateReason.VolumeChanged);
@@ -157,6 +172,9 @@ public sealed class DeviceStateManager : IAsyncDisposable
         PutStateReason reason,
         CancellationToken cancellationToken = default)
     {
+        _logger?.LogTrace("UpdateStateAsync called: reason={Reason}, connectionId={ConnectionId}, isNull={IsNull}",
+            reason, _connectionId ?? "<null>", _connectionId == null);
+
         if (_connectionId == null)
         {
             _logger?.LogWarning("Cannot update state: connection ID not available");
@@ -181,6 +199,8 @@ public sealed class DeviceStateManager : IAsyncDisposable
             };
 
             _logger?.LogDebug("Sending PUT state with reason {Reason}", reason);
+            _logger?.LogTrace("PUT state request: deviceId={DeviceId}, connectionId={ConnectionId}, reason={Reason}, messageId={MessageId}, volume={Volume}, isActive={IsActive}",
+                _session.Config.DeviceId, _connectionId, reason, request.MessageId, _deviceInfo.Volume, _isActive);
 
             await _spClient.PutConnectStateAsync(
                 _session.Config.DeviceId,
@@ -210,7 +230,7 @@ public sealed class DeviceStateManager : IAsyncDisposable
         _isActive = active;
         _logger?.LogInformation("Device active status changed to {Active}", active);
 
-        var reason = active ? PutStateReason.SpircHello : PutStateReason.BecameInactive;
+        var reason = active ? PutStateReason.NewDevice : PutStateReason.BecameInactive;
         await UpdateStateAsync(reason, cancellationToken);
     }
 

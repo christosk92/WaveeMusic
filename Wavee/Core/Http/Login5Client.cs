@@ -102,6 +102,10 @@ internal sealed class Login5Client
                 "Login5 response missing Ok field");
         }
 
+        // Log raw expiry duration from Spotify for diagnostics
+        _logger?.LogDebug("Token expires in {Seconds} seconds (raw AccessTokenExpiresIn: {RawValue})",
+            response.Ok.AccessTokenExpiresIn, response.Ok.AccessTokenExpiresIn);
+
         var accessToken = AccessToken.FromLogin5Response(
             response.Ok.AccessToken,
             response.Ok.AccessTokenExpiresIn);

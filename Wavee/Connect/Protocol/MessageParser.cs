@@ -118,14 +118,15 @@ internal static class MessageParser
                 }
             }
 
-            if (uri == null || headers == null || payload == null)
+            // Payload is optional - some messages (like connection ID) have no payload
+            if (uri == null || headers == null)
                 return false;
 
             message = new DealerMessage
             {
                 Uri = uri,
                 Headers = headers,
-                Payload = payload
+                Payload = payload ?? Array.Empty<byte>()
             };
 
             return true;

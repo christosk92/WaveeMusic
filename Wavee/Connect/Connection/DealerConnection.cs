@@ -12,7 +12,7 @@ namespace Wavee.Connect.Connection;
 /// </summary>
 internal sealed class DealerConnection : IDealerConnection
 {
-    private readonly ILogger<DealerConnection>? _logger;
+    private readonly ILogger? _logger;
     private readonly Pipe _receivePipe;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cts;
@@ -40,7 +40,7 @@ internal sealed class DealerConnection : IDealerConnection
     /// </summary>
     public ConnectionState State { get; private set; }
 
-    public DealerConnection(ILogger<DealerConnection>? logger = null)
+    public DealerConnection(ILogger? logger = null)
     {
         _logger = logger;
 

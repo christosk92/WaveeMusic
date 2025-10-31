@@ -193,8 +193,10 @@ public class MessageParserTests
     }
 
     [Fact]
-    public void TryParseMessage_MissingPayloads_ShouldFail()
+    public void TryParseMessage_MissingPayloads_ShouldSucceed()
     {
+        // WHY: Payloads is optional - some messages like connection ID have no payload
+
         // Arrange
         var json = "{\"type\":\"message\",\"uri\":\"hm://test\",\"headers\":{}}";
         var bytes = DealerTestHelpers.CreateMessageBytes(json);
@@ -203,13 +205,16 @@ public class MessageParserTests
         var success = MessageParser.TryParseMessage(bytes, out var message);
 
         // Assert
-        success.Should().BeFalse("payloads array is required");
-        message.Should().BeNull();
+        success.Should().BeTrue("payloads is optional");
+        message.Should().NotBeNull();
+        message!.Payload.Should().BeEmpty("missing payloads defaults to empty array");
     }
 
     [Fact]
-    public void TryParseMessage_InvalidBase64Payload_ShouldFail()
+    public void TryParseMessage_InvalidBase64Payload_ShouldSucceedWithEmptyPayload()
     {
+        // WHY: Invalid base64 is caught and treated as empty payload (graceful degradation)
+
         // Arrange
         var json = "{\"type\":\"message\",\"uri\":\"hm://test\",\"headers\":{},\"payloads\":[\"!!!invalid base64!!!\"]}";
         var bytes = DealerTestHelpers.CreateMessageBytes(json);
@@ -218,8 +223,9 @@ public class MessageParserTests
         var success = MessageParser.TryParseMessage(bytes, out var message);
 
         // Assert
-        success.Should().BeFalse("invalid base64 should be rejected");
-        message.Should().BeNull();
+        success.Should().BeTrue("invalid base64 falls back to empty payload");
+        message.Should().NotBeNull();
+        message!.Payload.Should().BeEmpty("invalid base64 decoding returns empty array");
     }
 
     // ================================================================

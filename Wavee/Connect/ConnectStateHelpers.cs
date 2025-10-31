@@ -6,7 +6,7 @@ namespace Wavee.Connect;
 /// <summary>
 /// Helper methods for building Spotify Connect State protobuf messages.
 /// </summary>
-internal static class ConnectStateHelpers
+public static class ConnectStateHelpers
 {
     // Keymaster client ID used for Connect State
     private const string KeymasterClientId = "65b708073fc0480ea92a077233ca87bd";

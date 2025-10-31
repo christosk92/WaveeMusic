@@ -3,6 +3,7 @@ using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
+using Wavee.Console;
 using Wavee.Core.Authentication;
 using Wavee.Core.Session;
 using Wavee.OAuth;
@@ -35,6 +36,9 @@ services.AddHttpClient("Wavee", client =>
 var serviceProvider = services.BuildServiceProvider();
 var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
+// Setup credentials cache
+var credentialsCache = new CredentialsCache(logger: loggerFactory.CreateLogger<CredentialsCache>());
+
 try
 {
     // 1. Create session configuration
@@ -48,13 +52,23 @@ try
         DeviceType = DeviceType.Computer
     };
 
-    // 2. Get access token via OAuth
+    // 2. Try to load stored credentials
     Log.Information("");
-    var oauthLogger = loggerFactory.CreateLogger("OAuth");
-    var accessToken = await GetAccessTokenAsync(config.GetClientId(), oauthLogger);
+    var storedCredentials = await credentialsCache.LoadCredentialsAsync();
 
-    // 3. Create credentials
-    var credentials = Credentials.WithAccessToken(accessToken);
+    Credentials credentials;
+    if (storedCredentials != null)
+    {
+        Log.Information("Found stored credentials - skipping OAuth");
+        credentials = storedCredentials;
+    }
+    else
+    {
+        Log.Information("No stored credentials found - performing OAuth flow");
+        var oauthLogger = loggerFactory.CreateLogger("OAuth");
+        var accessToken = await GetAccessTokenAsync(config.GetClientId(), oauthLogger);
+        credentials = Credentials.WithAccessToken(accessToken);
+    }
 
     // 4. Create and connect session
     Log.Information("Creating session...");
@@ -74,7 +88,7 @@ try
 
     // 5. Connect
     Log.Information("Connecting to Spotify...");
-    await session.ConnectAsync(credentials);
+    await session.ConnectAsync(credentials, credentialsCache);
 
     var userData = session.GetUserData();
     if (userData != null)
@@ -94,13 +108,13 @@ try
         Log.Information("");
     }
 
-    // 6. Keep session alive for a while to see packets
-    Log.Information("Session running... Press any key to disconnect.");
-
-    // Wait for user input to stop
-    await Task.Run(() => Console.ReadKey(true));
+    // 6. Run interactive Connect console
+    Log.Information("");
+    using var connectConsole = new ConnectConsole(session);
+    await connectConsole.RunAsync();
 
     // 7. Cleanup (await using handles disposal automatically)
+    Log.Information("");
     Log.Information("Disconnecting...");
     // Session disposed here by await using
 
@@ -137,39 +151,7 @@ Console.ReadKey();
 
 static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensions.Logging.ILogger logger)
 {
-    var refreshToken = LoadRefreshToken();
-
-    // If we have a cached refresh token, ask user if they want to use it
-    if (!string.IsNullOrEmpty(refreshToken))
-    {
-        if (AskUseStoredToken())
-        {
-            Log.Information("Attempting to use stored refresh token...");
-
-            var oauthClient = OAuthClient.Create(
-                clientId,
-                ["streaming", "user-read-playback-state", "user-modify-playback-state"],
-                openBrowser: false,
-                logger: logger);
-
-            try
-            {
-                var token = await oauthClient.RefreshTokenAsync(refreshToken);
-                Log.Information("Successfully refreshed access token!");
-                return token.AccessToken;
-            }
-            catch (OAuthException ex)
-            {
-                Log.Warning("Failed to refresh token ({Reason}), will perform full OAuth flow", ex.Reason);
-            }
-        }
-        else
-        {
-            Log.Information("User chose to perform fresh authorization");
-        }
-    }
-
-    // No cached token, user declined, or refresh failed - perform full OAuth flow
+    // Perform OAuth flow to get access token
     var flow = SelectOAuthFlow();
 
     Log.Information("");
@@ -208,37 +190,11 @@ static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensi
         newToken = await client.GetAccessTokenAsync();
     }
 
-    // Save refresh token for next time
-    SaveRefreshToken(newToken.RefreshToken);
     Log.Information("Successfully obtained access token via OAuth!");
 
     return newToken.AccessToken;
 }
 
-static bool AskUseStoredToken()
-{
-    Console.WriteLine();
-    Console.WriteLine("╔════════════════════════════════════════════════════════╗");
-    Console.WriteLine("║           Stored Credentials Found                    ║");
-    Console.WriteLine("╠════════════════════════════════════════════════════════╣");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("║  A stored refresh token was found.                     ║");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("║  [Y] Use stored token (Quick & Easy)                   ║");
-    Console.WriteLine("║      → Login automatically with saved credentials      ║");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("║  [N] Perform fresh authorization (Default)             ║");
-    Console.WriteLine("║      → Start new OAuth flow                            ║");
-    Console.WriteLine("║      → Recommended if you want to switch accounts      ║");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("╚════════════════════════════════════════════════════════╝");
-    Console.WriteLine();
-    Console.Write("Use stored token? [y/N] (default: N): ");
-
-    var input = Console.ReadLine()?.Trim().ToLowerInvariant();
-
-    return input == "y" || input == "yes";
-}
 
 static OAuthFlow SelectOAuthFlow()
 {
@@ -268,37 +224,7 @@ static OAuthFlow SelectOAuthFlow()
         : OAuthFlow.AuthorizationCode;
 }
 
-static string? LoadRefreshToken()
-{
-    var tokenPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Wavee",
-        "refresh_token.txt"
-    );
 
-    if (File.Exists(tokenPath))
-    {
-        return File.ReadAllText(tokenPath).Trim();
-    }
-
-    return null;
-}
-
-static void SaveRefreshToken(string refreshToken)
-{
-    var tokenPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Wavee",
-        "refresh_token.txt"
-    );
-
-    var directory = Path.GetDirectoryName(tokenPath);
-    if (directory != null)
-    {
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(tokenPath, refreshToken);
-    }
-}
 
 static string ReadPassword()
 {
