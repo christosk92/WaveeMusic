@@ -17,13 +17,14 @@ namespace Wavee.Connect;
 public sealed class DealerClient : IAsyncDisposable
 {
     private readonly ILogger<DealerClient>? _logger;
-    private readonly DealerConnection _connection;
+    private readonly IDealerConnection _connection;
     private readonly DealerClientConfig _config;
 
-    // Hot observables (Subject<T> pushes to subscribers)
-    private readonly Subject<DealerMessage> _messages = new();
-    private readonly Subject<DealerRequest> _requests = new();
+    // Hot observables (SafeSubject<T> isolates subscriber exceptions)
+    private readonly SafeSubject<DealerMessage> _messages;
+    private readonly SafeSubject<DealerRequest> _requests;
     private readonly BehaviorSubject<Connection.ConnectionState> _connectionState = new(Connection.ConnectionState.Disconnected);
+    private readonly BehaviorSubject<string?> _connectionId = new(null);
 
     // Managers for heartbeat and reconnection
     private HeartbeatManager? _heartbeatManager;
@@ -34,7 +35,7 @@ public sealed class DealerClient : IAsyncDisposable
     private AsyncWorker<DealerRequest>? _requestWorker;
 
     // Session and HttpClient for reconnection
-    private Core.Session.Session? _session;
+    private Core.Session.ISession? _session;
     private HttpClient? _httpClient;
 
     // Cached PONG message (zero allocation on send)
@@ -72,17 +73,37 @@ public sealed class DealerClient : IAsyncDisposable
     public ConnectionState CurrentState => _connectionState.Value;
 
     /// <summary>
+    /// Observable stream of connection ID updates.
+    /// </summary>
+    /// <remarks>
+    /// The connection ID is received from hm://pusher/v1/connections/ messages.
+    /// It is required for announcing device presence via SpClient.PutConnectStateAsync().
+    /// </remarks>
+    public IObservable<string?> ConnectionId => _connectionId.AsObservable();
+
+    /// <summary>
+    /// Gets the current connection ID (null if not yet received).
+    /// </summary>
+    public string? CurrentConnectionId => _connectionId.Value;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="DealerClient"/> class.
     /// </summary>
     /// <param name="config">Configuration for dealer client behavior.</param>
     /// <param name="logger">Optional logger for diagnostic output.</param>
-    public DealerClient(DealerClientConfig? config = null, ILogger<DealerClient>? logger = null)
+    /// <param name="connection">Optional dealer connection (for testing). If null, creates a new DealerConnection.</param>
+    public DealerClient(DealerClientConfig? config = null, ILogger<DealerClient>? logger = null, IDealerConnection? connection = null)
     {
         _config = config ?? new DealerClientConfig();
         _logger = logger ?? _config.Logger as ILogger<DealerClient>;
-        _connection = new DealerConnection(logger as ILogger<DealerConnection>);
+        _connection = connection ?? new DealerConnection(logger as ILogger<DealerConnection>);
+
+        // Initialize SafeSubjects with logger for exception isolation
+        _messages = new SafeSubject<DealerMessage>(_logger as ILogger);
+        _requests = new SafeSubject<DealerRequest>(_logger as ILogger);
 
         // Create AsyncWorkers for message and request dispatch
+        // SafeSubject handles exception isolation, so no try-catch needed here
         _messageWorker = new AsyncWorker<DealerMessage>(
             "DealerMessages",
             msg =>
@@ -115,7 +136,7 @@ public sealed class DealerClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <exception cref="DealerException">Thrown if connection fails.</exception>
     public async ValueTask ConnectAsync(
-        Core.Session.Session session,
+        Core.Session.ISession session,
         HttpClient httpClient,
         CancellationToken cancellationToken = default)
     {
@@ -266,6 +287,13 @@ public sealed class DealerClient : IAsyncDisposable
                     if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message) && message != null)
                     {
                         _logger?.LogTrace("Received MESSAGE: {Uri}", message.Uri);
+
+                        // Check for connection ID message
+                        if (message.Uri.StartsWith("hm://pusher/v1/connections/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            HandleConnectionIdMessage(message);
+                        }
+
                         if (_messageWorker != null)
                             await _messageWorker.SubmitAsync(message);
                     }
@@ -457,6 +485,23 @@ public sealed class DealerClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Handles connection ID messages from hm://pusher/v1/connections/.
+    /// Extracts and stores the Spotify-Connection-Id header.
+    /// </summary>
+    private void HandleConnectionIdMessage(DealerMessage message)
+    {
+        if (message.Headers.TryGetValue("Spotify-Connection-Id", out var connectionId))
+        {
+            _logger?.LogInformation("Received connection ID: {ConnectionId}", connectionId);
+            _connectionId.OnNext(connectionId);
+        }
+        else
+        {
+            _logger?.LogWarning("Connection message received but Spotify-Connection-Id header not found");
+        }
+    }
+
+    /// <summary>
     /// Disposes the dealer client and releases all resources.
     /// </summary>
     public async ValueTask DisposeAsync()
@@ -499,6 +544,7 @@ public sealed class DealerClient : IAsyncDisposable
         _messages.OnCompleted();
         _requests.OnCompleted();
         _connectionState.OnCompleted();
+        _connectionId.OnCompleted();
 
         // Cleanup
         _cts?.Cancel();
@@ -510,6 +556,7 @@ public sealed class DealerClient : IAsyncDisposable
         _messages.Dispose();
         _requests.Dispose();
         _connectionState.Dispose();
+        _connectionId.Dispose();
 
         _logger?.LogDebug("DealerClient disposed");
     }

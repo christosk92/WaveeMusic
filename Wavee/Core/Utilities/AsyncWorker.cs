@@ -153,7 +153,14 @@ public sealed class AsyncWorker<T> : IAsyncDisposable
 
         // Cancel and complete channel
         _cts.Cancel();
-        _queue.Writer.Complete();
+        try
+        {
+            _queue.Writer.Complete();
+        }
+        catch (System.Threading.Channels.ChannelClosedException)
+        {
+            // Channel already completed by CompleteAsync(), ignore
+        }
 
         // Wait for worker task to finish
         try

@@ -10,7 +10,7 @@ namespace Wavee.Connect.Connection;
 /// High-performance WebSocket connection using System.IO.Pipelines.
 /// Zero-copy message streaming with backpressure control.
 /// </summary>
-internal sealed class DealerConnection : IAsyncDisposable
+internal sealed class DealerConnection : IDealerConnection
 {
     private readonly ILogger<DealerConnection>? _logger;
     private readonly Pipe _receivePipe;

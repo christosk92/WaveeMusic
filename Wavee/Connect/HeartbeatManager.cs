@@ -163,31 +163,8 @@ internal sealed class HeartbeatManager : IAsyncDisposable
                     break;
                 }
 
-                // Schedule timeout check after pongTimeout duration
-                _ = Task.Delay(_pongTimeout, cancellationToken).ContinueWith(async _ =>
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        return;
-
-                    bool shouldTimeout = false;
-                    lock (_lock)
-                    {
-                        if (_waitingForPong)
-                        {
-                            var elapsed = DateTime.UtcNow - _lastPongReceived;
-                            if (elapsed >= _pongTimeout)
-                            {
-                                shouldTimeout = true;
-                            }
-                        }
-                    }
-
-                    if (shouldTimeout)
-                    {
-                        _logger?.LogWarning("PONG timeout after {Timeout}s", _pongTimeout.TotalSeconds);
-                        HeartbeatTimeout?.Invoke(this, EventArgs.Empty);
-                    }
-                }, cancellationToken);
+                // Timeout detection happens at next timer tick (main loop check above)
+                // This simplifies the logic and eliminates race conditions
             }
         }
         catch (OperationCanceledException)

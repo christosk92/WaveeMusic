@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using System.Xml;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
 using Wavee.Core.Http;
@@ -25,7 +26,7 @@ namespace Wavee.Core.Session;
 /// - Background packet dispatcher
 /// - Lazy initialization of subsystems
 /// </remarks>
-public sealed class Session : IAsyncDisposable
+public sealed class Session : ISession, IAsyncDisposable
 {
     private readonly SessionConfig _config;
     private readonly SessionData _data;
@@ -37,6 +38,13 @@ public sealed class Session : IAsyncDisposable
     private readonly Channel<(byte command, byte[] payload)> _sendQueue;
     private Task? _dispatchTask;
     private CancellationTokenSource? _dispatchCts;
+
+    // Cached SpClient endpoint (resolved during ConnectAsync)
+    private string? _spClientEndpoint;
+
+    // Connect subsystem
+    private DealerClient? _dealerClient;
+    private DeviceStateManager? _deviceStateManager;
 
     /// <summary>
     /// Raised when a packet is received from the server.
@@ -108,8 +116,11 @@ public sealed class Session : IAsyncDisposable
 
             _logger?.LogInformation("Connecting to Spotify");
 
-            // 1. Resolve Access Points
+            // 1. Resolve Access Points and SpClient endpoints
             var aps = await ApResolver.ResolveAsync(_httpClient, _logger, cancellationToken);
+            var spClientEndpoints = await ApResolver.ResolveSpclientAsync(_httpClient, _logger, cancellationToken);
+            _spClientEndpoint = spClientEndpoints.FirstOrDefault() ?? "spclient.wg.spotify.com:443";
+            _logger?.LogDebug("Using SpClient endpoint: {Endpoint}", _spClientEndpoint);
 
             // 2. Try each AP until one succeeds
             ApTransport? transport = null;
@@ -174,10 +185,46 @@ public sealed class Session : IAsyncDisposable
             _dispatchTask = Task.Run(() => DispatchLoop(_dispatchCts.Token), _dispatchCts.Token);
 
             _logger?.LogInformation("Session established for user: {Username}", userData.Username);
+
+            // 7. Initialize Spotify Connect subsystem
+            await InitializeConnectSubsystemAsync(cancellationToken);
         }
         finally
         {
             _connectLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Initializes the Spotify Connect subsystem (DealerClient and DeviceStateManager).
+    /// </summary>
+    private async Task InitializeConnectSubsystemAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger?.LogDebug("Initializing Spotify Connect subsystem");
+
+            // Create and connect DealerClient
+            _dealerClient = new DealerClient(logger: _logger as ILogger<DealerClient>);
+            await _dealerClient.ConnectAsync(this, _httpClient, cancellationToken);
+            _logger?.LogDebug("DealerClient connected");
+
+            // Create DeviceStateManager (subscribes to DealerClient connection ID)
+            _deviceStateManager = new DeviceStateManager(
+                this,
+                SpClient,
+                _dealerClient,
+                logger: _logger);
+
+            // Set device as active to announce presence
+            await _deviceStateManager.SetActiveAsync(true, cancellationToken);
+
+            _logger?.LogInformation("Spotify Connect subsystem initialized - device is now visible");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to initialize Spotify Connect subsystem");
+            // Non-fatal: session can still work without Connect
         }
     }
 
@@ -223,9 +270,15 @@ public sealed class Session : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// SpClient automatically obtains and refreshes access tokens using login5.
+    /// The endpoint is resolved during ConnectAsync(). If accessed before connection,
+    /// a default fallback endpoint is used.
     /// </remarks>
     /// <returns>SpClient instance.</returns>
-    public SpClient SpClient => new SpClient(this, _httpClient, _logger);
+    public SpClient SpClient => new SpClient(
+        this,
+        _httpClient,
+        _spClientEndpoint ?? "spclient.wg.spotify.com:443",
+        _logger);
 
     /// <summary>
     /// Waits for the country code to be received from the server.
@@ -647,6 +700,19 @@ public sealed class Session : IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Dispose Connect subsystem first
+        if (_deviceStateManager is not null)
+        {
+            await _deviceStateManager.DisposeAsync();
+            _deviceStateManager = null;
+        }
+
+        if (_dealerClient is not null)
+        {
+            await _dealerClient.DisposeAsync();
+            _dealerClient = null;
+        }
+
         await DisconnectInternalAsync();
 
         _data.Dispose();

@@ -18,6 +18,7 @@ internal static class ApResolver
 {
     private const string ApResolveUrl = "https://apresolve.spotify.com/?type=accesspoint";
     private const string DealerResolveUrl = "https://apresolve.spotify.com/?type=dealer";
+    private const string SpClientResolveUrl = "https://apresolve.spotify.com/?type=spclient";
 
     private static readonly string[] FallbackAps =
     [
@@ -30,6 +31,13 @@ internal static class ApResolver
     private static readonly string[] FallbackDealers =
     [
         "dealer.spotify.com:443"
+    ];
+
+    private static readonly string[] FallbackSpClients =
+    [
+        "spclient.wg.spotify.com:443",
+        "gew4-spclient.spotify.com:443",
+        "guc3-spclient.spotify.com:443"
     ];
 
     /// <summary>
@@ -103,6 +111,43 @@ internal static class ApResolver
         {
             logger?.LogWarning(ex, "Failed to resolve Dealer endpoints, using fallback");
             return FallbackDealers;
+        }
+    }
+
+    /// <summary>
+    /// Resolves available SpClient API URLs.
+    /// </summary>
+    /// <param name="httpClient">HTTP client for making requests.</param>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of SpClient URLs in priority order.</returns>
+    public static async Task<IReadOnlyList<string>> ResolveSpclientAsync(
+        HttpClient httpClient,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            logger?.LogDebug("Resolving SpClient endpoints from {Url}", SpClientResolveUrl);
+
+            var response = await httpClient.GetFromJsonAsync(
+                SpClientResolveUrl,
+                SessionJsonSerializerContext.Default.ApResolveResponse,
+                cancellationToken);
+
+            if (response?.SpClient is { Length: > 0 })
+            {
+                logger?.LogInformation("Resolved {Count} SpClient endpoints", response.SpClient.Length);
+                return response.SpClient;
+            }
+
+            logger?.LogWarning("ApResolve returned empty spclient list, using fallback");
+            return FallbackSpClients;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to resolve SpClient endpoints, using fallback");
+            return FallbackSpClients;
         }
     }
 

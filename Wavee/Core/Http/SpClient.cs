@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Session;
 
@@ -10,14 +11,14 @@ namespace Wavee.Core.Http;
 /// </summary>
 /// <remarks>
 /// Requires access tokens from login5.
-/// Base URL: https://spclient.wg.spotify.com
+/// Endpoints are resolved dynamically via ApResolver.
 /// </remarks>
 public sealed class SpClient
 {
-    private const string BaseUrl = "https://spclient.wg.spotify.com";
+    private readonly string _baseUrl;
     private const int MaxRetries = 3;
 
-    private readonly Session.Session _session;
+    private readonly ISession _session;
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
 
@@ -26,15 +27,21 @@ public sealed class SpClient
     /// </summary>
     /// <param name="session">Active Spotify session for obtaining access tokens.</param>
     /// <param name="httpClient">HTTP client for making requests.</param>
+    /// <param name="baseUrl">Resolved SpClient endpoint (e.g., "spclient.wg.spotify.com:443").</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
-    internal SpClient(Session.Session session, HttpClient httpClient, ILogger? logger = null)
+    internal SpClient(ISession session, HttpClient httpClient, string baseUrl, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl);
 
         _session = session;
         _httpClient = httpClient;
         _logger = logger;
+
+        // Normalize base URL: remove port suffix and ensure https:// prefix
+        var hostOnly = baseUrl.Split(':')[0];
+        _baseUrl = $"https://{hostOnly}";
     }
 
     /// <summary>
@@ -50,7 +57,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trackId);
 
-        var url = $"{BaseUrl}/metadata/4/track/{trackId}";
+        var url = $"{_baseUrl}/metadata/4/track/{trackId}";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -67,7 +74,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(albumId);
 
-        var url = $"{BaseUrl}/metadata/4/album/{albumId}";
+        var url = $"{_baseUrl}/metadata/4/album/{albumId}";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -84,8 +91,78 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
 
-        var url = $"{BaseUrl}/metadata/4/artist/{artistId}";
+        var url = $"{_baseUrl}/metadata/4/artist/{artistId}";
         return await GetProtobufAsync(url, cancellationToken);
+    }
+
+    /// <summary>
+    /// Announces device availability via Spotify Connect.
+    /// </summary>
+    /// <remarks>
+    /// This endpoint is used by Spotify Connect to announce device presence.
+    /// Spotify uses this information to show the device in the "Available Devices" list.
+    /// Requires a connection ID from the dealer WebSocket connection.
+    /// </remarks>
+    /// <param name="deviceId">Device ID from session config.</param>
+    /// <param name="connectionId">Connection ID from dealer WebSocket (from hm://pusher/v1/connections/).</param>
+    /// <param name="request">PUT state request with device info and state.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task PutConnectStateAsync(
+        string deviceId,
+        string connectionId,
+        Protocol.Player.PutStateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Get access token (auto-refreshes if needed)
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/connect-state/v1/devices/{deviceId}";
+
+        // Build request
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Put, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.Add("X-Spotify-Connection-Id", connectionId);
+        httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        // Serialize protobuf to byte array
+        var protobufBytes = request.ToByteArray();
+        httpRequest.Content = new ByteArrayContent(protobufBytes);
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+
+        // Send request with retry logic
+        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+
+        // Check response status
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(
+                    SpClientFailureReason.Unauthorized,
+                    "Access token invalid or expired");
+            case HttpStatusCode.BadRequest:
+                throw new SpClientException(
+                    SpClientFailureReason.RequestFailed,
+                    "Invalid PUT state request");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(
+                    SpClientFailureReason.Unauthorized,
+                    "Device not authorized");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+        _logger?.LogDebug("Successfully updated connect state for device {DeviceId}", deviceId);
     }
 
     /// <summary>

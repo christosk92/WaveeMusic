@@ -48,6 +48,8 @@
     <ItemGroup>
       <!-- Allow test project to access internal types -->
       <InternalsVisibleTo Include="Wavee.Tests" />
+      <!-- Allow Moq to create proxies for internal types -->
+      <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
     </ItemGroup>
 
 </Project>

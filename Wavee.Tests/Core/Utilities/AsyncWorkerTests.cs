@@ -164,21 +164,22 @@ public class AsyncWorkerTests
                 blockSignal.Wait(); // Block processing
                 await Task.Delay(1);
             },
-            capacity: 2); // Small capacity
+            capacity: 1); // Capacity 1 means: 1 processing + 1 queued = full
 
-        // Act - Fill the queue (2 items)
-        await worker.SubmitAsync(1);
-        await worker.SubmitAsync(2);
+        // Act - Fill the queue
+        await worker.SubmitAsync(1);  // Item 1 goes to processing immediately
 
         // Wait for worker to start processing first item
         startedProcessing.Wait(TimeSpan.FromSeconds(1));
 
-        // Queue is now full (item 2 is in queue, item 1 is processing)
+        await worker.SubmitAsync(2);  // Item 2 fills the queue (count = 1)
+
+        // Queue is now full (item 1 is processing, item 2 is in queue)
         // Next submit should block
         var submitTask = worker.SubmitAsync(3);
 
-        // Give it a moment to try to submit
-        await Task.Delay(100);
+        // Give it more time to ensure submit is blocked
+        await Task.Delay(200);
 
         // Assert - Submit should be blocked
         submitTask.IsCompleted.Should().BeFalse("submit should block when queue is full");
@@ -194,19 +195,25 @@ public class AsyncWorkerTests
     {
         // Arrange
         var blockSignal = new ManualResetEventSlim(false);
+        var startedProcessing = new ManualResetEventSlim(false);
         var worker = new AsyncWorker<int>(
             "TestWorker",
-            async _ =>
+            async item =>
             {
+                startedProcessing.Set();
                 blockSignal.Wait();
                 await Task.Delay(1);
             },
-            capacity: 2);
+            capacity: 1);
 
         // Act - Fill the queue
-        await worker.SubmitAsync(1);
-        await worker.SubmitAsync(2);
-        await Task.Delay(50); // Ensure processing started
+        await worker.SubmitAsync(1);  // Item 1 goes to processing
+
+        // Wait for processing to start
+        startedProcessing.Wait(TimeSpan.FromSeconds(1));
+
+        await worker.SubmitAsync(2);  // Item 2 fills the queue
+        await Task.Delay(100); // Ensure queue is full
 
         var success = worker.TrySubmit(3);
 

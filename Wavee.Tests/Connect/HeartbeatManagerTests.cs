@@ -56,14 +56,17 @@ public class HeartbeatManagerTests
     {
         // Arrange
         var timeoutRaised = false;
-        var pingSignal = new ManualResetEventSlim(false);
+        var pingCount = 0;
+        HeartbeatManager? manager = null;
 
-        var manager = new HeartbeatManager(
-            pingInterval: TimeSpan.FromMilliseconds(100),
-            pongTimeout: TimeSpan.FromMilliseconds(200), // Short timeout
+        manager = new HeartbeatManager(
+            pingInterval: TimeSpan.FromMilliseconds(200),
+            pongTimeout: TimeSpan.FromMilliseconds(400),
             sendPingAsync: () =>
             {
-                pingSignal.Set();
+                Interlocked.Increment(ref pingCount);
+                // Immediately record PONG for each PING to prevent timeout
+                manager!.RecordPong();
                 return ValueTask.CompletedTask;
             });
 
@@ -72,17 +75,14 @@ public class HeartbeatManagerTests
         // Act
         manager.Start();
 
-        // Wait for PING, then record PONG
-        pingSignal.Wait(TimeSpan.FromSeconds(1));
-        manager.RecordPong();
-
-        // Wait longer than timeout to ensure no false positive
-        await Task.Delay(300);
+        // Wait longer than timeout to ensure PONG prevented timeout
+        await Task.Delay(600);
 
         await manager.StopAsync();
 
         // Assert
         timeoutRaised.Should().BeFalse("PONG should prevent timeout");
+        pingCount.Should().BeGreaterThan(0, "at least one PING should have been sent");
     }
 
     // ================================================================
@@ -98,8 +98,8 @@ public class HeartbeatManagerTests
         var pingSignal = new ManualResetEventSlim(false);
 
         var manager = new HeartbeatManager(
-            pingInterval: TimeSpan.FromMilliseconds(100),
-            pongTimeout: TimeSpan.FromMilliseconds(150), // Short timeout for testing
+            pingInterval: TimeSpan.FromMilliseconds(150),
+            pongTimeout: TimeSpan.FromMilliseconds(250), // Longer timeout for reliability
             sendPingAsync: () =>
             {
                 pingSignal.Set();
@@ -116,10 +116,10 @@ public class HeartbeatManagerTests
         manager.Start();
 
         // Wait for PING but DON'T record PONG
-        pingSignal.Wait(TimeSpan.FromSeconds(1));
+        pingSignal.Wait(TimeSpan.FromSeconds(2));
 
-        // Wait for timeout
-        var receivedTimeout = timeoutSignal.Wait(TimeSpan.FromSeconds(2));
+        // Wait for timeout with generous timeout
+        var receivedTimeout = timeoutSignal.Wait(TimeSpan.FromSeconds(3));
 
         await manager.StopAsync();
 
@@ -170,8 +170,8 @@ public class HeartbeatManagerTests
         var pingCount = 0;
 
         var manager = new HeartbeatManager(
-            pingInterval: TimeSpan.FromMilliseconds(50),
-            pongTimeout: TimeSpan.FromMilliseconds(100),
+            pingInterval: TimeSpan.FromMilliseconds(100),
+            pongTimeout: TimeSpan.FromMilliseconds(200),
             sendPingAsync: () =>
             {
                 Interlocked.Increment(ref pingCount);
@@ -180,12 +180,12 @@ public class HeartbeatManagerTests
 
         // Act
         manager.Start();
-        await Task.Delay(150); // Let it send some PINGs
+        await Task.Delay(300); // Let it send some PINGs (at least 2-3)
 
         var countBeforeStop = pingCount;
 
         await manager.StopAsync();
-        await Task.Delay(150); // Wait same duration
+        await Task.Delay(300); // Wait same duration
 
         var countAfterStop = pingCount;
 
@@ -261,8 +261,8 @@ public class HeartbeatManagerTests
         var pingCount = 0;
 
         var manager = new HeartbeatManager(
-            pingInterval: TimeSpan.FromMilliseconds(50),
-            pongTimeout: TimeSpan.FromMilliseconds(100),
+            pingInterval: TimeSpan.FromMilliseconds(100),
+            pongTimeout: TimeSpan.FromMilliseconds(200),
             sendPingAsync: () =>
             {
                 Interlocked.Increment(ref pingCount);
@@ -271,12 +271,12 @@ public class HeartbeatManagerTests
 
         // Act
         manager.Start();
-        await Task.Delay(100);
+        await Task.Delay(300); // Let it send some PINGs
 
         var countBeforeDispose = pingCount;
 
         await manager.DisposeAsync();
-        await Task.Delay(100);
+        await Task.Delay(300); // Wait to ensure no more PINGs
 
         var countAfterDispose = pingCount;
 

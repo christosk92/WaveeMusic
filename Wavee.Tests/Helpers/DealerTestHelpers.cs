@@ -55,7 +55,14 @@ internal static class DealerTestHelpers
             payloads = new[] { payloadBase64 }
         };
 
-        return JsonSerializer.Serialize(message);
+        // Use options that can handle large payloads
+        var options = new JsonSerializerOptions
+        {
+            // Increase default buffer size for large payloads (default is 16KB)
+            DefaultBufferSize = 1024 * 1024 * 2 // 2MB buffer
+        };
+
+        return JsonSerializer.Serialize(message, options);
     }
 
     /// <summary>
@@ -110,20 +117,9 @@ internal static class DealerTestHelpers
     /// Creates a mock Session with basic setup for testing.
     /// </summary>
     /// <returns>Mock Session object.</returns>
-    public static Mock<Session> CreateMockSession()
+    public static MockSession CreateMockSession()
     {
-        var mockSession = new Mock<Session>();
-
-        // Setup GetAccessTokenAsync to return a test token
-        mockSession
-            .Setup(s => s.GetAccessTokenAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AccessToken
-            {
-                Token = "test_access_token",
-                ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
-            });
-
-        return mockSession;
+        return new MockSession();
     }
 
     /// <summary>

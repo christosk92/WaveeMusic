@@ -33,30 +33,42 @@ internal static class MessageParser
     /// <returns>Parsed message type.</returns>
     public static Protocol.MessageType ParseMessageType(ReadOnlySpan<byte> utf8Json)
     {
-        var reader = new Utf8JsonReader(utf8Json);
+        // Handle empty/null input
+        if (utf8Json.IsEmpty)
+            return Protocol.MessageType.Unknown;
 
-        while (reader.Read())
+        try
         {
-            if (reader.TokenType == JsonTokenType.PropertyName)
-            {
-                if (reader.ValueTextEquals(TypePropertyName))
-                {
-                    reader.Read(); // Move to value
-                    if (reader.ValueTextEquals(PingType))
-                        return Protocol.MessageType.Ping;
-                    if (reader.ValueTextEquals(PongType))
-                        return Protocol.MessageType.Pong;
-                    if (reader.ValueTextEquals(MessageType))
-                        return Protocol.MessageType.Message;
-                    if (reader.ValueTextEquals(RequestType))
-                        return Protocol.MessageType.Request;
+            var reader = new Utf8JsonReader(utf8Json);
 
-                    return Protocol.MessageType.Unknown;
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    if (reader.ValueTextEquals(TypePropertyName))
+                    {
+                        reader.Read(); // Move to value
+                        if (reader.ValueTextEquals(PingType))
+                            return Protocol.MessageType.Ping;
+                        if (reader.ValueTextEquals(PongType))
+                            return Protocol.MessageType.Pong;
+                        if (reader.ValueTextEquals(MessageType))
+                            return Protocol.MessageType.Message;
+                        if (reader.ValueTextEquals(RequestType))
+                            return Protocol.MessageType.Request;
+
+                        return Protocol.MessageType.Unknown;
+                    }
                 }
             }
-        }
 
-        return Protocol.MessageType.Unknown;
+            return Protocol.MessageType.Unknown;
+        }
+        catch
+        {
+            // Malformed JSON or parsing errors
+            return Protocol.MessageType.Unknown;
+        }
     }
 
     /// <summary>
@@ -71,7 +83,14 @@ internal static class MessageParser
 
         try
         {
-            var reader = new Utf8JsonReader(utf8Json);
+            // Configure reader to handle large payloads
+            // NOTE: Utf8JsonReader in .NET has no MaxTokenSize option - it uses internal limits
+            var options = new JsonReaderOptions
+            {
+                MaxDepth = 64,
+                CommentHandling = JsonCommentHandling.Skip
+            };
+            var reader = new Utf8JsonReader(utf8Json, options);
 
             string? uri = null;
             Dictionary<string, string>? headers = null;
@@ -129,7 +148,13 @@ internal static class MessageParser
 
         try
         {
-            var reader = new Utf8JsonReader(utf8Json);
+            // Configure reader to handle large payloads
+            var options = new JsonReaderOptions
+            {
+                MaxDepth = 64,
+                CommentHandling = JsonCommentHandling.Skip
+            };
+            var reader = new Utf8JsonReader(utf8Json, options);
 
             string? key = null;
             string? messageIdent = null;
@@ -165,7 +190,7 @@ internal static class MessageParser
 
             // Parse key format: "message_id/sender_device_id"
             var parts = key.Split('/');
-            if (parts.Length != 2 || !int.TryParse(parts[0], out var messageId))
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var messageId) || string.IsNullOrWhiteSpace(parts[1]))
                 return false;
 
             request = new DealerRequest
@@ -216,63 +241,41 @@ internal static class MessageParser
 
     /// <summary>
     /// Parses payloads array (base64 encoded) and decodes into single payload.
-    /// Uses ArrayPool for zero-allocation base64 decoding.
+    /// Uses JsonDocument to handle multi-segment buffers and provides GetBytesFromBase64()
+    /// for efficient direct decoding without intermediate string allocation.
     /// </summary>
     private static byte[]? ParsePayloads(ref Utf8JsonReader reader)
     {
         if (reader.TokenType != JsonTokenType.StartArray)
             return null;
 
-        // Read first payload only (dealer protocol uses single payload)
-        while (reader.Read())
-        {
-            if (reader.TokenType == JsonTokenType.EndArray)
-                break;
-
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                // Decode base64 using ArrayPool
-                return DecodeBase64Payload(reader.ValueSpan);
-            }
-        }
-
-        // Skip remaining array elements
-        while (reader.TokenType != JsonTokenType.EndArray && reader.Read())
-        {
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Decodes base64 payload using ArrayPool for buffer management.
-    /// Zero-allocation for the decoding process (only final byte[] allocated).
-    /// </summary>
-    private static byte[]? DecodeBase64Payload(ReadOnlySpan<byte> base64Utf8)
-    {
-        // Calculate maximum decoded size
-        var maxDecodedLength = Base64.GetMaxDecodedFromUtf8Length(base64Utf8.Length);
-
-        // Rent buffer from pool
-        var buffer = ArrayPool<byte>.Shared.Rent(maxDecodedLength);
-
         try
         {
-            // Decode directly from UTF-8 base64 to bytes
-            if (Base64.DecodeFromUtf8(base64Utf8, buffer, out _, out var bytesWritten) == OperationStatus.Done)
+            // Use JsonDocument.ParseValue to handle large tokens and multi-segment sequences
+            using var doc = JsonDocument.ParseValue(ref reader);
+            var array = doc.RootElement;
+
+            if (array.ValueKind != JsonValueKind.Array)
+                return null;
+
+            // Get first element (dealer protocol uses single payload)
+            using var enumerator = array.EnumerateArray();
+            if (enumerator.MoveNext())
             {
-                // Copy to final array (this is the only allocation)
-                var result = new byte[bytesWritten];
-                buffer.AsSpan(0, bytesWritten).CopyTo(result);
-                return result;
+                var element = enumerator.Current;
+                if (element.ValueKind == JsonValueKind.String)
+                {
+                    // GetBytesFromBase64() decodes directly from UTF-8 base64 to bytes
+                    // More efficient than GetString() + Convert.FromBase64String()
+                    return element.GetBytesFromBase64();
+                }
             }
 
             return null;
         }
-        finally
+        catch
         {
-            // Return buffer to pool
-            ArrayPool<byte>.Shared.Return(buffer);
+            return null;
         }
     }
 }
