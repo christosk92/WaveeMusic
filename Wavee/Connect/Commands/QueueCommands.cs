@@ -26,6 +26,7 @@ public sealed record SetQueueCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             TrackUris = trackUris
         };
     }
@@ -51,6 +52,7 @@ public sealed record AddToQueueCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             TrackUri = trackUri
         };
     }

@@ -23,6 +23,7 @@ public sealed record ShuffleCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             Enabled = enabled
         };
     }
@@ -48,6 +49,7 @@ public sealed record RepeatContextCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             Enabled = enabled
         };
     }
@@ -73,6 +75,7 @@ public sealed record RepeatTrackCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             Enabled = enabled
         };
     }

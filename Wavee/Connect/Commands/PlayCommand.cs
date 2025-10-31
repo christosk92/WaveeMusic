@@ -82,6 +82,7 @@ public sealed record PlayCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             ContextUri = contextUri,
             TrackUri = trackUri,
             SkipToIndex = skipTo,

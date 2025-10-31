@@ -27,6 +27,7 @@ public sealed record TransferCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             TransferState = transferState
         };
     }

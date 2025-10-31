@@ -123,6 +123,18 @@ internal static class DealerTestHelpers
     }
 
     /// <summary>
+    /// Creates a mock DealerClient with MockDealerConnection for testing.
+    /// Returns both the client and connection so tests can simulate messages.
+    /// </summary>
+    /// <returns>Tuple of (DealerClient, MockDealerConnection).</returns>
+    public static (DealerClient client, MockDealerConnection connection) CreateMockDealer()
+    {
+        var mockConnection = new MockDealerConnection();
+        var dealerClient = new DealerClient(CreateTestConfig(), connection: mockConnection);
+        return (dealerClient, mockConnection);
+    }
+
+    /// <summary>
     /// Creates an HTTP client with a mock handler for ApResolver dealer endpoints.
     /// </summary>
     /// <param name="dealerEndpoints">List of dealer endpoints to return.</param>
@@ -145,6 +157,23 @@ internal static class DealerTestHelpers
         var mockHandler = MockHttpHelpers.CreateMockHttpMessageHandler(HttpStatusCode.OK, content);
 
         return new HttpClient(mockHandler.Object);
+    }
+
+    /// <summary>
+    /// Creates a connection ID message for pusher.
+    /// </summary>
+    /// <param name="connectionId">The connection ID to use.</param>
+    /// <returns>JSON message string.</returns>
+    public static string CreateConnectionIdMessage(string connectionId = "test_connection_id")
+    {
+        var headers = new Dictionary<string, string>
+        {
+            ["Spotify-Connection-Id"] = connectionId
+        };
+
+        return CreateDealerMessage(
+            uri: $"hm://pusher/v1/connections/{connectionId}",
+            headers: headers);
     }
 
     /// <summary>

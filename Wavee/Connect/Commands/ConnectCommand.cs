@@ -29,6 +29,12 @@ public abstract record ConnectCommand
     public required string SenderDeviceId { get; init; }
 
     /// <summary>
+    /// Reply key for sending responses back to dealer.
+    /// Format: "{messageId}/{senderDeviceId}"
+    /// </summary>
+    public required string Key { get; init; }
+
+    /// <summary>
     /// Parses a DealerRequest into appropriate ConnectCommand subtype.
     /// </summary>
     /// <param name="request">Dealer request to parse.</param>
@@ -38,9 +44,9 @@ public abstract record ConnectCommand
         // Extract endpoint from message_ident
         // Format: "hm://connect-state/v1/{endpoint}"
         var parts = request.MessageIdent.Split('/');
-        if (parts.Length < 4) return null;
+        if (parts.Length < 5) return null;  // Need at least 5 parts for hm://connect-state/v1/{endpoint}
 
-        var endpoint = parts[3];
+        var endpoint = parts[^1];  // Get last element (the endpoint)
         var command = request.Command;
 
         return endpoint switch
@@ -51,14 +57,16 @@ public abstract record ConnectCommand
                 Endpoint = endpoint,
                 MessageIdent = request.MessageIdent,
                 MessageId = request.MessageId,
-                SenderDeviceId = request.SenderDeviceId
+                SenderDeviceId = request.SenderDeviceId,
+                Key = request.Key
             },
             "resume" => new ResumeCommand
             {
                 Endpoint = endpoint,
                 MessageIdent = request.MessageIdent,
                 MessageId = request.MessageId,
-                SenderDeviceId = request.SenderDeviceId
+                SenderDeviceId = request.SenderDeviceId,
+                Key = request.Key
             },
             "seek_to" => SeekCommand.FromJson(request, command),
             "skip_next" => new SkipNextCommand
@@ -66,14 +74,16 @@ public abstract record ConnectCommand
                 Endpoint = endpoint,
                 MessageIdent = request.MessageIdent,
                 MessageId = request.MessageId,
-                SenderDeviceId = request.SenderDeviceId
+                SenderDeviceId = request.SenderDeviceId,
+                Key = request.Key
             },
             "skip_prev" => new SkipPrevCommand
             {
                 Endpoint = endpoint,
                 MessageIdent = request.MessageIdent,
                 MessageId = request.MessageId,
-                SenderDeviceId = request.SenderDeviceId
+                SenderDeviceId = request.SenderDeviceId,
+                Key = request.Key
             },
             "set_shuffling_context" => ShuffleCommand.FromJson(request, command),
             "set_repeating_context" => RepeatContextCommand.FromJson(request, command),

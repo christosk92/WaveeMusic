@@ -23,6 +23,7 @@ public sealed record SeekCommand : ConnectCommand
             MessageIdent = request.MessageIdent,
             MessageId = request.MessageId,
             SenderDeviceId = request.SenderDeviceId,
+            Key = request.Key,
             PositionMs = posMs
         };
     }
