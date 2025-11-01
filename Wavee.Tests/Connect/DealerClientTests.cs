@@ -555,4 +555,185 @@ public class DealerClientTests
         goodSubscription.Dispose();
         await client.DisposeAsync();
     }
+
+    // ================================================================
+    // RECONNECTION LOGIC TESTS - Connection ID reset and cleanup
+    // ================================================================
+
+    [Fact]
+    public async Task Reconnection_ShouldNotThrowAlreadyConnectedError()
+    {
+        // WHY: Regression test for the bug we fixed
+        // Before: ConnectAsync would throw "Already connected" on reconnect
+        // After: Properly cleans up and resets pipe
+
+        // Arrange
+        var mockConnection = new MockDealerConnection();
+        var client = new DealerClient(DealerTestHelpers.CreateTestConfig(), connection: mockConnection);
+        var session = DealerTestHelpers.CreateMockSession();
+        var httpClient = DealerTestHelpers.CreateMockHttpClientForDealers("dealer.spotify.com:443");
+
+        // Connect and disconnect
+        await client.ConnectAsync(session, httpClient);
+        await client.DisconnectAsync();
+
+        // Act - Try to connect again
+        var act = async () => await client.ConnectAsync(session, httpClient);
+
+        // Assert - Should not throw
+        await act.Should().NotThrowAsync<InvalidOperationException>(
+            "reconnection should cleanup and reset pipe properly");
+
+        await client.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReconnectInternal_ShouldResetConnectionId()
+    {
+        // WHY: On reconnection, old connection ID must be cleared
+        // We'll receive a new one after successful reconnect
+
+        // Arrange
+        var mockConnection = new MockDealerConnection();
+        var client = new DealerClient(DealerTestHelpers.CreateTestConfig(), connection: mockConnection);
+        var session = DealerTestHelpers.CreateMockSession();
+        var httpClient = DealerTestHelpers.CreateMockHttpClientForDealers("dealer.spotify.com:443");
+        var connectionIds = new List<string?>();
+
+        // Track connection ID changes
+        var subscription = client.ConnectionId.Subscribe(id => connectionIds.Add(id));
+
+        // Initial connection
+        await client.ConnectAsync(session, httpClient);
+
+        // Simulate receiving connection ID
+        var connectionIdMessage = DealerTestHelpers.CreateConnectionIdMessage("original_id");
+        await mockConnection.SimulateMessageAsync(connectionIdMessage);
+        await Task.Delay(100);
+
+        // Verify we have connection ID
+        client.CurrentConnectionId.Should().Be("original_id");
+
+        // Act - Disconnect and reconnect
+        await client.DisconnectAsync();
+        await Task.Delay(100);
+        await client.ConnectAsync(session, httpClient);
+
+        // Simulate new connection ID message
+        var newConnectionIdMessage = DealerTestHelpers.CreateConnectionIdMessage("new_id");
+        await mockConnection.SimulateMessageAsync(newConnectionIdMessage);
+        await Task.Delay(100);
+
+        // Assert - Should have new connection ID
+        client.CurrentConnectionId.Should().Be("new_id");
+        connectionIds.Should().Contain(id => id == null, "connection ID should be reset to null during reconnection");
+
+        subscription.Dispose();
+        await client.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task MultipleReconnections_ShouldSucceed()
+    {
+        // WHY: Tests that pipe can be reset multiple times
+        // Each reconnection should cleanup and reset properly
+
+        // Arrange
+        var mockConnection = new MockDealerConnection();
+        var client = new DealerClient(DealerTestHelpers.CreateTestConfig(), connection: mockConnection);
+        var session = DealerTestHelpers.CreateMockSession();
+        var httpClient = DealerTestHelpers.CreateMockHttpClientForDealers("dealer.spotify.com:443");
+
+        // Act - Connect, disconnect, reconnect multiple times
+        for (int i = 0; i < 3; i++)
+        {
+            await client.ConnectAsync(session, httpClient);
+            client.CurrentState.Should().Be(ConnectionState.Connected,
+                $"connection attempt {i + 1} should succeed");
+
+            await client.DisconnectAsync();
+            client.CurrentState.Should().Be(ConnectionState.Disconnected);
+        }
+
+        // Assert - Final connection should work
+        await client.ConnectAsync(session, httpClient);
+        client.CurrentState.Should().Be(ConnectionState.Connected,
+            "should handle multiple reconnection cycles");
+
+        await client.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Reconnection_WithMessagesBeforeAndAfter_ShouldReceiveBoth()
+    {
+        // WHY: Verify that message flow works across reconnection
+
+        // Arrange
+        var mockConnection = new MockDealerConnection();
+        var client = new DealerClient(DealerTestHelpers.CreateTestConfig(), connection: mockConnection);
+        var session = DealerTestHelpers.CreateMockSession();
+        var httpClient = DealerTestHelpers.CreateMockHttpClientForDealers("dealer.spotify.com:443");
+        var receivedMessages = new List<DealerMessage>();
+
+        var subscription = client.Messages.Subscribe(msg => receivedMessages.Add(msg));
+
+        // First connection
+        await client.ConnectAsync(session, httpClient);
+
+        // Send message on first connection
+        var msg1 = DealerTestHelpers.CreateDealerMessage("hm://test/1", null, new byte[] { 1 });
+        await mockConnection.SimulateMessageAsync(msg1);
+        await Task.Delay(100);
+
+        // Disconnect and reconnect
+        await client.DisconnectAsync();
+        await client.ConnectAsync(session, httpClient);
+
+        // Send message on second connection
+        var msg2 = DealerTestHelpers.CreateDealerMessage("hm://test/2", null, new byte[] { 2 });
+        await mockConnection.SimulateMessageAsync(msg2);
+        await Task.Delay(100);
+
+        // Assert - Both messages received
+        receivedMessages.Should().HaveCount(2);
+        receivedMessages[0].Uri.Should().Be("hm://test/1");
+        receivedMessages[1].Uri.Should().Be("hm://test/2");
+
+        subscription.Dispose();
+        await client.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Reconnection_AfterDisconnect_ShouldEstablishNewConnection()
+    {
+        // WHY: Full reconnection flow test - verifies all pieces work together
+
+        // Arrange
+        var mockConnection = new MockDealerConnection();
+        var config = new DealerClientConfig
+        {
+            PingInterval = TimeSpan.FromSeconds(10),
+            PongTimeout = TimeSpan.FromSeconds(1),
+            EnableAutoReconnect = false // Manual control in tests
+        };
+        var client = new DealerClient(config, connection: mockConnection);
+        var session = DealerTestHelpers.CreateMockSession();
+        var httpClient = DealerTestHelpers.CreateMockHttpClientForDealers("dealer.spotify.com:443");
+
+        // First connection
+        await client.ConnectAsync(session, httpClient);
+        client.CurrentState.Should().Be(ConnectionState.Connected);
+
+        // Act - Disconnect
+        await client.DisconnectAsync();
+        client.CurrentState.Should().Be(ConnectionState.Disconnected);
+
+        // Act - Reconnect
+        await client.ConnectAsync(session, httpClient);
+
+        // Assert
+        client.CurrentState.Should().Be(ConnectionState.Connected);
+
+        await client.DisposeAsync();
+    }
 }

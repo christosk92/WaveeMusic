@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Wavee.Connect.Protocol;
 
@@ -77,7 +78,7 @@ internal static class MessageParser
     /// <param name="utf8Json">Raw UTF-8 JSON bytes.</param>
     /// <param name="message">Parsed message (if successful).</param>
     /// <returns>True if parsing succeeded.</returns>
-    public static bool TryParseMessage(ReadOnlySpan<byte> utf8Json, out DealerMessage? message)
+    public static bool TryParseMessage(ReadOnlySpan<byte> utf8Json, out DealerMessage? message, ILogger? logger = null)
     {
         message = null;
 
@@ -120,7 +121,17 @@ internal static class MessageParser
 
             // Payload is optional - some messages (like connection ID) have no payload
             if (uri == null || headers == null)
+            {
+                logger?.LogWarning("MESSAGE missing required fields - uri:{HasUri} headers:{HasHeaders}",
+                    uri != null, headers != null);
+
+                if (logger?.IsEnabled(LogLevel.Trace) == true)
+                {
+                    logger.LogTrace("Incomplete MESSAGE JSON: {Json}", Encoding.UTF8.GetString(utf8Json));
+                }
+
                 return false;
+            }
 
             message = new DealerMessage
             {
@@ -131,8 +142,15 @@ internal static class MessageParser
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "MESSAGE parse exception: {Message}", ex.Message);
+
+            if (logger?.IsEnabled(LogLevel.Trace) == true)
+            {
+                logger.LogTrace("Raw MESSAGE JSON that failed parsing: {Json}", Encoding.UTF8.GetString(utf8Json));
+            }
+
             return false;
         }
     }
@@ -143,7 +161,7 @@ internal static class MessageParser
     /// <param name="utf8Json">Raw UTF-8 JSON bytes.</param>
     /// <param name="request">Parsed request (if successful).</param>
     /// <returns>True if parsing succeeded.</returns>
-    public static bool TryParseRequest(ReadOnlySpan<byte> utf8Json, out DealerRequest? request)
+    public static bool TryParseRequest(ReadOnlySpan<byte> utf8Json, out DealerRequest? request, ILogger? logger = null)
     {
         request = null;
 
@@ -187,26 +205,57 @@ internal static class MessageParser
             }
 
             if (key == null || messageIdent == null || !hasPayload)
-                return false;
+            {
+                logger?.LogWarning("REQUEST missing required fields - key:{HasKey} messageIdent:{HasMessageIdent} payload:{HasPayload}",
+                    key != null, messageIdent != null, hasPayload);
 
-            // Parse key format: "message_id/sender_device_id"
-            var parts = key.Split('/');
-            if (parts.Length != 2 || !int.TryParse(parts[0], out var messageId) || string.IsNullOrWhiteSpace(parts[1]))
+                if (logger?.IsEnabled(LogLevel.Trace) == true)
+                {
+                    logger.LogTrace("Incomplete REQUEST JSON: {Json}", Encoding.UTF8.GetString(utf8Json));
+                }
+
                 return false;
+            }
+
+            // Parse key format: Try to extract "message_id/device_id" if format matches,
+            // otherwise treat key as opaque string (like librespot reference implementations).
+            // Only the Key field is used for replies - MessageId and SenderDeviceId are optional metadata.
+            int messageId = 0;
+            string senderDeviceId = string.Empty;
+
+            var parts = key.Split('/');
+            if (parts.Length == 2 && int.TryParse(parts[0], out var parsedId) && !string.IsNullOrWhiteSpace(parts[1]))
+            {
+                // Standard format - extract both
+                messageId = parsedId;
+                senderDeviceId = parts[1];
+            }
+            else
+            {
+                // Non-standard format - treat as opaque string (reference implementation behavior)
+                logger?.LogDebug("REQUEST key doesn't match standard 'id/device' format, treating as opaque: {Key}", key);
+            }
 
             request = new DealerRequest
             {
                 Key = key,
                 MessageIdent = messageIdent,
                 MessageId = messageId,
-                SenderDeviceId = parts[1],
+                SenderDeviceId = senderDeviceId,
                 Command = payload
             };
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "REQUEST parse exception: {Message}", ex.Message);
+
+            if (logger?.IsEnabled(LogLevel.Trace) == true)
+            {
+                logger.LogTrace("Raw REQUEST JSON that failed parsing: {Json}", Encoding.UTF8.GetString(utf8Json));
+            }
+
             return false;
         }
     }

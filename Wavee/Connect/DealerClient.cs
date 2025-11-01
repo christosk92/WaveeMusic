@@ -1,7 +1,9 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Connection;
 using Wavee.Connect.Protocol;
@@ -37,6 +39,10 @@ public sealed class DealerClient : IAsyncDisposable
     // Session and HttpClient for reconnection
     private Core.Session.ISession? _session;
     private HttpClient? _httpClient;
+
+    // Pending REQUEST tracking to ensure all REQUESTs get replies
+    private readonly ConcurrentDictionary<string, PendingRequest> _pendingRequests = new();
+    private Timer? _requestTimeoutTimer;
 
     // Cached PONG message (zero allocation on send)
     private static readonly ReadOnlyMemory<byte> PongMessageBytes =
@@ -125,6 +131,13 @@ public sealed class DealerClient : IAsyncDisposable
         _connection.MessageReceived += OnRawMessageReceivedAsync;
         _connection.Closed += OnConnectionClosed;
         _connection.Error += OnConnectionError;
+
+        // Start timer to check for timed-out REQUESTs every 5 seconds
+        _requestTimeoutTimer = new Timer(
+            CheckForTimedOutRequests,
+            state: null,
+            dueTime: TimeSpan.FromSeconds(5),
+            period: TimeSpan.FromSeconds(5));
     }
 
     /// <summary>
@@ -233,6 +246,14 @@ public sealed class DealerClient : IAsyncDisposable
 
         await _connection.SendAsync(replyJson, cancellationToken);
         _logger?.LogTrace("Sent reply for key {Key}: {Result}", key, result);
+
+        // Remove from pending requests and cancel timeout (reply sent)
+        if (_pendingRequests.TryRemove(key, out var pendingRequest))
+        {
+            // Cancel the timeout task to prevent race condition
+            pendingRequest.TimeoutCts.Cancel();
+            pendingRequest.Dispose();
+        }
     }
 
     /// <summary>
@@ -288,7 +309,7 @@ public sealed class DealerClient : IAsyncDisposable
                         System.Text.Encoding.UTF8.GetString(rawBytes.Span));
 
                     // Parse and dispatch via AsyncWorker
-                    if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message) && message != null)
+                    if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message, _logger) && message != null)
                     {
                         _logger?.LogTrace("Received MESSAGE: uri={Uri}, headerCount={HeaderCount}, payloadSize={PayloadSize}",
                             message.Uri, message.Headers.Count, message.Payload.Length);
@@ -322,16 +343,44 @@ public sealed class DealerClient : IAsyncDisposable
 
                 case Protocol.MessageType.Request:
                     // Parse and dispatch via AsyncWorker
-                    if (Protocol.MessageParser.TryParseRequest(rawBytes.Span, out var request) && request != null)
+                    if (Protocol.MessageParser.TryParseRequest(rawBytes.Span, out var request, _logger) && request != null)
                     {
                         _logger?.LogTrace("Received REQUEST: {MessageIdent} (key: {Key})",
                             request.MessageIdent, request.Key);
+
+                        // Track pending REQUEST with cancellation token for timeout
+                        var timeoutCts = new CancellationTokenSource();
+                        _pendingRequests[request.Key] = new PendingRequest(request, DateTimeOffset.UtcNow, timeoutCts);
+
                         if (_requestWorker != null)
+                        {
                             await _requestWorker.SubmitAsync(request);
+
+                            // Check if any subscribers are listening
+                            if (!_requests.HasObservers)
+                            {
+                                // No handlers - send immediate error reply
+                                await SendReplyAsync(request.Key, RequestResult.DeviceNotFound);
+                                _logger?.LogWarning("No handlers for REQUEST {MessageIdent} (key: {Key}), sent immediate error reply",
+                                    request.MessageIdent, request.Key);
+                            }
+                            // If there are observers, they have timeout to reply (checked by timer)
+                        }
                     }
                     else
                     {
-                        _logger?.LogWarning("Failed to parse REQUEST");
+                        // Extract key from raw JSON even if full parse failed
+                        var key = TryExtractKeyFromRawJson(rawBytes.Span);
+                        if (!string.IsNullOrEmpty(key))
+                        {
+                            // Send error reply to prevent device timeout and disappearance
+                            await SendReplyAsync(key, RequestResult.UpstreamError);
+                            _logger?.LogWarning("Failed to parse REQUEST (key: {Key}), sent error reply", key);
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("Failed to parse REQUEST and couldn't extract key for error reply");
+                        }
                     }
                     break;
 
@@ -353,6 +402,37 @@ public sealed class DealerClient : IAsyncDisposable
     private ValueTask SendPongAsync()
     {
         return _connection.SendAsync(PongMessageBytes);
+    }
+
+    /// <summary>
+    /// Attempts to extract the "key" field from raw JSON, even if the full message parse fails.
+    /// This allows sending error replies for malformed requests to prevent device timeout.
+    /// </summary>
+    /// <param name="json">Raw JSON bytes from dealer message.</param>
+    /// <returns>The key value if found, otherwise null.</returns>
+    private static string? TryExtractKeyFromRawJson(ReadOnlySpan<byte> json)
+    {
+        try
+        {
+            var reader = new Utf8JsonReader(json);
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.PropertyName &&
+                    reader.ValueTextEquals("key"u8))
+                {
+                    reader.Read(); // Move to the value
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        return reader.GetString();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // If even key extraction fails, we can't send a reply
+        }
+        return null;
     }
 
     /// <summary>
@@ -453,8 +533,19 @@ public sealed class DealerClient : IAsyncDisposable
 
         _logger?.LogDebug("Attempting reconnection...");
 
+        // Reset connection ID (we'll receive a new one after reconnecting)
+        _connectionId.OnNext(null);
+        _logger?.LogDebug("Connection ID reset to null for reconnection");
+
         // Cleanup old connection
         await StopHeartbeatAsync();
+
+        // Ensure old connection is fully closed
+        if (_connection.State != Connection.ConnectionState.Disconnected)
+        {
+            _logger?.LogDebug("Closing old connection before reconnect");
+            await _connection.CloseAsync();
+        }
 
         // Attempt to connect
         await ConnectAsync(_session, _httpClient, _cts?.Token ?? CancellationToken.None);
@@ -528,6 +619,77 @@ public sealed class DealerClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Timer callback that checks for REQUESTs that haven't received a reply within the timeout period.
+    /// Sends error replies for timed-out REQUESTs to prevent device disappearance.
+    /// </summary>
+    private void CheckForTimedOutRequests(object? state)
+    {
+        if (_disposed)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        var timeout = TimeSpan.FromSeconds(10);
+
+        var timedOutRequests = _pendingRequests
+            .Where(kvp => now - kvp.Value.Timestamp > timeout)
+            .ToList();
+
+        foreach (var (key, pendingRequest) in timedOutRequests)
+        {
+            // Check if timeout was already cancelled (reply was sent)
+            if (pendingRequest.TimeoutCts.IsCancellationRequested)
+            {
+                // Race condition: reply was sent while we were checking, skip
+                continue;
+            }
+
+            // Send error reply for timed-out REQUEST
+            try
+            {
+                // Use Task.Run to avoid blocking the timer thread
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        // Check again before sending (double-check pattern)
+                        if (pendingRequest.TimeoutCts.IsCancellationRequested)
+                            return;
+
+                        await SendReplyAsync(key, RequestResult.UpstreamError, pendingRequest.TimeoutCts.Token);
+                        _logger?.LogWarning(
+                            "REQUEST {MessageIdent} (key: {Key}) timed out after {Timeout}s with no reply, sent error reply",
+                            pendingRequest.Request.MessageIdent,
+                            key,
+                            timeout.TotalSeconds);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Timeout was cancelled (reply sent by subscriber) - this is expected
+                        _logger?.LogTrace("Timeout reply cancelled for REQUEST (key: {Key}), subscriber sent reply", key);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Failed to send timeout error reply for REQUEST (key: {Key})", key);
+                        // Still remove from pending to avoid repeated attempts
+                        if (_pendingRequests.TryRemove(key, out var removed))
+                        {
+                            removed.Dispose();
+                        }
+                    }
+                }, pendingRequest.TimeoutCts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error scheduling timeout reply for REQUEST (key: {Key})", key);
+                if (_pendingRequests.TryRemove(key, out var removed))
+                {
+                    removed.Dispose();
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Disposes the dealer client and releases all resources.
     /// </summary>
     public async ValueTask DisposeAsync()
@@ -576,6 +738,17 @@ public sealed class DealerClient : IAsyncDisposable
         _cts?.Cancel();
         _cts?.Dispose();
 
+        // Stop timeout timer
+        _requestTimeoutTimer?.Dispose();
+        _requestTimeoutTimer = null;
+
+        // Dispose and clear pending requests
+        foreach (var pendingRequest in _pendingRequests.Values)
+        {
+            pendingRequest.Dispose();
+        }
+        _pendingRequests.Clear();
+
         await _connection.DisposeAsync();
 
         // Dispose subjects
@@ -585,5 +758,19 @@ public sealed class DealerClient : IAsyncDisposable
         _connectionId.Dispose();
 
         _logger?.LogDebug("DealerClient disposed");
+    }
+}
+
+/// <summary>
+/// Tracks a pending REQUEST that hasn't received a reply yet.
+/// </summary>
+internal sealed record PendingRequest(
+    DealerRequest Request,
+    DateTimeOffset Timestamp,
+    CancellationTokenSource TimeoutCts)
+{
+    public void Dispose()
+    {
+        TimeoutCts.Dispose();
     }
 }

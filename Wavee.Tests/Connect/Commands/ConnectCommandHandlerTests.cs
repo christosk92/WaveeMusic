@@ -882,15 +882,15 @@ public class ConnectCommandHandlerTests
         // Arrange
         var (handler, mockSource) = ConnectCommandTestHelpers.CreateTestCommandHandler();
         var commandKey = string.Empty;
-        var replyTcs = new TaskCompletionSource<bool>();
+        var commandReceivedTcs = new TaskCompletionSource<bool>();
 
         handler.PlayCommands.Subscribe(async cmd =>
         {
             commandKey = cmd.Key;
+            commandReceivedTcs.TrySetResult(true);  // Signal command received
             // Simulate processing and reply
             await Task.Delay(50);
             await handler.SendReplyAsync(cmd.Key, RequestResult.Success);
-            replyTcs.TrySetResult(true);  // Signal that reply was sent
         });
 
         // Act - Send command
@@ -901,18 +901,18 @@ public class ConnectCommandHandlerTests
 
         mockSource.SimulateRequest(request);
 
-        // Wait for reply to be sent (with timeout for safety)
-        var replySent = await Task.WhenAny(
-            replyTcs.Task,
+        // Wait for command to be received by subscriber (so commandKey is set)
+        var commandReceived = await Task.WhenAny(
+            commandReceivedTcs.Task,
             Task.Delay(TimeSpan.FromSeconds(1))
         );
 
-        if (replySent != replyTcs.Task)
+        if (commandReceived != commandReceivedTcs.Task)
         {
-            throw new TimeoutException("Subscriber did not send reply within expected time");
+            throw new TimeoutException("Subscriber did not receive command within expected time");
         }
 
-        // Wait for reply
+        // Wait for reply (this should wait for the async SendReplyAsync to complete)
         var result = await handler.WaitForReplyAsync(commandKey, timeout: TimeSpan.FromSeconds(2));
 
         // Assert

@@ -13,7 +13,7 @@ namespace Wavee.Connect.Connection;
 internal sealed class DealerConnection : IDealerConnection
 {
     private readonly ILogger? _logger;
-    private readonly Pipe _receivePipe;
+    private Pipe _receivePipe;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
@@ -64,6 +64,22 @@ internal sealed class DealerConnection : IDealerConnection
     {
         if (State == ConnectionState.Connected)
             throw new InvalidOperationException("Already connected");
+
+        // If there are lingering tasks from a previous connection, clean them up
+        // This happens during reconnection attempts
+        if (_receiveTask != null || _processTask != null)
+        {
+            _logger?.LogDebug("Cleaning up lingering pipe tasks from previous connection");
+            await CleanupPipeAsync();
+
+            // Reset the pipe for reuse (both reader and writer are now completed)
+            _receivePipe.Reset();
+            _logger?.LogDebug("Pipe reset for reconnection");
+        }
+
+        // Dispose old resources if they exist
+        _webSocket?.Dispose();
+        _cts?.Dispose();
 
         State = ConnectionState.Connecting;
 
@@ -141,6 +157,30 @@ internal sealed class DealerConnection : IDealerConnection
         }
 
         State = ConnectionState.Disconnected;
+    }
+
+    /// <summary>
+    /// Cleans up pipe tasks from a previous connection.
+    /// Waits for both FillPipeAsync and ProcessPipeAsync to complete.
+    /// Must be called before resetting or recreating the pipe.
+    /// </summary>
+    private async ValueTask CleanupPipeAsync()
+    {
+        // Wait for receive task to complete (it will call writer.CompleteAsync in finally)
+        if (_receiveTask != null)
+        {
+            await _receiveTask;
+            _receiveTask = null;
+        }
+
+        // Wait for process task to complete (it will call reader.CompleteAsync in finally)
+        if (_processTask != null)
+        {
+            await _processTask;
+            _processTask = null;
+        }
+
+        _logger?.LogDebug("Pipe tasks cleaned up");
     }
 
     /// <summary>
@@ -295,11 +335,8 @@ internal sealed class DealerConnection : IDealerConnection
 
         _cts?.Dispose();
 
-        // Wait for tasks to complete
-        if (_receiveTask != null)
-            await _receiveTask;
-        if (_processTask != null)
-            await _processTask;
+        // Wait for pipe tasks to complete
+        await CleanupPipeAsync();
 
         _logger?.LogDebug("DealerConnection disposed");
     }

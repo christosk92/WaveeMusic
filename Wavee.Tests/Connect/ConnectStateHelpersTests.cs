@@ -71,6 +71,113 @@ public sealed class ConnectStateHelpersTests
         tooHigh.Volume.Should().Be((uint)ConnectStateHelpers.MaxVolume, "excessive volume clamped to max");
     }
 
+    [Fact]
+    public void CreateDeviceInfo_WithCustomVolumeSteps_ShouldPassToCapabilities()
+    {
+        // WHY: Custom volume steps should be propagated to device capabilities
+
+        // Arrange
+        var session = DealerTestHelpers.CreateMockSession();
+        const int customVolumeSteps = 100;
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(session.Config, volumeSteps: customVolumeSteps);
+
+        // Assert
+        deviceInfo.Capabilities.VolumeSteps.Should().Be(customVolumeSteps, "custom volume steps applied");
+    }
+
+    [Theory]
+    [InlineData(DeviceType.Computer)]
+    [InlineData(DeviceType.Tablet)]
+    [InlineData(DeviceType.Smartphone)]
+    [InlineData(DeviceType.Speaker)]
+    [InlineData(DeviceType.TV)]
+    [InlineData(DeviceType.AVR)]
+    [InlineData(DeviceType.STB)]
+    [InlineData(DeviceType.AudioDongle)]
+    [InlineData(DeviceType.GameConsole)]
+    [InlineData(DeviceType.Smartwatch)]
+    [InlineData(DeviceType.Chromebook)]
+    [InlineData(DeviceType.CarThing)]
+    public void CreateDeviceInfo_WithDifferentDeviceTypes_ShouldMapCorrectly(DeviceType deviceType)
+    {
+        // WHY: All device types should map correctly to protocol device types
+
+        // Arrange
+        var config = new SessionConfig
+        {
+            DeviceId = "test_device",
+            DeviceName = "Test Device",
+            DeviceType = deviceType
+        };
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(config);
+
+        // Assert
+        deviceInfo.DeviceType.Should().Be((global::Wavee.Protocol.Player.DeviceType)(int)deviceType,
+            $"device type {deviceType} should map correctly");
+    }
+
+    [Fact]
+    public void CreateDeviceInfo_WithCustomClientId_ShouldUseProvidedClientId()
+    {
+        // WHY: Custom client ID should be used when provided in config
+
+        // Arrange
+        const string customClientId = "custom-client-id-12345";
+        var config = new SessionConfig
+        {
+            DeviceId = "test_device",
+            DeviceName = "Test Device",
+            ClientId = customClientId
+        };
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(config);
+
+        // Assert
+        deviceInfo.ClientId.Should().Be(customClientId, "custom client ID should be used");
+    }
+
+    [Fact]
+    public void CreateDeviceInfo_WithNullClientId_ShouldUseDefaultKeymaster()
+    {
+        // WHY: When no client ID is provided, should use default Keymaster client ID
+
+        // Arrange
+        var config = new SessionConfig
+        {
+            DeviceId = "test_device",
+            DeviceName = "Test Device",
+            ClientId = null
+        };
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(config);
+
+        // Assert
+        deviceInfo.ClientId.Should().NotBeNullOrEmpty("default client ID should be set");
+        deviceInfo.ClientId.Should().Be("65b708073fc0480ea92a077233ca87bd", "should use Keymaster client ID");
+    }
+
+    [Fact]
+    public void CreateDeviceInfo_ShouldFormatDeviceSoftwareVersionCorrectly()
+    {
+        // WHY: Device software version must be properly formatted for Spotify
+
+        // Arrange
+        var session = DealerTestHelpers.CreateMockSession();
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(session.Config);
+
+        // Assert
+        deviceInfo.DeviceSoftwareVersion.Should().StartWith("Wavee/", "version should start with Wavee/");
+        deviceInfo.DeviceSoftwareVersion.Should().MatchRegex(@"^Wavee/\d+\.\d+", "version should contain major.minor numbers");
+    }
+
     #endregion
 
     #region Capabilities Tests
@@ -131,6 +238,51 @@ public sealed class ConnectStateHelpersTests
         // Assert
         capabilities.SupportedTypes.Should().Contain("audio/track", "supports track playback");
         capabilities.SupportedTypes.Should().Contain("audio/episode", "supports podcast playback");
+    }
+
+    [Fact]
+    public void CreateDefaultCapabilities_ShouldDisableUnsupportedFeatures()
+    {
+        // WHY: Features not implemented should be explicitly disabled
+
+        // Act
+        var capabilities = ConnectStateHelpers.CreateDefaultCapabilities();
+
+        // Assert
+        capabilities.SupportsRename.Should().BeFalse("rename not currently supported");
+        capabilities.NeedsFullPlayerState.Should().BeFalse("does not need full player state");
+    }
+
+    [Fact]
+    public void CreateDefaultCapabilities_ShouldSetAllRequiredCapabilities()
+    {
+        // WHY: Comprehensive check that all critical capabilities are properly configured
+
+        // Act
+        var capabilities = ConnectStateHelpers.CreateDefaultCapabilities();
+
+        // Assert - Player capabilities
+        capabilities.CanBePlayer.Should().BeTrue("must be able to play");
+        capabilities.IsControllable.Should().BeTrue("must be controllable");
+        capabilities.IsObservable.Should().BeTrue("must be observable");
+
+        // Assert - Connect features
+        capabilities.SupportsTransferCommand.Should().BeTrue("must support transfers");
+        capabilities.SupportsCommandRequest.Should().BeTrue("must support command requests");
+        capabilities.CommandAcks.Should().BeTrue("must acknowledge commands");
+
+        // Assert - Modern features
+        capabilities.SupportsPlaylistV2.Should().BeTrue("must support modern playlists");
+        capabilities.SupportsGzipPushes.Should().BeTrue("must support compressed messages");
+        capabilities.GaiaEqConnectId.Should().BeTrue("must support GAIA EQ connect ID");
+        capabilities.SupportsLogout.Should().BeTrue("must support logout");
+
+        // Assert - Volume
+        capabilities.VolumeSteps.Should().BeGreaterThan(0, "must have volume steps");
+
+        // Assert - Content types
+        capabilities.SupportedTypes.Should().NotBeEmpty("must support at least one content type");
+        capabilities.SupportedTypes.Should().HaveCountGreaterOrEqualTo(2, "should support tracks and episodes");
     }
 
     #endregion
@@ -202,6 +354,89 @@ public sealed class ConnectStateHelpersTests
         }
     }
 
+    [Fact]
+    public void VolumeFromPercentage_WithNegativeValue_ShouldCalculateNegativeVolume()
+    {
+        // WHY: Document that function doesn't validate input - caller must ensure valid range
+
+        // Act
+        var result = ConnectStateHelpers.VolumeFromPercentage(-50);
+
+        // Assert
+        result.Should().BeLessThan(0, "negative percentage produces negative volume (no validation)");
+    }
+
+    [Fact]
+    public void VolumeFromPercentage_AboveOneHundred_ShouldCalculateAboveMaxVolume()
+    {
+        // WHY: Document that function doesn't clamp to max - caller must ensure valid range
+
+        // Act
+        var result = ConnectStateHelpers.VolumeFromPercentage(150);
+
+        // Assert
+        result.Should().BeGreaterThan(ConnectStateHelpers.MaxVolume, "percentage above 100 produces value > max (no clamping)");
+    }
+
+    [Fact]
+    public void VolumeToPercentage_WithNegativeVolume_ShouldCalculateNegativePercentage()
+    {
+        // WHY: Document that function doesn't validate input - caller must ensure valid range
+
+        // Act
+        var result = ConnectStateHelpers.VolumeToPercentage(-1000);
+
+        // Assert
+        result.Should().BeLessThan(0, "negative volume produces negative percentage (no validation)");
+    }
+
+    [Fact]
+    public void VolumeToPercentage_AboveMaxVolume_ShouldCalculateAboveOneHundredPercent()
+    {
+        // WHY: Document that function doesn't clamp to 100% - caller must ensure valid range
+
+        // Act
+        var result = ConnectStateHelpers.VolumeToPercentage(ConnectStateHelpers.MaxVolume + 10000);
+
+        // Assert
+        result.Should().BeGreaterThan(100, "volume above max produces percentage > 100% (no clamping)");
+    }
+
+    [Fact]
+    public void VolumeConversion_AllPercentages_ShouldBeAccurate()
+    {
+        // WHY: Comprehensive round-trip test for all integer percentages
+
+        // Act & Assert
+        for (int percent = 0; percent <= 100; percent++)
+        {
+            var spotifyVolume = ConnectStateHelpers.VolumeFromPercentage(percent);
+            var roundTrip = ConnectStateHelpers.VolumeToPercentage(spotifyVolume);
+
+            // Allow ±1% tolerance due to rounding
+            roundTrip.Should().BeInRange(percent - 1, percent + 1,
+                $"round-trip for {percent}% should be accurate within ±1%");
+        }
+    }
+
+    [Theory]
+    [InlineData(1, 655)]    // 1% ≈ 655
+    [InlineData(10, 6554)]  // 10% ≈ 6554
+    [InlineData(33, 21627)] // 33% ≈ 21627
+    [InlineData(66, 43253)] // 66% ≈ 43253
+    [InlineData(99, 64880)] // 99% ≈ 64880
+    public void VolumeFromPercentage_SpecificValues_ShouldCalculateCorrectly(int percentage, int expectedVolume)
+    {
+        // WHY: Verify specific percentage calculations with known values
+
+        // Act
+        var result = ConnectStateHelpers.VolumeFromPercentage(percentage);
+
+        // Assert
+        result.Should().BeInRange(expectedVolume - 10, expectedVolume + 10,
+            $"{percentage}% should convert to approximately {expectedVolume}");
+    }
+
     #endregion
 
     #region Constants Tests
@@ -220,6 +455,44 @@ public sealed class ConnectStateHelpersTests
         // WHY: 64 steps provides good granularity for volume control
 
         ConnectStateHelpers.DefaultVolumeSteps.Should().Be(64, "default volume steps");
+    }
+
+    [Fact]
+    public void SpircVersion_ShouldBeSet()
+    {
+        // WHY: SpIRC version must be included in device info for protocol compatibility
+
+        // Arrange
+        var session = DealerTestHelpers.CreateMockSession();
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(session.Config);
+
+        // Assert
+        deviceInfo.SpircVersion.Should().NotBeNullOrEmpty("SpIRC version must be set");
+        deviceInfo.SpircVersion.Should().MatchRegex(@"^\d+\.\d+", "version should be in major.minor format");
+    }
+
+    [Fact]
+    public void KeymasterClientId_ShouldBeValidFormat()
+    {
+        // WHY: Default Keymaster client ID must be a valid hex string format
+
+        // Arrange
+        var config = new SessionConfig
+        {
+            DeviceId = "test_device",
+            DeviceName = "Test Device",
+            ClientId = null
+        };
+
+        // Act
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(config);
+
+        // Assert
+        deviceInfo.ClientId.Should().NotBeNullOrEmpty("client ID must be set");
+        deviceInfo.ClientId.Should().HaveLength(32, "Keymaster client ID should be 32 characters");
+        deviceInfo.ClientId.Should().MatchRegex("^[a-f0-9]{32}$", "should be lowercase hex string");
     }
 
     #endregion

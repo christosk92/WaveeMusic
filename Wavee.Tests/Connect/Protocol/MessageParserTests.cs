@@ -262,8 +262,10 @@ public class MessageParserTests
     }
 
     [Fact]
-    public void TryParseRequest_InvalidKeyFormat_NoSlash_ShouldFail()
+    public void TryParseRequest_OpaqueKeyNoSlash_ShouldSucceed()
     {
+        // WHY: Reference implementations treat key as opaque string (no slash required)
+
         // Arrange
         var json = "{\"type\":\"request\",\"key\":\"invalid\",\"message_ident\":\"hm://test\",\"payload\":{}}";
         var bytes = DealerTestHelpers.CreateMessageBytes(json);
@@ -272,26 +274,36 @@ public class MessageParserTests
         var success = MessageParser.TryParseRequest(bytes, out var request);
 
         // Assert
-        success.Should().BeFalse("key must contain slash separator");
-        request.Should().BeNull();
+        success.Should().BeTrue("key can be any opaque string");
+        request.Should().NotBeNull();
+        request!.Key.Should().Be("invalid");
+        request.MessageId.Should().Be(0, "default when key doesn't match standard format");
+        request.SenderDeviceId.Should().BeEmpty("default when key doesn't match standard format");
     }
 
     [Theory]
     [InlineData("abc/device")]      // Non-numeric message ID
     [InlineData("123-456/device")]  // Wrong separator
     [InlineData("/device")]         // Empty message ID
-    [InlineData("123/")]            // Empty device ID
-    public void TryParseRequest_InvalidKeyFormat_ShouldFail(string invalidKey)
+    [InlineData("123/")]            // Empty device ID (note: whitespace still required)
+    public void TryParseRequest_NonStandardKeyFormat_ShouldSucceedWithDefaults(string opaqueKey)
     {
+        // WHY: Reference implementations (librespot) treat key as opaque string
+        // We should accept any format, not just "numeric/string"
+
         // Arrange
-        var json = $"{{\"type\":\"request\",\"key\":\"{invalidKey}\",\"message_ident\":\"hm://test\",\"payload\":{{}}}}";
+        var json = $"{{\"type\":\"request\",\"key\":\"{opaqueKey}\",\"message_ident\":\"hm://test\",\"payload\":{{}}}}";
         var bytes = DealerTestHelpers.CreateMessageBytes(json);
 
         // Act
         var success = MessageParser.TryParseRequest(bytes, out var request);
 
         // Assert
-        success.Should().BeFalse($"key format '{invalidKey}' is invalid");
+        success.Should().BeTrue($"non-standard key format '{opaqueKey}' should be accepted as opaque string");
+        request.Should().NotBeNull();
+        request!.Key.Should().Be(opaqueKey, "original key should be preserved");
+        request.MessageId.Should().Be(0, "default value when key doesn't match standard format");
+        request.SenderDeviceId.Should().BeEmpty("default value when key doesn't match standard format");
     }
 
     [Fact]
@@ -357,5 +369,101 @@ public class MessageParserTests
         // Assert
         // Note: Behavior depends on implementation - might skip null values or include them
         success.Should().BeTrue("null header values should be handled");
+    }
+
+    // ================================================================
+    // NEW TESTS - COMPREHENSIVE REQUEST PARSING
+    // ================================================================
+
+    [Theory]
+    [InlineData("opaque-string-key")]
+    [InlineData("some-uuid-12345")]
+    [InlineData("prefix:12345")]
+    public void TryParseRequest_FullyOpaqueKey_ShouldSucceed(string opaqueKey)
+    {
+        // WHY: Key can be any string (no slash required)
+
+        // Arrange
+        var json = $"{{\"type\":\"request\",\"key\":\"{opaqueKey}\",\"message_ident\":\"hm://test\",\"payload\":{{}}}}";
+        var bytes = DealerTestHelpers.CreateMessageBytes(json);
+
+        // Act
+        var success = MessageParser.TryParseRequest(bytes, out var request);
+
+        // Assert
+        success.Should().BeTrue("fully opaque keys should be accepted");
+        request!.Key.Should().Be(opaqueKey);
+        request.MessageId.Should().Be(0);
+        request.SenderDeviceId.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryParseRequest_StandardKeyFormat_ShouldExtractMessageIdAndDeviceId()
+    {
+        // WHY: When key matches "123/device" format, we should still extract the parts
+
+        // Arrange
+        var json = "{\"type\":\"request\",\"key\":\"456/device-abc\",\"message_ident\":\"hm://test\",\"payload\":{}}";
+        var bytes = DealerTestHelpers.CreateMessageBytes(json);
+
+        // Act
+        var success = MessageParser.TryParseRequest(bytes, out var request);
+
+        // Assert
+        success.Should().BeTrue();
+        request!.MessageId.Should().Be(456);
+        request.SenderDeviceId.Should().Be("device-abc");
+    }
+
+    [Fact]
+    public void TryParseRequest_LargePayload_ShouldSucceed()
+    {
+        // WHY: Ensure REQUEST can handle large payloads like MESSAGE can
+
+        // Arrange - 100KB command payload
+        var largeData = new string('x', 100000);
+        var json = $"{{\"type\":\"request\",\"key\":\"123/dev\",\"message_ident\":\"hm://test\",\"payload\":{{\"data\":\"{largeData}\"}}}}";
+        var bytes = DealerTestHelpers.CreateMessageBytes(json);
+
+        // Act
+        var success = MessageParser.TryParseRequest(bytes, out var request);
+
+        // Assert
+        success.Should().BeTrue("large payloads should be handled");
+        request.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void TryParseRequest_EmptyPayloadObject_ShouldSucceed()
+    {
+        // WHY: Empty object {} is valid JSON and should parse
+
+        // Arrange
+        var json = "{\"type\":\"request\",\"key\":\"123/dev\",\"message_ident\":\"hm://test\",\"payload\":{}}";
+        var bytes = DealerTestHelpers.CreateMessageBytes(json);
+
+        // Act
+        var success = MessageParser.TryParseRequest(bytes, out var request);
+
+        // Assert
+        success.Should().BeTrue();
+        request!.Command.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Object);
+    }
+
+    [Fact]
+    public void TryParseRequest_PayloadArray_ShouldSucceed()
+    {
+        // WHY: Payload could be array, not just object
+
+        // Arrange
+        var json = "{\"type\":\"request\",\"key\":\"123/dev\",\"message_ident\":\"hm://test\",\"payload\":[1,2,3]}";
+        var bytes = DealerTestHelpers.CreateMessageBytes(json);
+
+        // Act
+        var success = MessageParser.TryParseRequest(bytes, out var request);
+
+        // Assert
+        success.Should().BeTrue();
+        request!.Command.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Array);
     }
 }

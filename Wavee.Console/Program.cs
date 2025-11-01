@@ -13,7 +13,7 @@ Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Verbose() // Verbose = Trace level
     .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
     .Enrich.FromLogContext()
-    .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 
 Log.Information("=== Wavee Session Test ===");
@@ -26,6 +26,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 });
 
 var logger = loggerFactory.CreateLogger<Program>();
+
+// Create named loggers for components
+var sessionLogger = loggerFactory.CreateLogger("Wavee.Core.Session.Session");
 
 // Setup dependency injection with HttpClient
 var services = new ServiceCollection();
@@ -54,7 +57,8 @@ try
 
     // 2. Try to load stored credentials
     Log.Information("");
-    var storedCredentials = await credentialsCache.LoadCredentialsAsync();
+    var lastUsername = await credentialsCache.LoadLastUsernameAsync();
+    var storedCredentials = await credentialsCache.LoadCredentialsAsync(lastUsername);
 
     Credentials credentials;
     if (storedCredentials != null)
@@ -72,7 +76,7 @@ try
 
     // 4. Create and connect session
     Log.Information("Creating session...");
-    await using var session = Session.Create(config, httpClientFactory, logger);
+    await using var session = Session.Create(config, httpClientFactory, sessionLogger);
 
     // Subscribe to events
     session.PacketReceived += (sender, e) =>
@@ -86,6 +90,7 @@ try
         logger.LogWarning("Session disconnected!");
     };
 
+    
     // 5. Connect
     Log.Information("Connecting to Spotify...");
     await session.ConnectAsync(credentials, credentialsCache);

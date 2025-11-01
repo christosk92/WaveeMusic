@@ -22,6 +22,34 @@ internal sealed class SafeSubject<T> : ISubject<T>, IDisposable
         _logger = logger;
     }
 
+    /// <summary>
+    /// Gets whether this subject has any active observers.
+    /// </summary>
+    public bool HasObservers
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _observers.Count > 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of active observers subscribed to this subject.
+    /// </summary>
+    public int ObserverCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _observers.Count;
+            }
+        }
+    }
+
     public void OnNext(T value)
     {
         IObserver<T>[] observers;

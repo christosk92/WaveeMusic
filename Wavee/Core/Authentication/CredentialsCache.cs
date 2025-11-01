@@ -31,6 +31,13 @@ public interface ICredentialsCache
     /// <param name="username">The Spotify username (or null for default).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task ClearCredentialsAsync(string? username = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Loads the last authenticated username.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The last username, or null if not found.</returns>
+    Task<string?> LoadLastUsernameAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -168,6 +175,12 @@ public sealed class CredentialsCache : ICredentialsCache
             await File.WriteAllBytesAsync(filePath, dataToWrite, cancellationToken);
 
             _logger?.LogInformation("Saved credentials to cache for user: {Username}", credentials.Username ?? "<unknown>");
+
+            // Save last username for future loads
+            if (!string.IsNullOrWhiteSpace(credentials.Username))
+            {
+                await SaveLastUsernameAsync(credentials.Username, cancellationToken);
+            }
         }
         catch (Exception ex)
         {
@@ -198,6 +211,49 @@ public sealed class CredentialsCache : ICredentialsCache
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public async Task<string?> LoadLastUsernameAsync(CancellationToken cancellationToken = default)
+    {
+        var filePath = Path.Combine(_cacheDirectory, "last_user.txt");
+
+        if (!File.Exists(filePath))
+        {
+            _logger?.LogDebug("No last username file found at {FilePath}", filePath);
+            return null;
+        }
+
+        try
+        {
+            var username = await File.ReadAllTextAsync(filePath, cancellationToken);
+            _logger?.LogDebug("Loaded last username: {Username}", username);
+            return string.IsNullOrWhiteSpace(username) ? null : username.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to load last username");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Saves the last authenticated username.
+    /// </summary>
+    private async Task SaveLastUsernameAsync(string username, CancellationToken cancellationToken = default)
+    {
+        var filePath = Path.Combine(_cacheDirectory, "last_user.txt");
+
+        try
+        {
+            await File.WriteAllTextAsync(filePath, username, cancellationToken);
+            _logger?.LogDebug("Saved last username: {Username}", username);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to save last username (non-critical)");
+            // Don't throw - this is a convenience feature, not critical
+        }
     }
 
     /// <summary>
