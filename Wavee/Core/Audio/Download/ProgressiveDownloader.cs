@@ -42,6 +42,10 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     private readonly object _throughputLock = new();
     private int _currentThroughput;
 
+    // Background download state
+    private Task? _backgroundDownloadTask;
+    private CancellationTokenSource? _backgroundDownloadCts;
+
     /// <summary>
     /// Raised when buffer state changes.
     /// </summary>
@@ -144,6 +148,11 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             _downloadedRanges.TotalBytes,
             _currentThroughput);
     }
+
+    /// <summary>
+    /// Gets whether the entire file has been downloaded.
+    /// </summary>
+    public bool IsFullyDownloaded => _downloadedRanges.TotalBytes >= _fileSize;
 
     /// <summary>
     /// Sets streaming mode for prefetch optimization.
@@ -482,6 +491,84 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
     #endregion
 
+    #region Background Download
+
+    /// <summary>
+    /// Starts background downloading of the entire file.
+    /// Downloads continue from start to end regardless of playback position.
+    /// </summary>
+    public void StartBackgroundDownload()
+    {
+        if (_backgroundDownloadTask is not null)
+            return; // Already running
+
+        _backgroundDownloadCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+        _backgroundDownloadTask = BackgroundDownloadLoopAsync(_backgroundDownloadCts.Token);
+        _logger?.LogDebug("Started background download for file {FileId}", _fileId.ToBase16());
+    }
+
+    /// <summary>
+    /// Stops the background download.
+    /// </summary>
+    public void StopBackgroundDownload()
+    {
+        _backgroundDownloadCts?.Cancel();
+        _backgroundDownloadCts?.Dispose();
+        _backgroundDownloadCts = null;
+        _backgroundDownloadTask = null;
+    }
+
+    private async Task BackgroundDownloadLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && !IsFullyDownloaded)
+            {
+                // Get all gaps in the file
+                var gaps = _downloadedRanges.GetGaps(0, _fileSize);
+                if (gaps.Count == 0)
+                {
+                    _logger?.LogDebug("Background download complete for file {FileId}", _fileId.ToBase16());
+                    break;
+                }
+
+                // Find the best gap to download next
+                // Prioritize gaps from current position forward, then wrap around
+                var gap = FindNextGapFromPosition(_position, gaps);
+
+                // Download the gap (or a chunk of it if it's large)
+                var chunkEnd = Math.Min(gap.Start + _params.MaximumChunkSize, gap.End);
+                await FetchRangeAsync(gap.Start, chunkEnd, cancellationToken);
+
+                // Small delay to avoid overwhelming the server and to yield to playback
+                await Task.Delay(50, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on dispose
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Background download failed for file {FileId}", _fileId.ToBase16());
+        }
+    }
+
+    private ByteRange FindNextGapFromPosition(long position, List<ByteRange> gaps)
+    {
+        // First, try to find a gap that starts at or after current position
+        foreach (var gap in gaps)
+        {
+            if (gap.Start >= position)
+                return gap;
+        }
+
+        // If no gap after position, wrap around to the first gap
+        return gaps[0];
+    }
+
+    #endregion
+
     #region Unsupported Operations
 
     public override void Flush() { }
@@ -499,6 +586,10 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
         if (disposing)
         {
+            // Stop background download first
+            _backgroundDownloadCts?.Cancel();
+            _backgroundDownloadCts?.Dispose();
+
             _disposeCts.Cancel();
             _disposeCts.Dispose();
             _fetchLock.Dispose();
@@ -524,6 +615,13 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     {
         if (_disposed)
             return;
+
+        // Stop background download first
+        if (_backgroundDownloadCts is not null)
+        {
+            await _backgroundDownloadCts.CancelAsync();
+            _backgroundDownloadCts.Dispose();
+        }
 
         await _disposeCts.CancelAsync();
         _disposeCts.Dispose();

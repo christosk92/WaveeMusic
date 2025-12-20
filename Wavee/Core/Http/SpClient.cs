@@ -319,6 +319,132 @@ public sealed class SpClient
         }
     }
 
+    #region Context Resolution
+
+    /// <summary>
+    /// Resolves a context URI to get track list (works for playlists, albums, artists, stations, etc.)
+    /// </summary>
+    /// <remarks>
+    /// Uses the context-resolve API which returns JSON-encoded protobuf.
+    /// The returned Context contains pages of tracks that can be loaded lazily.
+    /// </remarks>
+    /// <param name="contextUri">Spotify context URI (e.g., "spotify:playlist:xxx", "spotify:album:xxx").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Context containing track pages.</returns>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task<Protocol.Context.Context> ResolveContextAsync(
+        string contextUri,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(contextUri);
+
+        // Get access token
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        // Build request - context-resolve returns JSON
+        var url = $"{_baseUrl}/context-resolve/v1/{Uri.EscapeDataString(contextUri)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug("Resolving context: {ContextUri}", contextUri);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Context not found: {contextUri}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.BadRequest:
+                throw new SpClientException(SpClientFailureReason.RequestFailed, $"Invalid context URI: {contextUri}");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        // Parse JSON response to protobuf
+        var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        var context = Google.Protobuf.JsonParser.Default.Parse<Protocol.Context.Context>(jsonContent);
+
+        _logger?.LogDebug("Context resolved: {Uri}, pages={PageCount}, tracks in first page={TrackCount}",
+            context.Uri,
+            context.Pages.Count,
+            context.Pages.Count > 0 ? context.Pages[0].Tracks.Count : 0);
+
+        return context;
+    }
+
+    /// <summary>
+    /// Fetches the next page of tracks using the page URL from a ContextPage.
+    /// </summary>
+    /// <remarks>
+    /// Page URLs typically use the hm:// scheme which needs to be stripped.
+    /// </remarks>
+    /// <param name="pageUrl">Page URL from ContextPage.PageUrl or NextPageUrl (hm://... format).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>ContextPage containing more tracks.</returns>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task<Protocol.Context.ContextPage> GetNextPageAsync(
+        string pageUrl,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pageUrl);
+
+        // Strip "hm://" prefix if present
+        var endpoint = pageUrl;
+        if (endpoint.StartsWith("hm://", StringComparison.OrdinalIgnoreCase))
+        {
+            endpoint = endpoint.Substring(5);
+        }
+
+        // Get access token
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/{endpoint}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug("Fetching next page: {Endpoint}", endpoint);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Page not found: {pageUrl}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        // Parse JSON response
+        var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        var page = Google.Protobuf.JsonParser.Default.Parse<Protocol.Context.ContextPage>(jsonContent);
+
+        _logger?.LogDebug("Next page fetched: {TrackCount} tracks", page.Tracks.Count);
+
+        return page;
+    }
+
+    #endregion
+
     /// <summary>
     /// Gets the effective locale for API requests.
     /// </summary>

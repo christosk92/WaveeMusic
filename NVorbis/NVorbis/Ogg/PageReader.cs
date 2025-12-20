@@ -181,6 +181,12 @@ namespace NVorbis.Ogg
                 // don't read the whole page yet; if our caller is seeking, they won't need packets anyway
                 _packets = null;
                 _pageSize = ParsePageHeader(hdrBuf, null, null);
+
+                // Ensure _nextPageOffset always points to the next page after any read.
+                // This fixes a bug where fast-seek estimation could leave _nextPageOffset
+                // pointing to an incorrect position, causing position jumps during playback.
+                _nextPageOffset = offset + _pageSize;
+
                 return true;
             }
             return false;

@@ -29,7 +29,7 @@ public sealed class SpotifyTrackSource : ITrackSource
 {
     private readonly Session _session;
     private readonly SpClient _spClient;
-    private readonly ExtendedMetadataClient? _extendedMetadataClient;
+    private readonly IExtendedMetadataClient? _extendedMetadataClient;
     private readonly HeadFileClient _headFileClient;
     private readonly HttpClient _httpClient;
     private readonly AudioCacheManager? _cache;
@@ -56,7 +56,7 @@ public sealed class SpotifyTrackSource : ITrackSource
         HttpClient httpClient,
         AudioQuality preferredQuality = AudioQuality.VeryHigh,
         AudioCacheManager? cache = null,
-        ExtendedMetadataClient? extendedMetadataClient = null,
+        IExtendedMetadataClient? extendedMetadataClient = null,
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -209,6 +209,9 @@ public sealed class SpotifyTrackSource : ITrackSource
             fileId,
             headData,
             logger: _logger);
+
+        // 9.1. Start background download of entire file
+        downloader.StartBackgroundDownload();
 
         // 10. Read normalization data before wrapping with decrypt
         // Pass head length so we know not to double-decrypt head file data

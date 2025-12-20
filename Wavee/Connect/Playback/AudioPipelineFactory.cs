@@ -10,6 +10,7 @@ using Wavee.Core.Audio.Cache;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
+using Wavee.Core.Storage.Abstractions;
 
 namespace Wavee.Connect.Playback;
 
@@ -26,6 +27,7 @@ public static class AudioPipelineFactory
     /// <param name="httpClient">HTTP client for CDN/head file requests.</param>
     /// <param name="options">Pipeline configuration options.</param>
     /// <param name="metadataDatabase">Optional metadata database for caching extended metadata.</param>
+    /// <param name="cacheService">Optional cache service (should be singleton). Created if metadataDatabase provided but cacheService is null.</param>
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for playback reporting.</param>
     /// <param name="logger">Optional logger.</param>
@@ -35,7 +37,8 @@ public static class AudioPipelineFactory
         SpClient spClient,
         HttpClient httpClient,
         AudioPipelineOptions? options = null,
-        MetadataDatabase? metadataDatabase = null,
+        IMetadataDatabase? metadataDatabase = null,
+        ICacheService? cacheService = null,
         string deviceId = "",
         EventService? eventService = null,
         ILogger? logger = null)
@@ -48,6 +51,28 @@ public static class AudioPipelineFactory
         var audioSink = CreateAudioSink(options.AudioSinkType, logger);
         var processingChain = CreateProcessingChain(options, logger);
 
+        // Create context resolver for playlist/album loading
+        ContextResolver? contextResolver = null;
+        if (metadataDatabase != null)
+        {
+            var spClientBaseUrl = session.SpClientUrl ?? "spclient.wg.spotify.com";
+            var extendedMetadataClient = new ExtendedMetadataClient(
+                session,
+                httpClient,
+                spClientBaseUrl,
+                metadataDatabase,
+                logger);
+
+            // Use provided cache service or create one (caller should ideally provide singleton)
+            cacheService ??= new CacheService(metadataDatabase, hotCacheSize: 10_000, logger);
+
+            contextResolver = new ContextResolver(
+                spClient,
+                extendedMetadataClient,
+                cacheService,
+                logger);
+        }
+
         return new AudioPipeline(
             sourceRegistry,
             decoderRegistry,
@@ -55,6 +80,7 @@ public static class AudioPipelineFactory
             processingChain,
             deviceId,
             eventService,
+            contextResolver,
             logger);
     }
 
@@ -66,7 +92,7 @@ public static class AudioPipelineFactory
         SpClient spClient,
         HttpClient httpClient,
         AudioPipelineOptions? options = null,
-        MetadataDatabase? metadataDatabase = null,
+        IMetadataDatabase? metadataDatabase = null,
         ILogger? logger = null)
     {
         options ??= AudioPipelineOptions.Default;

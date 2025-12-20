@@ -881,8 +881,14 @@ public sealed class Session : ISession, IAsyncDisposable
 
             case PacketType.AesKey:
             case PacketType.AesKeyError:
-                // Dispatch to AudioKeyManager
-                _audioKeyManager?.DispatchPacket(packetType, payload);
+                // Log at DEBUG level for visibility (AesKey responses are important for debugging)
+                _logger?.LogDebug("Received {PacketType} packet ({Size} bytes)", packetType, payload.Length);
+                if (_audioKeyManager is null)
+                {
+                    _logger?.LogWarning("AudioKeyManager is null, cannot dispatch {PacketType} packet", packetType);
+                    return;
+                }
+                _audioKeyManager.DispatchPacket(packetType, payload);
                 return;
 
             case PacketType.CountryCode:

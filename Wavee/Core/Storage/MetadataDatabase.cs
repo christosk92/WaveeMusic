@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Storage.Abstractions;
 using Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee.Core.Storage;
@@ -9,7 +10,7 @@ namespace Wavee.Core.Storage;
 /// SQLite-backed metadata database for caching entity metadata and extension data.
 /// Thread-safe with connection pooling and in-memory LRU cache for hot data.
 /// </summary>
-public sealed class MetadataDatabase : IAsyncDisposable
+public sealed class MetadataDatabase : IMetadataDatabase
 {
     private readonly string _connectionString;
     private readonly ILogger? _logger;
@@ -298,6 +299,63 @@ public sealed class MetadataDatabase : IAsyncDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Gets multiple entities by URIs.
+    /// </summary>
+    public async Task<List<CachedEntity>> GetEntitiesAsync(IEnumerable<string> uris, CancellationToken cancellationToken = default)
+    {
+        var uriList = uris.ToList();
+        if (uriList.Count == 0)
+            return new List<CachedEntity>();
+
+        var results = new List<CachedEntity>();
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        // Build parameterized query for batch fetch
+        var placeholders = string.Join(", ", uriList.Select((_, i) => $"$uri{i}"));
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"SELECT * FROM entities WHERE uri IN ({placeholders});";
+
+        for (int i = 0; i < uriList.Count; i++)
+        {
+            cmd.Parameters.AddWithValue($"$uri{i}", uriList[i]);
+        }
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(ReadEntity(reader));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Deletes an entity by URI.
+    /// </summary>
+    public async Task DeleteEntityAsync(string uri, CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM entities WHERE uri = $uri;";
+            cmd.Parameters.AddWithValue("$uri", uri);
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Deleted entity {Uri}", uri);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     /// <summary>

@@ -1,13 +1,16 @@
 using System.Reactive.Linq;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Connection;
 using Wavee.Connect.Playback;
 using Wavee.Connect.Protocol;
+using Wavee.Core.DependencyInjection;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
+using Wavee.Core.Storage.Abstractions;
 
 namespace Wavee.Console;
 
@@ -21,7 +24,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     private readonly ILogger? _logger;
     private readonly List<IDisposable> _subscriptions = new();
     private AudioPipeline? _audioPipeline;
-    private MetadataDatabase? _metadataDatabase;
+    private ServiceProvider? _serviceProvider;
     private bool _watchEnabled;
     private bool _disposed;
 
@@ -46,31 +49,43 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         WriteSuccess("Spotify Connect initialized successfully!");
         WriteInfo($"Device: {_session.Config.DeviceName} ({_session.Config.DeviceId})");
 
-        // Initialize metadata database for caching
+        // Initialize DI container with cache services
         try
         {
             var dbPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "Wavee",
                 "metadata.db");
-            _metadataDatabase = new MetadataDatabase(dbPath, logger: _logger);
-            WriteSuccess($"Metadata database initialized at {dbPath}");
+
+            var services = new ServiceCollection();
+            services.AddWaveeCache(options =>
+            {
+                options.DatabasePath = dbPath;
+            });
+
+            _serviceProvider = services.BuildServiceProvider();
+            WriteSuccess($"Cache services initialized (database: {dbPath})");
         }
         catch (Exception ex)
         {
-            WriteWarning($"Metadata database initialization failed: {ex.Message}");
+            WriteWarning($"Cache services initialization failed: {ex.Message}");
             WriteInfo("Extended metadata caching will not be available.");
         }
 
         // Initialize audio pipeline for local playback
         try
         {
+            // Get services from DI container (if available)
+            var metadataDatabase = _serviceProvider?.GetService<IMetadataDatabase>();
+            var cacheService = _serviceProvider?.GetService<ICacheService>();
+
             _audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 _session,
                 _session.SpClient,
                 _httpClient,
                 AudioPipelineOptions.Default,
-                _metadataDatabase,
+                metadataDatabase,
+                cacheService,
                 _session.Config.DeviceId,
                 _session.Events,
                 _logger);
@@ -847,12 +862,9 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             _audioPipeline = null;
         }
 
-        // Dispose metadata database
-        if (_metadataDatabase != null)
-        {
-            _metadataDatabase.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            _metadataDatabase = null;
-        }
+        // Dispose DI container (disposes all registered services)
+        _serviceProvider?.Dispose();
+        _serviceProvider = null;
 
         _disposed = true;
     }
@@ -874,10 +886,11 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             _audioPipeline = null;
         }
 
-        if (_metadataDatabase != null)
+        // Dispose DI container (disposes all registered services)
+        if (_serviceProvider != null)
         {
-            await _metadataDatabase.DisposeAsync();
-            _metadataDatabase = null;
+            await _serviceProvider.DisposeAsync();
+            _serviceProvider = null;
         }
 
         _disposed = true;

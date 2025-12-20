@@ -38,6 +38,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private readonly AudioProcessingChain _processingChain;
     private readonly ConnectCommandHandler? _commandHandler;
     private readonly EventService? _eventService;
+    private readonly ContextResolver? _contextResolver;
     private readonly string _deviceId;
     private readonly ILogger? _logger;
 
@@ -75,6 +76,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
     // Queue management
     private readonly PlaybackQueue _queue;
+    private string? _nextPageUrl;  // For lazy loading more tracks
 
     // Command subscriptions
     private readonly CompositeDisposable _subscriptions = new();
@@ -91,6 +93,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <param name="processingChain">Audio processing chain.</param>
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for reporting playback events.</param>
+    /// <param name="contextResolver">Optional context resolver for playlist/album loading.</param>
     /// <param name="logger">Optional logger.</param>
     public AudioPipeline(
         TrackSourceRegistry sourceRegistry,
@@ -99,6 +102,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         AudioProcessingChain processingChain,
         string deviceId = "",
         EventService? eventService = null,
+        ContextResolver? contextResolver = null,
         ILogger? logger = null)
     {
         _sourceRegistry = sourceRegistry ?? throw new ArgumentNullException(nameof(sourceRegistry));
@@ -107,17 +111,45 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _processingChain = processingChain ?? throw new ArgumentNullException(nameof(processingChain));
         _deviceId = deviceId ?? "";
         _eventService = eventService;
+        _contextResolver = contextResolver;
         _logger = logger;
 
         _stateSubject = new BehaviorSubject<LocalPlaybackState>(_currentState);
         _queue = new PlaybackQueue(logger);
 
         // Subscribe to NeedsMoreTracks for infinite contexts / large playlists
-        _subscriptions.Add(_queue.NeedsMoreTracks.Subscribe(_ =>
+        _subscriptions.Add(_queue.NeedsMoreTracks.Subscribe(async _ =>
         {
-            _logger?.LogDebug("Queue signals NeedsMoreTracks - provider integration pending");
-            // TODO: Integrate with context providers to load more tracks
+            await LoadMoreTracksAsync();
         }));
+    }
+
+    /// <summary>
+    /// Loads more tracks when the queue signals it needs more (lazy loading).
+    /// </summary>
+    private async Task LoadMoreTracksAsync()
+    {
+        if (_contextResolver == null || string.IsNullOrEmpty(_nextPageUrl))
+        {
+            _logger?.LogDebug("Cannot load more tracks: no context resolver or next page URL");
+            return;
+        }
+
+        try
+        {
+            _logger?.LogDebug("Loading more tracks from: {NextPageUrl}", _nextPageUrl);
+
+            var result = await _contextResolver.LoadNextPageAsync(_nextPageUrl, enrichMetadata: true);
+            _queue.AppendTracks(result.Tracks);
+            _nextPageUrl = result.NextPageUrl;
+
+            _logger?.LogDebug("Loaded {Count} more tracks, hasMore={HasMore}",
+                result.Tracks.Count, result.HasMoreTracks);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to load more tracks from {NextPageUrl}", _nextPageUrl);
+        }
     }
 
     /// <summary>
@@ -130,6 +162,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <param name="commandHandler">Connect command handler for remote control.</param>
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for reporting playback events.</param>
+    /// <param name="contextResolver">Optional context resolver for playlist/album loading.</param>
     /// <param name="logger">Optional logger.</param>
     public AudioPipeline(
         TrackSourceRegistry sourceRegistry,
@@ -139,8 +172,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         ConnectCommandHandler commandHandler,
         string deviceId = "",
         EventService? eventService = null,
+        ContextResolver? contextResolver = null,
         ILogger? logger = null)
-        : this(sourceRegistry, decoderRegistry, audioSink, processingChain, deviceId, eventService, logger)
+        : this(sourceRegistry, decoderRegistry, audioSink, processingChain, deviceId, eventService, contextResolver, logger)
     {
         _commandHandler = commandHandler ?? throw new ArgumentNullException(nameof(commandHandler));
         SubscribeToCommands();
@@ -208,16 +242,61 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
             // Setup queue
             // For single track playback (no context), create a single-item queue
-            // For context playback, tracks will be loaded by context provider (Phase 2)
-            if (!string.IsNullOrEmpty(command.ContextUri))
+            // For context playback, load tracks from context resolver
+            if (!string.IsNullOrEmpty(command.ContextUri) && _contextResolver != null)
             {
-                _queue.SetContext(command.ContextUri, isInfinite: false, totalTracks: null);
-                // TODO: Phase 2 - Load tracks from context provider
-                // For now, if we have a track URI, add it as the only track
-                if (!string.IsNullOrEmpty(command.TrackUri))
+                try
                 {
+                    // Load context tracks with batch metadata enrichment
+                    var result = await _contextResolver.LoadContextAsync(
+                        command.ContextUri,
+                        maxTracks: 100,  // Initial load, more via lazy loading
+                        enrichMetadata: true,
+                        cancellationToken);
+
+                    _queue.SetContext(
+                        command.ContextUri,
+                        isInfinite: result.IsInfinite,
+                        totalTracks: result.TotalCount);
+
+                    _queue.SetTracks(result.Tracks, startIndex: command.SkipToIndex ?? 0);
+                    _nextPageUrl = result.NextPageUrl;
+
+                    // Find first playable track
+                    var current = _queue.Current;
+                    while (current != null && !current.IsPlayable)
+                    {
+                        _logger?.LogWarning("Skipping unplayable track: {Uri}", current.Uri);
+                        current = _queue.MoveNext();
+                    }
+
+                    if (current != null)
+                    {
+                        trackUri = current.Uri;
+                    }
+                    else
+                    {
+                        _logger?.LogError("No playable tracks in context: {ContextUri}", command.ContextUri);
+                        return;
+                    }
+
+                    _logger?.LogInformation("Context loaded: {TrackCount} tracks, playing {TrackUri}",
+                        result.Tracks.Count, trackUri);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Failed to load context {ContextUri}, falling back to single track",
+                        command.ContextUri);
+                    // Fall back to single track playback
+                    _queue.Clear();
                     _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
                 }
+            }
+            else if (!string.IsNullOrEmpty(command.ContextUri))
+            {
+                // Context provided but no resolver - just add the track
+                _queue.SetContext(command.ContextUri, isInfinite: false, totalTracks: null);
+                _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
             }
             else
             {
@@ -315,6 +394,29 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         {
             _logger?.LogInformation("Resume command received");
 
+            // Check if playback loop ended (track finished) but we have a track to resume
+            if (!_isPaused && !string.IsNullOrEmpty(_currentTrackUri) &&
+                (_playbackTask == null || _playbackTask.IsCompleted))
+            {
+                _logger?.LogDebug("Track ended, restarting from beginning");
+
+                // Clean up completed task
+                _playbackCts?.Dispose();
+                _playbackCts = null;
+                _playbackTask = null;
+
+                // Restart from beginning (or current position if not at end)
+                var startPosition = _currentPositionMs >= _currentDurationMs ? 0 : _currentPositionMs;
+                _currentPositionMs = startPosition;
+
+                _playbackCts = new CancellationTokenSource();
+                var playbackToken = _playbackCts.Token;
+                _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, startPosition, playbackToken));
+
+                PublishStateUpdate();
+                return;
+            }
+
             if (!_isPaused)
             {
                 _logger?.LogDebug("Not paused, nothing to resume");
@@ -362,7 +464,28 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 return;
             }
 
-            // Signal seek to playback loop instead of restarting
+            // Check if playback loop is running
+            if (_playbackTask == null || _playbackTask.IsCompleted)
+            {
+                // No active playback loop - restart playback from the seek position
+                _logger?.LogDebug("No active playback, restarting from {PositionMs}ms", positionMs);
+
+                // Clean up any completed task
+                _playbackCts?.Dispose();
+                _playbackCts = null;
+                _playbackTask = null;
+
+                // Start playback from the seek position
+                _currentPositionMs = positionMs;
+                _playbackCts = new CancellationTokenSource();
+                var playbackToken = _playbackCts.Token;
+                _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, positionMs, playbackToken));
+
+                PublishStateUpdate();
+                return;
+            }
+
+            // Signal seek to active playback loop
             lock (_seekLock)
             {
                 _pendingSeekMs = positionMs;
@@ -542,14 +665,15 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             var firstTrack = _queue.SkipTo(0);
             if (firstTrack != null)
             {
-                // Stop current and play first track
-                await StopInternalAsync();
+                // Note: We're inside PlaybackLoopAsync, so we can't call StopInternalAsync
+                // (it would await _playbackTask which is ourselves - deadlock!)
+                // Instead, the current loop will exit and we start a new one
 
                 _currentTrackUri = NormalizeToUri(firstTrack.Uri);
                 _currentTrackUid = firstTrack.Uid ?? string.Empty;
                 _currentPositionMs = 0;
 
-                // Start playback
+                // Start new playback (current loop will exit after this returns)
                 _playbackCts = new CancellationTokenSource();
                 var playbackToken = _playbackCts.Token;
                 _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, 0, playbackToken));
@@ -566,7 +690,18 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         // }
 
         _logger?.LogInformation("End of context - stopping playback");
-        await StopInternalAsync();
+
+        // Note: We're inside PlaybackLoopAsync, so we can't call StopInternalAsync
+        // (it would await _playbackTask which is ourselves - deadlock!)
+        // Just flush the sink and set state flags - the loop will exit naturally
+        await _audioSink.FlushAsync();
+        _isPlaying = false;
+        _isPaused = false;
+
+        // Clean up CTS (but NOT _playbackTask - we ARE that task!)
+        _playbackCts?.Dispose();
+        _playbackCts = null;
+        // _playbackTask will be set to null when we check IsCompleted in future commands
     }
 
     // ================================================================

@@ -326,6 +326,9 @@ public sealed class LazyProgressiveDownloader : Stream
         _cdnDownloader.BufferStateChanged += status => BufferStateChanged?.Invoke(status);
         _cdnDownloader.DownloadError += error => DownloadError?.Invoke(error);
 
+        // Start background download of entire file
+        _cdnDownloader.StartBackgroundDownload();
+
         // Wrap with decryption (skip head data which is already decrypted)
         _decryptStream = new AudioDecryptStream(
             audioKey,

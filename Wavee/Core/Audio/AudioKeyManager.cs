@@ -20,12 +20,12 @@ public sealed class AudioKeyManager : IAsyncDisposable
     /// <summary>
     /// Timeout for AudioKey requests.
     /// </summary>
-    private static readonly TimeSpan KeyResponseTimeout = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan KeyResponseTimeout = TimeSpan.FromMilliseconds(3000);
 
     /// <summary>
     /// Maximum number of retry attempts for AudioKey requests.
     /// </summary>
-    private const int MaxRetries = 3;
+    private const int MaxRetries = 5;
 
     /// <summary>
     /// Delays between retry attempts (exponential backoff).
@@ -34,7 +34,9 @@ public sealed class AudioKeyManager : IAsyncDisposable
     [
         TimeSpan.Zero,                      // First attempt: immediate
         TimeSpan.FromMilliseconds(500),     // Retry 1: 500ms delay
-        TimeSpan.FromMilliseconds(1000)     // Retry 2: 1000ms delay
+        TimeSpan.FromMilliseconds(1000),    // Retry 2: 1000ms delay
+        TimeSpan.FromMilliseconds(2000),    // Retry 3: 2000ms delay
+        TimeSpan.FromMilliseconds(3000)     // Retry 4: 3000ms delay
     ];
 
     private readonly ISession _session;
@@ -125,7 +127,14 @@ public sealed class AudioKeyManager : IAsyncDisposable
         // Create completion source for this request
         var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pending.TryAdd(seq, (tcs, fileId)))
+        {
+            _logger?.LogError("Failed to register pending request: seq={Seq} already exists. Pending count: {Count}",
+                seq, _pending.Count);
             throw new AudioKeyException(AudioKeyFailureReason.InternalError, "Failed to register pending request");
+        }
+
+        _logger?.LogDebug("Registered pending AudioKey request: seq={Seq}, pending count={Count}",
+            seq, _pending.Count);
 
         try
         {
@@ -153,7 +162,11 @@ public sealed class AudioKeyManager : IAsyncDisposable
         finally
         {
             // Clean up pending request
-            _pending.TryRemove(seq, out _);
+            if (_pending.TryRemove(seq, out _))
+            {
+                _logger?.LogDebug("Removed pending AudioKey request: seq={Seq}, pending count={Count}",
+                    seq, _pending.Count);
+            }
         }
     }
 
@@ -165,6 +178,8 @@ public sealed class AudioKeyManager : IAsyncDisposable
     /// <param name="payload">The packet payload.</param>
     public void DispatchPacket(PacketType packetType, ReadOnlySpan<byte> payload)
     {
+        _logger?.LogDebug("DispatchPacket called: type={PacketType}, length={Length}", packetType, payload.Length);
+
         if (payload.Length < 4)
         {
             _logger?.LogWarning("Received malformed AudioKey packet: too short ({Length} bytes)", payload.Length);
@@ -173,10 +188,13 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
         // Extract sequence number (first 4 bytes, big-endian)
         var seq = BinaryPrimitives.ReadUInt32BigEndian(payload);
+        _logger?.LogDebug("AudioKey response: seq={Seq}, type={PacketType}, pending count={Count}",
+            seq, packetType, _pending.Count);
 
         if (!_pending.TryRemove(seq, out var pending))
         {
-            _logger?.LogWarning("Received AudioKey response for unknown sequence: {Seq}", seq);
+            _logger?.LogWarning("Received AudioKey response for unknown sequence: {Seq} (not in pending list of {Count} items)",
+                seq, _pending.Count);
             return;
         }
 
@@ -251,6 +269,9 @@ public sealed class AudioKeyManager : IAsyncDisposable
         BinaryPrimitives.WriteUInt32BigEndian(packet.AsSpan(36), seq);
 
         // Zero padding (2 bytes) - already zero from array allocation
+
+        // Log packet hex for debugging (verbose)
+        _logger?.LogTrace("AudioKey request packet hex: {PacketHex}", Convert.ToHexString(packet));
 
         await _session.SendAsync(PacketType.RequestKey, packet, cancellationToken);
     }

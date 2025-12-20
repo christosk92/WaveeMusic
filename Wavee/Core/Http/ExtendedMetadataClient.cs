@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
+using Wavee.Core.Storage.Abstractions;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 
@@ -14,12 +15,12 @@ namespace Wavee.Core.Http;
 /// Client for Spotify's extended-metadata API with SQLite caching.
 /// Handles fetching extension data for any entity type with automatic caching.
 /// </summary>
-public sealed class ExtendedMetadataClient
+public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 {
     private readonly string _baseUrl;
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
-    private readonly MetadataDatabase _database;
+    private readonly IMetadataDatabase _database;
     private readonly ILogger? _logger;
 
     private const int MaxRetries = 3;
@@ -37,7 +38,7 @@ public sealed class ExtendedMetadataClient
         ISession session,
         HttpClient httpClient,
         string baseUrl,
-        MetadataDatabase database,
+        IMetadataDatabase database,
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
