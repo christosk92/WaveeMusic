@@ -23,6 +23,7 @@ public sealed class StubDecoder : IAudioDecoder
 
     public async IAsyncEnumerable<AudioBuffer> DecodeAsync(
         Stream stream,
+        long startPositionMs = 0,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Generate 10 seconds of silence as a test
@@ -30,7 +31,7 @@ public sealed class StubDecoder : IAudioDecoder
         var bufferSize = format.BytesPerSecond / 10; // 100ms chunks
         var silentBuffer = new byte[bufferSize];
         var durationMs = 10000; // 10 seconds
-        var positionMs = 0L;
+        var positionMs = startPositionMs; // Start from requested position
 
         while (positionMs < durationMs)
         {

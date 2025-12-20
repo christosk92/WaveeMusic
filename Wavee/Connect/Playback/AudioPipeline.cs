@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
+using NVorbis;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Events;
 using Wavee.Connect.Protocol;
@@ -8,6 +10,7 @@ using Wavee.Connect.Playback.Abstractions;
 using Wavee.Connect.Playback.Decoders;
 using Wavee.Connect.Playback.Sources;
 using Wavee.Connect.Playback.Processors;
+using Wavee.Core.Audio.Download;
 
 namespace Wavee.Connect.Playback;
 
@@ -48,6 +51,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private CancellationTokenSource? _playbackCts;
     private Task? _playbackTask;
     private readonly SemaphoreSlim _commandLock = new(1, 1);
+
+    // In-place seeking
+    private long? _pendingSeekMs;
+    private readonly object _seekLock = new();
 
     // Playback state
     private string? _currentTrackUri;
@@ -321,13 +328,17 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 return;
             }
 
-            // Stop current playback
-            await StopInternalAsync();
+            // Signal seek to playback loop instead of restarting
+            lock (_seekLock)
+            {
+                _pendingSeekMs = positionMs;
+            }
 
-            // Restart playback from new position
+            // Flush audio sink buffer for immediate effect
+            await _audioSink.FlushAsync();
+
             _currentPositionMs = positionMs;
-            _playbackCts = new CancellationTokenSource();
-            _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, positionMs, _playbackCts.Token), _playbackCts.Token);
+            PublishStateUpdate();
         }
         finally
         {
@@ -422,7 +433,8 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private async Task PlaybackLoopAsync(string trackUri, long startPositionMs, CancellationToken cancellationToken)
     {
         ITrackStream? trackStream = null;
-        IAudioDecoder? decoder = null;
+        VorbisReader? vorbisReader = null;
+        SkipStream? skipStream = null;
 
         try
         {
@@ -435,14 +447,13 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Store track duration from metadata
             _currentDurationMs = trackStream.Metadata.DurationMs ?? 0;
 
-            // Detect format and get decoder
-            var (selectedDecoder, audioFormat) = await _decoderRegistry.DetectFormatAsync(
-                trackStream.AudioStream,
-                cancellationToken);
+            // Create VorbisReader directly (skip Spotify header)
+            skipStream = new SkipStream(trackStream.AudioStream, VorbisDecoder.SpotifyHeaderSize, leaveOpen: true);
+            vorbisReader = new VorbisReader(skipStream, closeOnDispose: false);
 
-            decoder = selectedDecoder;
-            _logger?.LogDebug("Decoder selected: {DecoderName}, Format: {SampleRate}Hz {Channels}ch {BitsPerSample}bit",
-                decoder.FormatName, audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
+            var audioFormat = new AudioFormat(vorbisReader.SampleRate, vorbisReader.Channels, 16);
+            _logger?.LogDebug("VorbisReader created: {SampleRate}Hz {Channels}ch",
+                vorbisReader.SampleRate, vorbisReader.Channels);
 
             // Initialize audio sink and processing chain
             await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 100, cancellationToken);
@@ -454,6 +465,13 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 processor.SetTrackGain(trackStream.Metadata);
             }
 
+            // Seek to start position if specified
+            if (startPositionMs > 0)
+            {
+                vorbisReader.TimePosition = TimeSpan.FromMilliseconds(startPositionMs);
+                _logger?.LogDebug("Initial seek to {PositionMs}ms", startPositionMs);
+            }
+
             // Update state to playing
             _isPlaying = true;
             _isPaused = false;
@@ -462,37 +480,70 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Start playback event tracking
             StartPlaybackSession(trackUri, _currentContextUri ?? trackUri, PlaybackReason.PlayBtn);
 
-            // Decode and play
-            var targetPositionReached = startPositionMs == 0;
-            await foreach (var buffer in decoder.DecodeAsync(trackStream.AudioStream, cancellationToken))
+            // Allocate decode buffers
+            const int samplesPerBuffer = 4096;
+            var floatBuffer = ArrayPool<float>.Shared.Rent(samplesPerBuffer * vorbisReader.Channels);
+            var pcmBuffer = ArrayPool<byte>.Shared.Rent(samplesPerBuffer * vorbisReader.Channels * 2);
+
+            try
             {
-                // Skip buffers until we reach target position (for seek)
-                if (!targetPositionReached)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    if (buffer.PositionMs >= startPositionMs)
+                    // CHECK FOR PENDING SEEK
+                    long? seekTarget;
+                    lock (_seekLock)
                     {
-                        targetPositionReached = true;
+                        seekTarget = _pendingSeekMs;
+                        _pendingSeekMs = null;
                     }
-                    else
+
+                    if (seekTarget.HasValue)
                     {
-                        continue; // Skip this buffer
+                        // In-place seek using VorbisReader.TimePosition
+                        _logger?.LogDebug("In-place seek to {PositionMs}ms", seekTarget.Value);
+                        vorbisReader.TimePosition = TimeSpan.FromMilliseconds(seekTarget.Value);
+                        _currentPositionMs = seekTarget.Value;
+                        continue; // Skip to next iteration
+                    }
+
+                    // Read samples from Vorbis decoder
+                    var samplesRead = vorbisReader.ReadSamples(floatBuffer, 0, samplesPerBuffer * vorbisReader.Channels);
+                    if (samplesRead == 0)
+                        break; // End of stream
+
+                    // Convert float samples to 16-bit PCM
+                    var pcmBytes = samplesRead * 2;
+                    ConvertFloatToPcm16(floatBuffer.AsSpan(0, samplesRead), pcmBuffer.AsSpan(0, pcmBytes));
+
+                    // Get current position
+                    var positionMs = (long)vorbisReader.TimePosition.TotalMilliseconds;
+
+                    // Copy PCM data for AudioBuffer (since we reuse the pooled array)
+                    var bufferCopy = new byte[pcmBytes];
+                    pcmBuffer.AsSpan(0, pcmBytes).CopyTo(bufferCopy);
+
+                    var buffer = new AudioBuffer(bufferCopy, positionMs);
+
+                    // Process audio through chain
+                    var processed = _processingChain.Process(buffer);
+
+                    // Write to sink
+                    await _audioSink.WriteAsync(processed.Data, cancellationToken);
+
+                    // Update position
+                    _currentPositionMs = positionMs;
+
+                    // Publish state update periodically (every ~500ms)
+                    if (_currentPositionMs % 500 < 100)
+                    {
+                        PublishStateUpdate();
                     }
                 }
-
-                // Process audio through chain
-                var processed = _processingChain.Process(buffer);
-
-                // Write to sink
-                await _audioSink.WriteAsync(processed.Data, cancellationToken);
-
-                // Update position
-                _currentPositionMs = processed.PositionMs;
-
-                // Publish state update periodically (every ~500ms)
-                if (_currentPositionMs % 500 < 100)
-                {
-                    PublishStateUpdate();
-                }
+            }
+            finally
+            {
+                ArrayPool<float>.Shared.Return(floatBuffer);
+                ArrayPool<byte>.Shared.Return(pcmBuffer);
             }
 
             // Playback completed
@@ -505,6 +556,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             if (_repeatingTrack)
             {
                 _logger?.LogDebug("Repeat track enabled, restarting");
+                // Reset seek position and restart
+                lock (_seekLock)
+                {
+                    _pendingSeekMs = 0;
+                }
+                vorbisReader.TimePosition = TimeSpan.Zero;
                 await PlaybackLoopAsync(trackUri, 0, cancellationToken);
                 return;
             }
@@ -529,10 +586,32 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         }
         finally
         {
+            vorbisReader?.Dispose();
+            skipStream?.Dispose();
             if (trackStream != null)
             {
                 await trackStream.DisposeAsync();
             }
+        }
+    }
+
+    /// <summary>
+    /// Converts float samples (-1.0 to 1.0) to 16-bit PCM.
+    /// </summary>
+    private static void ConvertFloatToPcm16(ReadOnlySpan<float> floatSamples, Span<byte> pcmOutput)
+    {
+        for (int i = 0; i < floatSamples.Length; i++)
+        {
+            // Clamp to [-1, 1] range
+            var sample = Math.Clamp(floatSamples[i], -1f, 1f);
+
+            // Convert to 16-bit signed integer
+            var pcmSample = (short)(sample * 32767f);
+
+            // Write as little-endian
+            var offset = i * 2;
+            pcmOutput[offset] = (byte)(pcmSample & 0xFF);
+            pcmOutput[offset + 1] = (byte)((pcmSample >> 8) & 0xFF);
         }
     }
 

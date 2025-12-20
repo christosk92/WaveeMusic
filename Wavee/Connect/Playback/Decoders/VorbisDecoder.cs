@@ -127,6 +127,7 @@ public sealed class VorbisDecoder : IAudioDecoder
     /// </summary>
     public async IAsyncEnumerable<AudioBuffer> DecodeAsync(
         Stream stream,
+        long startPositionMs = 0,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Create a stream that skips the Spotify header
@@ -138,6 +139,13 @@ public sealed class VorbisDecoder : IAudioDecoder
         {
             reader = new VorbisReader(skipStream, closeOnDispose: false);
 
+            // Seek to start position if specified
+            if (startPositionMs > 0)
+            {
+                reader.TimePosition = TimeSpan.FromMilliseconds(startPositionMs);
+                _logger?.LogDebug("Seeked to position: {PositionMs}ms", startPositionMs);
+            }
+
             var format = new AudioFormat(reader.SampleRate, reader.Channels, 16);
             var floatBuffer = ArrayPool<float>.Shared.Rent(SamplesPerBuffer * reader.Channels);
             var pcmBuffer = ArrayPool<byte>.Shared.Rent(SamplesPerBuffer * reader.Channels * 2);
@@ -145,8 +153,8 @@ public sealed class VorbisDecoder : IAudioDecoder
             try
             {
                 _logger?.LogDebug(
-                    "Starting Vorbis decode: {SampleRate}Hz, {Channels}ch",
-                    reader.SampleRate, reader.Channels);
+                    "Starting Vorbis decode: {SampleRate}Hz, {Channels}ch, startPosition={StartPositionMs}ms",
+                    reader.SampleRate, reader.Channels, startPositionMs);
 
                 int samplesRead;
                 while ((samplesRead = reader.ReadSamples(floatBuffer, 0, floatBuffer.Length)) > 0)

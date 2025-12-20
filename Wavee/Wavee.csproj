@@ -39,8 +39,11 @@
       <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0-rc.2.25502.107" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-rc.2.25502.107" />
       <PackageReference Include="PortAudioSharp2" Version="1.0.4" />
-      <PackageReference Include="NVorbis" Version="0.10.5" />
       <PackageReference Include="System.Reactive" Version="6.0.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\NVorbis\NVorbis\NVorbis.csproj" />
       <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0-rc.2.25502.107" />
     </ItemGroup>
 

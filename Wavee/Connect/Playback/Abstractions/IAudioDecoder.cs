@@ -30,7 +30,8 @@ public interface IAudioDecoder
     /// Decodes the audio stream into PCM audio buffers.
     /// </summary>
     /// <param name="stream">Audio stream to decode.</param>
+    /// <param name="startPositionMs">Start position in milliseconds (for seeking).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Async enumerable of PCM audio buffers.</returns>
-    IAsyncEnumerable<AudioBuffer> DecodeAsync(Stream stream, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<AudioBuffer> DecodeAsync(Stream stream, long startPositionMs = 0, CancellationToken cancellationToken = default);
 }
