@@ -195,6 +195,12 @@ public static class PlaybackStateHelpers
             RepeatingTrack = localState.RepeatingTrack
         };
 
+        // Generate new SessionId when track changes, otherwise carry over from previous
+        var isNewTrack = previousState?.Track?.Uri != localState.TrackUri;
+        var sessionId = isNewTrack || previousState?.SessionId == null
+            ? Guid.NewGuid().ToString("N")
+            : previousState.SessionId;
+
         var newState = new PlaybackState
         {
             Track = track,
@@ -205,7 +211,8 @@ public static class PlaybackStateHelpers
             Options = options,
             ActiveDeviceId = activeDeviceId,
             Timestamp = localState.Timestamp,
-            Source = StateSource.Local
+            Source = StateSource.Local,
+            SessionId = sessionId
         };
 
         // Detect changes
@@ -219,13 +226,15 @@ public static class PlaybackStateHelpers
     /// CRITICAL: Uses triple-flag pattern for Spotify UI compatibility.
     /// </summary>
     /// <param name="state">Domain playback state.</param>
+    /// <param name="deviceId">This device's ID for play_origin.</param>
     /// <returns>PlayerState protobuf message.</returns>
-    public static PlayerState ToPlayerState(PlaybackState state)
+    public static PlayerState ToPlayerState(PlaybackState state, string deviceId)
     {
         var playerState = new PlayerState
         {
             Timestamp = state.Timestamp,
-            ContextUri = state.ContextUri ?? string.Empty,
+            // When no playlist/album context, the track itself is the context
+            ContextUri = state.ContextUri ?? state.Track?.Uri ?? string.Empty,
             PositionAsOfTimestamp = state.PositionMs,
             Duration = state.DurationMs,
 
@@ -237,11 +246,44 @@ public static class PlaybackStateHelpers
             IsBuffering = state.Status == PlaybackStatus.Buffering || state.Status == PlaybackStatus.Paused,
 
             PlaybackSpeed = state.Status == PlaybackStatus.Paused ? 0.0 : 1.0,
+
+            // CRITICAL: Required fields that librespot sets (missing causes Spotify to ignore state)
+            PlaybackId = Guid.NewGuid().ToString("N"),  // 32-char hex, new per publish
+            SessionId = state.SessionId ?? Guid.NewGuid().ToString("N"),
+            IsSystemInitiated = true,
+
+            // Play origin - required for Spotify to recognize source
+            PlayOrigin = new PlayOrigin
+            {
+                DeviceIdentifier = deviceId,
+                FeatureIdentifier = "wavee"
+            },
+
+            // Context index - position in queue (page 0, track 0 for single track)
+            Index = new ContextIndex { Page = 0, Track = 0 },
+
+            // Suppressions - required empty message
+            Suppressions = new Suppressions(),
+
+            // CRITICAL: Empty restrictions enables all remote controls
+            // Without this, pause/play/seek/skip buttons are disabled on remote devices
+            Restrictions = new Restrictions(),
+
             Options = new ContextPlayerOptions
             {
                 ShufflingContext = state.Options.Shuffling,
                 RepeatingContext = state.Options.RepeatingContext,
                 RepeatingTrack = state.Options.RepeatingTrack
+            },
+
+            // Playback quality info (prevents incorrect "Lossless" display on web player)
+            PlaybackQuality = new PlaybackQuality
+            {
+                BitrateLevel = BitrateLevel.Veryhigh,      // 320kbps OGG Vorbis
+                Strategy = BitrateStrategy.BestMatching,
+                TargetBitrateLevel = BitrateLevel.Veryhigh,
+                TargetBitrateAvailable = true,
+                HifiStatus = HiFiStatus.Off                 // Not lossless
             }
         };
 
@@ -251,7 +293,8 @@ public static class PlaybackStateHelpers
             playerState.Track = new ProvidedTrack
             {
                 Uri = state.Track.Uri,
-                Uid = state.Track.Uid ?? string.Empty
+                Uid = state.Track.Uid ?? string.Empty,
+                Provider = "context"  // Required: indicates track source
             };
 
             // Add metadata if available

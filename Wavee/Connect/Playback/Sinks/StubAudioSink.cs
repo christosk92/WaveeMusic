@@ -57,10 +57,10 @@ public sealed class StubAudioSink : IAudioSink
         return Task.CompletedTask;
     }
 
-    public Task ResumeAsync()
+    public Task<bool> ResumeAsync()
     {
         _isPlaying = true;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task FlushAsync()

@@ -36,6 +36,12 @@ public interface IPlaybackEngine
     IObservable<LocalPlaybackState> StateChanges { get; }
 
     /// <summary>
+    /// Observable stream of playback errors.
+    /// Emits when playback fails (e.g., audio device disconnected, decode error).
+    /// </summary>
+    IObservable<PlaybackError> Errors { get; }
+
+    /// <summary>
     /// Gets the current playback state (synchronous access).
     /// </summary>
     LocalPlaybackState CurrentState { get; }
@@ -54,6 +60,13 @@ public interface IPlaybackEngine
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Task completing when paused.</returns>
     Task PauseAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stops playback completely and clears current track.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Task completing when stopped.</returns>
+    Task StopAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resumes paused playback.
@@ -190,4 +203,36 @@ public sealed record LocalPlaybackState
         IsBuffering = false,
         Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
     };
+}
+
+/// <summary>
+/// Playback error information.
+/// </summary>
+/// <param name="ErrorType">Type of error that occurred.</param>
+/// <param name="Message">Human-readable error message.</param>
+/// <param name="Exception">Optional underlying exception.</param>
+public sealed record PlaybackError(
+    PlaybackErrorType ErrorType,
+    string Message,
+    Exception? Exception = null);
+
+/// <summary>
+/// Types of playback errors.
+/// </summary>
+public enum PlaybackErrorType
+{
+    /// <summary>Audio device not available (disconnected, busy, etc.).</summary>
+    AudioDeviceUnavailable,
+
+    /// <summary>Failed to decode audio stream.</summary>
+    DecodeError,
+
+    /// <summary>Network error loading track.</summary>
+    NetworkError,
+
+    /// <summary>Track not available (region restrictions, etc.).</summary>
+    TrackUnavailable,
+
+    /// <summary>Unknown error.</summary>
+    Unknown
 }

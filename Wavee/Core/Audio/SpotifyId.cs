@@ -241,6 +241,103 @@ public readonly struct SpotifyId : IEquatable<SpotifyId>
         }
     }
 
+    /// <summary>
+    /// Parses a Spotify URL (e.g., "https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh").
+    /// </summary>
+    /// <param name="url">The URL to parse.</param>
+    /// <returns>Parsed SpotifyId.</returns>
+    /// <exception cref="ArgumentException">Thrown if the URL format is invalid.</exception>
+    public static SpotifyId FromUrl(string url)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+
+        // Parse the URL - handles both with and without query strings
+        // Format: https://open.spotify.com/{type}/{id}?...
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            throw new ArgumentException($"Invalid URL format: {url}", nameof(url));
+
+        if (uri.Host != "open.spotify.com")
+            throw new ArgumentException($"Not a Spotify URL: {url}", nameof(url));
+
+        // Path segments: ["", "{type}", "{id}"]
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2)
+            throw new ArgumentException($"Invalid Spotify URL format: {url}", nameof(url));
+
+        var typeStr = segments[0].ToLowerInvariant();
+        var id = segments[1];
+
+        var type = typeStr switch
+        {
+            "track" => SpotifyIdType.Track,
+            "album" => SpotifyIdType.Album,
+            "artist" => SpotifyIdType.Artist,
+            "playlist" => SpotifyIdType.Playlist,
+            "episode" => SpotifyIdType.Episode,
+            "show" => SpotifyIdType.Show,
+            "user" => SpotifyIdType.User,
+            _ => SpotifyIdType.Unknown
+        };
+
+        return FromBase62(id, type);
+    }
+
+    /// <summary>
+    /// Tries to parse a Spotify URL.
+    /// </summary>
+    public static bool TryFromUrl(string url, out SpotifyId result)
+    {
+        try
+        {
+            result = FromUrl(url);
+            return true;
+        }
+        catch
+        {
+            result = default;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Parses a Spotify URI or URL to a SpotifyId.
+    /// Accepts both "spotify:track:xxx" and "https://open.spotify.com/track/xxx" formats.
+    /// </summary>
+    /// <param name="uriOrUrl">The URI or URL to parse.</param>
+    /// <returns>Parsed SpotifyId.</returns>
+    /// <exception cref="ArgumentException">Thrown if the format is invalid.</exception>
+    public static SpotifyId Parse(string uriOrUrl)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uriOrUrl);
+
+        // Check if it's a URL (starts with http)
+        if (uriOrUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            uriOrUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return FromUrl(uriOrUrl);
+        }
+
+        // Otherwise, treat as URI
+        return FromUri(uriOrUrl);
+    }
+
+    /// <summary>
+    /// Tries to parse a Spotify URI or URL.
+    /// </summary>
+    public static bool TryParse(string uriOrUrl, out SpotifyId result)
+    {
+        try
+        {
+            result = Parse(uriOrUrl);
+            return true;
+        }
+        catch
+        {
+            result = default;
+            return false;
+        }
+    }
+
     public bool Equals(SpotifyId other) => _id == other._id && Type == other.Type;
     public override bool Equals(object? obj) => obj is SpotifyId other && Equals(other);
     public override int GetHashCode() => HashCode.Combine(_id, Type);

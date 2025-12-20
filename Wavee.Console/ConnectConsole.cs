@@ -71,11 +71,26 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 _httpClient,
                 AudioPipelineOptions.Default,
                 _metadataDatabase,
+                _session.Config.DeviceId,
+                _session.Events,
                 _logger);
 
             // Subscribe to local playback state changes
             _subscriptions.Add(_audioPipeline.StateChanges.Subscribe(OnLocalPlaybackStateChanged));
-            WriteSuccess("Audio pipeline initialized - playback ready!");
+
+            // Enable bidirectional mode so local playback is reported to Spotify
+            if (_session.PlaybackState != null)
+            {
+                _session.PlaybackState.EnableBidirectionalMode(
+                    _audioPipeline,
+                    _session.SpClient,
+                    _session);
+                WriteSuccess("Audio pipeline initialized - bidirectional playback enabled!");
+            }
+            else
+            {
+                WriteSuccess("Audio pipeline initialized - playback ready!");
+            }
         }
         catch (Exception ex)
         {

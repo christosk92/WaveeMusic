@@ -186,18 +186,30 @@ public sealed class PortAudioSink : IAudioSink
 
     private void StartPlayback()
     {
+        StartPlaybackInternal();
+    }
+
+    /// <summary>
+    /// Attempts to start playback and returns success status.
+    /// </summary>
+    /// <returns>True if playback started successfully, false otherwise.</returns>
+    private bool StartPlaybackInternal()
+    {
         if (_stream == null || _isPlaying)
-            return;
+            return false;
 
         try
         {
             _stream.Start();
             _isPlaying = true;
             _logger?.LogDebug("PortAudio playback started");
+            return true;
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to start PortAudio playback");
+            _isPlaying = false;
+            return false;
         }
     }
 
@@ -240,7 +252,7 @@ public sealed class PortAudioSink : IAudioSink
     }
 
     /// <inheritdoc />
-    public Task ResumeAsync()
+    public Task<bool> ResumeAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -248,11 +260,12 @@ public sealed class PortAudioSink : IAudioSink
         {
             if (_stream != null && !_isPlaying && _buffer?.Available > 0)
             {
-                StartPlayback();
+                return Task.FromResult(StartPlaybackInternal());
             }
         }
 
-        return Task.CompletedTask;
+        // Not in a state to resume (no stream or already playing)
+        return Task.FromResult(_isPlaying);
     }
 
     /// <inheritdoc />

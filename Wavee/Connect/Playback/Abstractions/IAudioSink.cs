@@ -39,7 +39,8 @@ public interface IAudioSink : IAsyncDisposable
     /// <summary>
     /// Resumes audio output.
     /// </summary>
-    Task ResumeAsync();
+    /// <returns>True if successfully resumed, false if the audio device failed to start.</returns>
+    Task<bool> ResumeAsync();
 
     /// <summary>
     /// Flushes any buffered audio data.

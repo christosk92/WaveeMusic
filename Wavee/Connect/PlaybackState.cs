@@ -75,6 +75,12 @@ public sealed record PlaybackState
     public StateChanges Changes { get; init; } = StateChanges.None;
 
     /// <summary>
+    /// Session ID for this playback session (persists across track changes).
+    /// Used for Spotify Connect state publishing.
+    /// </summary>
+    public string? SessionId { get; init; }
+
+    /// <summary>
     /// Creates an empty playback state (no playback).
     /// </summary>
     public static PlaybackState Empty => new()

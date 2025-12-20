@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Events;
 using Wavee.Connect.Playback.Abstractions;
 using Wavee.Connect.Playback.Decoders;
 using Wavee.Connect.Playback.Processors;
@@ -25,6 +26,8 @@ public static class AudioPipelineFactory
     /// <param name="httpClient">HTTP client for CDN/head file requests.</param>
     /// <param name="options">Pipeline configuration options.</param>
     /// <param name="metadataDatabase">Optional metadata database for caching extended metadata.</param>
+    /// <param name="deviceId">Device ID for event reporting.</param>
+    /// <param name="eventService">Optional event service for playback reporting.</param>
     /// <param name="logger">Optional logger.</param>
     /// <returns>Configured audio pipeline ready for playback.</returns>
     public static AudioPipeline CreateSpotifyPipeline(
@@ -33,6 +36,8 @@ public static class AudioPipelineFactory
         HttpClient httpClient,
         AudioPipelineOptions? options = null,
         MetadataDatabase? metadataDatabase = null,
+        string deviceId = "",
+        EventService? eventService = null,
         ILogger? logger = null)
     {
         options ??= AudioPipelineOptions.Default;
@@ -48,6 +53,8 @@ public static class AudioPipelineFactory
             decoderRegistry,
             audioSink,
             processingChain,
+            deviceId,
+            eventService,
             logger);
     }
 

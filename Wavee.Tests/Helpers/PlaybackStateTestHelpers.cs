@@ -131,9 +131,11 @@ internal static class PlaybackStateTestHelpers
 internal sealed class MockPlaybackEngine : IPlaybackEngine
 {
     private readonly System.Reactive.Subjects.BehaviorSubject<LocalPlaybackState> _stateSubject;
+    private readonly System.Reactive.Subjects.Subject<PlaybackError> _errorSubject = new();
     private LocalPlaybackState _currentState;
 
     public IObservable<LocalPlaybackState> StateChanges => _stateSubject;
+    public IObservable<PlaybackError> Errors => _errorSubject;
     public LocalPlaybackState CurrentState => _currentState;
 
     public List<string> CommandsReceived { get; } = new();
@@ -289,6 +291,13 @@ internal sealed class MockPlaybackEngine : IPlaybackEngine
     public Task SetRepeatTrackAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         CommandsReceived.Add($"RepeatTrack:{enabled}");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        CommandsReceived.Add("Stop");
+        SimulateStop();
         return Task.CompletedTask;
     }
 }

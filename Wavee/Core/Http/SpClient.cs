@@ -268,6 +268,58 @@ public sealed class SpClient
     }
 
     /// <summary>
+    /// Posts a playback event to Spotify's event-service.
+    /// </summary>
+    /// <remarks>
+    /// Events are used for playback reporting (artist payouts).
+    /// The event body uses tab-delimited (0x09) fields.
+    /// </remarks>
+    /// <param name="eventBody">Event body bytes (tab-delimited fields).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task PostEventAsync(
+        byte[] eventBody,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(eventBody);
+
+        // Get access token (auto-refreshes if needed)
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/event-service/v1/events";
+
+        // Build request matching librespot-java's format
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Add("Accept-Language", "en");
+        request.Headers.Add("X-ClientTimeStamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        request.Content = new ByteArrayContent(eventBody);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+        // Send request (don't retry for events - they're fire-and-forget)
+        try
+        {
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger?.LogWarning("Event-service returned {StatusCode}", response.StatusCode);
+            }
+            else
+            {
+                _logger?.LogDebug("Event posted successfully to event-service");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger?.LogWarning(ex, "Failed to post event to event-service");
+            // Don't throw - events are fire-and-forget
+        }
+    }
+
+    /// <summary>
     /// Gets the effective locale for API requests.
     /// </summary>
     /// <returns>Locale string (e.g., "en", "es", "fr") or null if not available.</returns>

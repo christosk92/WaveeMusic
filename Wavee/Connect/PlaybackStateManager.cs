@@ -54,9 +54,9 @@ namespace Wavee.Connect;
 public sealed class PlaybackStateManager : IAsyncDisposable
 {
     private readonly DealerClient _dealerClient;
-    private readonly IPlaybackEngine? _playbackEngine;  // Null in remote-only mode
-    private readonly SpClient? _spClient;                // Null in remote-only mode
-    private readonly ISession? _session;                 // Null in remote-only mode
+    private IPlaybackEngine? _playbackEngine;  // Null in remote-only mode
+    private SpClient? _spClient;                // Null in remote-only mode
+    private ISession? _session;                 // Null in remote-only mode
     private readonly ILogger? _logger;
 
     // State
@@ -65,14 +65,15 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     private bool _isLocalPlaybackActive;
     private string? _connectionId;
     private uint _messageId;
+    private ulong _playbackStartedAt;  // Timestamp when playback started (for has_been_playing_for_ms)
 
     // Subscriptions
     private readonly IDisposable _clusterSubscription;
-    private readonly IDisposable? _localPlaybackSubscription;
-    private readonly IDisposable? _connectionIdSubscription;
+    private IDisposable? _localPlaybackSubscription;
+    private IDisposable? _connectionIdSubscription;
 
     // State publisher (bidirectional mode only)
-    private readonly AsyncWorker<PutStateRequest>? _statePublisher;
+    private AsyncWorker<PutStateRequest>? _statePublisher;
 
     private bool _disposed;
 
@@ -215,6 +216,45 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Enables bidirectional mode after construction.
+    /// Call this after creating an IPlaybackEngine to publish local state to Spotify.
+    /// </summary>
+    /// <param name="playbackEngine">Local playback engine implementing IPlaybackEngine.</param>
+    /// <param name="spClient">SpClient for publishing state to Spotify.</param>
+    /// <param name="session">Session for device info and connection ID.</param>
+    /// <exception cref="InvalidOperationException">Thrown if bidirectional mode is already enabled.</exception>
+    public void EnableBidirectionalMode(
+        IPlaybackEngine playbackEngine,
+        SpClient spClient,
+        ISession session)
+    {
+        if (_playbackEngine != null)
+            throw new InvalidOperationException("Bidirectional mode already enabled");
+
+        _playbackEngine = playbackEngine ?? throw new ArgumentNullException(nameof(playbackEngine));
+        _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+
+        // Create state publisher worker
+        _statePublisher = new AsyncWorker<PutStateRequest>(
+            "PlaybackStatePublisher",
+            PublishStateAsync,
+            _logger,
+            capacity: 10);  // Bounded queue for backpressure
+
+        // Subscribe to connection ID for publishing
+        _connectionIdSubscription = _dealerClient.ConnectionId
+            .Where(id => id != null)
+            .Subscribe(id => _connectionId = id);
+
+        // Subscribe to local playback state changes
+        _localPlaybackSubscription = _playbackEngine.StateChanges
+            .Subscribe(OnLocalPlaybackStateChanged);
+
+        _logger?.LogInformation("PlaybackStateManager: bidirectional mode enabled");
+    }
+
+    /// <summary>
     /// Handles cluster update messages from dealer (ClusterUpdate) and PUT state responses (Cluster).
     /// </summary>
     private void OnClusterUpdate(DealerMessage message)
@@ -274,15 +314,29 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 newState.Track?.Title ?? "<none>",
                 newState.Status);
 
-            // If another device became active in bidirectional mode, deactivate local playback
+            // If another device became active in bidirectional mode, stop local playback immediately
             if (IsBidirectional &&
                 _isLocalPlaybackActive &&
                 newState.Changes.HasFlag(Connect.StateChanges.ActiveDevice) &&
                 newState.ActiveDeviceId != _session?.Config.DeviceId)
             {
-                _logger?.LogInformation("Another device became active, deactivating local playback");
+                _logger?.LogInformation("Another device became active, stopping local playback");
                 _isLocalPlaybackActive = false;
-                // Note: Not pausing local engine here - that's handled by ConnectCommandHandler
+                _playbackStartedAt = 0;
+
+                // Stop local playback immediately - fire and forget
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _playbackEngine!.StopAsync();
+                        _logger?.LogDebug("Local playback stopped due to device takeover");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Failed to stop local playback after device takeover");
+                    }
+                });
             }
 
             // Update state
@@ -327,6 +381,13 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 newState.Track?.Title ?? "<none>",
                 newState.Status);
 
+            // Reset playback started timestamp on track change or stop
+            if (newState.Changes.HasFlag(Connect.StateChanges.Track) ||
+                newState.Status == PlaybackStatus.Stopped)
+            {
+                _playbackStartedAt = 0;
+            }
+
             // Mark as active if playing locally
             if (newState.Status == PlaybackStatus.Playing && !_isLocalPlaybackActive)
             {
@@ -365,29 +426,43 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
         try
         {
-            // Convert domain model to protobuf
-            var playerState = PlaybackStateHelpers.ToPlayerState(state);
+            var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // Track when playback started (reset on track change or when becoming active)
+            if (_playbackStartedAt == 0 && state.Status == PlaybackStatus.Playing)
+            {
+                _playbackStartedAt = now;
+            }
+
+            // Convert domain model to protobuf (pass deviceId for play_origin)
+            var playerState = PlaybackStateHelpers.ToPlayerState(state, _session!.Config.DeviceId);
 
             // Build device info (reuse from DeviceStateManager pattern)
-            var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(_session!.Config);
+            var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(_session.Config);
 
-            // Build PUT state request
+            // Calculate how long we've been playing
+            var hasBeenPlayingForMs = _playbackStartedAt > 0 ? now - _playbackStartedAt : 0;
+
+            // Build PUT state request with all required fields
             var request = new PutStateRequest
             {
                 MemberType = MemberType.ConnectState,
                 Device = new Device
                 {
                     DeviceInfo = deviceInfo,
-                    PlayerState = playerState  // ⭐ Actual player state, not empty!
+                    PlayerState = playerState
                 },
                 PutStateReason = PutStateReason.PlayerStateChanged,
                 IsActive = _isLocalPlaybackActive,
-                ClientSideTimestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                MessageId = _messageId++
+                ClientSideTimestamp = now,
+                MessageId = _messageId++,
+                // CRITICAL: These fields are required for Spotify to show device as playing
+                StartedPlayingAt = _playbackStartedAt,
+                HasBeenPlayingForMs = hasBeenPlayingForMs
             };
 
-            _logger?.LogTrace("Submitting state publish: messageId={MessageId}, connectionId={ConnectionId}",
-                request.MessageId, _connectionId);
+            _logger?.LogTrace("Submitting state publish: messageId={MessageId}, connectionId={ConnectionId}, startedAt={StartedAt}",
+                request.MessageId, _connectionId, _playbackStartedAt);
 
             // Submit to async worker (non-blocking)
             _statePublisher?.SubmitAsync(request);

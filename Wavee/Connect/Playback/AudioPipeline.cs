@@ -2,6 +2,7 @@ using System.Reactive.Disposables;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Commands;
+using Wavee.Connect.Events;
 using Wavee.Connect.Protocol;
 using Wavee.Connect.Playback.Abstractions;
 using Wavee.Connect.Playback.Decoders;
@@ -33,10 +34,13 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private readonly IAudioSink _audioSink;
     private readonly AudioProcessingChain _processingChain;
     private readonly ConnectCommandHandler? _commandHandler;
+    private readonly EventService? _eventService;
+    private readonly string _deviceId;
     private readonly ILogger? _logger;
 
     // State management
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject;
+    private readonly Subject<PlaybackError> _errorSubject = new();
     private LocalPlaybackState _currentState = LocalPlaybackState.Empty;
     private readonly object _stateLock = new();
 
@@ -57,6 +61,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private bool _repeatingContext;
     private bool _repeatingTrack;
 
+    // Event tracking for playback reporting
+    private string? _currentSessionId;
+    private string? _currentPlaybackId;
+    private PlaybackMetrics? _currentMetrics;
+
     // Command subscriptions
     private readonly CompositeDisposable _subscriptions = new();
 
@@ -66,17 +75,28 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <summary>
     /// Creates an AudioPipeline without command handler integration (manual control only).
     /// </summary>
+    /// <param name="sourceRegistry">Registry for track sources.</param>
+    /// <param name="decoderRegistry">Registry for audio decoders.</param>
+    /// <param name="audioSink">Audio output sink.</param>
+    /// <param name="processingChain">Audio processing chain.</param>
+    /// <param name="deviceId">Device ID for event reporting.</param>
+    /// <param name="eventService">Optional event service for reporting playback events.</param>
+    /// <param name="logger">Optional logger.</param>
     public AudioPipeline(
         TrackSourceRegistry sourceRegistry,
         AudioDecoderRegistry decoderRegistry,
         IAudioSink audioSink,
         AudioProcessingChain processingChain,
+        string deviceId = "",
+        EventService? eventService = null,
         ILogger? logger = null)
     {
         _sourceRegistry = sourceRegistry ?? throw new ArgumentNullException(nameof(sourceRegistry));
         _decoderRegistry = decoderRegistry ?? throw new ArgumentNullException(nameof(decoderRegistry));
         _audioSink = audioSink ?? throw new ArgumentNullException(nameof(audioSink));
         _processingChain = processingChain ?? throw new ArgumentNullException(nameof(processingChain));
+        _deviceId = deviceId ?? "";
+        _eventService = eventService;
         _logger = logger;
 
         _stateSubject = new BehaviorSubject<LocalPlaybackState>(_currentState);
@@ -85,14 +105,24 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <summary>
     /// Creates an AudioPipeline with command handler integration (auto-subscribes to commands).
     /// </summary>
+    /// <param name="sourceRegistry">Registry for track sources.</param>
+    /// <param name="decoderRegistry">Registry for audio decoders.</param>
+    /// <param name="audioSink">Audio output sink.</param>
+    /// <param name="processingChain">Audio processing chain.</param>
+    /// <param name="commandHandler">Connect command handler for remote control.</param>
+    /// <param name="deviceId">Device ID for event reporting.</param>
+    /// <param name="eventService">Optional event service for reporting playback events.</param>
+    /// <param name="logger">Optional logger.</param>
     public AudioPipeline(
         TrackSourceRegistry sourceRegistry,
         AudioDecoderRegistry decoderRegistry,
         IAudioSink audioSink,
         AudioProcessingChain processingChain,
         ConnectCommandHandler commandHandler,
+        string deviceId = "",
+        EventService? eventService = null,
         ILogger? logger = null)
-        : this(sourceRegistry, decoderRegistry, audioSink, processingChain, logger)
+        : this(sourceRegistry, decoderRegistry, audioSink, processingChain, deviceId, eventService, logger)
     {
         _commandHandler = commandHandler ?? throw new ArgumentNullException(nameof(commandHandler));
         SubscribeToCommands();
@@ -104,6 +134,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
     /// <inheritdoc/>
     public IObservable<LocalPlaybackState> StateChanges => _stateSubject;
+
+    /// <inheritdoc/>
+    public IObservable<PlaybackError> Errors => _errorSubject;
 
     /// <inheritdoc/>
     public LocalPlaybackState CurrentState
@@ -137,6 +170,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 return;
             }
 
+            // Convert URL to URI if needed (e.g., https://open.spotify.com/track/xxx -> spotify:track:xxx)
+            trackUri = NormalizeToUri(trackUri);
+
             // Update playback options from command
             if (command.Options != null)
             {
@@ -148,7 +184,8 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Store context and track info
             _currentContextUri = command.ContextUri;
             _currentTrackUri = trackUri;
-            _currentTrackUid = GenerateTrackUid(trackUri);
+            _currentTrackUid = string.Empty; // TODO: uids in spotify are weird.. They are part of either an album or a playlist.
+            //_currentTrackUid = GenerateTrackUid(trackUri);
             _currentPositionMs = command.PositionMs ?? 0;
 
             // Start playback loop
@@ -196,6 +233,40 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     }
 
     /// <inheritdoc/>
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        await _commandLock.WaitAsync(cancellationToken);
+        try
+        {
+            _logger?.LogInformation("Stop command received");
+
+            // Cancel any active playback
+            _playbackCts?.Cancel();
+
+            // Flush and pause the audio sink
+            await _audioSink.FlushAsync();
+            await _audioSink.PauseAsync();
+
+            // Reset state
+            _isPlaying = false;
+            _isPaused = false;
+            _currentTrackUri = null;
+            _currentTrackUid = null;
+            _currentContextUri = null;
+            _currentPositionMs = 0;
+            _currentDurationMs = 0;
+
+            PublishStateUpdate();
+
+            _logger?.LogDebug("Playback stopped and state cleared");
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
         await _commandLock.WaitAsync(cancellationToken);
@@ -209,7 +280,21 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 return;
             }
 
-            await _audioSink.ResumeAsync();
+            // Try to resume the audio sink
+            var resumed = await _audioSink.ResumeAsync();
+
+            if (!resumed)
+            {
+                _logger?.LogError("Failed to resume playback: audio device unavailable");
+
+                // Notify subscribers of the error
+                _errorSubject.OnNext(new PlaybackError(
+                    PlaybackErrorType.AudioDeviceUnavailable,
+                    "Failed to resume playback. The audio device may be disconnected or unavailable."));
+
+                // Keep the paused state - don't publish a misleading "Playing" state
+                return;
+            }
 
             _isPaused = false;
             _isPlaying = true;
@@ -374,6 +459,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _isPaused = false;
             PublishStateUpdate();
 
+            // Start playback event tracking
+            StartPlaybackSession(trackUri, _currentContextUri ?? trackUri, PlaybackReason.PlayBtn);
+
             // Decode and play
             var targetPositionReached = startPositionMs == 0;
             await foreach (var buffer in decoder.DecodeAsync(trackStream.AudioStream, cancellationToken))
@@ -410,6 +498,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Playback completed
             _logger?.LogInformation("Playback completed for track: {TrackUri}", trackUri);
 
+            // Send track transition event
+            EndPlaybackSession((int)_currentPositionMs, PlaybackReason.TrackDone);
+
             // Handle repeat
             if (_repeatingTrack)
             {
@@ -425,10 +516,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         catch (OperationCanceledException)
         {
             _logger?.LogDebug("Playback loop cancelled");
+            // Send transition event when cancelled (e.g., skip, stop)
+            EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error in playback loop");
+            // Send transition event on error
+            EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
             _isPlaying = false;
             PublishStateUpdate();
         }
@@ -554,6 +649,142 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     }
 
     // ================================================================
+    // EVENT REPORTING
+    // ================================================================
+
+    /// <summary>
+    /// Generates a new session ID (32-char hex string).
+    /// </summary>
+    private static string GenerateSessionId()
+    {
+        var bytes = new byte[16];
+        Random.Shared.NextBytes(bytes);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Generates a new playback ID (32-char hex string).
+    /// </summary>
+    private static string GeneratePlaybackId()
+    {
+        var bytes = new byte[16];
+        Random.Shared.NextBytes(bytes);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Starts tracking a new playback session and sends events.
+    /// </summary>
+    private void StartPlaybackSession(string trackUri, string contextUri, PlaybackReason reason)
+    {
+        if (_eventService == null)
+            return;
+
+        // Check if context changed (new session needed)
+        var contextChanged = _currentSessionId == null || _currentContextUri != contextUri;
+        if (contextChanged)
+        {
+            _currentSessionId = GenerateSessionId();
+            _eventService.SendEvent(new NewSessionIdEvent(
+                _currentSessionId,
+                contextUri,
+                contextSize: 1)); // TODO: Get actual context size
+            _logger?.LogDebug("Sent NewSessionIdEvent: session={SessionId}, context={ContextUri}",
+                _currentSessionId, contextUri);
+        }
+
+        // Generate new playback ID for this track
+        _currentPlaybackId = GeneratePlaybackId();
+        _eventService.SendEvent(new NewPlaybackIdEvent(_currentSessionId!, _currentPlaybackId));
+        _logger?.LogDebug("Sent NewPlaybackIdEvent: playback={PlaybackId}, session={SessionId}",
+            _currentPlaybackId, _currentSessionId);
+
+        // Create metrics for this playback
+        _currentMetrics = new PlaybackMetrics(
+            trackId: ExtractTrackId(trackUri),
+            playbackId: _currentPlaybackId,
+            contextUri: contextUri,
+            featureVersion: "wavee",
+            referrerIdentifier: "");
+
+        _currentMetrics.SourceStart = "context";
+        _currentMetrics.ReasonStart = reason;
+        _currentMetrics.StartInterval(0);
+    }
+
+    /// <summary>
+    /// Ends the current playback and sends TrackTransitionEvent.
+    /// </summary>
+    private void EndPlaybackSession(int endPositionMs, PlaybackReason reason)
+    {
+        if (_eventService == null || _currentMetrics == null || _currentPlaybackId == null)
+            return;
+
+        // End the current interval
+        _currentMetrics.EndInterval(endPositionMs);
+        _currentMetrics.SourceEnd = "context";
+        _currentMetrics.ReasonEnd = reason;
+
+        // Set player metrics with what we know
+        _currentMetrics.Player = new PlayerMetrics
+        {
+            Duration = (int)_currentDurationMs,
+            DecodedLength = (int)_currentDurationMs, // Approximate
+            Bitrate = 320, // Default OGG Vorbis high quality
+            Encoding = "vorbis",
+            Transition = "fwdbtn", // TODO: Determine actual transition
+            ContentMetrics = new ContentMetrics
+            {
+                PreloadedAudioKey = true, // TODO: Track actual audio key state
+                AudioKeyTime = -1
+            }
+        };
+
+        // Send the critical TrackTransitionEvent
+        _eventService.SendEvent(new TrackTransitionEvent(
+            _deviceId,
+            _deviceId, // Last command sent by this device
+            _currentMetrics));
+
+        _logger?.LogDebug("Sent TrackTransitionEvent: playback={PlaybackId}, endPosition={EndPos}ms, reason={Reason}",
+            _currentPlaybackId, endPositionMs, reason);
+
+        // Clear current playback ID (session ID persists until context changes)
+        _currentPlaybackId = null;
+        _currentMetrics = null;
+    }
+
+    /// <summary>
+    /// Extracts the track ID from a Spotify URI.
+    /// </summary>
+    private static string ExtractTrackId(string trackUri)
+    {
+        // Format: spotify:track:XXXXXXXXXXXXXXXXXXXXXX
+        var parts = trackUri.Split(':');
+        return parts.Length >= 3 ? parts[2] : trackUri;
+    }
+
+    /// <summary>
+    /// Normalizes a Spotify URL or URI to a standard URI format.
+    /// Converts "https://open.spotify.com/track/xxx" to "spotify:track:xxx".
+    /// </summary>
+    private static string NormalizeToUri(string uriOrUrl)
+    {
+        // If it's already a spotify: URI, return as-is
+        if (uriOrUrl.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase))
+            return uriOrUrl;
+
+        // Try to parse as URL and convert to URI
+        if (Core.Audio.SpotifyId.TryParse(uriOrUrl, out var spotifyId))
+        {
+            return spotifyId.ToUri();
+        }
+
+        // Return as-is if we can't parse it (let downstream code handle the error)
+        return uriOrUrl;
+    }
+
+    // ================================================================
     // DISPOSAL
     // ================================================================
 
@@ -576,6 +807,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         // Complete state subject
         _stateSubject.OnCompleted();
         _stateSubject.Dispose();
+
+        // Complete error subject
+        _errorSubject.OnCompleted();
+        _errorSubject.Dispose();
 
         // Dispose lock
         _commandLock.Dispose();

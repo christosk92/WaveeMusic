@@ -39,7 +39,8 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
     private readonly ISession _session;
     private readonly ILogger? _logger;
-    private readonly ConcurrentDictionary<uint, TaskCompletionSource<byte[]>> _pending = new();
+    private readonly ConcurrentDictionary<uint, (TaskCompletionSource<byte[]> Tcs, FileId FileId)> _pending = new();
+    private readonly ConcurrentDictionary<FileId, byte[]> _keyCache = new();
     private uint _sequence;
     private bool _disposed;
 
@@ -70,6 +71,13 @@ public sealed class AudioKeyManager : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // Check cache first
+        if (_keyCache.TryGetValue(fileId, out var cachedKey))
+        {
+            _logger?.LogDebug("AudioKey cache hit for file {FileId}", fileId.ToBase16());
+            return cachedKey;
+        }
 
         if (!_session.IsConnected())
             throw new AudioKeyException(AudioKeyFailureReason.NotConnected, "Session is not connected");
@@ -116,7 +124,7 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
         // Create completion source for this request
         var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pending.TryAdd(seq, tcs))
+        if (!_pending.TryAdd(seq, (tcs, fileId)))
             throw new AudioKeyException(AudioKeyFailureReason.InternalError, "Failed to register pending request");
 
         try
@@ -166,11 +174,13 @@ public sealed class AudioKeyManager : IAsyncDisposable
         // Extract sequence number (first 4 bytes, big-endian)
         var seq = BinaryPrimitives.ReadUInt32BigEndian(payload);
 
-        if (!_pending.TryRemove(seq, out var tcs))
+        if (!_pending.TryRemove(seq, out var pending))
         {
             _logger?.LogWarning("Received AudioKey response for unknown sequence: {Seq}", seq);
             return;
         }
+
+        var (tcs, fileId) = pending;
 
         switch (packetType)
         {
@@ -185,7 +195,11 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
                 // Extract 16-byte key
                 var key = payload.Slice(4, 16).ToArray();
-                _logger?.LogDebug("Received AudioKey: seq={Seq}", seq);
+
+                // Cache the key for future use
+                _keyCache.TryAdd(fileId, key);
+
+                _logger?.LogDebug("Received AudioKey: seq={Seq}, cached for file {FileId}", seq, fileId.ToBase16());
                 tcs.TrySetResult(key);
                 break;
 
@@ -248,9 +262,9 @@ public sealed class AudioKeyManager : IAsyncDisposable
     {
         foreach (var kvp in _pending)
         {
-            if (_pending.TryRemove(kvp.Key, out var tcs))
+            if (_pending.TryRemove(kvp.Key, out var pending))
             {
-                tcs.TrySetCanceled();
+                pending.Tcs.TrySetCanceled();
             }
         }
     }

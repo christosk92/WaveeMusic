@@ -5,6 +5,7 @@ using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
+using Wavee.Connect.Events;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Audio;
 using Wavee.Core.Authentication;
@@ -53,6 +54,9 @@ public sealed class Session : ISession, IAsyncDisposable
 
     // Audio subsystem
     private AudioKeyManager? _audioKeyManager;
+
+    // Event subsystem
+    private EventService? _eventService;
 
     /// <summary>
     /// Raised when a packet is received from the server.
@@ -346,6 +350,10 @@ public sealed class Session : ISession, IAsyncDisposable
             _playbackStateManager = new PlaybackStateManager(_dealerClient, _logger);
             _logger?.LogDebug("PlaybackStateManager created");
 
+            // Create event service for reporting playback events (artist payouts)
+            _eventService = new EventService(SpClient, _logger);
+            _logger?.LogDebug("EventService created");
+
             // Signal that subscribers are ready - flush any queued PUT state responses
             _dealerClient.StartProcessingMessages();
             _logger?.LogDebug("DealerClient message processing started");
@@ -462,6 +470,17 @@ public sealed class Session : ISession, IAsyncDisposable
     /// </remarks>
     /// <returns>PlaybackStateManager instance, or null if Connect is disabled.</returns>
     public PlaybackStateManager? PlaybackState => _playbackStateManager;
+
+    /// <summary>
+    /// Gets the event service for reporting playback events to Spotify.
+    /// </summary>
+    /// <remarks>
+    /// EventService sends playback events (TrackTransition, NewPlaybackId, etc.) to Spotify
+    /// for analytics and artist payouts. Events are sent asynchronously in the background.
+    /// Available only if EnableConnect is true in SessionConfig.
+    /// </remarks>
+    /// <returns>EventService instance, or null if Connect is disabled.</returns>
+    public EventService? Events => _eventService;
 
     /// <summary>
     /// Gets the AudioKeyManager for requesting audio decryption keys.
@@ -1057,6 +1076,12 @@ public sealed class Session : ISession, IAsyncDisposable
         {
             await _audioKeyManager.DisposeAsync();
             _audioKeyManager = null;
+        }
+
+        if (_eventService is not null)
+        {
+            await _eventService.DisposeAsync();
+            _eventService = null;
         }
 
         await DisconnectInternalAsync();
