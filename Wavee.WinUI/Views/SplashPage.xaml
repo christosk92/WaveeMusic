@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Wavee.WinUI.Views.SplashPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid>
+
+        <!--  Centered content  -->
+        <StackPanel
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="24">
+
+            <!--  App Logo/Name  -->
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="48"
+                FontWeight="Bold"
+                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                Text="Wavee" />
+
+            <!--  Loading Spinner  -->
+            <ProgressRing
+                Width="48"
+                Height="48"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                IsActive="{x:Bind ViewModel.IsInitializing, Mode=OneWay}" />
+
+            <!--  Status Message  -->
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="16"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Opacity="0.8"
+                Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
+
+        </StackPanel>
+    </Grid>
+</Page>

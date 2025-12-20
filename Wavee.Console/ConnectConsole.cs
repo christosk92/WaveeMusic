@@ -37,7 +37,10 @@ internal sealed class ConnectConsole : IDisposable
         WriteInfo($"Type 'help' for available commands");
         System.Console.WriteLine();
 
-        // Subscribe to volume changes
+        // Subscribe to all Connect events
+        SubscribeToCommandEvents();
+        SubscribeToPlaybackStateEvents();
+        SubscribeToConnectionEvents();
         SubscribeToVolumeChanges();
 
         while (!cancellationToken.IsCancellationRequested)
@@ -125,10 +128,19 @@ internal sealed class ConnectConsole : IDisposable
         System.Console.WriteLine("  volume               Show current volume");
         System.Console.WriteLine("  volume set <0-100>   Set volume percentage");
         System.Console.WriteLine("  volume +|-           Increase/decrease volume by 5%");
-        System.Console.WriteLine("  watch start|stop     Toggle live event monitoring");
+        System.Console.WriteLine("  watch start|stop     Toggle raw dealer message monitoring");
         System.Console.WriteLine("  info                 Show device information");
         System.Console.WriteLine("  clear                Clear console");
         System.Console.WriteLine("  quit                 Exit application");
+        System.Console.WriteLine();
+        System.Console.WriteLine("Live Events (automatically displayed):");
+        System.Console.ForegroundColor = ConsoleColor.Cyan;
+        System.Console.WriteLine("  [CMD]                Remote control commands (Play, Pause, etc.)");
+        System.Console.ForegroundColor = ConsoleColor.Magenta;
+        System.Console.WriteLine("  [STATE]              Playback state changes (Track, Position, etc.)");
+        System.Console.ForegroundColor = ConsoleColor.Yellow;
+        System.Console.WriteLine("  [DEALER]             Connection status changes");
+        System.Console.ResetColor();
     }
 
     private void ShowStatus()
@@ -336,6 +348,172 @@ internal sealed class ConnectConsole : IDisposable
             System.Console.WriteLine($"  Volume:       {volumePct}% (raw: {volumeRaw}/65535)");
             System.Console.WriteLine($"  Active:       {_session.DeviceState.IsActive}");
         }
+    }
+
+    private void SubscribeToCommandEvents()
+    {
+        if (_session.CommandHandler == null)
+            return;
+
+        // Play command
+        _subscriptions.Add(_session.CommandHandler.PlayCommands.Subscribe(cmd =>
+        {
+            var details = $"Track: {cmd.TrackUri ?? "N/A"}, Context: {cmd.ContextUri ?? "N/A"}";
+            if (cmd.Options != null)
+                details += $" (shuffle: {cmd.Options.ShufflingContext}, repeat: {cmd.Options.RepeatingContext})";
+            WriteCommand("Play", details);
+        }));
+
+        // Pause command
+        _subscriptions.Add(_session.CommandHandler.PauseCommands.Subscribe(_ =>
+            WriteCommand("Pause")));
+
+        // Resume command
+        _subscriptions.Add(_session.CommandHandler.ResumeCommands.Subscribe(_ =>
+            WriteCommand("Resume")));
+
+        // Seek command
+        _subscriptions.Add(_session.CommandHandler.SeekCommands.Subscribe(cmd =>
+            WriteCommand("Seek", $"Position: {FormatTimeSpan(cmd.PositionMs)}")));
+
+        // Shuffle command
+        _subscriptions.Add(_session.CommandHandler.ShuffleCommands.Subscribe(cmd =>
+            WriteCommand("Shuffle", cmd.Enabled ? "Enabled" : "Disabled")));
+
+        // Repeat Context command
+        _subscriptions.Add(_session.CommandHandler.RepeatContextCommands.Subscribe(cmd =>
+            WriteCommand("Repeat Context", cmd.Enabled ? "Enabled" : "Disabled")));
+
+        // Repeat Track command
+        _subscriptions.Add(_session.CommandHandler.RepeatTrackCommands.Subscribe(cmd =>
+            WriteCommand("Repeat Track", cmd.Enabled ? "Enabled" : "Disabled")));
+
+        // Skip Next command
+        _subscriptions.Add(_session.CommandHandler.SkipNextCommands.Subscribe(_ =>
+            WriteCommand("Skip Next")));
+
+        // Skip Prev command
+        _subscriptions.Add(_session.CommandHandler.SkipPrevCommands.Subscribe(_ =>
+            WriteCommand("Skip Prev")));
+
+        // Transfer command
+        _subscriptions.Add(_session.CommandHandler.TransferCommands.Subscribe(cmd =>
+            WriteCommand("Transfer", "Playback transferred to this device")));
+    }
+
+    private void SubscribeToPlaybackStateEvents()
+    {
+        if (_session.PlaybackState == null)
+            return;
+
+        // Track changed
+        _subscriptions.Add(_session.PlaybackState.TrackChanged.Subscribe(state =>
+        {
+            if (state.Track != null)
+            {
+                var details = $"\"{state.Track.Title}\" - {state.Track.Artist}";
+                if (!string.IsNullOrEmpty(state.Track.Album))
+                    details += $" ({state.Track.Album})";
+                WriteStateChange("Track", details);
+            }
+        }));
+
+        // Playback status changed
+        _subscriptions.Add(_session.PlaybackState.PlaybackStatusChanged.Subscribe(state =>
+            WriteStateChange("Status", state.Status.ToString())));
+
+        // Position changed (only log if significant)
+        _subscriptions.Add(_session.PlaybackState.PositionChanged
+            .Throttle(TimeSpan.FromSeconds(1)) // Real-time updates
+            .Subscribe(state =>
+            {
+                var current = FormatTimeSpan(state.PositionMs);
+                var total = FormatTimeSpan(state.DurationMs);
+                WriteStateChange("Position", $"{current} / {total}");
+            }));
+
+        // Active device changed
+        _subscriptions.Add(_session.PlaybackState.ActiveDeviceChanged.Subscribe(state =>
+            WriteStateChange("Device", $"{state.ActiveDeviceId} (active)")));
+
+        // Options changed
+        _subscriptions.Add(_session.PlaybackState.OptionsChanged.Subscribe(state =>
+        {
+            var shuffle = state.Options.Shuffling ? "ON" : "OFF";
+            var repeat = state.Options.RepeatingContext ? "Context" :
+                        state.Options.RepeatingTrack ? "Track" : "OFF";
+            WriteStateChange("Options", $"Shuffle: {shuffle}, Repeat: {repeat}");
+        }));
+    }
+
+    private void SubscribeToConnectionEvents()
+    {
+        if (_session.Dealer == null)
+            return;
+
+        _subscriptions.Add(_session.Dealer.ConnectionState.Subscribe(state =>
+        {
+            var status = state switch
+            {
+                ConnectionState.Connected => "Connected",
+                ConnectionState.Connecting => "Connecting...",
+                ConnectionState.Disconnected => "Disconnected",
+                _ => state.ToString()
+            };
+
+            var details = state == ConnectionState.Connected && _session.Dealer.CurrentConnectionId != null
+                ? $"ID: {_session.Dealer.CurrentConnectionId}"
+                : null;
+
+            WriteDealerEvent(status, details);
+        }));
+    }
+
+    private void WriteCommand(string command, string? details = null)
+    {
+        System.Console.WriteLine();
+        System.Console.ForegroundColor = ConsoleColor.Cyan;
+        System.Console.Write($"[CMD] {command}");
+        if (details != null)
+        {
+            System.Console.ForegroundColor = ConsoleColor.White;
+            System.Console.Write($" → {details}");
+        }
+        System.Console.WriteLine();
+        System.Console.ResetColor();
+        System.Console.Write("> ");
+    }
+
+    private void WriteStateChange(string changeType, string details)
+    {
+        System.Console.WriteLine();
+        System.Console.ForegroundColor = ConsoleColor.Magenta;
+        System.Console.Write($"[STATE] {changeType}");
+        System.Console.ForegroundColor = ConsoleColor.White;
+        System.Console.WriteLine($" → {details}");
+        System.Console.ResetColor();
+        System.Console.Write("> ");
+    }
+
+    private void WriteDealerEvent(string status, string? details = null)
+    {
+        System.Console.WriteLine();
+        System.Console.ForegroundColor = ConsoleColor.Yellow;
+        System.Console.Write($"[DEALER] {status}");
+        if (details != null)
+        {
+            System.Console.ForegroundColor = ConsoleColor.White;
+            System.Console.Write($" → {details}");
+        }
+        System.Console.WriteLine();
+        System.Console.ResetColor();
+        System.Console.Write("> ");
+    }
+
+    private string FormatTimeSpan(long milliseconds)
+    {
+        var ts = TimeSpan.FromMilliseconds(milliseconds);
+        return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
     }
 
     private void SubscribeToVolumeChanges()

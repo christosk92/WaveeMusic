@@ -1,0 +1,164 @@
+<UserControl
+    x:Class="Wavee.WinUI.Controls.ContentCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:components="using:Wavee.WinUI.Controls"
+    xmlns:local="using:Wavee.WinUI.Controls"
+    xmlns:media="using:CommunityToolkit.WinUI.Media"
+    xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
+    xmlns:ui="using:CommunityToolkit.WinUI"
+    x:Name="Root">
+
+    <UserControl.Resources>
+        <!--  Blur In Animation  -->
+        <animations:AnimationSet x:Key="BlurInAnimation">
+            <animations:BlurEffectAnimation
+                Target="{x:Bind ImageBlurEffect}"
+                EasingMode="EaseOut"
+                EasingType="Sine"
+                From="0"
+                To="12"
+                Duration="0:0:0.15" />
+        </animations:AnimationSet>
+
+        <!--  Blur Out Animation  -->
+        <animations:AnimationSet x:Key="BlurOutAnimation">
+            <animations:BlurEffectAnimation
+                Target="{x:Bind ImageBlurEffect}"
+                EasingMode="EaseOut"
+                EasingType="Sine"
+                From="12"
+                To="0"
+                Duration="0:0:0.15" />
+        </animations:AnimationSet>
+    </UserControl.Resources>
+
+    <components:ShadowButton
+
+        Padding="0,0,0,12"
+        ShadowColor="{x:Bind Content.ShadowColor, Mode=OneWay}">
+        <Grid
+            x:Name="CardRoot"
+            Holding="OnCardHolding"
+            PointerEntered="OnCardPointerEntered"
+            PointerExited="OnCardPointerExited"
+            RightTapped="OnCardRightTapped">
+            <!--  Card Content  -->
+            <StackPanel Spacing="8">
+                <!--  Cover Image  -->
+                <Border
+                    Margin="{x:Bind Content.ImageMargin, Mode=OneWay}"
+                    ui:UIElementExtensions.ClipToBounds="True"
+                    CornerRadius="{x:Bind Content.ImageCornerRadius, Mode=OneWay}">
+                    <primitives:ConstrainedBox AspectRatio="1:1">
+                        <Image
+                            x:Name="CardImage"
+                            Source="{x:Bind Content.Image, Mode=OneWay}"
+                            Stretch="UniformToFill" />
+
+                        <media:UIElementExtensions.VisualFactory>
+                            <media:PipelineVisualFactory>
+                                <media:BlurEffect
+                                    x:Name="ImageBlurEffect"
+                                    IsAnimatable="True" Amount="0" />
+                            </media:PipelineVisualFactory>
+                        </media:UIElementExtensions.VisualFactory>
+                    </primitives:ConstrainedBox>
+                </Border>
+
+                <!--  Content Info  -->
+                <StackPanel>
+                    <TextBlock
+                        FontWeight="SemiBold"
+                        MaxLines="2"
+                        Text="{x:Bind Content.Name, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        MaxLines="2"
+                        Text="{x:Bind Content.Subtitle, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </StackPanel>
+
+            <!--  Hover Overlay with Buttons  -->
+            <Grid
+                x:Name="HoverOverlay"
+                Margin="{x:Bind Content.ImageMargin, Mode=OneWay}"
+                Background="Transparent"
+                CornerRadius="{x:Bind Content.ImageCornerRadius, Mode=OneWay}"
+                Opacity="0">
+                <!--  Play Button (Center-Bottom)  -->
+                <Button
+                    Margin="0,0,12,12"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Command="{x:Bind Content.PlayPauseCommand,Mode=OneWay}"
+                    Style="{StaticResource HoverPlayButtonStyle}">
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="{x:Bind Content.PlayPauseIcon, Mode=OneWay}" />
+                </Button>
+
+                <!--  Add Button (Top-Right)  -->
+                <Button
+                    Margin="0,12,12,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Command="{x:Bind Content.AddToLibraryCommand,Mode=OneWay}"
+                    Style="{StaticResource HoverIconButtonStyle}">
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE710;" />
+                </Button>
+
+                <!--  More Options Button (Top-Left)  -->
+                <Button
+                    x:Name="MoreButton"
+                    Margin="12,12,0,0"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Style="{StaticResource HoverIconButtonStyle}">
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE712;" />
+
+                    <!--  Context Menu  -->
+                    <Button.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <MenuFlyoutItem Command="{x:Bind Content.PlayNowCommand,Mode=OneWay}" Text="Play">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE768;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind Content.PlayNextCommand,Mode=OneWay}" Text="Play next">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE710;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind Content.PlayLaterCommand,Mode=OneWay}" Text="Play later">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE710;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Command="{x:Bind Content.AddToLibraryCommand,Mode=OneWay}" Text="Add to library">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE728;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind Content.AddToPlaylistCommand,Mode=OneWay}" Text="Add to playlist">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE142;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Command="{x:Bind Content.ShareCommand,Mode=OneWay}" Text="Share">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72D;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </Grid>
+    </components:ShadowButton>
+</UserControl>

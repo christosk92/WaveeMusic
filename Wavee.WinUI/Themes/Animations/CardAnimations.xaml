@@ -1,0 +1,116 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations">
+
+    <!--  Card Hover Enter Animation  -->
+    <animations:AnimationSet x:Key="HoverEnterAnimation">
+        <animations:ScaleAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            To="1.02"
+            Duration="0:0:0.2" />
+        <animations:OffsetDropShadowAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            To="0,12,12"
+            Duration="0:0:0.2" />
+        <animations:OpacityDropShadowAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            From="0"
+            To="1"
+            Duration="0:0:0.2" />
+    </animations:AnimationSet>
+
+    <!--  Card Hover Exit Animation  -->
+    <animations:AnimationSet x:Key="HoverExitAnimation">
+        <animations:ScaleAnimation
+            EasingMode="EaseInOut"
+            EasingType="Sine"
+            To="1.0"
+            Duration="0:0:0.2" />
+        <animations:OffsetDropShadowAnimation
+            EasingMode="EaseInOut"
+            EasingType="Sine"
+            To="0,12,12"
+            Duration="0:0:0.2" />
+        <animations:OpacityDropShadowAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            From="0.2"
+            To="0"
+            Duration="0:0:0.2" />
+    </animations:AnimationSet>
+
+    <!--  Card Pressed Animation  -->
+    <animations:AnimationSet x:Key="PressedAnimation">
+        <animations:ScaleAnimation
+            EasingMode="EaseInOut"
+            EasingType="Sine"
+            To="0.98"
+            Duration="0:0:0.1" />
+        <animations:OffsetDropShadowAnimation
+            EasingMode="EaseInOut"
+            EasingType="Sine"
+            To="2"
+            Duration="0:0:0.1" />
+    </animations:AnimationSet>
+
+    <!--  Card Released Animation  -->
+    <animations:AnimationSet x:Key="ReleasedAnimation">
+        <animations:ScaleAnimation
+            EasingMode="EaseOut"
+            EasingType="Cubic"
+            To="1.05"
+            Duration="0:0:0.15" />
+        <animations:OffsetDropShadowAnimation
+            EasingMode="EaseOut"
+            EasingType="Cubic"
+            To="16"
+            Duration="0:0:0.15" />
+        <animations:OpacityDropShadowAnimation
+            EasingMode="EaseOut"
+            EasingType="Cubic"
+            To="0.25"
+            Duration="0:0:0.15" />
+    </animations:AnimationSet>
+
+    <!--  Button Overlay Fade In Animation  -->
+    <animations:AnimationSet x:Key="ButtonOverlayFadeInAnimation">
+        <animations:OpacityAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            To="1"
+            Duration="0:0:0.15" />
+    </animations:AnimationSet>
+
+    <!--  Button Overlay Fade Out Animation  -->
+    <animations:AnimationSet x:Key="ButtonOverlayFadeOutAnimation">
+        <animations:OpacityAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            To="0"
+            Duration="0:0:0.15" />
+    </animations:AnimationSet>
+
+    <!--  Blur In Animation  -->
+    <animations:AnimationSet x:Key="BlurInAnimation">
+        <animations:BlurEffectAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            From="0"
+            To="12"
+            Duration="0:0:0.15" />
+    </animations:AnimationSet>
+
+    <!--  Blur Out Animation  -->
+    <animations:AnimationSet x:Key="BlurOutAnimation">
+        <animations:BlurEffectAnimation
+            EasingMode="EaseOut"
+            EasingType="Sine"
+            From="12"
+            To="0"
+            Duration="0:0:0.15" />
+    </animations:AnimationSet>
+</ResourceDictionary>

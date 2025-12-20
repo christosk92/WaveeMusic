@@ -52,4 +52,17 @@ internal class MockSession : ISession
     /// Gets current user data.
     /// </summary>
     public UserData? GetUserData() => null;
+
+    /// <summary>
+    /// Checks if the session is connected.
+    /// </summary>
+    public bool IsConnected() => true;
+
+    /// <summary>
+    /// Sends a packet (no-op for mock).
+    /// </summary>
+    public ValueTask SendAsync(PacketType packetType, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
