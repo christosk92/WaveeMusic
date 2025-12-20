@@ -18,6 +18,7 @@ internal sealed class DealerConnection : IDealerConnection
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
     private Task? _processTask;
+    private volatile bool _disposed;
 
     /// <summary>
     /// Raised when a complete WebSocket message is received.
@@ -114,10 +115,17 @@ internal sealed class DealerConnection : IDealerConnection
     /// <param name="cancellationToken">Cancellation token.</param>
     public ValueTask SendAsync(ReadOnlyMemory<byte> utf8Message, CancellationToken cancellationToken = default)
     {
-        if (_webSocket?.State != WebSocketState.Open)
+        if (_disposed || _webSocket?.State != WebSocketState.Open)
             throw new InvalidOperationException("Not connected");
 
-        return _webSocket.SendAsync(utf8Message, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+        try
+        {
+            return _webSocket.SendAsync(utf8Message, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+        }
+        catch (ObjectDisposedException)
+        {
+            throw new InvalidOperationException("Connection disposed");
+        }
     }
 
     /// <summary>
@@ -193,12 +201,42 @@ internal sealed class DealerConnection : IDealerConnection
         try
         {
             while (!cancellationToken.IsCancellationRequested &&
+                   !_disposed &&
                    _webSocket?.State == WebSocketState.Open)
             {
                 // Get memory from pipe (zero-allocation)
                 var memory = writer.GetMemory(4096);
 
-                var result = await _webSocket.ReceiveAsync(memory, cancellationToken);
+                ValueTask<ValueWebSocketReceiveResult> receiveTask;
+                try
+                {
+                    receiveTask = _webSocket.ReceiveAsync(memory, cancellationToken);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // WebSocket was disposed, connection is closing
+                    _logger?.LogDebug("WebSocket disposed during receive setup");
+                    break;
+                }
+
+                ValueWebSocketReceiveResult result;
+                try
+                {
+                    result = await receiveTask;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // WebSocket was disposed while waiting
+                    _logger?.LogDebug("WebSocket disposed during receive");
+                    break;
+                }
+                catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
+                {
+                    // Connection closed unexpectedly
+                    _logger?.LogDebug("WebSocket connection closed prematurely");
+                    Closed?.Invoke(this, null);
+                    break;
+                }
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
@@ -230,7 +268,14 @@ internal sealed class DealerConnection : IDealerConnection
         }
         finally
         {
-            await writer.CompleteAsync();
+            try
+            {
+                await writer.CompleteAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogTrace(ex, "Error completing pipe writer (already disposed)");
+            }
             State = ConnectionState.Disconnected;
         }
     }
@@ -244,9 +289,20 @@ internal sealed class DealerConnection : IDealerConnection
 
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested && !_disposed)
             {
-                var result = await reader.ReadAsync(cancellationToken);
+                ReadResult result;
+                try
+                {
+                    result = await reader.ReadAsync(cancellationToken);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // PipeReader was disposed, connection is closing
+                    _logger?.LogDebug("PipeReader disposed during read");
+                    break;
+                }
+
                 var buffer = result.Buffer;
 
                 // Process complete messages (delimited by flush)
@@ -277,7 +333,14 @@ internal sealed class DealerConnection : IDealerConnection
         }
         finally
         {
-            await reader.CompleteAsync();
+            try
+            {
+                await reader.CompleteAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogTrace(ex, "Error completing pipe reader (already disposed)");
+            }
         }
     }
 
@@ -312,6 +375,11 @@ internal sealed class DealerConnection : IDealerConnection
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
         _cts?.Cancel();
 
         if (_webSocket != null)

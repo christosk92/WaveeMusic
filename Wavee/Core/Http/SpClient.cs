@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Audio;
 using Wavee.Core.Session;
+using Wavee.Protocol.Storage;
 
 namespace Wavee.Core.Http;
 
@@ -96,6 +98,42 @@ public sealed class SpClient
     }
 
     /// <summary>
+    /// Resolves CDN URLs for an audio file.
+    /// </summary>
+    /// <remarks>
+    /// This endpoint returns a list of CDN URLs where the audio file can be downloaded.
+    /// The URLs are time-limited and include authentication tokens.
+    /// </remarks>
+    /// <param name="fileId">The audio file ID (20 bytes).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>StorageResolveResponse containing CDN URLs.</returns>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task<StorageResolveResponse> ResolveAudioStorageAsync(
+        FileId fileId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!fileId.IsValid)
+            throw new ArgumentException("FileId is not valid", nameof(fileId));
+
+        var url = $"{_baseUrl}/storage-resolve/files/audio/interactive/{fileId.ToBase16()}";
+        var responseBytes = await GetProtobufAsync(url, cancellationToken);
+
+        var response = StorageResolveResponse.Parser.ParseFrom(responseBytes);
+
+        _logger?.LogDebug("Resolved audio storage for {FileId}: {UrlCount} CDN URLs, result={Result}",
+            fileId.ToBase16(), response.Cdnurl.Count, response.Result);
+
+        if (response.Result == StorageResolveResponse.Types.Result.Restricted)
+        {
+            throw new SpClientException(
+                SpClientFailureReason.Unauthorized,
+                $"Audio file {fileId.ToBase16()} is restricted");
+        }
+
+        return response;
+    }
+
+    /// <summary>
     /// Announces device availability via Spotify Connect.
     /// </summary>
     /// <remarks>
@@ -108,7 +146,7 @@ public sealed class SpClient
     /// <param name="request">PUT state request with device info and state.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <exception cref="SpClientException">Thrown if the request fails.</exception>
-    public async Task PutConnectStateAsync(
+    public async Task<byte[]> PutConnectStateAsync(
         string deviceId,
         string connectionId,
         Protocol.Player.PutStateRequest request,
@@ -162,7 +200,14 @@ public sealed class SpClient
         }
 
         response.EnsureSuccessStatusCode();
-        _logger?.LogDebug("Successfully updated connect state for device {DeviceId}", deviceId);
+
+        // Read response body - Spotify returns a ClusterUpdate protobuf
+        var responseBody = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+
+        _logger?.LogDebug("Successfully updated connect state for device {DeviceId}, response size: {Size} bytes",
+            deviceId, responseBody.Length);
+
+        return responseBody;
     }
 
     /// <summary>

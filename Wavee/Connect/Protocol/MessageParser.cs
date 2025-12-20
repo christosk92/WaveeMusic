@@ -290,6 +290,102 @@ internal static class MessageParser
     }
 
     /// <summary>
+    /// Parses multiple concatenated JSON messages from a single buffer.
+    /// WebSocket can sometimes deliver multiple JSON objects without delimiters.
+    /// </summary>
+    /// <param name="utf8Json">Raw UTF-8 JSON bytes (may contain multiple objects).</param>
+    /// <param name="logger">Optional logger for diagnostics.</param>
+    /// <returns>List of parsed messages.</returns>
+    public static List<DealerMessage> ParseMessages(ReadOnlySpan<byte> utf8Json, ILogger? logger = null)
+    {
+        var messages = new List<DealerMessage>();
+
+        if (utf8Json.IsEmpty)
+            return messages;
+
+        var remaining = utf8Json;
+        while (remaining.Length > 0)
+        {
+            // Find the boundary between JSON objects
+            var endIndex = FindJsonObjectEnd(remaining);
+            if (endIndex <= 0)
+            {
+                // Try to parse whatever is left
+                if (TryParseMessage(remaining, out var lastMessage, logger) && lastMessage != null)
+                    messages.Add(lastMessage);
+                break;
+            }
+
+            var jsonObject = remaining.Slice(0, endIndex);
+            if (TryParseMessage(jsonObject, out var message, logger) && message != null)
+            {
+                messages.Add(message);
+            }
+
+            remaining = remaining.Slice(endIndex);
+
+            // Skip any whitespace between objects
+            while (remaining.Length > 0 && (remaining[0] == ' ' || remaining[0] == '\n' || remaining[0] == '\r' || remaining[0] == '\t'))
+            {
+                remaining = remaining.Slice(1);
+            }
+        }
+
+        return messages;
+    }
+
+    /// <summary>
+    /// Finds the end of a JSON object by counting braces.
+    /// Returns the index after the closing brace, or 0 if not found.
+    /// </summary>
+    private static int FindJsonObjectEnd(ReadOnlySpan<byte> utf8Json)
+    {
+        if (utf8Json.Length == 0 || utf8Json[0] != '{')
+            return 0;
+
+        int depth = 0;
+        bool inString = false;
+        bool escape = false;
+
+        for (int i = 0; i < utf8Json.Length; i++)
+        {
+            byte b = utf8Json[i];
+
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+
+            if (b == '\\' && inString)
+            {
+                escape = true;
+                continue;
+            }
+
+            if (b == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+                continue;
+
+            if (b == '{')
+                depth++;
+            else if (b == '}')
+            {
+                depth--;
+                if (depth == 0)
+                    return i + 1;
+            }
+        }
+
+        return 0; // Unbalanced braces
+    }
+
+    /// <summary>
     /// Parses payloads array (base64 encoded) and decodes into single payload.
     /// Uses JsonDocument to handle multi-segment buffers and provides GetBytesFromBase64()
     /// for efficient direct decoding without intermediate string allocation.

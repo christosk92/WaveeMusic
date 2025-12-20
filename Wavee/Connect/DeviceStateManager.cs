@@ -202,13 +202,33 @@ public sealed class DeviceStateManager : IAsyncDisposable
             _logger?.LogTrace("PUT state request: deviceId={DeviceId}, connectionId={ConnectionId}, reason={Reason}, messageId={MessageId}, volume={Volume}, isActive={IsActive}",
                 _session.Config.DeviceId, _connectionId, reason, request.MessageId, _deviceInfo.Volume, _isActive);
 
-            await _spClient.PutConnectStateAsync(
+            var responseBody = await _spClient.PutConnectStateAsync(
                 _session.Config.DeviceId,
                 _connectionId,
                 request,
                 cancellationToken);
 
             _logger?.LogTrace("PUT state succeeded");
+
+            // Process the response - Spotify returns a Cluster protobuf (not ClusterUpdate)
+            if (responseBody.Length > 0)
+            {
+                _logger?.LogDebug("Processing PUT state response ({Size} bytes)", responseBody.Length);
+
+                // Create a DealerMessage from the response to feed into PlaybackStateManager
+                var dealerMessage = new DealerMessage
+                {
+                    Uri = "hm://connect-state/v1/put-state-response",
+                    Headers = new Dictionary<string, string>(),
+                    Payload = responseBody
+                };
+
+                // Submit to dealer's message worker for processing
+                // This will trigger PlaybackStateManager's PUT state response handler
+                await _dealerClient.SubmitMessageAsync(dealerMessage);
+
+                _logger?.LogTrace("PUT state response processed");
+            }
         }
         catch (Exception ex)
         {

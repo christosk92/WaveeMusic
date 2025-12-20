@@ -4,6 +4,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Connection;
 using Wavee.Connect.Protocol;
@@ -43,6 +44,10 @@ public sealed class DealerClient : IAsyncDisposable
     // Pending REQUEST tracking to ensure all REQUESTs get replies
     private readonly ConcurrentDictionary<string, PendingRequest> _pendingRequests = new();
     private Timer? _requestTimeoutTimer;
+
+    // Queue for messages received before PlaybackStateManager subscribes
+    private Channel<DealerMessage>? _pendingMessagesQueue;
+    private bool _isReadyToProcess;
 
     // Cached PONG message (zero allocation on send)
     private static readonly ReadOnlyMemory<byte> PongMessageBytes =
@@ -131,6 +136,14 @@ public sealed class DealerClient : IAsyncDisposable
         _connection.MessageReceived += OnRawMessageReceivedAsync;
         _connection.Closed += OnConnectionClosed;
         _connection.Error += OnConnectionError;
+
+        // Initialize pending messages queue for initialization phase
+        // Bounded to 10 messages - only used during startup before PlaybackStateManager subscribes
+        _pendingMessagesQueue = Channel.CreateBounded<DealerMessage>(
+            new BoundedChannelOptions(10)
+            {
+                FullMode = BoundedChannelFullMode.Wait
+            });
 
         // Start timer to check for timed-out REQUESTs every 5 seconds
         _requestTimeoutTimer = new Timer(
@@ -257,6 +270,95 @@ public sealed class DealerClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Submits a message directly to the dealer message worker for processing.
+    /// This is used internally to process PUT state responses as if they came from the dealer WebSocket.
+    /// </summary>
+    /// <param name="message">The dealer message to process.</param>
+    internal async ValueTask SubmitMessageAsync(DealerMessage message)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(DealerClient));
+
+        if (_messageWorker == null)
+        {
+            _logger?.LogWarning("Cannot submit message: message worker not initialized");
+            return;
+        }
+
+        // If not ready yet, queue the message
+        if (!_isReadyToProcess && _pendingMessagesQueue != null)
+        {
+            _logger?.LogTrace("Queueing message for later processing: uri={Uri}", message.Uri);
+            await _pendingMessagesQueue.Writer.WriteAsync(message);
+            return;
+        }
+
+        // Otherwise, process immediately
+        _logger?.LogTrace("Submitting message to worker: uri={Uri}", message.Uri);
+        await _messageWorker.SubmitAsync(message);
+        _logger?.LogTrace("Message submitted successfully");
+    }
+
+    /// <summary>
+    /// Signals that subscribers are ready to receive messages.
+    /// Flushes any queued messages from initialization and switches to direct processing.
+    /// Call this AFTER PlaybackStateManager has subscribed to cluster updates.
+    /// </summary>
+    public void StartProcessingMessages()
+    {
+        if (_isReadyToProcess)
+        {
+            _logger?.LogDebug("Message processing already started");
+            return; // Already started
+        }
+
+        _logger?.LogDebug("Starting message processing, flushing pending queue");
+        _isReadyToProcess = true;
+
+        // Flush queued messages asynchronously (fire and forget with error handling)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await FlushPendingMessagesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to flush pending messages");
+            }
+        });
+    }
+
+    /// <summary>
+    /// Flushes all queued messages to the message worker.
+    /// </summary>
+    private async Task FlushPendingMessagesAsync()
+    {
+        if (_pendingMessagesQueue == null)
+        {
+            _logger?.LogTrace("No pending messages queue to flush");
+            return;
+        }
+
+        var queue = _pendingMessagesQueue;
+        _pendingMessagesQueue = null; // Clear reference (no longer needed)
+
+        queue.Writer.Complete(); // No more writes
+
+        var count = 0;
+        await foreach (var message in queue.Reader.ReadAllAsync())
+        {
+            if (_messageWorker != null)
+            {
+                await _messageWorker.SubmitAsync(message);
+                count++;
+            }
+        }
+
+        _logger?.LogDebug("Flushed {Count} pending message(s) to subscribers", count);
+    }
+
+    /// <summary>
     /// Disconnects from the dealer WebSocket.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -308,8 +410,15 @@ public sealed class DealerClient : IAsyncDisposable
                         rawBytes.Length,
                         System.Text.Encoding.UTF8.GetString(rawBytes.Span));
 
-                    // Parse and dispatch via AsyncWorker
-                    if (Protocol.MessageParser.TryParseMessage(rawBytes.Span, out var message, _logger) && message != null)
+                    // Parse and dispatch via AsyncWorker (handles batched messages)
+                    var messages = Protocol.MessageParser.ParseMessages(rawBytes.Span, _logger);
+                    if (messages.Count == 0)
+                    {
+                        _logger?.LogWarning("Failed to parse MESSAGE(s)");
+                        break;
+                    }
+
+                    foreach (var message in messages)
                     {
                         _logger?.LogTrace("Received MESSAGE: uri={Uri}, headerCount={HeaderCount}, payloadSize={PayloadSize}",
                             message.Uri, message.Headers.Count, message.Payload.Length);
@@ -334,10 +443,6 @@ public sealed class DealerClient : IAsyncDisposable
                             await _messageWorker.SubmitAsync(message);
                             _logger?.LogTrace("Message submitted to worker successfully");
                         }
-                    }
-                    else
-                    {
-                        _logger?.LogWarning("Failed to parse MESSAGE");
                     }
                     break;
 
@@ -440,6 +545,10 @@ public sealed class DealerClient : IAsyncDisposable
     /// </summary>
     private void OnConnectionClosed(object? sender, System.Net.WebSockets.WebSocketCloseStatus? closeStatus)
     {
+        // Check if already disposed to prevent double-handling
+        if (_disposed)
+            return;
+
         _logger?.LogInformation("Dealer connection closed: {Status}", closeStatus);
         _connectionState.OnNext(Connection.ConnectionState.Disconnected);
 
@@ -458,6 +567,10 @@ public sealed class DealerClient : IAsyncDisposable
     /// </summary>
     private void OnConnectionError(object? sender, Exception ex)
     {
+        // Check if already disposed to prevent double-handling
+        if (_disposed)
+            return;
+
         _logger?.LogError(ex, "Dealer connection error");
         _connectionState.OnNext(Connection.ConnectionState.Disconnected);
 
@@ -511,10 +624,21 @@ public sealed class DealerClient : IAsyncDisposable
     /// </summary>
     private void OnHeartbeatTimeout(object? sender, EventArgs e)
     {
+        // Check if already disposed to prevent double-handling
+        if (_disposed)
+            return;
+
         _logger?.LogWarning("Heartbeat timeout detected, triggering reconnection");
 
         // Close current connection
-        _ = _connection.CloseAsync();
+        try
+        {
+            _ = _connection.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogTrace(ex, "Error closing connection on heartbeat timeout");
+        }
 
         // Trigger reconnection
         if (_config.EnableAutoReconnect && !_disposed)
@@ -589,7 +713,22 @@ public sealed class DealerClient : IAsyncDisposable
     /// </summary>
     private ValueTask SendPingAsync()
     {
-        return _connection.SendAsync(PingMessageBytes);
+        try
+        {
+            return _connection.SendAsync(PingMessageBytes);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Connection was disposed, heartbeat will handle this
+            _logger?.LogTrace("Connection disposed during ping");
+            return ValueTask.CompletedTask;
+        }
+        catch (InvalidOperationException)
+        {
+            // Connection not connected, heartbeat will handle this
+            _logger?.LogTrace("Connection not available during ping");
+            return ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>
@@ -711,6 +850,14 @@ public sealed class DealerClient : IAsyncDisposable
             _reconnectionManager.ReconnectionFailed -= OnReconnectionFailed;
             await _reconnectionManager.DisposeAsync();
             _reconnectionManager = null;
+        }
+
+        // Complete pending messages queue if still exists
+        if (_pendingMessagesQueue != null)
+        {
+            _pendingMessagesQueue.Writer.Complete();
+            _pendingMessagesQueue = null;
+            _logger?.LogTrace("Pending messages queue disposed");
         }
 
         // Complete and dispose workers

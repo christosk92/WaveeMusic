@@ -40,7 +40,7 @@ public sealed class ApTransport : IApTransport
     private readonly PipeReader _reader;
     private readonly PipeWriter _writer;
     private readonly CancellationTokenSource _disposeCts = new();
-    private bool _disposed;
+    private volatile bool _disposed;
 
     private ApTransport(Stream stream, ApCodec codec, ILogger? logger)
     {
@@ -84,14 +84,31 @@ public sealed class ApTransport : IApTransport
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, _disposeCts.Token);
+        CancellationTokenSource? linkedCts = null;
+        try
+        {
+            linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _disposeCts.Token);
+        }
+        catch (ObjectDisposedException)
+        {
+            // CancellationTokenSource was disposed, connection is closing
+            _logger?.LogTrace("Transport disposed during send token creation");
+            throw new ObjectDisposedException(nameof(ApTransport));
+        }
 
-        // Encode packet into the pipe writer
-        _codec.Encode(_writer, command, payload.Span);
+        try
+        {
+            // Encode packet into the pipe writer
+            _codec.Encode(_writer, command, payload.Span);
 
-        // Flush to network
-        await _writer.FlushAsync(linkedCts.Token);
+            // Flush to network
+            await _writer.FlushAsync(linkedCts.Token);
+        }
+        finally
+        {
+            linkedCts?.Dispose();
+        }
     }
 
     /// <summary>
@@ -109,51 +126,98 @@ public sealed class ApTransport : IApTransport
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, _disposeCts.Token);
-
-        while (true)
+        CancellationTokenSource? linkedCts = null;
+        try
         {
-            // Read data from the pipe
-            var result = await _reader.ReadAsync(linkedCts.Token);
-            var buffer = result.Buffer;
+            linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _disposeCts.Token);
+        }
+        catch (ObjectDisposedException)
+        {
+            // CancellationTokenSource was disposed, connection is closing
+            _logger?.LogTrace("Transport disposed during token creation");
+            return null;
+        }
 
-            try
+        try
+        {
+            while (true)
             {
-                // Try to decode a complete packet
-                var decodeSuccess = _codec.TryDecode(ref buffer, out var consumed, out var command, out var payload);
-                if (decodeSuccess)
+                // Check disposal state before each iteration
+                if (_disposed)
                 {
-                    // Success! Mark the consumed bytes
-                    _reader.AdvanceTo(consumed);
-                    return (command, payload);
+                    _logger?.LogTrace("Transport disposed during receive loop");
+                    return null;
                 }
 
-                // Partial decode: consume what the codec says is safe (e.g., header)
-                // while allowing the pipe to continue buffering more data.
-                _reader.AdvanceTo(consumed, buffer.End);
-
-                // Check if the connection was closed
-                if (result.IsCompleted)
+                ReadResult result;
+                try
                 {
-                    // No more data coming and we couldn't decode a packet
-                    if (buffer.Length > 0)
+                    // Read data from the pipe
+                    result = await _reader.ReadAsync(linkedCts.Token);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // PipeReader was disposed, connection is closing
+                    _logger?.LogTrace("PipeReader disposed during read");
+                    return null;
+                }
+                catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException se && se.ErrorCode == 10054)
+                {
+                    // Connection forcibly closed by remote host - normal during disconnect
+                    _logger?.LogDebug("Connection forcibly closed by server");
+                    return null;
+                }
+                catch (IOException ex)
+                {
+                    // Other IO errors during read
+                    _logger?.LogDebug(ex, "IOException during read");
+                    return null;
+                }
+
+                var buffer = result.Buffer;
+
+                try
+                {
+                    // Try to decode a complete packet
+                    var decodeSuccess = _codec.TryDecode(ref buffer, out var consumed, out var command, out var payload);
+                    if (decodeSuccess)
                     {
-                        // Unexpected: partial packet at end of stream
-                        _logger?.LogWarning("Connection closed with {RemainingBytes} bytes remaining (incomplete packet)", buffer.Length);
-                        throw new ApCodecException($"Connection closed with {buffer.Length} bytes remaining (incomplete packet)");
+                        // Success! Mark the consumed bytes
+                        _reader.AdvanceTo(consumed);
+                        return (command, payload);
                     }
 
-                    _logger?.LogDebug("Connection closed gracefully");
-                    return null; // Clean connection close
+                    // Partial decode: consume what the codec says is safe (e.g., header)
+                    // while allowing the pipe to continue buffering more data.
+                    _reader.AdvanceTo(consumed, buffer.End);
+
+                    // Check if the connection was closed
+                    if (result.IsCompleted)
+                    {
+                        // No more data coming and we couldn't decode a packet
+                        if (buffer.Length > 0)
+                        {
+                            // Unexpected: partial packet at end of stream
+                            _logger?.LogWarning("Connection closed with {RemainingBytes} bytes remaining (incomplete packet)", buffer.Length);
+                            throw new ApCodecException($"Connection closed with {buffer.Length} bytes remaining (incomplete packet)");
+                        }
+
+                        _logger?.LogDebug("Connection closed gracefully");
+                        return null; // Clean connection close
+                    }
+                }
+                catch (ApCodecException)
+                {
+                    // On codec error, mark entire buffer as consumed and rethrow
+                    _reader.AdvanceTo(buffer.End);
+                    throw;
                 }
             }
-            catch (ApCodecException)
-            {
-                // On codec error, mark entire buffer as consumed and rethrow
-                _reader.AdvanceTo(buffer.End);
-                throw;
-            }
+        }
+        finally
+        {
+            linkedCts?.Dispose();
         }
     }
 

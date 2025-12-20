@@ -4,6 +4,9 @@ using System.Xml;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
+using Wavee.Connect.Commands;
+using Wavee.Connect.Protocol;
+using Wavee.Core.Audio;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
 using Wavee.Core.Http;
@@ -45,6 +48,11 @@ public sealed class Session : ISession, IAsyncDisposable
     // Connect subsystem
     private DealerClient? _dealerClient;
     private DeviceStateManager? _deviceStateManager;
+    private ConnectCommandHandler? _commandHandler;
+    private PlaybackStateManager? _playbackStateManager;
+
+    // Audio subsystem
+    private AudioKeyManager? _audioKeyManager;
 
     /// <summary>
     /// Raised when a packet is received from the server.
@@ -196,6 +204,109 @@ public sealed class Session : ISession, IAsyncDisposable
     }
 
     /// <summary>
+    /// Wires up Connect command handlers and state update subscriptions using Rx.NET.
+    /// </summary>
+    private void WireUpConnectHandlers()
+    {
+        if (_commandHandler == null || _playbackStateManager == null)
+            return;
+
+        _logger?.LogDebug("Wiring up Connect command handlers and state subscriptions");
+
+        // ================================================================
+        // COMMAND HANDLERS (REQUESTs) - Acknowledge commands for now
+        // TODO Phase 5-6: Implement actual playback logic
+        // ================================================================
+
+        _commandHandler.PlayCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received Play command: context={Context}, track={Track}",
+                cmd.ContextUri, cmd.TrackUri);
+            // TODO: Implement play logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        _commandHandler.PauseCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received Pause command");
+            // TODO: Implement pause logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        _commandHandler.ResumeCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received Resume command");
+            // TODO: Implement resume logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        _commandHandler.SeekCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received Seek command: position={Position}ms", cmd.PositionMs);
+            // TODO: Implement seek logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        _commandHandler.ShuffleCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received Shuffle command: enabled={Enabled}", cmd.Enabled);
+            // TODO: Implement shuffle logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        _commandHandler.RepeatContextCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received RepeatContext command: enabled={Enabled}", cmd.Enabled);
+            // TODO: Implement repeat context logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        _commandHandler.RepeatTrackCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Received RepeatTrack command: enabled={Enabled}", cmd.Enabled);
+            // TODO: Implement repeat track logic
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        });
+
+        // ================================================================
+        // STATE UPDATE SUBSCRIPTIONS (MESSAGEs) - Reactive state tracking
+        // ================================================================
+
+        _playbackStateManager.TrackChanged.Subscribe(state =>
+        {
+            if (state.Track != null)
+            {
+                _logger?.LogInformation("Track changed: {Title} - {Artist}",
+                    state.Track.Title, state.Track.Artist);
+            }
+        });
+
+        _playbackStateManager.PlaybackStatusChanged.Subscribe(state =>
+        {
+            _logger?.LogInformation("Playback status changed: {Status}", state.Status);
+        });
+
+        _playbackStateManager.PositionChanged.Subscribe(state =>
+        {
+            _logger?.LogDebug("Position changed: {Position}ms / {Duration}ms",
+                state.PositionMs, state.DurationMs);
+        });
+
+        _playbackStateManager.ActiveDeviceChanged.Subscribe(state =>
+        {
+            _logger?.LogInformation("Active device changed: {DeviceId}", state.ActiveDeviceId);
+        });
+
+        _playbackStateManager.OptionsChanged.Subscribe(state =>
+        {
+            _logger?.LogInformation("Playback options changed: shuffle={Shuffle}, repeat={Repeat}",
+                state.Options.Shuffling, state.Options.RepeatingContext);
+        });
+
+        _logger?.LogDebug("Connect handlers wired up successfully");
+    }
+
+    /// <summary>
     /// Initializes the Spotify Connect subsystem (DealerClient and DeviceStateManager).
     /// </summary>
     private async Task InitializeConnectSubsystemAsync(CancellationToken cancellationToken)
@@ -226,6 +337,21 @@ public sealed class Session : ISession, IAsyncDisposable
 
             // Set device as active to announce presence
             await _deviceStateManager.SetActiveAsync(true, cancellationToken);
+
+            // Create command handler for processing incoming REQUESTs
+            _commandHandler = new ConnectCommandHandler(_dealerClient, _logger);
+            _logger?.LogDebug("ConnectCommandHandler created");
+
+            // Create playback state manager for processing cluster MESSAGEs
+            _playbackStateManager = new PlaybackStateManager(_dealerClient, _logger);
+            _logger?.LogDebug("PlaybackStateManager created");
+
+            // Signal that subscribers are ready - flush any queued PUT state responses
+            _dealerClient.StartProcessingMessages();
+            _logger?.LogDebug("DealerClient message processing started");
+
+            // Wire up command handlers and state subscriptions
+            WireUpConnectHandlers();
 
             _logger?.LogInformation("Spotify Connect subsystem initialized - device is now visible");
         }
@@ -289,6 +415,11 @@ public sealed class Session : ISession, IAsyncDisposable
         _logger);
 
     /// <summary>
+    /// Gets the resolved SpClient endpoint URL.
+    /// </summary>
+    public string SpClientUrl => _spClientEndpoint ?? "spclient.wg.spotify.com:443";
+
+    /// <summary>
     /// Gets the Spotify Connect dealer client for real-time communication.
     /// </summary>
     /// <remarks>
@@ -309,6 +440,46 @@ public sealed class Session : ISession, IAsyncDisposable
     /// </remarks>
     /// <returns>DeviceStateManager instance, or null if Connect is disabled.</returns>
     public DeviceStateManager? DeviceState => _deviceStateManager;
+
+    /// <summary>
+    /// Gets the Spotify Connect command handler for processing remote control commands.
+    /// </summary>
+    /// <remarks>
+    /// ConnectCommandHandler processes incoming REQUEST messages from Spotify apps
+    /// (Play, Pause, Resume, Seek, SetVolume, etc.) and provides reactive observables
+    /// for each command type. Available only if EnableConnect is true in SessionConfig.
+    /// </remarks>
+    /// <returns>ConnectCommandHandler instance, or null if Connect is disabled.</returns>
+    public ConnectCommandHandler? CommandHandler => _commandHandler;
+
+    /// <summary>
+    /// Gets the Spotify Connect playback state manager for tracking remote state updates.
+    /// </summary>
+    /// <remarks>
+    /// PlaybackStateManager processes cluster update MESSAGEs and provides reactive
+    /// observables for state changes (track, position, status, options, etc.).
+    /// Available only if EnableConnect is true in SessionConfig.
+    /// </remarks>
+    /// <returns>PlaybackStateManager instance, or null if Connect is disabled.</returns>
+    public PlaybackStateManager? PlaybackState => _playbackStateManager;
+
+    /// <summary>
+    /// Gets the AudioKeyManager for requesting audio decryption keys.
+    /// </summary>
+    /// <remarks>
+    /// AudioKeyManager handles the request/response protocol for obtaining
+    /// AES-128 keys used to decrypt Spotify audio files. Keys are cached
+    /// internally and automatically managed.
+    /// </remarks>
+    /// <returns>AudioKeyManager instance.</returns>
+    public AudioKeyManager AudioKeys
+    {
+        get
+        {
+            _audioKeyManager ??= new AudioKeyManager(this, _logger);
+            return _audioKeyManager;
+        }
+    }
 
     /// <summary>
     /// Sets the device active or inactive state for Spotify Connect.
@@ -534,6 +705,10 @@ public sealed class Session : ISession, IAsyncDisposable
     {
         var keepAlive = new KeepAlive(_logger);
 
+        // Reuse the same receive task across loop iterations to avoid concurrent PipeReader access
+        // This is critical: creating a new ReceiveAsync while the previous one is pending causes corruption
+        Task<(byte command, byte[] payload)?>? receiveTask = null;
+
         try
         {
             _logger?.LogDebug("Packet dispatcher started");
@@ -541,9 +716,9 @@ public sealed class Session : ISession, IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 var transport = _data.GetTransport();
-                if (transport is null)
+                if (transport is null || !_data.IsConnected())
                 {
-                    _logger?.LogWarning("Transport became null, stopping dispatcher");
+                    _logger?.LogWarning("Transport became null or session disconnected, stopping dispatcher");
                     break;
                 }
 
@@ -568,16 +743,64 @@ public sealed class Session : ISession, IAsyncDisposable
                 while (_sendQueue.Reader.TryRead(out var item))
                 {
                     var (cmd, payload) = item;
-                    await transport.SendAsync(cmd, payload, cancellationToken);
+                    try
+                    {
+                        await transport.SendAsync(cmd, payload, cancellationToken);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Transport was disposed, connection is closing
+                        _logger?.LogDebug("Transport disposed during send");
+                        await DisconnectInternalAsync();
+                        OnDisconnected();
+                        return;
+                    }
                 }
 
-                // Receive packets (with timeout)
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                try
+                // Receive packets (with timeout, non-exception based)
+                // Only start a new receive if we don't have one pending
+                if (receiveTask is null)
                 {
-                    var packet = await transport.ReceiveAsync(linkedCts.Token);
+                    try
+                    {
+                        receiveTask = transport.ReceiveAsync(cancellationToken).AsTask();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Transport was disposed, connection is closing
+                        _logger?.LogDebug("Transport disposed during receive setup");
+                        await DisconnectInternalAsync();
+                        OnDisconnected();
+                        return;
+                    }
+                }
+
+                var timeoutTask = Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+                var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
+
+                if (completedTask == receiveTask)
+                {
+                    // Packet received
+                    (byte command, byte[] payload)? packet;
+                    try
+                    {
+                        packet = await receiveTask;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Transport was disposed, connection is closing
+                        _logger?.LogDebug("Transport disposed during receive");
+                        await DisconnectInternalAsync();
+                        OnDisconnected();
+                        return;
+                    }
+                    finally
+                    {
+                        // Clear the task so a new one is started on the next iteration
+                        receiveTask = null;
+                    }
+
                     if (packet is null)
                     {
                         _logger?.LogInformation("Connection closed by server");
@@ -589,11 +812,15 @@ public sealed class Session : ISession, IAsyncDisposable
                     var (cmd, payload) = packet.Value;
                     HandlePacket((PacketType)cmd, payload);
                 }
-                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-                {
-                    // Receive timeout, continue loop
-                }
+                // else: timeout, receiveTask stays assigned and will be checked on next iteration
             }
+        }
+        catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException se && se.ErrorCode == 10054)
+        {
+            // Expected: Spotify forcibly closed connection (normal during session timeout or server maintenance)
+            _logger?.LogInformation("Connection closed by server");
+            await DisconnectInternalAsync();
+            OnDisconnected();
         }
         catch (Exception ex)
         {
@@ -631,6 +858,12 @@ public sealed class Session : ISession, IAsyncDisposable
             case PacketType.Pong:
                 _data.RecordPongReceived();
                 _logger?.LogTrace("Received Pong from server");
+                return;
+
+            case PacketType.AesKey:
+            case PacketType.AesKeyError:
+                // Dispatch to AudioKeyManager
+                _audioKeyManager?.DispatchPacket(packetType, payload);
                 return;
 
             case PacketType.CountryCode:
@@ -795,7 +1028,19 @@ public sealed class Session : ISession, IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        // Dispose Connect subsystem first
+        // Dispose Connect subsystem first (reverse order of creation)
+        if (_playbackStateManager is not null)
+        {
+            await _playbackStateManager.DisposeAsync();
+            _playbackStateManager = null;
+        }
+
+        if (_commandHandler is not null)
+        {
+            await _commandHandler.DisposeAsync();
+            _commandHandler = null;
+        }
+
         if (_deviceStateManager is not null)
         {
             await _deviceStateManager.DisposeAsync();
@@ -806,6 +1051,12 @@ public sealed class Session : ISession, IAsyncDisposable
         {
             await _dealerClient.DisposeAsync();
             _dealerClient = null;
+        }
+
+        if (_audioKeyManager is not null)
+        {
+            await _audioKeyManager.DisposeAsync();
+            _audioKeyManager = null;
         }
 
         await DisconnectInternalAsync();

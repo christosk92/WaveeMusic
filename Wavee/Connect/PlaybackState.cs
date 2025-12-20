@@ -218,6 +218,9 @@ public enum StateChanges
     /// <summary>State source changed (cluster → local or vice versa).</summary>
     Source = 1 << 6,
 
+    /// <summary>Queue changed (tracks added/removed from queue).</summary>
+    Queue = 1 << 7,
+
     /// <summary>All state changed (initial state or major update).</summary>
-    All = Track | Position | Status | Context | Options | ActiveDevice | Source
+    All = Track | Position | Status | Context | Options | ActiveDevice | Source | Queue
 }

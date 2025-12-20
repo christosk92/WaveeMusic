@@ -15,8 +15,8 @@ namespace Wavee.Connect;
 /// </remarks>
 public static class PlaybackStateHelpers
 {
-    // Position change threshold (only emit position changes > 1 second to avoid spam)
-    private const long PositionChangeThresholdMs = 1000;
+    // Position change threshold (100ms matches librespot for seek detection)
+    private const long PositionChangeThresholdMs = 100;
 
     /// <summary>
     /// Tries to parse a dealer message as a ClusterUpdate protobuf.
@@ -51,6 +51,38 @@ public static class PlaybackStateHelpers
     }
 
     /// <summary>
+    /// Tries to parse a dealer message as a Cluster protobuf (used by PUT state responses).
+    /// Handles gzip decompression if Transfer-Encoding header indicates compression.
+    /// </summary>
+    /// <param name="message">Dealer message from PUT state response.</param>
+    /// <param name="cluster">Parsed Cluster (if successful).</param>
+    /// <returns>True if parsing succeeded.</returns>
+    public static bool TryParseCluster(DealerMessage message, out Cluster? cluster)
+    {
+        cluster = null;
+
+        try
+        {
+            var payload = message.Payload;
+
+            // Check if payload is gzipped
+            if (message.Headers.TryGetValue("Transfer-Encoding", out var encoding) &&
+                encoding.Equals("gzip", StringComparison.OrdinalIgnoreCase))
+            {
+                payload = DecompressGzip(payload);
+            }
+
+            // Parse protobuf as Cluster (not ClusterUpdate)
+            cluster = Cluster.Parser.ParseFrom(payload);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Decompresses gzipped payload using GZipStream.
     /// </summary>
     /// <param name="gzippedData">Gzipped byte array.</param>
@@ -66,14 +98,13 @@ public static class PlaybackStateHelpers
     }
 
     /// <summary>
-    /// Converts a ClusterUpdate protobuf to a PlaybackState domain model.
+    /// Converts a Cluster protobuf to a PlaybackState domain model.
     /// </summary>
-    /// <param name="clusterUpdate">ClusterUpdate from dealer message.</param>
+    /// <param name="cluster">Cluster from dealer message or PUT state response.</param>
     /// <param name="previousState">Previous state for change detection (null for initial state).</param>
     /// <returns>New PlaybackState with change flags set.</returns>
-    public static PlaybackState ClusterToPlaybackState(ClusterUpdate clusterUpdate, PlaybackState? previousState)
+    public static PlaybackState ClusterToPlaybackState(Cluster cluster, PlaybackState? previousState)
     {
-        var cluster = clusterUpdate.Cluster;
         var playerState = cluster.PlayerState;
 
         // Extract track info (null if no track)
@@ -113,6 +144,18 @@ public static class PlaybackStateHelpers
         // Detect changes
         var changes = DetectChanges(previousState, newState);
         return newState with { Changes = changes };
+    }
+
+    /// <summary>
+    /// Converts a ClusterUpdate protobuf to a PlaybackState domain model.
+    /// This is a convenience overload that extracts the Cluster from ClusterUpdate.
+    /// </summary>
+    /// <param name="clusterUpdate">ClusterUpdate from dealer message.</param>
+    /// <param name="previousState">Previous state for change detection (null for initial state).</param>
+    /// <returns>New PlaybackState with change flags set.</returns>
+    public static PlaybackState ClusterToPlaybackState(ClusterUpdate clusterUpdate, PlaybackState? previousState)
+    {
+        return ClusterToPlaybackState(clusterUpdate.Cluster, previousState);
     }
 
     /// <summary>
@@ -173,6 +216,7 @@ public static class PlaybackStateHelpers
     /// <summary>
     /// Converts PlaybackState domain model to PlayerState protobuf for publishing.
     /// Used when publishing local state via PutStateAsync.
+    /// CRITICAL: Uses triple-flag pattern for Spotify UI compatibility.
     /// </summary>
     /// <param name="state">Domain playback state.</param>
     /// <returns>PlayerState protobuf message.</returns>
@@ -184,10 +228,15 @@ public static class PlaybackStateHelpers
             ContextUri = state.ContextUri ?? string.Empty,
             PositionAsOfTimestamp = state.PositionMs,
             Duration = state.DurationMs,
-            IsPlaying = state.Status == PlaybackStatus.Playing,
-            IsPaused = state.Status == PlaybackStatus.Paused,
-            IsBuffering = state.Status == PlaybackStatus.Buffering,
-            PlaybackSpeed = 1.0,
+
+            // CRITICAL: Triple-flag pattern for Spotify UI compatibility
+            // When paused, Spotify UI requires ALL flags to be true!
+            // See librespot/connect/src/state.rs:337-348
+            IsPlaying = state.Status == PlaybackStatus.Playing || state.Status == PlaybackStatus.Paused,
+            IsPaused = state.Status == PlaybackStatus.Paused || state.Status == PlaybackStatus.Stopped,
+            IsBuffering = state.Status == PlaybackStatus.Buffering || state.Status == PlaybackStatus.Paused,
+
+            PlaybackSpeed = state.Status == PlaybackStatus.Paused ? 0.0 : 1.0,
             Options = new ContextPlayerOptions
             {
                 ShufflingContext = state.Options.Shuffling,
@@ -251,16 +300,27 @@ public static class PlaybackStateHelpers
 
     /// <summary>
     /// Determines playback status from PlayerState protobuf.
+    /// CRITICAL: Spotify uses a triple-flag pattern for UI compatibility.
+    /// When paused: IsPlaying=true, IsPaused=true, IsBuffering=true (all true!)
+    /// See librespot/connect/src/state.rs:337-348 for details.
     /// </summary>
     private static PlaybackStatus DeterminePlaybackStatus(PlayerState playerState)
     {
-        if (playerState.IsBuffering)
-            return PlaybackStatus.Buffering;
-        if (playerState.IsPlaying)
-            return PlaybackStatus.Playing;
+        // CRITICAL: Check IsPaused FIRST before IsPlaying!
+        // When paused, Spotify sets ALL three flags to true for UI compatibility.
+        // Paused: is_playing=true, is_paused=true, is_buffering=true (triple-flag pattern)
         if (playerState.IsPaused)
             return PlaybackStatus.Paused;
 
+        // Buffering during playback: is_playing=true, is_paused=false, is_buffering=true
+        if (playerState.IsBuffering)
+            return PlaybackStatus.Buffering;
+
+        // Playing: is_playing=true, is_paused=false, is_buffering=false
+        if (playerState.IsPlaying)
+            return PlaybackStatus.Playing;
+
+        // Stopped: is_playing=false
         return PlaybackStatus.Stopped;
     }
 
@@ -283,8 +343,17 @@ public static class PlaybackStateHelpers
         if (previous.Track?.Uri != current.Track?.Uri)
             changes |= StateChanges.Track;
 
-        // Position changed significantly (> threshold to avoid spam)
-        if (Math.Abs(previous.PositionMs - current.PositionMs) > PositionChangeThresholdMs)
+        // SMART POSITION DETECTION (librespot pattern)
+        // Calculate "nominal start time" (when playback started) to detect seeks vs natural progression
+        // During normal playback, nominal start time stays constant even as position advances
+        // A seek causes nominal start time to change significantly
+        var prevNominalStart = previous.Timestamp - previous.PositionMs;
+        var currNominalStart = current.Timestamp - current.PositionMs;
+        var nominalDelta = Math.Abs(currNominalStart - prevNominalStart);
+
+        // Only detect position change if nominal start time changed significantly
+        // This filters out natural playback progression (which keeps nominal start constant)
+        if (nominalDelta > PositionChangeThresholdMs)
             changes |= StateChanges.Position;
 
         // Status changed
@@ -308,6 +377,11 @@ public static class PlaybackStateHelpers
         // Source changed (cluster → local or vice versa)
         if (previous.Source != current.Source)
             changes |= StateChanges.Source;
+
+        // PRIORITY: If status changed, suppress position changes (status is more significant)
+        // This prevents "Position" spam when pausing/resuming
+        if (changes.HasFlag(StateChanges.Status))
+            changes &= ~StateChanges.Position;
 
         return changes;
     }

@@ -161,15 +161,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         _currentState = PlaybackState.Empty;
         _stateSubject = new BehaviorSubject<PlaybackState>(_currentState);
 
-        // Subscribe to cluster updates
+        // Subscribe to cluster updates (both dealer messages and PUT state responses)
         _clusterSubscription = _dealerClient.Messages
-            .Where(m => m.Uri.StartsWith("hm://connect-state/v1/cluster", StringComparison.OrdinalIgnoreCase))
+            .Where(m => m.Uri.StartsWith("hm://connect-state/v1/cluster", StringComparison.OrdinalIgnoreCase) ||
+                       m.Uri.StartsWith("hm://connect-state/v1/put-state-response", StringComparison.OrdinalIgnoreCase))
             .Subscribe(
                 onNext: OnClusterUpdate,
                 onError: ex => _logger?.LogError(ex, "Error in cluster update subscription"));
 
         _logger?.LogDebug("PlaybackStateManager initialized (remote-only mode)");
-        _logger?.LogTrace("Subscribed to cluster updates: hm://connect-state/v1/cluster");
+        _logger?.LogTrace("Subscribed to cluster updates and PUT state responses");
     }
 
     /// <summary>
@@ -214,38 +215,52 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// Handles cluster update messages from dealer.
+    /// Handles cluster update messages from dealer (ClusterUpdate) and PUT state responses (Cluster).
     /// </summary>
     private void OnClusterUpdate(DealerMessage message)
     {
         try
         {
-            _logger?.LogTrace("Received cluster update: uri={Uri}, payloadSize={Size}",
+            _logger?.LogTrace("Received cluster message: uri={Uri}, payloadSize={Size}",
                 message.Uri, message.Payload.Length);
 
-            // Try to parse cluster update
-            if (!PlaybackStateHelpers.TryParseClusterUpdate(message, out var clusterUpdate) ||
-                clusterUpdate == null)
-            {
-                _logger?.LogWarning("Failed to parse cluster update");
-                return;
-            }
+            Cluster? cluster = null;
 
-            _logger?.LogTrace("ClusterUpdate parsed: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
-                clusterUpdate.Cluster.ActiveDeviceId,
-                clusterUpdate.Cluster.PlayerState != null);
+            // Try parsing as Cluster first (PUT state responses)
+            if (message.Uri.StartsWith("hm://connect-state/v1/put-state-response", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!PlaybackStateHelpers.TryParseCluster(message, out cluster) || cluster == null)
+                {
+                    _logger?.LogWarning("Failed to parse Cluster from PUT state response");
+                    return;
+                }
+                _logger?.LogTrace("Cluster parsed from PUT state response: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
+                    cluster.ActiveDeviceId, cluster.PlayerState != null);
+            }
+            // Otherwise try parsing as ClusterUpdate (dealer messages)
+            else
+            {
+                if (!PlaybackStateHelpers.TryParseClusterUpdate(message, out var clusterUpdate) || clusterUpdate == null)
+                {
+                    _logger?.LogWarning("Failed to parse ClusterUpdate from dealer message");
+                    return;
+                }
+                cluster = clusterUpdate.Cluster;
+                _logger?.LogTrace("ClusterUpdate parsed: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
+                    cluster.ActiveDeviceId, cluster.PlayerState != null);
+            }
 
             // Ignore cluster updates if we're the active device and in bidirectional mode
             if (IsBidirectional &&
                 _isLocalPlaybackActive &&
-                clusterUpdate.Cluster.ActiveDeviceId == _session?.Config.DeviceId)
+                cluster.ActiveDeviceId == _session?.Config.DeviceId)
             {
                 _logger?.LogTrace("Ignoring cluster update (we are active device)");
                 return;
             }
 
             // Convert to domain model with change detection
-            var newState = PlaybackStateHelpers.ClusterToPlaybackState(clusterUpdate, _currentState);
+            var newState = PlaybackStateHelpers.ClusterToPlaybackState(cluster, _currentState);
 
             // Only update if something actually changed
             if (newState.Changes == Connect.StateChanges.None)

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Sinks;
@@ -7,11 +8,21 @@ namespace Wavee.Connect.Playback.Sinks;
 /// </summary>
 public sealed class StubAudioSink : IAudioSink
 {
+    private readonly ILogger? _logger;
     private AudioFormat? _format;
     private long _positionMs;
     private bool _isPlaying;
 
     public string SinkName => "Stub";
+
+    /// <summary>
+    /// Creates a new StubAudioSink.
+    /// </summary>
+    /// <param name="logger">Optional logger.</param>
+    public StubAudioSink(ILogger? logger = null)
+    {
+        _logger = logger;
+    }
 
     public Task InitializeAsync(AudioFormat format, int bufferSizeMs = 100, CancellationToken cancellationToken = default)
     {

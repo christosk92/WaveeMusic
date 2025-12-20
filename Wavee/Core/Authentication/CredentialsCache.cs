@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -96,14 +97,11 @@ public sealed class CredentialsCache : ICredentialsCache
             // Read file
             var encryptedData = await File.ReadAllBytesAsync(filePath, cancellationToken);
 
-            // Decrypt (if encryption is available)
+            // Decrypt (if encryption is available - DPAPI on Windows only)
             byte[] decryptedData;
-            if (_useEncryption)
+            if (OperatingSystem.IsWindows() && _useEncryption)
             {
-                decryptedData = ProtectedData.Unprotect(
-                    encryptedData,
-                    optionalEntropy: null,
-                    scope: DataProtectionScope.CurrentUser);
+                decryptedData = UnprotectWindows(encryptedData);
             }
             else
             {
@@ -157,14 +155,11 @@ public sealed class CredentialsCache : ICredentialsCache
             var json = JsonSerializer.Serialize(credentials, AuthenticationJsonSerializerContext.Default.Credentials);
             var jsonBytes = Encoding.UTF8.GetBytes(json);
 
-            // Encrypt (if available)
+            // Encrypt (if available - DPAPI on Windows only)
             byte[] dataToWrite;
-            if (_useEncryption)
+            if (OperatingSystem.IsWindows() && _useEncryption)
             {
-                dataToWrite = ProtectedData.Protect(
-                    jsonBytes,
-                    optionalEntropy: null,
-                    scope: DataProtectionScope.CurrentUser);
+                dataToWrite = ProtectWindows(jsonBytes);
             }
             else
             {
@@ -292,4 +287,18 @@ public sealed class CredentialsCache : ICredentialsCache
 
         return sanitized.ToString();
     }
+
+    /// <summary>
+    /// Encrypts data using DPAPI (Windows only).
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static byte[] ProtectWindows(byte[] data)
+        => ProtectedData.Protect(data, optionalEntropy: null, scope: DataProtectionScope.CurrentUser);
+
+    /// <summary>
+    /// Decrypts data using DPAPI (Windows only).
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static byte[] UnprotectWindows(byte[] data)
+        => ProtectedData.Unprotect(data, optionalEntropy: null, scope: DataProtectionScope.CurrentUser);
 }
