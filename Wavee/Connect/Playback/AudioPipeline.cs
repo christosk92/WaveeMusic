@@ -73,6 +73,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private string? _currentPlaybackId;
     private PlaybackMetrics? _currentMetrics;
 
+    // Queue management
+    private readonly PlaybackQueue _queue;
+
     // Command subscriptions
     private readonly CompositeDisposable _subscriptions = new();
 
@@ -107,6 +110,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _logger = logger;
 
         _stateSubject = new BehaviorSubject<LocalPlaybackState>(_currentState);
+        _queue = new PlaybackQueue(logger);
+
+        // Subscribe to NeedsMoreTracks for infinite contexts / large playlists
+        _subscriptions.Add(_queue.NeedsMoreTracks.Subscribe(_ =>
+        {
+            _logger?.LogDebug("Queue signals NeedsMoreTracks - provider integration pending");
+            // TODO: Integrate with context providers to load more tracks
+        }));
     }
 
     /// <summary>
@@ -194,6 +205,29 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _currentTrackUid = string.Empty; // TODO: uids in spotify are weird.. They are part of either an album or a playlist.
             //_currentTrackUid = GenerateTrackUid(trackUri);
             _currentPositionMs = command.PositionMs ?? 0;
+
+            // Setup queue
+            // For single track playback (no context), create a single-item queue
+            // For context playback, tracks will be loaded by context provider (Phase 2)
+            if (!string.IsNullOrEmpty(command.ContextUri))
+            {
+                _queue.SetContext(command.ContextUri, isInfinite: false, totalTracks: null);
+                // TODO: Phase 2 - Load tracks from context provider
+                // For now, if we have a track URI, add it as the only track
+                if (!string.IsNullOrEmpty(command.TrackUri))
+                {
+                    _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
+                }
+            }
+            else
+            {
+                // Single track playback - add to queue
+                _queue.Clear();
+                _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
+            }
+
+            // Sync shuffle state with queue
+            _queue.SetShuffle(_shuffling);
 
             // Start playback loop
             _playbackCts = new CancellationTokenSource();
@@ -354,11 +388,31 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         {
             _logger?.LogInformation("Skip next command received");
 
-            // TODO: Implement queue integration
-            // For now, just stop playback
+            // Get next track from queue
+            var nextTrack = _queue.MoveNext();
+
+            if (nextTrack == null)
+            {
+                _logger?.LogDebug("No next track in queue, handling end of context");
+                await HandleEndOfContextAsync(cancellationToken);
+                return;
+            }
+
+            _logger?.LogDebug("Playing next track: {TrackUri}", nextTrack.Uri);
+
+            // Stop current playback and start next
             await StopInternalAsync();
 
-            _logger?.LogWarning("Skip next: Queue not implemented yet, stopping playback");
+            // Update state
+            var trackUri = NormalizeToUri(nextTrack.Uri);
+            _currentTrackUri = trackUri;
+            _currentTrackUid = nextTrack.Uid ?? string.Empty;
+            _currentPositionMs = 0;
+
+            // Start playback of next track
+            _playbackCts = new CancellationTokenSource();
+            var playbackToken = _playbackCts.Token;
+            _playbackTask = Task.Run(() => PlaybackLoopAsync(trackUri, 0, playbackToken));
         }
         finally
         {
@@ -375,17 +429,50 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _logger?.LogInformation("Skip previous command received");
 
             // If we're more than 3 seconds into the track, restart it
-            if (_currentPositionMs > 3000 && !string.IsNullOrEmpty(_currentTrackUri))
+            if (_currentPositionMs > 3000)
             {
-                await SeekAsync(0, cancellationToken);
+                _logger?.LogDebug("More than 3s into track, restarting");
+                lock (_seekLock)
+                {
+                    _pendingSeekMs = 0;
+                }
+                _currentPositionMs = 0;
+                await _audioSink.FlushAsync();
+                PublishStateUpdate();
                 return;
             }
 
-            // TODO: Implement queue integration
-            // For now, just restart current track
-            await SeekAsync(0, cancellationToken);
+            // Try to go to previous track
+            var prevTrack = _queue.MovePrevious();
 
-            _logger?.LogWarning("Skip previous: Queue not implemented yet, restarting track");
+            if (prevTrack == null)
+            {
+                _logger?.LogDebug("No previous track, restarting current");
+                lock (_seekLock)
+                {
+                    _pendingSeekMs = 0;
+                }
+                _currentPositionMs = 0;
+                await _audioSink.FlushAsync();
+                PublishStateUpdate();
+                return;
+            }
+
+            _logger?.LogDebug("Playing previous track: {TrackUri}", prevTrack.Uri);
+
+            // Stop current playback and start previous
+            await StopInternalAsync();
+
+            // Update state
+            var trackUri = NormalizeToUri(prevTrack.Uri);
+            _currentTrackUri = trackUri;
+            _currentTrackUid = prevTrack.Uid ?? string.Empty;
+            _currentPositionMs = 0;
+
+            // Start playback of previous track
+            _playbackCts = new CancellationTokenSource();
+            var playbackToken = _playbackCts.Token;
+            _playbackTask = Task.Run(() => PlaybackLoopAsync(trackUri, 0, playbackToken));
         }
         finally
         {
@@ -399,6 +486,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _logger?.LogInformation("Set shuffle: {Enabled}", enabled);
 
         _shuffling = enabled;
+        _queue.SetShuffle(enabled);
         PublishStateUpdate();
 
         return Task.CompletedTask;
@@ -424,6 +512,61 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         PublishStateUpdate();
 
         return Task.CompletedTask;
+    }
+
+    // ================================================================
+    // END OF CONTEXT HANDLING
+    // ================================================================
+
+    /// <summary>
+    /// Handles end of context (called from SkipNextAsync when queue is empty).
+    /// Acquires command lock.
+    /// </summary>
+    private async Task HandleEndOfContextAsync(CancellationToken cancellationToken)
+    {
+        // Called from SkipNextAsync which already holds the command lock
+        await HandleEndOfContextInternalAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Internal handler for end of context - implements repeat context, autoplay, or stop.
+    /// Does not acquire command lock (caller must hold it or be in playback loop).
+    /// </summary>
+    private async Task HandleEndOfContextInternalAsync(CancellationToken cancellationToken)
+    {
+        if (_repeatingContext)
+        {
+            _logger?.LogDebug("Repeat context enabled, restarting from beginning");
+
+            // Skip to beginning of queue
+            var firstTrack = _queue.SkipTo(0);
+            if (firstTrack != null)
+            {
+                // Stop current and play first track
+                await StopInternalAsync();
+
+                _currentTrackUri = NormalizeToUri(firstTrack.Uri);
+                _currentTrackUid = firstTrack.Uid ?? string.Empty;
+                _currentPositionMs = 0;
+
+                // Start playback
+                _playbackCts = new CancellationTokenSource();
+                var playbackToken = _playbackCts.Token;
+                _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, 0, playbackToken));
+                return;
+            }
+        }
+
+        // TODO: Phase 3 - Handle autoplay (fetch recommendations from Spotify)
+        // if (_autoplayEnabled)
+        // {
+        //     await LoadAutoplayTracksAsync();
+        //     var nextTrack = _queue.MoveNext();
+        //     if (nextTrack != null) { ... }
+        // }
+
+        _logger?.LogInformation("End of context - stopping playback");
+        await StopInternalAsync();
     }
 
     // ================================================================
@@ -552,7 +695,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Send track transition event
             EndPlaybackSession((int)_currentPositionMs, PlaybackReason.TrackDone);
 
-            // Handle repeat
+            // Handle repeat track first
             if (_repeatingTrack)
             {
                 _logger?.LogDebug("Repeat track enabled, restarting");
@@ -566,7 +709,25 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 return;
             }
 
-            // TODO: Handle queue advance (skip to next track)
+            // Try to advance to next track in queue
+            var nextTrack = _queue.MoveNext();
+            if (nextTrack != null)
+            {
+                _logger?.LogDebug("Auto-advancing to next track: {TrackUri}", nextTrack.Uri);
+
+                // Update state for next track
+                _currentTrackUri = NormalizeToUri(nextTrack.Uri);
+                _currentTrackUid = nextTrack.Uid ?? string.Empty;
+                _currentPositionMs = 0;
+
+                // Continue playing next track (recursive call)
+                await PlaybackLoopAsync(_currentTrackUri, 0, cancellationToken);
+                return;
+            }
+
+            // No next track - handle end of context
+            _logger?.LogDebug("End of queue reached, handling end of context");
+            await HandleEndOfContextInternalAsync(cancellationToken);
             _isPlaying = false;
             PublishStateUpdate();
         }
@@ -893,6 +1054,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
         // Dispose lock
         _commandLock.Dispose();
+
+        // Dispose queue
+        _queue.Dispose();
 
         _logger?.LogInformation("AudioPipeline disposed");
     }
