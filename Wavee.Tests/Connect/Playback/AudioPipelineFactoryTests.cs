@@ -163,25 +163,18 @@ public class AudioPipelineFactoryTests
     }
 
     [Fact]
-    [Trait("Platform", "Windows")]
-    public void CreateAudioSink_Windows_ReturnsWasapi()
+    public void CreateAudioSink_PortAudio_ReturnsPortAudioSink()
     {
         // ============================================================
-        // WHY: On Windows, WASAPI sink should be returned.
+        // WHY: PortAudio sink should be returned when requested.
         // ============================================================
 
-        if (!OperatingSystem.IsWindows())
-        {
-            // Skip on non-Windows
-            return;
-        }
-
         // Act
-        var sink = AudioPipelineFactory.CreateAudioSink(AudioSinkType.Wasapi);
+        var sink = AudioPipelineFactory.CreateAudioSink(AudioSinkType.PortAudio);
 
         // Assert
-        sink.Should().BeOfType<WasapiAudioSink>();
-        sink.SinkName.Should().Be("WASAPI");
+        sink.Should().BeOfType<PortAudioSink>();
+        sink.SinkName.Should().Be("PortAudio");
     }
 
     [Fact]
@@ -269,24 +262,17 @@ public class AudioPipelineOptionsTests
     }
 
     [Fact]
-    public void Default_AudioSinkType_IsAppropriateForPlatform()
+    public void Default_AudioSinkType_IsPortAudio()
     {
         // ============================================================
-        // WHY: Default sink type should be appropriate for the platform.
+        // WHY: Default sink type should be PortAudio (cross-platform).
         // ============================================================
 
         // Act
         var options = AudioPipelineOptions.Default;
 
-        // Assert
-        if (OperatingSystem.IsWindows())
-        {
-            options.AudioSinkType.Should().Be(AudioSinkType.Wasapi);
-        }
-        else
-        {
-            options.AudioSinkType.Should().Be(AudioSinkType.Stub);
-        }
+        // Assert - PortAudio is the cross-platform default
+        options.AudioSinkType.Should().Be(AudioSinkType.PortAudio);
     }
 
     [Fact]

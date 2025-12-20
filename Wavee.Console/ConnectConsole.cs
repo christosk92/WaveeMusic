@@ -1,24 +1,35 @@
 using System.Reactive.Linq;
+using Microsoft.Extensions.Logging;
 using Wavee.Connect;
+using Wavee.Connect.Commands;
 using Wavee.Connect.Connection;
+using Wavee.Connect.Playback;
 using Wavee.Connect.Protocol;
+using Wavee.Core.Http;
 using Wavee.Core.Session;
+using Wavee.Core.Storage;
 
 namespace Wavee.Console;
 
 /// <summary>
 /// Rich interactive console interface for Spotify Connect features.
 /// </summary>
-internal sealed class ConnectConsole : IDisposable
+internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 {
     private readonly Session _session;
+    private readonly HttpClient _httpClient;
+    private readonly ILogger? _logger;
     private readonly List<IDisposable> _subscriptions = new();
+    private AudioPipeline? _audioPipeline;
+    private MetadataDatabase? _metadataDatabase;
     private bool _watchEnabled;
     private bool _disposed;
 
-    public ConnectConsole(Session session)
+    public ConnectConsole(Session session, HttpClient httpClient, ILogger? logger = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _logger = logger;
     }
 
     /// <summary>
@@ -34,6 +45,44 @@ internal sealed class ConnectConsole : IDisposable
 
         WriteSuccess("Spotify Connect initialized successfully!");
         WriteInfo($"Device: {_session.Config.DeviceName} ({_session.Config.DeviceId})");
+
+        // Initialize metadata database for caching
+        try
+        {
+            var dbPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Wavee",
+                "metadata.db");
+            _metadataDatabase = new MetadataDatabase(dbPath, logger: _logger);
+            WriteSuccess($"Metadata database initialized at {dbPath}");
+        }
+        catch (Exception ex)
+        {
+            WriteWarning($"Metadata database initialization failed: {ex.Message}");
+            WriteInfo("Extended metadata caching will not be available.");
+        }
+
+        // Initialize audio pipeline for local playback
+        try
+        {
+            _audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
+                _session,
+                _session.SpClient,
+                _httpClient,
+                AudioPipelineOptions.Default,
+                _metadataDatabase,
+                _logger);
+
+            // Subscribe to local playback state changes
+            _subscriptions.Add(_audioPipeline.StateChanges.Subscribe(OnLocalPlaybackStateChanged));
+            WriteSuccess("Audio pipeline initialized - playback ready!");
+        }
+        catch (Exception ex)
+        {
+            WriteWarning($"Audio pipeline initialization failed: {ex.Message}");
+            WriteInfo("Playback commands will not be available.");
+        }
+
         WriteInfo($"Type 'help' for available commands");
         System.Console.WriteLine();
 
@@ -72,11 +121,11 @@ internal sealed class ConnectConsole : IDisposable
 
     private async Task<bool> HandleCommandAsync(string input, CancellationToken cancellationToken)
     {
-        var parts = input.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
             return false;
 
-        var command = parts[0];
+        var command = parts[0].ToLower();  // Only lowercase the command, not arguments
 
         switch (command)
         {
@@ -104,6 +153,38 @@ internal sealed class ConnectConsole : IDisposable
                 ShowDeviceInfo();
                 return false;
 
+            case "play":
+                await HandlePlayCommandAsync(parts, cancellationToken);
+                return false;
+
+            case "pause":
+                if (_audioPipeline != null)
+                {
+                    await _audioPipeline.PauseAsync(cancellationToken);
+                    WriteSuccess("Paused");
+                }
+                else
+                {
+                    WriteError("Audio pipeline not available");
+                }
+                return false;
+
+            case "resume":
+                if (_audioPipeline != null)
+                {
+                    await _audioPipeline.ResumeAsync(cancellationToken);
+                    WriteSuccess("Resumed");
+                }
+                else
+                {
+                    WriteError("Audio pipeline not available");
+                }
+                return false;
+
+            case "seek":
+                await HandleSeekCommandAsync(parts, cancellationToken);
+                return false;
+
             case "clear":
                 System.Console.Clear();
                 return false;
@@ -119,6 +200,77 @@ internal sealed class ConnectConsole : IDisposable
         }
     }
 
+    private async Task HandlePlayCommandAsync(string[] parts, CancellationToken cancellationToken)
+    {
+        if (_audioPipeline == null)
+        {
+            WriteError("Audio pipeline not available");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            WriteError("Usage: play <spotify:track:xxx>");
+            return;
+        }
+
+        var trackUri = parts[1];
+        WriteInfo($"Loading {trackUri}...");
+
+        try
+        {
+            // Create a local play command (not from dealer, so use placeholder values)
+            var command = new PlayCommand
+            {
+                Endpoint = "play",
+                MessageIdent = "local",
+                MessageId = 0,
+                SenderDeviceId = _session.Config.DeviceId,
+                Key = "local/0",
+                TrackUri = trackUri
+            };
+            await _audioPipeline.PlayAsync(command, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            WriteError($"Playback failed: {ex.Message}");
+        }
+    }
+
+    private async Task HandleSeekCommandAsync(string[] parts, CancellationToken cancellationToken)
+    {
+        if (_audioPipeline == null)
+        {
+            WriteError("Audio pipeline not available");
+            return;
+        }
+
+        if (parts.Length < 2 || !int.TryParse(parts[1], out var seconds))
+        {
+            WriteError("Usage: seek <seconds>");
+            return;
+        }
+
+        var positionMs = seconds * 1000L;
+        await _audioPipeline.SeekAsync(positionMs, cancellationToken);
+        WriteSuccess($"Seeked to {FormatTimeSpan(positionMs)}");
+    }
+
+    private void OnLocalPlaybackStateChanged(LocalPlaybackState state)
+    {
+        if (!string.IsNullOrEmpty(state.TrackUri) && state.IsPlaying)
+        {
+            System.Console.WriteLine();
+            System.Console.ForegroundColor = ConsoleColor.Green;
+            System.Console.Write("[AUDIO] ");
+            System.Console.ForegroundColor = ConsoleColor.White;
+            var status = state.IsPaused ? "Paused" : "Playing";
+            System.Console.WriteLine($"{status} - {FormatTimeSpan(state.PositionMs)} / {FormatTimeSpan(state.DurationMs)}");
+            System.Console.ResetColor();
+            System.Console.Write("> ");
+        }
+    }
+
     private void ShowHelp()
     {
         WriteHeader("Available Commands:");
@@ -128,6 +280,15 @@ internal sealed class ConnectConsole : IDisposable
         System.Console.WriteLine("  volume               Show current volume");
         System.Console.WriteLine("  volume set <0-100>   Set volume percentage");
         System.Console.WriteLine("  volume +|-           Increase/decrease volume by 5%");
+        System.Console.WriteLine();
+        System.Console.ForegroundColor = ConsoleColor.Green;
+        System.Console.WriteLine("  Playback:");
+        System.Console.ResetColor();
+        System.Console.WriteLine("  play <uri>           Play a track (e.g., play spotify:track:4iV5W9uYEdYUVa79Axb7Rh)");
+        System.Console.WriteLine("  pause                Pause playback");
+        System.Console.WriteLine("  resume               Resume playback");
+        System.Console.WriteLine("  seek <seconds>       Seek to position in seconds");
+        System.Console.WriteLine();
         System.Console.WriteLine("  watch start|stop     Toggle raw dealer message monitoring");
         System.Console.WriteLine("  info                 Show device information");
         System.Console.WriteLine("  clear                Clear console");
@@ -663,6 +824,46 @@ internal sealed class ConnectConsole : IDisposable
             subscription?.Dispose();
         }
         _subscriptions.Clear();
+
+        // Synchronously dispose audio pipeline (blocking)
+        if (_audioPipeline != null)
+        {
+            _audioPipeline.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _audioPipeline = null;
+        }
+
+        // Dispose metadata database
+        if (_metadataDatabase != null)
+        {
+            _metadataDatabase.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _metadataDatabase = null;
+        }
+
+        _disposed = true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        foreach (var subscription in _subscriptions)
+        {
+            subscription?.Dispose();
+        }
+        _subscriptions.Clear();
+
+        if (_audioPipeline != null)
+        {
+            await _audioPipeline.DisposeAsync();
+            _audioPipeline = null;
+        }
+
+        if (_metadataDatabase != null)
+        {
+            await _metadataDatabase.DisposeAsync();
+            _metadataDatabase = null;
+        }
 
         _disposed = true;
     }

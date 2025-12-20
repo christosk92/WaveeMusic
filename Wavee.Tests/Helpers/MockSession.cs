@@ -65,4 +65,20 @@ internal class MockSession : ISession
     {
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>
+    /// Gets the user's country code.
+    /// </summary>
+    public Task<string> GetCountryCodeAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult("US");
+    }
+
+    /// <summary>
+    /// Gets the user's account type.
+    /// </summary>
+    public Task<AccountType> GetAccountTypeAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(AccountType.Premium);
+    }
 }

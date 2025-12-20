@@ -115,7 +115,9 @@ try
 
     // 6. Run interactive Connect console
     Log.Information("");
-    using var connectConsole = new ConnectConsole(session);
+    var httpClient = httpClientFactory.CreateClient("Wavee");
+    var audioPipelineLogger = loggerFactory.CreateLogger("Wavee.Audio.Pipeline");
+    await using var connectConsole = new ConnectConsole(session, httpClient, audioPipelineLogger);
     await connectConsole.RunAsync();
 
     // 7. Cleanup (await using handles disposal automatically)

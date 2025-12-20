@@ -455,8 +455,11 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
         // Assert
         tracker.Calls.Should().HaveCountGreaterOrEqualTo(1);
         var lastCall = tracker.Calls.Last();
-        lastCall.Request.Device.PlayerState.IsPlaying.Should().BeFalse();
+        // Note: Spotify protocol requires IsPlaying=true even when paused (triple-flag pattern)
+        // See PlaybackStateHelpers.ToPlayerState() - when paused, IsPlaying and IsPaused are both true
+        lastCall.Request.Device.PlayerState.IsPlaying.Should().BeTrue("Spotify protocol: IsPlaying=true when paused");
         lastCall.Request.Device.PlayerState.IsPaused.Should().BeTrue();
+        lastCall.Request.Device.PlayerState.PlaybackSpeed.Should().Be(0.0, "PlaybackSpeed=0 indicates paused state");
     }
 
     [Fact]
