@@ -1002,6 +1002,124 @@ public sealed class Session : ISession, IAsyncDisposable
         _data.SetTransport(null, null);
     }
 
+    /// <summary>
+    /// Reconnects to the Access Point and resets audio key sequence numbers.
+    /// Used when AudioKey requests time out repeatedly (stale connection).
+    /// </summary>
+    /// <remarks>
+    /// This method:
+    /// 1. Closes current TCP connection
+    /// 2. Attempts to reconnect to a new AP
+    /// 3. Re-authenticates using stored credentials
+    /// 4. Resets AudioKeyManager sequence to 0
+    /// 5. Restarts packet dispatcher
+    /// </remarks>
+    public async Task ReconnectApAsync(CancellationToken cancellationToken = default)
+    {
+        await _connectLock.WaitAsync(cancellationToken);
+        try
+        {
+            _logger?.LogWarning("Reconnecting to Access Point due to stale connection");
+
+            // 1. Close old transport FIRST (unblocks socket reads in dispatcher)
+            var oldTransport = _data.GetTransport();
+            if (oldTransport is not null)
+            {
+                await oldTransport.DisposeAsync();
+                _logger?.LogDebug("Closed old AP transport");
+            }
+            _data.SetTransport(null, null);
+
+            // 2. Now stop dispatcher (socket is unblocked, will exit cleanly via ObjectDisposedException handler)
+            _dispatchCts?.Cancel();
+            if (_dispatchTask is not null)
+            {
+                try
+                {
+                    await _dispatchTask.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected
+                }
+                catch (TimeoutException)
+                {
+                    _logger?.LogWarning("Dispatcher did not stop within timeout");
+                }
+            }
+            _logger?.LogDebug("Stopped packet dispatcher");
+
+            // 3. Get stored credentials for re-authentication
+            var storedCredentials = _data.GetStoredCredentials();
+            if (storedCredentials == null)
+            {
+                throw new SessionException(
+                    SessionFailureReason.AuthenticationFailed,
+                    "Cannot reconnect: no stored credentials available");
+            }
+
+            // 4. Resolve APs
+            var aps = await ApResolver.ResolveAsync(_httpClient, _logger, cancellationToken);
+
+            // 5. Try each AP until one succeeds
+            ApTransport? newTransport = null;
+            string? connectedAp = null;
+            Exception? lastException = null;
+
+            foreach (var ap in aps)
+            {
+                try
+                {
+                    _logger?.LogDebug("Attempting reconnect to AP: {Ap}", ap);
+                    newTransport = await ConnectToApAsync(ap, cancellationToken);
+                    connectedAp = ap;
+                    _logger?.LogInformation("Reconnected to Access Point: {Ap}", ap);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to reconnect to {Ap}", ap);
+                    lastException = ex;
+                }
+            }
+
+            if (newTransport is null || connectedAp is null)
+            {
+                throw new SessionException(
+                    SessionFailureReason.ConnectionFailed,
+                    "Failed to reconnect to any Access Point",
+                    lastException);
+            }
+
+            // 6. Re-authenticate
+            _logger?.LogDebug("Re-authenticating with stored credentials");
+            var reusableCredentials = await Authenticator.AuthenticateAsync(
+                newTransport,
+                storedCredentials,
+                _config.DeviceId,
+                _logger,
+                cancellationToken);
+
+            // 7. Update transport
+            _data.SetTransport(newTransport, connectedAp);
+            _data.SetStoredCredentials(reusableCredentials);
+
+            // 8. Reset AudioKeyManager sequence
+            _audioKeyManager?.ResetSequence();
+
+            // 9. Restart dispatcher
+            _dispatchCts = new CancellationTokenSource();
+            _dispatchTask = Task.Run(() => DispatchLoop(_dispatchCts.Token), _dispatchCts.Token);
+            _logger?.LogDebug("Restarted packet dispatcher");
+
+            _logger?.LogInformation("AP reconnection successful");
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
+    }
+
     private void OnDisconnected()
     {
         Disconnected?.Invoke(this, EventArgs.Empty);

@@ -85,6 +85,7 @@ public sealed class AudioKeyManager : IAsyncDisposable
             throw new AudioKeyException(AudioKeyFailureReason.NotConnected, "Session is not connected");
 
         Exception? lastException = null;
+        var reconnectAttempted = false;
 
         for (int attempt = 0; attempt < MaxRetries; attempt++)
         {
@@ -104,6 +105,24 @@ public sealed class AudioKeyManager : IAsyncDisposable
             {
                 lastException = ex;
                 _logger?.LogWarning("AudioKey attempt {Attempt}/{Max} timed out", attempt + 1, MaxRetries);
+
+                // On first timeout, try reconnecting to AP (connection may be stale)
+                if (!reconnectAttempted)
+                {
+                    reconnectAttempted = true;
+                    try
+                    {
+                        _logger?.LogInformation("AudioKey timeout, attempting AP reconnection");
+                        await _session.ReconnectApAsync(cancellationToken);
+                        _logger?.LogInformation("AP reconnection successful, retrying AudioKey");
+                        // Continue loop to retry with fresh connection
+                    }
+                    catch (Exception reconnectEx)
+                    {
+                        _logger?.LogWarning(reconnectEx, "AP reconnection failed, continuing with retries");
+                        // Continue with normal retries
+                    }
+                }
             }
         }
 
@@ -277,16 +296,32 @@ public sealed class AudioKeyManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Resets the sequence number and cancels all pending requests.
+    /// Called when reconnecting to AP due to stale connection.
+    /// </summary>
+    public void ResetSequence()
+    {
+        _sequence = 0;
+        CancelAllPending();
+        _logger?.LogInformation("AudioKeyManager sequence reset to 0, pending requests cancelled");
+    }
+
+    /// <summary>
     /// Cancels all pending requests.
     /// </summary>
     private void CancelAllPending()
     {
+        var count = _pending.Count;
         foreach (var kvp in _pending)
         {
             if (_pending.TryRemove(kvp.Key, out var pending))
             {
                 pending.Tcs.TrySetCanceled();
             }
+        }
+        if (count > 0)
+        {
+            _logger?.LogDebug("Cancelled {Count} pending AudioKey requests", count);
         }
     }
 

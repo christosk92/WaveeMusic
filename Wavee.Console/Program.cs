@@ -1,33 +1,37 @@
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
+using Spectre.Console;
 using Wavee.Console;
 using Wavee.Core.Authentication;
 using Wavee.Core.Session;
 using Wavee.OAuth;
 
-// Configure Serilog
+// Enable UTF-8 output for Korean/Unicode characters
+Console.OutputEncoding = Encoding.UTF8;
+Console.InputEncoding = Encoding.UTF8;
+
+// Create SpectreUI instance (will be configured with Serilog later)
+using var spectreUI = new SpectreUI();
+
+// Configure Serilog with SpectreUI sink
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Verbose() // Verbose = Trace level
+    .MinimumLevel.Debug()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
     .Enrich.FromLogContext()
-    .WriteTo.Console(outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.SpectreUI(spectreUI, LogEventLevel.Debug)
     .CreateLogger();
 
-Log.Information("=== Wavee Session Test ===");
-
-// Setup logging
+// Setup Microsoft.Extensions.Logging with Serilog
 using var loggerFactory = LoggerFactory.Create(builder =>
 {
     builder.AddSerilog(Log.Logger, dispose: false);
-    builder.SetMinimumLevel(LogLevel.Trace); // Trace level shows Ping/Pong
+    builder.SetMinimumLevel(LogLevel.Debug);
 });
 
 var logger = loggerFactory.CreateLogger<Program>();
-
-// Create named loggers for components
 var sessionLogger = loggerFactory.CreateLogger("Wavee.Core.Session.Session");
 
 // Setup dependency injection with HttpClient
@@ -44,134 +48,136 @@ var credentialsCache = new CredentialsCache(logger: loggerFactory.CreateLogger<C
 
 try
 {
+    // Show startup banner
+    AnsiConsole.Write(new FigletText("Wavee").Color(Color.Green));
+    AnsiConsole.MarkupLine("[dim]Spotify Connect Client[/]");
+    AnsiConsole.WriteLine();
+
     // 1. Create session configuration
     var deviceId = GetOrCreateDeviceId();
-    Log.Information("Using device ID: {DeviceId}", deviceId);
+    AnsiConsole.MarkupLine($"[dim]Device ID:[/] {deviceId[..8]}...");
 
     var config = new SessionConfig
     {
         DeviceId = deviceId,
-        DeviceName = "Wavee Test Console",
+        DeviceName = "Wavee Console",
         DeviceType = DeviceType.Computer
     };
 
     // 2. Try to load stored credentials
-    Log.Information("");
     var lastUsername = await credentialsCache.LoadLastUsernameAsync();
     var storedCredentials = await credentialsCache.LoadCredentialsAsync(lastUsername);
 
     Credentials credentials;
     if (storedCredentials != null)
     {
-        Log.Information("Found stored credentials - skipping OAuth");
+        AnsiConsole.MarkupLine("[green]Found stored credentials[/] - skipping OAuth");
         credentials = storedCredentials;
     }
     else
     {
-        Log.Information("No stored credentials found - performing OAuth flow");
+        AnsiConsole.MarkupLine("[yellow]No stored credentials[/] - OAuth required");
+        AnsiConsole.WriteLine();
+
         var oauthLogger = loggerFactory.CreateLogger("OAuth");
         var accessToken = await GetAccessTokenAsync(config.GetClientId(), oauthLogger);
         credentials = Credentials.WithAccessToken(accessToken);
     }
 
-    // 4. Create and connect session
-    Log.Information("Creating session...");
+    // 3. Create and connect session
+    AnsiConsole.MarkupLine("[dim]Creating session...[/]");
     await using var session = Session.Create(config, httpClientFactory, sessionLogger);
 
-    // Subscribe to events
-    session.PacketReceived += (sender, e) =>
-    {
-        logger.LogInformation("Received packet: {PacketType} ({PayloadSize} bytes)",
-            e.PacketType, e.Payload.Length);
-    };
-
-    session.Disconnected += (sender, e) =>
-    {
-        logger.LogWarning("Session disconnected!");
-    };
-
-    
-    // 5. Connect
-    Log.Information("Connecting to Spotify...");
-    await session.ConnectAsync(credentials, credentialsCache);
+    // 4. Connect with status spinner
+    await AnsiConsole.Status()
+        .Spinner(Spinner.Known.Dots)
+        .StartAsync("Connecting to Spotify...", async ctx =>
+        {
+            await session.ConnectAsync(credentials, credentialsCache);
+        });
 
     var userData = session.GetUserData();
     if (userData != null)
     {
-        Log.Information("Successfully connected!");
-        Log.Information("  Username: {Username}", userData.Username);
+        AnsiConsole.MarkupLine($"[green]Connected![/] Username: [bold]{userData.Username}[/]");
 
-        // Wait for country code and account type from server packets
-        Log.Information("  Country:  Waiting for server data...");
-        var countryCode = await session.GetCountryCodeAsync();
-        Log.Information("  Country:  {Country}", countryCode);
-
-        Log.Information("  Account:  Waiting for server data...");
-        var accountType = await session.GetAccountTypeAsync();
-        Log.Information("  Account:  {Account}", accountType);
-
-        Log.Information("");
+        // Get country and account info
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Fetching account info...", async ctx =>
+            {
+                var countryCode = await session.GetCountryCodeAsync();
+                var accountType = await session.GetAccountTypeAsync();
+                AnsiConsole.MarkupLine($"[dim]Country:[/] {countryCode}  [dim]Account:[/] {accountType}");
+            });
     }
 
-    // 6. Run interactive Connect console
-    Log.Information("");
+    AnsiConsole.WriteLine();
+    AnsiConsole.MarkupLine("[dim]Starting interactive console...[/]");
+    AnsiConsole.MarkupLine("[dim]Press any key to continue[/]");
+    System.Console.ReadKey(intercept: true);
+
+    // 5. Run interactive Connect console
     var httpClient = httpClientFactory.CreateClient("Wavee");
     var audioPipelineLogger = loggerFactory.CreateLogger("Wavee.Audio.Pipeline");
-    await using var connectConsole = new ConnectConsole(session, httpClient, audioPipelineLogger);
+
+    // Initialize UI with device info
+    spectreUI.UpdateDevice(config.DeviceName, config.DeviceId, false);
+
+    await using var connectConsole = new ConnectConsole(session, httpClient, spectreUI, audioPipelineLogger);
     await connectConsole.RunAsync();
 
-    // 7. Cleanup (await using handles disposal automatically)
-    Log.Information("");
-    Log.Information("Disconnecting...");
-    // Session disposed here by await using
-
+    // 6. Cleanup
     Log.Information("Session closed successfully.");
 }
 catch (OAuthException ex)
 {
-    logger.LogError(ex, "OAuth failed: {Reason}", ex.Reason);
-    Log.Error("OAuth authentication failed: {Message}", ex.Message);
-    Log.Error("  Reason: {Reason}", ex.Reason);
+    AnsiConsole.MarkupLine($"[red]OAuth failed:[/] {ex.Message}");
+    AnsiConsole.MarkupLine($"[dim]Reason:[/] {ex.Reason}");
 }
 catch (AuthenticationException ex)
 {
-    logger.LogError(ex, "Authentication failed: {Reason}", ex.Reason);
-    Log.Error("Authentication failed: {Message}", ex.Message);
-    Log.Error("  Reason: {Reason}", ex.Reason);
+    AnsiConsole.MarkupLine($"[red]Authentication failed:[/] {ex.Message}");
+    AnsiConsole.MarkupLine($"[dim]Reason:[/] {ex.Reason}");
 }
 catch (SessionException ex)
 {
-    logger.LogError(ex, "Session error: {Reason}", ex.Reason);
-    Log.Error("Session error: {Message}", ex.Message);
-    Log.Error("  Reason: {Reason}", ex.Reason);
+    AnsiConsole.MarkupLine($"[red]Session error:[/] {ex.Message}");
+    AnsiConsole.MarkupLine($"[dim]Reason:[/] {ex.Reason}");
 }
 catch (Exception ex)
 {
-    logger.LogError(ex, "Unexpected error");
-    Log.Error("Unexpected error: {Message}", ex.Message);
+    AnsiConsole.WriteException(ex);
 }
 
-Log.Information("Press any key to exit...");
-Console.ReadKey();
+AnsiConsole.WriteLine();
+AnsiConsole.MarkupLine("[dim]Press any key to exit...[/]");
+System.Console.ReadKey(intercept: true);
 
 // Helper methods
 
 static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensions.Logging.ILogger logger)
 {
-    // Perform OAuth flow to get access token
-    var flow = SelectOAuthFlow();
+    var flow = AnsiConsole.Prompt(
+        new SelectionPrompt<OAuthFlow>()
+            .Title("Select [green]OAuth authorization method[/]:")
+            .AddChoices(OAuthFlow.AuthorizationCode, OAuthFlow.DeviceCode)
+            .UseConverter(f => f switch
+            {
+                OAuthFlow.AuthorizationCode => "Authorization Code Flow (opens browser)",
+                OAuthFlow.DeviceCode => "Device Code Flow (enter code manually)",
+                _ => f.ToString()
+            }));
 
-    Log.Information("");
-    Log.Information("Starting OAuth authorization...");
-    Log.Information("");
+    AnsiConsole.WriteLine();
 
     OAuthToken newToken;
 
     if (flow == OAuthFlow.DeviceCode)
     {
-        Log.Information("Using Device Code Flow");
-        Log.Information("You'll need to visit a URL and enter a code to authorize.");
-        Log.Information("");
+        AnsiConsole.MarkupLine("[cyan]Using Device Code Flow[/]");
+        AnsiConsole.MarkupLine("[dim]You'll need to visit a URL and enter a code to authorize.[/]");
+        AnsiConsole.WriteLine();
 
         var client = OAuthClient.CreateCustom(
             clientId,
@@ -183,9 +189,9 @@ static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensi
     }
     else
     {
-        Log.Information("Using Authorization Code Flow");
-        Log.Information("Your browser will open to authorize Wavee.");
-        Log.Information("");
+        AnsiConsole.MarkupLine("[cyan]Using Authorization Code Flow[/]");
+        AnsiConsole.MarkupLine("[dim]Your browser will open to authorize Wavee.[/]");
+        AnsiConsole.WriteLine();
 
         var client = OAuthClient.CreateCustom(
             clientId,
@@ -197,70 +203,12 @@ static async Task<string> GetAccessTokenAsync(string clientId, Microsoft.Extensi
         newToken = await client.GetAccessTokenAsync();
     }
 
-    Log.Information("Successfully obtained access token via OAuth!");
-
+    AnsiConsole.MarkupLine("[green]Successfully obtained access token![/]");
     return newToken.AccessToken;
-}
-
-
-static OAuthFlow SelectOAuthFlow()
-{
-    Console.WriteLine();
-    Console.WriteLine("╔════════════════════════════════════════════════════════╗");
-    Console.WriteLine("║        Select OAuth Authorization Method              ║");
-    Console.WriteLine("╠════════════════════════════════════════════════════════╣");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("║  [1] Authorization Code Flow (Recommended)            ║");
-    Console.WriteLine("║      → Opens browser automatically                     ║");
-    Console.WriteLine("║      → Quick and seamless                              ║");
-    Console.WriteLine("║      → Best for desktop use                            ║");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("║  [2] Device Code Flow                                  ║");
-    Console.WriteLine("║      → Authorize on any device                         ║");
-    Console.WriteLine("║      → Enter code manually                             ║");
-    Console.WriteLine("║      → Best for headless/remote systems                ║");
-    Console.WriteLine("║                                                        ║");
-    Console.WriteLine("╚════════════════════════════════════════════════════════╝");
-    Console.WriteLine();
-    Console.Write("Enter your choice [1 or 2] (default: 1): ");
-
-    var input = Console.ReadLine()?.Trim();
-
-    return input == "2"
-        ? OAuthFlow.DeviceCode
-        : OAuthFlow.AuthorizationCode;
-}
-
-
-
-static string ReadPassword()
-{
-    var password = string.Empty;
-    ConsoleKey key;
-
-    do
-    {
-        var keyInfo = Console.ReadKey(intercept: true);
-        key = keyInfo.Key;
-
-        if (key == ConsoleKey.Backspace && password.Length > 0)
-        {
-            password = password[0..^1];
-            Console.Write("\b \b");
-        }
-        else if (!char.IsControl(keyInfo.KeyChar))
-        {
-            password += keyInfo.KeyChar;
-            Console.Write("*");
-        }
-    } while (key != ConsoleKey.Enter);
-
-    return password;
 }
 
 static string GetOrCreateDeviceId()
 {
-    // Try to load from file
     var deviceIdPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Wavee",
@@ -272,10 +220,8 @@ static string GetOrCreateDeviceId()
         return File.ReadAllText(deviceIdPath).Trim();
     }
 
-    // Create new device ID
     var deviceId = Guid.NewGuid().ToString();
 
-    // Save for next time
     var directory = Path.GetDirectoryName(deviceIdPath);
     if (directory != null)
     {

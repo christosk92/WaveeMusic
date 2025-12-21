@@ -59,4 +59,11 @@ public interface ISession
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The account type.</returns>
     Task<AccountType> GetAccountTypeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reconnects to the Access Point and resets audio key sequence numbers.
+    /// Used when AudioKey requests time out repeatedly (stale connection).
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task ReconnectApAsync(CancellationToken cancellationToken = default);
 }

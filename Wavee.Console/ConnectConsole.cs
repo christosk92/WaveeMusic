@@ -15,39 +15,40 @@ using Wavee.Core.Storage.Abstractions;
 namespace Wavee.Console;
 
 /// <summary>
-/// Rich interactive console interface for Spotify Connect features.
+/// Interactive console interface for Spotify Connect features using Spectre.Console UI.
 /// </summary>
 internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 {
     private readonly Session _session;
     private readonly HttpClient _httpClient;
+    private readonly SpectreUI _ui;
     private readonly ILogger? _logger;
     private readonly List<IDisposable> _subscriptions = new();
     private AudioPipeline? _audioPipeline;
     private ServiceProvider? _serviceProvider;
-    private bool _watchEnabled;
     private bool _disposed;
 
-    public ConnectConsole(Session session, HttpClient httpClient, ILogger? logger = null)
+    public ConnectConsole(Session session, HttpClient httpClient, SpectreUI ui, ILogger? logger = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         _logger = logger;
     }
 
     /// <summary>
-    /// Runs the interactive command loop.
+    /// Runs the interactive console.
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         if (_session.DeviceState == null)
         {
-            WriteError("Spotify Connect is not enabled. Set EnableConnect = true in SessionConfig.");
+            _ui.AddLog("ERR", "Spotify Connect is not enabled. Set EnableConnect = true in SessionConfig.");
             return;
         }
 
-        WriteSuccess("Spotify Connect initialized successfully!");
-        WriteInfo($"Device: {_session.Config.DeviceName} ({_session.Config.DeviceId})");
+        _ui.AddLog("INF", "Spotify Connect initialized successfully!");
+        _ui.AddLog("INF", $"Device: {_session.Config.DeviceName} ({_session.Config.DeviceId[..8]}...)");
 
         // Initialize DI container with cache services
         try
@@ -64,18 +65,16 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             });
 
             _serviceProvider = services.BuildServiceProvider();
-            WriteSuccess($"Cache services initialized (database: {dbPath})");
+            _ui.AddLog("INF", $"Cache services initialized");
         }
         catch (Exception ex)
         {
-            WriteWarning($"Cache services initialization failed: {ex.Message}");
-            WriteInfo("Extended metadata caching will not be available.");
+            _ui.AddLog("WRN", $"Cache services initialization failed: {ex.Message}");
         }
 
         // Initialize audio pipeline for local playback
         try
         {
-            // Get services from DI container (if available)
             var metadataDatabase = _serviceProvider?.GetService<IMetadataDatabase>();
             var cacheService = _serviceProvider?.GetService<ICacheService>();
 
@@ -95,28 +94,26 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             // Subscribe to local playback state changes
             _subscriptions.Add(_audioPipeline.StateChanges.Subscribe(OnLocalPlaybackStateChanged));
 
-            // Enable bidirectional mode so local playback is reported to Spotify
+            // Enable bidirectional mode
             if (_session.PlaybackState != null)
             {
                 _session.PlaybackState.EnableBidirectionalMode(
                     _audioPipeline,
                     _session.SpClient,
                     _session);
-                WriteSuccess("Audio pipeline initialized - bidirectional playback enabled!");
+                _ui.AddLog("INF", "Audio pipeline initialized - bidirectional playback enabled!");
             }
             else
             {
-                WriteSuccess("Audio pipeline initialized - playback ready!");
+                _ui.AddLog("INF", "Audio pipeline initialized - playback ready!");
             }
         }
         catch (Exception ex)
         {
-            WriteWarning($"Audio pipeline initialization failed: {ex.Message}");
-            WriteInfo("Playback commands will not be available.");
+            _ui.AddLog("WRN", $"Audio pipeline initialization failed: {ex.Message}");
         }
 
-        WriteInfo($"Type 'help' for available commands");
-        System.Console.WriteLine();
+        _ui.AddLog("INF", "Type 'help' for available commands");
 
         // Subscribe to all Connect events
         SubscribeToCommandEvents();
@@ -124,31 +121,21 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         SubscribeToConnectionEvents();
         SubscribeToVolumeChanges();
 
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            System.Console.Write("> ");
-            var input = System.Console.ReadLine()?.Trim();
+        // Update initial device state
+        _ui.UpdateDevice(
+            _session.Config.DeviceName,
+            _session.Config.DeviceId,
+            _session.DeviceState?.IsActive ?? false);
 
-            if (string.IsNullOrEmpty(input))
-                continue;
+        // Update initial volume
+        var initialVolume = _session.GetVolumePercentage() ?? 50;
+        _ui.UpdateVolume(initialVolume);
 
-            try
-            {
-                var shouldExit = await HandleCommandAsync(input, cancellationToken);
-                if (shouldExit)
-                    break;
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                WriteError($"Command failed: {ex.Message}");
-            }
+        // Set up command handler
+        _ui.SetCommandHandler(HandleCommandAsync);
 
-            System.Console.WriteLine();
-        }
+        // Run the UI (this blocks until exit)
+        await _ui.RunAsync(cancellationToken);
     }
 
     private async Task<bool> HandleCommandAsync(string input, CancellationToken cancellationToken)
@@ -157,7 +144,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         if (parts.Length == 0)
             return false;
 
-        var command = parts[0].ToLower();  // Only lowercase the command, not arguments
+        var command = parts[0].ToLower();
 
         switch (command)
         {
@@ -165,24 +152,13 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 ShowHelp();
                 return false;
 
-            case "status":
-                ShowStatus();
-                return false;
-
             case "device":
                 await HandleDeviceCommandAsync(parts, cancellationToken);
                 return false;
 
             case "volume":
+            case "vol":
                 await HandleVolumeCommandAsync(parts, cancellationToken);
-                return false;
-
-            case "watch":
-                HandleWatchCommand(parts);
-                return false;
-
-            case "info":
-                ShowDeviceInfo();
                 return false;
 
             case "play":
@@ -193,11 +169,11 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 if (_audioPipeline != null)
                 {
                     await _audioPipeline.PauseAsync(cancellationToken);
-                    WriteSuccess("Paused");
+                    _ui.AddLog("INF", "Paused");
                 }
                 else
                 {
-                    WriteError("Audio pipeline not available");
+                    _ui.AddLog("ERR", "Audio pipeline not available");
                 }
                 return false;
 
@@ -205,11 +181,11 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 if (_audioPipeline != null)
                 {
                     await _audioPipeline.ResumeAsync(cancellationToken);
-                    WriteSuccess("Resumed");
+                    _ui.AddLog("INF", "Resumed");
                 }
                 else
                 {
-                    WriteError("Audio pipeline not available");
+                    _ui.AddLog("ERR", "Audio pipeline not available");
                 }
                 return false;
 
@@ -217,17 +193,30 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 await HandleSeekCommandAsync(parts, cancellationToken);
                 return false;
 
-            case "clear":
-                System.Console.Clear();
+            case "next":
+                if (_audioPipeline != null)
+                {
+                    await _audioPipeline.SkipNextAsync(cancellationToken);
+                    _ui.AddLog("INF", "Skipped to next track");
+                }
+                return false;
+
+            case "prev":
+                if (_audioPipeline != null)
+                {
+                    await _audioPipeline.SkipPreviousAsync(cancellationToken);
+                    _ui.AddLog("INF", "Skipped to previous track");
+                }
                 return false;
 
             case "quit":
             case "exit":
-                WriteInfo("Shutting down gracefully...");
+            case "q":
+                _ui.AddLog("INF", "Shutting down...");
                 return true;
 
             default:
-                WriteError($"Unknown command: {command}. Type 'help' for available commands.");
+                _ui.AddLog("WRN", $"Unknown command: {command}. Type 'help' for available commands.");
                 return false;
         }
     }
@@ -236,29 +225,26 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     {
         if (_audioPipeline == null)
         {
-            WriteError("Audio pipeline not available");
+            _ui.AddLog("ERR", "Audio pipeline not available");
             return;
         }
 
         if (parts.Length < 2)
         {
-            WriteError("Usage: play <spotify:track:xxx>");
+            _ui.AddLog("WRN", "Usage: play <spotify:track:xxx> or <spotify:playlist:xxx>");
             return;
         }
 
         var uri = parts[1];
-        WriteInfo($"Loading {uri}...");
+        _ui.AddLog("INF", $"Loading {uri}...");
 
         try
         {
-            // Detect if this is a context (playlist/album) or single track
-            // Check both URI format (spotify:playlist:xxx) and URL format (/playlist/xxx)
             var isContext = uri.Contains(":playlist:") || uri.Contains("/playlist/") ||
                             uri.Contains(":album:") || uri.Contains("/album/") ||
                             uri.Contains(":artist:") || uri.Contains("/artist/") ||
                             uri.Contains(":show:") || uri.Contains("/show/");
 
-            // Create a local play command (not from dealer, so use placeholder values)
             var command = new PlayCommand
             {
                 Endpoint = "play",
@@ -274,7 +260,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            WriteError($"Playback failed: {ex.Message}");
+            _ui.AddLog("ERR", $"Playback failed: {ex.Message}");
         }
     }
 
@@ -282,113 +268,57 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     {
         if (_audioPipeline == null)
         {
-            WriteError("Audio pipeline not available");
+            _ui.AddLog("ERR", "Audio pipeline not available");
             return;
         }
 
         if (parts.Length < 2 || !int.TryParse(parts[1], out var seconds))
         {
-            WriteError("Usage: seek <seconds>");
+            _ui.AddLog("WRN", "Usage: seek <seconds>");
             return;
         }
 
         var positionMs = seconds * 1000L;
         await _audioPipeline.SeekAsync(positionMs, cancellationToken);
-        WriteSuccess($"Seeked to {FormatTimeSpan(positionMs)}");
+        _ui.AddLog("INF", $"Seeked to {FormatTimeSpan(positionMs)}");
     }
 
     private void OnLocalPlaybackStateChanged(LocalPlaybackState state)
     {
-        if (!string.IsNullOrEmpty(state.TrackUri) && state.IsPlaying)
-        {
-            System.Console.WriteLine();
-            System.Console.ForegroundColor = ConsoleColor.Green;
-            System.Console.Write("[AUDIO] ");
-            System.Console.ForegroundColor = ConsoleColor.White;
-            var status = state.IsPaused ? "Paused" : "Playing";
-            System.Console.WriteLine($"{status} - {FormatTimeSpan(state.PositionMs)} / {FormatTimeSpan(state.DurationMs)}");
-            System.Console.ResetColor();
-            System.Console.Write("> ");
-        }
+        _ui.UpdateNowPlaying(
+            state.TrackTitle,
+            state.TrackArtist,
+            state.TrackAlbum,
+            state.PositionMs,
+            state.DurationMs,
+            state.IsPlaying,
+            state.IsPaused);
+
+        // Update device active status based on playback state
+        // Device is active when playing or paused (track loaded)
+        var deviceActive = state.IsPlaying || state.IsPaused;
+        _ui.UpdateDevice(_session.Config.DeviceName, _session.Config.DeviceId, deviceActive);
     }
 
     private void ShowHelp()
     {
-        WriteHeader("Available Commands:");
-        System.Console.WriteLine("  help                 Show this help message");
-        System.Console.WriteLine("  status               Display Connect connection status");
-        System.Console.WriteLine("  device on|off        Toggle device active state");
-        System.Console.WriteLine("  volume               Show current volume");
-        System.Console.WriteLine("  volume set <0-100>   Set volume percentage");
-        System.Console.WriteLine("  volume +|-           Increase/decrease volume by 5%");
-        System.Console.WriteLine();
-        System.Console.ForegroundColor = ConsoleColor.Green;
-        System.Console.WriteLine("  Playback:");
-        System.Console.ResetColor();
-        System.Console.WriteLine("  play <uri>           Play a track (e.g., play spotify:track:4iV5W9uYEdYUVa79Axb7Rh)");
-        System.Console.WriteLine("  pause                Pause playback");
-        System.Console.WriteLine("  resume               Resume playback");
-        System.Console.WriteLine("  seek <seconds>       Seek to position in seconds");
-        System.Console.WriteLine();
-        System.Console.WriteLine("  watch start|stop     Toggle raw dealer message monitoring");
-        System.Console.WriteLine("  info                 Show device information");
-        System.Console.WriteLine("  clear                Clear console");
-        System.Console.WriteLine("  quit                 Exit application");
-        System.Console.WriteLine();
-        System.Console.WriteLine("Live Events (automatically displayed):");
-        System.Console.ForegroundColor = ConsoleColor.Cyan;
-        System.Console.WriteLine("  [CMD]                Remote control commands (Play, Pause, etc.)");
-        System.Console.ForegroundColor = ConsoleColor.Magenta;
-        System.Console.WriteLine("  [STATE]              Playback state changes (Track, Position, etc.)");
-        System.Console.ForegroundColor = ConsoleColor.Yellow;
-        System.Console.WriteLine("  [DEALER]             Connection status changes");
-        System.Console.ResetColor();
-    }
-
-    private void ShowStatus()
-    {
-        WriteHeader("Spotify Connect Status:");
-
-        // Dealer client status
-        if (_session.Dealer != null)
-        {
-            var connectionId = GetConnectionId();
-            var state = _session.Dealer.CurrentState;
-
-            System.Console.WriteLine($"  Dealer:       {FormatConnectionState(state)}");
-            if (!string.IsNullOrEmpty(connectionId))
-            {
-                System.Console.WriteLine($"  Connection:   {connectionId}");
-            }
-        }
-        else
-        {
-            WriteError("  Dealer:       Disabled");
-        }
-
-        // Device state
-        if (_session.DeviceState != null)
-        {
-            var isActive = _session.DeviceState.IsActive;
-            var volumePct = _session.GetVolumePercentage() ?? 0;
-
-            System.Console.WriteLine($"  Device:       {(isActive ? FormatSuccess("Active") : FormatWarning("Inactive"))}");
-            System.Console.WriteLine($"  Volume:       {volumePct}% {RenderVolumeBar(volumePct)}");
-        }
-        else
-        {
-            WriteError("  Device:       Disabled");
-        }
-
-        // Watch status
-        System.Console.WriteLine($"  Monitoring:   {(_watchEnabled ? FormatSuccess("Enabled") : "Disabled")}");
+        _ui.AddLog("INF", "--- Commands ---");
+        _ui.AddLog("INF", "play <uri>  - Play track or context");
+        _ui.AddLog("INF", "pause       - Pause playback");
+        _ui.AddLog("INF", "resume      - Resume playback");
+        _ui.AddLog("INF", "next        - Skip to next track");
+        _ui.AddLog("INF", "prev        - Skip to previous track");
+        _ui.AddLog("INF", "seek <sec>  - Seek to position");
+        _ui.AddLog("INF", "vol [0-100] - Set or show volume");
+        _ui.AddLog("INF", "device on|off - Toggle device active");
+        _ui.AddLog("INF", "quit        - Exit application");
     }
 
     private async Task HandleDeviceCommandAsync(string[] parts, CancellationToken cancellationToken)
     {
         if (parts.Length < 2)
         {
-            WriteError("Usage: device on|off");
+            _ui.AddLog("WRN", "Usage: device on|off");
             return;
         }
 
@@ -399,22 +329,28 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             case "active":
                 var activated = await _session.SetDeviceActiveAsync(true, cancellationToken);
                 if (activated)
-                    WriteSuccess("Device is now active and visible in Spotify Connect");
+                {
+                    _ui.AddLog("INF", "Device is now active");
+                    _ui.UpdateDevice(_session.Config.DeviceName, _session.Config.DeviceId, true);
+                }
                 else
-                    WriteError("Failed to activate device");
+                    _ui.AddLog("ERR", "Failed to activate device");
                 break;
 
             case "off":
             case "inactive":
                 var deactivated = await _session.SetDeviceActiveAsync(false, cancellationToken);
                 if (deactivated)
-                    WriteWarning("Device is now inactive and hidden from Spotify Connect");
+                {
+                    _ui.AddLog("INF", "Device is now inactive");
+                    _ui.UpdateDevice(_session.Config.DeviceName, _session.Config.DeviceId, false);
+                }
                 else
-                    WriteError("Failed to deactivate device");
+                    _ui.AddLog("ERR", "Failed to deactivate device");
                 break;
 
             default:
-                WriteError($"Unknown device action: {action}. Use 'on' or 'off'.");
+                _ui.AddLog("WRN", $"Unknown device action: {action}. Use 'on' or 'off'.");
                 break;
         }
     }
@@ -423,53 +359,35 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     {
         if (parts.Length == 1)
         {
-            // Just "volume" - show current volume
             var volumePct = _session.GetVolumePercentage() ?? 0;
-            System.Console.WriteLine($"Current volume: {volumePct}% {RenderVolumeBar(volumePct)}");
+            _ui.AddLog("INF", $"Current volume: {volumePct}%");
             return;
         }
 
-        var action = parts[1].ToLower();
+        var arg = parts[1].ToLower();
 
-        switch (action)
+        if (arg == "+" || arg == "up")
         {
-            case "set":
-                if (parts.Length < 3 || !int.TryParse(parts[2], out var targetPct))
-                {
-                    WriteError("Usage: volume set <0-100>");
-                    return;
-                }
-
-                var setResult = await _session.SetVolumePercentageAsync(targetPct, cancellationToken);
-                if (setResult)
-                    WriteSuccess($"Volume set to {targetPct}% {RenderVolumeBar(targetPct)}");
-                else
-                    WriteError("Failed to set volume");
-                break;
-
-            case "+":
-                await AdjustVolumeAsync(+5, cancellationToken);
-                break;
-
-            case "-":
-                await AdjustVolumeAsync(-5, cancellationToken);
-                break;
-
-            default:
-                // Try parsing as direct percentage
-                if (int.TryParse(action, out var pct))
-                {
-                    var result = await _session.SetVolumePercentageAsync(pct, cancellationToken);
-                    if (result)
-                        WriteSuccess($"Volume set to {pct}% {RenderVolumeBar(pct)}");
-                    else
-                        WriteError("Failed to set volume");
-                }
-                else
-                {
-                    WriteError("Usage: volume [set <0-100>] [+|-]");
-                }
-                break;
+            await AdjustVolumeAsync(+5, cancellationToken);
+        }
+        else if (arg == "-" || arg == "down")
+        {
+            await AdjustVolumeAsync(-5, cancellationToken);
+        }
+        else if (int.TryParse(arg, out var pct))
+        {
+            var result = await _session.SetVolumePercentageAsync(pct, cancellationToken);
+            if (result)
+            {
+                _ui.AddLog("INF", $"Volume set to {pct}%");
+                _ui.UpdateVolume(pct);
+            }
+            else
+                _ui.AddLog("ERR", "Failed to set volume");
+        }
+        else
+        {
+            _ui.AddLog("WRN", "Usage: vol [0-100] or vol +/-");
         }
     }
 
@@ -482,73 +400,12 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         if (result)
         {
             var direction = delta > 0 ? "Increased" : "Decreased";
-            WriteSuccess($"{direction} volume to {newPct}% {RenderVolumeBar(newPct)}");
+            _ui.AddLog("INF", $"{direction} volume to {newPct}%");
+            _ui.UpdateVolume(newPct);
         }
         else
         {
-            WriteError("Failed to adjust volume");
-        }
-    }
-
-    private void HandleWatchCommand(string[] parts)
-    {
-        if (parts.Length < 2)
-        {
-            WriteError("Usage: watch start|stop");
-            return;
-        }
-
-        var action = parts[1].ToLower();
-        switch (action)
-        {
-            case "start":
-            case "on":
-                if (_watchEnabled)
-                {
-                    WriteWarning("Watch mode already enabled");
-                }
-                else
-                {
-                    SubscribeToMessages();
-                    _watchEnabled = true;
-                    WriteSuccess("Live monitoring enabled - dealer messages will be displayed");
-                }
-                break;
-
-            case "stop":
-            case "off":
-                if (!_watchEnabled)
-                {
-                    WriteWarning("Watch mode already disabled");
-                }
-                else
-                {
-                    UnsubscribeFromMessages();
-                    _watchEnabled = false;
-                    WriteInfo("Live monitoring disabled");
-                }
-                break;
-
-            default:
-                WriteError($"Unknown watch action: {action}. Use 'start' or 'stop'.");
-                break;
-        }
-    }
-
-    private void ShowDeviceInfo()
-    {
-        WriteHeader("Device Information:");
-        System.Console.WriteLine($"  Name:         {_session.Config.DeviceName}");
-        System.Console.WriteLine($"  ID:           {_session.Config.DeviceId}");
-        System.Console.WriteLine($"  Type:         {_session.Config.DeviceType}");
-        System.Console.WriteLine($"  Client ID:    {_session.Config.GetClientId()[..16]}...");
-
-        if (_session.DeviceState != null)
-        {
-            var volumePct = _session.GetVolumePercentage() ?? 0;
-            var volumeRaw = _session.DeviceState.CurrentVolume;
-            System.Console.WriteLine($"  Volume:       {volumePct}% (raw: {volumeRaw}/65535)");
-            System.Console.WriteLine($"  Active:       {_session.DeviceState.IsActive}");
+            _ui.AddLog("ERR", "Failed to adjust volume");
         }
     }
 
@@ -557,50 +414,38 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         if (_session.CommandHandler == null)
             return;
 
-        // Play command
         _subscriptions.Add(_session.CommandHandler.PlayCommands.Subscribe(cmd =>
         {
             var details = $"Track: {cmd.TrackUri ?? "N/A"}, Context: {cmd.ContextUri ?? "N/A"}";
-            if (cmd.Options != null)
-                details += $" (shuffle: {cmd.Options.ShufflingContext}, repeat: {cmd.Options.RepeatingContext})";
-            WriteCommand("Play", details);
+            _ui.AddLog("CMD", $"Play - {details}");
         }));
 
-        // Pause command
         _subscriptions.Add(_session.CommandHandler.PauseCommands.Subscribe(_ =>
-            WriteCommand("Pause")));
+            _ui.AddLog("CMD", "Pause")));
 
-        // Resume command
         _subscriptions.Add(_session.CommandHandler.ResumeCommands.Subscribe(_ =>
-            WriteCommand("Resume")));
+            _ui.AddLog("CMD", "Resume")));
 
-        // Seek command
         _subscriptions.Add(_session.CommandHandler.SeekCommands.Subscribe(cmd =>
-            WriteCommand("Seek", $"Position: {FormatTimeSpan(cmd.PositionMs)}")));
+            _ui.AddLog("CMD", $"Seek to {FormatTimeSpan(cmd.PositionMs)}")));
 
-        // Shuffle command
         _subscriptions.Add(_session.CommandHandler.ShuffleCommands.Subscribe(cmd =>
-            WriteCommand("Shuffle", cmd.Enabled ? "Enabled" : "Disabled")));
+        {
+            _ui.AddLog("CMD", $"Shuffle {(cmd.Enabled ? "ON" : "OFF")}");
+            _ui.UpdateOptions(cmd.Enabled, false, false); // TODO: track all options
+        }));
 
-        // Repeat Context command
-        _subscriptions.Add(_session.CommandHandler.RepeatContextCommands.Subscribe(cmd =>
-            WriteCommand("Repeat Context", cmd.Enabled ? "Enabled" : "Disabled")));
-
-        // Repeat Track command
-        _subscriptions.Add(_session.CommandHandler.RepeatTrackCommands.Subscribe(cmd =>
-            WriteCommand("Repeat Track", cmd.Enabled ? "Enabled" : "Disabled")));
-
-        // Skip Next command
         _subscriptions.Add(_session.CommandHandler.SkipNextCommands.Subscribe(_ =>
-            WriteCommand("Skip Next")));
+            _ui.AddLog("CMD", "Skip Next")));
 
-        // Skip Prev command
         _subscriptions.Add(_session.CommandHandler.SkipPrevCommands.Subscribe(_ =>
-            WriteCommand("Skip Prev")));
+            _ui.AddLog("CMD", "Skip Prev")));
 
-        // Transfer command
-        _subscriptions.Add(_session.CommandHandler.TransferCommands.Subscribe(cmd =>
-            WriteCommand("Transfer", "Playback transferred to this device")));
+        _subscriptions.Add(_session.CommandHandler.TransferCommands.Subscribe(_ =>
+        {
+            _ui.AddLog("CMD", "Transfer - Playback transferred to this device");
+            _ui.UpdateDevice(_session.Config.DeviceName, _session.Config.DeviceId, true);
+        }));
     }
 
     private void SubscribeToPlaybackStateEvents()
@@ -608,43 +453,38 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         if (_session.PlaybackState == null)
             return;
 
-        // Track changed
         _subscriptions.Add(_session.PlaybackState.TrackChanged.Subscribe(state =>
         {
             if (state.Track != null)
             {
-                var details = $"\"{state.Track.Title}\" - {state.Track.Artist}";
-                if (!string.IsNullOrEmpty(state.Track.Album))
-                    details += $" ({state.Track.Album})";
-                WriteStateChange("Track", details);
+                _ui.UpdateNowPlaying(
+                    state.Track.Title,
+                    state.Track.Artist,
+                    state.Track.Album,
+                    state.PositionMs,
+                    state.DurationMs,
+                    state.Status == PlaybackStatus.Playing,
+                    state.Status == PlaybackStatus.Paused);
             }
         }));
 
-        // Playback status changed
         _subscriptions.Add(_session.PlaybackState.PlaybackStatusChanged.Subscribe(state =>
-            WriteStateChange("Status", state.Status.ToString())));
+        {
+            var isPlaying = state.Status == PlaybackStatus.Playing;
+            var isPaused = state.Status == PlaybackStatus.Paused;
+            _ui.UpdateNowPlaying(null, null, null, state.PositionMs, state.DurationMs, isPlaying, isPaused);
+        }));
 
-        // Position changed (only log if significant)
         _subscriptions.Add(_session.PlaybackState.PositionChanged
-            .Throttle(TimeSpan.FromSeconds(1)) // Real-time updates
-            .Subscribe(state =>
-            {
-                var current = FormatTimeSpan(state.PositionMs);
-                var total = FormatTimeSpan(state.DurationMs);
-                WriteStateChange("Position", $"{current} / {total}");
-            }));
+            .Throttle(TimeSpan.FromMilliseconds(500))
+            .Subscribe(state => _ui.UpdatePosition(state.PositionMs)));
 
-        // Active device changed
-        _subscriptions.Add(_session.PlaybackState.ActiveDeviceChanged.Subscribe(state =>
-            WriteStateChange("Device", $"{state.ActiveDeviceId} (active)")));
-
-        // Options changed
         _subscriptions.Add(_session.PlaybackState.OptionsChanged.Subscribe(state =>
         {
-            var shuffle = state.Options.Shuffling ? "ON" : "OFF";
-            var repeat = state.Options.RepeatingContext ? "Context" :
-                        state.Options.RepeatingTrack ? "Track" : "OFF";
-            WriteStateChange("Options", $"Shuffle: {shuffle}, Repeat: {repeat}");
+            _ui.UpdateOptions(
+                state.Options.Shuffling,
+                state.Options.RepeatingContext,
+                state.Options.RepeatingTrack);
         }));
     }
 
@@ -663,59 +503,8 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 _ => state.ToString()
             };
 
-            var details = state == ConnectionState.Connected && _session.Dealer.CurrentConnectionId != null
-                ? $"ID: {_session.Dealer.CurrentConnectionId}"
-                : null;
-
-            WriteDealerEvent(status, details);
+            _ui.UpdateDealerStatus(status);
         }));
-    }
-
-    private void WriteCommand(string command, string? details = null)
-    {
-        System.Console.WriteLine();
-        System.Console.ForegroundColor = ConsoleColor.Cyan;
-        System.Console.Write($"[CMD] {command}");
-        if (details != null)
-        {
-            System.Console.ForegroundColor = ConsoleColor.White;
-            System.Console.Write($" → {details}");
-        }
-        System.Console.WriteLine();
-        System.Console.ResetColor();
-        System.Console.Write("> ");
-    }
-
-    private void WriteStateChange(string changeType, string details)
-    {
-        System.Console.WriteLine();
-        System.Console.ForegroundColor = ConsoleColor.Magenta;
-        System.Console.Write($"[STATE] {changeType}");
-        System.Console.ForegroundColor = ConsoleColor.White;
-        System.Console.WriteLine($" → {details}");
-        System.Console.ResetColor();
-        System.Console.Write("> ");
-    }
-
-    private void WriteDealerEvent(string status, string? details = null)
-    {
-        System.Console.WriteLine();
-        System.Console.ForegroundColor = ConsoleColor.Yellow;
-        System.Console.Write($"[DEALER] {status}");
-        if (details != null)
-        {
-            System.Console.ForegroundColor = ConsoleColor.White;
-            System.Console.Write($" → {details}");
-        }
-        System.Console.WriteLine();
-        System.Console.ResetColor();
-        System.Console.Write("> ");
-    }
-
-    private string FormatTimeSpan(long milliseconds)
-    {
-        var ts = TimeSpan.FromMilliseconds(milliseconds);
-        return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
     }
 
     private void SubscribeToVolumeChanges()
@@ -725,134 +514,19 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 
         var subscription = _session.DeviceState.Volume
             .DistinctUntilChanged()
-            .Skip(1) // Skip initial value
             .Subscribe(volume =>
             {
                 var pct = ConnectStateHelpers.VolumeToPercentage(volume);
-                System.Console.WriteLine();
-                WriteNotification($"Volume changed remotely: {pct}% {RenderVolumeBar(pct)}");
-                System.Console.Write("> ");
+                _ui.UpdateVolume(pct);
             });
 
         _subscriptions.Add(subscription);
     }
 
-    private void SubscribeToMessages()
+    private static string FormatTimeSpan(long milliseconds)
     {
-        if (_session.Dealer?.Messages == null)
-            return;
-
-        var subscription = _session.Dealer.Messages
-            .Subscribe(message =>
-            {
-                System.Console.WriteLine();
-                WriteNotification($"[Dealer Message] {message.Uri}");
-                if (message.Headers.Count > 0)
-                {
-                    foreach (var header in message.Headers)
-                    {
-                        System.Console.WriteLine($"  {header.Key}: {header.Value}");
-                    }
-                }
-                System.Console.Write("> ");
-            });
-
-        _subscriptions.Add(subscription);
-    }
-
-    private void UnsubscribeFromMessages()
-    {
-        // Keep volume subscription, only remove message subscription
-        if (_subscriptions.Count > 1)
-        {
-            _subscriptions[1].Dispose();
-            _subscriptions.RemoveAt(1);
-        }
-    }
-
-    private string GetConnectionId()
-    {
-        if (_session.Dealer?.CurrentConnectionId == null)
-            return string.Empty;
-
-        return _session.Dealer.CurrentConnectionId;
-    }
-
-    private string RenderVolumeBar(int percentage)
-    {
-        const int barWidth = 20;
-        var filled = (int)Math.Round(percentage / 100.0 * barWidth);
-        var empty = barWidth - filled;
-
-        return $"[{new string('█', filled)}{new string('░', empty)}]";
-    }
-
-    private string FormatConnectionState(ConnectionState state)
-    {
-        return state switch
-        {
-            ConnectionState.Connected => FormatSuccess("Connected"),
-            ConnectionState.Connecting => FormatWarning("Connecting..."),
-            ConnectionState.Disconnected => FormatError("Disconnected"),
-            _ => state.ToString()
-        };
-    }
-
-    private void WriteHeader(string message)
-    {
-        System.Console.ForegroundColor = ConsoleColor.Cyan;
-        System.Console.WriteLine(message);
-        System.Console.ResetColor();
-    }
-
-    private void WriteSuccess(string message)
-    {
-        System.Console.ForegroundColor = ConsoleColor.Green;
-        System.Console.WriteLine(message);
-        System.Console.ResetColor();
-    }
-
-    private void WriteError(string message)
-    {
-        System.Console.ForegroundColor = ConsoleColor.Red;
-        System.Console.WriteLine(message);
-        System.Console.ResetColor();
-    }
-
-    private void WriteWarning(string message)
-    {
-        System.Console.ForegroundColor = ConsoleColor.Yellow;
-        System.Console.WriteLine(message);
-        System.Console.ResetColor();
-    }
-
-    private void WriteInfo(string message)
-    {
-        System.Console.ForegroundColor = ConsoleColor.Gray;
-        System.Console.WriteLine(message);
-        System.Console.ResetColor();
-    }
-
-    private void WriteNotification(string message)
-    {
-        System.Console.ForegroundColor = ConsoleColor.Magenta;
-        System.Console.WriteLine(message);
-        System.Console.ResetColor();
-    }
-
-    private string FormatSuccess(string text)
-    {
-        return $"\u001b[32m{text}\u001b[0m";  // Green
-    }
-
-    private string FormatError(string text)
-    {
-        return $"\u001b[31m{text}\u001b[0m";  // Red
-    }
-
-    private string FormatWarning(string text)
-    {
-        return $"\u001b[33m{text}\u001b[0m";  // Yellow
+        var ts = TimeSpan.FromMilliseconds(milliseconds);
+        return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
     }
 
     public void Dispose()
@@ -861,19 +535,15 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             return;
 
         foreach (var subscription in _subscriptions)
-        {
             subscription?.Dispose();
-        }
         _subscriptions.Clear();
 
-        // Synchronously dispose audio pipeline (blocking)
         if (_audioPipeline != null)
         {
             _audioPipeline.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _audioPipeline = null;
         }
 
-        // Dispose DI container (disposes all registered services)
         _serviceProvider?.Dispose();
         _serviceProvider = null;
 
@@ -886,9 +556,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             return;
 
         foreach (var subscription in _subscriptions)
-        {
             subscription?.Dispose();
-        }
         _subscriptions.Clear();
 
         if (_audioPipeline != null)
@@ -897,7 +565,6 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             _audioPipeline = null;
         }
 
-        // Dispose DI container (disposes all registered services)
         if (_serviceProvider != null)
         {
             await _serviceProvider.DisposeAsync();

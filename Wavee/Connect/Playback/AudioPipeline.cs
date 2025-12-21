@@ -62,6 +62,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private string? _currentTrackUri;
     private string? _currentTrackUid;
     private string? _currentContextUri;
+    private string? _currentTrackTitle;
+    private string? _currentTrackArtist;
+    private string? _currentTrackAlbum;
     private long _currentPositionMs;
     private long _currentDurationMs;
     private bool _isPlaying;
@@ -454,6 +457,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _currentTrackUri = null;
             _currentTrackUid = null;
             _currentContextUri = null;
+            _currentTrackTitle = null;
+            _currentTrackArtist = null;
+            _currentTrackAlbum = null;
             _currentPositionMs = 0;
             _currentDurationMs = 0;
 
@@ -803,7 +809,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             trackStream = await _sourceRegistry.LoadAsync(trackUri, cancellationToken);
             _logger?.LogDebug("Track loaded: {Title} by {Artist}", trackStream.Metadata.Title, trackStream.Metadata.Artist);
 
-            // Store track duration from metadata
+            // Store track metadata
+            _currentTrackTitle = trackStream.Metadata.Title;
+            _currentTrackArtist = trackStream.Metadata.Artist;
+            _currentTrackAlbum = trackStream.Metadata.Album;
             _currentDurationMs = trackStream.Metadata.DurationMs ?? 0;
 
             // Create VorbisReader directly (skip Spotify header)
@@ -1010,7 +1019,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     {
         lock (_stateLock)
         {
-            // Get current track from queue for metadata
+            // Get current track from queue for URIs
             var currentTrack = _queue.Current;
 
             // Build prev/next track references
@@ -1032,9 +1041,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 TrackUid = _currentTrackUid,
                 AlbumUri = currentTrack?.AlbumUri,
                 ArtistUri = currentTrack?.ArtistUri,
-                TrackTitle = currentTrack?.Title,
-                TrackArtist = currentTrack?.Artist,
-                TrackAlbum = currentTrack?.Album,
+                // Use stored metadata from loaded track (not queue which may not have it)
+                TrackTitle = _currentTrackTitle,
+                TrackArtist = _currentTrackArtist,
+                TrackAlbum = _currentTrackAlbum,
                 ContextUri = _currentContextUri,
                 ContextUrl = contextUrl,
                 PositionMs = _currentPositionMs,
