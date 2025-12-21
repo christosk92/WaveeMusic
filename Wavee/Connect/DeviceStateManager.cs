@@ -136,8 +136,19 @@ public sealed class DeviceStateManager : IAsyncDisposable
 
         try
         {
+            var payload = message.Payload;
+
+            // Check if payload is gzipped (same pattern as PlaybackStateHelpers)
+            if (message.Headers.TryGetValue("Transfer-Encoding", out var encoding) &&
+                encoding.Equals("gzip", StringComparison.OrdinalIgnoreCase))
+            {
+                payload = PlaybackStateHelpers.DecompressGzip(payload);
+                _logger?.LogTrace("Decompressed gzip volume payload: {OriginalSize} -> {DecompressedSize}",
+                    message.Payload.Length, payload.Length);
+            }
+
             // Parse SetVolumeCommand protobuf
-            var volumeCommand = SetVolumeCommand.Parser.ParseFrom(message.Payload);
+            var volumeCommand = SetVolumeCommand.Parser.ParseFrom(payload);
             var newVolume = (int)volumeCommand.Volume;
 
             _logger?.LogInformation("Volume changed to {Volume}", newVolume);

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Text;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -177,6 +178,7 @@ internal static class MessageParser
 
             string? key = null;
             string? messageIdent = null;
+            Dictionary<string, string>? headers = null;
             JsonElement payload = default;
             bool hasPayload = false;
 
@@ -194,12 +196,47 @@ internal static class MessageParser
                         reader.Read();
                         messageIdent = reader.GetString();
                     }
+                    else if (reader.ValueTextEquals(HeadersPropertyName))
+                    {
+                        reader.Read();
+                        headers = ParseHeaders(ref reader);
+                    }
                     else if (reader.ValueTextEquals(PayloadPropertyName))
                     {
                         // Parse payload as JsonElement for flexibility
                         var doc = JsonDocument.ParseValue(ref reader);
                         payload = doc.RootElement.Clone();
                         hasPayload = true;
+                    }
+                }
+            }
+
+            // Handle gzip-compressed payloads (librespot compatibility)
+            // When Transfer-Encoding header is "gzip", payload contains { "compressed": "<base64>" }
+            if (hasPayload &&
+                headers != null &&
+                headers.TryGetValue("Transfer-Encoding", out var encoding) &&
+                encoding.Equals("gzip", StringComparison.OrdinalIgnoreCase))
+            {
+                if (payload.TryGetProperty("compressed", out var compressedProp))
+                {
+                    try
+                    {
+                        var base64 = compressedProp.GetString();
+                        if (!string.IsNullOrEmpty(base64))
+                        {
+                            var gzipBytes = Convert.FromBase64String(base64);
+                            using var ms = new MemoryStream(gzipBytes);
+                            using var gzip = new GZipStream(ms, CompressionMode.Decompress);
+                            using var decompressedDoc = JsonDocument.Parse(gzip);
+                            payload = decompressedDoc.RootElement.Clone();
+                            logger?.LogTrace("Decompressed gzip payload successfully");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex, "Failed to decompress gzip payload");
+                        return false;
                     }
                 }
             }
@@ -242,7 +279,8 @@ internal static class MessageParser
                 MessageIdent = messageIdent,
                 MessageId = messageId,
                 SenderDeviceId = senderDeviceId,
-                Command = payload
+                Command = payload,
+                Headers = headers
             };
 
             return true;

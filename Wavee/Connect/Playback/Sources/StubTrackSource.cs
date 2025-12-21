@@ -43,6 +43,12 @@ internal sealed class StubTrackStream : ITrackStream
     public AudioFormat? KnownFormat => null;
     public bool CanSeek => AudioStream.CanSeek;
 
+    public Task PrefetchForSeekAsync(TimeSpan targetPosition, CancellationToken cancellationToken = default)
+    {
+        // Stub - no prefetch needed for memory streams
+        return Task.CompletedTask;
+    }
+
     public ValueTask DisposeAsync()
     {
         return AudioStream.DisposeAsync();

@@ -37,6 +37,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private readonly IAudioSink _audioSink;
     private readonly AudioProcessingChain _processingChain;
     private readonly ConnectCommandHandler? _commandHandler;
+    private readonly DeviceStateManager? _deviceStateManager;
     private readonly EventService? _eventService;
     private readonly ContextResolver? _contextResolver;
     private readonly string _deviceId;
@@ -160,6 +161,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <param name="audioSink">Audio output sink.</param>
     /// <param name="processingChain">Audio processing chain.</param>
     /// <param name="commandHandler">Connect command handler for remote control.</param>
+    /// <param name="deviceStateManager">Optional device state manager for activation on playback.</param>
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for reporting playback events.</param>
     /// <param name="contextResolver">Optional context resolver for playlist/album loading.</param>
@@ -170,6 +172,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         IAudioSink audioSink,
         AudioProcessingChain processingChain,
         ConnectCommandHandler commandHandler,
+        DeviceStateManager? deviceStateManager = null,
         string deviceId = "",
         EventService? eventService = null,
         ContextResolver? contextResolver = null,
@@ -177,6 +180,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         : this(sourceRegistry, decoderRegistry, audioSink, processingChain, deviceId, eventService, contextResolver, logger)
     {
         _commandHandler = commandHandler ?? throw new ArgumentNullException(nameof(commandHandler));
+        _deviceStateManager = deviceStateManager;
         SubscribeToCommands();
     }
 
@@ -211,6 +215,71 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _logger?.LogInformation("Play command received: Track={TrackUri}, Context={ContextUri}, Position={PositionMs}",
                 command.TrackUri, command.ContextUri, command.PositionMs);
 
+            // Activate device when playback starts
+            if (_deviceStateManager != null)
+            {
+                await _deviceStateManager.SetActiveAsync(true, cancellationToken);
+            }
+
+            // Normalize context URI early for comparison
+            var normalizedContextUri = !string.IsNullOrEmpty(command.ContextUri)
+                ? NormalizeToUri(command.ContextUri)
+                : null;
+
+            // Update playback options from command (before same-context check for shuffle handling)
+            if (command.Options != null)
+            {
+                _shuffling = command.Options.ShufflingContext;
+                _repeatingContext = command.Options.RepeatingContext;
+                _repeatingTrack = command.Options.RepeatingTrack;
+            }
+
+            // SAME-CONTEXT OPTIMIZATION: If already playing from this context, just skip to the track
+            if (!string.IsNullOrEmpty(normalizedContextUri) &&
+                string.Equals(_queue.ContextUri, normalizedContextUri, StringComparison.Ordinal) &&
+                _queue.LoadedCount > 0 &&
+                (command.PageTracks == null || command.PageTracks.Count == 0))
+            {
+                var targetIndex = FindTargetTrackIndex(command);
+                if (targetIndex >= 0 && targetIndex < _queue.LoadedCount)
+                {
+                    _logger?.LogInformation("Same-context optimization: navigating to index {Index} (skipping API call)",
+                        targetIndex);
+
+                    // Stop current playback
+                    await StopInternalAsync();
+
+                    // Update state
+                    _currentContextUri = normalizedContextUri;
+                    _currentPositionMs = command.PositionMs ?? 0;
+
+                    // Sync shuffle state with queue
+                    _queue.SetShuffle(_shuffling);
+
+                    // Navigate and play
+                    var targetTrack = _queue.SkipTo(targetIndex);
+                    if (targetTrack != null)
+                    {
+                        _currentTrackUri = NormalizeToUri(targetTrack.Uri);
+                        _currentTrackUid = targetTrack.Uid ?? string.Empty;
+
+                        _playbackCts = new CancellationTokenSource();
+                        var token = _playbackCts.Token;
+                        _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, _currentPositionMs, token));
+
+                        // Send reply
+                        if (_commandHandler != null &&
+                            !string.IsNullOrEmpty(command.Key) &&
+                            !command.Key.StartsWith("local/", StringComparison.Ordinal))
+                        {
+                            await _commandHandler.SendReplyAsync(command.Key, RequestResult.Success);
+                        }
+                        return;
+                    }
+                }
+                _logger?.LogDebug("Same-context navigation failed, falling back to full context load");
+            }
+
             // Stop current playback
             await StopInternalAsync();
 
@@ -225,18 +294,8 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Convert URL to URI if needed (e.g., https://open.spotify.com/track/xxx -> spotify:track:xxx)
             trackUri = NormalizeToUri(trackUri);
 
-            // Update playback options from command
-            if (command.Options != null)
-            {
-                _shuffling = command.Options.ShufflingContext;
-                _repeatingContext = command.Options.RepeatingContext;
-                _repeatingTrack = command.Options.RepeatingTrack;
-            }
-
-            // Store context URI (normalize URL to URI format)
-            _currentContextUri = !string.IsNullOrEmpty(command.ContextUri)
-                ? NormalizeToUri(command.ContextUri)
-                : null;
+            // Store context URI (already normalized above)
+            _currentContextUri = normalizedContextUri;
             // Note: _currentTrackUri is set AFTER context resolution below (to get actual track from playlist/album)
             _currentTrackUid = string.Empty;
             _currentPositionMs = command.PositionMs ?? 0;
@@ -332,8 +391,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             var playbackToken = _playbackCts.Token; // Capture token value (struct) before Task.Run
             _playbackTask = Task.Run(() => PlaybackLoopAsync(trackUri, _currentPositionMs, playbackToken));
 
-            // Send success reply if command handler exists
-            if (_commandHandler != null && !string.IsNullOrEmpty(command.Key))
+            // Send success reply if command handler exists AND this is a dealer command (not local)
+            // Local commands have keys starting with "local/" - don't send dealer replies for these
+            if (_commandHandler != null &&
+                !string.IsNullOrEmpty(command.Key) &&
+                !command.Key.StartsWith("local/", StringComparison.Ordinal))
             {
                 await _commandHandler.SendReplyAsync(command.Key, RequestResult.Success);
             }
@@ -796,8 +858,18 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                     if (seekTarget.HasValue)
                     {
-                        // In-place seek using VorbisReader.TimePosition
-                        _logger?.LogDebug("In-place seek to {PositionMs}ms", seekTarget.Value);
+                        _logger?.LogDebug("Seeking to {PositionMs}ms", seekTarget.Value);
+
+                        // Prefetch data at seek position before NVorbis reads
+                        // This ensures OGG pages are downloaded and ready
+                        if (trackStream != null)
+                        {
+                            await trackStream.PrefetchForSeekAsync(
+                                TimeSpan.FromMilliseconds(seekTarget.Value),
+                                cancellationToken);
+                        }
+
+                        // Now perform the in-place seek
                         vorbisReader.TimePosition = TimeSpan.FromMilliseconds(seekTarget.Value);
                         _currentPositionMs = seekTarget.Value;
                         continue; // Skip to next iteration
@@ -960,6 +1032,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 TrackUid = _currentTrackUid,
                 AlbumUri = currentTrack?.AlbumUri,
                 ArtistUri = currentTrack?.ArtistUri,
+                TrackTitle = currentTrack?.Title,
+                TrackArtist = currentTrack?.Artist,
+                TrackAlbum = currentTrack?.Album,
                 ContextUri = _currentContextUri,
                 ContextUrl = contextUrl,
                 PositionMs = _currentPositionMs,
@@ -1002,33 +1077,103 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
         _logger?.LogDebug("Subscribing to ConnectCommandHandler observables");
 
-        // Subscribe to all command streams
+        // Subscribe to all command streams - each handler executes the command and sends reply
         _subscriptions.Add(_commandHandler.PlayCommands.Subscribe(async cmd =>
-            await PlayAsync(cmd, CancellationToken.None)));
+        {
+            await PlayAsync(cmd, CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
-        _subscriptions.Add(_commandHandler.PauseCommands.Subscribe(async _ =>
-            await PauseAsync(CancellationToken.None)));
+        _subscriptions.Add(_commandHandler.PauseCommands.Subscribe(async cmd =>
+        {
+            await PauseAsync(CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
-        _subscriptions.Add(_commandHandler.ResumeCommands.Subscribe(async _ =>
-            await ResumeAsync(CancellationToken.None)));
+        _subscriptions.Add(_commandHandler.ResumeCommands.Subscribe(async cmd =>
+        {
+            await ResumeAsync(CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
         _subscriptions.Add(_commandHandler.SeekCommands.Subscribe(async cmd =>
-            await SeekAsync(cmd.PositionMs, CancellationToken.None)));
+        {
+            await SeekAsync(cmd.PositionMs, CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
-        _subscriptions.Add(_commandHandler.SkipNextCommands.Subscribe(async _ =>
-            await SkipNextAsync(CancellationToken.None)));
+        _subscriptions.Add(_commandHandler.SkipNextCommands.Subscribe(async cmd =>
+        {
+            await SkipNextAsync(CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
-        _subscriptions.Add(_commandHandler.SkipPrevCommands.Subscribe(async _ =>
-            await SkipPreviousAsync(CancellationToken.None)));
+        _subscriptions.Add(_commandHandler.SkipPrevCommands.Subscribe(async cmd =>
+        {
+            await SkipPreviousAsync(CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
         _subscriptions.Add(_commandHandler.ShuffleCommands.Subscribe(async cmd =>
-            await SetShuffleAsync(cmd.Enabled, CancellationToken.None)));
+        {
+            await SetShuffleAsync(cmd.Enabled, CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
         _subscriptions.Add(_commandHandler.RepeatContextCommands.Subscribe(async cmd =>
-            await SetRepeatContextAsync(cmd.Enabled, CancellationToken.None)));
+        {
+            await SetRepeatContextAsync(cmd.Enabled, CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
         _subscriptions.Add(_commandHandler.RepeatTrackCommands.Subscribe(async cmd =>
-            await SetRepeatTrackAsync(cmd.Enabled, CancellationToken.None)));
+        {
+            await SetRepeatTrackAsync(cmd.Enabled, CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
+
+        // Queue commands
+        _subscriptions.Add(_commandHandler.SetQueueCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("SetQueue: {Count} tracks", cmd.TrackUris?.Length ?? 0);
+            // TODO: Implement full queue replacement
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
+
+        _subscriptions.Add(_commandHandler.AddToQueueCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("AddToQueue: {Track}", cmd.TrackUri);
+            _queue.AddToQueue(new QueueTrack(cmd.TrackUri));
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
+
+        // Transfer command - handle playback transfer from another device
+        _subscriptions.Add(_commandHandler.TransferCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Transfer command received from {Device}", cmd.SenderDeviceId);
+            // TODO: Implement full transfer logic using cmd.TransferState
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
+
+        // Update context - refresh context metadata
+        _subscriptions.Add(_commandHandler.UpdateContextCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("UpdateContext: {Uri}", cmd.ContextUri);
+            // TODO: Implement context refresh
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
+
+        // Set options - combined shuffle/repeat options
+        _subscriptions.Add(_commandHandler.SetOptionsCommands.Subscribe(async cmd =>
+        {
+            if (cmd.ShufflingContext.HasValue)
+                await SetShuffleAsync(cmd.ShufflingContext.Value, CancellationToken.None);
+            if (cmd.RepeatingContext.HasValue)
+                await SetRepeatContextAsync(cmd.RepeatingContext.Value, CancellationToken.None);
+            if (cmd.RepeatingTrack.HasValue)
+                await SetRepeatTrackAsync(cmd.RepeatingTrack.Value, CancellationToken.None);
+            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+        }));
 
         _logger?.LogInformation("AudioPipeline subscribed to all command streams");
     }
@@ -1199,6 +1344,38 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
         // Return as-is if we can't parse it (let downstream code handle the error)
         return uriOrUrl;
+    }
+
+    /// <summary>
+    /// Finds target track index from PlayCommand. Priority: UID > URI > Index.
+    /// </summary>
+    private int FindTargetTrackIndex(PlayCommand command)
+    {
+        // Priority 1: Track UID (most specific)
+        if (!string.IsNullOrEmpty(command.TrackUid))
+        {
+            var index = _queue.FindIndexByUid(command.TrackUid);
+            if (index >= 0)
+                return index;
+        }
+
+        // Priority 2: Track URI
+        if (!string.IsNullOrEmpty(command.TrackUri))
+        {
+            var normalizedUri = NormalizeToUri(command.TrackUri);
+            var index = _queue.FindIndexByUri(normalizedUri);
+            if (index >= 0)
+                return index;
+        }
+
+        // Priority 3: Explicit index
+        if (command.SkipToIndex.HasValue)
+        {
+            return command.SkipToIndex.Value;
+        }
+
+        // Default: first track
+        return 0;
     }
 
     // ================================================================

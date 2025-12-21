@@ -49,6 +49,11 @@ public sealed record DealerRequest
     /// Command payload as JSON element.
     /// </summary>
     public required JsonElement Command { get; init; }
+
+    /// <summary>
+    /// Request headers (used for Transfer-Encoding detection).
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Headers { get; init; }
 }
 
 /// <summary>

@@ -41,6 +41,8 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
     private readonly SafeSubject<SetQueueCommand> _setQueueCommands = new();
     private readonly SafeSubject<AddToQueueCommand> _addToQueueCommands = new();
     private readonly SafeSubject<TransferCommand> _transferCommands = new();
+    private readonly SafeSubject<UpdateContextCommand> _updateContextCommands = new();
+    private readonly SafeSubject<SetOptionsCommand> _setOptionsCommands = new();
 
     // Command dispatch infrastructure
     private readonly AsyncWorker<ConnectCommand> _commandWorker;
@@ -134,6 +136,12 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
     /// <summary>Transfer command stream - playback transferred from another device</summary>
     public IObservable<TransferCommand> TransferCommands => _transferCommands;
 
+    /// <summary>Update context command stream - context metadata updated</summary>
+    public IObservable<UpdateContextCommand> UpdateContextCommands => _updateContextCommands;
+
+    /// <summary>Set options command stream - combined shuffle/repeat options</summary>
+    public IObservable<SetOptionsCommand> SetOptionsCommands => _setOptionsCommands;
+
     // ================================================================
     // COMMAND PROCESSING PIPELINE
     // ================================================================
@@ -221,6 +229,12 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
                     break;
                 case TransferCommand transfer:
                     _transferCommands.OnNext(transfer);
+                    break;
+                case UpdateContextCommand updateContext:
+                    _updateContextCommands.OnNext(updateContext);
+                    break;
+                case SetOptionsCommand setOptions:
+                    _setOptionsCommands.OnNext(setOptions);
                     break;
                 default:
                     _logger?.LogWarning("Unknown command type: {Type}", command.GetType().Name);
@@ -338,6 +352,8 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
         _setQueueCommands.OnCompleted();
         _addToQueueCommands.OnCompleted();
         _transferCommands.OnCompleted();
+        _updateContextCommands.OnCompleted();
+        _setOptionsCommands.OnCompleted();
 
         // Cancel all pending replies
         lock (_replyLock)

@@ -15,7 +15,23 @@ public sealed record SeekCommand : ConnectCommand
 
     internal static SeekCommand FromJson(DealerRequest request, JsonElement json)
     {
-        var posMs = json.GetProperty("position").GetInt64();
+        // Handle both formats:
+        // 1. Legacy: { "position": 12345 }
+        // 2. Real Spotify: { "value": 12345 } or { "value": "12345" }
+        long posMs = 0;
+
+        if (json.TryGetProperty("position", out var positionProp))
+        {
+            posMs = positionProp.GetInt64();
+        }
+        else if (json.TryGetProperty("value", out var valueProp))
+        {
+            // Value can be number or string
+            if (valueProp.ValueKind == JsonValueKind.Number)
+                posMs = valueProp.GetInt64();
+            else if (valueProp.ValueKind == JsonValueKind.String)
+                long.TryParse(valueProp.GetString(), out posMs);
+        }
 
         return new SeekCommand
         {

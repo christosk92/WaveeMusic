@@ -17,6 +17,14 @@ public sealed class ContextResolver
     private readonly ICacheService _cacheService;
     private readonly ILogger? _logger;
 
+    // Context cache - caches resolved context (track URIs) to avoid API calls
+    private readonly HotCache<ContextCacheEntry> _contextCache;
+
+    // TTL values for different context types
+    private static readonly TimeSpan PlaylistTtl = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan AlbumTtl = TimeSpan.FromHours(24);
+    private static readonly TimeSpan StationTtl = TimeSpan.FromMinutes(2);
+
     private const int BatchSize = 500;  // API supports up to 500 items per request
 
     public ContextResolver(
@@ -33,6 +41,9 @@ public sealed class ContextResolver
         _metadataClient = metadataClient;
         _cacheService = cacheService;
         _logger = logger;
+
+        // Context cache is smaller since contexts are larger objects
+        _contextCache = new HotCache<ContextCacheEntry>(maxSize: 50, logger);
     }
 
     /// <summary>
@@ -52,7 +63,40 @@ public sealed class ContextResolver
         _logger?.LogDebug("Loading context: {ContextUri}, maxTracks={MaxTracks}, enrich={Enrich}",
             contextUri, maxTracks, enrichMetadata);
 
-        // Phase A: Get track URIs from context-resolve API
+        // Phase 0: Check context cache first
+        var cachedContext = _contextCache.Get(contextUri);
+        if (cachedContext != null && cachedContext.IsValid)
+        {
+            _logger?.LogDebug("Context cache hit: {ContextUri}, {TrackCount} tracks",
+                contextUri, cachedContext.Tracks.Count);
+
+            // Use cached track URIs, still enrich metadata (that cache is separate)
+            var cachedTrackInfos = cachedContext.Tracks.ToList();
+            if (maxTracks.HasValue && cachedTrackInfos.Count > maxTracks.Value)
+            {
+                cachedTrackInfos = cachedTrackInfos.Take(maxTracks.Value).ToList();
+            }
+
+            IReadOnlyList<QueueTrack> cachedTracks;
+            if (enrichMetadata && cachedTrackInfos.Count > 0)
+            {
+                cachedTracks = await EnrichTracksAsync(cachedTrackInfos, ct);
+            }
+            else
+            {
+                cachedTracks = cachedTrackInfos.Select(t => new QueueTrack(t.Uri, t.Uid)).ToList();
+            }
+
+            return new ContextLoadResult(
+                Tracks: cachedTracks,
+                TotalCount: cachedContext.TotalCount,
+                NextPageUrl: cachedContext.NextPageUrl,
+                IsInfinite: cachedContext.IsInfinite
+            );
+        }
+
+        // Phase A: Get track URIs from context-resolve API (cache miss)
+        _logger?.LogDebug("Context cache miss, fetching from API: {ContextUri}", contextUri);
         var context = await _spClient.ResolveContextAsync(contextUri, ct);
 
         var trackInfos = new List<(string Uri, string? Uid)>();
@@ -88,6 +132,24 @@ public sealed class ContextResolver
         _logger?.LogDebug("Context resolved: {TrackCount} tracks, nextPage={HasNext}",
             trackInfos.Count, nextPageUrl != null);
 
+        // Cache the raw context result (before metadata enrichment)
+        var ttl = GetContextTtl(contextUri);
+        var totalCount = GetTotalFromMetadata(context);
+        var isInfinite = IsInfiniteContext(contextUri);
+
+        _contextCache.Set(contextUri, new ContextCacheEntry
+        {
+            Uri = contextUri,
+            ExpiresAt = DateTimeOffset.UtcNow + ttl,
+            Tracks = trackInfos,
+            NextPageUrl = nextPageUrl,
+            TotalCount = totalCount,
+            IsInfinite = isInfinite
+        });
+
+        _logger?.LogDebug("Context cached: {ContextUri}, TTL={TtlMinutes}m",
+            contextUri, ttl.TotalMinutes);
+
         // Phase B: Batch enrich with metadata (uses cache)
         IReadOnlyList<QueueTrack> tracks;
         if (enrichMetadata && trackInfos.Count > 0)
@@ -101,9 +163,9 @@ public sealed class ContextResolver
 
         return new ContextLoadResult(
             Tracks: tracks,
-            TotalCount: GetTotalFromMetadata(context),
+            TotalCount: totalCount,
             NextPageUrl: nextPageUrl,
-            IsInfinite: IsInfiniteContext(contextUri)
+            IsInfinite: isInfinite
         );
     }
 
@@ -267,6 +329,28 @@ public sealed class ContextResolver
         return uri.Contains(":station:") ||
                uri.Contains(":radio:") ||
                uri.Contains(":autoplay:");
+    }
+
+    /// <summary>
+    /// Gets the appropriate TTL for a context based on its type.
+    /// </summary>
+    private static TimeSpan GetContextTtl(string uri)
+    {
+        if (uri.Contains(":station:") || uri.Contains(":radio:"))
+            return StationTtl;
+        if (uri.Contains(":album:"))
+            return AlbumTtl;
+        return PlaylistTtl;
+    }
+
+    /// <summary>
+    /// Invalidates a cached context (e.g., when playlist is modified).
+    /// </summary>
+    /// <param name="contextUri">Context URI to invalidate.</param>
+    public void InvalidateContext(string contextUri)
+    {
+        _contextCache.Remove(contextUri);
+        _logger?.LogDebug("Context cache invalidated: {ContextUri}", contextUri);
     }
 }
 

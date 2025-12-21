@@ -186,7 +186,15 @@ public static class PlaybackStateHelpers
                 Uid = localState.TrackUid,
                 AlbumUri = localState.AlbumUri,
                 ArtistUri = localState.ArtistUri,
-                Metadata = new Dictionary<string, string>()
+                Title = localState.TrackTitle,
+                Artist = localState.TrackArtist,
+                Album = localState.TrackAlbum,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["title"] = localState.TrackTitle ?? "",
+                    ["artist_name"] = localState.TrackArtist ?? "",
+                    ["album_title"] = localState.TrackAlbum ?? "",
+                }
             };
         }
 

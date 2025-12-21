@@ -164,6 +164,21 @@ public sealed record LocalPlaybackState
     public string? ArtistUri { get; init; }
 
     /// <summary>
+    /// Current track title (for ProvidedTrack.Metadata).
+    /// </summary>
+    public string? TrackTitle { get; init; }
+
+    /// <summary>
+    /// Current track artist name (for ProvidedTrack.Metadata).
+    /// </summary>
+    public string? TrackArtist { get; init; }
+
+    /// <summary>
+    /// Current track album title (for ProvidedTrack.Metadata).
+    /// </summary>
+    public string? TrackAlbum { get; init; }
+
+    /// <summary>
     /// Context URI in Spotify URI format (e.g., "spotify:playlist:xxx").
     /// </summary>
     public string? ContextUri { get; init; }

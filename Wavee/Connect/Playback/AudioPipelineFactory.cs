@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Commands;
 using Wavee.Connect.Events;
 using Wavee.Connect.Playback.Abstractions;
 using Wavee.Connect.Playback.Decoders;
@@ -30,6 +31,8 @@ public static class AudioPipelineFactory
     /// <param name="cacheService">Optional cache service (should be singleton). Created if metadataDatabase provided but cacheService is null.</param>
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for playback reporting.</param>
+    /// <param name="commandHandler">Optional command handler for remote control. If provided, pipeline auto-subscribes to commands.</param>
+    /// <param name="deviceStateManager">Optional device state manager for activation on playback.</param>
     /// <param name="logger">Optional logger.</param>
     /// <returns>Configured audio pipeline ready for playback.</returns>
     public static AudioPipeline CreateSpotifyPipeline(
@@ -41,6 +44,8 @@ public static class AudioPipelineFactory
         ICacheService? cacheService = null,
         string deviceId = "",
         EventService? eventService = null,
+        ConnectCommandHandler? commandHandler = null,
+        DeviceStateManager? deviceStateManager = null,
         ILogger? logger = null)
     {
         options ??= AudioPipelineOptions.Default;
@@ -78,6 +83,22 @@ public static class AudioPipelineFactory
         {
             logger?.LogWarning("ContextResolver not created - IMetadataDatabase not provided. " +
                 "Album and playlist playback will not work.");
+        }
+
+        // Use constructor with commandHandler if provided (enables auto-subscription to commands)
+        if (commandHandler != null)
+        {
+            return new AudioPipeline(
+                sourceRegistry,
+                decoderRegistry,
+                audioSink,
+                processingChain,
+                commandHandler,
+                deviceStateManager,
+                deviceId,
+                eventService,
+                contextResolver,
+                logger);
         }
 
         return new AudioPipeline(

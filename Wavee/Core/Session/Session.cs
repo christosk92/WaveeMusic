@@ -215,62 +215,10 @@ public sealed class Session : ISession, IAsyncDisposable
         if (_commandHandler == null || _playbackStateManager == null)
             return;
 
-        _logger?.LogDebug("Wiring up Connect command handlers and state subscriptions");
+        _logger?.LogDebug("Wiring up Connect state subscriptions");
 
-        // ================================================================
-        // COMMAND HANDLERS (REQUESTs) - Acknowledge commands for now
-        // TODO Phase 5-6: Implement actual playback logic
-        // ================================================================
-
-        _commandHandler.PlayCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received Play command: context={Context}, track={Track}",
-                cmd.ContextUri, cmd.TrackUri);
-            // TODO: Implement play logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
-
-        _commandHandler.PauseCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received Pause command");
-            // TODO: Implement pause logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
-
-        _commandHandler.ResumeCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received Resume command");
-            // TODO: Implement resume logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
-
-        _commandHandler.SeekCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received Seek command: position={Position}ms", cmd.PositionMs);
-            // TODO: Implement seek logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
-
-        _commandHandler.ShuffleCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received Shuffle command: enabled={Enabled}", cmd.Enabled);
-            // TODO: Implement shuffle logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
-
-        _commandHandler.RepeatContextCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received RepeatContext command: enabled={Enabled}", cmd.Enabled);
-            // TODO: Implement repeat context logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
-
-        _commandHandler.RepeatTrackCommands.Subscribe(async cmd =>
-        {
-            _logger?.LogInformation("Received RepeatTrack command: enabled={Enabled}", cmd.Enabled);
-            // TODO: Implement repeat track logic
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
-        });
+        // NOTE: Command handlers (Play, Pause, Resume, etc.) are now handled by AudioPipeline
+        // via its SubscribeToCommands() method. Session only handles state update subscriptions.
 
         // ================================================================
         // STATE UPDATE SUBSCRIPTIONS (MESSAGEs) - Reactive state tracking
@@ -307,6 +255,20 @@ public sealed class Session : ISession, IAsyncDisposable
                 state.Options.Shuffling, state.Options.RepeatingContext);
         });
 
+        // ================================================================
+        // DEVICE ACTIVATION - Activate when transfer command received
+        // ================================================================
+
+        // Activate device when user selects it in Spotify (transfer command)
+        _commandHandler.TransferCommands.Subscribe(async cmd =>
+        {
+            _logger?.LogInformation("Transfer command received from {Device} - activating device", cmd.SenderDeviceId);
+            if (_deviceStateManager != null)
+            {
+                await _deviceStateManager.SetActiveAsync(true);
+            }
+        });
+
         _logger?.LogDebug("Connect handlers wired up successfully");
     }
 
@@ -338,9 +300,6 @@ public sealed class Session : ISession, IAsyncDisposable
                 _dealerClient,
                 initialVolume: _config.InitialVolume,
                 logger: _logger);
-
-            // Set device as active to announce presence
-            await _deviceStateManager.SetActiveAsync(true, cancellationToken);
 
             // Create command handler for processing incoming REQUESTs
             _commandHandler = new ConnectCommandHandler(_dealerClient, _logger);

@@ -392,6 +392,30 @@ public sealed class LazyProgressiveDownloader : Stream
 
     #endregion
 
+    #region Prefetch Operations
+
+    /// <summary>
+    /// Prefetches data at the specified byte position to ensure it's available for reading.
+    /// Call this before seeking in NVorbis to ensure OGG pages are downloaded.
+    /// </summary>
+    /// <param name="bytePosition">Start byte position to prefetch from.</param>
+    /// <param name="length">Number of bytes to prefetch.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task PrefetchRangeAsync(long bytePosition, int length, CancellationToken cancellationToken = default)
+    {
+        // Ensure CDN is initialized first
+        await EnsureCdnInitializedAsync(cancellationToken);
+
+        if (_cdnDownloader != null)
+        {
+            // Fetch the range so it's ready when NVorbis seeks
+            await _cdnDownloader.FetchRangeAsync(bytePosition, bytePosition + length, cancellationToken);
+            _logger?.LogDebug("Prefetched {Length} bytes at position {Position}", length, bytePosition);
+        }
+    }
+
+    #endregion
+
     #region Unsupported Operations
 
     public override void Flush() { }

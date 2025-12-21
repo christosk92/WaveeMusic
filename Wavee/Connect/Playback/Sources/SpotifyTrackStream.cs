@@ -72,6 +72,37 @@ public sealed class SpotifyTrackStream : ITrackStream
     public BufferStatus? GetBufferStatus() => _downloader?.GetBufferStatus();
 
     /// <inheritdoc />
+    public async Task PrefetchForSeekAsync(TimeSpan targetPosition, CancellationToken cancellationToken = default)
+    {
+        // Estimate byte position from time position
+        var durationMs = Metadata.DurationMs;
+        if (durationMs <= 0)
+            return; // Can't estimate without duration
+
+        var targetMs = targetPosition.TotalMilliseconds;
+        var fileSize = _audioStream.Length;
+
+        // Linear estimation: bytePosition = (targetMs / durationMs) * fileSize
+        var estimatedBytePosition = (long)((targetMs / durationMs) * fileSize);
+
+        // Prefetch 256KB around the estimated position (64KB before, 192KB after)
+        // This covers OGG page boundaries that NVorbis needs to read
+        var prefetchStart = Math.Max(0, estimatedBytePosition - 64 * 1024);
+        const int prefetchLength = 256 * 1024;
+
+        // Check if audio stream is a LazyProgressiveDownloader (instant start case)
+        if (_audioStream is LazyProgressiveDownloader lazyDownloader)
+        {
+            await lazyDownloader.PrefetchRangeAsync(prefetchStart, prefetchLength, cancellationToken);
+        }
+        // For regular ProgressiveDownloader wrapped in AudioDecryptStream, use the downloader directly
+        else if (_downloader != null)
+        {
+            await _downloader.FetchRangeAsync(prefetchStart, prefetchStart + prefetchLength, cancellationToken);
+        }
+    }
+
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (_disposed)

@@ -88,6 +88,8 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 cacheService,
                 _session.Config.DeviceId,
                 _session.Events,
+                _session.CommandHandler,
+                _session.DeviceState,
                 _logger);
 
             // Subscribe to local playback state changes

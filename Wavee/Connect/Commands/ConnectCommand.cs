@@ -39,15 +39,41 @@ public abstract record ConnectCommand
     /// </summary>
     /// <param name="request">Dealer request to parse.</param>
     /// <returns>Parsed command or null if unsupported.</returns>
+    /// <remarks>
+    /// Handles two formats:
+    /// 1. Legacy/test format: endpoint in URL path (hm://connect-state/v1/play)
+    /// 2. Real Spotify format: endpoint in JSON body (hm://connect-state/v1/player/command + command.endpoint)
+    /// </remarks>
     public static ConnectCommand? Parse(DealerRequest request)
     {
         // Extract endpoint from message_ident
-        // Format: "hm://connect-state/v1/{endpoint}"
+        // Format: "hm://connect-state/v1/{endpoint}" or "hm://connect-state/v1/player/command"
         var parts = request.MessageIdent.Split('/');
         if (parts.Length < 5) return null;  // Need at least 5 parts for hm://connect-state/v1/{endpoint}
 
-        var endpoint = parts[^1];  // Get last element (the endpoint)
+        var urlEndpoint = parts[^1];  // Get last element
+        string endpoint;
         var command = request.Command;
+
+        // Real Spotify format: hm://connect-state/v1/player/command
+        // The payload contains a nested "command" object with the actual endpoint
+        // Structure: { "message_id": ..., "sent_by_device_id": ..., "command": { "endpoint": "play", ... } }
+        if (urlEndpoint == "command" && parts.Length >= 6 && parts[^2] == "player")
+        {
+            // First extract the nested "command" object from payload
+            if (!command.TryGetProperty("command", out var innerCommand))
+                return null;
+            // Then get the endpoint from the inner command
+            if (!innerCommand.TryGetProperty("endpoint", out var endpointProp))
+                return null;
+            endpoint = endpointProp.GetString()?.ToLowerInvariant() ?? "";
+            command = innerCommand;  // Use inner command for subsequent parsing
+        }
+        else
+        {
+            // Legacy/test format: endpoint in URL path
+            endpoint = urlEndpoint;
+        }
 
         return endpoint switch
         {
@@ -91,6 +117,8 @@ public abstract record ConnectCommand
             "transfer" => TransferCommand.FromJson(request, command),
             "set_queue" => SetQueueCommand.FromJson(request, command),
             "add_to_queue" => AddToQueueCommand.FromJson(request, command),
+            "update_context" => UpdateContextCommand.FromJson(request, command),
+            "set_options" => SetOptionsCommand.FromJson(request, command),
             _ => null // Unsupported command
         };
     }

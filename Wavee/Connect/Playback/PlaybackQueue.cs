@@ -381,6 +381,78 @@ public sealed class PlaybackQueue : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Finds the logical index of a track by its URI in the context tracks.
+    /// </summary>
+    /// <param name="uri">Track URI to find (e.g., "spotify:track:xxx").</param>
+    /// <returns>The logical index in the queue, or -1 if not found.</returns>
+    public int FindIndexByUri(string uri)
+    {
+        if (string.IsNullOrEmpty(uri))
+            return -1;
+
+        lock (_lock)
+        {
+            if (_isShuffled && _shuffledIndices != null)
+            {
+                for (int logicalIndex = 0; logicalIndex < _shuffledIndices.Count; logicalIndex++)
+                {
+                    var actualIndex = _shuffledIndices[logicalIndex];
+                    if (actualIndex >= 0 && actualIndex < _contextTracks.Count &&
+                        string.Equals(_contextTracks[actualIndex].Uri, uri, StringComparison.Ordinal))
+                    {
+                        return logicalIndex;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < _contextTracks.Count; i++)
+                {
+                    if (string.Equals(_contextTracks[i].Uri, uri, StringComparison.Ordinal))
+                        return i;
+                }
+            }
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Finds the logical index of a track by its UID in the context tracks.
+    /// </summary>
+    /// <param name="uid">Track UID to find.</param>
+    /// <returns>The logical index in the queue, or -1 if not found.</returns>
+    public int FindIndexByUid(string uid)
+    {
+        if (string.IsNullOrEmpty(uid))
+            return -1;
+
+        lock (_lock)
+        {
+            if (_isShuffled && _shuffledIndices != null)
+            {
+                for (int logicalIndex = 0; logicalIndex < _shuffledIndices.Count; logicalIndex++)
+                {
+                    var actualIndex = _shuffledIndices[logicalIndex];
+                    if (actualIndex >= 0 && actualIndex < _contextTracks.Count &&
+                        string.Equals(_contextTracks[actualIndex].Uid, uid, StringComparison.Ordinal))
+                    {
+                        return logicalIndex;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < _contextTracks.Count; i++)
+                {
+                    if (string.Equals(_contextTracks[i].Uid, uid, StringComparison.Ordinal))
+                        return i;
+                }
+            }
+            return -1;
+        }
+    }
+
     #endregion
 
     #region User Queue
