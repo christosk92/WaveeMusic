@@ -123,6 +123,21 @@ public interface IPlaybackEngine
 }
 
 /// <summary>
+/// Track reference for prev/next track lists.
+/// </summary>
+/// <param name="Uri">Track URI (e.g., "spotify:track:xxx").</param>
+/// <param name="Uid">Track UID within context.</param>
+/// <param name="AlbumUri">Optional album URI.</param>
+/// <param name="ArtistUri">Optional artist URI.</param>
+/// <param name="IsUserQueued">True if track was added via "Add to Queue" (provider = "queue").</param>
+public readonly record struct TrackReference(
+    string Uri,
+    string Uid,
+    string? AlbumUri = null,
+    string? ArtistUri = null,
+    bool IsUserQueued = false);
+
+/// <summary>
 /// Local playback state from audio engine.
 /// Lightweight structure optimized for frequent updates.
 /// </summary>
@@ -139,9 +154,24 @@ public sealed record LocalPlaybackState
     public string? TrackUid { get; init; }
 
     /// <summary>
-    /// Context URI (e.g., "spotify:playlist:xxx").
+    /// Current track album URI.
+    /// </summary>
+    public string? AlbumUri { get; init; }
+
+    /// <summary>
+    /// Current track artist URI.
+    /// </summary>
+    public string? ArtistUri { get; init; }
+
+    /// <summary>
+    /// Context URI in Spotify URI format (e.g., "spotify:playlist:xxx").
     /// </summary>
     public string? ContextUri { get; init; }
+
+    /// <summary>
+    /// Original context URL if provided (e.g., "https://open.spotify.com/playlist/xxx").
+    /// </summary>
+    public string? ContextUrl { get; init; }
 
     /// <summary>
     /// Current playback position in milliseconds.
@@ -187,6 +217,26 @@ public sealed record LocalPlaybackState
     /// Whether repeat track is enabled.
     /// </summary>
     public bool RepeatingTrack { get; init; }
+
+    /// <summary>
+    /// Current track index within context (0-based).
+    /// </summary>
+    public int CurrentIndex { get; init; }
+
+    /// <summary>
+    /// Previous tracks in context (up to 16, most recent last).
+    /// </summary>
+    public IReadOnlyList<TrackReference> PrevTracks { get; init; } = [];
+
+    /// <summary>
+    /// Next tracks in context (user queue first, then up to 48 context tracks).
+    /// </summary>
+    public IReadOnlyList<TrackReference> NextTracks { get; init; } = [];
+
+    /// <summary>
+    /// Queue revision hash for change detection (hash of next track URIs).
+    /// </summary>
+    public string? QueueRevision { get; init; }
 
     /// <summary>
     /// Timestamp when this state was captured (Unix milliseconds).

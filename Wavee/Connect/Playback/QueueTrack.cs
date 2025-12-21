@@ -8,6 +8,8 @@ namespace Wavee.Connect.Playback;
 /// <param name="Title">Optional track title for display purposes.</param>
 /// <param name="Artist">Optional artist name for display purposes.</param>
 /// <param name="Album">Optional album name for sorting.</param>
+/// <param name="AlbumUri">Optional album URI (e.g., "spotify:album:xxx").</param>
+/// <param name="ArtistUri">Optional artist URI (e.g., "spotify:artist:xxx").</param>
 /// <param name="DurationMs">Track duration in milliseconds for sorting.</param>
 /// <param name="AddedAt">Unix timestamp when added to playlist (for sorting).</param>
 /// <param name="IsPlayable">Whether the track is playable (false if unavailable).</param>
@@ -19,6 +21,8 @@ public record QueueTrack(
     string? Title = null,
     string? Artist = null,
     string? Album = null,
+    string? AlbumUri = null,
+    string? ArtistUri = null,
     int? DurationMs = null,
     long? AddedAt = null,
     bool IsPlayable = true,

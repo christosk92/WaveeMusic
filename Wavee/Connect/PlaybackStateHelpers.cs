@@ -184,6 +184,8 @@ public static class PlaybackStateHelpers
             {
                 Uri = localState.TrackUri,
                 Uid = localState.TrackUid,
+                AlbumUri = localState.AlbumUri,
+                ArtistUri = localState.ArtistUri,
                 Metadata = new Dictionary<string, string>()
             };
         }
@@ -208,6 +210,11 @@ public static class PlaybackStateHelpers
             DurationMs = localState.DurationMs,
             Status = status,
             ContextUri = localState.ContextUri,
+            ContextUrl = localState.ContextUrl,
+            CurrentIndex = localState.CurrentIndex,
+            PrevTracks = localState.PrevTracks,
+            NextTracks = localState.NextTracks,
+            QueueRevision = localState.QueueRevision,
             Options = options,
             ActiveDeviceId = activeDeviceId,
             Timestamp = localState.Timestamp,
@@ -235,6 +242,9 @@ public static class PlaybackStateHelpers
             Timestamp = state.Timestamp,
             // When no playlist/album context, the track itself is the context
             ContextUri = state.ContextUri ?? state.Track?.Uri ?? string.Empty,
+            // ContextUrl format: "context://<uri>" (from librespot)
+            ContextUrl = state.ContextUrl ?? string.Empty,
+            Position = state.PositionMs,
             PositionAsOfTimestamp = state.PositionMs,
             Duration = state.DurationMs,
 
@@ -250,6 +260,7 @@ public static class PlaybackStateHelpers
             // CRITICAL: Required fields that librespot sets (missing causes Spotify to ignore state)
             PlaybackId = Guid.NewGuid().ToString("N"),  // 32-char hex, new per publish
             SessionId = state.SessionId ?? Guid.NewGuid().ToString("N"),
+            QueueRevision = state.QueueRevision ?? string.Empty,
             IsSystemInitiated = true,
 
             // Play origin - required for Spotify to recognize source
@@ -259,15 +270,15 @@ public static class PlaybackStateHelpers
                 FeatureIdentifier = "wavee"
             },
 
-            // Context index - position in queue (page 0, track 0 for single track)
-            Index = new ContextIndex { Page = 0, Track = 0 },
+            // Context index - actual position in queue
+            Index = new ContextIndex { Page = 0, Track = (uint)Math.Max(0, state.CurrentIndex) },
 
             // Suppressions - required empty message
             Suppressions = new Suppressions(),
 
-            // CRITICAL: Empty restrictions enables all remote controls
-            // Without this, pause/play/seek/skip buttons are disabled on remote devices
-            Restrictions = new Restrictions(),
+            // CRITICAL: Restrictions control which buttons are enabled on remote devices
+            Restrictions = BuildRestrictions(state),
+            ContextRestrictions = BuildRestrictions(state),
 
             Options = new ContextPlayerOptions
             {
@@ -294,7 +305,9 @@ public static class PlaybackStateHelpers
             {
                 Uri = state.Track.Uri,
                 Uid = state.Track.Uid ?? string.Empty,
-                Provider = "context"  // Required: indicates track source
+                Provider = "context",  // Required: indicates track source
+                AlbumUri = state.Track.AlbumUri ?? string.Empty,
+                ArtistUri = state.Track.ArtistUri ?? string.Empty
             };
 
             // Add metadata if available
@@ -302,6 +315,34 @@ public static class PlaybackStateHelpers
             {
                 playerState.Track.Metadata[key] = value;
             }
+        }
+
+        // Add previous tracks (up to 16)
+        foreach (var track in state.PrevTracks.Take(16))
+        {
+            var pt = new ProvidedTrack
+            {
+                Uri = track.Uri,
+                Uid = track.Uid,
+                Provider = track.IsUserQueued ? "queue" : "context",
+                AlbumUri = track.AlbumUri ?? string.Empty,
+                ArtistUri = track.ArtistUri ?? string.Empty
+            };
+            playerState.PrevTracks.Add(pt);
+        }
+
+        // Add next tracks (user queue + up to 48 context)
+        foreach (var track in state.NextTracks.Take(48))
+        {
+            var pt = new ProvidedTrack
+            {
+                Uri = track.Uri,
+                Uid = track.Uid,
+                Provider = track.IsUserQueued ? "queue" : "context",
+                AlbumUri = track.AlbumUri ?? string.Empty,
+                ArtistUri = track.ArtistUri ?? string.Empty
+            };
+            playerState.NextTracks.Add(pt);
         }
 
         return playerState;
@@ -446,5 +487,30 @@ public static class PlaybackStateHelpers
 
         // Clamp to duration
         return Math.Min(estimatedPosition, state.DurationMs);
+    }
+
+    /// <summary>
+    /// Builds restrictions based on playback state.
+    /// Controls which buttons are enabled on remote devices.
+    /// </summary>
+    /// <param name="state">Current playback state.</param>
+    /// <returns>Restrictions protobuf message.</returns>
+    private static Restrictions BuildRestrictions(PlaybackState state)
+    {
+        var restrictions = new Restrictions();
+
+        // If at first track and not repeating context, disallow skip_prev
+        if (state.CurrentIndex == 0 && !state.Options.RepeatingContext)
+        {
+            restrictions.DisallowSkippingPrevReasons.Add("no_prev_track");
+        }
+
+        // If at last track (no next tracks) and not repeating context, disallow skip_next
+        if (state.NextTracks.Count == 0 && !state.Options.RepeatingContext)
+        {
+            restrictions.DisallowSkippingNextReasons.Add("no_next_track");
+        }
+
+        return restrictions;
     }
 }

@@ -466,6 +466,26 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         return (long)Math.Max(baseReadAhead, _params.MinimumChunkSize);
     }
 
+    private long CalculateTargetBufferBytes()
+    {
+        // Throughput thresholds for buffer sizing
+        const int FastThreshold = 500 * 1024;  // 500 KB/s - fast connection
+        const int SlowThreshold = 100 * 1024;  // 100 KB/s - slow connection
+        const int BitrateBytes = 320 * 1000 / 8; // 320kbps in bytes/sec
+
+        var minBytes = (long)(_params.MinBufferAhead.TotalSeconds * BitrateBytes);
+        var maxBytes = (long)(_params.MaxBufferAhead.TotalSeconds * BitrateBytes);
+
+        if (_currentThroughput >= FastThreshold)
+            return minBytes;  // Fast connection, minimal buffer needed
+        if (_currentThroughput <= SlowThreshold || _currentThroughput == 0)
+            return maxBytes;  // Slow/unknown connection, max buffer
+
+        // Linear interpolation between thresholds
+        var ratio = (double)(_currentThroughput - SlowThreshold) / (FastThreshold - SlowThreshold);
+        return (long)(maxBytes - ratio * (maxBytes - minBytes));
+    }
+
     #endregion
 
     #region Temp File Operations
@@ -494,8 +514,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     #region Background Download
 
     /// <summary>
-    /// Starts background downloading of the entire file.
-    /// Downloads continue from start to end regardless of playback position.
+    /// Starts background downloading ahead of playback position.
+    /// Downloads are throttled based on connection speed - faster connections
+    /// use smaller buffers, slower connections buffer more ahead.
     /// </summary>
     public void StartBackgroundDownload()
     {
@@ -524,6 +545,17 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested && !IsFullyDownloaded)
             {
+                // Check how much we have buffered ahead of playback position
+                var bufferedAhead = _downloadedRanges.ContainedLengthFrom(_position);
+                var targetBuffer = CalculateTargetBufferBytes();
+
+                if (bufferedAhead >= targetBuffer)
+                {
+                    // Buffer is full - wait before checking again
+                    await Task.Delay(1000, cancellationToken);
+                    continue;
+                }
+
                 // Get all gaps in the file
                 var gaps = _downloadedRanges.GetGaps(0, _fileSize);
                 if (gaps.Count == 0)

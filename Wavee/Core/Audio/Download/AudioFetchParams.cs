@@ -54,6 +54,18 @@ public sealed record AudioFetchParams
     public TimeSpan BufferingThreshold { get; init; } = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
+    /// Minimum buffer ahead when connection is fast (>500 KB/s).
+    /// Default: 10 seconds
+    /// </summary>
+    public TimeSpan MinBufferAhead { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Maximum buffer ahead when connection is slow (&lt;100 KB/s).
+    /// Default: 45 seconds
+    /// </summary>
+    public TimeSpan MaxBufferAhead { get; init; } = TimeSpan.FromSeconds(45);
+
+    /// <summary>
     /// Default fetch parameters.
     /// </summary>
     public static AudioFetchParams Default { get; } = new();

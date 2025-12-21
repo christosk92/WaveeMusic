@@ -233,29 +233,30 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 _repeatingTrack = command.Options.RepeatingTrack;
             }
 
-            // Store context and track info
-            _currentContextUri = command.ContextUri;
-            _currentTrackUri = trackUri;
-            _currentTrackUid = string.Empty; // TODO: uids in spotify are weird.. They are part of either an album or a playlist.
-            //_currentTrackUid = GenerateTrackUid(trackUri);
+            // Store context URI (normalize URL to URI format)
+            _currentContextUri = !string.IsNullOrEmpty(command.ContextUri)
+                ? NormalizeToUri(command.ContextUri)
+                : null;
+            // Note: _currentTrackUri is set AFTER context resolution below (to get actual track from playlist/album)
+            _currentTrackUid = string.Empty;
             _currentPositionMs = command.PositionMs ?? 0;
 
             // Setup queue
             // For single track playback (no context), create a single-item queue
             // For context playback, load tracks from context resolver
-            if (!string.IsNullOrEmpty(command.ContextUri) && _contextResolver != null)
+            if (!string.IsNullOrEmpty(_currentContextUri) && _contextResolver != null)
             {
                 try
                 {
-                    // Load context tracks with batch metadata enrichment
+                    // Load context tracks with batch metadata enrichment (use normalized URI)
                     var result = await _contextResolver.LoadContextAsync(
-                        command.ContextUri,
+                        _currentContextUri,
                         maxTracks: 100,  // Initial load, more via lazy loading
                         enrichMetadata: true,
                         cancellationToken);
 
                     _queue.SetContext(
-                        command.ContextUri,
+                        _currentContextUri,
                         isInfinite: result.IsInfinite,
                         totalTracks: result.TotalCount);
 
@@ -272,11 +273,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                     if (current != null)
                     {
+                        // Get actual track URI from resolved context (not the playlist/album URI)
                         trackUri = current.Uri;
+                        _currentTrackUri = trackUri;
+                        _currentTrackUid = current.Uid ?? string.Empty;
                     }
                     else
                     {
-                        _logger?.LogError("No playable tracks in context: {ContextUri}", command.ContextUri);
+                        _logger?.LogError("No playable tracks in context: {ContextUri}", _currentContextUri);
                         return;
                     }
 
@@ -286,27 +290,42 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "Failed to load context {ContextUri}, falling back to single track",
-                        command.ContextUri);
+                        _currentContextUri);
                     // Fall back to single track playback
                     _queue.Clear();
                     _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
+                    _currentTrackUri = trackUri;
                 }
             }
-            else if (!string.IsNullOrEmpty(command.ContextUri))
+            else if (!string.IsNullOrEmpty(_currentContextUri))
             {
-                // Context provided but no resolver - just add the track
-                _queue.SetContext(command.ContextUri, isInfinite: false, totalTracks: null);
-                _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
+                // Context provided but no resolver - cannot resolve album/playlist to tracks
+                _logger?.LogError("Cannot play context {ContextUri}: ContextResolver not available. " +
+                    "Ensure IMetadataDatabase is registered in DI.", _currentContextUri);
+                throw new InvalidOperationException(
+                    $"Cannot play context URI '{_currentContextUri}' without ContextResolver. " +
+                    "Provide IMetadataDatabase to AudioPipelineFactory.");
             }
             else
             {
                 // Single track playback - add to queue
                 _queue.Clear();
                 _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
+                _currentTrackUri = trackUri;
             }
 
             // Sync shuffle state with queue
             _queue.SetShuffle(_shuffling);
+
+            // Validate that we have a track URI (not album/playlist)
+            if (!trackUri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.LogError("Invalid track URI for playback: {TrackUri}. " +
+                    "Albums and playlists must be resolved to tracks first.", trackUri);
+                throw new InvalidOperationException(
+                    $"Cannot play non-track URI: {trackUri}. " +
+                    "Context URIs must be resolved to track URIs before playback.");
+            }
 
             // Start playback loop
             _playbackCts = new CancellationTokenSource();
@@ -919,11 +938,30 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     {
         lock (_stateLock)
         {
+            // Get current track from queue for metadata
+            var currentTrack = _queue.Current;
+
+            // Build prev/next track references
+            var prevTracks = _queue.GetPrevTracks()
+                .Select(t => new TrackReference(t.Uri, t.Uid ?? string.Empty, t.AlbumUri, t.ArtistUri, t.IsUserQueued))
+                .ToList();
+            var nextTracks = _queue.GetNextTracks()
+                .Select(t => new TrackReference(t.Uri, t.Uid ?? string.Empty, t.AlbumUri, t.ArtistUri, t.IsUserQueued))
+                .ToList();
+
+            // ContextUrl format: "context://<uri>" (from librespot)
+            var contextUrl = !string.IsNullOrEmpty(_currentContextUri)
+                ? $"context://{_currentContextUri}"
+                : null;
+
             _currentState = new LocalPlaybackState
             {
                 TrackUri = _currentTrackUri,
                 TrackUid = _currentTrackUid,
+                AlbumUri = currentTrack?.AlbumUri,
+                ArtistUri = currentTrack?.ArtistUri,
                 ContextUri = _currentContextUri,
+                ContextUrl = contextUrl,
                 PositionMs = _currentPositionMs,
                 DurationMs = _currentDurationMs,
                 IsPlaying = _isPlaying,
@@ -933,6 +971,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 Shuffling = _shuffling,
                 RepeatingContext = _repeatingContext,
                 RepeatingTrack = _repeatingTrack,
+                CurrentIndex = _queue.CurrentIndex,
+                PrevTracks = prevTracks,
+                NextTracks = nextTracks,
+                QueueRevision = _queue.GetQueueRevision(),
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
 

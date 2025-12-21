@@ -71,6 +71,13 @@ public static class AudioPipelineFactory
                 extendedMetadataClient,
                 cacheService,
                 logger);
+
+            logger?.LogDebug("ContextResolver created - album/playlist playback enabled");
+        }
+        else
+        {
+            logger?.LogWarning("ContextResolver not created - IMetadataDatabase not provided. " +
+                "Album and playlist playback will not work.");
         }
 
         return new AudioPipeline(

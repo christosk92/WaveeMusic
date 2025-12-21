@@ -29,6 +29,7 @@ public sealed class PlaybackQueue : IDisposable
     // Position state
     private int _currentIndex = -1;
     private int _userQueuePlayedCount;  // How many user queue items have been played
+    private int _queueUidCounter;  // Counter for q# UIDs (q0, q1, q2...)
 
     // Context metadata
     private string? _contextUri;
@@ -386,18 +387,20 @@ public sealed class PlaybackQueue : IDisposable
 
     /// <summary>
     /// Adds a track to the user queue (plays next before continuing context).
+    /// Assigns q# UID format (q0, q1, q2...) as per librespot.
     /// </summary>
     /// <param name="track">Track to add.</param>
     public void AddToQueue(QueueTrack track)
     {
-        var userQueuedTrack = track with { IsUserQueued = true };
-
         lock (_lock)
         {
+            // Generate q# UID (librespot format)
+            var queueUid = $"q{_queueUidCounter++}";
+            var userQueuedTrack = track with { Uid = queueUid, IsUserQueued = true };
             _userQueue.Add(userQueuedTrack);
 
-            _logger?.LogDebug("Added to user queue: {Uri}, queue size={Size}",
-                track.Uri, _userQueue.Count);
+            _logger?.LogDebug("Added to user queue: {Uri} (uid={Uid}), queue size={Size}",
+                track.Uri, queueUid, _userQueue.Count);
         }
 
         NotifyStateChanged();
@@ -647,6 +650,106 @@ public sealed class PlaybackQueue : IDisposable
         }
 
         return result.AsReadOnly();
+    }
+
+    #endregion
+
+    #region State Export (for PlayerState)
+
+    /// <summary>
+    /// Maximum previous tracks to include in state (matches librespot).
+    /// </summary>
+    private const int MaxPrevTracks = 16;
+
+    /// <summary>
+    /// Maximum next tracks to include in state (matches librespot).
+    /// </summary>
+    private const int MaxNextTracks = 48;
+
+    /// <summary>
+    /// Gets the previous tracks in context (up to 16).
+    /// </summary>
+    /// <returns>List of previous tracks, most recent last.</returns>
+    public IReadOnlyList<QueueTrack> GetPrevTracks()
+    {
+        lock (_lock)
+        {
+            return GetPrevTracksInternal();
+        }
+    }
+
+    /// <summary>
+    /// Gets the next tracks (user queue first, then up to 48 context tracks).
+    /// </summary>
+    /// <returns>List of next tracks.</returns>
+    public IReadOnlyList<QueueTrack> GetNextTracks()
+    {
+        lock (_lock)
+        {
+            return GetNextTracksInternal();
+        }
+    }
+
+    private IReadOnlyList<QueueTrack> GetPrevTracksInternal()
+    {
+        var result = new List<QueueTrack>();
+
+        // Get up to 16 tracks before current index
+        var startLogical = Math.Max(0, _currentIndex - MaxPrevTracks);
+        for (int i = startLogical; i < _currentIndex; i++)
+        {
+            var actualIndex = GetActualIndex(i);
+            if (actualIndex >= 0 && actualIndex < _contextTracks.Count)
+            {
+                result.Add(_contextTracks[actualIndex]);
+            }
+        }
+
+        return result.AsReadOnly();
+    }
+
+    private IReadOnlyList<QueueTrack> GetNextTracksInternal()
+    {
+        var result = new List<QueueTrack>();
+
+        // First add all user queue items
+        foreach (var track in _userQueue)
+        {
+            result.Add(track);
+        }
+
+        // Then add up to MaxNextTracks from context
+        var contextToAdd = MaxNextTracks - result.Count;
+        for (int i = 1; i <= contextToAdd; i++)
+        {
+            var logicalIndex = _currentIndex + i;
+            var actualIndex = GetActualIndex(logicalIndex);
+
+            if (actualIndex < 0 || actualIndex >= _contextTracks.Count)
+                break;
+
+            result.Add(_contextTracks[actualIndex]);
+        }
+
+        return result.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Gets the queue revision - a hash of next track URIs for change detection.
+    /// Used by Spotify web player to know when queue UI needs refresh.
+    /// </summary>
+    /// <returns>Hash string representing current queue state.</returns>
+    public string GetQueueRevision()
+    {
+        lock (_lock)
+        {
+            var hash = new HashCode();
+            foreach (var track in GetNextTracksInternal())
+            {
+                hash.Add(track.Uri);
+            }
+            return hash.ToHashCode().ToString();
+        }
     }
 
     #endregion

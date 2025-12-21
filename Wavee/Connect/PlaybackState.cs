@@ -50,6 +50,26 @@ public sealed record PlaybackState
     public string? ContextUri { get; init; }
 
     /// <summary>
+    /// Context URL (e.g., "context://spotify:playlist:xxx").
+    /// </summary>
+    public string? ContextUrl { get; init; }
+
+    /// <summary>
+    /// Current track index within context (0-based).
+    /// </summary>
+    public int CurrentIndex { get; init; }
+
+    /// <summary>
+    /// Previous tracks in context (up to 16).
+    /// </summary>
+    public IReadOnlyList<TrackReference> PrevTracks { get; init; } = [];
+
+    /// <summary>
+    /// Next tracks in context (user queue + up to 48 context tracks).
+    /// </summary>
+    public IReadOnlyList<TrackReference> NextTracks { get; init; } = [];
+
+    /// <summary>
     /// Playback options (shuffle, repeat).
     /// </summary>
     public PlaybackOptions Options { get; init; } = new();
@@ -79,6 +99,12 @@ public sealed record PlaybackState
     /// Used for Spotify Connect state publishing.
     /// </summary>
     public string? SessionId { get; init; }
+
+    /// <summary>
+    /// Queue revision hash for change detection.
+    /// Used by Spotify web player to sync queue UI.
+    /// </summary>
+    public string? QueueRevision { get; init; }
 
     /// <summary>
     /// Creates an empty playback state (no playback).

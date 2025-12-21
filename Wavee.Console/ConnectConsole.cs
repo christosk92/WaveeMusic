@@ -244,11 +244,18 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             return;
         }
 
-        var trackUri = parts[1];
-        WriteInfo($"Loading {trackUri}...");
+        var uri = parts[1];
+        WriteInfo($"Loading {uri}...");
 
         try
         {
+            // Detect if this is a context (playlist/album) or single track
+            // Check both URI format (spotify:playlist:xxx) and URL format (/playlist/xxx)
+            var isContext = uri.Contains(":playlist:") || uri.Contains("/playlist/") ||
+                            uri.Contains(":album:") || uri.Contains("/album/") ||
+                            uri.Contains(":artist:") || uri.Contains("/artist/") ||
+                            uri.Contains(":show:") || uri.Contains("/show/");
+
             // Create a local play command (not from dealer, so use placeholder values)
             var command = new PlayCommand
             {
@@ -257,8 +264,10 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 MessageId = 0,
                 SenderDeviceId = _session.Config.DeviceId,
                 Key = "local/0",
-                TrackUri = trackUri
+                TrackUri = isContext ? null : uri,
+                ContextUri = isContext ? uri : null
             };
+
             await _audioPipeline.PlayAsync(command, cancellationToken);
         }
         catch (Exception ex)
