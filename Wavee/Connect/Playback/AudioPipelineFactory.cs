@@ -9,6 +9,7 @@ using Wavee.Connect.Playback.Sources;
 using Wavee.Core.Audio;
 using Wavee.Core.Audio.Cache;
 using Wavee.Core.Http;
+using Wavee.Core.Library;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
 using Wavee.Core.Storage.Abstractions;
@@ -98,6 +99,7 @@ public static class AudioPipelineFactory
                 deviceId,
                 eventService,
                 contextResolver,
+                options.EventReporting,
                 logger);
         }
 
@@ -109,6 +111,7 @@ public static class AudioPipelineFactory
             deviceId,
             eventService,
             contextResolver,
+            options.EventReporting,
             logger);
     }
 
@@ -164,20 +167,47 @@ public static class AudioPipelineFactory
 
         registry.Register(spotifySource);
 
+        // Register local file source if enabled
+        if (options.EnableLocalFiles)
+        {
+            var localFileSource = CreateLocalFileTrackSource(options.LocalFileCacheDirectory, logger);
+            registry.Register(localFileSource);
+        }
+
         return registry;
     }
 
     /// <summary>
-    /// Creates a decoder registry with Vorbis support.
+    /// Creates a local file track source for playing audio files from disk.
+    /// </summary>
+    /// <param name="cacheDirectory">Directory for caching album art. If null, uses temp directory.</param>
+    /// <param name="logger">Optional logger.</param>
+    /// <returns>Configured local file track source.</returns>
+    public static LocalFileTrackSource CreateLocalFileTrackSource(
+        string? cacheDirectory = null,
+        ILogger? logger = null)
+    {
+        // Use temp directory if not specified
+        cacheDirectory ??= Path.Combine(Path.GetTempPath(), "Wavee", "cache");
+
+        var metadataExtractor = new MetadataExtractor();
+        var albumArtCache = new AlbumArtCache(cacheDirectory);
+
+        return new LocalFileTrackSource(metadataExtractor, albumArtCache);
+    }
+
+    /// <summary>
+    /// Creates a decoder registry with Vorbis and BASS support.
     /// </summary>
     public static AudioDecoderRegistry CreateDecoderRegistry(ILogger? logger = null)
     {
         var registry = new AudioDecoderRegistry();
 
-        // Register Vorbis decoder (primary format for Spotify)
+        // Register Vorbis decoder (primary format for Spotify OGG files)
         registry.Register(new VorbisDecoder(logger));
 
-        // TODO: Add other decoders as needed (MP3, FLAC, etc.)
+        // Register BASS decoder (MP3, FLAC, WAV, AAC, etc.)
+        registry.Register(new BassDecoder(logger));
 
         return registry;
     }
@@ -275,6 +305,22 @@ public sealed record AudioPipelineOptions
     public float InitialVolume { get; init; } = 1.0f;
 
     /// <summary>
+    /// Whether to enable local file playback support.
+    /// </summary>
+    public bool EnableLocalFiles { get; init; } = true;
+
+    /// <summary>
+    /// Directory for caching local file album art.
+    /// If null, uses system temp directory.
+    /// </summary>
+    public string? LocalFileCacheDirectory { get; init; }
+
+    /// <summary>
+    /// Event reporting configuration (controls what gets sent to Spotify).
+    /// </summary>
+    public EventReportingOptions EventReporting { get; init; } = EventReportingOptions.Default;
+
+    /// <summary>
     /// Default options.
     /// </summary>
     public static AudioPipelineOptions Default { get; } = new();
@@ -284,4 +330,60 @@ public sealed record AudioPipelineOptions
         // PortAudio is cross-platform (WASAPI/CoreAudio/ALSA)
         return AudioSinkType.PortAudio;
     }
+}
+
+/// <summary>
+/// Configuration for playback event reporting to Spotify.
+/// Controls which sources send playback events (play counts, history, etc.).
+/// </summary>
+public sealed record EventReportingOptions
+{
+    /// <summary>
+    /// Report Spotify track playback events. Default: true.
+    /// </summary>
+    public bool ReportSpotifyTracks { get; init; } = true;
+
+    /// <summary>
+    /// Report local file playback events. Default: false.
+    /// When enabled, local file plays are sent to Spotify (affects listening history).
+    /// </summary>
+    public bool ReportLocalFiles { get; init; } = true;
+
+    /// <summary>
+    /// Report HTTP stream playback events. Default: false.
+    /// </summary>
+    public bool ReportHttpStreams { get; init; } = false;
+
+    /// <summary>
+    /// Report podcast episode playback events. Default: true.
+    /// Podcasts are typically Spotify content, so this is enabled by default.
+    /// </summary>
+    public bool ReportPodcasts { get; init; } = true;
+
+    /// <summary>
+    /// Default settings: report Spotify content only.
+    /// </summary>
+    public static EventReportingOptions Default { get; } = new();
+
+    /// <summary>
+    /// Report everything to Spotify.
+    /// </summary>
+    public static EventReportingOptions ReportAll { get; } = new()
+    {
+        ReportSpotifyTracks = true,
+        ReportLocalFiles = true,
+        ReportHttpStreams = true,
+        ReportPodcasts = true
+    };
+
+    /// <summary>
+    /// Report nothing to Spotify (private mode).
+    /// </summary>
+    public static EventReportingOptions ReportNone { get; } = new()
+    {
+        ReportSpotifyTracks = false,
+        ReportLocalFiles = false,
+        ReportHttpStreams = false,
+        ReportPodcasts = false
+    };
 }

@@ -231,19 +231,27 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 
         if (parts.Length < 2)
         {
-            _ui.AddLog("WRN", "Usage: play <spotify:track:xxx> or <spotify:playlist:xxx>");
+            _ui.AddLog("WRN", "Usage: play <spotify:track:xxx> or <file_path.mp3>");
             return;
         }
 
-        var uri = parts[1];
+        // Join remaining parts in case file path has spaces, and trim any quotes
+        var uri = string.Join(" ", parts.Skip(1)).Trim('"');
         _ui.AddLog("INF", $"Loading {uri}...");
 
         try
         {
-            var isContext = uri.Contains(":playlist:") || uri.Contains("/playlist/") ||
+            // Check if it's a local file (file:// URI or file path)
+            var isLocalFile = uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) ||
+                              Path.IsPathRooted(uri) ||
+                              File.Exists(uri);
+
+            // Check if it's a Spotify context (playlist, album, artist, show)
+            var isContext = !isLocalFile && (
+                            uri.Contains(":playlist:") || uri.Contains("/playlist/") ||
                             uri.Contains(":album:") || uri.Contains("/album/") ||
                             uri.Contains(":artist:") || uri.Contains("/artist/") ||
-                            uri.Contains(":show:") || uri.Contains("/show/");
+                            uri.Contains(":show:") || uri.Contains("/show/"));
 
             var command = new PlayCommand
             {
@@ -303,7 +311,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     private void ShowHelp()
     {
         _ui.AddLog("INF", "--- Commands ---");
-        _ui.AddLog("INF", "play <uri>  - Play track or context");
+        _ui.AddLog("INF", "play <uri>  - Play track, context, or local file");
         _ui.AddLog("INF", "pause       - Pause playback");
         _ui.AddLog("INF", "resume      - Resume playback");
         _ui.AddLog("INF", "next        - Skip to next track");

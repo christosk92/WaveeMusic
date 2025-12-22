@@ -36,10 +36,7 @@ var sessionLogger = loggerFactory.CreateLogger("Wavee.Core.Session.Session");
 
 // Setup dependency injection with HttpClient
 var services = new ServiceCollection();
-services.AddHttpClient("Wavee", client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
+services.AddHttpClient("Wavee", client => { client.Timeout = TimeSpan.FromSeconds(30); });
 var serviceProvider = services.BuildServiceProvider();
 var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
@@ -91,10 +88,8 @@ try
     // 4. Connect with status spinner
     await AnsiConsole.Status()
         .Spinner(Spinner.Known.Dots)
-        .StartAsync("Connecting to Spotify...", async ctx =>
-        {
-            await session.ConnectAsync(credentials, credentialsCache);
-        });
+        .StartAsync("Connecting to Spotify...",
+            async ctx => { await session.ConnectAsync(credentials, credentialsCache); });
 
     var userData = session.GetUserData();
     if (userData != null)
@@ -147,7 +142,7 @@ catch (SessionException ex)
 }
 catch (Exception ex)
 {
-    AnsiConsole.WriteException(ex);
+    AnsiConsole.Write(ex.ToString());
 }
 
 AnsiConsole.WriteLine();

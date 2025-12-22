@@ -227,7 +227,8 @@ public static class PlaybackStateHelpers
             ActiveDeviceId = activeDeviceId,
             Timestamp = localState.Timestamp,
             Source = StateSource.Local,
-            SessionId = sessionId
+            SessionId = sessionId,
+            CanSeek = localState.CanSeek
         };
 
         // Detect changes
@@ -506,6 +507,12 @@ public static class PlaybackStateHelpers
     private static Restrictions BuildRestrictions(PlaybackState state)
     {
         var restrictions = new Restrictions();
+
+        // Disable seeking for infinite streams (radio, live streams)
+        if (!state.CanSeek)
+        {
+            restrictions.DisallowSeekingReasons.Add("streaming_rules");
+        }
 
         // If at first track and not repeating context, disallow skip_prev
         if (state.CurrentIndex == 0 && !state.Options.RepeatingContext)

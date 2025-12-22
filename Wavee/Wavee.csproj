@@ -30,21 +30,30 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Google.Protobuf" Version="3.33.0" />
+      <PackageReference Include="Google.Protobuf" Version="3.33.2" />
       <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
-      <PackageReference Include="Grpc.Tools" Version="2.72.0">
+      <PackageReference Include="Grpc.Tools" Version="2.76.0">
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
-      <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0-rc.2.25502.107" />
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-rc.2.25502.107" />
-      <PackageReference Include="PortAudioSharp2" Version="1.0.4" />
-      <PackageReference Include="System.Reactive" Version="6.0.1" />
+      <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.1" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
+      <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
+      <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
+
+      <!-- Local file support (Phase 2) -->
+      <PackageReference Include="ManagedBass" Version="3.1.1" />
+      <PackageReference Include="z440.atl.core" Version="6.4.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Native BASS libraries for audio decoding -->
+      <None Include="runtimes\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="runtimes" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\NVorbis\NVorbis\NVorbis.csproj" />
-      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0-rc.2.25502.107" />
+      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
     </ItemGroup>
 
     <ItemGroup>

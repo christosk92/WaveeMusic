@@ -107,6 +107,12 @@ public sealed record PlaybackState
     public string? QueueRevision { get; init; }
 
     /// <summary>
+    /// Whether seeking is supported for the current track.
+    /// False for infinite streams (radio, live streams).
+    /// </summary>
+    public bool CanSeek { get; init; } = true;
+
+    /// <summary>
     /// Creates an empty playback state (no playback).
     /// </summary>
     public static PlaybackState Empty => new()

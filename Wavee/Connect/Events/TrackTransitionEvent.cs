@@ -17,6 +17,12 @@ public sealed class TrackTransitionEvent : IPlaybackEvent
     private readonly PlaybackMetrics _metrics;
 
     /// <summary>
+    /// Gets the playback metrics for this transition.
+    /// Exposed for local subscribers (like LibraryPlayRecorder) to access play data.
+    /// </summary>
+    public PlaybackMetrics Metrics => _metrics;
+
+    /// <summary>
     /// Creates a new TrackTransitionEvent.
     /// </summary>
     /// <param name="deviceId">This device's ID.</param>

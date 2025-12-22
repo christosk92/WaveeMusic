@@ -1,3 +1,5 @@
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Utilities;
@@ -18,7 +20,14 @@ public sealed class EventService : IAsyncDisposable
     private readonly SpClient _spClient;
     private readonly ILogger? _logger;
     private readonly AsyncWorker<EventBuilder> _asyncWorker;
+    private readonly Subject<IPlaybackEvent> _eventSubject = new();
     private bool _disposed;
+
+    /// <summary>
+    /// Observable stream of all playback events.
+    /// Local subscribers (like LibraryPlayRecorder) can use this to react to playback events.
+    /// </summary>
+    public IObservable<IPlaybackEvent> Events => _eventSubject.AsObservable();
 
     /// <summary>
     /// Creates a new EventService.
@@ -41,11 +50,15 @@ public sealed class EventService : IAsyncDisposable
     /// <summary>
     /// Sends a playback event to Spotify.
     /// The event is queued and sent asynchronously.
+    /// Also publishes to local subscribers via the Events observable.
     /// </summary>
     /// <param name="playbackEvent">Event to send.</param>
     public void SendEvent(IPlaybackEvent playbackEvent)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // Publish to local subscribers first (for library recording, etc.)
+        _eventSubject.OnNext(playbackEvent);
 
         try
         {
@@ -100,6 +113,10 @@ public sealed class EventService : IAsyncDisposable
             return;
 
         _disposed = true;
+
+        // Complete and dispose the event subject
+        _eventSubject.OnCompleted();
+        _eventSubject.Dispose();
 
         // Wait for pending events to be sent (with timeout)
         try

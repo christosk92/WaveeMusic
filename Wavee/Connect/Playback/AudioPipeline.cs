@@ -1,8 +1,6 @@
-using System.Buffers;
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
-using NVorbis;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Events;
 using Wavee.Connect.Protocol;
@@ -72,6 +70,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private bool _shuffling;
     private bool _repeatingContext;
     private bool _repeatingTrack;
+    private bool _currentCanSeek = true;
 
     // Event tracking for playback reporting
     private string? _currentSessionId;
@@ -88,6 +87,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // Disposal
     private bool _disposed;
 
+    // Event reporting configuration
+    private EventReportingOptions _eventReportingOptions = EventReportingOptions.Default;
+
     /// <summary>
     /// Creates an AudioPipeline without command handler integration (manual control only).
     /// </summary>
@@ -98,6 +100,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for reporting playback events.</param>
     /// <param name="contextResolver">Optional context resolver for playlist/album loading.</param>
+    /// <param name="eventReportingOptions">Optional event reporting configuration.</param>
     /// <param name="logger">Optional logger.</param>
     public AudioPipeline(
         TrackSourceRegistry sourceRegistry,
@@ -107,6 +110,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         string deviceId = "",
         EventService? eventService = null,
         ContextResolver? contextResolver = null,
+        EventReportingOptions? eventReportingOptions = null,
         ILogger? logger = null)
     {
         _sourceRegistry = sourceRegistry ?? throw new ArgumentNullException(nameof(sourceRegistry));
@@ -116,6 +120,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _deviceId = deviceId ?? "";
         _eventService = eventService;
         _contextResolver = contextResolver;
+        _eventReportingOptions = eventReportingOptions ?? EventReportingOptions.Default;
         _logger = logger;
 
         _stateSubject = new BehaviorSubject<LocalPlaybackState>(_currentState);
@@ -168,6 +173,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for reporting playback events.</param>
     /// <param name="contextResolver">Optional context resolver for playlist/album loading.</param>
+    /// <param name="eventReportingOptions">Optional event reporting configuration.</param>
     /// <param name="logger">Optional logger.</param>
     public AudioPipeline(
         TrackSourceRegistry sourceRegistry,
@@ -179,8 +185,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         string deviceId = "",
         EventService? eventService = null,
         ContextResolver? contextResolver = null,
+        EventReportingOptions? eventReportingOptions = null,
         ILogger? logger = null)
-        : this(sourceRegistry, decoderRegistry, audioSink, processingChain, deviceId, eventService, contextResolver, logger)
+        : this(sourceRegistry, decoderRegistry, audioSink, processingChain, deviceId, eventService, contextResolver, eventReportingOptions, logger)
     {
         _commandHandler = commandHandler ?? throw new ArgumentNullException(nameof(commandHandler));
         _deviceStateManager = deviceStateManager;
@@ -207,6 +214,16 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 return _currentState;
             }
         }
+    }
+
+    /// <summary>
+    /// Gets or sets the event reporting configuration.
+    /// Controls which playback sources report events to Spotify.
+    /// </summary>
+    public EventReportingOptions EventReporting
+    {
+        get => _eventReportingOptions;
+        set => _eventReportingOptions = value ?? EventReportingOptions.Default;
     }
 
     /// <inheritdoc/>
@@ -379,14 +396,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Sync shuffle state with queue
             _queue.SetShuffle(_shuffling);
 
-            // Validate that we have a track URI (not album/playlist)
-            if (!trackUri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase))
+            // Validate that we have a playable URI (track, local file, or stream)
+            if (!IsPlayableTrackUri(trackUri))
             {
-                _logger?.LogError("Invalid track URI for playback: {TrackUri}. " +
-                    "Albums and playlists must be resolved to tracks first.", trackUri);
+                _logger?.LogError("Invalid URI for playback: {TrackUri}. " +
+                    "Must be a Spotify track, local file, or stream URL.", trackUri);
                 throw new InvalidOperationException(
-                    $"Cannot play non-track URI: {trackUri}. " +
-                    "Context URIs must be resolved to track URIs before playback.");
+                    $"Cannot play URI: {trackUri}. " +
+                    "Must be a Spotify track URI, file path, or stream URL.");
             }
 
             // Start playback loop
@@ -544,6 +561,13 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         try
         {
             _logger?.LogInformation("Seek command received: Position={PositionMs}ms", positionMs);
+
+            // Check if seeking is supported (disabled for infinite streams)
+            if (!_currentCanSeek)
+            {
+                _logger?.LogWarning("Seeking not supported for current track (infinite stream)");
+                return;
+            }
 
             if (string.IsNullOrEmpty(_currentTrackUri))
             {
@@ -798,14 +822,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private async Task PlaybackLoopAsync(string trackUri, long startPositionMs, CancellationToken cancellationToken)
     {
         ITrackStream? trackStream = null;
-        VorbisReader? vorbisReader = null;
-        SkipStream? skipStream = null;
 
         try
         {
             _logger?.LogDebug("Starting playback loop for track: {TrackUri} at {PositionMs}ms", trackUri, startPositionMs);
 
-            // Load track
+            // Load track from source registry
             trackStream = await _sourceRegistry.LoadAsync(trackUri, cancellationToken);
             _logger?.LogDebug("Track loaded: {Title} by {Artist}", trackStream.Metadata.Title, trackStream.Metadata.Artist);
 
@@ -814,14 +836,21 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _currentTrackArtist = trackStream.Metadata.Artist;
             _currentTrackAlbum = trackStream.Metadata.Album;
             _currentDurationMs = trackStream.Metadata.DurationMs ?? 0;
+            _currentCanSeek = trackStream.CanSeek;
 
-            // Create VorbisReader directly (skip Spotify header)
-            skipStream = new SkipStream(trackStream.AudioStream, VorbisDecoder.SpotifyHeaderSize, leaveOpen: true);
-            vorbisReader = new VorbisReader(skipStream, closeOnDispose: false);
+            // Find appropriate decoder using registry
+            var decoder = _decoderRegistry.FindDecoder(trackStream.AudioStream);
+            if (decoder == null)
+            {
+                throw new NotSupportedException($"No decoder found for audio format of track: {trackUri}");
+            }
 
-            var audioFormat = new AudioFormat(vorbisReader.SampleRate, vorbisReader.Channels, 16);
-            _logger?.LogDebug("VorbisReader created: {SampleRate}Hz {Channels}ch",
-                vorbisReader.SampleRate, vorbisReader.Channels);
+            _logger?.LogDebug("Using decoder: {DecoderName}", decoder.FormatName);
+
+            // Get audio format from decoder
+            var audioFormat = await decoder.GetFormatAsync(trackStream.AudioStream, cancellationToken);
+            _logger?.LogDebug("Audio format: {SampleRate}Hz {Channels}ch {Bits}bit",
+                audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
 
             // Initialize audio sink and processing chain
             await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 100, cancellationToken);
@@ -833,13 +862,6 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 processor.SetTrackGain(trackStream.Metadata);
             }
 
-            // Seek to start position if specified
-            if (startPositionMs > 0)
-            {
-                vorbisReader.TimePosition = TimeSpan.FromMilliseconds(startPositionMs);
-                _logger?.LogDebug("Initial seek to {PositionMs}ms", startPositionMs);
-            }
-
             // Update state to playing
             _isPlaying = true;
             _isPaused = false;
@@ -848,59 +870,43 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Start playback event tracking
             StartPlaybackSession(trackUri, _currentContextUri ?? trackUri, PlaybackReason.PlayBtn);
 
-            // Allocate decode buffers
-            const int samplesPerBuffer = 4096;
-            var floatBuffer = ArrayPool<float>.Shared.Rent(samplesPerBuffer * vorbisReader.Channels);
-            var pcmBuffer = ArrayPool<byte>.Shared.Rent(samplesPerBuffer * vorbisReader.Channels * 2);
+            // Decode and play using the decoder's async enumerable
+            long currentStartPosition = startPositionMs;
 
-            try
+            while (!cancellationToken.IsCancellationRequested)
             {
-                while (!cancellationToken.IsCancellationRequested)
+                bool seekRequested = false;
+
+                await foreach (var buffer in decoder.DecodeAsync(trackStream.AudioStream, currentStartPosition, cancellationToken))
                 {
-                    // CHECK FOR PENDING SEEK
-                    long? seekTarget;
+                    // Check for pending seek
                     lock (_seekLock)
                     {
-                        seekTarget = _pendingSeekMs;
-                        _pendingSeekMs = null;
+                        if (_pendingSeekMs.HasValue)
+                        {
+                            currentStartPosition = _pendingSeekMs.Value;
+                            _pendingSeekMs = null;
+                            seekRequested = true;
+
+                            _logger?.LogDebug("Seek requested to {PositionMs}ms", currentStartPosition);
+                        }
                     }
 
-                    if (seekTarget.HasValue)
+                    if (seekRequested)
                     {
-                        _logger?.LogDebug("Seeking to {PositionMs}ms", seekTarget.Value);
+                        // Prefetch data at seek position for streaming tracks
+                        await trackStream.PrefetchForSeekAsync(
+                            TimeSpan.FromMilliseconds(currentStartPosition),
+                            cancellationToken);
 
-                        // Prefetch data at seek position before NVorbis reads
-                        // This ensures OGG pages are downloaded and ready
-                        if (trackStream != null)
+                        // Reset stream position if seekable
+                        if (trackStream.AudioStream.CanSeek)
                         {
-                            await trackStream.PrefetchForSeekAsync(
-                                TimeSpan.FromMilliseconds(seekTarget.Value),
-                                cancellationToken);
+                            trackStream.AudioStream.Position = 0;
                         }
 
-                        // Now perform the in-place seek
-                        vorbisReader.TimePosition = TimeSpan.FromMilliseconds(seekTarget.Value);
-                        _currentPositionMs = seekTarget.Value;
-                        continue; // Skip to next iteration
+                        break; // Exit decode loop to restart from new position
                     }
-
-                    // Read samples from Vorbis decoder
-                    var samplesRead = vorbisReader.ReadSamples(floatBuffer, 0, samplesPerBuffer * vorbisReader.Channels);
-                    if (samplesRead == 0)
-                        break; // End of stream
-
-                    // Convert float samples to 16-bit PCM
-                    var pcmBytes = samplesRead * 2;
-                    ConvertFloatToPcm16(floatBuffer.AsSpan(0, samplesRead), pcmBuffer.AsSpan(0, pcmBytes));
-
-                    // Get current position
-                    var positionMs = (long)vorbisReader.TimePosition.TotalMilliseconds;
-
-                    // Copy PCM data for AudioBuffer (since we reuse the pooled array)
-                    var bufferCopy = new byte[pcmBytes];
-                    pcmBuffer.AsSpan(0, pcmBytes).CopyTo(bufferCopy);
-
-                    var buffer = new AudioBuffer(bufferCopy, positionMs);
 
                     // Process audio through chain
                     var processed = _processingChain.Process(buffer);
@@ -909,7 +915,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                     await _audioSink.WriteAsync(processed.Data, cancellationToken);
 
                     // Update position
-                    _currentPositionMs = positionMs;
+                    _currentPositionMs = buffer.PositionMs;
 
                     // Publish state update periodically (every ~500ms)
                     if (_currentPositionMs % 500 < 100)
@@ -917,11 +923,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                         PublishStateUpdate();
                     }
                 }
-            }
-            finally
-            {
-                ArrayPool<float>.Shared.Return(floatBuffer);
-                ArrayPool<byte>.Shared.Return(pcmBuffer);
+
+                // If no seek was requested, we're done with the track
+                if (!seekRequested)
+                    break;
             }
 
             // Playback completed
@@ -934,12 +939,6 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             if (_repeatingTrack)
             {
                 _logger?.LogDebug("Repeat track enabled, restarting");
-                // Reset seek position and restart
-                lock (_seekLock)
-                {
-                    _pendingSeekMs = 0;
-                }
-                vorbisReader.TimePosition = TimeSpan.Zero;
                 await PlaybackLoopAsync(trackUri, 0, cancellationToken);
                 return;
             }
@@ -982,32 +981,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         }
         finally
         {
-            vorbisReader?.Dispose();
-            skipStream?.Dispose();
             if (trackStream != null)
             {
                 await trackStream.DisposeAsync();
             }
-        }
-    }
-
-    /// <summary>
-    /// Converts float samples (-1.0 to 1.0) to 16-bit PCM.
-    /// </summary>
-    private static void ConvertFloatToPcm16(ReadOnlySpan<float> floatSamples, Span<byte> pcmOutput)
-    {
-        for (int i = 0; i < floatSamples.Length; i++)
-        {
-            // Clamp to [-1, 1] range
-            var sample = Math.Clamp(floatSamples[i], -1f, 1f);
-
-            // Convert to 16-bit signed integer
-            var pcmSample = (short)(sample * 32767f);
-
-            // Write as little-endian
-            var offset = i * 2;
-            pcmOutput[offset] = (byte)(pcmSample & 0xFF);
-            pcmOutput[offset + 1] = (byte)((pcmSample >> 8) & 0xFF);
         }
     }
 
@@ -1056,6 +1033,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 Shuffling = _shuffling,
                 RepeatingContext = _repeatingContext,
                 RepeatingTrack = _repeatingTrack,
+                CanSeek = _currentCanSeek,
                 CurrentIndex = _queue.CurrentIndex,
                 PrevTracks = prevTracks,
                 NextTracks = nextTracks,
@@ -1074,6 +1052,34 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         var hash = trackUri.GetHashCode();
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return $"{hash:X8}_{timestamp}";
+    }
+
+    /// <summary>
+    /// Checks if a URI is a playable track (Spotify track, local file, or stream).
+    /// </summary>
+    private static bool IsPlayableTrackUri(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return false;
+
+        // Spotify tracks
+        if (uri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Local files (file:// URI)
+        if (uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Absolute file paths (Windows C:\... or Unix /...)
+        if (Path.IsPathRooted(uri))
+            return true;
+
+        // HTTP streams (for future support)
+        if (uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     // ================================================================
@@ -1252,6 +1258,13 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         if (_eventService == null)
             return;
 
+        // Check if event reporting is enabled for this track source
+        if (!ShouldReportPlayback(trackUri))
+        {
+            _logger?.LogDebug("Skipping playback event reporting for track (disabled by config): {TrackUri}", trackUri);
+            return;
+        }
+
         // Check if context changed (new session needed)
         var contextChanged = _currentSessionId == null || _currentContextUri != contextUri;
         if (contextChanged)
@@ -1324,6 +1337,34 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         // Clear current playback ID (session ID persists until context changes)
         _currentPlaybackId = null;
         _currentMetrics = null;
+    }
+
+    /// <summary>
+    /// Determines whether playback events should be reported for the given track URI
+    /// based on the configured EventReportingOptions.
+    /// </summary>
+    private bool ShouldReportPlayback(string trackUri)
+    {
+        // Spotify tracks
+        if (trackUri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase))
+            return _eventReportingOptions.ReportSpotifyTracks;
+
+        // Spotify podcasts/episodes
+        if (trackUri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase))
+            return _eventReportingOptions.ReportPodcasts;
+
+        // HTTP streams
+        if (trackUri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            trackUri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return _eventReportingOptions.ReportHttpStreams;
+
+        // Local files (file:// URI or absolute path)
+        if (trackUri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) ||
+            Path.IsPathRooted(trackUri))
+            return _eventReportingOptions.ReportLocalFiles;
+
+        // Unknown source - default to not reporting
+        return false;
     }
 
     /// <summary>

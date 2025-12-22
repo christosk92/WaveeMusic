@@ -234,6 +234,12 @@ public sealed record LocalPlaybackState
     public bool RepeatingTrack { get; init; }
 
     /// <summary>
+    /// Whether seeking is supported for the current track.
+    /// False for infinite streams (radio, live streams).
+    /// </summary>
+    public bool CanSeek { get; init; } = true;
+
+    /// <summary>
     /// Current track index within context (0-based).
     /// </summary>
     public int CurrentIndex { get; init; }
@@ -266,6 +272,7 @@ public sealed record LocalPlaybackState
         IsPlaying = false,
         IsPaused = false,
         IsBuffering = false,
+        CanSeek = true,
         Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
     };
 }
