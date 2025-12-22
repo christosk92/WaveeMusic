@@ -94,32 +94,23 @@ All audio processing components are fully implemented and ready to use:
 - **CrossfadeProcessor**: Equal-power crossfading with multiple curves
 - **NormalizationProcessor**: ReplayGain/LUFS support with soft clipping
 
-## What You Need to Implement
+## What's Implemented
 
-### Priority 1: Real Decoders
+### ✅ Real Decoders
 
-**WAV Decoder** (Easiest - Start Here):
-```csharp
-// File: Decoders/WaveDecoder.cs
-public class WaveDecoder : IAudioDecoder
-{
-    // Read WAV header (44 bytes)
-    // Return PCM data as AudioBuffers
-    // See IMPLEMENTATION_GUIDE.md for details
-}
-```
+**BassDecoder** ✅:
+- Decodes MP3, FLAC, WAV, AIFF using the BASS audio library
+- Supports seeking to arbitrary positions
+- Outputs 16-bit PCM audio
+- See [BASS_SETUP.md](BASS_SETUP.md) for native library installation
 
-**Your Custom Vorbis Decoder**:
-```csharp
-// File: Decoders/VorbisDecoder.cs
-public class VorbisDecoder : IAudioDecoder
-{
-    // YOUR IMPLEMENTATION
-    // Decode OGG Vorbis to PCM
-}
-```
+**VorbisDecoder** ✅:
+- Decodes OGG Vorbis streams (used for Spotify audio)
+- Uses NVorbis library
 
-### Priority 2: Real Audio Output
+## What's Left to Implement
+
+### Priority 1: Real Audio Output
 
 **WASAPI Audio Sink** (Windows):
 ```csharp
@@ -131,17 +122,7 @@ public class WasapiAudioSink : IAudioSink
 }
 ```
 
-### Priority 3: Track Loading
-
-**Local File Source**:
-```csharp
-// File: Sources/LocalFileTrackSource.cs
-public class LocalFileTrackSource : ITrackSource
-{
-    // Load audio files from filesystem
-    // Read ID3/Vorbis/FLAC tags for metadata
-}
-```
+### Priority 2: Spotify Integration
 
 **Spotify Track Source**:
 ```csharp
@@ -213,6 +194,7 @@ var pipeline = new AudioPipeline(sourceRegistry, decoderRegistry, sink, processi
 ```
 Wavee/Connect/Playback/
 ├── README.md                          (this file)
+├── BASS_SETUP.md                      (native BASS library setup)
 ├── IMPLEMENTATION_STATUS.md           (detailed status)
 ├── IMPLEMENTATION_GUIDE.md            (how-to guide)
 ├── Abstractions/
@@ -227,16 +209,14 @@ Wavee/Connect/Playback/
 ├── Sources/
 │   ├── TrackSourceRegistry.cs         ✅ Complete
 │   ├── StubTrackSource.cs             ✅ Complete
-│   ├── LocalFileTrackSource.cs        ⚠️ TODO (you implement)
+│   ├── LocalFileTrackSource.cs        ✅ Complete (local audio files)
 │   ├── SpotifyTrackSource.cs          ⚠️ TODO (you implement)
 │   └── HttpTrackSource.cs             ⚠️ TODO (future)
 ├── Decoders/
 │   ├── AudioDecoderRegistry.cs        ✅ Complete
 │   ├── StubDecoder.cs                 ✅ Complete
-│   ├── WaveDecoder.cs                 ⚠️ TODO (easy to implement)
-│   ├── VorbisDecoder.cs               ⚠️ TODO (your custom decoder)
-│   ├── Mp3Decoder.cs                  ⚠️ TODO (future)
-│   └── FlacDecoder.cs                 ⚠️ TODO (future)
+│   ├── VorbisDecoder.cs               ✅ Complete (OGG Vorbis via NVorbis)
+│   └── BassDecoder.cs                 ✅ Complete (MP3/FLAC/WAV/AIFF via BASS)
 ├── Processors/
 │   ├── AudioProcessingChain.cs        ✅ Complete
 │   ├── VolumeProcessor.cs             ✅ Complete
@@ -294,16 +274,16 @@ var stateManager = new PlaybackStateManager(
 3. **Test Spotify commands**: Control playback from Spotify app
 
 ### Implement for Real Audio:
-1. **WaveDecoder**: Simple format, good for testing local files
-2. **LocalFileTrackSource**: Load WAV/MP3/FLAC from filesystem
-3. **Your Vorbis decoder**: Decode Spotify's OGG Vorbis streams
+1. ✅ **BassDecoder**: Decodes MP3/FLAC/WAV/AIFF (see [BASS_SETUP.md](BASS_SETUP.md))
+2. ✅ **LocalFileTrackSource**: Loads local audio files from filesystem
+3. ✅ **VorbisDecoder**: Decodes Spotify's OGG Vorbis streams
 4. **SpotifyTrackSource**: Load encrypted audio from Spotify CDN (use existing AudioDecryptStream)
 5. **WASAPI sink**: Hear actual audio on Windows!
 
 ### Future Enhancements:
 1. **PlaybackQueue**: Multi-track queue with auto-advance
 2. **Crossfade integration**: Wire CrossfadeProcessor with queue transitions
-3. **More decoders**: MP3, FLAC, AAC, etc.
+3. **BASS plugins**: AAC, WMA, Opus support (see [BASS_SETUP.md](BASS_SETUP.md))
 
 See **IMPLEMENTATION_GUIDE.md** for detailed implementation examples.
 

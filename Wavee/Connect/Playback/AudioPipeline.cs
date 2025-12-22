@@ -839,7 +839,8 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _currentCanSeek = trackStream.CanSeek;
 
             // Find appropriate decoder using registry
-            var decoder = _decoderRegistry.FindDecoder(trackStream.AudioStream);
+            // For non-seekable streams (HTTP radio), this returns a wrapped stream with buffered header
+            var decoder = _decoderRegistry.FindDecoder(trackStream.AudioStream, out var decodingStream);
             if (decoder == null)
             {
                 throw new NotSupportedException($"No decoder found for audio format of track: {trackUri}");
@@ -848,7 +849,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _logger?.LogDebug("Using decoder: {DecoderName}", decoder.FormatName);
 
             // Get audio format from decoder
-            var audioFormat = await decoder.GetFormatAsync(trackStream.AudioStream, cancellationToken);
+            var audioFormat = await decoder.GetFormatAsync(decodingStream, cancellationToken);
             _logger?.LogDebug("Audio format: {SampleRate}Hz {Channels}ch {Bits}bit",
                 audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
 
@@ -877,7 +878,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             {
                 bool seekRequested = false;
 
-                await foreach (var buffer in decoder.DecodeAsync(trackStream.AudioStream, currentStartPosition, cancellationToken))
+                await foreach (var buffer in decoder.DecodeAsync(decodingStream, currentStartPosition, cancellationToken))
                 {
                     // Check for pending seek
                     lock (_seekLock)
@@ -900,9 +901,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                             cancellationToken);
 
                         // Reset stream position if seekable
-                        if (trackStream.AudioStream.CanSeek)
+                        if (decodingStream.CanSeek)
                         {
-                            trackStream.AudioStream.Position = 0;
+                            decodingStream.Position = 0;
                         }
 
                         break; // Exit decode loop to restart from new position

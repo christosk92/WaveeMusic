@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using ManagedBass;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Playback.Abstractions;
+using Wavee.Connect.Playback.Sources;
 
 namespace Wavee.Connect.Playback.Decoders;
 
@@ -19,6 +20,16 @@ public sealed class BassDecoder : IAudioDecoder
     /// Size of decode buffer in samples per channel.
     /// </summary>
     private const int SamplesPerBuffer = 4096;
+
+    /// <summary>
+    /// Default sample rate for streaming sources when format detection isn't possible.
+    /// </summary>
+    private const int DefaultStreamingSampleRate = 44100;
+
+    /// <summary>
+    /// Default channel count for streaming sources.
+    /// </summary>
+    private const int DefaultStreamingChannels = 2;
 
     private readonly ILogger? _logger;
 
@@ -67,6 +78,14 @@ public sealed class BassDecoder : IAudioDecoder
     {
         EnsureBassInitialized();
 
+        // For non-seekable streams (HTTP radio), we can't read ahead without consuming data.
+        // Return a default format - actual format will be determined during decode.
+        if (!stream.CanSeek)
+        {
+            _logger?.LogDebug("Non-seekable stream detected, using default format for streaming");
+            return new AudioFormat(DefaultStreamingSampleRate, DefaultStreamingChannels, 16);
+        }
+
         // Copy stream to memory for BASS
         var data = await ReadStreamToMemoryAsync(stream, cancellationToken);
 
@@ -98,11 +117,28 @@ public sealed class BassDecoder : IAudioDecoder
     {
         EnsureBassInitialized();
 
-        // Copy stream to memory for BASS
-        var data = await ReadStreamToMemoryAsync(stream, cancellationToken);
+        int handle;
+        byte[]? memoryData = null;
 
-        // Create BASS decode stream from memory
-        var handle = Bass.CreateStream(data, 0, data.Length, BassFlags.Decode | BassFlags.Float);
+        // Debug: log stream type
+        _logger?.LogDebug("DecodeAsync received stream type: {Type}", stream.GetType().FullName);
+
+        // Check if this is a URL-aware stream with HTTP URL - use native BASS URL streaming
+        // Need to unwrap PrefixedStream to find the UrlAwareStream inside
+        var urlStream = FindUrlAwareStream(stream);
+        if (urlStream != null &&
+            (urlStream.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+             urlStream.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+        {
+            _logger?.LogDebug("Using BASS native URL streaming for: {Url}", urlStream.Url);
+            handle = Bass.CreateStream(urlStream.Url, 0, BassFlags.Decode | BassFlags.Float, null);
+        }
+        else
+        {
+            // Load into memory for seekable streams
+            memoryData = await ReadStreamToMemoryAsync(stream, cancellationToken);
+            handle = Bass.CreateStream(memoryData, 0, memoryData.Length, BassFlags.Decode | BassFlags.Float);
+        }
 
         if (handle == 0)
         {
@@ -114,8 +150,8 @@ public sealed class BassDecoder : IAudioDecoder
         {
             var info = Bass.ChannelGetInfo(handle);
 
-            // Seek to start position if specified
-            if (startPositionMs > 0)
+            // Seek to start position if specified (only for seekable streams)
+            if (startPositionMs > 0 && stream.CanSeek)
             {
                 var bytePos = Bass.ChannelSeconds2Bytes(handle, startPositionMs / 1000.0);
                 if (!Bass.ChannelSetPosition(handle, bytePos))
@@ -133,11 +169,16 @@ public sealed class BassDecoder : IAudioDecoder
             // Buffer for 16-bit PCM output
             var pcmBuffer = ArrayPool<byte>.Shared.Rent(SamplesPerBuffer * info.Channels * 2);
 
+            // Track elapsed time for streaming (since position isn't reliable)
+            var isStreaming = !stream.CanSeek;
+            long streamingPositionMs = 0;
+            var bytesPerMs = (info.Frequency * info.Channels * sizeof(float)) / 1000.0;
+
             try
             {
                 _logger?.LogDebug(
-                    "Starting BASS decode: {SampleRate}Hz, {Channels}ch, startPosition={StartPositionMs}ms",
-                    info.Frequency, info.Channels, startPositionMs);
+                    "Starting BASS decode: {SampleRate}Hz, {Channels}ch, startPosition={StartPositionMs}ms, streaming={IsStreaming}",
+                    info.Frequency, info.Channels, startPositionMs, isStreaming);
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -167,8 +208,18 @@ public sealed class BassDecoder : IAudioDecoder
                     ConvertFloatToPcm16(floatBuffer.AsSpan(0, samplesRead), pcmBuffer.AsSpan(0, pcmBytes));
 
                     // Get current position in milliseconds
-                    var posBytes = Bass.ChannelGetPosition(handle);
-                    var posMs = (long)(Bass.ChannelBytes2Seconds(handle, posBytes) * 1000);
+                    long posMs;
+                    if (isStreaming)
+                    {
+                        // For streaming, calculate from bytes decoded
+                        posMs = streamingPositionMs;
+                        streamingPositionMs += (long)(bytesRead / bytesPerMs);
+                    }
+                    else
+                    {
+                        var posBytes = Bass.ChannelGetPosition(handle);
+                        posMs = (long)(Bass.ChannelBytes2Seconds(handle, posBytes) * 1000);
+                    }
 
                     // Copy to new buffer for the AudioBuffer (since we reuse the arrays)
                     var bufferCopy = new byte[pcmBytes];
@@ -189,6 +240,18 @@ public sealed class BassDecoder : IAudioDecoder
         {
             Bass.StreamFree(handle);
         }
+    }
+
+    /// <summary>
+    /// Recursively unwraps streams to find a UrlAwareStream.
+    /// </summary>
+    private static UrlAwareStream? FindUrlAwareStream(Stream stream)
+    {
+        if (stream is UrlAwareStream urlStream)
+            return urlStream;
+        if (stream is PrefixedStream prefixed)
+            return FindUrlAwareStream(prefixed.InnerStream);
+        return null;
     }
 
     /// <summary>

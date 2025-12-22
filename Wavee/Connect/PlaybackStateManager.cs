@@ -399,10 +399,20 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             _currentState = newState;
             _stateSubject.OnNext(newState);
 
-            // Publish to Spotify
+            // Publish to Spotify (skip position-only changes for infinite streams)
             if (_isLocalPlaybackActive)
             {
-                PublishLocalState(newState);
+                var isPositionOnlyChange = newState.Changes == Connect.StateChanges.Position;
+                var isInfiniteStream = newState.Track?.DurationMs is null or 0;
+
+                if (isPositionOnlyChange && isInfiniteStream)
+                {
+                    _logger?.LogTrace("Skipping Spotify update for position-only change on infinite stream");
+                }
+                else
+                {
+                    PublishLocalState(newState);
+                }
             }
 
             _logger?.LogTrace("Local state update published to subscribers");

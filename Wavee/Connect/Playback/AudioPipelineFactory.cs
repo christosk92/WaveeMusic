@@ -174,6 +174,13 @@ public static class AudioPipelineFactory
             registry.Register(localFileSource);
         }
 
+        // Register HTTP stream source if enabled
+        if (options.EnableHttpStreams)
+        {
+            var httpStreamSource = new HttpStreamTrackSource(httpClient, logger);
+            registry.Register(httpStreamSource);
+        }
+
         return registry;
     }
 
@@ -314,6 +321,12 @@ public sealed record AudioPipelineOptions
     /// If null, uses system temp directory.
     /// </summary>
     public string? LocalFileCacheDirectory { get; init; }
+
+    /// <summary>
+    /// Whether to enable HTTP/HTTPS stream playback support.
+    /// Supports direct audio files and radio streams (Shoutcast/Icecast).
+    /// </summary>
+    public bool EnableHttpStreams { get; init; } = true;
 
     /// <summary>
     /// Event reporting configuration (controls what gets sent to Spotify).
