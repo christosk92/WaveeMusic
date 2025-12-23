@@ -14,16 +14,20 @@ using Wavee.Protocol.Metadata;
 namespace Wavee.Connect.Playback.Sources;
 
 /// <summary>
-/// Track source for Spotify audio files.
+/// Track source for Spotify audio files (tracks and episodes).
 /// </summary>
 /// <remarks>
-/// Handles the complete flow for loading a Spotify track:
-/// 1. Parse track URI -> SpotifyId
-/// 2. Fetch track metadata via extended-metadata API (includes audio files)
+/// Handles the complete flow for loading Spotify content:
+/// 1. Parse URI -> SpotifyId (track or episode)
+/// 2. Fetch metadata via extended-metadata API (includes audio files)
 /// 3. Select audio file based on quality preference
 /// 4. Fetch head file (for instant start) + AudioKey + CDN URL in parallel
 /// 5. Create combined stream (head file + CDN progressive download)
 /// 6. Wrap with decryption layer
+///
+/// Episodes are streamed identically to tracks - they have file IDs and use
+/// the same CDN/storage mechanism. The Episode proto has an 'audio' field
+/// (equivalent to Track's 'file' field) with available audio formats.
 /// </remarks>
 public sealed class SpotifyTrackSource : ITrackSource
 {
@@ -77,7 +81,8 @@ public sealed class SpotifyTrackSource : ITrackSource
     /// <inheritdoc />
     public bool CanHandle(string uri)
     {
-        return uri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase);
+        return uri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase)
+            || uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
@@ -86,6 +91,17 @@ public sealed class SpotifyTrackSource : ITrackSource
         if (!CanHandle(uri))
             throw new ArgumentException($"Cannot handle URI: {uri}", nameof(uri));
 
+        // Dispatch based on URI type
+        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase))
+        {
+            return await LoadEpisodeAsync(uri, cancellationToken);
+        }
+
+        return await LoadTrackAsync(uri, cancellationToken);
+    }
+
+    private async Task<ITrackStream> LoadTrackAsync(string uri, CancellationToken cancellationToken)
+    {
         _logger?.LogInformation("Loading track {Uri} with quality {Quality}", uri, _preferredQuality);
 
         // 1. Parse track URI
@@ -130,11 +146,15 @@ public sealed class SpotifyTrackSource : ITrackSource
                 file.Format, file.FileId.Length > 0 ? "present" : "missing");
         }
 
-        // 3. Select audio file based on quality preference
+        // 3. Select audio file based on quality preference (also checks alternatives)
         var selectedFile = SelectAudioFile(track, _preferredQuality);
         if (selectedFile == null)
         {
-            throw new InvalidOperationException($"No suitable audio file found for track {uri}. Track has {track.File.Count} files.");
+            _logger?.LogWarning("No audio files found for track {Uri}, checked {AltCount} alternatives",
+                uri, track.Alternative.Count);
+            throw new InvalidOperationException(
+                $"No suitable audio file found for track {uri}. " +
+                $"Track has {track.File.Count} files, {track.Alternative.Count} alternatives.");
         }
 
         var fileId = FileId.FromBytes(selectedFile.FileId.Span);
@@ -437,4 +457,247 @@ public sealed class SpotifyTrackSource : ITrackSource
 
         return null;
     }
+
+    #region Episode Loading
+
+    /// <summary>
+    /// Loads a Spotify episode for playback.
+    /// </summary>
+    /// <remarks>
+    /// Episodes are streamed identically to tracks - they have file IDs and use
+    /// the same CDN/storage mechanism. The Episode proto has an 'audio' field
+    /// (equivalent to Track's 'file' field) with available audio formats.
+    ///
+    /// Some episodes may have an external URL (for non-Spotify hosted content),
+    /// which we handle by delegating to HTTP streaming.
+    /// </remarks>
+    private async Task<ITrackStream> LoadEpisodeAsync(string uri, CancellationToken cancellationToken)
+    {
+        _logger?.LogInformation("Loading episode {Uri} with quality {Quality}", uri, _preferredQuality);
+
+        // 1. Parse episode URI
+        var episodeId = SpotifyId.FromUri(uri);
+
+        // 2. Fetch episode metadata
+        var metadataBytes = await _spClient.GetEpisodeMetadataAsync(episodeId.ToBase62(), cancellationToken);
+        var episode = Episode.Parser.ParseFrom(metadataBytes);
+
+        _logger?.LogDebug("Episode: {Name}, duration={Duration}ms, has external URL={HasExternalUrl}",
+            episode.Name, episode.Duration, episode.HasExternalUrl);
+
+        // 3. Check for external URL (non-Spotify hosted content)
+        if (episode.HasExternalUrl && !string.IsNullOrEmpty(episode.ExternalUrl))
+        {
+            _logger?.LogDebug("Episode has external URL, delegating to HTTP streaming: {Url}", episode.ExternalUrl);
+            return await LoadExternalEpisodeAsync(uri, episode, cancellationToken);
+        }
+
+        // 4. Log available audio files
+        _logger?.LogDebug("Episode has {AudioCount} audio files:", episode.Audio.Count);
+        foreach (var audio in episode.Audio)
+        {
+            _logger?.LogDebug("  - Format: {Format}, FileId: {HasFileId}",
+                audio.Format, audio.FileId.Length > 0 ? "present" : "missing");
+        }
+
+        // 5. Select audio file based on quality preference
+        var selectedFile = SelectEpisodeAudioFile(episode, _preferredQuality);
+        if (selectedFile == null)
+        {
+            throw new InvalidOperationException($"No suitable audio file found for episode {uri}. Episode has {episode.Audio.Count} audio files.");
+        }
+
+        var fileId = FileId.FromBytes(selectedFile.FileId.Span);
+        var audioFormat = MapToAudioFileFormat(selectedFile.Format);
+
+        _logger?.LogDebug("Selected audio file: format={Format}, fileId={FileId}",
+            audioFormat, fileId.ToBase16());
+
+        // 6. Start all fetches in parallel
+        var headTask = _headFileClient.TryFetchHeadAsync(fileId, cancellationToken);
+        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, cancellationToken);
+        var cdnTask = _spClient.ResolveAudioStorageAsync(fileId, cancellationToken);
+
+        // 7. Wait for head file first (for instant start)
+        var headData = await headTask;
+
+        // 8. If head file available and large enough, use lazy approach
+        if (headData != null && headData.Length > NormalizationData.FileOffset + NormalizationData.Size)
+        {
+            _logger?.LogDebug("Using instant start with {HeadSize} bytes head data", headData.Length);
+
+            var normalizationData = ReadNormalizationFromHeadData(headData);
+
+            var lazyStream = new LazyProgressiveDownloader(
+                headData,
+                keyTask,
+                cdnTask,
+                _httpClient,
+                fileId,
+                logger: _logger);
+
+            var metadata = BuildEpisodeMetadata(uri, episode, normalizationData);
+
+            _logger?.LogInformation("Returning episode stream immediately (instant start enabled)");
+
+            return new SpotifyTrackStream(lazyStream, metadata, normalizationData)
+            {
+                AudioFormat = audioFormat,
+                FileId = fileId
+            };
+        }
+
+        // 9. Fallback: No head file - wait for all resources
+        _logger?.LogDebug("No usable head file, waiting for all resources");
+
+        await Task.WhenAll(keyTask, cdnTask);
+
+        var audioKey = await keyTask;
+        var cdnResponse = await cdnTask;
+
+        if (cdnResponse.Cdnurl.Count == 0)
+        {
+            throw new InvalidOperationException($"No CDN URLs returned for file {fileId.ToBase16()}");
+        }
+
+        var cdnUrl = cdnResponse.Cdnurl[0];
+
+        var fileSize = await GetFileSizeAsync(cdnUrl, cancellationToken);
+
+        var downloader = new ProgressiveDownloader(
+            _httpClient,
+            cdnUrl,
+            fileSize,
+            fileId,
+            headData,
+            logger: _logger);
+
+        downloader.StartBackgroundDownload();
+
+        var fallbackNormalizationData = ReadNormalizationData(downloader, audioKey, headData?.Length ?? 0);
+        var decryptStream = new AudioDecryptStream(audioKey, downloader, decryptionStartOffset: headData?.Length ?? 0);
+        var fallbackMetadata = BuildEpisodeMetadata(uri, episode, fallbackNormalizationData);
+
+        return new SpotifyTrackStream(decryptStream, fallbackMetadata, fallbackNormalizationData, downloader)
+        {
+            AudioFormat = audioFormat,
+            FileId = fileId
+        };
+    }
+
+    /// <summary>
+    /// Loads an episode with external URL via HTTP streaming.
+    /// </summary>
+    private async Task<ITrackStream> LoadExternalEpisodeAsync(string uri, Episode episode, CancellationToken cancellationToken)
+    {
+        // Create HTTP request for external URL
+        var request = new HttpRequestMessage(HttpMethod.Get, episode.ExternalUrl);
+        request.Headers.TryAddWithoutValidation("User-Agent", "Wavee/1.0 (Podcast Player)");
+
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            response.Dispose();
+            throw new HttpRequestException($"Failed to load external episode: {response.StatusCode}");
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var bufferedStream = new BufferedHttpStream(stream, 0);
+        await bufferedStream.PreBufferAsync(131072, cancellationToken);
+        var urlAwareStream = new UrlAwareStream(bufferedStream, episode.ExternalUrl);
+
+        var metadata = BuildEpisodeMetadata(uri, episode, NormalizationData.Default);
+
+        return new SpotifyEpisodeExternalStream(urlAwareStream, metadata, response);
+    }
+
+    private AudioFile? SelectEpisodeAudioFile(Episode episode, AudioQuality quality)
+    {
+        if (episode.Audio.Count == 0)
+            return null;
+
+        var preferredFormats = quality.GetPreferredFormats();
+
+        // First pass: look for exact match in preferred order
+        foreach (var format in preferredFormats)
+        {
+            var protoFormat = MapToProtoFormat(format);
+            var file = episode.Audio.FirstOrDefault(f => f.Format == protoFormat);
+            if (file != null)
+                return file;
+        }
+
+        // Second pass: any Vorbis file
+        var anyVorbis = episode.Audio.FirstOrDefault(f =>
+            f.Format == AudioFile.Types.Format.OggVorbis96 ||
+            f.Format == AudioFile.Types.Format.OggVorbis160 ||
+            f.Format == AudioFile.Types.Format.OggVorbis320);
+
+        if (anyVorbis != null)
+            return anyVorbis;
+
+        // Third pass: any file
+        return episode.Audio.FirstOrDefault();
+    }
+
+    private static TrackMetadata BuildEpisodeMetadata(string uri, Episode episode, NormalizationData normalization)
+    {
+        return new TrackMetadata
+        {
+            Uri = uri,
+            Title = episode.Name,
+            Artist = episode.Show?.Publisher ?? episode.Show?.Name,
+            Album = episode.Show?.Name,
+            DurationMs = episode.Duration,
+            ImageUrl = GetEpisodeImageUrl(episode),
+            ReplayGainTrackGain = normalization.TrackGainDb,
+            ReplayGainAlbumGain = normalization.AlbumGainDb,
+            ReplayGainTrackPeak = normalization.TrackPeak,
+            AdditionalMetadata = new Dictionary<string, string>
+            {
+                ["source"] = "spotify",
+                ["type"] = "episode",
+                ["episodeNumber"] = episode.Number.ToString(),
+                ["publishTime"] = episode.PublishTime?.ToString() ?? ""
+            }
+        };
+    }
+
+    private static string? GetEpisodeImageUrl(Episode episode)
+    {
+        // Try episode cover first
+        if (episode.CoverImage?.Image.Count > 0)
+        {
+            var image = episode.CoverImage.Image
+                .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                        i.Size == Image.Types.Size.Large ? 1 : 0)
+                .FirstOrDefault();
+
+            if (image != null)
+            {
+                var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
+                return $"https://i.scdn.co/image/{imageId}";
+            }
+        }
+
+        // Fall back to show cover
+        if (episode.Show?.CoverImage?.Image.Count > 0)
+        {
+            var image = episode.Show.CoverImage.Image
+                .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                        i.Size == Image.Types.Size.Large ? 1 : 0)
+                .FirstOrDefault();
+
+            if (image != null)
+            {
+                var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
+                return $"https://i.scdn.co/image/{imageId}";
+            }
+        }
+
+        return null;
+    }
+
+    #endregion
 }

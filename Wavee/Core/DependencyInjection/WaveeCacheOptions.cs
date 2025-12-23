@@ -61,4 +61,10 @@ public class WaveeCacheOptions
     /// Default: 500
     /// </summary>
     public int UserHotCacheSize { get; set; } = 500;
+
+    /// <summary>
+    /// Maximum entries in the context hot cache (resolved playlists/albums).
+    /// Default: 50 (contexts are larger objects with TTL-based expiry)
+    /// </summary>
+    public int ContextCacheSize { get; set; } = 50;
 }

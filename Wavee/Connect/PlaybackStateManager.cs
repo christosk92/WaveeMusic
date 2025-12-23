@@ -403,7 +403,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             if (_isLocalPlaybackActive)
             {
                 var isPositionOnlyChange = newState.Changes == Connect.StateChanges.Position;
-                var isInfiniteStream = newState.Track?.DurationMs is null or 0;
+                var isInfiniteStream = newState.DurationMs == 0;
 
                 if (isPositionOnlyChange && isInfiniteStream)
                 {

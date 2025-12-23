@@ -66,6 +66,11 @@ public sealed record SpotifyPlaylist
     public string? Revision { get; init; }
 
     /// <summary>
+    /// Folder path for this playlist (e.g., "Music/Chill" or null for root level).
+    /// </summary>
+    public string? FolderPath { get; init; }
+
+    /// <summary>
     /// Creates a SpotifyPlaylist with current sync timestamp.
     /// </summary>
     public static SpotifyPlaylist Create(
@@ -79,7 +84,8 @@ public sealed record SpotifyPlaylist
         bool isPublic = false,
         bool isCollaborative = false,
         bool isOwned = false,
-        string? revision = null)
+        string? revision = null,
+        string? folderPath = null)
     {
         return new SpotifyPlaylist
         {
@@ -94,7 +100,8 @@ public sealed record SpotifyPlaylist
             IsCollaborative = isCollaborative,
             IsOwned = isOwned,
             SyncedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            Revision = revision
+            Revision = revision,
+            FolderPath = folderPath
         };
     }
 }

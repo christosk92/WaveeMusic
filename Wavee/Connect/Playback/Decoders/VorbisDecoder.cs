@@ -128,6 +128,7 @@ public sealed class VorbisDecoder : IAudioDecoder
     public async IAsyncEnumerable<AudioBuffer> DecodeAsync(
         Stream stream,
         long startPositionMs = 0,
+        Action<string>? onMetadataReceived = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Create a stream that skips the Spotify header

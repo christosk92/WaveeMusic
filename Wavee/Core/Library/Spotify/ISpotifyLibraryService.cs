@@ -41,6 +41,36 @@ public interface ISpotifyLibraryService : IAsyncDisposable
     /// </summary>
     Task SyncArtistsAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Syncs subscribed podcast shows.
+    /// </summary>
+    Task SyncShowsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Syncs banned tracks.
+    /// </summary>
+    Task SyncBansAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Syncs banned artists.
+    /// </summary>
+    Task SyncArtistBansAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Syncs listen later queue.
+    /// </summary>
+    Task SyncListenLaterAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Syncs Your Library pinned items.
+    /// </summary>
+    Task SyncYlPinsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Syncs enhanced playlist tracks.
+    /// </summary>
+    Task SyncEnhancedAsync(CancellationToken ct = default);
+
     #endregion
 
     #region Read Operations

@@ -84,6 +84,13 @@ public static class WaveeCacheServiceCollectionExtensions
             return new HotCache<UserCacheEntry>(opts.UserHotCacheSize, logger);
         });
 
+        services.AddSingleton<IHotCache<ContextCacheEntry>>(sp =>
+        {
+            var opts = sp.GetRequiredService<WaveeCacheOptions>();
+            var logger = sp.GetService<ILogger<HotCache<ContextCacheEntry>>>();
+            return new HotCache<ContextCacheEntry>(opts.ContextCacheSize, logger);
+        });
+
         // Register unified cache service (singleton)
         services.AddSingleton<ICacheService>(sp =>
         {

@@ -30,6 +30,8 @@ public static class AudioPipelineFactory
     /// <param name="options">Pipeline configuration options.</param>
     /// <param name="metadataDatabase">Optional metadata database for caching extended metadata.</param>
     /// <param name="cacheService">Optional cache service (should be singleton). Created if metadataDatabase provided but cacheService is null.</param>
+    /// <param name="extendedMetadataClient">Optional extended metadata client (should be singleton). Created if metadataDatabase provided but extendedMetadataClient is null.</param>
+    /// <param name="contextCache">Optional context cache for playlist/album caching (should be singleton from DI).</param>
     /// <param name="deviceId">Device ID for event reporting.</param>
     /// <param name="eventService">Optional event service for playback reporting.</param>
     /// <param name="commandHandler">Optional command handler for remote control. If provided, pipeline auto-subscribes to commands.</param>
@@ -43,6 +45,8 @@ public static class AudioPipelineFactory
         AudioPipelineOptions? options = null,
         IMetadataDatabase? metadataDatabase = null,
         ICacheService? cacheService = null,
+        IExtendedMetadataClient? extendedMetadataClient = null,
+        IHotCache<ContextCacheEntry>? contextCache = null,
         string deviceId = "",
         EventService? eventService = null,
         ConnectCommandHandler? commandHandler = null,
@@ -51,31 +55,39 @@ public static class AudioPipelineFactory
     {
         options ??= AudioPipelineOptions.Default;
 
-        // Create components
-        var sourceRegistry = CreateTrackSourceRegistry(session, spClient, httpClient, options, metadataDatabase, logger);
+        // Create or use injected extended metadata client (singleton preferred)
+        var spClientBaseUrl = session.SpClientUrl ?? "spclient.wg.spotify.com";
+        if (extendedMetadataClient == null && metadataDatabase != null)
+        {
+            extendedMetadataClient = new ExtendedMetadataClient(
+                session,
+                httpClient,
+                spClientBaseUrl,
+                metadataDatabase,
+                logger);
+        }
+
+        // Create components - pass extendedMetadataClient to avoid duplicate creation
+        var sourceRegistry = CreateTrackSourceRegistry(session, spClient, httpClient, options, metadataDatabase, extendedMetadataClient, logger);
         var decoderRegistry = CreateDecoderRegistry(logger);
         var audioSink = CreateAudioSink(options.AudioSinkType, logger);
         var processingChain = CreateProcessingChain(options, logger);
 
         // Create context resolver for playlist/album loading
         ContextResolver? contextResolver = null;
-        if (metadataDatabase != null)
+        if (metadataDatabase != null && extendedMetadataClient != null)
         {
-            var spClientBaseUrl = session.SpClientUrl ?? "spclient.wg.spotify.com";
-            var extendedMetadataClient = new ExtendedMetadataClient(
-                session,
-                httpClient,
-                spClientBaseUrl,
-                metadataDatabase,
-                logger);
-
             // Use provided cache service or create one (caller should ideally provide singleton)
             cacheService ??= new CacheService(metadataDatabase, hotCacheSize: 10_000, logger);
+
+            // Use provided context cache or create one (caller should ideally provide singleton from DI)
+            contextCache ??= new HotCache<ContextCacheEntry>(maxSize: 50, logger);
 
             contextResolver = new ContextResolver(
                 spClient,
                 extendedMetadataClient,
                 cacheService,
+                contextCache,
                 logger);
 
             logger?.LogDebug("ContextResolver created - album/playlist playback enabled");
@@ -118,12 +130,20 @@ public static class AudioPipelineFactory
     /// <summary>
     /// Creates a track source registry with Spotify support.
     /// </summary>
+    /// <param name="session">Active Spotify session.</param>
+    /// <param name="spClient">SpClient for metadata requests.</param>
+    /// <param name="httpClient">HTTP client for CDN requests.</param>
+    /// <param name="options">Pipeline options.</param>
+    /// <param name="metadataDatabase">Optional metadata database.</param>
+    /// <param name="extendedMetadataClient">Optional extended metadata client (injected singleton preferred).</param>
+    /// <param name="logger">Optional logger.</param>
     public static TrackSourceRegistry CreateTrackSourceRegistry(
         Session session,
         SpClient spClient,
         HttpClient httpClient,
         AudioPipelineOptions? options = null,
         IMetadataDatabase? metadataDatabase = null,
+        IExtendedMetadataClient? extendedMetadataClient = null,
         ILogger? logger = null)
     {
         options ??= AudioPipelineOptions.Default;
@@ -140,11 +160,9 @@ public static class AudioPipelineFactory
             cacheManager = new AudioCacheManager(options.CacheConfig, logger);
         }
 
-        // Create extended metadata client if database is provided
-        ExtendedMetadataClient? extendedMetadataClient = null;
-        if (metadataDatabase != null)
+        // Create extended metadata client only if not provided and database exists
+        if (extendedMetadataClient == null && metadataDatabase != null)
         {
-            // Get the spclient base URL from the session
             var spClientBaseUrl = session.SpClientUrl ?? "spclient.wg.spotify.com";
             extendedMetadataClient = new ExtendedMetadataClient(
                 session,

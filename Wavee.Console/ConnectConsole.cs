@@ -1,6 +1,7 @@
 using System.Reactive.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Spectre.Console;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Connection;
@@ -8,6 +9,8 @@ using Wavee.Connect.Playback;
 using Wavee.Connect.Protocol;
 using Wavee.Core.DependencyInjection;
 using Wavee.Core.Http;
+using Wavee.Core.Library;
+using Wavee.Core.Library.Spotify;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
 using Wavee.Core.Storage.Abstractions;
@@ -26,6 +29,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     private readonly List<IDisposable> _subscriptions = new();
     private AudioPipeline? _audioPipeline;
     private ServiceProvider? _serviceProvider;
+    private SpotifyLibraryService? _libraryService;
     private bool _disposed;
 
     public ConnectConsole(Session session, HttpClient httpClient, SpectreUI ui, ILogger? logger = null)
@@ -64,12 +68,59 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 options.DatabasePath = dbPath;
             });
 
+            // Register ExtendedMetadataClient - we have session context here
+            services.AddSingleton<IExtendedMetadataClient>(sp =>
+            {
+                var metadataDb = sp.GetRequiredService<IMetadataDatabase>();
+                return new ExtendedMetadataClient(
+                    _session,
+                    _httpClient,
+                    _session.SpClient.BaseUrl,
+                    metadataDb,
+                    _logger);
+            });
+
             _serviceProvider = services.BuildServiceProvider();
             _ui.AddLog("INF", $"Cache services initialized");
         }
         catch (Exception ex)
         {
             _ui.AddLog("WRN", $"Cache services initialization failed: {ex.Message}");
+        }
+
+        // Initialize library services (uses unified MetadataDatabase from DI)
+        try
+        {
+            var metadataDatabase = _serviceProvider?.GetService<IMetadataDatabase>();
+            if (metadataDatabase == null)
+            {
+                _ui.AddLog("WRN", "MetadataDatabase not available from DI");
+            }
+            else
+            {
+                // Create LibraryChangeManager for real-time Dealer updates
+                var libraryChangeManager = _session.Dealer != null
+                    ? new LibraryChangeManager(_session.Dealer, _logger)
+                    : null;
+
+                // Create SpotifyLibraryService using unified MetadataDatabase
+                _libraryService = new SpotifyLibraryService(
+                    metadataDatabase,
+                    _session.SpClient,
+                    _session,
+                    libraryChangeManager,
+                    _serviceProvider?.GetService<IExtendedMetadataClient>(),
+                    _logger);
+
+                // Subscribe to sync progress
+                _subscriptions.Add(_libraryService.SyncProgress.Subscribe(OnSyncProgress));
+
+                _ui.AddLog("INF", "Library services initialized (using unified database)");
+            }
+        }
+        catch (Exception ex)
+        {
+            _ui.AddLog("WRN", $"Library services initialization failed: {ex.Message}");
         }
 
         // Initialize audio pipeline for local playback
@@ -82,14 +133,16 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 _session,
                 _session.SpClient,
                 _httpClient,
-                AudioPipelineOptions.Default,
-                metadataDatabase,
-                cacheService,
-                _session.Config.DeviceId,
-                _session.Events,
-                _session.CommandHandler,
-                _session.DeviceState,
-                _logger);
+                options: AudioPipelineOptions.Default,
+                metadataDatabase: metadataDatabase,
+                cacheService: cacheService,
+                extendedMetadataClient: null,  // Created by factory from metadataDatabase
+                contextCache: null,            // Created by factory (or use DI in production)
+                deviceId: _session.Config.DeviceId,
+                eventService: _session.Events,
+                commandHandler: _session.CommandHandler,
+                deviceStateManager: _session.DeviceState,
+                logger: _logger);
 
             // Subscribe to local playback state changes
             _subscriptions.Add(_audioPipeline.StateChanges.Subscribe(OnLocalPlaybackStateChanged));
@@ -209,6 +262,20 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 }
                 return false;
 
+            case "sync":
+                await HandleSyncCommandAsync(parts, cancellationToken);
+                return false;
+
+            case "library":
+            case "lib":
+                await HandleLibraryCommandAsync(parts, cancellationToken);
+                return false;
+
+            case "playlists":
+            case "pl":
+                await HandlePlaylistsCommandAsync(cancellationToken);
+                return false;
+
             case "quit":
             case "exit":
             case "q":
@@ -291,6 +358,219 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         _ui.AddLog("INF", $"Seeked to {FormatTimeSpan(positionMs)}");
     }
 
+    private Task HandleSyncCommandAsync(string[] parts, CancellationToken ct)
+    {
+        if (_libraryService == null)
+        {
+            _ui.AddLog("ERR", "Library service not initialized");
+            return Task.CompletedTask;
+        }
+
+        var target = parts.Length > 1 ? parts[1].ToLower() : "all";
+
+        _ui.AddLog("INF", $"Starting {target} sync...");
+
+        // Run sync on background thread to avoid blocking UI
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                switch (target)
+                {
+                    case "all":
+                        await _libraryService.SyncAllAsync(ct);
+                        break;
+                    case "tracks":
+                        await _libraryService.SyncTracksAsync(ct);
+                        break;
+                    case "albums":
+                        await _libraryService.SyncAlbumsAsync(ct);
+                        break;
+                    case "artists":
+                        await _libraryService.SyncArtistsAsync(ct);
+                        break;
+                    case "shows":
+                        await _libraryService.SyncShowsAsync(ct);
+                        break;
+                    case "bans":
+                        await _libraryService.SyncBansAsync(ct);
+                        break;
+                    case "artistbans":
+                        await _libraryService.SyncArtistBansAsync(ct);
+                        break;
+                    case "listenlater":
+                        await _libraryService.SyncListenLaterAsync(ct);
+                        break;
+                    case "ylpins":
+                        await _libraryService.SyncYlPinsAsync(ct);
+                        break;
+                    case "enhanced":
+                        await _libraryService.SyncEnhancedAsync(ct);
+                        break;
+                    case "playlists":
+                        await _libraryService.SyncPlaylistsAsync(ct);
+                        break;
+                    default:
+                        _ui.AddLog("WRN", "Usage: sync [all|tracks|albums|artists|shows|playlists|bans|artistbans|listenlater|ylpins|enhanced]");
+                        break;
+                }
+                _ui.AddLog("INF", $"{target} sync completed");
+            }
+            catch (Exception ex)
+            {
+                _ui.AddLog("ERR", $"Sync failed: {ex.Message}");
+            }
+        }, ct);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleLibraryCommandAsync(string[] parts, CancellationToken ct)
+    {
+        if (_libraryService == null)
+        {
+            _ui.AddLog("ERR", "Library service not initialized");
+            return;
+        }
+
+        try
+        {
+            var state = await _libraryService.GetSyncStateAsync(ct);
+
+            _ui.AddLog("INF", "--- Library Sync State ---");
+            _ui.AddLog("INF", $"Tracks:      {state.Tracks.ItemCount} items, rev: {state.Tracks.Revision ?? "none"}");
+            _ui.AddLog("INF", $"Albums:      {state.Albums.ItemCount} items, rev: {state.Albums.Revision ?? "none"}");
+            _ui.AddLog("INF", $"Artists:     {state.Artists.ItemCount} items, rev: {state.Artists.Revision ?? "none"}");
+            _ui.AddLog("INF", $"Shows:       {state.Shows.ItemCount} items, rev: {state.Shows.Revision ?? "none"}");
+            _ui.AddLog("INF", $"Bans:        {state.Bans.ItemCount} items, rev: {state.Bans.Revision ?? "none"}");
+            _ui.AddLog("INF", $"ArtistBans:  {state.ArtistBans.ItemCount} items, rev: {state.ArtistBans.Revision ?? "none"}");
+            _ui.AddLog("INF", $"ListenLater: {state.ListenLater.ItemCount} items, rev: {state.ListenLater.Revision ?? "none"}");
+            _ui.AddLog("INF", $"YlPins:      {state.YlPins.ItemCount} items, rev: {state.YlPins.Revision ?? "none"}");
+            _ui.AddLog("INF", $"Enhanced:    {state.Enhanced.ItemCount} items, rev: {state.Enhanced.Revision ?? "none"}");
+        }
+        catch (Exception ex)
+        {
+            _ui.AddLog("ERR", $"Failed to get library state: {ex.Message}");
+        }
+    }
+
+    private async Task HandlePlaylistsCommandAsync(CancellationToken ct)
+    {
+        if (_libraryService == null)
+        {
+            _ui.AddLog("ERR", "Library service not initialized");
+            return;
+        }
+
+        var playlists = await _libraryService.GetPlaylistsAsync(ct);
+        if (playlists.Count == 0)
+        {
+            _ui.AddLog("INF", "No playlists synced. Run 'sync playlists' first.");
+            return;
+        }
+
+        // Pause live UI to show interactive prompt
+        _ui.PauseLiveRendering();
+
+        try
+        {
+            // Build selection choices grouped by folder
+            var prompt = new SelectionPrompt<PlaylistChoice>()
+                .Title("[cyan]Select a playlist to play[/]")
+                .PageSize(15)
+                .HighlightStyle(new Style(Color.Cyan1))
+                .UseConverter(c => c.Display);
+
+            // Add back option first
+            prompt.AddChoice(new PlaylistChoice { Display = "[dim]← Back[/]", IsBack = true });
+
+            // Group by folder
+            var grouped = playlists
+                .GroupBy(p => string.IsNullOrEmpty(p.FolderPath) ? "Playlists" : p.FolderPath)
+                .OrderBy(g => g.Key);
+
+            foreach (var group in grouped)
+            {
+                prompt.AddChoiceGroup(
+                    new PlaylistChoice { Display = $"[yellow]{Markup.Escape(group.Key)}[/]", IsFolder = true },
+                    group.Select(p => new PlaylistChoice
+                    {
+                        Uri = p.Uri,
+                        Display = $"{Markup.Escape(p.Name)} [dim]({p.TrackCount} tracks)[/]",
+                        IsFolder = false
+                    }));
+            }
+
+            var selected = AnsiConsole.Prompt(prompt);
+
+            if (selected.IsBack)
+            {
+                // User selected back - just return
+                return;
+            }
+
+            if (!selected.IsFolder && !string.IsNullOrEmpty(selected.Uri))
+            {
+                // Play the selected playlist
+                await PlayPlaylistAsync(selected.Uri, ct);
+            }
+        }
+        catch (Exception ex) when (ex.Message.Contains("cancel", StringComparison.OrdinalIgnoreCase) || ex is OperationCanceledException)
+        {
+            // User cancelled - this is fine
+        }
+        catch (Exception ex)
+        {
+            _ui.AddLog("ERR", $"Failed to browse playlists: {ex.Message}");
+        }
+        finally
+        {
+            _ui.ResumeLiveRendering();
+        }
+    }
+
+    private async Task PlayPlaylistAsync(string playlistUri, CancellationToken ct)
+    {
+        if (_audioPipeline == null)
+        {
+            _ui.AddLog("ERR", "Audio pipeline not available");
+            return;
+        }
+
+        _ui.AddLog("INF", $"Playing playlist: {playlistUri}");
+
+        var command = new PlayCommand
+        {
+            Endpoint = "play",
+            MessageIdent = "local",
+            MessageId = 0,
+            SenderDeviceId = _session.Config.DeviceId,
+            Key = "local/playlist",
+            ContextUri = playlistUri
+        };
+
+        await _audioPipeline.PlayAsync(command, ct);
+    }
+
+    /// <summary>
+    /// Helper record for playlist selection choices.
+    /// </summary>
+    private record PlaylistChoice
+    {
+        public string? Uri { get; init; }
+        public required string Display { get; init; }
+        public bool IsFolder { get; init; }
+        public bool IsBack { get; init; }
+    }
+
+    private void OnSyncProgress(SyncProgress progress)
+    {
+        var progressText = progress.Total > 0
+            ? $"({progress.Current}/{progress.Total})"
+            : $"({progress.Current})";
+        _ui.AddLog("SYN", $"[{progress.CollectionType}] {progress.Message} {progressText}");
+    }
+
     private void OnLocalPlaybackStateChanged(LocalPlaybackState state)
     {
         _ui.UpdateNowPlaying(
@@ -319,6 +599,9 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         _ui.AddLog("INF", "seek <sec>  - Seek to position");
         _ui.AddLog("INF", "vol [0-100] - Set or show volume");
         _ui.AddLog("INF", "device on|off - Toggle device active");
+        _ui.AddLog("INF", "sync [type] - Sync library (all|tracks|albums|artists|shows|playlists|...)");
+        _ui.AddLog("INF", "library     - Show library sync state");
+        _ui.AddLog("INF", "playlists   - Show synced playlists");
         _ui.AddLog("INF", "quit        - Exit application");
     }
 
@@ -552,6 +835,12 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             _audioPipeline = null;
         }
 
+        if (_libraryService != null)
+        {
+            _libraryService.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _libraryService = null;
+        }
+
         _serviceProvider?.Dispose();
         _serviceProvider = null;
 
@@ -571,6 +860,12 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         {
             await _audioPipeline.DisposeAsync();
             _audioPipeline = null;
+        }
+
+        if (_libraryService != null)
+        {
+            await _libraryService.DisposeAsync();
+            _libraryService = null;
         }
 
         if (_serviceProvider != null)

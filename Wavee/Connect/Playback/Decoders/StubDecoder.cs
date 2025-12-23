@@ -24,6 +24,7 @@ public sealed class StubDecoder : IAudioDecoder
     public async IAsyncEnumerable<AudioBuffer> DecodeAsync(
         Stream stream,
         long startPositionMs = 0,
+        Action<string>? onMetadataReceived = null,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Generate 10 seconds of silence as a test

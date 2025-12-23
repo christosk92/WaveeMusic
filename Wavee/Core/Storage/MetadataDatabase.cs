@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Library.Spotify;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.Protocol.ExtendedMetadata;
 
@@ -19,8 +20,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
     private readonly int _maxHotCacheSize;
     private bool _disposed;
 
-    // Schema version for migrations
-    private const int CurrentSchemaVersion = 1;
+    // Schema version for migrations - bump to force fresh start
+    private const int CurrentSchemaVersion = 3;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -71,13 +72,37 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.ExecuteNonQuery();
         }
 
-        // Check schema version
+        // Check schema version - fresh start on version mismatch
         var currentVersion = GetSchemaVersion(connection);
-        if (currentVersion < CurrentSchemaVersion)
+        if (currentVersion != CurrentSchemaVersion)
         {
+            if (currentVersion > 0)
+            {
+                _logger?.LogInformation("Schema version changed from {Old} to {New}, dropping all tables for fresh start",
+                    currentVersion, CurrentSchemaVersion);
+                DropAllTables(connection);
+            }
             CreateTables(connection);
             SetSchemaVersion(connection, CurrentSchemaVersion);
         }
+    }
+
+    private static void DropAllTables(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            DROP TABLE IF EXISTS extension_cache;
+            DROP TABLE IF EXISTS entities;
+            DROP TABLE IF EXISTS spotify_library;
+            DROP TABLE IF EXISTS play_history;
+            DROP TABLE IF EXISTS sync_state;
+            DROP TABLE IF EXISTS watched_folders;
+            DROP TABLE IF EXISTS podcast_shows;
+            DROP TABLE IF EXISTS podcast_episodes;
+            DROP TABLE IF EXISTS episode_progress;
+            DROP TABLE IF EXISTS spotify_playlists;
+            """;
+        cmd.ExecuteNonQuery();
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -101,16 +126,17 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         try
         {
-            // Entities table - stores queryable metadata properties
+            // Entities table - unified metadata for ALL sources (Spotify, local files, streams)
             using (var cmd = connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
                 cmd.CommandText = """
                     CREATE TABLE IF NOT EXISTS entities (
                         uri              TEXT PRIMARY KEY NOT NULL,
-                        entity_type      INTEGER NOT NULL,
+                        source_type      INTEGER NOT NULL DEFAULT 0,  -- 0=Spotify, 1=Local, 2=Stream
+                        entity_type      INTEGER NOT NULL,            -- Track=1, Album=2, Artist=3, etc.
 
-                        -- Common properties (nullable based on entity type)
+                        -- Common queryable metadata
                         title            TEXT,
                         artist_name      TEXT,
                         album_name       TEXT,
@@ -120,6 +146,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         disc_number      INTEGER,
                         release_year     INTEGER,
                         image_url        TEXT,
+                        genre            TEXT,
 
                         -- Album-specific
                         track_count      INTEGER,
@@ -132,7 +159,17 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         episode_count    INTEGER,
                         description      TEXT,
 
-                        -- Timestamps (stored as Unix seconds UTC)
+                        -- Local file specific
+                        file_path        TEXT,
+
+                        -- Stream specific
+                        stream_url       TEXT,
+
+                        -- Spotify cache TTL (NULL for local files = permanent)
+                        expires_at       INTEGER,
+
+                        -- Timestamps (Unix seconds UTC)
+                        added_at         INTEGER,
                         created_at       INTEGER NOT NULL,
                         updated_at       INTEGER NOT NULL
                     );
@@ -140,7 +177,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 cmd.ExecuteNonQuery();
             }
 
-            // Extension cache table - stores raw protobuf blobs
+            // Extension cache table - stores raw protobuf blobs (Spotify only)
             using (var cmd = connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
@@ -158,11 +195,168 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 cmd.ExecuteNonQuery();
             }
 
+            // Spotify library - tracks which Spotify items are "liked/saved"
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS spotify_library (
+                        item_uri    TEXT PRIMARY KEY NOT NULL,
+                        item_type   INTEGER NOT NULL,
+                        added_at    INTEGER NOT NULL,
+                        synced_at   INTEGER NOT NULL,
+                        FOREIGN KEY (item_uri) REFERENCES entities(uri) ON DELETE CASCADE
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Play history - play events for all sources
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS play_history (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_uri            TEXT NOT NULL,
+                        played_at           INTEGER NOT NULL,
+                        duration_played_ms  INTEGER NOT NULL,
+                        completed           INTEGER NOT NULL DEFAULT 0,
+                        source_context      TEXT,
+                        FOREIGN KEY (item_uri) REFERENCES entities(uri) ON DELETE CASCADE
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Sync state - revision tracking for incremental sync
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS sync_state (
+                        collection_type  TEXT PRIMARY KEY NOT NULL,
+                        revision         TEXT,
+                        last_sync_at     INTEGER NOT NULL,
+                        item_count       INTEGER NOT NULL DEFAULT 0
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Watched folders - local file scanning config
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS watched_folders (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path            TEXT NOT NULL UNIQUE,
+                        last_scan_at    INTEGER,
+                        file_count      INTEGER NOT NULL DEFAULT 0,
+                        enabled         INTEGER NOT NULL DEFAULT 1
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Podcast shows - subscriptions
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS podcast_shows (
+                        id                  TEXT PRIMARY KEY NOT NULL,
+                        source_type         INTEGER NOT NULL DEFAULT 0,
+                        title               TEXT NOT NULL,
+                        publisher           TEXT,
+                        description         TEXT,
+                        image_url           TEXT,
+                        feed_url            TEXT,
+                        spotify_uri         TEXT,
+                        episode_count       INTEGER NOT NULL DEFAULT 0,
+                        subscribed_at       INTEGER NOT NULL,
+                        last_refreshed_at   INTEGER,
+                        last_etag           TEXT,
+                        language            TEXT,
+                        categories_json     TEXT
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Podcast episodes
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS podcast_episodes (
+                        id                      TEXT PRIMARY KEY NOT NULL,
+                        show_id                 TEXT NOT NULL,
+                        source_type             INTEGER NOT NULL DEFAULT 0,
+                        title                   TEXT NOT NULL,
+                        description             TEXT,
+                        image_url               TEXT,
+                        duration_ms             INTEGER,
+                        published_at            INTEGER,
+                        playback_position_ms    INTEGER NOT NULL DEFAULT 0,
+                        is_played               INTEGER NOT NULL DEFAULT 0,
+                        download_state          INTEGER NOT NULL DEFAULT 0,
+                        local_file_path         TEXT,
+                        file_size_bytes         INTEGER,
+                        downloaded_bytes        INTEGER,
+                        FOREIGN KEY (show_id) REFERENCES podcast_shows(id) ON DELETE CASCADE
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Episode progress - cross-device sync
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS episode_progress (
+                        episode_id      TEXT PRIMARY KEY NOT NULL,
+                        position_ms     INTEGER NOT NULL DEFAULT 0,
+                        is_played       INTEGER NOT NULL DEFAULT 0,
+                        updated_at      INTEGER NOT NULL,
+                        is_synced       INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY (episode_id) REFERENCES podcast_episodes(id) ON DELETE CASCADE
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Spotify playlists
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS spotify_playlists (
+                        id                  TEXT PRIMARY KEY NOT NULL,
+                        name                TEXT NOT NULL,
+                        owner_id            TEXT,
+                        description         TEXT,
+                        image_url           TEXT,
+                        track_count         INTEGER NOT NULL DEFAULT 0,
+                        is_public           INTEGER NOT NULL DEFAULT 1,
+                        is_collaborative    INTEGER NOT NULL DEFAULT 0,
+                        is_owned            INTEGER NOT NULL DEFAULT 0,
+                        synced_at           INTEGER NOT NULL,
+                        revision            TEXT,
+                        folder_path         TEXT
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
             // Indexes for common query patterns
             using (var cmd = connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
                 cmd.CommandText = """
+                    CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source_type);
                     CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
                     CREATE INDEX IF NOT EXISTS idx_entities_artist ON entities(artist_name COLLATE NOCASE);
                     CREATE INDEX IF NOT EXISTS idx_entities_album ON entities(album_name COLLATE NOCASE);
@@ -170,8 +364,13 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     CREATE INDEX IF NOT EXISTS idx_entities_duration ON entities(duration_ms);
                     CREATE INDEX IF NOT EXISTS idx_entities_year ON entities(release_year);
                     CREATE INDEX IF NOT EXISTS idx_entities_updated ON entities(updated_at);
+                    CREATE INDEX IF NOT EXISTS idx_entities_expires ON entities(expires_at);
                     CREATE INDEX IF NOT EXISTS idx_extension_expires ON extension_cache(expires_at);
                     CREATE INDEX IF NOT EXISTS idx_extension_entity ON extension_cache(entity_uri);
+                    CREATE INDEX IF NOT EXISTS idx_spotify_library_type ON spotify_library(item_type);
+                    CREATE INDEX IF NOT EXISTS idx_play_history_uri ON play_history(item_uri);
+                    CREATE INDEX IF NOT EXISTS idx_play_history_played ON play_history(played_at);
+                    CREATE INDEX IF NOT EXISTS idx_podcast_episodes_show ON podcast_episodes(show_id);
                     """;
                 cmd.ExecuteNonQuery();
             }
@@ -196,6 +395,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     public async Task UpsertEntityAsync(
         string uri,
         EntityType entityType,
+        SourceType sourceType = SourceType.Spotify,
         string? title = null,
         string? artistName = null,
         string? albumName = null,
@@ -205,11 +405,16 @@ public sealed class MetadataDatabase : IMetadataDatabase
         int? discNumber = null,
         int? releaseYear = null,
         string? imageUrl = null,
+        string? genre = null,
         int? trackCount = null,
         int? followerCount = null,
         string? publisher = null,
         int? episodeCount = null,
         string? description = null,
+        string? filePath = null,
+        string? streamUrl = null,
+        long? expiresAt = null,
+        long? addedAt = null,
         CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -223,17 +428,18 @@ public sealed class MetadataDatabase : IMetadataDatabase
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO entities (
-                    uri, entity_type, title, artist_name, album_name, album_uri,
-                    duration_ms, track_number, disc_number, release_year, image_url,
+                    uri, source_type, entity_type, title, artist_name, album_name, album_uri,
+                    duration_ms, track_number, disc_number, release_year, image_url, genre,
                     track_count, follower_count, publisher, episode_count, description,
-                    created_at, updated_at
+                    file_path, stream_url, expires_at, added_at, created_at, updated_at
                 ) VALUES (
-                    $uri, $entity_type, $title, $artist_name, $album_name, $album_uri,
-                    $duration_ms, $track_number, $disc_number, $release_year, $image_url,
+                    $uri, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
+                    $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
                     $track_count, $follower_count, $publisher, $episode_count, $description,
-                    $now, $now
+                    $file_path, $stream_url, $expires_at, $added_at, $now, $now
                 )
                 ON CONFLICT(uri) DO UPDATE SET
+                    source_type = excluded.source_type,
                     entity_type = excluded.entity_type,
                     title = COALESCE(excluded.title, entities.title),
                     artist_name = COALESCE(excluded.artist_name, entities.artist_name),
@@ -244,15 +450,21 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     disc_number = COALESCE(excluded.disc_number, entities.disc_number),
                     release_year = COALESCE(excluded.release_year, entities.release_year),
                     image_url = COALESCE(excluded.image_url, entities.image_url),
+                    genre = COALESCE(excluded.genre, entities.genre),
                     track_count = COALESCE(excluded.track_count, entities.track_count),
                     follower_count = COALESCE(excluded.follower_count, entities.follower_count),
                     publisher = COALESCE(excluded.publisher, entities.publisher),
                     episode_count = COALESCE(excluded.episode_count, entities.episode_count),
                     description = COALESCE(excluded.description, entities.description),
+                    file_path = COALESCE(excluded.file_path, entities.file_path),
+                    stream_url = COALESCE(excluded.stream_url, entities.stream_url),
+                    expires_at = COALESCE(excluded.expires_at, entities.expires_at),
+                    added_at = COALESCE(excluded.added_at, entities.added_at),
                     updated_at = $now;
                 """;
 
             cmd.Parameters.AddWithValue("$uri", uri);
+            cmd.Parameters.AddWithValue("$source_type", (int)sourceType);
             cmd.Parameters.AddWithValue("$entity_type", (int)entityType);
             cmd.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$artist_name", (object?)artistName ?? DBNull.Value);
@@ -263,11 +475,16 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$disc_number", (object?)discNumber ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$release_year", (object?)releaseYear ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$image_url", (object?)imageUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$genre", (object?)genre ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$track_count", (object?)trackCount ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$follower_count", (object?)followerCount ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$publisher", (object?)publisher ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$episode_count", (object?)episodeCount ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$description", (object?)description ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$file_path", (object?)filePath ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$stream_url", (object?)streamUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$expires_at", (object?)expiresAt ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$added_at", (object?)addedAt ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$now", now);
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -466,9 +683,13 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     private static CachedEntity ReadEntity(SqliteDataReader reader)
     {
+        var expiresAtOrdinal = reader.GetOrdinal("expires_at");
+        var addedAtOrdinal = reader.GetOrdinal("added_at");
+
         return new CachedEntity
         {
             Uri = reader.GetString(reader.GetOrdinal("uri")),
+            SourceType = (SourceType)reader.GetInt32(reader.GetOrdinal("source_type")),
             EntityType = (EntityType)reader.GetInt32(reader.GetOrdinal("entity_type")),
             Title = reader.IsDBNull(reader.GetOrdinal("title")) ? null : reader.GetString(reader.GetOrdinal("title")),
             ArtistName = reader.IsDBNull(reader.GetOrdinal("artist_name")) ? null : reader.GetString(reader.GetOrdinal("artist_name")),
@@ -478,12 +699,17 @@ public sealed class MetadataDatabase : IMetadataDatabase
             TrackNumber = reader.IsDBNull(reader.GetOrdinal("track_number")) ? null : reader.GetInt32(reader.GetOrdinal("track_number")),
             DiscNumber = reader.IsDBNull(reader.GetOrdinal("disc_number")) ? null : reader.GetInt32(reader.GetOrdinal("disc_number")),
             ReleaseYear = reader.IsDBNull(reader.GetOrdinal("release_year")) ? null : reader.GetInt32(reader.GetOrdinal("release_year")),
+            Genre = reader.IsDBNull(reader.GetOrdinal("genre")) ? null : reader.GetString(reader.GetOrdinal("genre")),
             ImageUrl = reader.IsDBNull(reader.GetOrdinal("image_url")) ? null : reader.GetString(reader.GetOrdinal("image_url")),
             TrackCount = reader.IsDBNull(reader.GetOrdinal("track_count")) ? null : reader.GetInt32(reader.GetOrdinal("track_count")),
             FollowerCount = reader.IsDBNull(reader.GetOrdinal("follower_count")) ? null : reader.GetInt32(reader.GetOrdinal("follower_count")),
             Publisher = reader.IsDBNull(reader.GetOrdinal("publisher")) ? null : reader.GetString(reader.GetOrdinal("publisher")),
             EpisodeCount = reader.IsDBNull(reader.GetOrdinal("episode_count")) ? null : reader.GetInt32(reader.GetOrdinal("episode_count")),
             Description = reader.IsDBNull(reader.GetOrdinal("description")) ? null : reader.GetString(reader.GetOrdinal("description")),
+            FilePath = reader.IsDBNull(reader.GetOrdinal("file_path")) ? null : reader.GetString(reader.GetOrdinal("file_path")),
+            StreamUrl = reader.IsDBNull(reader.GetOrdinal("stream_url")) ? null : reader.GetString(reader.GetOrdinal("stream_url")),
+            ExpiresAt = reader.IsDBNull(expiresAtOrdinal) ? null : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(expiresAtOrdinal)),
+            AddedAt = reader.IsDBNull(addedAtOrdinal) ? null : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(addedAtOrdinal)),
             CreatedAt = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(reader.GetOrdinal("created_at"))),
             UpdatedAt = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(reader.GetOrdinal("updated_at")))
         };
@@ -718,6 +944,572 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     #endregion
 
+    #region Spotify Library Operations
+
+    /// <summary>
+    /// Adds or updates an item in the Spotify library.
+    /// </summary>
+    public async Task AddToSpotifyLibraryAsync(
+        string itemUri,
+        SpotifyLibraryItemType itemType,
+        long addedAt,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO spotify_library (item_uri, item_type, added_at, synced_at)
+                VALUES ($item_uri, $item_type, $added_at, $synced_at)
+                ON CONFLICT(item_uri) DO UPDATE SET
+                    item_type = excluded.item_type,
+                    added_at = excluded.added_at,
+                    synced_at = excluded.synced_at;
+                """;
+
+            cmd.Parameters.AddWithValue("$item_uri", itemUri);
+            cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+            cmd.Parameters.AddWithValue("$added_at", addedAt);
+            cmd.Parameters.AddWithValue("$synced_at", now);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Added {Uri} to Spotify library as {Type}", itemUri, itemType);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Removes an item from the Spotify library.
+    /// </summary>
+    public async Task RemoveFromSpotifyLibraryAsync(string itemUri, CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM spotify_library WHERE item_uri = $item_uri;";
+            cmd.Parameters.AddWithValue("$item_uri", itemUri);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Removed {Uri} from Spotify library", itemUri);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Checks if an item is in the Spotify library.
+    /// </summary>
+    public async Task<bool> IsInSpotifyLibraryAsync(string itemUri, CancellationToken cancellationToken = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM spotify_library WHERE item_uri = $item_uri LIMIT 1;";
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return result != null;
+    }
+
+    /// <summary>
+    /// Gets Spotify library items with their entity metadata.
+    /// </summary>
+    public async Task<List<CachedEntity>> GetSpotifyLibraryItemsAsync(
+        SpotifyLibraryItemType itemType,
+        int limit = 50,
+        int offset = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<CachedEntity>();
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT e.* FROM entities e
+            INNER JOIN spotify_library sl ON e.uri = sl.item_uri
+            WHERE sl.item_type = $item_type
+            ORDER BY sl.added_at DESC
+            LIMIT $limit OFFSET $offset;
+            """;
+
+        cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+        cmd.Parameters.AddWithValue("$limit", limit);
+        cmd.Parameters.AddWithValue("$offset", offset);
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(ReadEntity(reader));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Gets the count of items in the Spotify library.
+    /// </summary>
+    public async Task<int> GetSpotifyLibraryCountAsync(SpotifyLibraryItemType itemType, CancellationToken cancellationToken = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM spotify_library WHERE item_type = $item_type;";
+        cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(result);
+    }
+
+    /// <summary>
+    /// Clears Spotify library items.
+    /// </summary>
+    public async Task ClearSpotifyLibraryAsync(SpotifyLibraryItemType? itemType = null, CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            if (itemType.HasValue)
+            {
+                cmd.CommandText = "DELETE FROM spotify_library WHERE item_type = $item_type;";
+                cmd.Parameters.AddWithValue("$item_type", (int)itemType.Value);
+            }
+            else
+            {
+                cmd.CommandText = "DELETE FROM spotify_library;";
+            }
+
+            var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
+            _logger?.LogDebug("Cleared {Count} items from Spotify library", deleted);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    #endregion
+
+    #region Sync State Operations
+
+    /// <summary>
+    /// Gets the sync state for a collection type.
+    /// </summary>
+    public async Task<SyncStateEntry?> GetSyncStateAsync(string collectionType, CancellationToken cancellationToken = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT collection_type, revision, last_sync_at, item_count FROM sync_state WHERE collection_type = $collection_type;";
+        cmd.Parameters.AddWithValue("$collection_type", collectionType);
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return new SyncStateEntry(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(2)),
+                reader.GetInt32(3));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Updates the sync state for a collection type.
+    /// </summary>
+    public async Task SetSyncStateAsync(
+        string collectionType,
+        string? revision,
+        int itemCount,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO sync_state (collection_type, revision, last_sync_at, item_count)
+                VALUES ($collection_type, $revision, $last_sync_at, $item_count)
+                ON CONFLICT(collection_type) DO UPDATE SET
+                    revision = excluded.revision,
+                    last_sync_at = excluded.last_sync_at,
+                    item_count = excluded.item_count;
+                """;
+
+            cmd.Parameters.AddWithValue("$collection_type", collectionType);
+            cmd.Parameters.AddWithValue("$revision", (object?)revision ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$last_sync_at", now);
+            cmd.Parameters.AddWithValue("$item_count", itemCount);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogDebug("Updated sync state for {Collection}: revision={Revision}, count={Count}",
+                collectionType, revision, itemCount);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    #endregion
+
+    #region Play History Operations
+
+    /// <summary>
+    /// Records a play event.
+    /// </summary>
+    public async Task RecordPlayAsync(
+        string itemUri,
+        int durationPlayedMs,
+        bool completed,
+        string? sourceContext = null,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO play_history (item_uri, played_at, duration_played_ms, completed, source_context)
+                VALUES ($item_uri, $played_at, $duration_played_ms, $completed, $source_context);
+                """;
+
+            cmd.Parameters.AddWithValue("$item_uri", itemUri);
+            cmd.Parameters.AddWithValue("$played_at", now);
+            cmd.Parameters.AddWithValue("$duration_played_ms", durationPlayedMs);
+            cmd.Parameters.AddWithValue("$completed", completed ? 1 : 0);
+            cmd.Parameters.AddWithValue("$source_context", (object?)sourceContext ?? DBNull.Value);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Recorded play for {Uri}, duration={Duration}ms, completed={Completed}",
+                itemUri, durationPlayedMs, completed);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Gets play history with entity metadata.
+    /// </summary>
+    public async Task<List<PlayHistoryEntry>> GetPlayHistoryAsync(
+        int limit = 50,
+        int offset = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<PlayHistoryEntry>();
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        // First get play history entries
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT ph.id, ph.item_uri, ph.played_at, ph.duration_played_ms, ph.completed, ph.source_context
+            FROM play_history ph
+            ORDER BY ph.played_at DESC
+            LIMIT $limit OFFSET $offset;
+            """;
+
+        cmd.Parameters.AddWithValue("$limit", limit);
+        cmd.Parameters.AddWithValue("$offset", offset);
+
+        var entries = new List<(long Id, string ItemUri, long PlayedAt, int Duration, bool Completed, string? Context)>();
+
+        using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                entries.Add((
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    reader.GetInt64(2),
+                    reader.GetInt32(3),
+                    reader.GetInt32(4) == 1,
+                    reader.IsDBNull(5) ? null : reader.GetString(5)));
+            }
+        }
+
+        if (entries.Count == 0)
+            return results;
+
+        // Fetch entities for all URIs in one query
+        var uris = entries.Select(e => e.ItemUri).Distinct().ToList();
+        var entities = await GetEntitiesAsync(uris, cancellationToken);
+        var entityLookup = entities.ToDictionary(e => e.Uri);
+
+        // Build results
+        foreach (var entry in entries)
+        {
+            entityLookup.TryGetValue(entry.ItemUri, out var entity);
+            results.Add(new PlayHistoryEntry(
+                entry.Id,
+                entry.ItemUri,
+                DateTimeOffset.FromUnixTimeSeconds(entry.PlayedAt),
+                entry.Duration,
+                entry.Completed,
+                entry.Context,
+                entity));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Gets play count for an item.
+    /// </summary>
+    public async Task<int> GetPlayCountAsync(string itemUri, CancellationToken cancellationToken = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM play_history WHERE item_uri = $item_uri;";
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(result);
+    }
+
+    /// <summary>
+    /// Gets total play time for an item.
+    /// </summary>
+    public async Task<long> GetTotalPlayTimeAsync(string itemUri, CancellationToken cancellationToken = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(SUM(duration_played_ms), 0) FROM play_history WHERE item_uri = $item_uri;";
+        cmd.Parameters.AddWithValue("$item_uri", itemUri);
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt64(result);
+    }
+
+    #endregion
+
+    #region Spotify Playlist Operations
+
+    /// <summary>
+    /// Upserts a playlist (inserts or updates if exists).
+    /// </summary>
+    public async Task UpsertPlaylistAsync(SpotifyPlaylist playlist, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(playlist);
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO spotify_playlists (id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path)
+                VALUES ($id, $name, $owner_id, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    owner_id = excluded.owner_id,
+                    description = excluded.description,
+                    image_url = excluded.image_url,
+                    track_count = excluded.track_count,
+                    is_public = excluded.is_public,
+                    is_collaborative = excluded.is_collaborative,
+                    is_owned = excluded.is_owned,
+                    synced_at = excluded.synced_at,
+                    revision = excluded.revision,
+                    folder_path = excluded.folder_path;
+                """;
+
+            cmd.Parameters.AddWithValue("$id", playlist.Uri);
+            cmd.Parameters.AddWithValue("$name", playlist.Name);
+            cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount);
+            cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
+            cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
+            cmd.Parameters.AddWithValue("$is_owned", playlist.IsOwned ? 1 : 0);
+            cmd.Parameters.AddWithValue("$synced_at", playlist.SyncedAt);
+            cmd.Parameters.AddWithValue("$revision", (object?)playlist.Revision ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$folder_path", (object?)playlist.FolderPath ?? DBNull.Value);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Upserted playlist: {Uri} - {Name} (folder: {Folder})",
+                playlist.Uri, playlist.Name, playlist.FolderPath ?? "(root)");
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Gets a playlist by URI.
+    /// </summary>
+    public async Task<SpotifyPlaylist?> GetPlaylistAsync(string playlistUri, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path
+            FROM spotify_playlists
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$id", playlistUri);
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return ReadPlaylist(reader);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all playlists.
+    /// </summary>
+    public async Task<List<SpotifyPlaylist>> GetAllPlaylistsAsync(CancellationToken cancellationToken = default)
+    {
+        var results = new List<SpotifyPlaylist>();
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path
+            FROM spotify_playlists
+            ORDER BY folder_path, name COLLATE NOCASE;
+            """;
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(ReadPlaylist(reader));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Deletes a playlist by URI.
+    /// </summary>
+    public async Task DeletePlaylistAsync(string playlistUri, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM spotify_playlists WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", playlistUri);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Deleted playlist: {Uri}", playlistUri);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Clears all playlists from the database.
+    /// </summary>
+    public async Task ClearAllPlaylistsAsync(CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM spotify_playlists;";
+
+            var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
+            _logger?.LogDebug("Cleared {Count} playlists from database", deleted);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private static SpotifyPlaylist ReadPlaylist(SqliteDataReader reader)
+    {
+        return new SpotifyPlaylist
+        {
+            Uri = reader.GetString(0),
+            Name = reader.GetString(1),
+            OwnerId = reader.IsDBNull(2) ? null : reader.GetString(2),
+            Description = reader.IsDBNull(3) ? null : reader.GetString(3),
+            ImageUrl = reader.IsDBNull(4) ? null : reader.GetString(4),
+            TrackCount = reader.GetInt32(5),
+            IsPublic = reader.GetInt32(6) == 1,
+            IsCollaborative = reader.GetInt32(7) == 1,
+            IsOwned = reader.GetInt32(8) == 1,
+            SyncedAt = reader.GetInt64(9),
+            Revision = reader.IsDBNull(10) ? null : reader.GetString(10),
+            FolderPath = reader.IsDBNull(11) ? null : reader.GetString(11)
+        };
+    }
+
+    #endregion
+
     #region Database Maintenance
 
     /// <summary>
@@ -880,12 +1672,14 @@ public sealed class MetadataDatabase : IMetadataDatabase
     private sealed record CachedExtensionEntry(byte[] Data, string? Etag, long ExpiresAt);
 }
 
+
 /// <summary>
 /// Cached entity with queryable metadata.
 /// </summary>
 public sealed class CachedEntity
 {
     public required string Uri { get; init; }
+    public required SourceType SourceType { get; init; }
     public required EntityType EntityType { get; init; }
 
     // Common properties
@@ -897,6 +1691,7 @@ public sealed class CachedEntity
     public int? TrackNumber { get; init; }
     public int? DiscNumber { get; init; }
     public int? ReleaseYear { get; init; }
+    public string? Genre { get; init; }
     public string? ImageUrl { get; init; }
 
     // Album-specific
@@ -910,7 +1705,17 @@ public sealed class CachedEntity
     public int? EpisodeCount { get; init; }
     public string? Description { get; init; }
 
+    // Local file specific
+    public string? FilePath { get; init; }
+
+    // Stream specific
+    public string? StreamUrl { get; init; }
+
+    // Cache TTL (NULL for local files = permanent)
+    public DateTimeOffset? ExpiresAt { get; init; }
+
     // Timestamps
+    public DateTimeOffset? AddedAt { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
 }

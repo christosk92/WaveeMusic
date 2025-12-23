@@ -51,9 +51,20 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         _database = database;
         _logger = logger;
 
-        // Normalize base URL
-        var hostOnly = baseUrl.Split(':')[0];
-        _baseUrl = $"https://{hostOnly}";
+        // Normalize base URL - handle both raw hostnames and full URLs
+        if (baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            _baseUrl = baseUrl.TrimEnd('/');
+        }
+        else if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            _baseUrl = "https" + baseUrl.Substring(4).TrimEnd('/');
+        }
+        else
+        {
+            var hostOnly = baseUrl.Split(':')[0];
+            _baseUrl = $"https://{hostOnly}";
+        }
     }
 
     /// <summary>
@@ -194,6 +205,10 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         {
             _logger?.LogDebug("All {Count} extensions served from cache",
                 requestList.Sum(r => r.Extensions.Count()));
+
+            // Ensure entities exist for cached data (handles data cached before entity parsing was added)
+            await EnsureEntitiesFromCacheAsync(cachedData, cancellationToken);
+
             return BuildResponseFromCache(cachedData);
         }
 
@@ -329,19 +344,33 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                 var data = extData.ExtensionData.Value.ToByteArray();
                 await _database.SetExtensionAsync(entityUri, extensionKind, data, etag, ttlSeconds, cancellationToken);
 
-                // If this is track data, also store queryable properties
-                // Note: AudioFiles returns AudioFilesExtensionResponse, not Track, so we only parse TrackV4
-                if (extensionKind == ExtensionKind.TrackV4)
+                // Store queryable properties for supported entity types
+                try
                 {
-                    try
+                    if (extensionKind == ExtensionKind.TrackV4)
                     {
                         var track = Track.Parser.ParseFrom(data);
                         await StoreTrackPropertiesAsync(entityUri, track, cancellationToken);
                     }
-                    catch
+                    else if (extensionKind == ExtensionKind.AlbumV4)
                     {
-                        // Ignore parse errors for property extraction
+                        var album = Album.Parser.ParseFrom(data);
+                        await StoreAlbumPropertiesAsync(entityUri, album, cancellationToken);
                     }
+                    else if (extensionKind == ExtensionKind.ArtistV4)
+                    {
+                        var artist = Artist.Parser.ParseFrom(data);
+                        await StoreArtistPropertiesAsync(entityUri, artist, cancellationToken);
+                    }
+                    else if (extensionKind == ExtensionKind.ShowV4)
+                    {
+                        var show = Show.Parser.ParseFrom(data);
+                        await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
+                    }
+                }
+                catch
+                {
+                    // Ignore parse errors for property extraction
                 }
             }
         }
@@ -398,6 +427,145 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             releaseYear: releaseYear,
             imageUrl: imageUrl,
             cancellationToken: cancellationToken);
+    }
+
+    private async Task StoreAlbumPropertiesAsync(string uri, Album album, CancellationToken cancellationToken)
+    {
+        string? artistName = null;
+        if (album.Artist.Count > 0)
+        {
+            artistName = string.Join(", ", album.Artist.Select(a => a.Name));
+        }
+
+        int? releaseYear = null;
+        if (album.Date != null)
+        {
+            releaseYear = album.Date.Year;
+        }
+
+        string? imageUrl = null;
+        if (album.CoverGroup?.Image.Count > 0)
+        {
+            var image = album.CoverGroup.Image
+                .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                        i.Size == Image.Types.Size.Large ? 1 : 0)
+                .FirstOrDefault();
+            if (image != null)
+            {
+                var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
+                imageUrl = $"https://i.scdn.co/image/{imageId}";
+            }
+        }
+
+        // Count total tracks across all discs
+        int? trackCount = null;
+        if (album.Disc.Count > 0)
+        {
+            trackCount = album.Disc.Sum(d => d.Track.Count);
+        }
+
+        await _database.UpsertEntityAsync(
+            uri: uri,
+            entityType: EntityType.Album,
+            title: album.Name,
+            artistName: artistName,
+            releaseYear: releaseYear,
+            imageUrl: imageUrl,
+            trackCount: trackCount,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task StoreArtistPropertiesAsync(string uri, Artist artist, CancellationToken cancellationToken)
+    {
+        string? imageUrl = null;
+        if (artist.PortraitGroup?.Image.Count > 0)
+        {
+            var image = artist.PortraitGroup.Image
+                .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                        i.Size == Image.Types.Size.Large ? 1 : 0)
+                .FirstOrDefault();
+            if (image != null)
+            {
+                var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
+                imageUrl = $"https://i.scdn.co/image/{imageId}";
+            }
+        }
+
+        await _database.UpsertEntityAsync(
+            uri: uri,
+            entityType: EntityType.Artist,
+            title: artist.Name,
+            imageUrl: imageUrl,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task StoreShowPropertiesAsync(string uri, Show show, CancellationToken cancellationToken)
+    {
+        string? imageUrl = null;
+        if (show.CoverImage?.Image.Count > 0)
+        {
+            var image = show.CoverImage.Image
+                .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                        i.Size == Image.Types.Size.Large ? 1 : 0)
+                .FirstOrDefault();
+            if (image != null)
+            {
+                var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
+                imageUrl = $"https://i.scdn.co/image/{imageId}";
+            }
+        }
+
+        await _database.UpsertEntityAsync(
+            uri: uri,
+            entityType: EntityType.Show,
+            title: show.Name,
+            imageUrl: imageUrl,
+            publisher: show.Publisher,
+            description: show.Description,
+            episodeCount: show.Episode.Count,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task EnsureEntitiesFromCacheAsync(
+        Dictionary<(string, ExtensionKind), byte[]> cachedData,
+        CancellationToken cancellationToken)
+    {
+        foreach (var ((entityUri, extensionKind), data) in cachedData)
+        {
+            // Check if entity already exists
+            var existingEntity = await _database.GetEntityAsync(entityUri, cancellationToken);
+            if (existingEntity != null)
+                continue;
+
+            // Entity doesn't exist - parse cached data and create it
+            try
+            {
+                if (extensionKind == ExtensionKind.TrackV4)
+                {
+                    var track = Track.Parser.ParseFrom(data);
+                    await StoreTrackPropertiesAsync(entityUri, track, cancellationToken);
+                }
+                else if (extensionKind == ExtensionKind.AlbumV4)
+                {
+                    var album = Album.Parser.ParseFrom(data);
+                    await StoreAlbumPropertiesAsync(entityUri, album, cancellationToken);
+                }
+                else if (extensionKind == ExtensionKind.ArtistV4)
+                {
+                    var artist = Artist.Parser.ParseFrom(data);
+                    await StoreArtistPropertiesAsync(entityUri, artist, cancellationToken);
+                }
+                else if (extensionKind == ExtensionKind.ShowV4)
+                {
+                    var show = Show.Parser.ParseFrom(data);
+                    await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
+                }
+            }
+            catch
+            {
+                // Ignore parse errors
+            }
+        }
     }
 
     private static BatchedExtensionResponse BuildResponseFromCache(

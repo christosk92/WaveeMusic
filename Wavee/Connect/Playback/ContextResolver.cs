@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Storage;
+using Wavee.Core.Storage.Abstractions;
 using Wavee.Protocol.Context;
 using Wavee.Protocol.ExtendedMetadata;
 
@@ -15,10 +16,8 @@ public sealed class ContextResolver
     private readonly SpClient _spClient;
     private readonly IExtendedMetadataClient _metadataClient;
     private readonly ICacheService _cacheService;
+    private readonly IHotCache<ContextCacheEntry> _contextCache;
     private readonly ILogger? _logger;
-
-    // Context cache - caches resolved context (track URIs) to avoid API calls
-    private readonly HotCache<ContextCacheEntry> _contextCache;
 
     // TTL values for different context types
     private static readonly TimeSpan PlaylistTtl = TimeSpan.FromMinutes(5);
@@ -31,19 +30,19 @@ public sealed class ContextResolver
         SpClient spClient,
         IExtendedMetadataClient metadataClient,
         ICacheService cacheService,
+        IHotCache<ContextCacheEntry> contextCache,
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(spClient);
         ArgumentNullException.ThrowIfNull(metadataClient);
         ArgumentNullException.ThrowIfNull(cacheService);
+        ArgumentNullException.ThrowIfNull(contextCache);
 
         _spClient = spClient;
         _metadataClient = metadataClient;
         _cacheService = cacheService;
+        _contextCache = contextCache;
         _logger = logger;
-
-        // Context cache is smaller since contexts are larger objects
-        _contextCache = new HotCache<ContextCacheEntry>(maxSize: 50, logger);
     }
 
     /// <summary>

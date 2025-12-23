@@ -41,6 +41,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private readonly string _deviceId;
     private readonly ILogger? _logger;
 
+    // Volume control
+    private readonly VolumeProcessor? _volumeProcessor;
+
     // State management
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject;
     private readonly Subject<PlaybackError> _errorSubject = new();
@@ -126,6 +129,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _stateSubject = new BehaviorSubject<LocalPlaybackState>(_currentState);
         _queue = new PlaybackQueue(logger);
 
+        // Find VolumeProcessor from processing chain for volume control
+        _volumeProcessor = _processingChain.Processors.OfType<VolumeProcessor>().FirstOrDefault();
+
         // Subscribe to NeedsMoreTracks for infinite contexts / large playlists
         _subscriptions.Add(_queue.NeedsMoreTracks.Subscribe(async _ =>
         {
@@ -192,6 +198,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _commandHandler = commandHandler ?? throw new ArgumentNullException(nameof(commandHandler));
         _deviceStateManager = deviceStateManager;
         SubscribeToCommands();
+        SubscribeToVolumeChanges();
     }
 
     // ================================================================
@@ -878,7 +885,17 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             {
                 bool seekRequested = false;
 
-                await foreach (var buffer in decoder.DecodeAsync(decodingStream, currentStartPosition, cancellationToken))
+                await foreach (var buffer in decoder.DecodeAsync(
+                    decodingStream,
+                    currentStartPosition,
+                    title =>
+                    {
+                        // ICY metadata callback - update track title
+                        _currentTrackTitle = title;
+                        _logger?.LogInformation("Stream title changed: {Title}", title);
+                        PublishStateUpdate();
+                    },
+                    cancellationToken))
                 {
                     // Check for pending seek
                     lock (_seekLock)
@@ -971,6 +988,37 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _logger?.LogDebug("Playback loop cancelled");
             // Send transition event when cancelled (e.g., skip, stop)
             EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("No suitable audio file"))
+        {
+            // Track is unavailable (region-restricted, no audio files, etc.)
+            _logger?.LogWarning("Track unavailable: {TrackUri}, skipping to next", trackUri);
+
+            // Publish error for UI notification
+            _errorSubject.OnNext(new PlaybackError(
+                PlaybackErrorType.TrackUnavailable,
+                $"Track unavailable: {trackUri}",
+                ex));
+
+            // Auto-skip to next track
+            var nextTrack = _queue.MoveNext();
+            if (nextTrack != null)
+            {
+                _logger?.LogInformation("Auto-skipping to: {NextTrack}", nextTrack.Uri);
+                _currentTrackUri = NormalizeToUri(nextTrack.Uri);
+                _currentTrackUid = nextTrack.Uid ?? string.Empty;
+                _currentPositionMs = 0;
+
+                // Continue with next track (recursive call)
+                await PlaybackLoopAsync(_currentTrackUri, 0, cancellationToken);
+                return;
+            }
+
+            // No next track - handle end of context
+            _logger?.LogInformation("No more tracks in queue after unavailable track");
+            await HandleEndOfContextInternalAsync(cancellationToken);
+            _isPlaying = false;
+            PublishStateUpdate();
         }
         catch (Exception ex)
         {
@@ -1193,6 +1241,37 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         }));
 
         _logger?.LogInformation("AudioPipeline subscribed to all command streams");
+    }
+
+    /// <summary>
+    /// Subscribes to volume changes from DeviceStateManager and updates VolumeProcessor.
+    /// </summary>
+    private void SubscribeToVolumeChanges()
+    {
+        if (_deviceStateManager == null || _volumeProcessor == null)
+            return;
+
+        // Subscribe to volume changes
+        _subscriptions.Add(_deviceStateManager.Volume.Subscribe(OnVolumeChanged));
+
+        // Apply initial volume
+        var initialVolume = _deviceStateManager.CurrentVolume / 65535.0f;
+        _volumeProcessor.Volume = initialVolume;
+        _logger?.LogDebug("Initial volume applied: {Percent}%", (int)(initialVolume * 100));
+    }
+
+    /// <summary>
+    /// Handles volume changes from DeviceStateManager.
+    /// </summary>
+    private void OnVolumeChanged(int volume)
+    {
+        if (_volumeProcessor == null) return;
+
+        // Convert Spotify's 0-65535 range to 0.0-1.0 linear
+        var linearVolume = volume / 65535.0f;
+        _volumeProcessor.Volume = linearVolume;
+
+        _logger?.LogDebug("Volume applied to audio output: {Percent}%", (int)(linearVolume * 100));
     }
 
     // ================================================================

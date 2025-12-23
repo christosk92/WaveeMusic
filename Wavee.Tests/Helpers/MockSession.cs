@@ -81,4 +81,12 @@ internal class MockSession : ISession
     {
         return Task.FromResult(AccountType.Premium);
     }
+
+    /// <summary>
+    /// Reconnects to Spotify AP (no-op for mock).
+    /// </summary>
+    public Task ReconnectApAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
 }

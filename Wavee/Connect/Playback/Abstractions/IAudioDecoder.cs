@@ -31,7 +31,12 @@ public interface IAudioDecoder
     /// </summary>
     /// <param name="stream">Audio stream to decode.</param>
     /// <param name="startPositionMs">Start position in milliseconds (for seeking).</param>
+    /// <param name="onMetadataReceived">Optional callback for ICY metadata updates (radio stream titles).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Async enumerable of PCM audio buffers.</returns>
-    IAsyncEnumerable<AudioBuffer> DecodeAsync(Stream stream, long startPositionMs = 0, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<AudioBuffer> DecodeAsync(
+        Stream stream,
+        long startPositionMs = 0,
+        Action<string>? onMetadataReceived = null,
+        CancellationToken cancellationToken = default);
 }

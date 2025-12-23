@@ -26,13 +26,49 @@ public sealed record SpotifySyncState
     public CollectionSyncState Playlists { get; init; } = CollectionSyncState.Empty;
 
     /// <summary>
+    /// Sync state for subscribed shows (podcasts).
+    /// </summary>
+    public CollectionSyncState Shows { get; init; } = CollectionSyncState.Empty;
+
+    /// <summary>
+    /// Sync state for banned tracks.
+    /// </summary>
+    public CollectionSyncState Bans { get; init; } = CollectionSyncState.Empty;
+
+    /// <summary>
+    /// Sync state for banned artists.
+    /// </summary>
+    public CollectionSyncState ArtistBans { get; init; } = CollectionSyncState.Empty;
+
+    /// <summary>
+    /// Sync state for listen later queue.
+    /// </summary>
+    public CollectionSyncState ListenLater { get; init; } = CollectionSyncState.Empty;
+
+    /// <summary>
+    /// Sync state for Your Library pinned items.
+    /// </summary>
+    public CollectionSyncState YlPins { get; init; } = CollectionSyncState.Empty;
+
+    /// <summary>
+    /// Sync state for enhanced tracks.
+    /// </summary>
+    public CollectionSyncState Enhanced { get; init; } = CollectionSyncState.Empty;
+
+    /// <summary>
     /// Whether any collection has been synced.
     /// </summary>
     public bool HasEverSynced =>
         Tracks.LastSyncAt.HasValue ||
         Albums.LastSyncAt.HasValue ||
         Artists.LastSyncAt.HasValue ||
-        Playlists.LastSyncAt.HasValue;
+        Playlists.LastSyncAt.HasValue ||
+        Shows.LastSyncAt.HasValue ||
+        Bans.LastSyncAt.HasValue ||
+        ArtistBans.LastSyncAt.HasValue ||
+        ListenLater.LastSyncAt.HasValue ||
+        YlPins.LastSyncAt.HasValue ||
+        Enhanced.LastSyncAt.HasValue;
 
     /// <summary>
     /// Gets the oldest sync time across all collections.
@@ -46,7 +82,13 @@ public sealed record SpotifySyncState
                 Tracks.LastSyncAt,
                 Albums.LastSyncAt,
                 Artists.LastSyncAt,
-                Playlists.LastSyncAt
+                Playlists.LastSyncAt,
+                Shows.LastSyncAt,
+                Bans.LastSyncAt,
+                ArtistBans.LastSyncAt,
+                ListenLater.LastSyncAt,
+                YlPins.LastSyncAt,
+                Enhanced.LastSyncAt
             }.Where(t => t.HasValue).Select(t => t!.Value).ToList();
 
             return times.Count > 0 ? times.Min() : null;
@@ -117,28 +159,3 @@ public sealed record CollectionSyncState
     };
 }
 
-/// <summary>
-/// Type of Spotify library item.
-/// </summary>
-public enum SpotifyLibraryItemType
-{
-    /// <summary>
-    /// A liked/saved track.
-    /// </summary>
-    Track = 0,
-
-    /// <summary>
-    /// A saved album.
-    /// </summary>
-    Album = 1,
-
-    /// <summary>
-    /// A playlist (owned or followed).
-    /// </summary>
-    Playlist = 2,
-
-    /// <summary>
-    /// A followed artist.
-    /// </summary>
-    Artist = 3
-}

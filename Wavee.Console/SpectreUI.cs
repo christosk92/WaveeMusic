@@ -37,6 +37,7 @@ internal sealed class SpectreUI : IDisposable
     private bool _repeatTrack;
 
     private bool _disposed;
+    private volatile bool _renderingPaused;
     private CancellationTokenSource? _renderCts;
     private Func<string, CancellationToken, Task<bool>>? _commandHandler;
 
@@ -163,6 +164,26 @@ internal sealed class SpectreUI : IDisposable
     }
 
     /// <summary>
+    /// Pauses live rendering to allow interactive prompts.
+    /// </summary>
+    public void PauseLiveRendering()
+    {
+        _renderingPaused = true;
+        AnsiConsole.Clear();
+        AnsiConsole.Cursor.Show();
+    }
+
+    /// <summary>
+    /// Resumes live rendering after interactive prompts.
+    /// </summary>
+    public void ResumeLiveRendering()
+    {
+        _renderingPaused = false;
+        AnsiConsole.Clear();
+        AnsiConsole.Cursor.Hide();
+    }
+
+    /// <summary>
     /// Runs the live UI rendering loop.
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -178,11 +199,15 @@ internal sealed class SpectreUI : IDisposable
         {
             while (!ct.IsCancellationRequested)
             {
-                // Render the full layout
-                RenderLayout();
+                // Skip rendering when paused (for interactive prompts)
+                if (!_renderingPaused)
+                {
+                    // Render the full layout
+                    RenderLayout();
 
-                // Handle keyboard input (non-blocking)
-                await HandleInputAsync(ct);
+                    // Handle keyboard input (non-blocking)
+                    await HandleInputAsync(ct);
+                }
 
                 // Small delay for refresh rate
                 await Task.Delay(RefreshIntervalMs, ct);
@@ -445,7 +470,6 @@ internal sealed class SpectreUI : IDisposable
         while (System.Console.KeyAvailable && !ct.IsCancellationRequested)
         {
             var key = System.Console.ReadKey(intercept: true);
-
             if (key.Key == ConsoleKey.Enter)
             {
                 var command = _inputBuffer.ToString().Trim();

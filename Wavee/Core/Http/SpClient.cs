@@ -4,6 +4,7 @@ using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Session;
+using Wavee.Protocol.Collection;
 using Wavee.Protocol.Storage;
 
 namespace Wavee.Core.Http;
@@ -19,10 +20,16 @@ public sealed class SpClient
 {
     private readonly string _baseUrl;
     private const int MaxRetries = 3;
+    private const string CollectionContentType = "application/vnd.collection-v2.spotify.proto";
 
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
+
+    /// <summary>
+    /// Gets the base URL for the SpClient API (e.g., "https://spclient.wg.spotify.com").
+    /// </summary>
+    public string BaseUrl => _baseUrl;
 
     /// <summary>
     /// Creates a new SpClient.
@@ -94,6 +101,45 @@ public sealed class SpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
 
         var url = $"{_baseUrl}/metadata/4/artist/{artistId}";
+        return await GetProtobufAsync(url, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets episode metadata.
+    /// </summary>
+    /// <remarks>
+    /// Spotify episodes are streamed like tracks - they have file IDs and use
+    /// the same CDN/storage mechanism. The metadata includes an audio list
+    /// (equivalent to track's file list) with available formats.
+    /// </remarks>
+    /// <param name="episodeId">Spotify episode ID (base62 format, 22 characters).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Protobuf-encoded episode metadata.</returns>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task<byte[]> GetEpisodeMetadataAsync(
+        string episodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
+
+        var url = $"{_baseUrl}/metadata/4/episode/{episodeId}";
+        return await GetProtobufAsync(url, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets show (podcast) metadata.
+    /// </summary>
+    /// <param name="showId">Spotify show ID (base62 format, 22 characters).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Protobuf-encoded show metadata.</returns>
+    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
+    public async Task<byte[]> GetShowMetadataAsync(
+        string showId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(showId);
+
+        var url = $"{_baseUrl}/metadata/4/show/{showId}";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -441,6 +487,412 @@ public sealed class SpClient
         _logger?.LogDebug("Next page fetched: {TrackCount} tracks", page.Tracks.Count);
 
         return page;
+    }
+
+    #endregion
+
+    #region Collection API (Library Sync)
+
+    /// <summary>
+    /// Gets a page of items from a user's collection (liked songs, albums, artists).
+    /// </summary>
+    /// <param name="username">Spotify username.</param>
+    /// <param name="set">Collection set: "collection" (tracks), "albums", "artists".</param>
+    /// <param name="paginationToken">Token for next page, null for first page.</param>
+    /// <param name="limit">Maximum items per page (default 300).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>PageResponse with items and pagination info.</returns>
+    public async Task<PageResponse> GetCollectionPageAsync(
+        string username,
+        string set,
+        string? paginationToken = null,
+        int limit = 300,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(set);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        // Build request body
+        var request = new PageRequest
+        {
+            Username = username,
+            Set = set,
+            Limit = limit
+        };
+        if (!string.IsNullOrEmpty(paginationToken))
+        {
+            request.PaginationToken = paginationToken;
+        }
+
+        var url = $"{_baseUrl}/collection/v2/paging";
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(CollectionContentType));
+
+        var protobufBytes = request.ToByteArray();
+        httpRequest.Content = new ByteArrayContent(protobufBytes);
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(CollectionContentType);
+
+        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Collection not found: {set}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var pageResponse = PageResponse.Parser.ParseFrom(responseBytes);
+
+        _logger?.LogDebug("Collection page fetched: {Set}, items={Count}, hasMore={HasMore}",
+            set, pageResponse.Items.Count, !string.IsNullOrEmpty(pageResponse.NextPageToken));
+
+        return pageResponse;
+    }
+
+    /// <summary>
+    /// Gets incremental changes to a collection since the last sync.
+    /// </summary>
+    /// <param name="username">Spotify username.</param>
+    /// <param name="set">Collection set: "collection" (tracks), "albums", "artists".</param>
+    /// <param name="lastSyncToken">Sync token from previous sync.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>DeltaResponse with changes and new sync token.</returns>
+    public async Task<DeltaResponse> GetCollectionDeltaAsync(
+        string username,
+        string set,
+        string lastSyncToken,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(set);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lastSyncToken);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var request = new DeltaRequest
+        {
+            Username = username,
+            Set = set,
+            LastSyncToken = lastSyncToken
+        };
+
+        var url = $"{_baseUrl}/collection/v2/delta";
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(CollectionContentType));
+
+        var protobufBytes = request.ToByteArray();
+        httpRequest.Content = new ByteArrayContent(protobufBytes);
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(CollectionContentType);
+
+        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Collection not found: {set}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var deltaResponse = DeltaResponse.Parser.ParseFrom(responseBytes);
+
+        _logger?.LogDebug("Collection delta fetched: {Set}, deltaUpdatePossible={DeltaUpdatePossible}, changes={Count}",
+            set, deltaResponse.DeltaUpdatePossible, deltaResponse.Items.Count);
+
+        return deltaResponse;
+    }
+
+    /// <summary>
+    /// Adds or removes items from a collection.
+    /// </summary>
+    /// <param name="username">Spotify username.</param>
+    /// <param name="set">Collection set: "collection" (tracks), "albums", "artists".</param>
+    /// <param name="items">Items to add/remove (use is_removed flag).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task WriteCollectionAsync(
+        string username,
+        string set,
+        IEnumerable<CollectionItem> items,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(set);
+        ArgumentNullException.ThrowIfNull(items);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var request = new WriteRequest
+        {
+            Username = username,
+            Set = set,
+            ClientUpdateId = Guid.NewGuid().ToString("N")
+        };
+        request.Items.AddRange(items);
+
+        var url = $"{_baseUrl}/collection/v2/write";
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(CollectionContentType));
+
+        var protobufBytes = request.ToByteArray();
+        httpRequest.Content = new ByteArrayContent(protobufBytes);
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(CollectionContentType);
+
+        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Collection not found: {set}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.BadRequest:
+                throw new SpClientException(SpClientFailureReason.RequestFailed, "Invalid write request");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        _logger?.LogDebug("Collection write completed: {Set}, items={Count}", set, request.Items.Count);
+    }
+
+    #endregion
+
+    #region Playlist API
+
+    /// <summary>
+    /// Gets a playlist's content (metadata and optionally tracks).
+    /// </summary>
+    /// <remarks>
+    /// Uses the playlist v2 API which returns protobuf SelectedListContent.
+    /// The rootlist (spotify:user:{username}:rootlist) contains all user playlists.
+    /// </remarks>
+    /// <param name="playlistUri">Playlist URI (e.g., "spotify:playlist:xxx" or "spotify:user:xxx:rootlist").</param>
+    /// <param name="decorate">Fields to include: revision, attributes, length, owner, capabilities.</param>
+    /// <param name="start">Start index for tracks (0-based).</param>
+    /// <param name="length">Number of tracks to fetch.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>SelectedListContent with playlist data.</returns>
+    public async Task<Protocol.Playlist.SelectedListContent> GetPlaylistAsync(
+        string playlistUri,
+        string[]? decorate = null,
+        int? start = null,
+        int? length = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        // Convert URI to path: "spotify:playlist:xxx" -> "playlist/xxx"
+        // "spotify:user:xxx:rootlist" -> "user/xxx/rootlist"
+        var path = playlistUri.Replace("spotify:", "").Replace(":", "/");
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        // Build URL with query params
+        var queryParams = new List<string>();
+        if (decorate != null && decorate.Length > 0)
+        {
+            queryParams.Add($"decorate={string.Join(",", decorate)}");
+        }
+        if (start.HasValue)
+        {
+            queryParams.Add($"from={start.Value}");
+        }
+        if (length.HasValue)
+        {
+            queryParams.Add($"length={length.Value}");
+        }
+
+        var queryString = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "";
+        var url = $"{_baseUrl}/playlist/v2/{path}{queryString}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-protobuf"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug("Fetching playlist: {Uri}", playlistUri);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Playlist not found: {playlistUri}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, $"No access to playlist: {playlistUri}");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var content = Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+
+        _logger?.LogDebug("Playlist fetched: {Uri}, length={Length}, revision={HasRevision}",
+            playlistUri, content.Length, content.Revision?.Length > 0);
+
+        return content;
+    }
+
+    /// <summary>
+    /// Gets changes to a playlist since a specific revision (for incremental sync).
+    /// </summary>
+    /// <param name="playlistUri">Playlist URI.</param>
+    /// <param name="revision">Last known revision (from previous sync).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>SelectedListContent with diff information.</returns>
+    public async Task<Protocol.Playlist.SelectedListContent> GetPlaylistDiffAsync(
+        string playlistUri,
+        byte[] revision,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+        ArgumentNullException.ThrowIfNull(revision);
+
+        var path = playlistUri.Replace("spotify:", "").Replace(":", "/");
+        var revisionStr = FormatRevision(revision);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/playlist/v2/{path}/diff?revision={revisionStr}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-protobuf"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug("Fetching playlist diff: {Uri}, revision={Revision}", playlistUri, revisionStr);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Playlist not found: {playlistUri}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        return Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+    }
+
+    /// <summary>
+    /// Sends changes to a playlist.
+    /// </summary>
+    /// <param name="playlistUri">Playlist URI.</param>
+    /// <param name="changes">Changes to apply (adds, removes, moves, attribute updates).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>SelectedListContent with updated state.</returns>
+    public async Task<Protocol.Playlist.SelectedListContent> ChangePlaylistAsync(
+        string playlistUri,
+        Protocol.Playlist.ListChanges changes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+        ArgumentNullException.ThrowIfNull(changes);
+
+        var path = playlistUri.Replace("spotify:", "").Replace(":", "/");
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/playlist/v2/{path}/changes";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        var protobufBytes = changes.ToByteArray();
+        request.Content = new ByteArrayContent(protobufBytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+
+        _logger?.LogDebug("Sending playlist changes: {Uri}", playlistUri);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Playlist not found: {playlistUri}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, $"Cannot modify playlist: {playlistUri}");
+            case HttpStatusCode.Conflict:
+                throw new SpClientException(SpClientFailureReason.RequestFailed, "Playlist revision conflict - refetch and retry");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        return Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+    }
+
+    /// <summary>
+    /// Formats a revision for the playlist API query string.
+    /// </summary>
+    /// <remarks>
+    /// Revision format: First 4 bytes are an int32 counter, rest is a hash.
+    /// Output: "{counter},{hash_hex}"
+    /// </remarks>
+    private static string FormatRevision(byte[] revision)
+    {
+        if (revision.Length < 4)
+            return Convert.ToHexString(revision).ToLowerInvariant();
+
+        var counter = BitConverter.ToInt32(revision, 0);
+        var hash = Convert.ToHexString(revision.AsSpan(4)).ToLowerInvariant();
+        return $"{counter},{hash}";
     }
 
     #endregion

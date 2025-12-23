@@ -1,4 +1,4 @@
-namespace Wavee.Core.Library;
+namespace Wavee.Core.Storage.Abstractions;
 
 /// <summary>
 /// Identifies the source/origin of a library item.

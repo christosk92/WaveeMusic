@@ -1,3 +1,5 @@
+using Wavee.Core.Storage.Abstractions;
+
 namespace Wavee.Core.Library;
 
 /// <summary>

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using ManagedBass;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Playback.Abstractions;
@@ -113,12 +114,14 @@ public sealed class BassDecoder : IAudioDecoder
     public async IAsyncEnumerable<AudioBuffer> DecodeAsync(
         Stream stream,
         long startPositionMs = 0,
+        Action<string>? onMetadataReceived = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureBassInitialized();
 
         int handle;
         byte[]? memoryData = null;
+        int syncHandle = 0;
 
         // Debug: log stream type
         _logger?.LogDebug("DecodeAsync received stream type: {Type}", stream.GetType().FullName);
@@ -132,6 +135,45 @@ public sealed class BassDecoder : IAudioDecoder
         {
             _logger?.LogDebug("Using BASS native URL streaming for: {Url}", urlStream.Url);
             handle = Bass.CreateStream(urlStream.Url, 0, BassFlags.Decode | BassFlags.Float, null);
+
+            // Set up ICY metadata sync if callback provided
+            if (handle != 0 && onMetadataReceived != null)
+            {
+                syncHandle = Bass.ChannelSetSync(handle, SyncFlags.MetadataReceived, 0,
+                    (h, ch, data, user) =>
+                    {
+                        try
+                        {
+                            var tagsPtr = Bass.ChannelGetTags(h, TagType.META);
+                            if (tagsPtr != IntPtr.Zero)
+                            {
+                                var tags = Marshal.PtrToStringAnsi(tagsPtr);
+                                if (!string.IsNullOrEmpty(tags))
+                                {
+                                    var title = ExtractStreamTitle(tags);
+                                    if (!string.IsNullOrEmpty(title))
+                                    {
+                                        _logger?.LogDebug("ICY metadata received: {Title}", title);
+                                        onMetadataReceived(title);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Error processing ICY metadata");
+                        }
+                    }, IntPtr.Zero);
+
+                if (syncHandle == 0)
+                {
+                    _logger?.LogDebug("Failed to set up ICY metadata sync: {Error}", Bass.LastError);
+                }
+                else
+                {
+                    _logger?.LogDebug("ICY metadata sync set up successfully");
+                }
+            }
         }
         else
         {
@@ -252,6 +294,29 @@ public sealed class BassDecoder : IAudioDecoder
         if (stream is PrefixedStream prefixed)
             return FindUrlAwareStream(prefixed.InnerStream);
         return null;
+    }
+
+    /// <summary>
+    /// Extracts the StreamTitle from ICY metadata string.
+    /// </summary>
+    /// <param name="metadata">ICY metadata string (e.g., "StreamTitle='Artist - Song';").</param>
+    /// <returns>The stream title, or null if not found.</returns>
+    private static string? ExtractStreamTitle(string metadata)
+    {
+        // Format: StreamTitle='Artist - Song';StreamUrl='...';
+        const string prefix = "StreamTitle='";
+        var startIndex = metadata.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (startIndex < 0)
+            return null;
+
+        startIndex += prefix.Length;
+        var endIndex = metadata.IndexOf("';", startIndex, StringComparison.Ordinal);
+        if (endIndex < 0)
+            endIndex = metadata.IndexOf('\'', startIndex);
+        if (endIndex < 0)
+            return null;
+
+        return metadata[startIndex..endIndex];
     }
 
     /// <summary>
