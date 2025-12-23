@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
+using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.Storage;
@@ -66,7 +68,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trackId);
 
-        var url = $"{_baseUrl}/metadata/4/track/{trackId}";
+        var url = $"{_baseUrl}/metadata/4/track/{trackId}?market=from_token";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -83,7 +85,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(albumId);
 
-        var url = $"{_baseUrl}/metadata/4/album/{albumId}";
+        var url = $"{_baseUrl}/metadata/4/album/{albumId}?market=from_token";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -100,7 +102,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
 
-        var url = $"{_baseUrl}/metadata/4/artist/{artistId}";
+        var url = $"{_baseUrl}/metadata/4/artist/{artistId}?market=from_token";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -122,7 +124,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
 
-        var url = $"{_baseUrl}/metadata/4/episode/{episodeId}";
+        var url = $"{_baseUrl}/metadata/4/episode/{episodeId}?market=from_token";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -139,7 +141,7 @@ public sealed class SpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(showId);
 
-        var url = $"{_baseUrl}/metadata/4/show/{showId}";
+        var url = $"{_baseUrl}/metadata/4/show/{showId}?market=from_token";
         return await GetProtobufAsync(url, cancellationToken);
     }
 
@@ -426,6 +428,68 @@ public sealed class SpClient
             context.Pages.Count > 0 ? context.Pages[0].Tracks.Count : 0);
 
         return context;
+    }
+
+    /// <summary>
+    /// Fetches time-synced lyrics for a track from Spotify's color-lyrics API.
+    /// </summary>
+    /// <param name="trackId">Track ID in base62 format (e.g., "4xeugB5MqWh0jwvXZPxahq").</param>
+    /// <param name="imageUri">Album image URI (e.g., "spotify:image:ab67616d00001e02...").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Lyrics response with timed lines, or null if no lyrics available.</returns>
+    public async Task<LyricsResponse?> GetLyricsAsync(
+        string trackId,
+        string imageUri,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageUri);
+
+        // Convert HTTP image URL to spotify:image: format if needed
+        // https://i.scdn.co/image/ab67616d00001e02xxx -> spotify:image:ab67616d00001e02xxx
+        var normalizedImageUri = imageUri;
+        if (imageUri.StartsWith("https://i.scdn.co/image/", StringComparison.OrdinalIgnoreCase))
+        {
+            var imageId = imageUri.Substring("https://i.scdn.co/image/".Length);
+            normalizedImageUri = $"spotify:image:{imageId}";
+        }
+
+        // URL encode the image URI (spotify:image:xxx -> spotify%3Aimage%3Axxx)
+        var encodedImageUri = Uri.EscapeDataString(normalizedImageUri);
+        var url = $"{_baseUrl}/color-lyrics/v2/track/{trackId}/image/{encodedImageUri}?format=json&vocalRemoval=false&market=from_token";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        // Use Android platform which doesn't require client-token
+        request.Headers.TryAddWithoutValidation("app-platform", "Android");
+        request.Headers.TryAddWithoutValidation("spotify-app-version", "8.9.0");
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        // 404 means no lyrics available for this track
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            _logger?.LogDebug("No lyrics available for track {TrackId}", trackId);
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        // Use source-generated context for AOT compatibility
+        var lyrics = JsonSerializer.Deserialize(json, LyricsJsonContext.Default.LyricsResponse);
+
+        _logger?.LogDebug("Fetched lyrics for track {TrackId}: syncType={SyncType}, lines={LineCount}",
+            trackId,
+            lyrics?.Lyrics?.SyncType ?? "none",
+            lyrics?.Lyrics?.Lines.Count ?? 0);
+
+        return lyrics;
     }
 
     /// <summary>

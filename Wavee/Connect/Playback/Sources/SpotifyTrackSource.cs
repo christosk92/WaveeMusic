@@ -147,8 +147,8 @@ public sealed class SpotifyTrackSource : ITrackSource
         }
 
         // 3. Select audio file based on quality preference (also checks alternatives)
-        var selectedFile = SelectAudioFile(track, _preferredQuality);
-        if (selectedFile == null)
+        var (selectedFile, effectiveTrack) = await SelectAudioFileAsync(track, _preferredQuality, cancellationToken);
+        if (selectedFile == null || effectiveTrack == null)
         {
             _logger?.LogWarning("No audio files found for track {Uri}, checked {AltCount} alternatives",
                 uri, track.Alternative.Count);
@@ -157,15 +157,21 @@ public sealed class SpotifyTrackSource : ITrackSource
                 $"Track has {track.File.Count} files, {track.Alternative.Count} alternatives.");
         }
 
+        // Use the effective track (could be main or alternative) for subsequent operations
+        var effectiveTrackId = effectiveTrack.Gid != null && effectiveTrack.Gid.Length > 0
+            ? SpotifyId.FromRaw(effectiveTrack.Gid.Span, SpotifyIdType.Track)
+            : trackId;
+
         var fileId = FileId.FromBytes(selectedFile.FileId.Span);
         var audioFormat = MapToAudioFileFormat(selectedFile.Format);
 
-        _logger?.LogDebug("Selected audio file: format={Format}, fileId={FileId}",
-            audioFormat, fileId.ToBase16());
+        _logger?.LogDebug("Selected audio file: format={Format}, fileId={FileId}, using track={TrackId}",
+            audioFormat, fileId.ToBase16(), effectiveTrackId.ToBase62());
 
         // 4. Start all fetches in parallel (but don't wait for all)
+        // IMPORTANT: Use effectiveTrackId for audio key - must match the track that owns the file
         var headTask = _headFileClient.TryFetchHeadAsync(fileId, cancellationToken);
-        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(trackId, fileId, cancellationToken);
+        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, cancellationToken);
         var cdnTask = _spClient.ResolveAudioStorageAsync(fileId, cancellationToken);
 
         // 5. Wait ONLY for head file - this enables instant start!
@@ -252,25 +258,69 @@ public sealed class SpotifyTrackSource : ITrackSource
         };
     }
 
-    private AudioFile? SelectAudioFile(Track track, AudioQuality quality)
+    private async Task<(AudioFile? File, Track? UsedTrack)> SelectAudioFileAsync(
+        Track track,
+        AudioQuality quality,
+        CancellationToken ct)
     {
         // Try main track first
         var file = SelectAudioFileFromTrack(track, quality);
         if (file != null)
-            return file;
+            return (file, track);
 
-        // If no files in main track, check alternatives
+        // If no files in main track, check alternatives by fetching their full metadata
+        _logger?.LogDebug("Main track has no audio files, checking {AltCount} alternatives", track.Alternative.Count);
+
         foreach (var alt in track.Alternative)
         {
-            file = SelectAudioFileFromTrack(alt, quality);
-            if (file != null)
+            if (alt.Gid == null || alt.Gid.Length == 0)
+                continue;
+
+            var altGid = Convert.ToHexString(alt.Gid.ToByteArray()).ToLowerInvariant();
+            _logger?.LogDebug("Trying alternative track: {AltGid}", altGid);
+
+            try
             {
-                _logger?.LogDebug("Using alternative track for audio files");
-                return file;
+                // Fetch full metadata for alternative track via API
+                Track? altTrack = null;
+
+                // Try extended-metadata API first (includes audio files)
+                if (_extendedMetadataClient != null)
+                {
+                    var altUri = $"spotify:track:{SpotifyId.FromRaw(alt.Gid.Span, SpotifyIdType.Track).ToBase62()}";
+                    altTrack = await _extendedMetadataClient.GetTrackAudioFilesAsync(altUri, ct);
+                }
+
+                // Fallback to basic metadata API if extended didn't work or had no files
+                if (altTrack == null || altTrack.File.Count == 0)
+                {
+                    _logger?.LogDebug("Fetching alternative via basic metadata API");
+                    var metadataBytes = await _spClient.GetTrackMetadataAsync(altGid, ct);
+                    altTrack = Track.Parser.ParseFrom(metadataBytes);
+                }
+
+                if (altTrack != null && altTrack.File.Count > 0)
+                {
+                    _logger?.LogDebug("Alternative track has {FileCount} audio files", altTrack.File.Count);
+                    file = SelectAudioFileFromTrack(altTrack, quality);
+                    if (file != null)
+                    {
+                        _logger?.LogInformation("Using alternative track {AltGid} for audio files", altGid);
+                        return (file, altTrack);
+                    }
+                }
+                else
+                {
+                    _logger?.LogDebug("Alternative track {AltGid} also has no audio files", altGid);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Failed to fetch alternative track {AltGid}", altGid);
             }
         }
 
-        return null;
+        return (null, null);
     }
 
     private AudioFile? SelectAudioFileFromTrack(Track track, AudioQuality quality)
@@ -419,6 +469,20 @@ public sealed class SpotifyTrackSource : ITrackSource
 
     private static TrackMetadata BuildMetadata(string uri, Track track, NormalizationData normalization)
     {
+        // Build album URI from GID
+        string? albumUri = null;
+        if (track.Album?.Gid != null && track.Album.Gid.Length > 0)
+        {
+            albumUri = $"spotify:album:{SpotifyId.FromRaw(track.Album.Gid.Span, SpotifyIdType.Album).ToBase62()}";
+        }
+
+        // Build artist URI from first artist GID
+        string? artistUri = null;
+        if (track.Artist.Count > 0 && track.Artist[0].Gid != null && track.Artist[0].Gid.Length > 0)
+        {
+            artistUri = $"spotify:artist:{SpotifyId.FromRaw(track.Artist[0].Gid.Span, SpotifyIdType.Artist).ToBase62()}";
+        }
+
         return new TrackMetadata
         {
             Uri = uri,
@@ -430,28 +494,34 @@ public sealed class SpotifyTrackSource : ITrackSource
             TrackNumber = track.Number,
             DiscNumber = track.DiscNumber,
             Year = track.Album?.Date?.Year,
-            ImageUrl = GetAlbumImageUrl(track.Album),
+            // Image URLs in spotify:image: format for Connect state
+            ImageUrl = GetAlbumImageUrl(track.Album, Image.Types.Size.Default),
+            ImageSmallUrl = GetAlbumImageUrl(track.Album, Image.Types.Size.Small),
+            ImageLargeUrl = GetAlbumImageUrl(track.Album, Image.Types.Size.Large),
+            ImageXLargeUrl = GetAlbumImageUrl(track.Album, Image.Types.Size.Xlarge),
+            AlbumUri = albumUri,
+            ArtistUri = artistUri,
             ReplayGainTrackGain = normalization.TrackGainDb,
             ReplayGainAlbumGain = normalization.AlbumGainDb,
             ReplayGainTrackPeak = normalization.TrackPeak
         };
     }
 
-    private static string? GetAlbumImageUrl(Album? album)
+    private static string? GetAlbumImageUrl(Album? album, Image.Types.Size preferredSize = Image.Types.Size.Default)
     {
         if (album?.CoverGroup?.Image.Count > 0)
         {
-            // Prefer medium size image
-            var image = album.CoverGroup.Image
-                .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
-                                        i.Size == Image.Types.Size.Large ? 1 : 0)
-                .FirstOrDefault();
+            // Try to find exact size match first
+            var image = album.CoverGroup.Image.FirstOrDefault(i => i.Size == preferredSize);
+
+            // Fallback: if exact size not found, try to find any image
+            image ??= album.CoverGroup.Image.FirstOrDefault();
 
             if (image != null)
             {
-                // Convert file ID to Spotify CDN image URL
+                // Use spotify:image: format for Connect state (not CDN URL)
                 var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
-                return $"https://i.scdn.co/image/{imageId}";
+                return $"spotify:image:{imageId}";
             }
         }
 

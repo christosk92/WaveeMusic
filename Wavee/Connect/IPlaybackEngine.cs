@@ -179,6 +179,26 @@ public sealed record LocalPlaybackState
     public string? TrackAlbum { get; init; }
 
     /// <summary>
+    /// Small album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageSmallUrl { get; init; }
+
+    /// <summary>
+    /// Medium album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageUrl { get; init; }
+
+    /// <summary>
+    /// Large album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageLargeUrl { get; init; }
+
+    /// <summary>
+    /// Extra-large album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageXLargeUrl { get; init; }
+
+    /// <summary>
     /// Context URI in Spotify URI format (e.g., "spotify:playlist:xxx").
     /// </summary>
     public string? ContextUri { get; init; }

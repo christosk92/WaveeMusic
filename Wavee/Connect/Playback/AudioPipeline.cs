@@ -66,6 +66,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private string? _currentTrackTitle;
     private string? _currentTrackArtist;
     private string? _currentTrackAlbum;
+    private string? _currentAlbumUri;
+    private string? _currentArtistUri;
+    private string? _currentImageSmallUrl;
+    private string? _currentImageUrl;
+    private string? _currentImageLargeUrl;
+    private string? _currentImageXLargeUrl;
     private long _currentPositionMs;
     private long _currentDurationMs;
     private bool _isPlaying;
@@ -845,6 +851,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _currentDurationMs = trackStream.Metadata.DurationMs ?? 0;
             _currentCanSeek = trackStream.CanSeek;
 
+            // Store image URLs and URIs for Connect state
+            _currentAlbumUri = trackStream.Metadata.AlbumUri;
+            _currentArtistUri = trackStream.Metadata.ArtistUri;
+            _currentImageSmallUrl = trackStream.Metadata.ImageSmallUrl;
+            _currentImageUrl = trackStream.Metadata.ImageUrl;
+            _currentImageLargeUrl = trackStream.Metadata.ImageLargeUrl;
+            _currentImageXLargeUrl = trackStream.Metadata.ImageXLargeUrl;
+
             // Find appropriate decoder using registry
             // For non-seekable streams (HTTP radio), this returns a wrapped stream with buffered header
             var decoder = _decoderRegistry.FindDecoder(trackStream.AudioStream, out var decodingStream);
@@ -1065,12 +1079,18 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             {
                 TrackUri = _currentTrackUri,
                 TrackUid = _currentTrackUid,
-                AlbumUri = currentTrack?.AlbumUri,
-                ArtistUri = currentTrack?.ArtistUri,
+                // Use stored URIs from loaded track metadata (fallback to queue)
+                AlbumUri = _currentAlbumUri ?? currentTrack?.AlbumUri,
+                ArtistUri = _currentArtistUri ?? currentTrack?.ArtistUri,
                 // Use stored metadata from loaded track (not queue which may not have it)
                 TrackTitle = _currentTrackTitle,
                 TrackArtist = _currentTrackArtist,
                 TrackAlbum = _currentTrackAlbum,
+                // Image URLs from loaded track metadata
+                ImageSmallUrl = _currentImageSmallUrl,
+                ImageUrl = _currentImageUrl,
+                ImageLargeUrl = _currentImageLargeUrl,
+                ImageXLargeUrl = _currentImageXLargeUrl,
                 ContextUri = _currentContextUri,
                 ContextUrl = contextUrl,
                 PositionMs = _currentPositionMs,

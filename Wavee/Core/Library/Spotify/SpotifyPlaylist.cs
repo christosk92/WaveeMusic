@@ -71,6 +71,12 @@ public sealed record SpotifyPlaylist
     public string? FolderPath { get; init; }
 
     /// <summary>
+    /// Whether this playlist was synced from user's rootlist (explicitly saved/followed).
+    /// False means it came from another source (context resolution, etc.).
+    /// </summary>
+    public bool IsFromRootlist { get; init; } = true;
+
+    /// <summary>
     /// Creates a SpotifyPlaylist with current sync timestamp.
     /// </summary>
     public static SpotifyPlaylist Create(
@@ -85,7 +91,8 @@ public sealed record SpotifyPlaylist
         bool isCollaborative = false,
         bool isOwned = false,
         string? revision = null,
-        string? folderPath = null)
+        string? folderPath = null,
+        bool isFromRootlist = true)
     {
         return new SpotifyPlaylist
         {
@@ -101,7 +108,8 @@ public sealed record SpotifyPlaylist
             IsOwned = isOwned,
             SyncedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Revision = revision,
-            FolderPath = folderPath
+            FolderPath = folderPath,
+            IsFromRootlist = isFromRootlist
         };
     }
 }

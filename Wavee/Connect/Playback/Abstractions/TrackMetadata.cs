@@ -56,9 +56,34 @@ public sealed record TrackMetadata
     public string? Genre { get; init; }
 
     /// <summary>
-    /// Album art image URL or file path.
+    /// Album art image URL or file path (medium/default size).
     /// </summary>
     public string? ImageUrl { get; init; }
+
+    /// <summary>
+    /// Small album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageSmallUrl { get; init; }
+
+    /// <summary>
+    /// Large album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageLargeUrl { get; init; }
+
+    /// <summary>
+    /// Extra-large album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageXLargeUrl { get; init; }
+
+    /// <summary>
+    /// Album URI (e.g., "spotify:album:xxx").
+    /// </summary>
+    public string? AlbumUri { get; init; }
+
+    /// <summary>
+    /// Primary artist URI (e.g., "spotify:artist:xxx").
+    /// </summary>
+    public string? ArtistUri { get; init; }
 
     /// <summary>
     /// ReplayGain track gain in dB (for normalization).

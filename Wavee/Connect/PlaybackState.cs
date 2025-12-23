@@ -164,9 +164,24 @@ public sealed record TrackInfo
     public string? ArtistUri { get; init; }
 
     /// <summary>
-    /// Album art image URL.
+    /// Medium album art image URL (format: "spotify:image:{id}").
     /// </summary>
     public string? ImageUrl { get; init; }
+
+    /// <summary>
+    /// Small album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageSmallUrl { get; init; }
+
+    /// <summary>
+    /// Large album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageLargeUrl { get; init; }
+
+    /// <summary>
+    /// Extra-large album art image URL (format: "spotify:image:{id}").
+    /// </summary>
+    public string? ImageXLargeUrl { get; init; }
 
     /// <summary>
     /// Full metadata dictionary from protobuf.

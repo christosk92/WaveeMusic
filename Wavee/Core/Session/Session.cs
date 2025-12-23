@@ -387,6 +387,19 @@ public sealed class Session : ISession, IAsyncDisposable
     public string SpClientUrl => _spClientEndpoint ?? "spclient.wg.spotify.com:443";
 
     /// <summary>
+    /// Gets the Pathfinder client for GraphQL API requests (search, browse, etc).
+    /// </summary>
+    /// <remarks>
+    /// Pathfinder uses the api-partner.spotify.com endpoint for GraphQL queries.
+    /// Access tokens are obtained automatically via login5.
+    /// </remarks>
+    /// <returns>PathfinderClient instance.</returns>
+    public PathfinderClient Pathfinder => new PathfinderClient(
+        this,
+        _httpClient,
+        logger: _logger);
+
+    /// <summary>
     /// Gets the Spotify Connect dealer client for real-time communication.
     /// </summary>
     /// <remarks>

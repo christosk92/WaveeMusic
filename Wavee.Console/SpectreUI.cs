@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Text;
 using Spectre.Console;
 using Spectre.Console.Rendering;
@@ -13,6 +14,20 @@ internal sealed class SpectreUI : IDisposable
     private const int MaxLogEntries = 15;
     private const int RefreshIntervalMs = 100;
 
+    // Windows Virtual Terminal constants
+    private const int STD_OUTPUT_HANDLE = -11;
+    private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
+    private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
     private readonly object _lock = new();
     private readonly ConcurrentQueue<LogEntry> _logEntries = new();
     private readonly StringBuilder _inputBuffer = new();
@@ -23,6 +38,7 @@ internal sealed class SpectreUI : IDisposable
     private string? _trackAlbum;
     private long _positionMs;
     private long _durationMs;
+    private long _positionTimestamp; // When position was last updated
     private bool _isPlaying;
     private bool _isPaused;
 
@@ -35,6 +51,15 @@ internal sealed class SpectreUI : IDisposable
     private bool _shuffleEnabled;
     private bool _repeatContext;
     private bool _repeatTrack;
+
+    // Context state (for "View Playlist" feature)
+    private string? _contextUri;
+    private string? _currentTrackUid;
+
+    // Lyrics state
+    private Core.Http.Lyrics.LyricsData? _lyrics;
+    private string? _lyricsTrackUri;
+    private int _cachedLyricIndex = -1;
 
     private bool _disposed;
     private volatile bool _renderingPaused;
@@ -90,6 +115,7 @@ internal sealed class SpectreUI : IDisposable
             if (artist != null) _trackArtist = artist;
             if (album != null) _trackAlbum = album;
             _positionMs = positionMs;
+            _positionTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _durationMs = durationMs;
             _isPlaying = isPlaying;
             _isPaused = isPaused;
@@ -104,6 +130,7 @@ internal sealed class SpectreUI : IDisposable
         lock (_lock)
         {
             _positionMs = positionMs;
+            _positionTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         }
     }
 
@@ -149,6 +176,92 @@ internal sealed class SpectreUI : IDisposable
     }
 
     /// <summary>
+    /// Updates the current context URI and track UID for "View Playlist" functionality.
+    /// </summary>
+    public void UpdateContext(string? contextUri, string? trackUid)
+    {
+        lock (_lock)
+        {
+            _contextUri = contextUri;
+            _currentTrackUid = trackUid;
+        }
+    }
+
+    /// <summary>
+    /// Gets the current context URI (playlist/album being played).
+    /// </summary>
+    public string? CurrentContextUri
+    {
+        get { lock (_lock) { return _contextUri; } }
+    }
+
+    /// <summary>
+    /// Gets the current track UID.
+    /// </summary>
+    public string? CurrentTrackUid
+    {
+        get { lock (_lock) { return _currentTrackUid; } }
+    }
+
+    /// <summary>
+    /// Updates the lyrics for the current track.
+    /// </summary>
+    /// <param name="lyrics">Lyrics data (null to clear).</param>
+    /// <param name="trackUri">Track URI these lyrics belong to.</param>
+    public void UpdateLyrics(Core.Http.Lyrics.LyricsData? lyrics, string? trackUri)
+    {
+        lock (_lock)
+        {
+            // Reset cache when track changes
+            if (_lyricsTrackUri != trackUri)
+            {
+                _cachedLyricIndex = -1;
+            }
+            _lyrics = lyrics;
+            _lyricsTrackUri = trackUri;
+        }
+    }
+
+    /// <summary>
+    /// Gets the index of the current lyric line based on playback position.
+    /// Uses caching to avoid O(n) search every frame.
+    /// </summary>
+    private int GetCurrentLyricIndex(long positionMs)
+    {
+        if (_lyrics?.Lines == null || _lyrics.Lines.Count == 0)
+            return -1;
+
+        var lines = _lyrics.Lines;
+
+        // Check if we're still on the same cached line (fast path)
+        if (_cachedLyricIndex >= 0 && _cachedLyricIndex < lines.Count)
+        {
+            var currentLine = lines[_cachedLyricIndex];
+            var nextLineStart = _cachedLyricIndex < lines.Count - 1
+                ? lines[_cachedLyricIndex + 1].StartTimeMilliseconds
+                : long.MaxValue;
+
+            if (positionMs >= currentLine.StartTimeMilliseconds && positionMs < nextLineStart)
+            {
+                return _cachedLyricIndex; // Still on same line, skip search
+            }
+        }
+
+        // Full search when cache miss
+        int newIndex = -1;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].StartTimeMilliseconds <= positionMs)
+                newIndex = i;
+            else
+                break;
+        }
+
+        _cachedLyricIndex = newIndex;
+        return newIndex;
+    }
+
+    /// <summary>
     /// Adds a log entry to the log panel.
     /// </summary>
     public void AddLog(string level, string message)
@@ -169,8 +282,8 @@ internal sealed class SpectreUI : IDisposable
     public void PauseLiveRendering()
     {
         _renderingPaused = true;
-        AnsiConsole.Clear();
-        AnsiConsole.Cursor.Show();
+        System.Console.Clear();
+        System.Console.CursorVisible = true;
     }
 
     /// <summary>
@@ -179,8 +292,34 @@ internal sealed class SpectreUI : IDisposable
     public void ResumeLiveRendering()
     {
         _renderingPaused = false;
-        AnsiConsole.Clear();
-        AnsiConsole.Cursor.Hide();
+        System.Console.Clear();
+        System.Console.CursorVisible = false;
+    }
+
+    /// <summary>
+    /// Enables Windows Virtual Terminal Processing for ANSI escape sequences.
+    /// </summary>
+    private static void EnableVirtualTerminalProcessing()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return;
+
+        try
+        {
+            var handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            if (handle == IntPtr.Zero || handle == new IntPtr(-1))
+                return;
+
+            if (GetConsoleMode(handle, out var mode))
+            {
+                mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+                SetConsoleMode(handle, mode);
+            }
+        }
+        catch
+        {
+            // Ignore errors - VT might already be enabled or unsupported
+        }
     }
 
     /// <summary>
@@ -191,9 +330,12 @@ internal sealed class SpectreUI : IDisposable
         _renderCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var ct = _renderCts.Token;
 
-        // Clear screen and hide cursor
-        AnsiConsole.Clear();
-        AnsiConsole.Cursor.Hide();
+        // Enable VT processing for proper ANSI escape sequence handling
+        EnableVirtualTerminalProcessing();
+
+        // Initial clear and hide cursor
+        System.Console.Clear();
+        System.Console.CursorVisible = false;
 
         try
         {
@@ -202,14 +344,10 @@ internal sealed class SpectreUI : IDisposable
                 // Skip rendering when paused (for interactive prompts)
                 if (!_renderingPaused)
                 {
-                    // Render the full layout
                     RenderLayout();
-
-                    // Handle keyboard input (non-blocking)
                     await HandleInputAsync(ct);
                 }
 
-                // Small delay for refresh rate
                 await Task.Delay(RefreshIntervalMs, ct);
             }
         }
@@ -219,27 +357,44 @@ internal sealed class SpectreUI : IDisposable
         }
         finally
         {
-            AnsiConsole.Cursor.Show();
-            AnsiConsole.Clear();
+            System.Console.CursorVisible = true;
         }
     }
 
     private void RenderLayout()
     {
-        // Move cursor to top-left
-        AnsiConsole.Cursor.SetPosition(0, 0);
-
         var terminalHeight = System.Console.WindowHeight;
         var terminalWidth = System.Console.WindowWidth;
 
         // Build the layout
-        var layout = BuildLayout(terminalWidth, terminalHeight - 1); // -1 for input line
+        var layout = BuildLayout(terminalWidth, terminalHeight - 1);
 
-        // Render to console (overwrite existing content)
-        AnsiConsole.Write(layout);
+        // Render Spectre output to a string buffer
+        using var stringWriter = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.Yes,
+            ColorSystem = ColorSystemSupport.TrueColor,
+            Out = new AnsiConsoleOutput(stringWriter)
+        });
+        console.Write(layout);
+        var output = stringWriter.ToString();
 
-        // Render input line at bottom
-        RenderInputLine(terminalHeight - 1);
+        // Build complete frame with ANSI sequences:
+        // \u001b[H = cursor home (row 1, col 1)
+        // \u001b[J = clear from cursor to end of screen
+        var sb = new StringBuilder();
+        sb.Append("\u001b[H");    // Cursor home
+        sb.Append("\u001b[J");    // Clear to end of screen
+        sb.Append(output);
+
+        // Input line at bottom (use ANSI to position cursor)
+        var input = _inputBuffer.ToString();
+        sb.Append($"\u001b[{terminalHeight};1H"); // Move cursor to last row
+        sb.Append($"> {input}".PadRight(terminalWidth - 1));
+
+        // Write entire frame as one atomic operation
+        System.Console.Write(sb.ToString());
     }
 
     private IRenderable BuildLayout(int width, int height)
@@ -269,9 +424,11 @@ internal sealed class SpectreUI : IDisposable
     private Panel BuildNowPlayingPanel()
     {
         string title, artist, album;
-        long pos, dur;
+        long pos, dur, posTimestamp;
         bool playing, paused;
         int vol;
+        string? contextUri;
+        Core.Http.Lyrics.LyricsData? lyrics;
 
         lock (_lock)
         {
@@ -279,13 +436,24 @@ internal sealed class SpectreUI : IDisposable
             artist = _trackArtist ?? "";
             album = _trackAlbum ?? "";
             pos = _positionMs;
+            posTimestamp = _positionTimestamp;
             dur = _durationMs;
             playing = _isPlaying;
             paused = _isPaused;
             vol = _volumePercent;
+            contextUri = _contextUri;
+            lyrics = _lyrics;
         }
 
-        var content = new List<IRenderable>();
+        // Interpolate position if playing (position advances with time)
+        if (playing && !paused && posTimestamp > 0)
+        {
+            var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - posTimestamp;
+            pos = Math.Min(pos + elapsed, dur);
+        }
+
+        // Left side: Track info
+        var leftContent = new List<IRenderable>();
 
         if (!string.IsNullOrEmpty(title))
         {
@@ -293,46 +461,103 @@ internal sealed class SpectreUI : IDisposable
             var statusIcon = paused ? "[yellow]II[/]" : (playing ? "[green]>[/]" : "[dim].[/]");
 
             // Track title - prominent
-            content.Add(new Markup($"  {statusIcon}  [bold white]{EscapeMarkup(title)}[/]"));
+            leftContent.Add(new Markup($"{statusIcon}  [bold white]{EscapeMarkup(title)}[/]"));
 
             // Artist - slightly dimmer
             if (!string.IsNullOrEmpty(artist))
             {
-                content.Add(new Markup($"      [cyan]{EscapeMarkup(artist)}[/]"));
+                leftContent.Add(new Markup($"   [cyan]{EscapeMarkup(artist)}[/]"));
             }
 
             // Album - dim
             if (!string.IsNullOrEmpty(album))
             {
-                content.Add(new Markup($"      [dim]{EscapeMarkup(album)}[/]"));
+                leftContent.Add(new Markup($"   [dim]{EscapeMarkup(album)}[/]"));
             }
 
-            content.Add(new Text("")); // Spacer
+            leftContent.Add(new Text("")); // Spacer
 
-            // Progress bar - full width, beautiful
+            // Progress bar
             var progress = dur > 0 ? (double)pos / dur : 0;
             var posStr = FormatTime(pos);
             var durStr = FormatTime(dur);
-            var progressBar = RenderSeekBar(progress, 50);
-            content.Add(new Markup($"      [dim]{posStr}[/]  {progressBar}  [dim]{durStr}[/]"));
+            var progressBar = RenderSeekBar(progress, 40);
+            leftContent.Add(new Markup($"   [dim]{posStr}[/]  {progressBar}  [dim]{durStr}[/]"));
 
             // Volume bar - compact
-            var volBar = RenderVolumeBar(vol, 20);
+            var volBar = RenderVolumeBar(vol, 15);
             var volIcon = vol == 0 ? "[dim]x[/]" : (vol < 30 ? "[dim])[/]" : (vol < 70 ? "[blue])[/]" : "[green]))[/]"));
-            content.Add(new Markup($"      {volIcon} {volBar} [dim]{vol}%[/]"));
+            leftContent.Add(new Markup($"   {volIcon} {volBar} [dim]{vol}%[/]"));
+
+            // Context hint (View Playlist)
+            if (!string.IsNullOrEmpty(contextUri))
+            {
+                var contextType = GetContextType(contextUri);
+                leftContent.Add(new Markup($"   [dim]Press[/] [cyan]V[/] [dim]to view {contextType}[/]"));
+            }
         }
         else
         {
             // No track playing - show placeholder
-            content.Add(new Text(""));
-            content.Add(new Markup("      [dim]No track playing[/]"));
-            content.Add(new Text(""));
-            content.Add(new Markup($"      [dim]0:00[/]  {RenderSeekBar(0, 50)}  [dim]0:00[/]"));
-            var volBar = RenderVolumeBar(vol, 20);
-            content.Add(new Markup($"      [dim])[/] {volBar} [dim]{vol}%[/]"));
+            leftContent.Add(new Text(""));
+            leftContent.Add(new Markup("   [dim]No track playing[/]"));
+            leftContent.Add(new Text(""));
+            leftContent.Add(new Markup($"   [dim]0:00[/]  {RenderSeekBar(0, 40)}  [dim]0:00[/]"));
+            var volBar = RenderVolumeBar(vol, 15);
+            leftContent.Add(new Markup($"   [dim])[/] {volBar} [dim]{vol}%[/]"));
         }
 
-        return new Panel(new Rows(content))
+        // Right side: Lyrics
+        var rightContent = new List<IRenderable>();
+
+        if (lyrics != null && lyrics.Lines.Count > 0)
+        {
+            rightContent.Add(new Markup("[grey]─ Lyrics ─[/]"));
+
+            var currentIndex = GetCurrentLyricIndex(pos);
+
+            // Show 2 lines before, current, and 4 lines after (7 total)
+            var startIndex = Math.Max(0, currentIndex - 2);
+            var endIndex = Math.Min(lyrics.Lines.Count - 1, Math.Max(0, currentIndex) + 4);
+
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                var line = lyrics.Lines[i];
+                var words = string.IsNullOrWhiteSpace(line.Words) ? "♪" : EscapeMarkup(line.Words);
+
+                if (i < currentIndex)
+                {
+                    // Past lines - dimmed
+                    rightContent.Add(new Markup($"[grey]{words}[/]"));
+                }
+                else if (i == currentIndex)
+                {
+                    // Current line - highlighted and bold
+                    rightContent.Add(new Markup($"[bold green]{words}[/]"));
+                }
+                else
+                {
+                    // Upcoming lines - visible but not highlighted
+                    rightContent.Add(new Markup($"[white]{words}[/]"));
+                }
+            }
+        }
+        else
+        {
+            rightContent.Add(new Markup("[dim]No lyrics[/]"));
+        }
+
+        // Create side-by-side layout using Grid
+        var grid = new Grid();
+        grid.AddColumn(new GridColumn().Width(60)); // Track info column
+        grid.AddColumn(new GridColumn().PadLeft(2)); // Lyrics column (flexible)
+
+        var leftPanel = new Rows(leftContent);
+        var rightPanel = new Rows(rightContent);
+
+        grid.AddRow(leftPanel, rightPanel);
+
+        return new Panel(grid)
             .Header("[bold green] NOW PLAYING [/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Green)
@@ -454,22 +679,35 @@ internal sealed class SpectreUI : IDisposable
             .Expand();
     }
 
-    private void RenderInputLine(int row)
-    {
-        System.Console.SetCursorPosition(0, row);
-        var input = _inputBuffer.ToString();
-        var prompt = $"> {input}";
-
-        // Clear line and write prompt
-        System.Console.Write(prompt.PadRight(System.Console.WindowWidth - 1));
-        System.Console.SetCursorPosition(prompt.Length, row);
-    }
-
     private async Task HandleInputAsync(CancellationToken ct)
     {
         while (System.Console.KeyAvailable && !ct.IsCancellationRequested)
         {
             var key = System.Console.ReadKey(intercept: true);
+
+            // Handle 'V' key for "View Playlist" when input buffer is empty
+            if ((key.Key == ConsoleKey.V || key.KeyChar == 'v') && _inputBuffer.Length == 0)
+            {
+                string? contextUri;
+                lock (_lock)
+                {
+                    contextUri = _contextUri;
+                }
+
+                if (!string.IsNullOrEmpty(contextUri) && _commandHandler != null)
+                {
+                    try
+                    {
+                        await _commandHandler("view-context", ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLog("ERR", $"View context failed: {ex.Message}");
+                    }
+                }
+                continue;
+            }
+
             if (key.Key == ConsoleKey.Enter)
             {
                 var command = _inputBuffer.ToString().Trim();
@@ -529,6 +767,15 @@ internal sealed class SpectreUI : IDisposable
         return text
             .Replace("[", "[[")
             .Replace("]", "]]");
+    }
+
+    private static string GetContextType(string contextUri)
+    {
+        if (contextUri.Contains(":playlist:")) return "playlist";
+        if (contextUri.Contains(":album:")) return "album";
+        if (contextUri.Contains(":artist:")) return "artist";
+        if (contextUri.Contains(":show:")) return "show";
+        return "context";
     }
 
     public void Dispose()

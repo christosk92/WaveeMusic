@@ -189,6 +189,10 @@ public static class PlaybackStateHelpers
                 Title = localState.TrackTitle,
                 Artist = localState.TrackArtist,
                 Album = localState.TrackAlbum,
+                ImageSmallUrl = localState.ImageSmallUrl,
+                ImageUrl = localState.ImageUrl,
+                ImageLargeUrl = localState.ImageLargeUrl,
+                ImageXLargeUrl = localState.ImageXLargeUrl,
                 Metadata = new Dictionary<string, string>
                 {
                     ["title"] = localState.TrackTitle ?? "",
@@ -319,11 +323,53 @@ public static class PlaybackStateHelpers
                 ArtistUri = state.Track.ArtistUri ?? string.Empty
             };
 
-            // Add metadata if available
+            // Add base metadata from state.Track.Metadata
             foreach (var (key, value) in state.Track.Metadata)
             {
                 playerState.Track.Metadata[key] = value;
             }
+
+            // Enrich with all expected metadata fields for Spotify Connect display
+            var meta = playerState.Track.Metadata;
+
+            // Basic track info (ensure populated even if already in Metadata)
+            if (!string.IsNullOrEmpty(state.Track.Title))
+                meta["title"] = state.Track.Title;
+            if (!string.IsNullOrEmpty(state.Track.Artist))
+                meta["artist_name"] = state.Track.Artist;
+            if (!string.IsNullOrEmpty(state.Track.Album))
+                meta["album_title"] = state.Track.Album;
+
+            // URIs for rich display
+            if (!string.IsNullOrEmpty(state.Track.AlbumUri))
+                meta["album_uri"] = state.Track.AlbumUri;
+            if (!string.IsNullOrEmpty(state.Track.ArtistUri))
+                meta["artist_uri"] = state.Track.ArtistUri;
+            if (!string.IsNullOrEmpty(state.ContextUri))
+            {
+                meta["context_uri"] = state.ContextUri;
+                meta["entity_uri"] = state.ContextUri;
+            }
+
+            // Image URLs in spotify:image: format
+            if (!string.IsNullOrEmpty(state.Track.ImageSmallUrl))
+                meta["image_small_url"] = state.Track.ImageSmallUrl;
+            if (!string.IsNullOrEmpty(state.Track.ImageUrl))
+                meta["image_url"] = state.Track.ImageUrl;
+            if (!string.IsNullOrEmpty(state.Track.ImageLargeUrl))
+                meta["image_large_url"] = state.Track.ImageLargeUrl;
+            if (!string.IsNullOrEmpty(state.Track.ImageXLargeUrl))
+                meta["image_xlarge_url"] = state.Track.ImageXLargeUrl;
+
+            // Playback hints
+            meta["track_player"] = "audio";
+            meta["view_index"] = state.CurrentIndex.ToString();
+            meta["iteration"] = "0";
+            meta["media.start_position"] = state.PositionMs.ToString();
+
+            // Skip actions
+            meta["actions.skipping_next_past_track"] = "resume";
+            meta["actions.skipping_prev_past_track"] = "resume";
         }
 
         // Add previous tracks (up to 16)
@@ -368,14 +414,20 @@ public static class PlaybackStateHelpers
         metadata.TryGetValue("title", out var title);
         metadata.TryGetValue("artist_name", out var artist);
         metadata.TryGetValue("album_title", out var album);
-        metadata.TryGetValue("image_url", out var imageUrl);
 
         // Try alternative metadata keys
         title ??= metadata.GetValueOrDefault("track_name");
         artist ??= metadata.GetValueOrDefault("artist");
         album ??= metadata.GetValueOrDefault("album");
-        imageUrl ??= metadata.GetValueOrDefault("image_xlarge_url");
-        imageUrl ??= metadata.GetValueOrDefault("image_large_url");
+
+        // Extract all image size variants
+        metadata.TryGetValue("image_url", out var imageUrl);
+        metadata.TryGetValue("image_small_url", out var imageSmallUrl);
+        metadata.TryGetValue("image_large_url", out var imageLargeUrl);
+        metadata.TryGetValue("image_xlarge_url", out var imageXLargeUrl);
+
+        // Fallback for default image
+        imageUrl ??= imageXLargeUrl ?? imageLargeUrl ?? imageSmallUrl;
 
         return new TrackInfo
         {
@@ -387,6 +439,9 @@ public static class PlaybackStateHelpers
             AlbumUri = providedTrack.AlbumUri,
             ArtistUri = providedTrack.ArtistUri,
             ImageUrl = imageUrl,
+            ImageSmallUrl = imageSmallUrl,
+            ImageLargeUrl = imageLargeUrl,
+            ImageXLargeUrl = imageXLargeUrl,
             Metadata = metadata
         };
     }
@@ -507,6 +562,12 @@ public static class PlaybackStateHelpers
     private static Restrictions BuildRestrictions(PlaybackState state)
     {
         var restrictions = new Restrictions();
+
+        // Disallow resuming when playing (not paused)
+        if (state.Status == PlaybackStatus.Playing)
+        {
+            restrictions.DisallowResumingReasons.Add("not_paused");
+        }
 
         // Disable seeking for infinite streams (radio, live streams)
         if (!state.CanSeek)

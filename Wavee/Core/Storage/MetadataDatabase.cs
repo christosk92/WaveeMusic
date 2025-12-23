@@ -21,7 +21,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
     private bool _disposed;
 
     // Schema version for migrations - bump to force fresh start
-    private const int CurrentSchemaVersion = 3;
+    // v4: Added is_from_rootlist column to spotify_playlists
+    private const int CurrentSchemaVersion = 4;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -345,7 +346,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         is_owned            INTEGER NOT NULL DEFAULT 0,
                         synced_at           INTEGER NOT NULL,
                         revision            TEXT,
-                        folder_path         TEXT
+                        folder_path         TEXT,
+                        is_from_rootlist    INTEGER NOT NULL DEFAULT 1
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -1346,8 +1348,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO spotify_playlists (id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path)
-                VALUES ($id, $name, $owner_id, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path)
+                INSERT INTO spotify_playlists (id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist)
+                VALUES ($id, $name, $owner_id, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path, $is_from_rootlist)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     owner_id = excluded.owner_id,
@@ -1359,7 +1361,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     is_owned = excluded.is_owned,
                     synced_at = excluded.synced_at,
                     revision = excluded.revision,
-                    folder_path = excluded.folder_path;
+                    folder_path = excluded.folder_path,
+                    is_from_rootlist = excluded.is_from_rootlist;
                 """;
 
             cmd.Parameters.AddWithValue("$id", playlist.Uri);
@@ -1374,6 +1377,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$synced_at", playlist.SyncedAt);
             cmd.Parameters.AddWithValue("$revision", (object?)playlist.Revision ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$folder_path", (object?)playlist.FolderPath ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$is_from_rootlist", playlist.IsFromRootlist ? 1 : 0);
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
@@ -1398,7 +1402,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path
+            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist
             FROM spotify_playlists
             WHERE id = $id;
             """;
@@ -1425,7 +1429,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path
+            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist
             FROM spotify_playlists
             ORDER BY folder_path, name COLLATE NOCASE;
             """;
@@ -1504,7 +1508,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
             IsOwned = reader.GetInt32(8) == 1,
             SyncedAt = reader.GetInt64(9),
             Revision = reader.IsDBNull(10) ? null : reader.GetString(10),
-            FolderPath = reader.IsDBNull(11) ? null : reader.GetString(11)
+            FolderPath = reader.IsDBNull(11) ? null : reader.GetString(11),
+            IsFromRootlist = reader.IsDBNull(12) || reader.GetInt32(12) == 1
         };
     }
 
