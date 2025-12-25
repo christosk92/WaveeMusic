@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.TabBar.TabBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.TabBar"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    HorizontalAlignment="Stretch"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///Styles/TabBarStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <TabView
+        x:Name="TabViewControl"
+        HorizontalAlignment="Stretch"
+        AddTabButtonClick="TabView_AddTabButtonClick"
+        IsAddTabButtonVisible="True"
+        CanDragTabs="True"
+        CanReorderTabs="True"
+        TabCloseRequested="TabView_TabCloseRequested"
+        SelectionChanged="TabView_SelectionChanged"
+        TabItemsSource="{x:Bind TabInstances, Mode=OneWay}">
+
+        <TabView.TabItemTemplate>
+            <DataTemplate x:DataType="local:TabBarItem">
+                <TabViewItem
+                    IconSource="{x:Bind IconSource, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}"
+                    Style="{StaticResource TabBarItemStyle}"
+                    MaxWidth="{x:Bind CompactWidth, Mode=OneWay}"
+                    IsClosable="True">
+                    <TabViewItem.HeaderTemplate>
+                        <DataTemplate x:DataType="local:TabBarItem">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon
+                                    Glyph="&#xE718;"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Visibility="{x:Bind PinIndicatorVisibility, Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind DisplayHeader, Mode=OneWay}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </TabViewItem.HeaderTemplate>
+                    <TabViewItem.ContextFlyout>
+                        <MenuFlyout Opening="ContextMenu_Opening">
+                            <MenuFlyoutItem x:Name="PinMenuItem" Text="Pin" Click="PinTab_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE718;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="CompactMenuItem" Text="Compact" Click="CompactTab_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE921;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutItem Text="Close Tab" Click="CloseTab_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8BB;"/>
+                                </MenuFlyoutItem.Icon>
+                                <MenuFlyoutItem.KeyboardAccelerators>
+                                    <KeyboardAccelerator Modifiers="Control" Key="W"/>
+                                </MenuFlyoutItem.KeyboardAccelerators>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutItem Text="Close Tabs to the Left" Click="CloseTabsToLeft_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE76B;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Close Tabs to the Right" Click="CloseTabsToRight_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE76C;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutItem Text="Close Other Tabs" Click="CloseOtherTabs_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8BB;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </TabViewItem.ContextFlyout>
+                </TabViewItem>
+            </DataTemplate>
+        </TabView.TabItemTemplate>
+
+        <TabView.TabStripFooter>
+            <!-- This is the draggable area to the right of tabs -->
+            <Grid x:Name="DragRegion" Background="Transparent" MinWidth="100"/>
+        </TabView.TabStripFooter>
+    </TabView>
+</UserControl>
