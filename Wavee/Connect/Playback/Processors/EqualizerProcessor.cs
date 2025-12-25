@@ -67,6 +67,30 @@ public sealed class EqualizerProcessor : IAudioProcessor
         }
     }
 
+    /// <summary>
+    /// Creates a "radio" EQ preset optimized for that FM broadcast sound.
+    /// Features a high-pass to remove sub-bass rumble, bass warmth, presence boost, and air.
+    /// </summary>
+    public void CreateRadioPreset()
+    {
+        ClearBands();
+
+        // High-pass filter - remove sub-bass rumble (below 40Hz)
+        AddBand(new EqualizerBand(40, 0.0, 0.707, BandType.HighPass));
+
+        // Bass warmth - adds body without mud
+        AddBand(new EqualizerBand(120, 2.0, 1.0, BandType.Peaking));
+
+        // Mud cut - reduces boxy/muddy frequencies
+        AddBand(new EqualizerBand(300, -2.0, 1.5, BandType.Peaking));
+
+        // Presence peak - the "radio sparkle" that makes vocals pop
+        AddBand(new EqualizerBand(3000, 4.0, 1.2, BandType.Peaking));
+
+        // Air - adds brightness and openness
+        AddBand(new EqualizerBand(12000, 2.0, 0.7, BandType.HighShelf));
+    }
+
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
     {
         _format = format;

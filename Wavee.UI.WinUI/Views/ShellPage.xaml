@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.ShellPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:sidebar="using:Wavee.UI.WinUI.Controls.Sidebar"
+    xmlns:tabbar="using:Wavee.UI.WinUI.Controls.TabBar"
+    xmlns:navtoolbar="using:Wavee.UI.WinUI.Controls.NavigationToolbar"
+    xmlns:playerbar="using:Wavee.UI.WinUI.Controls.PlayerBar"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Row 0: TitleBar with TabBar (full width) -->
+        <Grid Grid.Row="0" x:Name="TitleBarGrid">
+            <tabbar:TabBar
+                x:Name="TabControl"
+                TabInstances="{x:Bind ViewModel.Tabs}"
+                SelectedIndex="{x:Bind ViewModel.SelectedTabIndex, Mode=TwoWay}"
+                TabCloseRequested="TabControl_TabCloseRequested"
+                AddTabRequested="TabControl_AddTabRequested"/>
+        </Grid>
+
+        <!-- Row 1: Navigation Toolbar (full width, below tabs) -->
+        <navtoolbar:NavigationToolbar
+            x:Name="NavToolbar"
+            Grid.Row="1"
+            CanGoBack="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
+            CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}"
+            IsOnHomePage="{x:Bind ViewModel.IsOnHomePage, Mode=OneWay}"
+            IsOnProfilePage="{x:Bind ViewModel.IsOnProfilePage, Mode=OneWay}"
+            BackRequested="NavToolbar_BackRequested"
+            ForwardRequested="NavToolbar_ForwardRequested"
+            HomeRequested="NavToolbar_HomeRequested"
+            SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"/>
+
+        <!-- Row 2: Main content area with sidebar -->
+        <sidebar:SidebarView
+            x:Name="SidebarControl"
+            Grid.Row="2"
+            DisplayMode="Expanded"
+            OpenPaneLength="{x:Bind ViewModel.SidebarWidth, Mode=TwoWay}"
+            MenuItemsSource="{x:Bind ViewModel.SidebarItems}"
+            SelectedItem="{x:Bind ViewModel.SelectedSidebarItem, Mode=TwoWay}"
+            ItemInvoked="SidebarControl_ItemInvoked">
+
+            <!-- Main Content (no toolbar, just page content) -->
+            <sidebar:SidebarView.InnerContent>
+                <ContentPresenter
+                    x:Name="TabContentPresenter"
+                    Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
+                    <ContentPresenter.ContentTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition/>
+                        </TransitionCollection>
+                    </ContentPresenter.ContentTransitions>
+                </ContentPresenter>
+            </sidebar:SidebarView.InnerContent>
+
+            <!-- Sidebar Footer (settings button) -->
+            <sidebar:SidebarView.Footer>
+                <Button
+                    x:Name="SettingsButton"
+                    Height="32"
+                    Margin="4,0,4,8"
+                    Padding="0"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Command="{x:Bind ViewModel.OpenSettingsCommand}">
+                    <Grid
+                        Margin="0,2"
+                        Padding="8,0,12,0"
+                        HorizontalAlignment="Stretch"
+                        Background="{ThemeResource SubtleFillColorTransparentBrush}"
+                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="1" Glyph="&#xE713;" FontSize="16" Margin="8,0,0,0"/>
+                        <TextBlock Grid.Column="2" Text="Settings" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </Grid>
+                </Button>
+            </sidebar:SidebarView.Footer>
+        </sidebar:SidebarView>
+
+        <!-- Row 3: Player bar -->
+        <playerbar:PlayerBar x:Name="PlayerBarControl" Grid.Row="3" />
+    </Grid>
+</Page>

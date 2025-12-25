@@ -8,5 +8,7 @@ public enum NavigationPageType
     Artist,
     Album,
     Playlist,
-    Settings
+    Settings,
+    CreatePlaylist,
+    Profile
 }

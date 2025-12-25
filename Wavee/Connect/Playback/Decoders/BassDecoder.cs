@@ -23,6 +23,11 @@ public sealed class BassDecoder : IAudioDecoder
     private const int SamplesPerBuffer = 4096;
 
     /// <summary>
+    /// Maximum retries for reconnecting live streams.
+    /// </summary>
+    private const int MaxRetries = 3;
+
+    /// <summary>
     /// Default sample rate for streaming sources when format detection isn't possible.
     /// </summary>
     private const int DefaultStreamingSampleRate = 44100;
@@ -122,6 +127,7 @@ public sealed class BassDecoder : IAudioDecoder
         int handle;
         byte[]? memoryData = null;
         int syncHandle = 0;
+        string? streamUrl = null; // Track URL for potential reconnection
 
         // Debug: log stream type
         _logger?.LogDebug("DecodeAsync received stream type: {Type}", stream.GetType().FullName);
@@ -133,8 +139,9 @@ public sealed class BassDecoder : IAudioDecoder
             (urlStream.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
              urlStream.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
         {
-            _logger?.LogDebug("Using BASS native URL streaming for: {Url}", urlStream.Url);
-            handle = Bass.CreateStream(urlStream.Url, 0, BassFlags.Decode | BassFlags.Float, null);
+            streamUrl = urlStream.Url; // Store for reconnection
+            _logger?.LogDebug("Using BASS native URL streaming for: {Url}", streamUrl);
+            handle = Bass.CreateStream(streamUrl, 0, BassFlags.Decode | BassFlags.Float, null);
 
             // Set up ICY metadata sync if callback provided
             if (handle != 0 && onMetadataReceived != null)
@@ -213,6 +220,7 @@ public sealed class BassDecoder : IAudioDecoder
 
             // Track elapsed time for streaming (since position isn't reliable)
             var isStreaming = !stream.CanSeek;
+            var isLiveStream = isStreaming && streamUrl != null; // Live HTTP stream that can be reconnected
             long streamingPositionMs = 0;
             var bytesPerMs = (info.Frequency * info.Channels * sizeof(float)) / 1000.0;
 
@@ -231,14 +239,48 @@ public sealed class BassDecoder : IAudioDecoder
 
                     if (bytesRead <= 0)
                     {
-                        // End of stream or error
-                        if (bytesRead < 0)
+                        var error = bytesRead < 0 ? Bass.LastError : Errors.Ended;
+
+                        // For live streams, attempt reconnection instead of stopping
+                        if (isLiveStream && streamUrl != null)
                         {
-                            var error = Bass.LastError;
-                            if (error != Errors.Ended)
+                            var reconnected = false;
+                            for (int retry = 0; retry < MaxRetries && !cancellationToken.IsCancellationRequested; retry++)
                             {
-                                _logger?.LogWarning("BASS decode error: {Error}", error);
+                                var delay = TimeSpan.FromSeconds(Math.Pow(2, retry)); // 1s, 2s, 4s
+                                _logger?.LogWarning(
+                                    "Live stream interrupted ({Error}), reconnecting in {Delay}s (attempt {Attempt}/{Max})",
+                                    error, delay.TotalSeconds, retry + 1, MaxRetries);
+
+                                await Task.Delay(delay, cancellationToken);
+
+                                // Free old handle and create new one
+                                Bass.StreamFree(handle);
+                                handle = Bass.CreateStream(streamUrl, 0, BassFlags.Decode | BassFlags.Float, null);
+
+                                if (handle != 0)
+                                {
+                                    _logger?.LogInformation("Live stream reconnected successfully");
+                                    reconnected = true;
+                                    break;
+                                }
+
+                                _logger?.LogWarning("Reconnection attempt {Attempt} failed: {Error}", retry + 1, Bass.LastError);
                             }
+
+                            if (!reconnected)
+                            {
+                                _logger?.LogError("Failed to reconnect live stream after {Max} attempts", MaxRetries);
+                                break;
+                            }
+
+                            continue; // Resume decode loop with new handle
+                        }
+
+                        // Finite stream - existing behavior
+                        if (error != Errors.Ended)
+                        {
+                            _logger?.LogWarning("BASS decode error: {Error}", error);
                         }
                         break;
                     }

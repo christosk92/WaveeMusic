@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid Padding="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Greeting header -->
+        <TextBlock
+            Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
+            Style="{StaticResource TitleTextBlockStyle}"
+            Margin="0,0,0,24"/>
+
+        <!-- Loading indicator -->
+        <ProgressRing
+            Grid.Row="1"
+            IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            Width="48"
+            Height="48"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"/>
+
+        <!-- Content sections -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HomeSection">
+                        <StackPanel Margin="0,0,0,32">
+                            <!-- Section header -->
+                            <TextBlock
+                                Text="{x:Bind Title}"
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Margin="0,0,0,16"/>
+
+                            <!-- Section items (horizontal scroll) -->
+                            <ScrollViewer
+                                HorizontalScrollBarVisibility="Auto"
+                                VerticalScrollBarVisibility="Disabled">
+                                <ItemsRepeater ItemsSource="{x:Bind Items}">
+                                    <ItemsRepeater.Layout>
+                                        <StackLayout Orientation="Horizontal" Spacing="16"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:HomeSectionItem">
+                                            <Button
+                                                Width="180"
+                                                Padding="0"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Tag="{x:Bind Id}"
+                                                Click="SectionItem_Click"
+                                                PointerPressed="SectionItem_PointerPressed"
+                                                RightTapped="SectionItem_RightTapped">
+                                                <StackPanel Spacing="8">
+                                                    <!-- Image placeholder -->
+                                                    <Grid
+                                                        Width="180"
+                                                        Height="180"
+                                                        CornerRadius="8"
+                                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                                        <FontIcon Glyph="&#xE8D6;" FontSize="48"/>
+                                                    </Grid>
+                                                    <!-- Title -->
+                                                    <TextBlock
+                                                        Text="{x:Bind Title}"
+                                                        Style="{StaticResource TrackTitleTextBlockStyle}"
+                                                        MaxLines="1"/>
+                                                    <!-- Subtitle -->
+                                                    <TextBlock
+                                                        Text="{x:Bind Subtitle}"
+                                                        Style="{StaticResource ArtistNameTextBlockStyle}"
+                                                        MaxLines="2"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </ScrollViewer>
+    </Grid>
+</Page>

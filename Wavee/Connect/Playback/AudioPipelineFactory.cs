@@ -28,6 +28,7 @@ public static class AudioPipelineFactory
     /// <param name="spClient">SpClient for metadata requests.</param>
     /// <param name="httpClient">HTTP client for CDN/head file requests.</param>
     /// <param name="options">Pipeline configuration options.</param>
+    /// <param name="audioSettings">Optional reactive audio settings for dynamic control during playback.</param>
     /// <param name="metadataDatabase">Optional metadata database for caching extended metadata.</param>
     /// <param name="cacheService">Optional cache service (should be singleton). Created if metadataDatabase provided but cacheService is null.</param>
     /// <param name="extendedMetadataClient">Optional extended metadata client (should be singleton). Created if metadataDatabase provided but extendedMetadataClient is null.</param>
@@ -43,6 +44,7 @@ public static class AudioPipelineFactory
         SpClient spClient,
         HttpClient httpClient,
         AudioPipelineOptions? options = null,
+        AudioSettings? audioSettings = null,
         IMetadataDatabase? metadataDatabase = null,
         ICacheService? cacheService = null,
         IExtendedMetadataClient? extendedMetadataClient = null,
@@ -71,7 +73,7 @@ public static class AudioPipelineFactory
         var sourceRegistry = CreateTrackSourceRegistry(session, spClient, httpClient, options, metadataDatabase, extendedMetadataClient, logger);
         var decoderRegistry = CreateDecoderRegistry(logger);
         var audioSink = CreateAudioSink(options.AudioSinkType, logger);
-        var processingChain = CreateProcessingChain(options, logger);
+        var processingChain = CreateProcessingChain(options, audioSettings, logger);
 
         // Create context resolver for playlist/album loading
         ContextResolver? contextResolver = null;
@@ -248,8 +250,12 @@ public static class AudioPipelineFactory
     /// <summary>
     /// Creates an audio processing chain with standard processors.
     /// </summary>
+    /// <param name="options">Pipeline configuration options.</param>
+    /// <param name="audioSettings">Optional reactive audio settings for dynamic control during playback.</param>
+    /// <param name="logger">Optional logger.</param>
     public static AudioProcessingChain CreateProcessingChain(
         AudioPipelineOptions? options = null,
+        AudioSettings? audioSettings = null,
         ILogger? logger = null)
     {
         options ??= AudioPipelineOptions.Default;
@@ -267,6 +273,50 @@ public static class AudioPipelineFactory
             chain.AddProcessor(normProcessor);
         }
 
+        // Always create radio mode processors (compressor -> EQ -> limiter)
+        // They start disabled and can be toggled via AudioSettings
+        {
+            // 1. Compressor - reduces dynamic range for that punchy radio sound
+            var compressor = new CompressorProcessor { IsEnabled = false };
+            chain.AddProcessor(compressor);
+
+            // 2. Radio EQ preset - presence boost, bass warmth, sub-bass rolloff
+            var radioEq = new EqualizerProcessor { IsEnabled = false };
+            radioEq.CreateRadioPreset();
+            chain.AddProcessor(radioEq);
+
+            // 3. Limiter - prevents clipping after compression and EQ boost
+            var limiter = new LimiterProcessor { IsEnabled = false };
+            chain.AddProcessor(limiter);
+
+            // If AudioSettings provided, subscribe processors to preset changes
+            if (audioSettings != null)
+            {
+                var subscription = audioSettings.PresetChanged.Subscribe(preset =>
+                {
+                    // Handle Radio preset
+                    var isRadio = preset == AudioPreset.Radio;
+                    compressor.IsEnabled = isRadio;
+                    radioEq.IsEnabled = isRadio;
+                    limiter.IsEnabled = isRadio;
+
+                    // Future: handle other presets here
+                    // e.g., BassBoost would enable a different EQ, etc.
+
+                    logger?.LogDebug("Audio preset changed to: {Preset}", preset);
+                });
+                audioSettings.TrackSubscription(subscription);
+            }
+            else if (options.EnableRadioMode)
+            {
+                // Legacy mode: enable immediately if option is set
+                compressor.IsEnabled = true;
+                radioEq.IsEnabled = true;
+                limiter.IsEnabled = true;
+                logger?.LogDebug("Radio Mode enabled (static): Compressor -> RadioEQ -> Limiter");
+            }
+        }
+
         // Add volume processor
         var volumeProcessor = new VolumeProcessor
         {
@@ -274,7 +324,7 @@ public static class AudioPipelineFactory
         };
         chain.AddProcessor(volumeProcessor);
 
-        // Add equalizer if enabled
+        // Add equalizer if enabled (separate from radio mode EQ - user-configurable)
         if (options.EnableEqualizer)
         {
             chain.AddProcessor(new EqualizerProcessor());
@@ -323,6 +373,12 @@ public sealed record AudioPipelineOptions
     /// Whether to enable equalizer.
     /// </summary>
     public bool EnableEqualizer { get; init; } = false;
+
+    /// <summary>
+    /// Enables "Radio Mode" - compression, limiting, and EQ for that FM radio broadcast sound.
+    /// Makes audio sound punchier, louder, and more consistent like FM radio.
+    /// </summary>
+    public bool EnableRadioMode { get; init; } = false;
 
     /// <summary>
     /// Initial volume (0.0 to 1.0).

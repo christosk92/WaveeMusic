@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.ArtistPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid>
+        <!-- Loading indicator -->
+        <ProgressRing
+            IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            Width="48"
+            Height="48"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"/>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="24" Spacing="24">
+                <!-- Artist header -->
+                <Grid ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Artist image container for connected animation -->
+                    <Grid x:Name="ArtistImageContainer" Width="200" Height="200">
+                        <Ellipse Width="200" Height="200">
+                            <Ellipse.Fill>
+                                <SolidColorBrush Color="{ThemeResource CardBackgroundFillColorDefault}"/>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <FontIcon
+                            Glyph="&#xE77B;"
+                            FontSize="64"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Artist info -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                        <TextBlock Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"/>
+                        <TextBlock
+                            Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                            FontSize="48"
+                            FontWeight="Bold"/>
+                        <TextBlock
+                            Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Opacity="0.7"/>
+
+                        <!-- Action buttons -->
+                        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,16,0,0">
+                            <Button
+                                Style="{StaticResource AccentButtonStyle}"
+                                Command="{x:Bind ViewModel.PlayTopTracksCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="16"/>
+                                    <TextBlock Text="Play"/>
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Style="{StaticResource TransparentButtonStyle}"
+                                Command="{x:Bind ViewModel.ToggleFollowCommand}">
+                                <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Top tracks section -->
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Popular" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ListView
+                        ItemsSource="{x:Bind ViewModel.TopTracks, Mode=OneWay}"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ArtistTopTrack">
+                                <Grid Padding="8" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="32"/>
+                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Text="{x:Bind Index}"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"
+                                        Opacity="0.7"/>
+
+                                    <Grid
+                                        Grid.Column="1"
+                                        Width="48"
+                                        Height="48"
+                                        CornerRadius="4"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                        <FontIcon Glyph="&#xE8D6;" FontSize="20"/>
+                                    </Grid>
+
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Text="{x:Bind Title}"
+                                        Style="{StaticResource TrackTitleTextBlockStyle}"
+                                        VerticalAlignment="Center"/>
+
+                                    <TextBlock
+                                        Grid.Column="3"
+                                        Text="{x:Bind Duration}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+
+                <!-- Albums section -->
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Discography" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ArtistAlbum">
+                                    <Button
+                                        Width="180"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Tag="{x:Bind Id}"
+                                        Click="Album_Click"
+                                        PointerPressed="Album_PointerPressed">
+                                        <StackPanel Spacing="8">
+                                            <Grid
+                                                Width="180"
+                                                Height="180"
+                                                CornerRadius="8"
+                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                                <FontIcon Glyph="&#xE93C;" FontSize="48"/>
+                                            </Grid>
+                                            <TextBlock
+                                                Text="{x:Bind Title}"
+                                                Style="{StaticResource TrackTitleTextBlockStyle}"
+                                                MaxLines="1"/>
+                                            <TextBlock
+                                                Style="{StaticResource ArtistNameTextBlockStyle}">
+                                                <Run Text="{x:Bind Year}"/>
+                                                <Run Text=" - "/>
+                                                <Run Text="{x:Bind AlbumType}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -139,4 +139,5 @@ $RECYCLE.BIN/
 # Mac desktop service store files
 .DS_Store
 
-_NCrunch*
+_NCrunch*nul
+bass24.zip

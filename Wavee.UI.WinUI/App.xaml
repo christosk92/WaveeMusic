@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="Wavee.UI.WinUI.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Wavee.UI.WinUI"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+
+                <!-- App Styles (non-theme) -->
+                <ResourceDictionary Source="ms-appx:///Styles/FontResources.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/ButtonStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/TextBlockStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/TabBarStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Controls/Sidebar/SidebarStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Controls/Omnibar/Omnibar.xaml" />
+
+                <!-- INLINE ThemeDictionaries for TabView overrides (Files pattern) -->
+                <ResourceDictionary>
+                    <ResourceDictionary.ThemeDictionaries>
+                        <ResourceDictionary x:Key="Light">
+                            <!-- App backgrounds -->
+                            <SolidColorBrush x:Key="App.Theme.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.Sidebar.BackgroundBrush" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.Content.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.Player.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="App.Theme.AddressBar.BackgroundBrush" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.IconBaseBrush" Color="{StaticResource TextFillColorPrimary}"/>
+
+                            <!-- TabView overrides - CRITICAL for styling -->
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackground" Color="{StaticResource SubtleFillColorTransparent}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundSelected" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPressed" Color="{StaticResource SubtleFillColorTertiary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPointerOver" Color="{StaticResource SubtleFillColorSecondary}"/>
+
+                            <!-- Accent -->
+                            <Color x:Key="App.Theme.AccentColor">#1DB954</Color>
+                            <SolidColorBrush x:Key="App.Theme.AccentBrush" Color="{StaticResource App.Theme.AccentColor}"/>
+                        </ResourceDictionary>
+
+                        <ResourceDictionary x:Key="Dark">
+                            <!-- App backgrounds -->
+                            <SolidColorBrush x:Key="App.Theme.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.Sidebar.BackgroundBrush" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.Content.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.Player.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="App.Theme.AddressBar.BackgroundBrush" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.IconBaseBrush" Color="{StaticResource TextFillColorPrimary}"/>
+
+                            <!-- TabView overrides - CRITICAL for styling -->
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackground" Color="{StaticResource SubtleFillColorTransparent}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundSelected" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPressed" Color="{StaticResource SubtleFillColorTertiary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPointerOver" Color="{StaticResource SubtleFillColorSecondary}"/>
+
+                            <!-- Accent -->
+                            <Color x:Key="App.Theme.AccentColor">#1DB954</Color>
+                            <SolidColorBrush x:Key="App.Theme.AccentBrush" Color="{StaticResource App.Theme.AccentColor}"/>
+                        </ResourceDictionary>
+
+                        <ResourceDictionary x:Key="HighContrast">
+                            <!-- App backgrounds -->
+                            <SolidColorBrush x:Key="App.Theme.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.Sidebar.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.Content.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.Player.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.AddressBar.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.IconBaseBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+
+                            <!-- TabView overrides -->
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackground" Color="{StaticResource SystemColorWindowColor}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundSelected" Color="{StaticResource SystemColorHighlightColor}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPressed" Color="{StaticResource SystemColorHighlightColor}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPointerOver" Color="{StaticResource SystemColorHighlightColor}"/>
+
+                            <!-- Accent -->
+                            <SolidColorBrush x:Key="App.Theme.AccentBrush" Color="{StaticResource SystemColorHighlightColor}"/>
+                        </ResourceDictionary>
+                    </ResourceDictionary.ThemeDictionaries>
+                </ResourceDictionary>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Workaround for tab shadow issue -->
+            <x:Double x:Key="TabViewShadowDepth">0</x:Double>
+
+            <!-- Transparent caption button backgrounds for custom titlebar -->
+            <SolidColorBrush x:Key="WindowCaptionBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="WindowCaptionBackgroundDisabled" Color="Transparent" />
+
+            <!-- Converters -->
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
+            <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter" />
+            <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter" />
+            <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -39,6 +39,9 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     private string? _lastTrackUri;
     private LyricsData? _currentLyrics;
 
+    // Reactive audio settings
+    private AudioSettings? _audioSettings;
+
     public ConnectConsole(Session session, HttpClient httpClient, SpectreUI ui, ILogger? logger = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
@@ -136,11 +139,15 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             var metadataDatabase = _serviceProvider?.GetService<IMetadataDatabase>();
             var cacheService = _serviceProvider?.GetService<ICacheService>();
 
+            // Create reactive audio settings for dynamic control during playback
+            _audioSettings = new AudioSettings();
+
             _audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 _session,
                 _session.SpClient,
                 _httpClient,
                 options: AudioPipelineOptions.Default,
+                audioSettings: _audioSettings,
                 metadataDatabase: metadataDatabase,
                 cacheService: cacheService,
                 extendedMetadataClient: null,  // Created by factory from metadataDatabase
@@ -291,6 +298,11 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             case "search":
             case "s":
                 await HandleSearchCommandAsync(parts, cancellationToken);
+                return false;
+
+            case "preset":
+            case "eq":
+                await HandlePresetCommandAsync(parts, cancellationToken);
                 return false;
 
             case "quit":
@@ -708,6 +720,61 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         {
             _ui.AddLog("ERR", $"Search error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Handles the preset command - view, set, or cycle audio presets.
+    /// Changes take effect immediately during playback via reactive settings.
+    /// </summary>
+    private Task HandlePresetCommandAsync(string[] parts, CancellationToken ct)
+    {
+        if (_audioSettings == null)
+        {
+            _ui.AddLog("ERR", "Audio settings not initialized");
+            return Task.CompletedTask;
+        }
+
+        // No argument - show current preset and available options
+        if (parts.Length < 2)
+        {
+            var current = _audioSettings.Preset;
+            var available = string.Join(", ", AudioSettings.AvailablePresets.Select(p => p.ToString().ToLower()));
+            _ui.AddLog("INF", $"Current preset: {current}");
+            _ui.AddLog("INF", $"Available: {available}");
+            _ui.AddLog("INF", "Usage: preset <name> or preset next");
+            return Task.CompletedTask;
+        }
+
+        var arg = parts[1].ToLower();
+
+        // "next" - cycle to next preset
+        if (arg == "next" || arg == "cycle")
+        {
+            var newPreset = _audioSettings.CyclePreset();
+            _ui.AddLog("INF", $"Preset: {newPreset}");
+            return Task.CompletedTask;
+        }
+
+        // Try to set by name
+        if (_audioSettings.TrySetPreset(arg))
+        {
+            var preset = _audioSettings.Preset;
+            var description = preset switch
+            {
+                AudioPreset.None => "No processing - flat playback",
+                AudioPreset.Radio => "FM Radio sound - compression, EQ, limiting",
+                _ => preset.ToString()
+            };
+            _ui.AddLog("INF", $"Preset: {preset} - {description}");
+        }
+        else
+        {
+            var available = string.Join(", ", AudioSettings.AvailablePresets.Select(p => p.ToString().ToLower()));
+            _ui.AddLog("WRN", $"Unknown preset: {arg}");
+            _ui.AddLog("INF", $"Available: {available}");
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -1326,6 +1393,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
         _ui.AddLog("INF", "prev        - Skip to previous track");
         _ui.AddLog("INF", "seek <sec>  - Seek to position");
         _ui.AddLog("INF", "vol [0-100] - Set or show volume");
+        _ui.AddLog("INF", "preset [name|next] - Audio preset (none, radio)");
         _ui.AddLog("INF", "device on|off - Toggle device active");
         _ui.AddLog("INF", "sync [type] - Sync library (all|tracks|albums|artists|shows|playlists|...)");
         _ui.AddLog("INF", "library     - Show library sync state");
@@ -1593,6 +1661,9 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             _libraryService = null;
         }
 
+        _audioSettings?.Dispose();
+        _audioSettings = null;
+
         _serviceProvider?.Dispose();
         _serviceProvider = null;
 
@@ -1619,6 +1690,9 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             await _libraryService.DisposeAsync();
             _libraryService = null;
         }
+
+        _audioSettings?.Dispose();
+        _audioSettings = null;
 
         if (_serviceProvider != null)
         {

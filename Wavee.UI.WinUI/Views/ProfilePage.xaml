@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.ProfilePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <ScrollViewer>
+        <StackPanel
+            Padding="48"
+            Spacing="32"
+            MaxWidth="800"
+            HorizontalAlignment="Left">
+
+            <!-- Profile Header -->
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <!-- Profile Picture -->
+                <PersonPicture
+                    Width="180"
+                    Height="180"
+                    DisplayName="{x:Bind ViewModel.DisplayName, Mode=OneWay}" />
+
+                <!-- Profile Info -->
+                <StackPanel VerticalAlignment="Center" Spacing="8">
+                    <TextBlock
+                        Text="Profile"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock
+                        Text="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
+                        Style="{StaticResource TitleLargeTextBlockStyle}"
+                        FontWeight="Bold" />
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <Run Text="{x:Bind ViewModel.PlaylistCount, Mode=OneWay}" />
+                            <Run Text="Playlists" />
+                        </TextBlock>
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <Run Text="{x:Bind ViewModel.FollowersCount, Mode=OneWay}" />
+                            <Run Text="Followers" />
+                        </TextBlock>
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}" />
+                            <Run Text="Following" />
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Action Buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button
+                    Content="Edit Profile"
+                    Command="{x:Bind ViewModel.EditProfileCommand}"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                <Button
+                    Content="Settings"
+                    Command="{x:Bind ViewModel.OpenSettingsCommand}" />
+            </StackPanel>
+
+            <!-- Public Playlists Section -->
+            <StackPanel Spacing="16">
+                <TextBlock
+                    Text="Public Playlists"
+                    Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock
+                    Text="No public playlists yet."
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+
+            <!-- Following Section -->
+            <StackPanel Spacing="16">
+                <TextBlock
+                    Text="Following"
+                    Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock
+                    Text="Not following any artists yet."
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
