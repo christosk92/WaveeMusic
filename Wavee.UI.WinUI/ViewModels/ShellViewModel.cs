@@ -1,10 +1,14 @@
+using System;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -14,6 +18,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ShellViewModel : ObservableObject
 {
     private readonly INavigationService _navigationService;
+    private readonly ILibraryDataService _libraryDataService;
     private readonly AppModel _appModel;
 
     // Static collection accessible from NavigationHelpers
@@ -69,9 +74,10 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     private bool _isOnProfilePage;
 
-    public ShellViewModel(INavigationService navigationService, AppModel appModel)
+    public ShellViewModel(INavigationService navigationService, ILibraryDataService libraryDataService, AppModel appModel)
     {
         _navigationService = navigationService;
+        _libraryDataService = libraryDataService;
         _appModel = appModel;
 
         // Initialize from AppModel (one-time read)
@@ -79,6 +85,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _selectedTabIndex = appModel.TabStripSelectedIndex;
 
         InitializeSidebarItems();
+        _ = LoadLibraryDataAsync();
     }
 
     private void InitializeSidebarItems()
@@ -200,6 +207,56 @@ public sealed partial class ShellViewModel : ObservableObject
     private void CreateNewFolder()
     {
         // TODO: Implement folder creation
+    }
+
+    private async Task LoadLibraryDataAsync()
+    {
+        try
+        {
+            // Load stats and playlists in parallel
+            var statsTask = _libraryDataService.GetStatsAsync();
+            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
+
+            await Task.WhenAll(statsTask, playlistsTask);
+
+            var stats = statsTask.Result;
+            var playlists = playlistsTask.Result;
+
+            // Update "Your Library" section badges
+            var librarySection = SidebarItems.FirstOrDefault(x => x.Text == "Your Library");
+            if (librarySection?.Children is ObservableCollection<SidebarItemModel> libraryChildren)
+            {
+                var albumsItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "Albums");
+                if (albumsItem != null) albumsItem.BadgeCount = stats.AlbumCount;
+
+                var artistsItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "Artists");
+                if (artistsItem != null) artistsItem.BadgeCount = stats.ArtistCount;
+
+                var likedItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "LikedSongs");
+                if (likedItem != null) likedItem.BadgeCount = stats.LikedSongsCount;
+            }
+
+            // Update "Playlists" section
+            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Text == "Playlists");
+            if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
+            {
+                playlistChildren.Clear();
+                foreach (var playlist in playlists)
+                {
+                    playlistChildren.Add(new SidebarItemModel
+                    {
+                        Text = playlist.Name,
+                        IconSource = new FontIconSource { Glyph = "\uE8FD" },
+                        Tag = playlist.Id,
+                        BadgeCount = playlist.TrackCount
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load library data: {ex.Message}");
+        }
     }
 
     partial void OnSelectedTabIndexChanged(int oldValue, int newValue)

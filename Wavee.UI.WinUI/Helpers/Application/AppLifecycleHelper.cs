@@ -8,6 +8,7 @@ using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Services.Data;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Helpers.Application;
@@ -32,6 +33,10 @@ public static class AppLifecycleHelper
                 // App services
                 .AddSingleton<INavigationService, NavigationService>()
                 .AddSingleton<IThemeService, ThemeService>()
+
+                // Data services
+                .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: true))
+                .AddSingleton<ILibraryDataService, MockLibraryDataService>()
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()
