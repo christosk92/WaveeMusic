@@ -299,26 +299,27 @@ internal sealed class SpectreUI : IDisposable
     /// <summary>
     /// Enables Windows Virtual Terminal Processing for ANSI escape sequences.
     /// </summary>
-    private static void EnableVirtualTerminalProcessing()
+    /// <returns>True if VT processing is available (enabled or non-Windows), false otherwise.</returns>
+    private static bool EnableVirtualTerminalProcessing()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return;
+            return true; // Non-Windows typically supports ANSI natively
 
         try
         {
             var handle = GetStdHandle(STD_OUTPUT_HANDLE);
             if (handle == IntPtr.Zero || handle == new IntPtr(-1))
-                return;
+                return false;
 
-            if (GetConsoleMode(handle, out var mode))
-            {
-                mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
-                SetConsoleMode(handle, mode);
-            }
+            if (!GetConsoleMode(handle, out var mode))
+                return false;
+
+            mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+            return SetConsoleMode(handle, mode);
         }
         catch
         {
-            // Ignore errors - VT might already be enabled or unsupported
+            return false;
         }
     }
 
@@ -330,10 +331,7 @@ internal sealed class SpectreUI : IDisposable
         _renderCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var ct = _renderCts.Token;
 
-        // Enable VT processing for proper ANSI escape sequence handling
-        EnableVirtualTerminalProcessing();
-
-        // Initial clear and hide cursor
+        // Initial setup
         System.Console.Clear();
         System.Console.CursorVisible = false;
 
@@ -380,21 +378,14 @@ internal sealed class SpectreUI : IDisposable
         console.Write(layout);
         var output = stringWriter.ToString();
 
-        // Build complete frame with ANSI sequences:
-        // \u001b[H = cursor home (row 1, col 1)
-        // \u001b[J = clear from cursor to end of screen
-        var sb = new StringBuilder();
-        sb.Append("\u001b[H");    // Cursor home
-        sb.Append("\u001b[J");    // Clear to end of screen
-        sb.Append(output);
+        // Clear and rewrite (most reliable approach)
+        System.Console.Clear();
+        System.Console.Write(output);
 
-        // Input line at bottom (use ANSI to position cursor)
+        // Input line at bottom
         var input = _inputBuffer.ToString();
-        sb.Append($"\u001b[{terminalHeight};1H"); // Move cursor to last row
-        sb.Append($"> {input}".PadRight(terminalWidth - 1));
-
-        // Write entire frame as one atomic operation
-        System.Console.Write(sb.ToString());
+        System.Console.SetCursorPosition(0, terminalHeight - 1);
+        System.Console.Write($"> {input}".PadRight(terminalWidth - 1));
     }
 
     private IRenderable BuildLayout(int width, int height)

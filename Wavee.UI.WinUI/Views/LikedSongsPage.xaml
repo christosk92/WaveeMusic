@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.LikedSongsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
+    mc:Ignorable="d"
+    NavigationCacheMode="Enabled"
+    Background="Transparent">
+
+    <Grid>
+        <trackList:TrackListView
+            x:Name="TrackList"
+            ViewModel="{x:Bind ViewModel, Mode=OneWay}"
+            ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
+            IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            ShowDateAddedColumn="True"
+            RemoveActionLabel="Remove from Liked"
+            ArtistClicked="TrackList_ArtistClicked"
+            AlbumClicked="TrackList_AlbumClicked"
+            NewPlaylistRequested="TrackList_NewPlaylistRequested">
+
+            <!-- Page-specific Header -->
+            <trackList:TrackListView.HeaderContent>
+                <Grid Padding="8,20,8,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="8">
+                        <!-- Title with heart icon -->
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xEB52;" FontSize="32" Foreground="{ThemeResource App.Theme.AccentBrush}"/>
+                            <TextBlock Text="Liked Songs" Style="{StaticResource TitleTextBlockStyle}"/>
+                        </StackPanel>
+
+                        <!-- Stats -->
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <Run Text="{x:Bind ViewModel.TotalSongs, Mode=OneWay}"/>
+                            <Run Text="songs"/>
+                            <Run Text=" &#x2022; "/>
+                            <Run Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"/>
+                        </TextBlock>
+
+                        <!-- Action buttons -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.PlayAllCommand}" Padding="16,8">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                    <TextBlock Text="Play"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{x:Bind ViewModel.ShuffleCommand}" Padding="16,8">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
+                                    <TextBlock Text="Shuffle"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Search -->
+                    <TextBox
+                        Grid.Column="1"
+                        PlaceholderText="Filter songs..."
+                        Width="200"
+                        VerticalAlignment="Top"
+                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                </Grid>
+            </trackList:TrackListView.HeaderContent>
+
+            <!-- Empty State -->
+            <trackList:TrackListView.EmptyStateContent>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                    <FontIcon Glyph="&#xEB52;" FontSize="48" Opacity="0.3"/>
+                    <TextBlock
+                        Text="No liked songs yet"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Opacity="0.5"
+                        TextAlignment="Center"/>
+                </StackPanel>
+            </trackList:TrackListView.EmptyStateContent>
+        </trackList:TrackListView>
+    </Grid>
+</Page>

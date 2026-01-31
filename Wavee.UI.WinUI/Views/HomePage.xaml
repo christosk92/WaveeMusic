@@ -32,7 +32,7 @@
             VerticalAlignment="Center"/>
 
         <!-- Content sections -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:HomeSection">
@@ -44,9 +44,9 @@
                                 Margin="0,0,0,16"/>
 
                             <!-- Section items (horizontal scroll) -->
-                            <ScrollViewer
+                            <ScrollView
                                 HorizontalScrollBarVisibility="Auto"
-                                VerticalScrollBarVisibility="Disabled">
+                                VerticalScrollBarVisibility="Hidden">
                                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                                     <ItemsRepeater.Layout>
                                         <StackLayout Orientation="Horizontal" Spacing="16"/>
@@ -86,11 +86,11 @@
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>
-                            </ScrollViewer>
+                            </ScrollView>
                         </StackPanel>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
-        </ScrollViewer>
+        </ScrollView>
     </Grid>
 </Page>

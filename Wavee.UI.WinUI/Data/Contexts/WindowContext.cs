@@ -1,10 +1,13 @@
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Windowing;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
-internal sealed partial class WindowContext : ObservableObject, IWindowContext
+internal sealed partial class WindowContext : ObservableObject, IWindowContext, IDisposable
 {
+    private bool _disposed;
+
     [ObservableProperty]
     private bool _isCompactOverlay;
 
@@ -28,6 +31,17 @@ internal sealed partial class WindowContext : ObservableObject, IWindowContext
         {
             IsCompactOverlay = sender.Presenter.Kind == AppWindowPresenterKind.CompactOverlay;
             IsFullScreen = sender.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (MainWindow.Instance?.AppWindow != null)
+        {
+            MainWindow.Instance.AppWindow.Changed -= AppWindow_Changed;
         }
     }
 }

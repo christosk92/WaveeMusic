@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -114,7 +115,7 @@ public static class NavigationHelpers
     /// <summary>
     /// Open create playlist/folder page - always opens in new tab
     /// </summary>
-    public static void OpenCreatePlaylist(bool isFolder = false)
+    public static void OpenCreatePlaylist(bool isFolder = false, IReadOnlyList<string>? trackIds = null)
     {
         var header = isFolder ? "New Folder" : "New Playlist";
         var glyph = isFolder ? "\uE8F4" : "\uE93F";
@@ -126,7 +127,13 @@ public static class NavigationHelpers
             Glyph = glyph
         };
 
-        Navigate(typeof(CreatePlaylistPage), isFolder, header, iconSource, openInNewTab: true);
+        var parameter = new CreatePlaylistParameter
+        {
+            IsFolder = isFolder,
+            TrackIds = trackIds
+        };
+
+        Navigate(typeof(CreatePlaylistPage), parameter, header, iconSource, openInNewTab: true);
     }
 
     private static void Navigate(Type pageType, object? parameter, string header, IconSource icon, bool openInNewTab)

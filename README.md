@@ -32,7 +32,7 @@ A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
 
 ## Screenshots
 
-*Coming soon*
+![Console](screenshots/console.png)
 
 ## Quick Start
 

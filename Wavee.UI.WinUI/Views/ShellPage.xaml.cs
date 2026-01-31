@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -17,6 +18,7 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class ShellPage : Page
 {
     public ShellViewModel ViewModel { get; }
+    private InputNonClientPointerSource? _nonClientSource;
 
     public ShellPage()
     {
@@ -28,6 +30,23 @@ public sealed partial class ShellPage : Page
 
         // Open initial tab after page is fully loaded
         Loaded += ShellPage_Loaded;
+        Unloaded += ShellPage_Unloaded;
+
+        // Subscribe to theme changes
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        // Set initial theme icon
+        UpdateThemeIcon();
+    }
+
+    private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        // Clean up event subscriptions
+        TitleBarGrid.SizeChanged -= TitleBarGrid_SizeChanged;
+        TitleBarGrid.Loaded -= TitleBarGrid_Loaded;
+        TabControl.SizeChanged -= TabControl_SizeChanged;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.Cleanup();
     }
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
@@ -42,6 +61,21 @@ public sealed partial class ShellPage : Page
 
         // Unsubscribe to avoid duplicate calls
         Loaded -= ShellPage_Loaded;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ShellViewModel.CurrentTheme))
+        {
+            UpdateThemeIcon();
+        }
+    }
+
+    private void UpdateThemeIcon()
+    {
+        // Show moon icon in light mode (clicking will switch to dark)
+        // Show sun icon in dark mode (clicking will switch to light)
+        ThemeIcon.Glyph = ViewModel.CurrentTheme == ElementTheme.Light ? "\uE708" : "\uE706";
     }
 
     private void SetupTitleBar()
@@ -63,19 +97,37 @@ public sealed partial class ShellPage : Page
     {
         try
         {
-            var nonClientSource = InputNonClientPointerSource.GetForWindowId(MainWindow.Instance.AppWindow.Id);
+            _nonClientSource = InputNonClientPointerSource.GetForWindowId(MainWindow.Instance.AppWindow.Id);
 
             // Update regions when sizes change
-            TitleBarGrid.SizeChanged += (s, e) => UpdateTitleBarRegions(nonClientSource);
-            TabControl.SizeChanged += (s, e) => UpdateTitleBarRegions(nonClientSource);
+            TitleBarGrid.SizeChanged += TitleBarGrid_SizeChanged;
+            TabControl.SizeChanged += TabControl_SizeChanged;
 
             // Initial update after layout
-            TitleBarGrid.Loaded += (s, e) => UpdateTitleBarRegions(nonClientSource);
+            TitleBarGrid.Loaded += TitleBarGrid_Loaded;
         }
         catch
         {
             // InputNonClientPointerSource may not be available on all systems
         }
+    }
+
+    private void TitleBarGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_nonClientSource != null)
+            UpdateTitleBarRegions(_nonClientSource);
+    }
+
+    private void TabControl_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_nonClientSource != null)
+            UpdateTitleBarRegions(_nonClientSource);
+    }
+
+    private void TitleBarGrid_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_nonClientSource != null)
+            UpdateTitleBarRegions(_nonClientSource);
     }
 
     private void UpdateTitleBarRegions(InputNonClientPointerSource nonClientSource)
@@ -183,6 +235,13 @@ public sealed partial class ShellPage : Page
                         ((LibraryPage)currentPage!).SelectTab("likedsongs");
                     else
                         NavigationHelpers.OpenLikedSongs(openInNewTab);
+                    break;
+                default:
+                    // Handle playlist navigation (tags starting with "spotify:playlist:")
+                    if (tag.StartsWith("spotify:playlist:"))
+                    {
+                        NavigationHelpers.OpenPlaylist(tag, model.Text, openInNewTab);
+                    }
                     break;
             }
         }

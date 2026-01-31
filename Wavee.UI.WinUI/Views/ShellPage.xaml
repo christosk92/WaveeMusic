@@ -68,33 +68,63 @@
                 </ContentPresenter>
             </sidebar:SidebarView.InnerContent>
 
-            <!-- Sidebar Footer (settings button) -->
+            <!-- Sidebar Footer (theme toggle and settings buttons) -->
             <sidebar:SidebarView.Footer>
-                <Button
-                    x:Name="SettingsButton"
-                    Height="32"
-                    Margin="4,0,4,8"
-                    Padding="0"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Stretch"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Command="{x:Bind ViewModel.OpenSettingsCommand}">
-                    <Grid
-                        Margin="0,2"
-                        Padding="8,0,12,0"
+                <StackPanel>
+                    <!-- Theme Toggle Button -->
+                    <Button
+                        x:Name="ThemeButton"
+                        Height="32"
+                        Margin="4,0,4,0"
+                        Padding="0"
                         HorizontalAlignment="Stretch"
-                        Background="{ThemeResource SubtleFillColorTransparentBrush}"
-                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Grid.Column="1" Glyph="&#xE713;" FontSize="16" Margin="8,0,0,0"/>
-                        <TextBlock Grid.Column="2" Text="Settings" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                    </Grid>
-                </Button>
+                        HorizontalContentAlignment="Stretch"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{x:Bind ViewModel.ToggleThemeCommand}">
+                        <Grid
+                            Margin="0,2"
+                            Padding="8,0,12,0"
+                            HorizontalAlignment="Stretch"
+                            Background="{ThemeResource SubtleFillColorTransparentBrush}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon x:Name="ThemeIcon" Grid.Column="1" Glyph="&#xE708;" FontSize="16" Margin="8,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="Theme" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        </Grid>
+                    </Button>
+
+                    <!-- Settings Button -->
+                    <Button
+                        x:Name="SettingsButton"
+                        Height="32"
+                        Margin="4,0,4,8"
+                        Padding="0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{x:Bind ViewModel.OpenSettingsCommand}">
+                        <Grid
+                            Margin="0,2"
+                            Padding="8,0,12,0"
+                            HorizontalAlignment="Stretch"
+                            Background="{ThemeResource SubtleFillColorTransparentBrush}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="1" Glyph="&#xE713;" FontSize="16" Margin="8,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="Settings" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        </Grid>
+                    </Button>
+                </StackPanel>
             </sidebar:SidebarView.Footer>
         </sidebar:SidebarView>
 

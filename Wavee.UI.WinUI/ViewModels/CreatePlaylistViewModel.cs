@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -24,21 +28,44 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
     [ObservableProperty]
     private bool _isFolder;
 
+    private IReadOnlyList<string>? _trackIds;
+
+    private readonly ILibraryDataService _libraryDataService;
+
     public TabItemParameter? TabItemParameter { get; private set; }
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public CreatePlaylistViewModel()
+    /// <summary>
+    /// Number of tracks to be added after creation.
+    /// </summary>
+    public int TrackCount => _trackIds?.Count ?? 0;
+
+    /// <summary>
+    /// Whether there are tracks to add.
+    /// </summary>
+    public bool HasTracks => TrackCount > 0;
+
+    /// <summary>
+    /// Display text for track count info.
+    /// </summary>
+    public string TracksInfoText => HasTracks
+        ? $"Adding {TrackCount} track{(TrackCount == 1 ? "" : "s")}"
+        : "";
+
+    public CreatePlaylistViewModel(ILibraryDataService libraryDataService)
     {
+        _libraryDataService = libraryDataService;
     }
 
-    public void Initialize(bool isFolder)
+    public void Initialize(CreatePlaylistParameter parameter)
     {
-        IsFolder = isFolder;
+        IsFolder = parameter.IsFolder;
+        _trackIds = parameter.TrackIds;
         Name = "";
-        Title = isFolder ? "Create Folder" : "Create Playlist";
-        IconGlyph = isFolder ? "\uE8F4" : "\uE93F";
-        PlaceholderText = isFolder ? "Folder name" : "Playlist name";
+        Title = parameter.IsFolder ? "Create Folder" : "Create Playlist";
+        IconGlyph = parameter.IsFolder ? "\uE8F4" : "\uE93F";
+        PlaceholderText = parameter.IsFolder ? "Folder name" : "Playlist name";
 
         TabItemParameter = new TabItemParameter
         {
@@ -46,28 +73,32 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
             PageType = NavigationPageType.CreatePlaylist
         };
 
+        OnPropertyChanged(nameof(TrackCount));
+        OnPropertyChanged(nameof(HasTracks));
+        OnPropertyChanged(nameof(TracksInfoText));
+
         ContentChanged?.Invoke(this, TabItemParameter);
     }
 
     [RelayCommand]
-    private void Create()
+    private async Task CreateAsync()
     {
         if (string.IsNullOrWhiteSpace(Name))
             return;
 
-        // TODO: Create playlist/folder via Wavee core and get the actual ID
-        var createdId = System.Guid.NewGuid().ToString(); // Placeholder ID
+        // Create playlist via service (will trigger PlaylistsChanged event for sidebar update)
+        var created = await _libraryDataService.CreatePlaylistAsync(Name, _trackIds);
 
         // Navigate to the created playlist/folder in the current tab
         if (IsFolder)
         {
             // For folders, navigate to library
-            Helpers.Navigation.NavigationHelpers.OpenLibrary(openInNewTab: false);
+            NavigationHelpers.OpenLibrary(openInNewTab: false);
         }
         else
         {
             // Navigate to the playlist page
-            Helpers.Navigation.NavigationHelpers.OpenPlaylist(createdId, Name, openInNewTab: false);
+            NavigationHelpers.OpenPlaylist(created.Id, created.Name, openInNewTab: false);
         }
     }
 

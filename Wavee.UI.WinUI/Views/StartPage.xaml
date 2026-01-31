@@ -9,7 +9,7 @@
     mc:Ignorable="d"
     Background="Transparent">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollView VerticalScrollBarVisibility="Auto">
         <StackPanel
             MaxWidth="800"
             Margin="48,80,48,48"
@@ -81,9 +81,9 @@
                     Text="Recently Played"
                     Style="{StaticResource SubtitleTextBlockStyle}"/>
 
-                <ScrollViewer
+                <ScrollView
                     HorizontalScrollBarVisibility="Auto"
-                    VerticalScrollBarVisibility="Disabled">
+                    VerticalScrollBarVisibility="Hidden">
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentItems}">
                         <ItemsRepeater.Layout>
                             <StackLayout Orientation="Horizontal" Spacing="16"/>
@@ -128,9 +128,9 @@
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
-                </ScrollViewer>
+                </ScrollView>
             </StackPanel>
 
         </StackPanel>
-    </ScrollViewer>
+    </ScrollView>
 </Page>

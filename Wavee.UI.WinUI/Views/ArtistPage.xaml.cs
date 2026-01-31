@@ -26,7 +26,24 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ViewModel = Ioc.Default.GetRequiredService<ArtistViewModel>();
         InitializeComponent();
 
-        ViewModel.ContentChanged += (s, e) => ContentChanged?.Invoke(this, e);
+        ViewModel.ContentChanged += ViewModel_ContentChanged;
+        SizeChanged += OnSizeChanged;
+        Unloaded += ArtistPage_Unloaded;
+    }
+
+    private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
+        => ContentChanged?.Invoke(this, e);
+
+    private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
+        SizeChanged -= OnSizeChanged;
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Match the 800px breakpoint from VisualStateManager
+        ViewModel.ColumnCount = e.NewSize.Width >= 800 ? 2 : 1;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)

@@ -6,10 +6,38 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     mc:Ignorable="d"
     Background="Transparent">
 
+    <Page.Resources>
+        <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
+    </Page.Resources>
+
     <Grid>
+        <!-- Responsive layout states -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="800"/>
+                    </VisualState.StateTriggers>
+                </VisualState>
+                <VisualState x:Name="Narrow">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0"/>
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="SecondColumn.Width" Value="0"/>
+                        <Setter Target="Column2Repeater.Visibility" Value="Collapsed"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <!-- Loading indicator -->
         <ProgressRing
             IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
@@ -19,7 +47,7 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Center"/>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollView VerticalScrollBarVisibility="Auto">
             <StackPanel Padding="24" Spacing="24">
                 <!-- Artist header -->
                 <Grid ColumnSpacing="24">
@@ -39,7 +67,18 @@
                             Glyph="&#xE77B;"
                             FontSize="64"
                             HorizontalAlignment="Center"
-                            VerticalAlignment="Center"/>
+                            VerticalAlignment="Center"
+                            Visibility="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                        <Ellipse
+                            Width="200"
+                            Height="200"
+                            Visibility="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                            <Ellipse.Fill>
+                                <ImageBrush
+                                    ImageSource="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                    Stretch="UniformToFill"/>
+                            </Ellipse.Fill>
+                        </Ellipse>
                     </Grid>
 
                     <!-- Artist info -->
@@ -73,58 +112,152 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Top tracks section -->
+                <!-- Top tracks section with pagination -->
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Popular" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <ListView
-                        ItemsSource="{x:Bind ViewModel.TopTracks, Mode=OneWay}"
-                        SelectionMode="None">
-                        <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ArtistTopTrack">
-                                <Grid Padding="8" ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="48"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+                    <!-- Header with navigation -->
+                    <Grid>
+                        <TextBlock Text="Popular" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                        <!-- PipsPager with built-in navigation -->
+                        <PipsPager
+                            x:Name="TracksPipsPager"
+                            HorizontalAlignment="Right"
+                            NumberOfPages="{x:Bind ViewModel.TotalPages, Mode=OneWay}"
+                            SelectedPageIndex="{x:Bind ViewModel.CurrentPage, Mode=TwoWay}"
+                            PreviousButtonVisibility="VisibleOnPointerOver"
+                            NextButtonVisibility="VisibleOnPointerOver"/>
+                    </Grid>
 
-                                    <TextBlock
-                                        Text="{x:Bind Index}"
-                                        VerticalAlignment="Center"
-                                        HorizontalAlignment="Center"
-                                        Opacity="0.7"/>
+                    <!-- 2-column grid of tracks -->
+                    <Grid x:Name="TracksGrid" ColumnSpacing="24">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition x:Name="SecondColumn" Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                                    <Grid
-                                        Grid.Column="1"
-                                        Width="48"
-                                        Height="48"
-                                        CornerRadius="4"
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                        <FontIcon Glyph="&#xE8D6;" FontSize="20"/>
+                        <!-- Column 1: Tracks 1-5 -->
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Column1Tracks, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Vertical" Spacing="4"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ArtistTopTrack">
+                                    <Grid Padding="8" ColumnSpacing="12" Height="56">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="32"/>
+                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock
+                                            Text="{x:Bind Index}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            Opacity="0.7"/>
+
+                                        <Grid
+                                            Grid.Column="1"
+                                            Width="40"
+                                            Height="40"
+                                            CornerRadius="4"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                            <FontIcon
+                                                Glyph="&#xE8D6;"
+                                                FontSize="16"
+                                                Visibility="{x:Bind AlbumImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                            <Image
+                                                Source="{x:Bind AlbumImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                Stretch="UniformToFill"
+                                                Visibility="{x:Bind AlbumImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
+                                                behaviors:ImageFallbackBehavior.HideOnError="True"
+                                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                                behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
+                                        </Grid>
+
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="{x:Bind Title}"
+                                            Style="{StaticResource BodyTextBlockStyle}"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis"
+                                            MaxLines="1"/>
+
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            Text="{x:Bind Duration}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            VerticalAlignment="Center"
+                                            Opacity="0.7"/>
                                     </Grid>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
 
-                                    <TextBlock
-                                        Grid.Column="2"
-                                        Text="{x:Bind Title}"
-                                        Style="{StaticResource TrackTitleTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
+                        <!-- Column 2: Tracks 6-10 -->
+                        <ItemsRepeater x:Name="Column2Repeater" Grid.Column="1" ItemsSource="{x:Bind ViewModel.Column2Tracks, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Vertical" Spacing="4"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ArtistTopTrack">
+                                    <Grid Padding="8" ColumnSpacing="12" Height="56">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="32"/>
+                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
 
-                                    <TextBlock
-                                        Grid.Column="3"
-                                        Text="{x:Bind Duration}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                                        <TextBlock
+                                            Text="{x:Bind Index}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            Opacity="0.7"/>
+
+                                        <Grid
+                                            Grid.Column="1"
+                                            Width="40"
+                                            Height="40"
+                                            CornerRadius="4"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                            <FontIcon
+                                                Glyph="&#xE8D6;"
+                                                FontSize="16"
+                                                Visibility="{x:Bind AlbumImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                            <Image
+                                                Source="{x:Bind AlbumImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                Stretch="UniformToFill"
+                                                Visibility="{x:Bind AlbumImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
+                                                behaviors:ImageFallbackBehavior.HideOnError="True"
+                                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                                behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
+                                        </Grid>
+
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="{x:Bind Title}"
+                                            Style="{StaticResource BodyTextBlockStyle}"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis"
+                                            MaxLines="1"/>
+
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            Text="{x:Bind Duration}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            VerticalAlignment="Center"
+                                            Opacity="0.7"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </Grid>
                 </StackPanel>
 
                 <!-- Albums section -->
                 <StackPanel Spacing="16">
                     <TextBlock Text="Discography" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ScrollView HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden">
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}">
                             <ItemsRepeater.Layout>
                                 <StackLayout Orientation="Horizontal" Spacing="16"/>
@@ -145,7 +278,17 @@
                                                 Height="180"
                                                 CornerRadius="8"
                                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                                <FontIcon Glyph="&#xE93C;" FontSize="48"/>
+                                                <FontIcon
+                                                    Glyph="&#xE93C;"
+                                                    FontSize="48"
+                                                    Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                                <Image
+                                                    Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                    Stretch="UniformToFill"
+                                                    Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
+                                                    behaviors:ImageFallbackBehavior.HideOnError="True"
+                                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="180"/>
                                             </Grid>
                                             <TextBlock
                                                 Text="{x:Bind Title}"
@@ -162,9 +305,9 @@
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
-                    </ScrollViewer>
+                    </ScrollView>
                 </StackPanel>
             </StackPanel>
-        </ScrollViewer>
+        </ScrollView>
     </Grid>
 </Page>

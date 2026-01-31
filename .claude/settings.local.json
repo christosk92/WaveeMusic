@@ -14,7 +14,21 @@
       "Bash(tree:*)",
       "Bash(dotnet add:*)",
       "Bash(\"C:\\Users\\ckara\\.nuget\\packages\\microsoft.windowsappsdk.winui\\2.0.2-experimental\\tools\\net472\\XamlCompiler.exe\" \"Wavee.WinUI\\obj\\Debug\\net10.0-windows10.0.22621.0\\input.json\" \"Wavee.WinUI\\obj\\Debug\\net10.0-windows10.0.22621.0\\output.json\")",
-      "Bash(dir /s /b \"Wavee.WinUI\\obj\\*.err\" 2)"
+      "Bash(dir /s /b \"Wavee.WinUI\\obj\\*.err\" 2)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(dir:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "Bash(findstr:*)",
+      "Bash(\"C:\\\\Users\\\\ckara\\\\.nuget\\\\packages\\\\microsoft.windowsappsdk.winui\\\\2.0.3-experimental\\\\tools\\\\net472\\\\XamlCompiler.exe\" \"C:\\\\Users\\\\ckara\\\\Personal\\\\Wavee\\\\Wavee\\\\Wavee.UI.WinUI\\\\obj\\\\Debug\\\\net10.0-windows10.0.22621.0\\\\input.json\" \"C:\\\\Users\\\\ckara\\\\Personal\\\\Wavee\\\\Wavee\\\\Wavee.UI.WinUI\\\\obj\\\\Debug\\\\net10.0-windows10.0.22621.0\\\\output.json\")",
+      "Bash(del \"C:\\\\Users\\\\ckara\\\\Personal\\\\Wavee\\\\Wavee\\\\Wavee.UI.WinUI\\\\Converters\\\\TopCornerRadiusFilterConverter.cs\")",
+      "Bash(xargs:*)",
+      "Bash(git reset:*)",
+      "WebFetch(domain:commons.wikimedia.org)",
+      "WebFetch(domain:www.last.fm)",
+      "WebFetch(domain:lastfm.freetls.fastly.net)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

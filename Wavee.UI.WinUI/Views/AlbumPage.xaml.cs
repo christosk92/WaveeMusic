@@ -1,13 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
-using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -26,17 +25,25 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         ViewModel = Ioc.Default.GetRequiredService<AlbumViewModel>();
         InitializeComponent();
 
-        ViewModel.ContentChanged += (s, e) => ContentChanged?.Invoke(this, e);
+        ViewModel.ContentChanged += ViewModel_ContentChanged;
+        Unloaded += AlbumPage_Unloaded;
+    }
+
+    private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
+        => ContentChanged?.Invoke(this, e);
+
+    private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
-        if (e.Parameter is string albumId)
+        if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
         {
-            ViewModel.Initialize(albumId);
-            await ViewModel.LoadCommand.ExecuteAsync(null);
+            await ViewModel.LoadCommand.ExecuteAsync(albumId);
         }
     }
 
@@ -49,36 +56,16 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         }
     }
 
-    private void Artist_PointerPressed(object sender, PointerRoutedEventArgs e)
+    private void TrackList_ArtistClicked(object? sender, string artistId)
     {
-        // Middle-click to open in new tab
-        if (!e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
-            return;
-
-        if (!string.IsNullOrEmpty(ViewModel.ArtistId))
+        if (!string.IsNullOrEmpty(artistId))
         {
-            NavigationHelpers.OpenArtist(ViewModel.ArtistId, ViewModel.ArtistName ?? "Artist", openInNewTab: true);
+            NavigationHelpers.OpenArtist(artistId, "Artist");
         }
     }
 
-    private void RelatedAlbum_Click(object sender, RoutedEventArgs e)
+    private void TrackList_NewPlaylistRequested(object? sender, IReadOnlyList<string> trackIds)
     {
-        if (sender is Button btn && btn.DataContext is ArtistAlbum album)
-        {
-            var openInNewTab = NavigationHelpers.IsCtrlPressed();
-            NavigationHelpers.OpenAlbum(album.Id ?? "", album.Title ?? "Album", openInNewTab);
-        }
-    }
-
-    private void RelatedAlbum_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        // Middle-click to open in new tab
-        if (!e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
-            return;
-
-        if (sender is Button btn && btn.DataContext is ArtistAlbum album)
-        {
-            NavigationHelpers.OpenAlbum(album.Id ?? "", album.Title ?? "Album", openInNewTab: true);
-        }
+        NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: trackIds.ToList());
     }
 }

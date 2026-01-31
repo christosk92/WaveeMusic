@@ -17,49 +17,16 @@
         <!-- SelectorBar with consistent padding -->
         <SelectorBar
             x:Name="LibrarySelectorBar"
-            Margin="12,0,24,0" 
+            Margin="12,0,24,0"
             SelectionChanged="SelectorBar_SelectionChanged">
             <SelectorBarItem x:Name="AlbumsItem" Text="Albums" IsSelected="True"/>
             <SelectorBarItem x:Name="ArtistsItem" Text="Artists"/>
             <SelectorBarItem x:Name="LikedSongsItem" Text="Liked Songs"/>
         </SelectorBar>
 
-        <!-- Content area with scroll -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,16,24,24">
-            <Grid>
-                <!-- Albums content -->
-                <StackPanel x:Name="AlbumsContent" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                    <StackPanel.Transitions>
-                        <TransitionCollection>
-                            <EntranceThemeTransition FromHorizontalOffset="100" FromVerticalOffset="0"/>
-                        </TransitionCollection>
-                    </StackPanel.Transitions>
-                    <FontIcon Glyph="&#xE93C;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock Text="Albums coming soon..." Style="{StaticResource BodyTextBlockStyle}" Opacity="0.5" TextAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Artists content -->
-                <StackPanel x:Name="ArtistsContent" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" Visibility="Collapsed">
-                    <StackPanel.Transitions>
-                        <TransitionCollection>
-                            <EntranceThemeTransition FromHorizontalOffset="100" FromVerticalOffset="0"/>
-                        </TransitionCollection>
-                    </StackPanel.Transitions>
-                    <FontIcon Glyph="&#xE77B;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock Text="Artists coming soon..." Style="{StaticResource BodyTextBlockStyle}" Opacity="0.5" TextAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Liked Songs content -->
-                <StackPanel x:Name="LikedSongsContent" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" Visibility="Collapsed">
-                    <StackPanel.Transitions>
-                        <TransitionCollection>
-                            <EntranceThemeTransition FromHorizontalOffset="100" FromVerticalOffset="0"/>
-                        </TransitionCollection>
-                    </StackPanel.Transitions>
-                    <FontIcon Glyph="&#xEB52;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock Text="Liked Songs coming soon..." Style="{StaticResource BodyTextBlockStyle}" Opacity="0.5" TextAlignment="Center"/>
-                </StackPanel>
-            </Grid>
-        </ScrollViewer>
+        <!-- Content area -->
+        <Grid Grid.Row="1" Padding="24,8,24,0">
+            <Frame x:Name="ContentFrame"/>
+        </Grid>
     </Grid>
 </Page>

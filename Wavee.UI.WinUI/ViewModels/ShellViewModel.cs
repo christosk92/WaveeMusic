@@ -12,6 +12,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -19,7 +20,13 @@ public sealed partial class ShellViewModel : ObservableObject
 {
     private readonly INavigationService _navigationService;
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IThemeService _themeService;
     private readonly AppModel _appModel;
+
+    // UI element references for cleanup
+    private Microsoft.UI.Xaml.Controls.SplitButton? _playlistsSplitButton;
+    private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _newPlaylistMenuItem;
+    private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _newFolderMenuItem;
 
     // Static collection accessible from NavigationHelpers
     public static ObservableCollection<TabBarItem> TabInstances { get; } = [];
@@ -74,18 +81,55 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     private bool _isOnProfilePage;
 
-    public ShellViewModel(INavigationService navigationService, ILibraryDataService libraryDataService, AppModel appModel)
+    public ShellViewModel(INavigationService navigationService, ILibraryDataService libraryDataService, IThemeService themeService, AppModel appModel)
     {
         _navigationService = navigationService;
         _libraryDataService = libraryDataService;
+        _themeService = themeService;
         _appModel = appModel;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
         _selectedTabIndex = appModel.TabStripSelectedIndex;
 
+        // Subscribe to playlist changes for reactive updates
+        _libraryDataService.PlaylistsChanged += OnPlaylistsChanged;
+
         InitializeSidebarItems();
         _ = LoadLibraryDataAsync();
+    }
+
+    private async void OnPlaylistsChanged(object? sender, EventArgs e)
+    {
+        await RefreshPlaylistsAsync();
+    }
+
+    private async Task RefreshPlaylistsAsync()
+    {
+        try
+        {
+            var playlists = await _libraryDataService.GetUserPlaylistsAsync();
+
+            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Text == "Playlists");
+            if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
+            {
+                playlistChildren.Clear();
+                foreach (var playlist in playlists)
+                {
+                    playlistChildren.Add(new SidebarItemModel
+                    {
+                        Text = playlist.Name,
+                        IconSource = new FontIconSource { Glyph = "\uE8FD" },
+                        Tag = playlist.Id,
+                        BadgeCount = playlist.TrackCount
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to refresh playlists: {ex.Message}");
+        }
     }
 
     private void InitializeSidebarItems()
@@ -151,7 +195,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private Microsoft.UI.Xaml.FrameworkElement CreatePlaylistsAddButton()
     {
-        var splitButton = new Microsoft.UI.Xaml.Controls.SplitButton
+        _playlistsSplitButton = new Microsoft.UI.Xaml.Controls.SplitButton
         {
             Content = new Microsoft.UI.Xaml.Controls.FontIcon
             {
@@ -167,7 +211,7 @@ public sealed partial class ShellViewModel : ObservableObject
         };
 
         // Main click creates a new playlist
-        splitButton.Click += (s, e) => CreateNewPlaylist();
+        _playlistsSplitButton.Click += PlaylistsSplitButton_Click;
 
         // MenuFlyout with proper context menu styling
         var menuFlyout = new Microsoft.UI.Xaml.Controls.MenuFlyout
@@ -175,28 +219,45 @@ public sealed partial class ShellViewModel : ObservableObject
             Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom
         };
 
-        var mediaPlayerIconsFont = (Microsoft.UI.Xaml.Media.FontFamily)Microsoft.UI.Xaml.Application.Current.Resources["MediaPlayerIconsFontFamily"];
+        var mediaPlayerIconsFont = Microsoft.UI.Xaml.Application.Current?.Resources?.TryGetValue("MediaPlayerIconsFontFamily", out var fontObj) == true
+            ? fontObj as Microsoft.UI.Xaml.Media.FontFamily
+            : null;
 
-        var newPlaylistItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
+        _newPlaylistMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
             Text = "New Playlist",
             Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = "\uE93F" }
         };
-        newPlaylistItem.Click += (s, e) => Helpers.Navigation.NavigationHelpers.OpenCreatePlaylist(isFolder: false);
+        _newPlaylistMenuItem.Click += NewPlaylistMenuItem_Click;
 
-        var newFolderItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
+        _newFolderMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
             Text = "New Folder",
             Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = "\uE8F4" }
         };
-        newFolderItem.Click += (s, e) => Helpers.Navigation.NavigationHelpers.OpenCreatePlaylist(isFolder: true);
+        _newFolderMenuItem.Click += NewFolderMenuItem_Click;
 
-        menuFlyout.Items.Add(newPlaylistItem);
-        menuFlyout.Items.Add(newFolderItem);
+        menuFlyout.Items.Add(_newPlaylistMenuItem);
+        menuFlyout.Items.Add(_newFolderMenuItem);
 
-        splitButton.Flyout = menuFlyout;
+        _playlistsSplitButton.Flyout = menuFlyout;
 
-        return splitButton;
+        return _playlistsSplitButton;
+    }
+
+    private void PlaylistsSplitButton_Click(Microsoft.UI.Xaml.Controls.SplitButton sender, Microsoft.UI.Xaml.Controls.SplitButtonClickEventArgs args)
+    {
+        CreateNewPlaylist();
+    }
+
+    private void NewPlaylistMenuItem_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        Helpers.Navigation.NavigationHelpers.OpenCreatePlaylist(isFolder: false);
+    }
+
+    private void NewFolderMenuItem_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        Helpers.Navigation.NavigationHelpers.OpenCreatePlaylist(isFolder: true);
     }
 
     private void CreateNewPlaylist()
@@ -306,6 +367,15 @@ public sealed partial class ShellViewModel : ObservableObject
         // to support modifier keys (Ctrl/middle-click for new tab)
     }
 
+    public ElementTheme CurrentTheme => _themeService.CurrentTheme;
+
+    [RelayCommand]
+    private void ToggleTheme()
+    {
+        _themeService.ToggleTheme();
+        OnPropertyChanged(nameof(CurrentTheme));
+    }
+
     [RelayCommand]
     private void OpenSettings()
     {
@@ -377,6 +447,33 @@ public sealed partial class ShellViewModel : ObservableObject
             CanGoForward = false;
             IsOnHomePage = false;
             IsOnProfilePage = false;
+        }
+    }
+
+    /// <summary>
+    /// Cleans up event subscriptions to prevent memory leaks.
+    /// </summary>
+    public void Cleanup()
+    {
+        _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
+
+        // Cleanup sidebar button handlers
+        if (_playlistsSplitButton != null)
+        {
+            _playlistsSplitButton.Click -= PlaylistsSplitButton_Click;
+            _playlistsSplitButton = null;
+        }
+
+        if (_newPlaylistMenuItem != null)
+        {
+            _newPlaylistMenuItem.Click -= NewPlaylistMenuItem_Click;
+            _newPlaylistMenuItem = null;
+        }
+
+        if (_newFolderMenuItem != null)
+        {
+            _newFolderMenuItem.Click -= NewFolderMenuItem_Click;
+            _newFolderMenuItem = null;
         }
     }
 }

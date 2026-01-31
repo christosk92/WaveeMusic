@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -150,9 +151,18 @@ public enum RepeatMode
 /// <summary>
 /// Converts a string URL to an ImageSource for x:Bind compatibility.
 /// Returns null for null/empty strings to avoid "parameter is incorrect" errors.
+/// Uses an O(1) LRU cache to prevent garbage collection of BitmapImage instances.
 /// </summary>
 public sealed class StringToImageSourceConverter : IValueConverter
 {
+    // O(1) LRU cache using LinkedList + Dictionary with node references
+    // - LinkedList maintains LRU order (front = most recent, back = oldest)
+    // - Dictionary maps URI -> LinkedListNode for O(1) lookup and removal
+    private static readonly LinkedList<KeyValuePair<string, BitmapImage>> _lruList = new();
+    private static readonly Dictionary<string, LinkedListNode<KeyValuePair<string, BitmapImage>>> _cache = new();
+    private static readonly object _cacheLock = new();
+    private const int MaxCacheSize = 100;
+
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string uri || string.IsNullOrWhiteSpace(uri))
@@ -160,7 +170,34 @@ public sealed class StringToImageSourceConverter : IValueConverter
 
         try
         {
-            return new BitmapImage(new Uri(uri));
+            lock (_cacheLock)
+            {
+                // Cache hit: O(1) lookup, O(1) promote to front
+                if (_cache.TryGetValue(uri, out var node))
+                {
+                    // Remove from current position and add to front (most recently used)
+                    _lruList.Remove(node);      // O(1) - removes by node reference
+                    _lruList.AddFirst(node);    // O(1)
+                    return node.Value.Value;
+                }
+
+                // Cache miss: create new BitmapImage
+                var bitmapImage = new BitmapImage(new Uri(uri));
+
+                // Add to front of LRU list: O(1)
+                var newNode = _lruList.AddFirst(new KeyValuePair<string, BitmapImage>(uri, bitmapImage));
+                _cache[uri] = newNode;
+
+                // Evict oldest if over capacity: O(1)
+                if (_cache.Count > MaxCacheSize && _lruList.Last != null)
+                {
+                    var oldest = _lruList.Last;
+                    _cache.Remove(oldest.Value.Key);
+                    _lruList.RemoveLast();
+                }
+
+                return bitmapImage;
+            }
         }
         catch
         {

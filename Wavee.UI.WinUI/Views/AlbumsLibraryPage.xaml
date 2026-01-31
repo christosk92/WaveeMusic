@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.AlbumsLibraryPage"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
+    xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
+    xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    mc:Ignorable="d"
+    NavigationCacheMode="Enabled"
+    Background="Transparent">
+
+    <controls:LibraryGridView
+        ItemsSource="{x:Bind ViewModel.FilteredAlbums, Mode=OneWay}"
+        SelectedItem="{x:Bind ViewModel.SelectedAlbum, Mode=TwoWay}"
+        SearchQuery="{x:Bind ViewModel.SearchQuery, Mode=TwoWay}"
+        SearchPlaceholderText="Filter albums..."
+        IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+        EmptyStateText="Select an album to see tracks"
+        EmptyStateGlyph="&#xE93C;"
+        MinItemWidth="120"
+        MinItemHeight="170">
+
+        <controls:LibraryGridView.ItemTemplate>
+            <DataTemplate x:DataType="dto:LibraryAlbumDto">
+                <ItemContainer>
+                    <Grid Padding="8" RowSpacing="8" VerticalAlignment="Top">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Album Art (1:1 aspect ratio) -->
+                        <primitives:ConstrainedBox
+                            Grid.Row="0"
+                            AspectRatio="1:1"
+                            HorizontalAlignment="Stretch">
+                            <Border
+                                CornerRadius="6"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <Grid>
+                                    <FontIcon
+                                        Glyph="&#xE93C;"
+                                        FontSize="48"
+                                        Opacity="0.3"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                    <Image
+                                        Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                        Stretch="UniformToFill"
+                                        Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
+                                        behaviors:ImageFallbackBehavior.HideOnError="True"
+                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                                </Grid>
+                            </Border>
+                        </primitives:ConstrainedBox>
+
+                        <!-- Album Name -->
+                        <TextBlock
+                            Grid.Row="1"
+                            Text="{x:Bind Name}"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            TextTrimming="CharacterEllipsis"
+                            MaxLines="1"/>
+
+                        <!-- Artist Name -->
+                        <TextBlock
+                            Grid.Row="2"
+                            Text="{x:Bind ArtistName}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextTrimming="CharacterEllipsis"
+                            MaxLines="1"/>
+                    </Grid>
+                </ItemContainer>
+            </DataTemplate>
+        </controls:LibraryGridView.ItemTemplate>
+
+        <controls:LibraryGridView.DetailContent>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Album Art -->
+                    <Grid
+                        Grid.Column="0"
+                        Width="100"
+                        Height="100"
+                        CornerRadius="6"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <FontIcon
+                            Glyph="&#xE93C;"
+                            FontSize="32"
+                            Opacity="0.3"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                        <Image
+                            Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            Stretch="UniformToFill"
+                            Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                            behaviors:ImageFallbackBehavior.HideOnError="True"
+                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                            behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                    </Grid>
+
+                    <!-- Album Info -->
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock
+                            Text="{x:Bind ViewModel.SelectedAlbumName, Mode=OneWay}"
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            TextTrimming="CharacterEllipsis"
+                            MaxLines="2"/>
+                        <HyperlinkButton
+                            Content="{x:Bind ViewModel.SelectedAlbumArtist, Mode=OneWay}"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.OpenArtistCommand}"/>
+                        <TextBlock
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.SelectedAlbumMetadata, Mode=OneWay}"/>
+
+                        <!-- Action buttons -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button
+                                Style="{StaticResource AccentButtonStyle}"
+                                Command="{x:Bind ViewModel.PlayAlbumCommand}"
+                                Padding="12,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                    <TextBlock Text="Play"/>
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Command="{x:Bind ViewModel.ShuffleAlbumCommand}"
+                                Padding="12,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
+                                    <TextBlock Text="Shuffle"/>
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Command="{x:Bind ViewModel.OpenAlbumDetailsCommand}"
+                                Padding="12,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
+                                    <TextBlock Text="View album"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Track list using TrackListView (compact mode) -->
+                <tracklist:TrackListView
+                    Grid.Row="1"
+                    ViewModel="{x:Bind ViewModel}"
+                    ItemsSource="{x:Bind ViewModel.SelectedAlbumTracks, Mode=OneWay}"
+                    IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
+                    IsCompact="True"
+                    ShowColumnHeaders="False"
+                    ShowAlbumArtColumn="False"
+                    ShowArtistColumn="False"
+                    ShowAlbumColumn="False"
+                    ShowDateAddedColumn="False"/>
+            </Grid>
+        </controls:LibraryGridView.DetailContent>
+    </controls:LibraryGridView>
+</Page>

@@ -103,7 +103,7 @@
                             <!-- Placeholder Text -->
                             <TextBlock
                                 x:Name="PlaceholderTextContentPresenter"
-                                VerticalAlignment="Center" 
+                                VerticalAlignment="Center"  
                                 Foreground="{Binding PlaceholderForeground, RelativeSource={RelativeSource TemplatedParent}, TargetNullValue={ThemeResource TextControlPlaceholderForeground}}"
                                 IsHitTestVisible="False"
                                 Text="{TemplateBinding PlaceholderText}"

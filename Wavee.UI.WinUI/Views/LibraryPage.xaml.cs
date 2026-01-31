@@ -1,5 +1,6 @@
-using Microsoft.UI.Xaml;
+using System;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.ViewModels;
@@ -8,6 +9,8 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class LibraryPage : Page
 {
+    private int _currentTabIndex = 0;
+
     public LibraryPage()
     {
         InitializeComponent();
@@ -32,7 +35,7 @@ public sealed partial class LibraryPage : Page
         itemToSelect.IsSelected = true;
 
         // Update content and sidebar
-        UpdateContent(itemToSelect);
+        NavigateToContent(itemToSelect);
         UpdateSidebarSelection(itemToSelect);
     }
 
@@ -59,51 +62,74 @@ public sealed partial class LibraryPage : Page
         LikedSongsItem.IsSelected = false;
         itemToSelect.IsSelected = true;
 
-        // Update content with the selected item
-        UpdateContent(itemToSelect);
+        // Set initial tab index
+        _currentTabIndex = GetTabIndex(itemToSelect);
+
+        // Navigate without animation on initial load
+        var pageType = GetPageType(itemToSelect);
+        ContentFrame.Navigate(pageType, null, new SuppressNavigationTransitionInfo());
     }
 
     private void SelectorBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        // Use sender.SelectedItem which is guaranteed to be correct
         var selectedItem = sender.SelectedItem;
-        UpdateContent(selectedItem);
+        NavigateToContent(selectedItem);
         UpdateSidebarSelection(selectedItem);
     }
 
-    private void UpdateContent(SelectorBarItem? selectedItem = null)
+    private void NavigateToContent(SelectorBarItem? selectedItem = null)
     {
-        // Use passed item or fall back to SelectorBar.SelectedItem
         selectedItem ??= LibrarySelectorBar.SelectedItem;
+        if (selectedItem == null) return;
 
-        // Hide all content panels
-        AlbumsContent.Visibility = Visibility.Collapsed;
-        ArtistsContent.Visibility = Visibility.Collapsed;
-        LikedSongsContent.Visibility = Visibility.Collapsed;
+        int newIndex = GetTabIndex(selectedItem);
 
-        // Show selected content
-        if (selectedItem == AlbumsItem)
+        // Skip if same tab
+        if (newIndex == _currentTabIndex && ContentFrame.Content != null)
+            return;
+
+        // Determine direction for slide animation
+        var effect = newIndex > _currentTabIndex
+            ? SlideNavigationTransitionEffect.FromRight
+            : SlideNavigationTransitionEffect.FromLeft;
+
+        _currentTabIndex = newIndex;
+
+        var pageType = GetPageType(selectedItem);
+        ContentFrame.Navigate(pageType, null, new SlideNavigationTransitionInfo
         {
-            AlbumsContent.Visibility = Visibility.Visible;
-        }
-        else if (selectedItem == ArtistsItem)
+            Effect = effect
+        });
+    }
+
+    private int GetTabIndex(SelectorBarItem item)
+    {
+        return item switch
         {
-            ArtistsContent.Visibility = Visibility.Visible;
-        }
-        else if (selectedItem == LikedSongsItem)
+            _ when item == AlbumsItem => 0,
+            _ when item == ArtistsItem => 1,
+            _ when item == LikedSongsItem => 2,
+            _ => 0
+        };
+    }
+
+    private Type GetPageType(SelectorBarItem item)
+    {
+        return item switch
         {
-            LikedSongsContent.Visibility = Visibility.Visible;
-        }
+            _ when item == AlbumsItem => typeof(AlbumsLibraryPage),
+            _ when item == ArtistsItem => typeof(ArtistsLibraryPage),
+            _ when item == LikedSongsItem => typeof(LikedSongsPage),
+            _ => typeof(AlbumsLibraryPage)
+        };
     }
 
     private void UpdateSidebarSelection(SelectorBarItem? selectedItem = null)
     {
-        // Use passed item or fall back to SelectorBar.SelectedItem
         selectedItem ??= LibrarySelectorBar.SelectedItem;
 
         var shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
 
-        // Find the matching sidebar item
         string? tag = selectedItem switch
         {
             _ when selectedItem == AlbumsItem => "Albums",
@@ -114,7 +140,6 @@ public sealed partial class LibraryPage : Page
 
         if (tag != null)
         {
-            // Find the item in the sidebar with matching tag
             foreach (var item in shellViewModel.SidebarItems)
             {
                 if (item.Children is System.Collections.IEnumerable children)

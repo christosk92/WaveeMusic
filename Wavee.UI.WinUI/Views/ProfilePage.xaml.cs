@@ -21,7 +21,16 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
         ViewModel = Ioc.Default.GetRequiredService<ProfileViewModel>();
         InitializeComponent();
 
-        ViewModel.ContentChanged += (s, e) => ContentChanged?.Invoke(this, e);
+        ViewModel.ContentChanged += ViewModel_ContentChanged;
+        Unloaded += ProfilePage_Unloaded;
+    }
+
+    private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
+        => ContentChanged?.Invoke(this, e);
+
+    private void ProfilePage_Unloaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

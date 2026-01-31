@@ -15,8 +15,11 @@
                 <ResourceDictionary Source="ms-appx:///Styles/ButtonStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/TextBlockStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/TabBarStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/ListViewStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/TabbedCommandBarStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Sidebar/SidebarStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Omnibar/Omnibar.xaml" />
+                <ResourceDictionary Source="ms-appx:///Controls/GridSplitter/GridSplitter.xaml" />
 
                 <!-- INLINE ThemeDictionaries for TabView overrides (Files pattern) -->
                 <ResourceDictionary>
@@ -98,6 +101,9 @@
             <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter" />
             <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter" />
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+            <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
+            <converters:BoolToBackgroundConverter x:Key="BoolToBackgroundConverter" />
+            <converters:BoolToBackgroundConverter x:Key="InverseBoolToBackgroundConverter" Invert="True" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -37,6 +37,7 @@ public static class AppLifecycleHelper
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: true))
                 .AddSingleton<ILibraryDataService, MockLibraryDataService>()
+                .AddSingleton<ICatalogService, MockCatalogService>()
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()
@@ -45,6 +46,10 @@ public static class AppLifecycleHelper
                 .AddTransient<HomeViewModel>()
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
+                .AddTransient<AlbumsLibraryViewModel>()
+                .AddTransient<ArtistsLibraryViewModel>()
+                .AddTransient<LikedSongsViewModel>()
+                .AddTransient<PlaylistViewModel>()
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>()
 

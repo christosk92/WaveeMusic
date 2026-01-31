@@ -131,27 +131,33 @@ public sealed partial class HomePage : Page, ITabBarItemContent
             var openInNewTabItem = new MenuFlyoutItem
             {
                 Text = "Open in new tab",
-                Icon = new SymbolIcon(Symbol.OpenWith)
+                Icon = new SymbolIcon(Symbol.OpenWith),
+                Tag = item
             };
 
-            openInNewTabItem.Click += (s, args) =>
-            {
-                switch (item.Type?.ToLowerInvariant())
-                {
-                    case "artist":
-                        NavigationHelpers.OpenArtist(item.Id ?? "", item.Title ?? "Artist", openInNewTab: true);
-                        break;
-                    case "album":
-                        NavigationHelpers.OpenAlbum(item.Id ?? "", item.Title ?? "Album", openInNewTab: true);
-                        break;
-                    case "playlist":
-                        NavigationHelpers.OpenPlaylist(item.Id ?? "", item.Title ?? "Playlist", openInNewTab: true);
-                        break;
-                }
-            };
+            openInNewTabItem.Click += OpenInNewTabItem_Click;
 
             menu.Items.Add(openInNewTabItem);
             menu.ShowAt(btn, e.GetPosition(btn));
+        }
+    }
+
+    private static void OpenInNewTabItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem menuItem && menuItem.Tag is HomeSectionItem item)
+        {
+            switch (item.Type?.ToLowerInvariant())
+            {
+                case "artist":
+                    NavigationHelpers.OpenArtist(item.Id ?? "", item.Title ?? "Artist", openInNewTab: true);
+                    break;
+                case "album":
+                    NavigationHelpers.OpenAlbum(item.Id ?? "", item.Title ?? "Album", openInNewTab: true);
+                    break;
+                case "playlist":
+                    NavigationHelpers.OpenPlaylist(item.Id ?? "", item.Title ?? "Playlist", openInNewTab: true);
+                    break;
+            }
         }
     }
 }

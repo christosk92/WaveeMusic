@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -22,8 +23,17 @@ public sealed partial class CreatePlaylistPage : Page, ITabBarItemContent
         ViewModel = Ioc.Default.GetRequiredService<CreatePlaylistViewModel>();
         InitializeComponent();
 
-        ViewModel.ContentChanged += (s, e) => ContentChanged?.Invoke(this, e);
+        ViewModel.ContentChanged += ViewModel_ContentChanged;
         Loaded += CreatePlaylistPage_Loaded;
+        Unloaded += CreatePlaylistPage_Unloaded;
+    }
+
+    private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
+        => ContentChanged?.Invoke(this, e);
+
+    private void CreatePlaylistPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
     }
 
     private void CreatePlaylistPage_Loaded(object sender, RoutedEventArgs e)
@@ -35,14 +45,19 @@ public sealed partial class CreatePlaylistPage : Page, ITabBarItemContent
     {
         base.OnNavigatedTo(e);
 
-        if (e.Parameter is bool isFolder)
+        if (e.Parameter is CreatePlaylistParameter parameter)
         {
-            ViewModel.Initialize(isFolder);
+            ViewModel.Initialize(parameter);
+        }
+        else if (e.Parameter is bool isFolder)
+        {
+            // Backward compatibility
+            ViewModel.Initialize(new CreatePlaylistParameter { IsFolder = isFolder });
         }
         else
         {
             // Default to playlist
-            ViewModel.Initialize(false);
+            ViewModel.Initialize(new CreatePlaylistParameter { IsFolder = false });
         }
     }
 }

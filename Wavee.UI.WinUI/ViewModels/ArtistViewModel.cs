@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -12,6 +13,8 @@ namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent
 {
+    private readonly ILibraryDataService _libraryDataService;
+
     [ObservableProperty]
     private bool _isLoading;
 
@@ -42,12 +45,40 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     private ObservableCollection<RelatedArtist> _relatedArtists = [];
 
+    // Pagination properties
+    private const int RowsPerPage = 5;
+
+    [ObservableProperty]
+    private int _columnCount = 2; // Updated by view based on window width
+
+    private int TracksPerPage => RowsPerPage * ColumnCount; // Dynamic: 10 or 5
+
+    [ObservableProperty]
+    private int _currentPage;
+
+    public int TotalPages => TopTracks.Count == 0 ? 0 : (int)Math.Ceiling((double)TopTracks.Count / TracksPerPage);
+
+    // Split tracks into two columns for current page
+    public IEnumerable<ArtistTopTrack> Column1Tracks =>
+        TopTracks.Skip(CurrentPage * TracksPerPage).Take(RowsPerPage);
+
+    public IEnumerable<ArtistTopTrack> Column2Tracks =>
+        TopTracks.Skip(CurrentPage * TracksPerPage + RowsPerPage).Take(RowsPerPage);
+
+    partial void OnColumnCountChanged(int value)
+    {
+        // Reset to page 0 and recalculate when layout changes
+        CurrentPage = 0;
+        NotifyPaginationChanged();
+    }
+
     public TabItemParameter? TabItemParameter { get; private set; }
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public ArtistViewModel()
+    public ArtistViewModel(ILibraryDataService libraryDataService)
     {
+        _libraryDataService = libraryDataService;
     }
 
     public void Initialize(string artistId)
@@ -67,8 +98,53 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         try
         {
             IsLoading = true;
-            // TODO: Load artist data from Wavee core
-            await Task.Delay(100); // Placeholder
+
+            // Get artist info from library
+            var artists = await _libraryDataService.GetArtistsAsync();
+            var artist = artists.FirstOrDefault(a => a.Id == ArtistId);
+            if (artist != null)
+            {
+                ArtistName = artist.Name;
+                ArtistImageUrl = artist.ImageUrl;
+                MonthlyListeners = artist.FollowerCount;
+            }
+
+            // Get top tracks
+            var topTracks = await _libraryDataService.GetArtistTopTracksAsync(ArtistId);
+            TopTracks.Clear();
+            var trackIndex = 1;
+            foreach (var track in topTracks)
+            {
+                TopTracks.Add(new ArtistTopTrack
+                {
+                    Id = track.Id,
+                    Index = trackIndex++,
+                    Title = track.Title,
+                    AlbumName = track.AlbumName,
+                    AlbumImageUrl = track.AlbumImageUrl,
+                    Duration = track.Duration,
+                    PlayCount = track.PlayCount
+                });
+            }
+
+            // Get albums/discography
+            var albums = await _libraryDataService.GetArtistAlbumsAsync(ArtistId);
+            Albums.Clear();
+            foreach (var album in albums)
+            {
+                Albums.Add(new ArtistAlbum
+                {
+                    Id = album.Id,
+                    Title = album.Name,
+                    ImageUrl = album.ImageUrl,
+                    Year = album.Year,
+                    AlbumType = album.AlbumType
+                });
+            }
+
+            // Initialize pagination
+            CurrentPage = 0;
+            NotifyPaginationChanged();
         }
         finally
         {
@@ -100,6 +176,18 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         var artist = RelatedArtists.FirstOrDefault(a => a.Id == artistId);
         Helpers.Navigation.NavigationHelpers.OpenArtist(artistId, artist?.Name ?? "Artist");
+    }
+
+    private void NotifyPaginationChanged()
+    {
+        OnPropertyChanged(nameof(TotalPages));
+        OnPropertyChanged(nameof(Column1Tracks));
+        OnPropertyChanged(nameof(Column2Tracks));
+    }
+
+    partial void OnCurrentPageChanged(int value)
+    {
+        NotifyPaginationChanged();
     }
 
     private void UpdateTabTitle()

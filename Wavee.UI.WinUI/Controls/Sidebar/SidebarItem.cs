@@ -30,6 +30,10 @@ public sealed partial class SidebarItem : Control
 	private ItemsRepeater? childrenRepeater;
 	private ISidebarItemModel? lastSubscriber;
 	private ContentPresenter? iconPresenter;
+	private long _displayModeCallbackToken;
+	private long _selectedItemCallbackToken;
+	private SidebarView? _ownerAtSubscription;
+	private INotifyCollectionChanged? _subscribedCollection;
 
 	public SidebarItem()
 	{
@@ -47,6 +51,7 @@ public sealed partial class SidebarItem : Control
 		DragStarting += SidebarItem_DragStarting;
 
 		Loaded += SidebarItem_Loaded;
+		Unloaded += SidebarItem_Unloaded;
 	}
 
 	protected override AutomationPeer OnCreateAutomationPeer()
@@ -69,7 +74,14 @@ public sealed partial class SidebarItem : Control
 			if (icon is FontIcon fontIcon)
 			{
 				fontIcon.FontSize = 16;
-				fontIcon.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
+				// Bind foreground to the ContentPresenter so it updates with theme changes
+				var binding = new Microsoft.UI.Xaml.Data.Binding
+				{
+					Source = iconPresenter,
+					Path = new PropertyPath("Foreground"),
+					Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay
+				};
+				fontIcon.SetBinding(ForegroundProperty, binding);
 			}
 			iconPresenter.Content = icon;
 		}
@@ -130,41 +142,81 @@ public sealed partial class SidebarItem : Control
 			resolvingTarget = element;
 		}
 		Owner = resolvingTarget.FindAscendant<SidebarView>()!;
+		_ownerAtSubscription = Owner; // Store reference for safe unsubscription
 
-		Owner.RegisterPropertyChangedCallback(SidebarView.DisplayModeProperty, (sender, args) =>
+		_displayModeCallbackToken = Owner.RegisterPropertyChangedCallback(SidebarView.DisplayModeProperty, (sender, args) =>
 		{
 			DisplayMode = Owner.DisplayMode;
 		});
 		DisplayMode = Owner.DisplayMode;
 
-		Owner.RegisterPropertyChangedCallback(SidebarView.SelectedItemProperty, (sender, args) =>
+		_selectedItemCallbackToken = Owner.RegisterPropertyChangedCallback(SidebarView.SelectedItemProperty, (sender, args) =>
 		{
 			ReevaluateSelection();
 		});
 		ReevaluateSelection();
 	}
 
-	private void HookupItemChangeListener(ISidebarItemModel? oldItem, ISidebarItemModel? newItem)
+	private void SidebarItem_Unloaded(object sender, RoutedEventArgs e)
 	{
+		// Clean up PropertyChangedCallbacks using stored reference to prevent memory leaks
+		if (_ownerAtSubscription != null)
+		{
+			_ownerAtSubscription.UnregisterPropertyChangedCallback(SidebarView.DisplayModeProperty, _displayModeCallbackToken);
+			_ownerAtSubscription.UnregisterPropertyChangedCallback(SidebarView.SelectedItemProperty, _selectedItemCallbackToken);
+			_ownerAtSubscription = null;
+		}
+
+		// Clean up collection subscription
+		if (_subscribedCollection != null)
+		{
+			_subscribedCollection.CollectionChanged -= ChildItems_CollectionChanged;
+			_subscribedCollection = null;
+		}
+
+		// Clean up item property change listener
 		if (lastSubscriber != null)
 		{
 			lastSubscriber.PropertyChanged -= ItemPropertyChangedHandler;
-			if (lastSubscriber.Children is INotifyCollectionChanged observableCollection)
-				observableCollection.CollectionChanged -= ChildItems_CollectionChanged;
+			lastSubscriber = null;
+		}
+	}
+
+	private void HookupItemChangeListener(ISidebarItemModel? oldItem, ISidebarItemModel? newItem)
+	{
+		// Unsubscribe from stored collection reference
+		if (_subscribedCollection != null)
+		{
+			_subscribedCollection.CollectionChanged -= ChildItems_CollectionChanged;
+			_subscribedCollection = null;
 		}
 
+		// Unsubscribe from lastSubscriber (if different from oldItem, to avoid double-unsubscribe)
+		if (lastSubscriber != null && lastSubscriber != oldItem)
+		{
+			lastSubscriber.PropertyChanged -= ItemPropertyChangedHandler;
+		}
+
+		// Unsubscribe from oldItem
 		if (oldItem != null)
 		{
 			oldItem.PropertyChanged -= ItemPropertyChangedHandler;
-			if (oldItem.Children is INotifyCollectionChanged observableCollection)
-				observableCollection.CollectionChanged -= ChildItems_CollectionChanged;
 		}
+
+		lastSubscriber = null;
+
+		// Subscribe to newItem
 		if (newItem != null)
 		{
 			newItem.PropertyChanged += ItemPropertyChangedHandler;
 			lastSubscriber = newItem;
+
+			// Store and subscribe to collection
 			if (newItem.Children is INotifyCollectionChanged observableCollection)
-				observableCollection.CollectionChanged += ChildItems_CollectionChanged;
+			{
+				_subscribedCollection = observableCollection;
+				_subscribedCollection.CollectionChanged += ChildItems_CollectionChanged;
+			}
 		}
 		UpdateIcon();
 	}

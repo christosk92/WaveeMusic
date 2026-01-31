@@ -8,7 +8,7 @@
     mc:Ignorable="d"
     Background="Transparent">
 
-    <ScrollViewer>
+    <ScrollView>
         <StackPanel
             Padding="48"
             Spacing="32"
@@ -82,5 +82,5 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
         </StackPanel>
-    </ScrollViewer>
+    </ScrollView>
 </Page>

@@ -10,8 +10,9 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// ViewModel for the player bar control. Manages playback state, track info,
 /// and volume controls. Will be connected to Wavee's AudioPipeline backend.
 /// </summary>
-public sealed partial class PlayerBarViewModel : ObservableObject
+public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
+    private bool _disposed;
     private DispatcherTimer? _positionTimer;
 
     // Track info
@@ -291,5 +292,21 @@ public sealed partial class PlayerBarViewModel : ObservableObject
             null,
             180000 // 3 minutes
         );
+    }
+
+    /// <summary>
+    /// Disposes resources including the position timer.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_positionTimer != null)
+        {
+            _positionTimer.Stop();
+            _positionTimer.Tick -= OnPositionTimerTick;
+            _positionTimer = null;
+        }
     }
 }

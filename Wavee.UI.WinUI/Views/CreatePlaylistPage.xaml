@@ -34,6 +34,15 @@
                 Style="{StaticResource TitleTextBlockStyle}"
                 HorizontalAlignment="Center"/>
 
+            <!-- Tracks Info (shown when adding tracks) -->
+            <TextBlock
+                Text="{x:Bind ViewModel.TracksInfoText, Mode=OneWay}"
+                Visibility="{x:Bind ViewModel.HasTracks, Mode=OneWay}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                HorizontalAlignment="Center"
+                Margin="0,-16,0,0"/>
+
             <!-- Name Input -->
             <TextBox
                 x:Name="NameTextBox"

@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Override TabbedCommandBar content background with acrylic -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <AcrylicBrush x:Key="TabContentContentBorderBackground"
+                          TintColor="{ThemeResource LayerFillColorDefault}"
+                          TintOpacity="0.9"
+                          FallbackColor="{ThemeResource LayerFillColorDefault}"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <AcrylicBrush x:Key="TabContentContentBorderBackground"
+                          TintColor="{ThemeResource LayerFillColorDefault}"
+                          TintOpacity="0.9"
+                          FallbackColor="{ThemeResource LayerFillColorDefault}"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="TabContentContentBorderBackground"
+                             Color="{ThemeResource SystemColorWindowColor}"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+</ResourceDictionary>
