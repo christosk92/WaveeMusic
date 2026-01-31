@@ -32,6 +32,17 @@ A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
 
 ## Screenshots
 
+### Desktop App
+
+<table>
+  <tr>
+    <td><img src="screenshots/app_1.png" alt="App Screenshot 1" width="400"></td>
+    <td><img src="screenshots/app_2.png" alt="App Screenshot 2" width="400"></td>
+  </tr>
+</table>
+
+### Console
+
 ![Console](screenshots/console.png)
 
 ## Quick Start
