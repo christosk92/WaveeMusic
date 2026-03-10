@@ -4,12 +4,16 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Reflection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Windows.ApplicationModel.DataTransfer;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 using Windows.Foundation;
 
@@ -20,13 +24,18 @@ namespace Wavee.UI.WinUI.Controls.TrackList;
 /// </summary>
 public sealed partial class TrackListView : UserControl
 {
+    private const int DurationColumnIndex = 6; // Base index of Duration column before custom columns
     private ScrollViewer? _scrollViewer;
     private INotifyCollectionChanged? _currentCollection;
     private readonly List<MenuFlyoutItem> _dynamicPlaylistMenuItems = [];
+    private readonly List<UIElement> _scrollableCustomHeaderElements = [];
+    private readonly List<UIElement> _stickyCustomHeaderElements = [];
+    private readonly Dictionary<(Type, string), PropertyInfo?> _propertyCache = [];
 
     public TrackListView()
     {
         InitializeComponent();
+        SetValue(CustomColumnsProperty, new List<TrackListColumnDefinition>());
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -136,13 +145,13 @@ public sealed partial class TrackListView : UserControl
                 control._currentCollection = null;
             }
 
-            control.UpdateEmptyState();
+            control.UpdateVisualState();
         }
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        UpdateEmptyState();
+        UpdateVisualState();
     }
 
     /// <summary>
@@ -289,10 +298,77 @@ public sealed partial class TrackListView : UserControl
     {
         if (d is TrackListView control)
         {
-            control.LoadingOverlay.Visibility = (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed;
-            control.UpdateEmptyState();
+            control.UpdateVisualState();
         }
     }
+
+    /// <summary>
+    /// Whether the control is in an error state.
+    /// </summary>
+    public bool HasError
+    {
+        get => (bool)GetValue(HasErrorProperty);
+        set => SetValue(HasErrorProperty, value);
+    }
+
+    public static readonly DependencyProperty HasErrorProperty =
+        DependencyProperty.Register(nameof(HasError), typeof(bool), typeof(TrackListView),
+            new PropertyMetadata(false, OnHasErrorChanged));
+
+    private static void OnHasErrorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackListView control)
+        {
+            control.UpdateVisualState();
+        }
+    }
+
+    /// <summary>
+    /// Error message to display in the default error state.
+    /// </summary>
+    public string? ErrorMessage
+    {
+        get => (string?)GetValue(ErrorMessageProperty);
+        set => SetValue(ErrorMessageProperty, value);
+    }
+
+    public static readonly DependencyProperty ErrorMessageProperty =
+        DependencyProperty.Register(nameof(ErrorMessage), typeof(string), typeof(TrackListView),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Page-specific error state content (overrides default error panel).
+    /// </summary>
+    public object? ErrorStateContent
+    {
+        get => GetValue(ErrorStateContentProperty);
+        set => SetValue(ErrorStateContentProperty, value);
+    }
+
+    public static readonly DependencyProperty ErrorStateContentProperty =
+        DependencyProperty.Register(nameof(ErrorStateContent), typeof(object), typeof(TrackListView),
+            new PropertyMetadata(null, OnErrorStateContentChanged));
+
+    private static void OnErrorStateContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackListView control)
+        {
+            control.UpdateVisualState();
+        }
+    }
+
+    /// <summary>
+    /// Command to execute when the retry button is clicked.
+    /// </summary>
+    public System.Windows.Input.ICommand? RetryCommand
+    {
+        get => (System.Windows.Input.ICommand?)GetValue(RetryCommandProperty);
+        set => SetValue(RetryCommandProperty, value);
+    }
+
+    public static readonly DependencyProperty RetryCommandProperty =
+        DependencyProperty.Register(nameof(RetryCommand), typeof(System.Windows.Input.ICommand), typeof(TrackListView),
+            new PropertyMetadata(null));
 
     /// <summary>
     /// Delegate for getting the formatted date string from a track item.
@@ -306,6 +382,21 @@ public sealed partial class TrackListView : UserControl
     public static readonly DependencyProperty DateAddedFormatterProperty =
         DependencyProperty.Register(nameof(DateAddedFormatter), typeof(Func<object, string>), typeof(TrackListView),
             new PropertyMetadata(null));
+
+    /// <summary>
+    /// Custom columns to display between DateAdded and Duration.
+    /// Set in XAML or code-behind. Each column uses PropertyName (reflection) or ValueSelector (delegate).
+    /// </summary>
+    public IList<TrackListColumnDefinition> CustomColumns
+    {
+        get => (IList<TrackListColumnDefinition>)GetValue(CustomColumnsProperty);
+        set => SetValue(CustomColumnsProperty, value);
+    }
+
+    public static readonly DependencyProperty CustomColumnsProperty =
+        DependencyProperty.Register(nameof(CustomColumns), typeof(IList<TrackListColumnDefinition>), typeof(TrackListView),
+            new PropertyMetadata(null));
+
 
     #endregion
 
@@ -351,13 +442,14 @@ public sealed partial class TrackListView : UserControl
         }
 
         UpdateRemoveButtonLabel();
+        ApplyCustomColumns();
         UpdateColumnVisibility();
     }
 
     private void UpdateColumnVisibility()
     {
         // Set column widths based on Show* properties
-        // Column indices: 0=#, 1=Art, 2=Title, 3=Artist, 4=Album, 5=DateAdded, 6=Duration
+        // Column indices: 0=#, 1=Art, 2=Title, 3=Artist, 4=Album, 5=DateAdded, [custom...], Duration
 
         // Apply compact padding
         InternalListView.Padding = IsCompact
@@ -390,6 +482,128 @@ public sealed partial class TrackListView : UserControl
         StickyArtistHeader.Visibility = ShowArtistColumn ? Visibility.Visible : Visibility.Collapsed;
         StickyAlbumHeader.Visibility = ShowAlbumColumn ? Visibility.Visible : Visibility.Collapsed;
         StickyAddedHeader.Visibility = ShowDateAddedColumn ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Injects custom column definitions and headers into the scrollable and sticky header grids.
+    /// Called once on Loaded. Custom columns are inserted at index 6 (before Duration).
+    /// </summary>
+    private void ApplyCustomColumns()
+    {
+        var customCols = CustomColumns;
+        var count = customCols?.Count ?? 0;
+        if (count == 0) return;
+
+        // Apply to both header grids
+        ApplyCustomColumnsToHeaderGrid(ScrollableColumnHeaders, _scrollableCustomHeaderElements, customCols!);
+        ApplyCustomColumnsToHeaderGrid(FindStickyHeaderGrid(), _stickyCustomHeaderElements, customCols!);
+    }
+
+    private void ApplyCustomColumnsToHeaderGrid(Grid? headerGrid, List<UIElement> trackedElements, IList<TrackListColumnDefinition> columns)
+    {
+        if (headerGrid == null) return;
+
+        // Clean up previously injected elements
+        foreach (var el in trackedElements)
+            headerGrid.Children.Remove(el);
+        trackedElements.Clear();
+
+        // Remove previously injected ColumnDefinitions (beyond the original 7)
+        while (headerGrid.ColumnDefinitions.Count > 7)
+            headerGrid.ColumnDefinitions.RemoveAt(DurationColumnIndex);
+
+        // Insert custom ColumnDefinitions at index 6 (pushing Duration right)
+        for (int i = 0; i < columns.Count; i++)
+        {
+            headerGrid.ColumnDefinitions.Insert(DurationColumnIndex + i,
+                new ColumnDefinition { Width = columns[i].Width });
+        }
+
+        // Move Duration header to new position
+        var durationColIndex = DurationColumnIndex + columns.Count;
+
+        // Shift existing elements that were at column >= DurationColumnIndex
+        foreach (var child in headerGrid.Children.OfType<FrameworkElement>())
+        {
+            var col = Grid.GetColumn(child);
+            if (col >= DurationColumnIndex && !trackedElements.Contains(child))
+            {
+                Grid.SetColumn(child, col + columns.Count);
+            }
+        }
+
+        // Add custom column headers
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var colDef = columns[i];
+            var colIndex = DurationColumnIndex + i;
+
+            FrameworkElement headerElement;
+            if (colDef.SortKey != null && ViewModel != null)
+            {
+                var button = new Button
+                {
+                    Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                    BorderThickness = new Thickness(0),
+                    Padding = new Thickness(0, 8, 8, 8),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Command = ViewModel.SortByCommand,
+                    CommandParameter = colDef.SortKey,
+                    Content = new TextBlock
+                    {
+                        Text = colDef.Header,
+                        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                    }
+                };
+                headerElement = button;
+            }
+            else
+            {
+                headerElement = new TextBlock
+                {
+                    Text = colDef.Header,
+                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = colDef.TextAlignment,
+                    Margin = new Thickness(0, 8, 0, 8)
+                };
+            }
+
+            Grid.SetColumn(headerElement, colIndex);
+            headerGrid.Children.Add(headerElement);
+            trackedElements.Add(headerElement);
+        }
+    }
+
+    private Grid? FindStickyHeaderGrid()
+    {
+        // The sticky header Border contains a Grid child
+        return StickyColumnHeaders.Child as Grid;
+    }
+
+    private int CustomColumnCount => CustomColumns?.Count ?? 0;
+
+    private string GetCustomColumnValue(object item, TrackListColumnDefinition col)
+    {
+        if (col.ValueSelector != null)
+            return col.ValueSelector(item);
+
+        if (col.PropertyName != null)
+        {
+            var type = item.GetType();
+            var key = (type, col.PropertyName);
+            if (!_propertyCache.TryGetValue(key, out var prop))
+            {
+                prop = type.GetProperty(col.PropertyName);
+                _propertyCache[key] = prop;
+            }
+            return prop?.GetValue(item)?.ToString() ?? "";
+        }
+
+        return "";
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)
@@ -446,11 +660,15 @@ public sealed partial class TrackListView : UserControl
             {
                 // Set alternating row background
                 var isEven = args.ItemIndex % 2 == 0;
-                border.Padding = new Thickness(8, 8, 8, 8);
+                border.Padding = new Thickness(4, 2, 4, 2);
                 border.CornerRadius = new CornerRadius(6);
+                border.BorderThickness = isEven ? new Thickness(0) : new Thickness(1);
+                border.BorderBrush = isEven
+                    ? (Brush)Application.Current.Resources["TransparentColorBrush"]
+                    : (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
                 border.Background = isEven
-                    ? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"]
-                    : (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+                    ? (Brush)Application.Current.Resources["TransparentColorBrush"]
+                    : (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
             }
 
             // Adjust item container margin for compact mode
@@ -459,11 +677,14 @@ public sealed partial class TrackListView : UserControl
                 item.Margin = IsCompact ? new Thickness(0, 1, 0, 1) : new Thickness(0, 2, 0, 2);
             }
 
-            // Set row index and date added
+            // Set row index, date added, and custom columns
             if (border.Child is Grid grid)
             {
+                var customCols = CustomColumns;
+                var customCount = customCols?.Count ?? 0;
+
                 // Apply column visibility to row grid
-                // Column indices: 0=#, 1=Art, 2=Title, 3=Artist, 4=Album, 5=DateAdded, 6=Duration
+                // Base indices: 0=#, 1=Art, 2=Title, 3=Artist, 4=Album, 5=DateAdded, 6=Duration
                 if (grid.ColumnDefinitions.Count >= 7)
                 {
                     // Reduce index column width in compact mode (30 vs 40)
@@ -474,14 +695,71 @@ public sealed partial class TrackListView : UserControl
                     grid.ColumnDefinitions[5].Width = ShowDateAddedColumn ? new GridLength(120) : new GridLength(0);
                 }
 
-                // Set row index
+                // Handle custom columns: insert ColumnDefinitions and shift Duration
+                if (customCount > 0)
+                {
+                    // Ensure grid has enough columns (7 base + N custom)
+                    while (grid.ColumnDefinitions.Count < 7 + customCount)
+                        grid.ColumnDefinitions.Insert(DurationColumnIndex, new ColumnDefinition());
+
+                    // Set custom column widths
+                    for (int i = 0; i < customCount; i++)
+                        grid.ColumnDefinitions[DurationColumnIndex + i].Width = customCols![i].Width;
+
+                    // Move Duration column to the end
+                    var durationIndex = DurationColumnIndex + customCount;
+                    grid.ColumnDefinitions[durationIndex].Width = new GridLength(60);
+
+                    // Find and shift the Duration TextBlock (last TextBlock with HorizontalAlignment=Right, not DateAddedText)
+                    foreach (var child in grid.Children.OfType<TextBlock>())
+                    {
+                        if (child.Name != "DateAddedText" && child.HorizontalAlignment == HorizontalAlignment.Right
+                            && child.Tag is not string)
+                        {
+                            Grid.SetColumn(child, durationIndex);
+                            break;
+                        }
+                    }
+
+                    // Render custom column cells
+                    for (int i = 0; i < customCount; i++)
+                    {
+                        var colDef = customCols![i];
+                        var colIndex = DurationColumnIndex + i;
+                        var cellTag = $"_customCol{i}";
+
+                        // Find existing cell or create a new one
+                        var cell = grid.Children.OfType<TextBlock>().FirstOrDefault(t => t.Tag as string == cellTag);
+                        if (cell == null)
+                        {
+                            cell = new TextBlock
+                            {
+                                Tag = cellTag,
+                                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                                VerticalAlignment = VerticalAlignment.Center,
+                                HorizontalAlignment = colDef.TextAlignment,
+                                TextTrimming = TextTrimming.CharacterEllipsis,
+                                MaxLines = 1
+                            };
+                            grid.Children.Add(cell);
+                        }
+
+                        Grid.SetColumn(cell, colIndex);
+                        cell.Text = args.Item != null ? GetCustomColumnValue(args.Item, colDef) : "";
+                    }
+                }
+
+                // Set row index — use original index if available, otherwise fall back to position
                 var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
                 if (indexGrid != null)
                 {
                     var indexText = indexGrid.Children.OfType<TextBlock>().FirstOrDefault();
                     if (indexText != null)
                     {
-                        indexText.Text = (args.ItemIndex + 1).ToString();
+                        indexText.Text = (args.Item is ITrackItem trackItem && trackItem.OriginalIndex > 0)
+                            ? trackItem.OriginalIndex.ToString()
+                            : (args.ItemIndex + 1).ToString();
                     }
                 }
 
@@ -532,6 +810,31 @@ public sealed partial class TrackListView : UserControl
                 }
             }
         }
+    }
+
+    #endregion
+
+    #region Drag Handlers
+
+    private void InternalListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var tracks = e.Items.OfType<ITrackItem>().ToList();
+        if (tracks.Count == 0)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        var payload = new TrackDragPayload(tracks);
+        e.Data.SetData(payload.DataFormat, payload.SerializedData);
+        e.Data.RequestedOperation = DataPackageOperation.Copy;
+
+        Ioc.Default.GetService<DragStateService>()?.StartDrag(payload);
+    }
+
+    private void InternalListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        Ioc.Default.GetService<DragStateService>()?.EndDrag();
     }
 
     #endregion
@@ -664,15 +967,46 @@ public sealed partial class TrackListView : UserControl
         RemoveButton.Label = RemoveActionLabel;
     }
 
-    private void UpdateEmptyState()
+    private void UpdateVisualState()
     {
         var hasItems = ItemsSource != null;
 
-        // Don't show empty state while loading - let loading overlay/shimmer handle it
-        var showEmptyState = !hasItems && !IsLoading;
+        if (HasError)
+        {
+            // Error state: hide everything else, show error
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+            EmptyStatePresenter.Visibility = Visibility.Collapsed;
+            InternalListView.Visibility = Visibility.Collapsed;
+            ErrorStateContainer.Visibility = Visibility.Visible;
 
-        EmptyStatePresenter.Visibility = showEmptyState ? Visibility.Visible : Visibility.Collapsed;
-        InternalListView.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+            // Show custom or default error content
+            if (ErrorStateContent != null)
+            {
+                ErrorStatePresenter.Visibility = Visibility.Visible;
+                DefaultErrorState.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                ErrorStatePresenter.Visibility = Visibility.Collapsed;
+                DefaultErrorState.Visibility = Visibility.Visible;
+            }
+        }
+        else if (IsLoading)
+        {
+            // Loading state
+            LoadingOverlay.Visibility = Visibility.Visible;
+            EmptyStatePresenter.Visibility = Visibility.Collapsed;
+            InternalListView.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+            ErrorStateContainer.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            // Content or empty state
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+            ErrorStateContainer.Visibility = Visibility.Collapsed;
+            EmptyStatePresenter.Visibility = !hasItems ? Visibility.Visible : Visibility.Collapsed;
+            InternalListView.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     #endregion

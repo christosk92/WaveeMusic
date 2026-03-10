@@ -67,4 +67,15 @@ public class WaveeCacheOptions
     /// Default: 50 (contexts are larger objects with TTL-based expiry)
     /// </summary>
     public int ContextCacheSize { get; set; } = 50;
+
+    /// <summary>
+    /// Interval between background cache cleanup passes. Default: 5 minutes.
+    /// </summary>
+    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Default TTL for cache entries. Entries not accessed within this window are evicted.
+    /// Default: 30 minutes.
+    /// </summary>
+    public TimeSpan DefaultMaxAge { get; set; } = TimeSpan.FromMinutes(30);
 }

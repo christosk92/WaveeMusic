@@ -84,7 +84,7 @@
                                     <primitives:ConstrainedBox AspectRatio="1:1">
                                         <Grid CornerRadius="24">
                                             <Image
-                                                Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='48'}"
                                                 Stretch="UniformToFill"
                                                 Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                                 behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -232,7 +232,7 @@
                             VerticalAlignment="Center"
                             Visibility="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                             <Image
-                            Source="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            Source="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
                             Stretch="UniformToFill"
                             Visibility="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                             behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -354,7 +354,7 @@
                                                                     Opacity="0.3"
                                                                     Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                                                     <Image
-                                                                    Source="{x:Bind Album.ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                                    Source="{x:Bind Album.ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='120'}"
                                                                     Stretch="UniformToFill"
                                                                     Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                                                     behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -411,7 +411,7 @@
                                                                     Opacity="0.3"
                                                                     Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                                                     <Image
-                                                                    Source="{x:Bind Album.ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                                    Source="{x:Bind Album.ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='48'}"
                                                                     Stretch="UniformToFill"
                                                                     Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                                                     behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -628,7 +628,7 @@
                             VerticalAlignment="Center"
                             Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                             <Image
-                            Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='64'}"
                             Stretch="UniformToFill"
                             Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                             behaviors:ImageFallbackBehavior.HideOnError="True"

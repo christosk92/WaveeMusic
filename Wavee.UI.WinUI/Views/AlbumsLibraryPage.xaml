@@ -53,7 +53,7 @@
                                         VerticalAlignment="Center"
                                         Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                     <Image
-                                        Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                        Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
                                         Stretch="UniformToFill"
                                         Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                         behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -113,7 +113,7 @@
                             VerticalAlignment="Center"
                             Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                         <Image
-                            Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            Source="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='100'}"
                             Stretch="UniformToFill"
                             Visibility="{x:Bind ViewModel.SelectedAlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                             behaviors:ImageFallbackBehavior.HideOnError="True"

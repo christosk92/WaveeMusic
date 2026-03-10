@@ -37,7 +37,7 @@ public interface ICacheService : IAsyncDisposable
 /// <summary>
 /// Unified cache service implementation with hot cache + SQLite backend.
 /// </summary>
-public sealed class CacheService : ICacheService
+public sealed class CacheService : ICacheService, ICleanableCache
 {
     private readonly IHotCache<TrackCacheEntry> _hotCache;
     private readonly IMetadataDatabase _database;
@@ -526,6 +526,40 @@ public sealed class CacheService : ICacheService
     private static string GetAudioKeyCacheKey(string trackUri, FileId fileId)
     {
         return $"{trackUri}:{fileId.ToBase16()}";
+    }
+
+    #endregion
+
+    #region ICleanableCache
+
+    string ICleanableCache.CacheName => "CacheService";
+
+    int ICleanableCache.CurrentCount
+    {
+        get
+        {
+            lock (_auxCacheLock)
+            {
+                return _audioKeyCache.Count + _cdnCache.Count + _headDataCache.Count;
+            }
+        }
+    }
+
+    async Task<int> ICleanableCache.CleanupStaleEntriesAsync(TimeSpan maxAge, CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        int removed;
+        lock (_auxCacheLock)
+        {
+            var expired = _cdnCache.Where(kvp => !kvp.Value.IsValid).Select(kvp => kvp.Key).ToList();
+            foreach (var key in expired)
+                _cdnCache.Remove(key);
+            removed = expired.Count;
+        }
+
+        await _database.CleanupExpiredExtensionsAsync(ct);
+        return removed;
     }
 
     #endregion

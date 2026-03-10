@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -14,9 +15,16 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly ILogger? _logger;
 
     [ObservableProperty]
     private bool _isLoading;
+
+    [ObservableProperty]
+    private bool _hasError;
+
+    [ObservableProperty]
+    private string? _errorMessage;
 
     [ObservableProperty]
     private string? _artistId;
@@ -76,9 +84,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public ArtistViewModel(ILibraryDataService libraryDataService)
+    public ArtistViewModel(ILibraryDataService libraryDataService, ILogger<ArtistViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
+        _logger = logger;
     }
 
     public void Initialize(string artistId)
@@ -94,11 +103,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private async Task LoadAsync()
     {
         if (IsLoading || string.IsNullOrEmpty(ArtistId)) return;
+        IsLoading = true;
+        HasError = false;
+        ErrorMessage = null;
 
         try
         {
-            IsLoading = true;
-
             // Get artist info from library
             var artists = await _libraryDataService.GetArtistsAsync();
             var artist = artists.FirstOrDefault(a => a.Id == ArtistId);
@@ -146,10 +156,24 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             CurrentPage = 0;
             NotifyPaginationChanged();
         }
+        catch (Exception ex)
+        {
+            HasError = true;
+            ErrorMessage = ex.Message;
+            _logger?.LogError(ex, "Failed to load artist {ArtistId}", ArtistId);
+        }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task RetryAsync()
+    {
+        HasError = false;
+        ErrorMessage = null;
+        await LoadAsync();
     }
 
     [RelayCommand]

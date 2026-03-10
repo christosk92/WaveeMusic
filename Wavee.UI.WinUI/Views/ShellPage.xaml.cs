@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,18 +12,24 @@ using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.ViewModels;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ShellPage : Page
 {
+    private readonly ILogger? _logger;
+
     public ShellViewModel ViewModel { get; }
     private InputNonClientPointerSource? _nonClientSource;
+    private DragStateService? _dragStateService;
 
     public ShellPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
+        _logger = Ioc.Default.GetService<ILogger<ShellPage>>();
         InitializeComponent();
 
         // Set up titlebar drag region
@@ -37,16 +44,27 @@ public sealed partial class ShellPage : Page
 
         // Set initial theme icon
         UpdateThemeIcon();
+
+        // Handle track drops on sidebar playlists
+        SidebarControl.ItemDropped += SidebarControl_ItemDropped;
+
+        // Subscribe to drag state for app-wide overlay
+        _dragStateService = Ioc.Default.GetService<DragStateService>();
+        if (_dragStateService != null)
+            _dragStateService.DragStateChanged += OnDragStateChanged;
     }
 
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Clean up event subscriptions
+        // Clean up ShellPage-specific event subscriptions only.
+        // Do NOT call ViewModel.Cleanup() here — the ViewModel is a singleton
+        // and outlives the page. Its cleanup happens when the app exits.
         TitleBarGrid.SizeChanged -= TitleBarGrid_SizeChanged;
         TitleBarGrid.Loaded -= TitleBarGrid_Loaded;
         TabControl.SizeChanged -= TabControl_SizeChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        ViewModel.Cleanup();
+        if (_dragStateService != null)
+            _dragStateService.DragStateChanged -= OnDragStateChanged;
     }
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
@@ -106,9 +124,9 @@ public sealed partial class ShellPage : Page
             // Initial update after layout
             TitleBarGrid.Loaded += TitleBarGrid_Loaded;
         }
-        catch
+        catch (Exception ex)
         {
-            // InputNonClientPointerSource may not be available on all systems
+            _logger?.LogWarning(ex, "InputNonClientPointerSource not available on this system");
         }
     }
 
@@ -168,9 +186,9 @@ public sealed partial class ShellPage : Page
                 nonClientSource.SetRegionRects(NonClientRegionKind.Passthrough, [passthroughRect]);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore errors during layout
+            _logger?.LogWarning(ex, "Failed to update titlebar regions");
         }
     }
 
@@ -220,19 +238,19 @@ public sealed partial class ShellPage : Page
                     break;
                 case "Albums":
                     if (isOnLibraryPage && !openInNewTab)
-                        ((LibraryPage)currentPage!).SelectTab("albums");
+                        (currentPage as LibraryPage)?.SelectTab("albums");
                     else
                         NavigationHelpers.OpenAlbums(openInNewTab);
                     break;
                 case "Artists":
                     if (isOnLibraryPage && !openInNewTab)
-                        ((LibraryPage)currentPage!).SelectTab("artists");
+                        (currentPage as LibraryPage)?.SelectTab("artists");
                     else
                         NavigationHelpers.OpenArtists(openInNewTab);
                     break;
                 case "LikedSongs":
                     if (isOnLibraryPage && !openInNewTab)
-                        ((LibraryPage)currentPage!).SelectTab("likedsongs");
+                        (currentPage as LibraryPage)?.SelectTab("likedsongs");
                     else
                         NavigationHelpers.OpenLikedSongs(openInNewTab);
                     break;
@@ -255,5 +273,41 @@ public sealed partial class ShellPage : Page
     private void TabControl_AddTabRequested(object? sender, EventArgs e)
     {
         NavigationHelpers.OpenNewTab();
+    }
+
+    private void OnDragStateChanged(bool isDragging)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var opacity = isDragging ? 0.3 : 1.0;
+            TitleBarGrid.Opacity = opacity;
+            NavToolbar.Opacity = opacity;
+            PlayerBarControl.Opacity = opacity;
+        });
+    }
+
+    private async void SidebarControl_ItemDropped(object? sender, ItemDroppedEventArgs e)
+    {
+        if (!e.DroppedItem.Contains("WaveeTrackIds")) return;
+        if (e.DropTarget is not SidebarItemModel model) return;
+
+        var playlistId = model.Tag;
+        if (string.IsNullOrEmpty(playlistId) || !playlistId.StartsWith("spotify:playlist:")) return;
+
+        try
+        {
+            var data = await e.DroppedItem.GetDataAsync("WaveeTrackIds") as string;
+            var trackIds = data?.Split('|', StringSplitOptions.RemoveEmptyEntries);
+            if (trackIds is { Length: > 0 })
+            {
+                // TODO: Call _libraryDataService.AddTracksToPlaylistAsync(playlistId, trackIds)
+                _logger?.LogInformation("Dropped {TrackCount} track(s) onto playlist {PlaylistId}", trackIds.Length, playlistId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to handle track drop onto playlist {PlaylistId}", playlistId);
+            ViewModel.ShowNotification("Failed to add tracks to playlist");
+        }
     }
 }

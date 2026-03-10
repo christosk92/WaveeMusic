@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -15,6 +16,8 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ArtistPage : Page, ITabBarItemContent
 {
+    private readonly ILogger? _logger;
+
     public ArtistViewModel ViewModel { get; }
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
@@ -24,6 +27,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     public ArtistPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<ArtistViewModel>();
+        _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
@@ -50,13 +54,20 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         base.OnNavigatedTo(e);
 
-        // Try to start connected animation from source page
-        ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
-
-        if (e.Parameter is string artistId)
+        try
         {
-            ViewModel.Initialize(artistId);
-            await ViewModel.LoadCommand.ExecuteAsync(null);
+            // Try to start connected animation from source page
+            ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
+
+            if (e.Parameter is string artistId)
+            {
+                ViewModel.Initialize(artistId);
+                await ViewModel.LoadCommand.ExecuteAsync(null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Unhandled error in ArtistPage OnNavigatedTo");
         }
     }
 

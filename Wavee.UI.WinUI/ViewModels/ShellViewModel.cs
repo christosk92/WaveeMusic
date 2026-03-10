@@ -1,15 +1,19 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
+using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml;
@@ -18,10 +22,11 @@ namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class ShellViewModel : ObservableObject
 {
-    private readonly INavigationService _navigationService;
     private readonly ILibraryDataService _libraryDataService;
     private readonly IThemeService _themeService;
+    private readonly INotificationService _notificationService;
     private readonly AppModel _appModel;
+    private readonly ILogger? _logger;
 
     // UI element references for cleanup
     private Microsoft.UI.Xaml.Controls.SplitButton? _playlistsSplitButton;
@@ -81,16 +86,48 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     private bool _isOnProfilePage;
 
-    public ShellViewModel(INavigationService navigationService, ILibraryDataService libraryDataService, IThemeService themeService, AppModel appModel)
+    // Notification properties backed by INotificationService
+    public bool IsNotificationOpen
     {
-        _navigationService = navigationService;
+        get => _notificationService.IsOpen;
+        set
+        {
+            if (!value) _notificationService.Dismiss();
+        }
+    }
+    public string? NotificationMessage => _notificationService.Message;
+
+    /// <summary>
+    /// Maps notification severity to WinUI's <see cref="InfoBarSeverity"/> for XAML binding.
+    /// </summary>
+    public InfoBarSeverity NotificationSeverity => _notificationService.Severity switch
+    {
+        AppNotificationSeverity.Informational => InfoBarSeverity.Informational,
+        AppNotificationSeverity.Success => InfoBarSeverity.Success,
+        AppNotificationSeverity.Warning => InfoBarSeverity.Warning,
+        AppNotificationSeverity.Error => InfoBarSeverity.Error,
+        _ => InfoBarSeverity.Error
+    };
+
+    public ShellViewModel(
+        ILibraryDataService libraryDataService,
+        IThemeService themeService,
+        INotificationService notificationService,
+        AppModel appModel,
+        ILogger<ShellViewModel>? logger = null)
+    {
         _libraryDataService = libraryDataService;
         _themeService = themeService;
+        _notificationService = notificationService;
         _appModel = appModel;
+        _logger = logger;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
         _selectedTabIndex = appModel.TabStripSelectedIndex;
+
+        // Subscribe to notification service changes to forward to XAML bindings
+        _notificationService.PropertyChanged += OnNotificationServicePropertyChanged;
 
         // Subscribe to playlist changes for reactive updates
         _libraryDataService.PlaylistsChanged += OnPlaylistsChanged;
@@ -99,9 +136,46 @@ public sealed partial class ShellViewModel : ObservableObject
         _ = LoadLibraryDataAsync();
     }
 
+    private void OnNotificationServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(INotificationService.IsOpen):
+                OnPropertyChanged(nameof(IsNotificationOpen));
+                break;
+            case nameof(INotificationService.Message):
+                OnPropertyChanged(nameof(NotificationMessage));
+                break;
+            case nameof(INotificationService.Severity):
+                OnPropertyChanged(nameof(NotificationSeverity));
+                break;
+        }
+    }
+
+    public void ShowNotification(string message, InfoBarSeverity severity = InfoBarSeverity.Error)
+    {
+        var mapped = severity switch
+        {
+            InfoBarSeverity.Informational => AppNotificationSeverity.Informational,
+            InfoBarSeverity.Success => AppNotificationSeverity.Success,
+            InfoBarSeverity.Warning => AppNotificationSeverity.Warning,
+            InfoBarSeverity.Error => AppNotificationSeverity.Error,
+            _ => AppNotificationSeverity.Error
+        };
+        _notificationService.Show(message, mapped);
+    }
+
     private async void OnPlaylistsChanged(object? sender, EventArgs e)
     {
-        await RefreshPlaylistsAsync();
+        try
+        {
+            await RefreshPlaylistsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to handle playlists change event");
+            ShowNotification("Failed to refresh playlists");
+        }
     }
 
     private async Task RefreshPlaylistsAsync()
@@ -121,14 +195,16 @@ public sealed partial class ShellViewModel : ObservableObject
                         Text = playlist.Name,
                         IconSource = new FontIconSource { Glyph = "\uE8FD" },
                         Tag = playlist.Id,
-                        BadgeCount = playlist.TrackCount
+                        BadgeCount = playlist.TrackCount,
+                        DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
                     });
                 }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to refresh playlists: {ex.Message}");
+            _logger?.LogError(ex, "Failed to refresh playlists from service");
+            throw;
         }
     }
 
@@ -280,8 +356,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
             await Task.WhenAll(statsTask, playlistsTask);
 
-            var stats = statsTask.Result;
-            var playlists = playlistsTask.Result;
+            var stats = await statsTask;
+            var playlists = await playlistsTask;
 
             // Update "Your Library" section badges
             var librarySection = SidebarItems.FirstOrDefault(x => x.Text == "Your Library");
@@ -309,14 +385,16 @@ public sealed partial class ShellViewModel : ObservableObject
                         Text = playlist.Name,
                         IconSource = new FontIconSource { Glyph = "\uE8FD" },
                         Tag = playlist.Id,
-                        BadgeCount = playlist.TrackCount
+                        BadgeCount = playlist.TrackCount,
+                        DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
                     });
                 }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to load library data: {ex.Message}");
+            _logger?.LogError(ex, "Failed to load library data");
+            ShowNotification("Failed to load library data");
         }
     }
 
@@ -456,6 +534,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public void Cleanup()
     {
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
+        _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
 
         // Cleanup sidebar button handlers
         if (_playlistsSplitButton != null)

@@ -1,21 +1,25 @@
 using System;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
-using Wavee.UI.WinUI.Converters;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
 /// <summary>
-/// ViewModel for the player bar control. Manages playback state, track info,
-/// and volume controls. Will be connected to Wavee's AudioPipeline backend.
+/// ViewModel for the player bar control. Delegates playback state and commands
+/// to <see cref="IPlaybackStateService"/> while keeping display-only concerns
+/// (formatting, seeking UI, mute toggle) local.
 /// </summary>
 public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
+    private readonly IPlaybackStateService _playbackStateService;
     private bool _disposed;
     private DispatcherTimer? _positionTimer;
 
-    // Track info
+    // Track info (synced from IPlaybackStateService)
     [ObservableProperty]
     private string? _trackTitle;
 
@@ -28,7 +32,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasTrack;
 
-    // Playback state
+    // Playback state (synced from IPlaybackStateService)
     [ObservableProperty]
     private bool _isPlaying;
 
@@ -69,14 +73,73 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private double _previousVolume = 50;
 
-    public PlayerBarViewModel()
+    public PlayerBarViewModel(IPlaybackStateService playbackStateService)
     {
-        // Initialize position update timer
+        _playbackStateService = playbackStateService;
+
+        // Sync initial state
+        SyncFromService();
+
+        // Subscribe to service changes
+        _playbackStateService.PropertyChanged += OnPlaybackServicePropertyChanged;
+
+        // Initialize position update timer (display concern)
         _positionTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _positionTimer.Tick += OnPositionTimerTick;
+    }
+
+    private void SyncFromService()
+    {
+        _trackTitle = _playbackStateService.CurrentTrackTitle;
+        _artistName = _playbackStateService.CurrentArtistName;
+        _albumArt = _playbackStateService.CurrentAlbumArt;
+        _hasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
+        _isPlaying = _playbackStateService.IsPlaying;
+        _isShuffle = _playbackStateService.IsShuffle;
+        _repeatMode = _playbackStateService.RepeatMode;
+        _position = _playbackStateService.Position;
+        _duration = _playbackStateService.Duration;
+        _volume = _playbackStateService.Volume;
+    }
+
+    private void OnPlaybackServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(IPlaybackStateService.IsPlaying):
+                IsPlaying = _playbackStateService.IsPlaying;
+                break;
+            case nameof(IPlaybackStateService.CurrentTrackId):
+                HasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
+                break;
+            case nameof(IPlaybackStateService.CurrentTrackTitle):
+                TrackTitle = _playbackStateService.CurrentTrackTitle;
+                break;
+            case nameof(IPlaybackStateService.CurrentArtistName):
+                ArtistName = _playbackStateService.CurrentArtistName;
+                break;
+            case nameof(IPlaybackStateService.CurrentAlbumArt):
+                AlbumArt = _playbackStateService.CurrentAlbumArt;
+                break;
+            case nameof(IPlaybackStateService.Position):
+                if (!IsSeeking) Position = _playbackStateService.Position;
+                break;
+            case nameof(IPlaybackStateService.Duration):
+                Duration = _playbackStateService.Duration;
+                break;
+            case nameof(IPlaybackStateService.Volume):
+                Volume = _playbackStateService.Volume;
+                break;
+            case nameof(IPlaybackStateService.IsShuffle):
+                IsShuffle = _playbackStateService.IsShuffle;
+                break;
+            case nameof(IPlaybackStateService.RepeatMode):
+                RepeatMode = _playbackStateService.RepeatMode;
+                break;
+        }
     }
 
     private void OnPositionTimerTick(object? sender, object e)
@@ -124,7 +187,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             PreviousVolume = value;
         }
 
-        // TODO: Update AudioPipeline volume
+        _playbackStateService.Volume = value;
     }
 
     private static string FormatTime(double milliseconds)
@@ -142,64 +205,58 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (!HasTrack)
         {
-            // TODO: Start playing from queue if available
             return;
         }
 
-        IsPlaying = !IsPlaying;
-        // TODO: Send command to AudioPipeline
+        _playbackStateService.PlayPause();
     }
 
     [RelayCommand]
     private void Previous()
     {
-        // TODO: Go to previous track in queue
-        Position = 0;
+        _playbackStateService.Previous();
     }
 
     [RelayCommand]
     private void Next()
     {
-        // TODO: Go to next track in queue
-        Position = 0;
-        IsPlaying = false;
+        _playbackStateService.Next();
     }
 
     [RelayCommand]
     private void SkipBackward()
     {
         // Skip back 10 seconds
-        Position = Math.Max(0, Position - 10000);
-        // TODO: Seek in AudioPipeline
+        var newPos = Math.Max(0, Position - 10000);
+        _playbackStateService.Seek(newPos);
     }
 
     [RelayCommand]
     private void SkipForward()
     {
         // Skip forward 30 seconds
-        Position = Math.Min(Duration, Position + 30000);
-        // TODO: Seek in AudioPipeline
+        var newPos = Math.Min(Duration, Position + 30000);
+        _playbackStateService.Seek(newPos);
     }
 
     [RelayCommand]
     private void ToggleShuffle()
     {
-        IsShuffle = !IsShuffle;
-        // TODO: Update playback queue shuffle state
+        _playbackStateService.SetShuffle(!IsShuffle);
     }
 
     [RelayCommand]
     private void ToggleRepeat()
     {
         // Cycle: Off -> Context (repeat all) -> Track (repeat one) -> Off
-        RepeatMode = RepeatMode switch
+        var next = RepeatMode switch
         {
             RepeatMode.Off => RepeatMode.Context,
             RepeatMode.Context => RepeatMode.Track,
             RepeatMode.Track => RepeatMode.Off,
             _ => RepeatMode.Off
         };
-        // TODO: Update playback queue repeat state
+        _playbackStateService.SetRepeatMode(next);
     }
 
     [RelayCommand]
@@ -240,7 +297,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     public void EndSeeking()
     {
         IsSeeking = false;
-        // TODO: Seek to position in AudioPipeline
+        _playbackStateService.Seek(Position);
     }
 
     /// <summary>
@@ -301,6 +358,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        _playbackStateService.PropertyChanged -= OnPlaybackServicePropertyChanged;
 
         if (_positionTimer != null)
         {

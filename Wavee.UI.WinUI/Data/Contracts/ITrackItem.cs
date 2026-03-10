@@ -57,4 +57,10 @@ public interface ITrackItem
     /// Formatted duration string (e.g., "3:45" or "1:02:30").
     /// </summary>
     string DurationFormatted { get; }
+
+    /// <summary>
+    /// Original 1-based index from the source order (e.g., playlist position, track number).
+    /// Preserved when sorting/filtering so the # column shows the original position.
+    /// </summary>
+    int OriginalIndex { get; }
 }

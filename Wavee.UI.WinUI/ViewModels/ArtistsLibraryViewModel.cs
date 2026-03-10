@@ -209,7 +209,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
             var tracks = await _catalogService.GetAlbumTracksAsync(albumId);
             foreach (var track in tracks)
             {
-                SelectedAlbumTracks.Add(track);
+                SelectedAlbumTracks.Add(track with { OriginalIndex = track.TrackNumber });
             }
         }
         finally

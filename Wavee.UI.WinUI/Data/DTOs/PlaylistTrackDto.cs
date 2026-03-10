@@ -19,6 +19,7 @@ public sealed record PlaylistTrackDto : ITrackItem
     public DateTime AddedAt { get; init; }
     public string? AddedBy { get; init; }
     public bool IsExplicit { get; init; }
+    public int OriginalIndex { get; init; }
 
     /// <summary>
     /// Duration formatted as "m:ss" or "h:mm:ss".

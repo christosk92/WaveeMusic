@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -16,6 +17,8 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class HomePage : Page, ITabBarItemContent
 {
+    private readonly ILogger? _logger;
+
     public HomeViewModel ViewModel { get; }
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
@@ -25,6 +28,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent
     public HomePage()
     {
         ViewModel = Ioc.Default.GetRequiredService<HomeViewModel>();
+        _logger = Ioc.Default.GetService<ILogger<HomePage>>();
         InitializeComponent();
 
         Loaded += HomePage_Loaded;
@@ -32,7 +36,14 @@ public sealed partial class HomePage : Page, ITabBarItemContent
 
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadCommand.ExecuteAsync(null);
+        try
+        {
+            await ViewModel.LoadCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Unhandled error in HomePage Loaded handler");
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

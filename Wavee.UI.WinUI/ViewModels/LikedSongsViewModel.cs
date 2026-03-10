@@ -10,9 +10,11 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using DynamicData;
 using DynamicData.Binding;
+using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -28,6 +30,8 @@ public enum LikedSongsSortColumn { Title, Artist, Album, AddedAt }
 public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaybackStateService _playbackStateService;
+    private readonly ILogger? _logger;
     private readonly SourceCache<LikedSongDto, string> _songsSource = new(s => s.Id);
     private readonly ReadOnlyObservableCollection<LikedSongDto> _filteredSongs;
     private readonly CompositeDisposable _disposables = new();
@@ -36,6 +40,8 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
     private LikedSongsSortColumn _currentSortColumn = LikedSongsSortColumn.AddedAt;
     private bool _isSortDescending = true;
     private bool _isLoading;
+    private bool _hasError;
+    private string? _errorMessage;
     private int _totalSongs;
     private string _totalDuration = "";
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
@@ -94,6 +100,24 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
     {
         get => _isLoading;
         set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+    }
+
+    /// <summary>
+    /// Whether an error occurred during loading.
+    /// </summary>
+    public bool HasError
+    {
+        get => _hasError;
+        set => this.RaiseAndSetIfChanged(ref _hasError, value);
+    }
+
+    /// <summary>
+    /// Error message to display.
+    /// </summary>
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
     }
 
     /// <summary>
@@ -181,14 +205,16 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
     /// </summary>
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
-    public LikedSongsViewModel(ILibraryDataService libraryDataService)
+    public LikedSongsViewModel(ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<LikedSongsViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
+        _playbackStateService = playbackStateService;
+        _logger = logger;
 
         // Create observable filter predicate from SearchQuery (throttled for performance)
         var filterPredicate = this.WhenAnyValue(x => x.SearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(200))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Select(CreateFilterPredicate);
 
         // Create observable sort comparer from sort properties
@@ -200,14 +226,14 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
         // Build reactive pipeline: Filter -> SortAndBind (more efficient than Sort + Bind)
         _songsSource.Connect()
             .Filter(filterPredicate)
-            .SortAndBind(out _filteredSongs, sortComparer)
+            .SortAndBind(out _filteredSongs, sortComparer, new SortAndBindOptions { ResetThreshold = int.MaxValue })
             .DisposeMany()
             .Subscribe()
             .DisposeWith(_disposables);
 
         // Compute total songs count from source
         _songsSource.CountChanged
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count => TotalSongs = count)
             .DisposeWith(_disposables);
 
@@ -215,7 +241,7 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
         _songsSource.Connect()
             .ToCollection()
             .Select(songs => FormatDuration(songs.Sum(s => s.Duration.TotalSeconds)))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(duration => TotalDuration = duration)
             .DisposeWith(_disposables);
     }
@@ -261,6 +287,8 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
     {
         if (IsLoading) return;
         IsLoading = true;
+        HasError = false;
+        ErrorMessage = null;
 
         try
         {
@@ -271,18 +299,33 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
             await Task.WhenAll(songsTask, playlistsTask);
 
             var songs = await songsTask;
+            var indexed = songs.Select((s, i) => s with { OriginalIndex = i + 1 }).ToList();
             _songsSource.Edit(cache =>
             {
                 cache.Clear();
-                cache.AddOrUpdate(songs);
+                cache.AddOrUpdate(indexed);
             });
 
             Playlists = await playlistsTask;
+        }
+        catch (Exception ex)
+        {
+            HasError = true;
+            ErrorMessage = ex.Message;
+            _logger?.LogError(ex, "Failed to load liked songs");
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task RetryAsync()
+    {
+        HasError = false;
+        ErrorMessage = null;
+        await LoadAsync();
     }
 
     [RelayCommand]
@@ -319,7 +362,27 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
-        // TODO: Implement play specific track
+
+        var queueItems = FilteredSongs.Select(t => new QueueItem
+        {
+            TrackId = t.Id,
+            Title = t.Title,
+            ArtistName = t.ArtistName,
+            AlbumArt = t.ImageUrl,
+            DurationMs = t.Duration.TotalMilliseconds,
+            IsUserQueued = false
+        }).ToList();
+
+        var context = new PlaybackContextInfo
+        {
+            ContextUri = "liked-songs",
+            Type = PlaybackContextType.LikedSongs,
+            Name = "Liked Songs"
+        };
+
+        var index = queueItems.FindIndex(q => q.TrackId == trackItem.Id);
+        _playbackStateService.LoadQueue(queueItems, context, index >= 0 ? index : 0);
+        _playbackStateService.PlayPause();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

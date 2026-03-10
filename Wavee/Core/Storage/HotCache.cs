@@ -9,10 +9,10 @@ namespace Wavee.Core.Storage;
 /// Thread-safe with ReaderWriterLockSlim for concurrent read access.
 /// </summary>
 /// <typeparam name="TEntry">Cache entry type implementing ICacheEntry.</typeparam>
-public sealed class HotCache<TEntry> : IHotCache<TEntry> where TEntry : class, ICacheEntry
+public sealed class HotCache<TEntry> : IHotCache<TEntry>, ICleanableCache where TEntry : class, ICacheEntry
 {
-    // Entry stores both the cache entry and its LRU node for O(1) removal
-    private sealed record CacheNode(TEntry Entry, LinkedListNode<string> Node);
+    // Entry stores the cache entry, its LRU node, and last access time for TTL cleanup
+    private sealed record CacheNode(TEntry Entry, LinkedListNode<string> Node, DateTimeOffset LastAccessed);
 
     private readonly Dictionary<string, CacheNode> _cache;
     private readonly LinkedList<string> _lruList = new();  // Head = most recent, Tail = least recent
@@ -72,6 +72,7 @@ public sealed class HotCache<TEntry> : IHotCache<TEntry> where TEntry : class, I
                     // Move to front (most recently used) - O(1)
                     _lruList.Remove(entry.Node);
                     _lruList.AddFirst(entry.Node);
+                    _cache[uri] = entry with { LastAccessed = DateTimeOffset.UtcNow };
                 }
                 finally
                 {
@@ -111,10 +112,12 @@ public sealed class HotCache<TEntry> : IHotCache<TEntry> where TEntry : class, I
                 _lock.EnterWriteLock();
                 try
                 {
-                    foreach (var entry in toUpdate)
+                    var now = DateTimeOffset.UtcNow;
+                    foreach (var cacheNode in toUpdate)
                     {
-                        _lruList.Remove(entry.Node);
-                        _lruList.AddFirst(entry.Node);
+                        _lruList.Remove(cacheNode.Node);
+                        _lruList.AddFirst(cacheNode.Node);
+                        _cache[cacheNode.Node.Value] = cacheNode with { LastAccessed = now };
                     }
                 }
                 finally
@@ -160,19 +163,20 @@ public sealed class HotCache<TEntry> : IHotCache<TEntry> where TEntry : class, I
         _lock.EnterWriteLock();
         try
         {
+            var now = DateTimeOffset.UtcNow;
             if (_cache.TryGetValue(uri, out var existing))
             {
                 // Update existing - move to front
                 _lruList.Remove(existing.Node);
                 _lruList.AddFirst(existing.Node);
-                _cache[uri] = existing with { Entry = entry };
+                _cache[uri] = existing with { Entry = entry, LastAccessed = now };
             }
             else
             {
                 // New entry
                 var node = new LinkedListNode<string>(uri);
                 _lruList.AddFirst(node);
-                _cache[uri] = new CacheNode(entry, node);
+                _cache[uri] = new CacheNode(entry, node, now);
 
                 // Evict if over capacity - O(1) per eviction
                 EvictIfNeeded();
@@ -192,19 +196,20 @@ public sealed class HotCache<TEntry> : IHotCache<TEntry> where TEntry : class, I
         _lock.EnterWriteLock();
         try
         {
+            var now = DateTimeOffset.UtcNow;
             foreach (var (uri, entry) in entries)
             {
                 if (_cache.TryGetValue(uri, out var existing))
                 {
                     _lruList.Remove(existing.Node);
                     _lruList.AddFirst(existing.Node);
-                    _cache[uri] = existing with { Entry = entry };
+                    _cache[uri] = existing with { Entry = entry, LastAccessed = now };
                 }
                 else
                 {
                     var node = new LinkedListNode<string>(uri);
                     _lruList.AddFirst(node);
-                    _cache[uri] = new CacheNode(entry, node);
+                    _cache[uri] = new CacheNode(entry, node, now);
                 }
             }
 
@@ -306,6 +311,57 @@ public sealed class HotCache<TEntry> : IHotCache<TEntry> where TEntry : class, I
             _logger?.LogDebug("Evicted {Count} entries from HotCache<{EntryType}>", evictedCount, typeof(TEntry).Name);
         }
     }
+
+    #region ICleanableCache
+
+    string ICleanableCache.CacheName => $"HotCache<{typeof(TEntry).Name}>";
+
+    int ICleanableCache.CurrentCount => Count;
+
+    Task<int> ICleanableCache.CleanupStaleEntriesAsync(TimeSpan maxAge, CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var cutoff = DateTimeOffset.UtcNow - maxAge;
+        var removed = 0;
+
+        _lock.EnterWriteLock();
+        try
+        {
+            // Walk from tail (oldest) towards head
+            var node = _lruList.Last;
+            while (node != null)
+            {
+                ct.ThrowIfCancellationRequested();
+                var prev = node.Previous;
+
+                if (_cache.TryGetValue(node.Value, out var cacheNode) && cacheNode.LastAccessed < cutoff)
+                {
+                    _lruList.Remove(node);
+                    _cache.Remove(node.Value);
+                    removed++;
+                }
+                else
+                {
+                    // LRU tail entries are oldest; stop at first non-stale entry
+                    break;
+                }
+
+                node = prev;
+            }
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        if (removed > 0)
+            _logger?.LogDebug("Cleaned {Count} stale entries from HotCache<{EntryType}>", removed, typeof(TEntry).Name);
+
+        return Task.FromResult(removed);
+    }
+
+    #endregion
 
     public void Dispose()
     {

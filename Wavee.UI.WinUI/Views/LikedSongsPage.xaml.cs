@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.DTOs;
@@ -12,11 +13,14 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class LikedSongsPage : Page
 {
+    private readonly ILogger? _logger;
+
     public LikedSongsViewModel ViewModel { get; }
 
     public LikedSongsPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<LikedSongsViewModel>();
+        _logger = Ioc.Default.GetService<ILogger<LikedSongsPage>>();
         InitializeComponent();
 
         // Set up the date formatter for the track list
@@ -31,7 +35,15 @@ public sealed partial class LikedSongsPage : Page
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        await ViewModel.LoadCommand.ExecuteAsync(null);
+
+        try
+        {
+            await ViewModel.LoadCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Unhandled error in LikedSongsPage OnNavigatedTo");
+        }
     }
 
     private void TrackList_ArtistClicked(object? sender, string artistId)

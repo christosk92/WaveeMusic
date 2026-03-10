@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Xaml;
+using Wavee.Core.Storage;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Application;
 
@@ -25,6 +26,9 @@ public partial class App : Application
 
         // Get AppModel instance
         AppModel = Ioc.Default.GetRequiredService<AppModel>();
+
+        // Start background cache cleanup
+        Ioc.Default.GetRequiredService<CacheCleanupService>().Start();
 
         // Launch main window
         MainWindow.Instance.Activate();

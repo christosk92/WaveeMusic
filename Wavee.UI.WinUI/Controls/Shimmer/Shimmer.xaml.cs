@@ -34,6 +34,8 @@ public sealed partial class Shimmer : UserControl
 
     private void StartAnimation()
     {
+        if (XamlRoot == null) return;
+
         _compositor = ElementCompositionPreview.GetElementVisual(this).Compositor;
         _shimmerVisual = ElementCompositionPreview.GetElementVisual(ShimmerOverlay);
 

@@ -8,6 +8,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -47,7 +48,14 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Center"/>
 
-        <ScrollView VerticalScrollBarVisibility="Auto">
+        <!-- Error State -->
+        <controls:ErrorStateView
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
+
+        <ScrollView VerticalScrollBarVisibility="Auto"
+                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <StackPanel Padding="24" Spacing="24">
                 <!-- Artist header -->
                 <Grid ColumnSpacing="24">
@@ -75,7 +83,7 @@
                             Visibility="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                             <Ellipse.Fill>
                                 <ImageBrush
-                                    ImageSource="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                    ImageSource="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
                                     Stretch="UniformToFill"/>
                             </Ellipse.Fill>
                         </Ellipse>
@@ -166,7 +174,7 @@
                                                 FontSize="16"
                                                 Visibility="{x:Bind AlbumImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                             <Image
-                                                Source="{x:Bind AlbumImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                Source="{x:Bind AlbumImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='40'}"
                                                 Stretch="UniformToFill"
                                                 Visibility="{x:Bind AlbumImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                                 behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -283,7 +291,7 @@
                                                     FontSize="48"
                                                     Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                                 <Image
-                                                    Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                                    Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='180'}"
                                                     Stretch="UniformToFill"
                                                     Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                                     behaviors:ImageFallbackBehavior.HideOnError="True"

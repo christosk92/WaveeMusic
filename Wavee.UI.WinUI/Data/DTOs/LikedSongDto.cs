@@ -18,6 +18,7 @@ public sealed record LikedSongDto : ITrackItem
     public TimeSpan Duration { get; init; }
     public DateTime AddedAt { get; init; }
     public bool IsExplicit { get; init; }
+    public int OriginalIndex { get; init; }
 
     /// <summary>
     /// Duration formatted as m:ss or h:mm:ss

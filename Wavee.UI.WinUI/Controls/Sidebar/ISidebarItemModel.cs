@@ -4,11 +4,17 @@
 using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.DragDrop;
 
 namespace Wavee.UI.WinUI.Controls.Sidebar;
 
 public interface ISidebarItemModel : INotifyPropertyChanged
 {
+    /// <summary>
+    /// Determines whether this item accepts a drop of the given payload.
+    /// </summary>
+    bool CanDrop(IDragPayload payload) => false;
+
     /// <summary>
     /// The children of this item that will be rendered as child elements of the SidebarItem
     /// </summary>

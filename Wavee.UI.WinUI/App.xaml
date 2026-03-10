@@ -20,6 +20,7 @@
                 <ResourceDictionary Source="ms-appx:///Controls/Sidebar/SidebarStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Omnibar/Omnibar.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/GridSplitter/GridSplitter.xaml" />
+                <ResourceDictionary Source="ms-appx:///Controls/ErrorStateView.xaml" />
 
                 <!-- INLINE ThemeDictionaries for TabView overrides (Files pattern) -->
                 <ResourceDictionary>
@@ -92,7 +93,7 @@
             <!-- Transparent caption button backgrounds for custom titlebar -->
             <SolidColorBrush x:Key="WindowCaptionBackground" Color="Transparent" />
             <SolidColorBrush x:Key="WindowCaptionBackgroundDisabled" Color="Transparent" />
-
+            <SolidColorBrush x:Key="TransparentColorBrush" Color="Transparent"/>
             <!-- Converters -->
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />

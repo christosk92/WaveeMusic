@@ -43,6 +43,17 @@
             HomeRequested="NavToolbar_HomeRequested"
             SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"/>
 
+        <!-- Shell-level notification bar -->
+        <InfoBar
+            Grid.Row="2"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Stretch"
+            IsOpen="{x:Bind ViewModel.IsNotificationOpen, Mode=TwoWay}"
+            Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
+            Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
+            IsClosable="True"
+            Canvas.ZIndex="1"/>
+
         <!-- Row 2: Main content area with sidebar -->
         <sidebar:SidebarView
             x:Name="SidebarControl"
@@ -130,5 +141,6 @@
 
         <!-- Row 3: Player bar -->
         <playerbar:PlayerBar x:Name="PlayerBarControl" Grid.Row="3" />
+
     </Grid>
 </Page>

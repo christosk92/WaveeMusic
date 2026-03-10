@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -14,6 +15,8 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class AlbumPage : Page, ITabBarItemContent
 {
+    private readonly ILogger? _logger;
+
     public AlbumViewModel ViewModel { get; }
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
@@ -23,6 +26,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     public AlbumPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<AlbumViewModel>();
+        _logger = Ioc.Default.GetService<ILogger<AlbumPage>>();
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
@@ -41,9 +45,16 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         base.OnNavigatedTo(e);
 
-        if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
+        try
         {
-            await ViewModel.LoadCommand.ExecuteAsync(albumId);
+            if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
+            {
+                await ViewModel.LoadCommand.ExecuteAsync(albumId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Unhandled error in AlbumPage OnNavigatedTo");
         }
     }
 

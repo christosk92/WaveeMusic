@@ -151,7 +151,8 @@ public sealed class MockCatalogService : ICatalogService
                     IsExplicit = t % 7 == 0,
                     TrackNumber = t + 1,
                     DiscNumber = 1,
-                    IsPlayable = true
+                    IsPlayable = true,
+                    PlayCount = (long)((i + 1) * 50_000_000 / (t + 1)) + (t * 123_456)
                 });
             }
             albumTracks[albumId] = tracks;

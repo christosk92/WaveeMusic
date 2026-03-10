@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
+    xmlns:appControls="using:Wavee.UI.WinUI.Controls"
     xmlns:ui="using:CommunityToolkit.WinUI"
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
@@ -23,6 +24,9 @@
             x:Name="InternalListView"
             SelectionMode="Extended"
             IsItemClickEnabled="True"
+            CanDragItems="True"
+            DragItemsStarting="InternalListView_DragItemsStarting"
+            DragItemsCompleted="InternalListView_DragItemsCompleted"
             ItemClick="TrackItem_Click"
             SelectionChanged="TrackListView_SelectionChanged"
             ContainerContentChanging="TrackListView_ContainerContentChanging"
@@ -38,7 +42,7 @@
                     <Grid x:Name="ScrollableColumnHeaders" Padding="8,0,8,0" Margin="0,0,0,8" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="40"/>
-                            <ColumnDefinition x:Name="ArtColumnDef" Width="48"/>
+                            <ColumnDefinition x:Name="ArtColumnDef" Width="42"/>
                             <ColumnDefinition Width="*" MinWidth="120"/>
                             <ColumnDefinition x:Name="ArtistColumnDef" Width="180"/>
                             <ColumnDefinition x:Name="AlbumColumnDef" Width="180"/>
@@ -158,7 +162,7 @@
                         <Grid ColumnSpacing="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40"/>
-                                <ColumnDefinition Width="48"/>
+                                <ColumnDefinition Width="42"/>
                                 <ColumnDefinition Width="*" MinWidth="120"/>
                                 <ColumnDefinition Width="180"/>
                                 <ColumnDefinition Width="180"/>
@@ -185,19 +189,19 @@
                                 </Button>
                             </Grid>
 
-                            <!-- Album thumbnail (40x40) -->
-                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="4"
+                            <!-- Album thumbnail (34x34) -->
+                            <Border Grid.Column="1" Width="34" Height="34" CornerRadius="4"
                                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                 <Grid>
                                     <FontIcon Glyph="&#xE8D6;" FontSize="16" Opacity="0.3"
                                               HorizontalAlignment="Center" VerticalAlignment="Center"
                                               Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                    <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"
+                                    <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='34'}"
                                            Stretch="UniformToFill"
                                            Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                                            behaviors:ImageFallbackBehavior.HideOnError="True"
                                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                           behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
+                                           behaviors:ImageFallbackBehavior.DecodePixelWidth="68"/>
                                 </Grid>
                             </Border>
 
@@ -283,7 +287,7 @@
             <Grid Padding="24,0,24,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="40"/>
-                    <ColumnDefinition x:Name="StickyArtColumnDef" Width="48"/>
+                    <ColumnDefinition x:Name="StickyArtColumnDef" Width="42"/>
                     <ColumnDefinition Width="*" MinWidth="120"/>
                     <ColumnDefinition x:Name="StickyArtistColumnDef" Width="180"/>
                     <ColumnDefinition x:Name="StickyAlbumColumnDef" Width="180"/>
@@ -388,6 +392,21 @@
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center"
                           Visibility="Collapsed"/>
+
+        <!-- Error State -->
+        <Grid x:Name="ErrorStateContainer" Visibility="Collapsed"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <!-- Custom error content (shown when ErrorStateContent is provided) -->
+            <ContentPresenter x:Name="ErrorStatePresenter"
+                              Content="{x:Bind ErrorStateContent, Mode=OneWay}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Visibility="Collapsed"/>
+            <!-- Default error state (shown when no custom ErrorStateContent provided) -->
+            <appControls:ErrorStateView x:Name="DefaultErrorState"
+                                     Message="{x:Bind ErrorMessage, Mode=OneWay}"
+                                     RetryCommand="{x:Bind RetryCommand, Mode=OneWay}"/>
+        </Grid>
 
         <!-- Selection Command Bar (appears when tracks selected) -->
         <Border x:Name="SelectionCommandBarBorder"

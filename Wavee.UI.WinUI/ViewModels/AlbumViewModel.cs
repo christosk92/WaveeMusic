@@ -10,10 +10,12 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using DynamicData;
 using DynamicData.Binding;
+using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
@@ -31,6 +33,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 {
     private readonly ICatalogService _catalogService;
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaybackStateService _playbackStateService;
+    private readonly ILogger? _logger;
     private readonly SourceCache<AlbumTrackDto, string> _tracksSource = new(t => t.Id);
     private readonly ReadOnlyObservableCollection<AlbumTrackDto> _filteredTracks;
     private readonly CompositeDisposable _disposables = new();
@@ -45,6 +49,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private bool _isSaved;
     private bool _isLoading;
     private bool _isLoadingTracks;
+    private bool _hasError;
+    private string? _errorMessage;
 
     private string _searchQuery = "";
     private AlbumSortColumn _currentSortColumn = AlbumSortColumn.TrackNumber;
@@ -150,6 +156,24 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     {
         get => _isLoadingTracks;
         set => this.RaiseAndSetIfChanged(ref _isLoadingTracks, value);
+    }
+
+    /// <summary>
+    /// Whether an error occurred during loading.
+    /// </summary>
+    public bool HasError
+    {
+        get => _hasError;
+        set => this.RaiseAndSetIfChanged(ref _hasError, value);
+    }
+
+    /// <summary>
+    /// Error message to display.
+    /// </summary>
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
     }
 
     /// <summary>
@@ -285,15 +309,17 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// </summary>
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
-    public AlbumViewModel(ICatalogService catalogService, ILibraryDataService libraryDataService)
+    public AlbumViewModel(ICatalogService catalogService, ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<AlbumViewModel>? logger = null)
     {
         _catalogService = catalogService;
         _libraryDataService = libraryDataService;
+        _playbackStateService = playbackStateService;
+        _logger = logger;
 
         // Create observable filter predicate from SearchQuery (throttled for performance)
         var filterPredicate = this.WhenAnyValue(x => x.SearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(200))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Select(CreateFilterPredicate);
 
         // Create observable sort comparer from sort properties
@@ -312,14 +338,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         // Compute total tracks count from source
         _tracksSource.CountChanged
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count => TotalTracks = count)
             .DisposeWith(_disposables);
 
         // Stop loading when tracks are added to the source
         _tracksSource.Connect()
             .WhereReasonsAre(ChangeReason.Add, ChangeReason.Refresh)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ =>
             {
                 if (IsLoadingTracks)
@@ -333,7 +359,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _tracksSource.Connect()
             .ToCollection()
             .Select(tracks => FormatDuration(tracks.Sum(t => t.Duration.TotalSeconds)))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(duration => TotalDuration = duration)
             .DisposeWith(_disposables);
     }
@@ -402,6 +428,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         if (string.IsNullOrEmpty(albumId) || IsLoading) return;
         IsLoading = true;
         IsLoadingTracks = true;
+        HasError = false;
+        ErrorMessage = null;
         Initialize(albumId);
 
         try
@@ -428,10 +456,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
             // Now load tracks from catalog service
             var tracks = await _catalogService.GetAlbumTracksAsync(albumId);
+            var indexed = tracks.Select(t => t with { OriginalIndex = t.TrackNumber }).ToList();
             _tracksSource.Edit(cache =>
             {
                 cache.Clear();
-                cache.AddOrUpdate(tracks);
+                cache.AddOrUpdate(indexed);
             });
 
             // Handle empty album case
@@ -442,10 +471,24 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
             // TODO: Load more by artist
         }
+        catch (Exception ex)
+        {
+            HasError = true;
+            ErrorMessage = ex.Message;
+            _logger?.LogError(ex, "Failed to load album {AlbumId}", albumId);
+        }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task RetryAsync()
+    {
+        HasError = false;
+        ErrorMessage = null;
+        await LoadAsync(AlbumId);
     }
 
     [RelayCommand]
@@ -488,7 +531,28 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
-        // TODO: Implement play specific track
+
+        var queueItems = FilteredTracks.Select(t => new QueueItem
+        {
+            TrackId = t.Id,
+            Title = t.Title,
+            ArtistName = t.ArtistName,
+            AlbumArt = t.ImageUrl ?? AlbumImageUrl,
+            DurationMs = t.Duration.TotalMilliseconds,
+            IsUserQueued = false
+        }).ToList();
+
+        var context = new PlaybackContextInfo
+        {
+            ContextUri = AlbumId,
+            Type = PlaybackContextType.Album,
+            Name = AlbumName,
+            ImageUrl = AlbumImageUrl
+        };
+
+        var index = queueItems.FindIndex(q => q.TrackId == trackItem.Id);
+        _playbackStateService.LoadQueue(queueItems, context, index >= 0 ? index : 0);
+        _playbackStateService.PlayPause();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

@@ -1,6 +1,7 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -11,6 +12,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Wavee.UI.WinUI.DragDrop;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace Wavee.UI.WinUI.Controls.Sidebar;
@@ -34,6 +36,8 @@ public sealed partial class SidebarItem : Control
 	private long _selectedItemCallbackToken;
 	private SidebarView? _ownerAtSubscription;
 	private INotifyCollectionChanged? _subscribedCollection;
+	private DragStateService? _dragStateService;
+	private Border? _elementBorder;
 
 	public SidebarItem()
 	{
@@ -99,6 +103,7 @@ public sealed partial class SidebarItem : Control
 
 		if (GetTemplateChild("ElementBorder") is Border border)
 		{
+			_elementBorder = border;
 			border.PointerEntered += ItemBorder_PointerEntered;
 			border.PointerExited += ItemBorder_PointerExited;
 			border.PointerCanceled += ItemBorder_PointerCanceled;
@@ -122,6 +127,10 @@ public sealed partial class SidebarItem : Control
 		}
 
 		HandleItemChange();
+
+		_dragStateService = Ioc.Default.GetService<DragStateService>();
+		if (_dragStateService != null)
+			_dragStateService.DragStateChanged += OnGlobalDragStateChanged;
 	}
 
 	public void HandleItemChange()
@@ -179,6 +188,13 @@ public sealed partial class SidebarItem : Control
 		{
 			lastSubscriber.PropertyChanged -= ItemPropertyChangedHandler;
 			lastSubscriber = null;
+		}
+
+		// Clean up drag state subscription
+		if (_dragStateService != null)
+		{
+			_dragStateService.DragStateChanged -= OnGlobalDragStateChanged;
+			_dragStateService = null;
 		}
 	}
 
@@ -467,6 +483,18 @@ public sealed partial class SidebarItem : Control
 
 	private async void ItemBorder_DragOver(object sender, DragEventArgs e)
 	{
+		// Accept drops only when CanDrop allows it
+		if (e.DataView.Contains("WaveeTrackIds")
+			&& Item is ISidebarItemModel model
+			&& _dragStateService?.CurrentPayload is { } payload
+			&& model.CanDrop(payload))
+		{
+			e.AcceptedOperation = DataPackageOperation.Copy;
+			VisualStateManager.GoToState(this, "DragOnTop", true);
+			Owner?.RaiseItemDragOver(this, SidebarItemDropPosition.Center, e);
+			return;
+		}
+
 		if (HasChildren)
 		{
 			IsExpanded = true;
@@ -497,13 +525,40 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_DragLeave(object sender, DragEventArgs e)
 	{
-		UpdatePointerState();
+		if (_dragStateService?.IsDragging == true
+			&& Item is ISidebarItemModel model
+			&& _dragStateService.CurrentPayload is { } payload
+			&& model.CanDrop(payload))
+			VisualStateManager.GoToState(this, "DragAvailable", true);
+		else
+			UpdatePointerState();
 	}
 
 	private void ItemBorder_Drop(object sender, DragEventArgs e)
 	{
 		UpdatePointerState();
 		Owner?.RaiseItemDropped(this, DetermineDropTargetPosition(e), e);
+	}
+
+	private void OnGlobalDragStateChanged(bool isDragging)
+	{
+		DispatcherQueue.TryEnqueue(() =>
+		{
+			var payload = _dragStateService?.CurrentPayload;
+			if (isDragging && payload != null)
+			{
+				if (Item is ISidebarItemModel model && model.CanDrop(payload))
+					VisualStateManager.GoToState(this, "DragAvailable", true);
+				else if (_elementBorder != null)
+					_elementBorder.Opacity = 0.3;
+			}
+			else
+			{
+				if (_elementBorder != null)
+					_elementBorder.Opacity = 1.0;
+				UpdatePointerState();
+			}
+		});
 	}
 
 	private SidebarItemDropPosition DetermineDropTargetPosition(DragEventArgs args)

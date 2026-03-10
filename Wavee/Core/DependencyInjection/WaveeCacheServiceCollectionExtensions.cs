@@ -100,6 +100,31 @@ public static class WaveeCacheServiceCollectionExtensions
             return new CacheService(database, trackHotCache, logger);
         });
 
+        // Register ICleanableCache for each HotCache instance
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<TrackCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<AlbumCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<ArtistCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<PlaylistCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<ShowCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<EpisodeCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<UserCacheEntry>>());
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<IHotCache<ContextCacheEntry>>());
+
+        // Register CacheService as ICleanableCache
+        services.AddSingleton<ICleanableCache>(sp => (ICleanableCache)sp.GetRequiredService<ICacheService>());
+
+        // Register cleanup options and service
+        services.AddSingleton(sp =>
+        {
+            var opts = sp.GetRequiredService<WaveeCacheOptions>();
+            return new CacheCleanupOptions
+            {
+                CleanupInterval = opts.CleanupInterval,
+                DefaultMaxAge = opts.DefaultMaxAge
+            };
+        });
+        services.AddSingleton<CacheCleanupService>();
+
         return services;
     }
 }

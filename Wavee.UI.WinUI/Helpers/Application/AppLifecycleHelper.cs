@@ -1,12 +1,17 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ReactiveUI;
+using ReactiveUI.Builder;
 using Wavee.Core.DependencyInjection;
+using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Data;
 using Wavee.UI.WinUI.ViewModels;
@@ -17,6 +22,11 @@ public static class AppLifecycleHelper
 {
     public static IHost ConfigureHost()
     {
+        var rxuiInstance = RxAppBuilder.CreateReactiveUIBuilder()
+            .WithWinUI() // Register WinUI platform services
+            .WithViewsFromAssembly(typeof(App).Assembly) // Register views and view models
+            .BuildApp();
+
         return Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging
                 .ClearProviders()
@@ -26,12 +36,24 @@ public static class AppLifecycleHelper
                 // Wavee Core services
                 .AddWaveeCache()
 
+                // Messenger (singleton - global default instance)
+                .AddSingleton<IMessenger>(WeakReferenceMessenger.Default)
+
                 // Contexts (cross-cutting state)
                 .AddSingleton<IWindowContext, WindowContext>()
                 .AddSingleton<IPlayerContext, PlayerContext>()
 
+                // App state services
+                .AddSingleton<INotificationService, NotificationService>()
+                .AddSingleton<IPlaybackStateService, PlaybackStateService>()
+                .AddSingleton<IAuthState, AuthStateService>()
+                .AddSingleton<IConnectivityService, ConnectivityService>()
+                .AddSingleton<IAppState, AppState>()
+
+                // App initialization
+                .AddSingleton<AppInitializationService>()
+
                 // App services
-                .AddSingleton<INavigationService, NavigationService>()
                 .AddSingleton<IThemeService, ThemeService>()
 
                 // Data services
@@ -53,8 +75,14 @@ public static class AppLifecycleHelper
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>()
 
+                // Drag & drop
+                .AddSingleton<DragStateService>()
+
                 // Utilities
                 .AddSingleton<AppModel>()
+
+                // Image cache cleanup adapter
+                .AddSingleton<ICleanableCache, ImageCacheCleanupAdapter>()
             )
             .Build();
     }

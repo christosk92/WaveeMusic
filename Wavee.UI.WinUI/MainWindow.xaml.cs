@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Views;
 using WinUIEx;
 
@@ -37,9 +38,14 @@ public sealed partial class MainWindow : WindowEx
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
         themeService.Initialize(RootFrame);
 
-        // Navigate to shell page (ShellPage will open the initial tab on Loaded)
+        // Initialize app state (auth + demo playback) BEFORE shell loads
+        var initService = Ioc.Default.GetRequiredService<AppInitializationService>();
+        await initService.InitializeStateAsync();
+
+        // Navigate to shell (PlayerBar will read already-populated state)
         RootFrame.Navigate(typeof(ShellPage));
 
-        await Task.CompletedTask;
+        // Show welcome notification AFTER ShellViewModel is listening
+        initService.ShowWelcomeNotification();
     }
 }

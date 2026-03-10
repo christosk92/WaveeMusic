@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.Converters;
 
@@ -139,54 +140,67 @@ public sealed class RepeatModeToSymbolConverter : IValueConverter
 }
 
 /// <summary>
-/// Repeat mode enum for player controls.
-/// </summary>
-public enum RepeatMode
-{
-    Off,      // No repeat
-    Context,  // Repeat all/context (playlist, album, etc.)
-    Track     // Repeat single track
-}
-
-/// <summary>
 /// Converts a string URL to an ImageSource for x:Bind compatibility.
 /// Returns null for null/empty strings to avoid "parameter is incorrect" errors.
 /// Uses an O(1) LRU cache to prevent garbage collection of BitmapImage instances.
 /// </summary>
 public sealed class StringToImageSourceConverter : IValueConverter
 {
+    private readonly record struct ImageCacheKey(string Uri, int DecodeSize);
+    private readonly record struct TimestampedImage(BitmapImage Image, DateTimeOffset LastAccessed);
+
     // O(1) LRU cache using LinkedList + Dictionary with node references
     // - LinkedList maintains LRU order (front = most recent, back = oldest)
-    // - Dictionary maps URI -> LinkedListNode for O(1) lookup and removal
-    private static readonly LinkedList<KeyValuePair<string, BitmapImage>> _lruList = new();
-    private static readonly Dictionary<string, LinkedListNode<KeyValuePair<string, BitmapImage>>> _cache = new();
+    // - Dictionary maps (URI, DecodeSize) -> LinkedListNode for O(1) lookup and removal
+    private static readonly LinkedList<KeyValuePair<ImageCacheKey, TimestampedImage>> _lruList = new();
+    private static readonly Dictionary<ImageCacheKey, LinkedListNode<KeyValuePair<ImageCacheKey, TimestampedImage>>> _cache = new();
     private static readonly object _cacheLock = new();
     private const int MaxCacheSize = 100;
+
+    /// <summary>
+    /// Current number of entries in the image cache.
+    /// </summary>
+    public static int CacheCount
+    {
+        get { lock (_cacheLock) { return _cache.Count; } }
+    }
 
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string uri || string.IsNullOrWhiteSpace(uri))
             return null;
 
+        var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 0;
+        var cacheKey = new ImageCacheKey(uri, decodeSize);
+
         try
         {
             lock (_cacheLock)
             {
                 // Cache hit: O(1) lookup, O(1) promote to front
-                if (_cache.TryGetValue(uri, out var node))
+                if (_cache.TryGetValue(cacheKey, out var node))
                 {
-                    // Remove from current position and add to front (most recently used)
                     _lruList.Remove(node);      // O(1) - removes by node reference
                     _lruList.AddFirst(node);    // O(1)
-                    return node.Value.Value;
+                    node.Value = new KeyValuePair<ImageCacheKey, TimestampedImage>(
+                        cacheKey, node.Value.Value with { LastAccessed = DateTimeOffset.UtcNow });
+                    return node.Value.Value.Image;
                 }
 
                 // Cache miss: create new BitmapImage
-                var bitmapImage = new BitmapImage(new Uri(uri));
+                var bitmapImage = new BitmapImage();
+                if (decodeSize > 0)
+                {
+                    bitmapImage.DecodePixelWidth = decodeSize;
+                    bitmapImage.DecodePixelHeight = decodeSize;
+                }
+
+                bitmapImage.UriSource = new Uri(uri);
 
                 // Add to front of LRU list: O(1)
-                var newNode = _lruList.AddFirst(new KeyValuePair<string, BitmapImage>(uri, bitmapImage));
-                _cache[uri] = newNode;
+                var stamped = new TimestampedImage(bitmapImage, DateTimeOffset.UtcNow);
+                var newNode = _lruList.AddFirst(new KeyValuePair<ImageCacheKey, TimestampedImage>(cacheKey, stamped));
+                _cache[cacheKey] = newNode;
 
                 // Evict oldest if over capacity: O(1)
                 if (_cache.Count > MaxCacheSize && _lruList.Last != null)
@@ -203,6 +217,38 @@ public sealed class StringToImageSourceConverter : IValueConverter
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Removes image cache entries not accessed within the specified time window.
+    /// Called by the background cache cleanup service.
+    /// </summary>
+    public static int CleanupStaleEntries(TimeSpan maxAge)
+    {
+        var cutoff = DateTimeOffset.UtcNow - maxAge;
+        var removed = 0;
+
+        lock (_cacheLock)
+        {
+            var node = _lruList.Last;
+            while (node != null)
+            {
+                var prev = node.Previous;
+                if (node.Value.Value.LastAccessed < cutoff)
+                {
+                    _cache.Remove(node.Value.Key);
+                    _lruList.Remove(node);
+                    removed++;
+                }
+                else
+                {
+                    break;
+                }
+                node = prev;
+            }
+        }
+
+        return removed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

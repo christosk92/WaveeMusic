@@ -13,9 +13,6 @@ public sealed partial class PlayerBar : UserControl
     {
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         InitializeComponent();
-
-        // Show demo track for testing (remove this when connected to real playback)
-        ViewModel.SetDemoTrack();
     }
 
     private void ProgressSlider_PointerPressed(object sender, PointerRoutedEventArgs e)

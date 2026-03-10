@@ -18,12 +18,21 @@
             ViewModel="{x:Bind ViewModel, Mode=OneWay}"
             ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
             IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
+            HasError="{x:Bind ViewModel.HasError, Mode=OneWay}"
+            ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.RetryCommand}"
             ShowAlbumColumn="False"
+            ShowAlbumArtColumn="False"
             ShowDateAddedColumn="False"
             ShowArtistColumn="True"
             RemoveActionLabel="Remove from library"
             ArtistClicked="TrackList_ArtistClicked"
             NewPlaylistRequested="TrackList_NewPlaylistRequested">
+
+            <!-- Custom columns -->
+            <trackList:TrackListView.CustomColumns>
+                <trackList:TrackListColumnDefinition Header="Plays" Width="80" PropertyName="PlayCountFormatted" TextAlignment="Right"/>
+            </trackList:TrackListView.CustomColumns>
 
             <!-- Page-specific Header -->
             <trackList:TrackListView.HeaderContent>
@@ -43,7 +52,7 @@
                             <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                            <Image Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            <Image Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='180'}"
                                    Stretch="UniformToFill"
                                    Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                    behaviors:ImageFallbackBehavior.HideOnError="True"

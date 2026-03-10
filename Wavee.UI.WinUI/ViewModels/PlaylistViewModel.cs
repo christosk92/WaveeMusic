@@ -10,9 +10,11 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using DynamicData;
 using DynamicData.Binding;
+using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -28,6 +30,8 @@ public enum PlaylistSortColumn { Title, Artist, Album, AddedAt }
 public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaybackStateService _playbackStateService;
+    private readonly ILogger? _logger;
     private readonly SourceCache<PlaylistTrackDto, string> _tracksSource = new(t => t.Id);
     private readonly ReadOnlyObservableCollection<PlaylistTrackDto> _filteredTracks;
     private readonly CompositeDisposable _disposables = new();
@@ -40,6 +44,8 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
     private bool _isOwner;
     private bool _isPublic;
     private int _followerCount;
+    private bool _hasError;
+    private string? _errorMessage;
 
     private string _searchQuery = "";
     private PlaylistSortColumn _currentSortColumn = PlaylistSortColumn.AddedAt;
@@ -199,6 +205,24 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
     }
 
     /// <summary>
+    /// Whether an error occurred during loading.
+    /// </summary>
+    public bool HasError
+    {
+        get => _hasError;
+        set => this.RaiseAndSetIfChanged(ref _hasError, value);
+    }
+
+    /// <summary>
+    /// Error message to display.
+    /// </summary>
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+    }
+
+    /// <summary>
     /// Total number of tracks (unfiltered).
     /// </summary>
     public int TotalTracks
@@ -283,14 +307,16 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
     /// </summary>
     public bool CanRemove => IsOwner && HasSelection;
 
-    public PlaylistViewModel(ILibraryDataService libraryDataService)
+    public PlaylistViewModel(ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<PlaylistViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
+        _playbackStateService = playbackStateService;
+        _logger = logger;
 
         // Create observable filter predicate from SearchQuery (throttled for performance)
         var filterPredicate = this.WhenAnyValue(x => x.SearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(200))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Select(CreateFilterPredicate);
 
         // Create observable sort comparer from sort properties
@@ -302,21 +328,21 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
         // Build reactive pipeline: Filter -> SortAndBind
         _tracksSource.Connect()
             .Filter(filterPredicate)
-            .SortAndBind(out _filteredTracks, sortComparer)
+            .SortAndBind(out _filteredTracks, sortComparer, new SortAndBindOptions { ResetThreshold = int.MaxValue })
             .DisposeMany()
             .Subscribe()
             .DisposeWith(_disposables);
 
         // Compute total tracks count from source
         _tracksSource.CountChanged
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(count => TotalTracks = count)
             .DisposeWith(_disposables);
 
         // Stop loading when tracks are added to the source
         _tracksSource.Connect()
             .WhereReasonsAre(ChangeReason.Add, ChangeReason.Refresh)
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ =>
             {
                 if (IsLoadingTracks)
@@ -330,7 +356,7 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
         _tracksSource.Connect()
             .ToCollection()
             .Select(tracks => FormatDuration(tracks.Sum(t => t.Duration.TotalSeconds)))
-            .ObserveOn(RxApp.MainThreadScheduler)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(duration => TotalDuration = duration)
             .DisposeWith(_disposables);
 
@@ -382,6 +408,8 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
         if (string.IsNullOrEmpty(playlistId) || IsLoading) return;
         IsLoading = true;
         IsLoadingTracks = true;
+        HasError = false;
+        ErrorMessage = null;
         PlaylistId = playlistId;
 
         try
@@ -409,10 +437,11 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
 
             // Now load tracks (may take longer, loading indicator will show)
             var tracks = await _libraryDataService.GetPlaylistTracksAsync(playlistId);
+            var indexed = tracks.Select((t, i) => t with { OriginalIndex = i + 1 }).ToList();
             _tracksSource.Edit(cache =>
             {
                 cache.Clear();
-                cache.AddOrUpdate(tracks);
+                cache.AddOrUpdate(indexed);
             });
 
             // Handle empty playlist case - subscription won't fire if no items added
@@ -421,10 +450,24 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
                 IsLoadingTracks = false;
             }
         }
+        catch (Exception ex)
+        {
+            HasError = true;
+            ErrorMessage = ex.Message;
+            _logger?.LogError(ex, "Failed to load playlist {PlaylistId}", playlistId);
+        }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task RetryAsync()
+    {
+        HasError = false;
+        ErrorMessage = null;
+        await LoadAsync(PlaylistId);
     }
 
     [RelayCommand]
@@ -460,7 +503,28 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
-        // TODO: Implement play specific track
+
+        var queueItems = FilteredTracks.Select(t => new QueueItem
+        {
+            TrackId = t.Id,
+            Title = t.Title,
+            ArtistName = t.ArtistName,
+            AlbumArt = t.ImageUrl ?? PlaylistImageUrl,
+            DurationMs = t.Duration.TotalMilliseconds,
+            IsUserQueued = false
+        }).ToList();
+
+        var context = new PlaybackContextInfo
+        {
+            ContextUri = PlaylistId,
+            Type = PlaybackContextType.Playlist,
+            Name = PlaylistName,
+            ImageUrl = PlaylistImageUrl
+        };
+
+        var index = queueItems.FindIndex(q => q.TrackId == trackItem.Id);
+        _playbackStateService.LoadQueue(queueItems, context, index >= 0 ? index : 0);
+        _playbackStateService.PlayPause();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -31,8 +32,16 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Center"/>
 
+        <!-- Error State -->
+        <controls:ErrorStateView
+            Grid.Row="1"
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
+
         <!-- Content sections -->
-        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:HomeSection">

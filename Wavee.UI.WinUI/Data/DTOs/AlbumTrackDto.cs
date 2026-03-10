@@ -20,6 +20,8 @@ public sealed record AlbumTrackDto : ITrackItem
     public int TrackNumber { get; init; }
     public int DiscNumber { get; init; }
     public bool IsPlayable { get; init; } = true;
+    public int OriginalIndex { get; init; }
+    public long PlayCount { get; init; }
 
     /// <summary>
     /// Duration formatted as "m:ss" or "h:mm:ss".
@@ -27,4 +29,16 @@ public sealed record AlbumTrackDto : ITrackItem
     public string DurationFormatted => Duration.TotalHours >= 1
         ? Duration.ToString(@"h\:mm\:ss")
         : Duration.ToString(@"m\:ss");
+
+    /// <summary>
+    /// Formatted play count (e.g., "1.2B", "500M", "100K").
+    /// </summary>
+    public string PlayCountFormatted => PlayCount switch
+    {
+        0 => "",
+        >= 1_000_000_000 => $"{PlayCount / 1_000_000_000.0:0.#}B",
+        >= 1_000_000 => $"{PlayCount / 1_000_000.0:0.#}M",
+        >= 1_000 => $"{PlayCount / 1_000.0:0.#}K",
+        _ => PlayCount.ToString("N0")
+    };
 }

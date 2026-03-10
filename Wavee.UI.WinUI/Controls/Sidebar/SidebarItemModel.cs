@@ -1,11 +1,13 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.DragDrop;
 
 namespace Wavee.UI.WinUI.Controls.Sidebar;
 
@@ -107,6 +109,14 @@ public class SidebarItemModel : ISidebarItemModel
         get => _badgeCount;
         set => SetProperty(ref _badgeCount, value);
     }
+
+    /// <summary>
+    /// Per-instance predicate that determines whether this item accepts a given drag payload.
+    /// </summary>
+    public Func<IDragPayload, bool>? DropPredicate { get; init; }
+
+    /// <inheritdoc />
+    public bool CanDrop(IDragPayload payload) => DropPredicate?.Invoke(payload) ?? false;
 
     public SidebarItemModel() { }
 

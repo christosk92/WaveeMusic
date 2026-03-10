@@ -3,8 +3,10 @@
 
 using System;
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using Microsoft.UI.Input;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -31,6 +33,7 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 
 	private bool draggingSidebarResizer;
 	private double preManipulationSidebarWidth = 0;
+	private DragStateService? _dragStateService;
 
 	public SidebarView()
 	{
@@ -122,6 +125,26 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 		UpdateDisplayMode();
 		UpdateOpenPaneLengthColumn();
 		PaneColumnGrid.Translation = new System.Numerics.Vector3(0, 0, 32);
+
+		_dragStateService = Ioc.Default.GetService<DragStateService>();
+		if (_dragStateService != null)
+			_dragStateService.DragStateChanged += OnDragStateChanged;
+
+		Unloaded += SidebarView_Unloaded;
+	}
+
+	private void SidebarView_Unloaded(object sender, RoutedEventArgs e)
+	{
+		if (_dragStateService != null)
+			_dragStateService.DragStateChanged -= OnDragStateChanged;
+	}
+
+	private void OnDragStateChanged(bool isDragging)
+	{
+		DispatcherQueue.TryEnqueue(() =>
+		{
+			ContentCardBorder.Opacity = isDragging ? 0.3 : 1.0;
+		});
 	}
 
 	private void SidebarResizer_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
