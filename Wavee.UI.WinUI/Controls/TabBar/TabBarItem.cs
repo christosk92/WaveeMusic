@@ -125,6 +125,9 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void Dispose()
     {
+        ContentFrame.Navigated -= ContentFrame_Navigated;
+        ContentFrame.BackStack.Clear();
+
         if (TabItemContent is IDisposable disposable)
         {
             disposable.Dispose();

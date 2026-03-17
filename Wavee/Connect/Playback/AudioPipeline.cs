@@ -477,6 +477,21 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Cancel any active playback
             _playbackCts?.Cancel();
 
+            // Wait for playback task to complete before clearing state
+            if (_playbackTask is not null)
+            {
+                try
+                {
+                    await _playbackTask.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (OperationCanceledException) { /* Expected */ }
+                catch (TimeoutException)
+                {
+                    _logger?.LogWarning("Playback task did not stop within timeout");
+                }
+                _playbackTask = null;
+            }
+
             // Flush and pause the audio sink
             await _audioSink.FlushAsync();
             await _audioSink.PauseAsync();
@@ -517,7 +532,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             {
                 _logger?.LogDebug("Track ended, restarting from beginning");
 
-                // Clean up completed task
+                // Clean up completed task (await to ensure it's truly done)
+                if (_playbackTask is not null)
+                {
+                    try { await _playbackTask; }
+                    catch { /* Task already completed or cancelled */ }
+                }
                 _playbackCts?.Dispose();
                 _playbackCts = null;
                 _playbackTask = null;

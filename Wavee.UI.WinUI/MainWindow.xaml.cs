@@ -22,6 +22,8 @@ public sealed partial class MainWindow : WindowEx
 
         WindowHandle = this.GetWindowHandle();
 
+        Closed += OnClosed;
+
         // Extend content into titlebar
         ExtendsContentIntoTitleBar = true;
 
@@ -30,6 +32,12 @@ public sealed partial class MainWindow : WindowEx
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonHoverBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonPressedBackgroundColor = Colors.Transparent;
+    }
+
+    private void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
+    {
+        var shellVm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
+        shellVm?.Cleanup();
     }
 
     public async Task InitializeApplicationAsync()

@@ -19,6 +19,7 @@ internal sealed class DealerConnection : IDealerConnection
     private Task? _receiveTask;
     private Task? _processTask;
     private volatile bool _disposed;
+    private volatile ConnectionState _state;
 
     /// <summary>
     /// Raised when a complete WebSocket message is received.
@@ -39,7 +40,11 @@ internal sealed class DealerConnection : IDealerConnection
     /// <summary>
     /// Gets the current connection state.
     /// </summary>
-    public ConnectionState State { get; private set; }
+    public ConnectionState State
+    {
+        get => _state;
+        private set => _state = value;
+    }
 
     public DealerConnection(ILogger? logger = null)
     {

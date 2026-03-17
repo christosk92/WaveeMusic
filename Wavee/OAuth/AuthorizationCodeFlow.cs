@@ -22,6 +22,7 @@ internal sealed class AuthorizationCodeFlow : IDisposable
     private readonly bool _openBrowser;
     private readonly OAuthHttpClient _httpClient;
     private readonly ILogger? _logger;
+    private string? _expectedState;
 
     /// <summary>
     /// Creates a new Authorization Code Flow handler.
@@ -114,7 +115,8 @@ internal sealed class AuthorizationCodeFlow : IDisposable
     /// </summary>
     private string BuildAuthorizationUrl(string codeChallenge)
     {
-        var state = GenerateState();
+        _expectedState = GenerateState();
+        var state = _expectedState;
         var scopeString = string.Join(" ", _scopes);
 
         var queryParams = new Dictionary<string, string>
@@ -180,6 +182,17 @@ internal sealed class AuthorizationCodeFlow : IDisposable
             var queryParams = ParseQueryString(request.Url?.Query ?? "");
             var code = queryParams.TryGetValue("code", out var codeValue) ? codeValue : null;
             var error = queryParams.TryGetValue("error", out var errorValue) ? errorValue : null;
+            var returnedState = queryParams.TryGetValue("state", out var stateValue) ? stateValue : null;
+
+            // Validate state parameter (CSRF protection)
+            if (returnedState != _expectedState)
+            {
+                _logger?.LogError("State parameter mismatch - possible CSRF attack");
+                await SendBrowserResponseAsync(response, false);
+                throw new OAuthException(
+                    OAuthFailureReason.Unknown,
+                    "State parameter mismatch. Authorization may have been tampered with.");
+            }
 
             // Send response to browser
             await SendBrowserResponseAsync(response, code != null);

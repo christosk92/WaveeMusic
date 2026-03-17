@@ -1120,7 +1120,8 @@ public sealed class Session : ISession, IAsyncDisposable
             // 8. Reset AudioKeyManager sequence
             _audioKeyManager?.ResetSequence();
 
-            // 9. Restart dispatcher
+            // 9. Restart dispatcher (dispose old CTS to prevent leak)
+            _dispatchCts?.Dispose();
             _dispatchCts = new CancellationTokenSource();
             _dispatchTask = Task.Run(() => DispatchLoop(_dispatchCts.Token), _dispatchCts.Token);
             _logger?.LogDebug("Restarted packet dispatcher");

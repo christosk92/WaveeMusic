@@ -15,6 +15,7 @@ using ReactiveUI;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -490,19 +491,27 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
     [RelayCommand]
     private void PlayAll()
     {
-        // TODO: Implement play all playlist tracks
+        BuildQueueAndPlay(0, shuffle: false);
     }
 
     [RelayCommand]
     private void Shuffle()
     {
-        // TODO: Implement shuffle play playlist tracks
+        _playbackStateService.SetShuffle(true);
+        BuildQueueAndPlay(0, shuffle: true);
     }
 
     [RelayCommand]
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
+        var index = FilteredTracks.ToList().FindIndex(t => t.Id == trackItem.Id);
+        BuildQueueAndPlay(index >= 0 ? index : 0, shuffle: false);
+    }
+
+    private void BuildQueueAndPlay(int startIndex, bool shuffle)
+    {
+        if (FilteredTracks.Count == 0) return;
 
         var queueItems = FilteredTracks.Select(t => new QueueItem
         {
@@ -514,6 +523,12 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
             IsUserQueued = false
         }).ToList();
 
+        if (shuffle)
+        {
+            queueItems.Shuffle();
+            startIndex = 0;
+        }
+
         var context = new PlaybackContextInfo
         {
             ContextUri = PlaylistId,
@@ -522,8 +537,7 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
             ImageUrl = PlaylistImageUrl
         };
 
-        var index = queueItems.FindIndex(q => q.TrackId == trackItem.Id);
-        _playbackStateService.LoadQueue(queueItems, context, index >= 0 ? index : 0);
+        _playbackStateService.LoadQueue(queueItems, context, startIndex);
         _playbackStateService.PlayPause();
     }
 

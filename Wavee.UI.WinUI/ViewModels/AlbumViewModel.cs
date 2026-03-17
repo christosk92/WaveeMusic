@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -511,13 +512,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     [RelayCommand]
     private void PlayAlbum()
     {
-        // TODO: Play album via Wavee core
+        BuildQueueAndPlay(0, shuffle: false);
     }
 
     [RelayCommand]
     private void ShuffleAlbum()
     {
-        // TODO: Shuffle play album via Wavee core
+        _playbackStateService.SetShuffle(true);
+        BuildQueueAndPlay(0, shuffle: true);
     }
 
     [RelayCommand]
@@ -531,6 +533,13 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
+        var index = FilteredTracks.ToList().FindIndex(t => t.Id == trackItem.Id);
+        BuildQueueAndPlay(index >= 0 ? index : 0, shuffle: false);
+    }
+
+    private void BuildQueueAndPlay(int startIndex, bool shuffle)
+    {
+        if (FilteredTracks.Count == 0) return;
 
         var queueItems = FilteredTracks.Select(t => new QueueItem
         {
@@ -542,6 +551,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             IsUserQueued = false
         }).ToList();
 
+        if (shuffle)
+        {
+            queueItems.Shuffle();
+            startIndex = 0;
+        }
+
         var context = new PlaybackContextInfo
         {
             ContextUri = AlbumId,
@@ -550,8 +565,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             ImageUrl = AlbumImageUrl
         };
 
-        var index = queueItems.FindIndex(q => q.TrackId == trackItem.Id);
-        _playbackStateService.LoadQueue(queueItems, context, index >= 0 ? index : 0);
+        _playbackStateService.LoadQueue(queueItems, context, startIndex);
         _playbackStateService.PlayPause();
     }
 

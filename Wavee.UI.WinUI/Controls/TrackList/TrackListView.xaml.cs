@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Windows.ApplicationModel.DataTransfer;
+using Wavee.UI.WinUI.Controls.Track;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.DragDrop;
@@ -32,10 +33,16 @@ public sealed partial class TrackListView : UserControl
     private readonly List<UIElement> _stickyCustomHeaderElements = [];
     private readonly Dictionary<(Type, string), PropertyInfo?> _propertyCache = [];
 
+    // Playback state tracking for now-playing indicator
+    private readonly IPlaybackStateService? _playbackService;
+    private string? _currentPlayingTrackId;
+    private bool _isCurrentlyPlaying;
+
     public TrackListView()
     {
         InitializeComponent();
         SetValue(CustomColumnsProperty, new List<TrackListColumnDefinition>());
+        _playbackService = Ioc.Default.GetService<IPlaybackStateService>();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -60,6 +67,12 @@ public sealed partial class TrackListView : UserControl
         if (ViewModel is INotifyPropertyChanged vm)
         {
             vm.PropertyChanged -= OnViewModelPropertyChanged;
+        }
+
+        // Clean up playback state subscription
+        if (_playbackService != null)
+        {
+            _playbackService.PropertyChanged -= OnPlaybackStateChanged;
         }
     }
 
@@ -444,6 +457,14 @@ public sealed partial class TrackListView : UserControl
         UpdateRemoveButtonLabel();
         ApplyCustomColumns();
         UpdateColumnVisibility();
+
+        // Subscribe to playback state for now-playing indicator
+        if (_playbackService != null)
+        {
+            _playbackService.PropertyChanged += OnPlaybackStateChanged;
+            _currentPlayingTrackId = _playbackService.CurrentTrackId;
+            _isCurrentlyPlaying = _playbackService.IsPlaying;
+        }
     }
 
     private void UpdateColumnVisibility()
@@ -772,6 +793,12 @@ public sealed partial class TrackListView : UserControl
                         dateText.Text = DateAddedFormatter(args.Item);
                     }
                 }
+
+                // Apply now-playing state to this row
+                if (args.Item is ITrackItem playbackTrackItem)
+                {
+                    ApplyPlaybackStateToRow(grid, playbackTrackItem);
+                }
             }
         }
     }
@@ -783,12 +810,10 @@ public sealed partial class TrackListView : UserControl
             var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
             if (indexGrid != null)
             {
-                foreach (var child in indexGrid.Children)
+                indexGrid.Tag = true; // Mark as hovered
+                if (border.DataContext is ITrackItem trackItem)
                 {
-                    if (child is TextBlock)
-                        child.Visibility = Visibility.Collapsed;
-                    else if (child is Button)
-                        child.Visibility = Visibility.Visible;
+                    ApplyPlaybackStateToRow(grid, trackItem);
                 }
             }
         }
@@ -801,12 +826,10 @@ public sealed partial class TrackListView : UserControl
             var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
             if (indexGrid != null)
             {
-                foreach (var child in indexGrid.Children)
+                indexGrid.Tag = false; // Clear hover
+                if (border.DataContext is ITrackItem trackItem)
                 {
-                    if (child is TextBlock)
-                        child.Visibility = Visibility.Visible;
-                    else if (child is Button)
-                        child.Visibility = Visibility.Collapsed;
+                    ApplyPlaybackStateToRow(grid, trackItem);
                 }
             }
         }
@@ -854,8 +877,16 @@ public sealed partial class TrackListView : UserControl
     {
         if (sender is Button button && button.DataContext is ITrackItem track)
         {
-            TrackClicked?.Invoke(this, track);
-            ViewModel?.PlayTrackCommand?.Execute(track);
+            if (track.Id == _currentPlayingTrackId)
+            {
+                // Toggle play/pause for the current track
+                _playbackService?.PlayPause();
+            }
+            else
+            {
+                TrackClicked?.Invoke(this, track);
+                ViewModel?.PlayTrackCommand?.Execute(track);
+            }
         }
     }
 
@@ -872,6 +903,116 @@ public sealed partial class TrackListView : UserControl
         if (sender is HyperlinkButton link && link.Tag is string albumId && !string.IsNullOrEmpty(albumId))
         {
             AlbumClicked?.Invoke(this, albumId);
+        }
+    }
+
+    private void Row_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el) return;
+        if (el.DataContext is not ITrackItem track) return;
+
+        var options = new TrackContextMenuOptions
+        {
+            PlayCommand = ViewModel?.PlayTrackCommand,
+            AddToQueueCommand = ViewModel?.AddSelectedToQueueCommand,
+            RemoveCommand = ViewModel?.RemoveSelectedCommand,
+            RemoveLabel = RemoveActionLabel
+        };
+
+        var menu = TrackContextMenu.Create(track, options);
+        menu.ShowAt(el, e.GetPosition(el));
+        e.Handled = true;
+    }
+
+    #endregion
+
+    #region Now-Playing State
+
+    private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId) or nameof(IPlaybackStateService.IsPlaying))
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _currentPlayingTrackId = _playbackService!.CurrentTrackId;
+                _isCurrentlyPlaying = _playbackService!.IsPlaying;
+                UpdateAllVisibleRowPlaybackState();
+            });
+        }
+    }
+
+    private void UpdateAllVisibleRowPlaybackState()
+    {
+        for (int i = 0; i < InternalListView.Items.Count; i++)
+        {
+            if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
+            if (container.ContentTemplateRoot is Border border && border.Child is Grid grid && container.Content is ITrackItem trackItem)
+            {
+                ApplyPlaybackStateToRow(grid, trackItem);
+            }
+        }
+    }
+
+    private void ApplyPlaybackStateToRow(Grid grid, ITrackItem trackItem)
+    {
+        var isThisTrack = trackItem.Id == _currentPlayingTrackId;
+        var isPlaying = isThisTrack && _isCurrentlyPlaying;
+
+        // Column 0: index Grid with RowIndex, NowPlayingIcon, PlayButton
+        var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
+        if (indexGrid != null)
+        {
+            var rowIndex = indexGrid.Children.OfType<TextBlock>().FirstOrDefault();
+            var nowPlayingIcon = indexGrid.Children.OfType<FontIcon>().FirstOrDefault();
+            var playButton = indexGrid.Children.OfType<Button>().FirstOrDefault();
+
+            bool isHovered = indexGrid.Tag is true;
+
+            if (isHovered)
+            {
+                // Hovered: show play/pause button, hide others
+                if (rowIndex != null) rowIndex.Visibility = Visibility.Collapsed;
+                if (nowPlayingIcon != null) nowPlayingIcon.Visibility = Visibility.Collapsed;
+                if (playButton != null)
+                {
+                    playButton.Visibility = Visibility.Visible;
+                    if (playButton.Content is FontIcon btnIcon)
+                    {
+                        btnIcon.Glyph = isPlaying ? "\uE769" : "\uE768"; // Pause : Play
+                    }
+                }
+            }
+            else if (isThisTrack)
+            {
+                // Not hovered, this is the playing/paused track: show equalizer icon
+                if (rowIndex != null) rowIndex.Visibility = Visibility.Collapsed;
+                if (nowPlayingIcon != null)
+                {
+                    nowPlayingIcon.Visibility = Visibility.Visible;
+                    nowPlayingIcon.Glyph = isPlaying ? "\uE995" : "\uE769"; // Equalizer : Pause
+                }
+                if (playButton != null) playButton.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                // Not hovered, not this track: show row index
+                if (rowIndex != null) rowIndex.Visibility = Visibility.Visible;
+                if (nowPlayingIcon != null) nowPlayingIcon.Visibility = Visibility.Collapsed;
+                if (playButton != null) playButton.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // Title text accent color for playing track (Column 2, StackPanel > first TextBlock)
+        var titleStack = grid.Children.OfType<StackPanel>().FirstOrDefault();
+        if (titleStack != null)
+        {
+            var titleText = titleStack.Children.OfType<TextBlock>().FirstOrDefault();
+            if (titleText != null)
+            {
+                titleText.Foreground = isThisTrack
+                    ? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]
+                    : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            }
         }
     }
 

@@ -158,7 +158,8 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         ui:Effects.Shadow="{StaticResource RowShadow}"
                         PointerEntered="Row_PointerEntered"
-                        PointerExited="Row_PointerExited">
+                        PointerExited="Row_PointerExited"
+                        RightTapped="Row_RightTapped">
                         <Grid ColumnSpacing="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40"/>
@@ -170,13 +171,20 @@
                                 <ColumnDefinition Width="60"/>
                             </Grid.ColumnDefinitions>
 
-                            <!-- Row number / Play button area -->
+                            <!-- Row number / Now Playing icon / Play button area -->
                             <Grid Grid.Column="0">
                                 <TextBlock x:Name="RowIndex"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
+                                <FontIcon x:Name="NowPlayingIcon"
+                                          Glyph="&#xE995;"
+                                          FontSize="14"
+                                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Visibility="Collapsed"/>
                                 <Button x:Name="PlayButton"
                                         Visibility="Collapsed"
                                         Background="Transparent"

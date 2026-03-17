@@ -15,6 +15,7 @@ using ReactiveUI;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -349,19 +350,27 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
     [RelayCommand]
     private void PlayAll()
     {
-        // TODO: Implement play all liked songs
+        BuildQueueAndPlay(0, shuffle: false);
     }
 
     [RelayCommand]
     private void Shuffle()
     {
-        // TODO: Implement shuffle play liked songs
+        _playbackStateService.SetShuffle(true);
+        BuildQueueAndPlay(0, shuffle: true);
     }
 
     [RelayCommand]
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
+        var index = FilteredSongs.ToList().FindIndex(t => t.Id == trackItem.Id);
+        BuildQueueAndPlay(index >= 0 ? index : 0, shuffle: false);
+    }
+
+    private void BuildQueueAndPlay(int startIndex, bool shuffle)
+    {
+        if (FilteredSongs.Count == 0) return;
 
         var queueItems = FilteredSongs.Select(t => new QueueItem
         {
@@ -373,6 +382,12 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
             IsUserQueued = false
         }).ToList();
 
+        if (shuffle)
+        {
+            queueItems.Shuffle();
+            startIndex = 0;
+        }
+
         var context = new PlaybackContextInfo
         {
             ContextUri = "liked-songs",
@@ -380,8 +395,7 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
             Name = "Liked Songs"
         };
 
-        var index = queueItems.FindIndex(q => q.TrackId == trackItem.Id);
-        _playbackStateService.LoadQueue(queueItems, context, index >= 0 ? index : 0);
+        _playbackStateService.LoadQueue(queueItems, context, startIndex);
         _playbackStateService.PlayPause();
     }
 

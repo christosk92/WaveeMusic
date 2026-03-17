@@ -15,7 +15,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Centralized playback state service. Wraps <see cref="IPlayerContext"/> and adds
 /// playback context, queue, and command methods. Sends messenger events on key state changes.
 /// </summary>
-internal sealed partial class PlaybackStateService : ObservableObject, IPlaybackStateService
+internal sealed partial class PlaybackStateService : ObservableObject, IPlaybackStateService, IDisposable
 {
     private readonly IPlayerContext _playerContext;
     private readonly IMessenger _messenger;
@@ -267,5 +267,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         CurrentAlbumArt = track.AlbumArt;
         Duration = track.DurationMs;
         Position = 0;
+    }
+
+    public void Dispose()
+    {
+        _playerContext.PropertyChanged -= OnPlayerContextPropertyChanged;
     }
 }
