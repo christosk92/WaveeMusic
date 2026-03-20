@@ -5,81 +5,153 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:http="using:Wavee.Core.Http"
     mc:Ignorable="d"
     Background="Transparent">
 
     <ScrollView>
-        <StackPanel
-            Padding="48"
-            Spacing="32"
-            MaxWidth="800"
-            HorizontalAlignment="Left">
+        <StackPanel>
 
-            <!-- Profile Header -->
-            <StackPanel Orientation="Horizontal" Spacing="24">
-                <!-- Profile Picture -->
-                <PersonPicture
-                    Width="180"
-                    Height="180"
-                    DisplayName="{x:Bind ViewModel.DisplayName, Mode=OneWay}" />
+            <!-- Hero banner: FULL WIDTH, gradient fades top→bottom -->
+            <Grid Height="260" x:Name="HeroBanner" HorizontalAlignment="Stretch"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
 
-                <!-- Profile Info -->
-                <StackPanel VerticalAlignment="Center" Spacing="8">
-                    <TextBlock
-                        Text="Profile"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock
-                        Text="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
-                        Style="{StaticResource TitleLargeTextBlockStyle}"
-                        FontWeight="Bold" />
-                    <StackPanel Orientation="Horizontal" Spacing="16">
-                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                            <Run Text="{x:Bind ViewModel.PlaylistCount, Mode=OneWay}" />
-                            <Run Text="Playlists" />
-                        </TextBlock>
-                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                            <Run Text="{x:Bind ViewModel.FollowersCount, Mode=OneWay}" />
-                            <Run Text="Followers" />
-                        </TextBlock>
-                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                            <Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}" />
-                            <Run Text="Following" />
-                        </TextBlock>
+                <StackPanel Orientation="Horizontal" Spacing="28" Padding="48,0"
+                            VerticalAlignment="Center" HorizontalAlignment="Left"
+                            MaxWidth="900">
+                    <!-- Avatar -->
+                    <PersonPicture x:Name="ProfileAvatar" Width="140" Height="140"
+                                   DisplayName="{x:Bind ViewModel.DisplayName, Mode=OneWay}"/>
+
+                    <!-- Info -->
+                    <StackPanel Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Profile"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Opacity="0.7"/>
+                        <TextBlock Text="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
+                                   FontSize="36" FontWeight="Bold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Opacity="0.7"
+                                       Style="{StaticResource BodyTextBlockStyle}">
+                                <Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/>
+                                <Run Text=" Following"/>
+                            </TextBlock>
+                            <TextBlock Text="·" Opacity="0.4"
+                                       Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock Opacity="0.7"
+                                       Style="{StaticResource BodyTextBlockStyle}">
+                                <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/>
+                                <Run Text=" Public Playlists"/>
+                            </TextBlock>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
 
-            <!-- Action Buttons -->
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Button
-                    Content="Edit Profile"
-                    Command="{x:Bind ViewModel.EditProfileCommand}"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                <Button
-                    Content="Settings"
-                    Command="{x:Bind ViewModel.OpenSettingsCommand}" />
-            </StackPanel>
+            <!-- Content area: constrained width -->
+            <StackPanel MaxWidth="900" HorizontalAlignment="Left"
+                        Padding="48,32,48,48" Spacing="36">
 
-            <!-- Public Playlists Section -->
-            <StackPanel Spacing="16">
-                <TextBlock
-                    Text="Public Playlists"
-                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                <TextBlock
-                    Text="No public playlists yet."
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
+                <!-- Loading -->
+                <ProgressRing x:Name="LoadingRing"
+                              IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                              Width="32" Height="32" HorizontalAlignment="Center"/>
 
-            <!-- Following Section -->
-            <StackPanel Spacing="16">
-                <TextBlock
-                    Text="Following"
-                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                <TextBlock
-                    Text="Not following any artists yet."
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <!-- Top Artists section -->
+                <StackPanel x:Name="ArtistsSection" Spacing="16"
+                            Visibility="{x:Bind ViewModel.HasData, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="Top Artists" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentArtists, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Orientation="Horizontal" Spacing="20"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="http:SpotifyProfileArtist">
+                                <StackPanel Width="110" Spacing="10" HorizontalAlignment="Center">
+                                    <Grid Width="90" Height="90" CornerRadius="45">
+                                        <Image Source="{x:Bind ImageUrl, Converter={StaticResource SpotifyImageConverter}}" Stretch="UniformToFill"/>
+                                    </Grid>
+                                    <TextBlock Text="{x:Bind Name}" HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" MaxLines="1"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+
+                <!-- Following section -->
+                <StackPanel x:Name="FollowingSection" Spacing="16"
+                            Visibility="{x:Bind ViewModel.HasData, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">
+                        <Run Text="Following ("/>
+                        <Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/>
+                        <Run Text=")"/>
+                    </TextBlock>
+                    <ScrollView HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"
+                                HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.FollowingArtists, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="http:SpotifyProfileArtist">
+                                    <StackPanel Width="100" Spacing="8" HorizontalAlignment="Center">
+                                        <Grid Width="80" Height="80" CornerRadius="40">
+                                            <Image Source="{x:Bind ImageUrl, Converter={StaticResource SpotifyImageConverter}}"
+                                                   Stretch="UniformToFill"/>
+                                        </Grid>
+                                        <TextBlock Text="{x:Bind Name}" HorizontalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollView>
+                </StackPanel>
+
+                <!-- Public Playlists section -->
+                <StackPanel x:Name="PlaylistsSection" Spacing="16"
+                            Visibility="{x:Bind ViewModel.HasData, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">
+                        <Run Text="Public Playlists ("/>
+                        <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/>
+                        <Run Text=")"/>
+                    </TextBlock>
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.PublicPlaylists, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Orientation="Horizontal" Spacing="16"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="http:SpotifyProfilePlaylist">
+                                <StackPanel Width="160" Spacing="8">
+                                    <Grid Width="160" Height="160" CornerRadius="8"
+                                          Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Image Source="{x:Bind ImageUrl, Converter={StaticResource SpotifyImageConverter}}" Stretch="UniformToFill"/>
+                                        <!-- Placeholder icon when image doesn't load -->
+                                        <FontIcon Glyph="&#xE8D6;" FontSize="32"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Opacity="0.3"/>
+                                    </Grid>
+                                    <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                    <TextBlock Text="{x:Bind OwnerName}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+
+                <!-- Sign out -->
+                <HyperlinkButton Content="Sign out of Spotify" HorizontalAlignment="Center"
+                                 Command="{x:Bind ViewModel.SignOutCommand}"
+                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                 Margin="0,16,0,0"/>
             </StackPanel>
         </StackPanel>
     </ScrollView>

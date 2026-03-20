@@ -1,25 +1,40 @@
 using System;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Authentication;
 using Wavee.Core.Session;
+using Wavee.OAuth;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
 /// <summary>
-/// Manages the authenticated user's state. Reads from <see cref="ISession"/> when available,
-/// falls back to demo/mock data when running in demo mode.
+/// Manages the authenticated user's state. Bridges Wavee.Core OAuth/Session to the UI layer.
+/// Supports demo mode fallback, cached credential restore, and real OAuth flows.
 /// </summary>
-internal sealed partial class AuthStateService : ObservableObject, IAuthState
+internal sealed partial class AuthStateService : ObservableObject, IAuthState, IDisposable
 {
-    private readonly ISession? _session;
+    private static readonly string[] OAuthScopes =
+        ["streaming", "user-read-playback-state", "user-modify-playback-state",
+         "user-read-private", "user-read-email",
+         "user-library-read", "playlist-read-private", "playlist-read-collaborative"];
+
     private readonly IMessenger _messenger;
     private readonly IDataServiceConfiguration? _config;
     private readonly ILogger? _logger;
+    private readonly Session? _session;
+    private readonly ICredentialsCache? _credentialsCache;
+    private readonly SessionConfig? _sessionConfig;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAuthenticated))]
@@ -37,8 +52,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState
     private AccountType? _accountType;
 
     public string? Username => CurrentUser?.Username;
-    public string? DisplayName => CurrentUser?.Username; // TODO: Extend UserData with display name
-    public string? ProfileImageUrl => null; // TODO: Extend UserData with profile image
+    public string? DisplayName => CurrentUser?.DisplayName ?? CurrentUser?.Username;
+    public string? ProfileImageUrl => CurrentUser?.ProfileImageUrl;
 
     public bool IsAuthenticated => Status == AuthStatus.Authenticated;
     public bool IsPremium => AccountType == Core.Session.AccountType.Premium;
@@ -48,12 +63,16 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState
     public AuthStateService(
         IMessenger messenger,
         IDataServiceConfiguration? config = null,
-        ISession? session = null,
+        Session? session = null,
+        ICredentialsCache? credentialsCache = null,
+        SessionConfig? sessionConfig = null,
         ILogger<AuthStateService>? logger = null)
     {
         _messenger = messenger;
         _config = config;
         _session = session;
+        _credentialsCache = credentialsCache;
+        _sessionConfig = sessionConfig;
         _logger = logger;
     }
 
@@ -77,15 +96,23 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState
                 return true;
             }
 
-            // Real mode: check ISession
+            // Already connected (shouldn't happen on startup, but be safe)
             if (_session.IsConnected())
             {
-                var userData = _session.GetUserData();
-                if (userData != null)
+                await PopulateUserFromSession(ct);
+                return true;
+            }
+
+            // Try cached credentials
+            if (_credentialsCache != null)
+            {
+                var lastUser = await _credentialsCache.LoadLastUsernameAsync(ct);
+                var cached = await _credentialsCache.LoadCredentialsAsync(lastUser, ct);
+                if (cached != null)
                 {
-                    CurrentUser = userData;
-                    AccountType = await _session.GetAccountTypeAsync(ct);
-                    SetStatus(AuthStatus.Authenticated);
+                    _logger?.LogInformation("Restoring session from cached credentials for {User}", lastUser);
+                    await _session.ConnectAsync(cached, _credentialsCache, ct);
+                    await PopulateUserFromSession(ct);
                     return true;
                 }
             }
@@ -96,19 +123,110 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to restore session");
-            SetStatus(AuthStatus.Error);
+            SetStatus(AuthStatus.LoggedOut);
             return false;
         }
     }
 
-    public Task LogoutAsync(CancellationToken ct = default)
+    public async Task LoginWithAuthorizationCodeAsync(CancellationToken ct = default)
+    {
+        if (_session == null || _sessionConfig == null)
+            throw new InvalidOperationException("Session infrastructure not available");
+
+        SetStatus(AuthStatus.Authenticating);
+
+        using var client = OAuthClient.Create(
+            _sessionConfig.GetClientId(), OAuthScopes, openBrowser: true,
+            logger: _logger as ILogger);
+
+        var token = await client.GetAccessTokenAsync(ct);
+        var creds = Credentials.WithAccessToken(token.AccessToken);
+        await _session.ConnectAsync(creds, _credentialsCache, ct);
+        await PopulateUserFromSession(ct);
+    }
+
+    public async Task LoginWithDeviceCodeAsync(
+        Action<DeviceCodeInfo> onDeviceCodeReceived,
+        CancellationToken ct = default)
+    {
+        if (_session == null || _sessionConfig == null)
+            throw new InvalidOperationException("Session infrastructure not available");
+
+        SetStatus(AuthStatus.Authenticating);
+
+        using var client = OAuthClient.CreateCustom(
+            _sessionConfig.GetClientId(), OAuthScopes, OAuthFlow.DeviceCode,
+            logger: _logger as ILogger);
+
+        client.DeviceCodeReceived += (_, e) =>
+        {
+            onDeviceCodeReceived(new DeviceCodeInfo(
+                e.UserCode, e.VerificationUri,
+                e.VerificationUriComplete, e.ExpiresIn));
+        };
+
+        var token = await client.GetAccessTokenAsync(ct);
+        var creds = Credentials.WithAccessToken(token.AccessToken);
+        await _session.ConnectAsync(creds, _credentialsCache, ct);
+        await PopulateUserFromSession(ct);
+    }
+
+    public async Task LogoutAsync(CancellationToken ct = default)
     {
         CurrentUser = null;
         AccountType = null;
-        SetStatus(AuthStatus.LoggedOut);
 
-        // TODO: Clear cached credentials, disconnect session
-        return Task.CompletedTask;
+        // Clear cached credentials
+        if (_credentialsCache != null)
+        {
+            try
+            {
+                await _credentialsCache.ClearCredentialsAsync(cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to clear cached credentials");
+            }
+        }
+
+        // Stop Spotify playback and remove Spotify tracks from queue
+        var playback = Ioc.Default.GetService<IPlaybackStateService>();
+        if (playback != null)
+        {
+            if (playback.CurrentTrackId?.StartsWith("spotify:") == true)
+            {
+                playback.PlayPause(); // stop current Spotify track
+            }
+        }
+
+        SetStatus(AuthStatus.LoggedOut);
+    }
+
+    private async Task PopulateUserFromSession(CancellationToken ct)
+    {
+        if (_session == null) return;
+
+        var userData = _session.GetUserData();
+        if (userData == null) return;
+
+        // Enrich with spclient profile (display name + avatar)
+        try
+        {
+            var profile = await _session.SpClient.GetUserProfileAsync(userData.Username, ct);
+            userData = userData with
+            {
+                DisplayName = profile.EffectiveDisplayName,
+                ProfileImageUrl = profile.EffectiveImageUrl
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to fetch user profile, using canonical username");
+        }
+
+        CurrentUser = userData;
+        AccountType = await _session.GetAccountTypeAsync(ct);
+        SetStatus(AuthStatus.Authenticated);
     }
 
     private void SetStatus(AuthStatus newStatus)
@@ -123,5 +241,10 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState
     partial void OnCurrentUserChanged(UserData? value)
     {
         _messenger.Send(new UserProfileUpdatedMessage(value));
+    }
+
+    public void Dispose()
+    {
+        // Future: disconnect session if needed
     }
 }

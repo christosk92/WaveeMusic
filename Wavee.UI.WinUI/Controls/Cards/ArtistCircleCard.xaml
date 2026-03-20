@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Cards.ArtistCircleCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Button x:Name="CardButton"
+            Padding="0" Background="Transparent" BorderThickness="0"
+            HorizontalContentAlignment="Center"
+            Click="CardButton_Click"
+            RightTapped="CardButton_RightTapped">
+        <StackPanel x:Name="RootPanel" Spacing="8" HorizontalAlignment="Center">
+            <!-- Circular image -->
+            <Grid x:Name="ImageContainer"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                <Image x:Name="CardImage" Stretch="UniformToFill"/>
+                <FontIcon x:Name="PlaceholderIcon" Glyph="&#xE77B;" FontSize="24"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Opacity="0.3"/>
+            </Grid>
+            <!-- Name -->
+            <TextBlock x:Name="NameText" HorizontalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" MaxLines="1"
+                       Style="{StaticResource CaptionTextBlockStyle}"/>
+            <!-- Optional metadata -->
+            <TextBlock x:Name="MetadataText" HorizontalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" MaxLines="1"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Visibility="Collapsed"/>
+        </StackPanel>
+    </Button>
+</UserControl>

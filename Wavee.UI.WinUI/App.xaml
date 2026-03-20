@@ -105,6 +105,7 @@
             <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
             <converters:BoolToBackgroundConverter x:Key="BoolToBackgroundConverter" />
             <converters:BoolToBackgroundConverter x:Key="InverseBoolToBackgroundConverter" Invert="True" />
+            <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

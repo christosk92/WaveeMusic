@@ -11,6 +11,7 @@ using Wavee.Core.Audio;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
 using Wavee.Core.Http;
+using Wavee.Core.Mercury;
 
 namespace Wavee.Core.Session;
 
@@ -45,6 +46,15 @@ public sealed class Session : ISession, IAsyncDisposable
 
     // Cached SpClient endpoint (resolved during ConnectAsync)
     private string? _spClientEndpoint;
+
+    // Client token manager (lazy-initialized after connect)
+    private ClientTokenManager? _clientTokenManager;
+
+    // Mercury protocol manager
+    private MercuryManager? _mercuryManager;
+
+    // Keymaster token provider (for Web API scoped tokens)
+    private KeymasterTokenProvider? _keymasterTokenProvider;
 
     // Connect subsystem
     private DealerClient? _dealerClient;
@@ -198,7 +208,15 @@ public sealed class Session : ISession, IAsyncDisposable
 
             _logger?.LogInformation("Session established for user: {Username}", userData.Username);
 
-            // 7. Initialize Spotify Connect subsystem
+            // 7. Initialize client token manager (needed by SpClient for spclient requests)
+            _clientTokenManager = new ClientTokenManager(_httpClient, _config, _logger);
+
+            // 8. Initialize Mercury protocol (for keymaster tokens, subscriptions, etc.)
+            _mercuryManager = new MercuryManager(this, _logger);
+            _keymasterTokenProvider = new KeymasterTokenProvider(
+                _mercuryManager, _config, _config.DeviceId, _logger);
+
+            // 8. Initialize Spotify Connect subsystem
             await InitializeConnectSubsystemAsync(cancellationToken);
         }
         finally
@@ -379,12 +397,23 @@ public sealed class Session : ISession, IAsyncDisposable
         this,
         _httpClient,
         _spClientEndpoint ?? "spclient.wg.spotify.com:443",
+        _clientTokenManager,
         _logger);
 
     /// <summary>
     /// Gets the resolved SpClient endpoint URL.
     /// </summary>
     public string SpClientUrl => _spClientEndpoint ?? "spclient.wg.spotify.com:443";
+
+    /// <summary>
+    /// Gets the Mercury protocol manager for internal Spotify requests.
+    /// </summary>
+    public MercuryManager? Mercury => _mercuryManager;
+
+    /// <summary>
+    /// Gets the Keymaster token provider for scoped Web API access tokens.
+    /// </summary>
+    public KeymasterTokenProvider? Keymaster => _keymasterTokenProvider;
 
     /// <summary>
     /// Gets the Pathfinder client for GraphQL API requests (search, browse, etc).
@@ -849,6 +878,14 @@ public sealed class Session : ISession, IAsyncDisposable
             case PacketType.Pong:
                 _data.RecordPongReceived();
                 _logger?.LogTrace("Received Pong from server");
+                return;
+
+            case PacketType.MercuryReq:
+            case PacketType.MercurySub:
+            case PacketType.MercuryUnsub:
+            case PacketType.MercuryEvent:
+            case PacketType.Unknown0xb6:
+                _mercuryManager?.DispatchPacket((byte)packetType, payload);
                 return;
 
             case PacketType.AesKey:

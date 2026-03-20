@@ -54,5 +54,10 @@ public enum SpClientFailureReason
     /// <summary>
     /// Server error (5xx).
     /// </summary>
-    ServerError
+    ServerError,
+
+    /// <summary>
+    /// Response body was empty or could not be deserialized.
+    /// </summary>
+    InvalidResponse
 }

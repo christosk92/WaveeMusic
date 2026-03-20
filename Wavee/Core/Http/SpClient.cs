@@ -27,6 +27,7 @@ public sealed class SpClient
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
+    private readonly ClientTokenManager? _clientTokenManager;
 
     /// <summary>
     /// Gets the base URL for the SpClient API (e.g., "https://spclient.wg.spotify.com").
@@ -40,7 +41,8 @@ public sealed class SpClient
     /// <param name="httpClient">HTTP client for making requests.</param>
     /// <param name="baseUrl">Resolved SpClient endpoint (e.g., "spclient.wg.spotify.com:443").</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
-    internal SpClient(ISession session, HttpClient httpClient, string baseUrl, ILogger? logger = null)
+    internal SpClient(ISession session, HttpClient httpClient, string baseUrl,
+        ClientTokenManager? clientTokenManager = null, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -48,6 +50,7 @@ public sealed class SpClient
 
         _session = session;
         _httpClient = httpClient;
+        _clientTokenManager = clientTokenManager;
         _logger = logger;
 
         // Normalize base URL: remove port suffix and ensure https:// prefix
@@ -281,7 +284,20 @@ public sealed class SpClient
             request.Headers.AcceptLanguage.ParseAdd(locale);
         }
 
-        // TODO: Add client-token header from ClientToken manager when implemented
+        // Add client-token header for spclient authentication
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token, continuing without");
+            }
+        }
 
         // Send request with retry logic
         var response = await SendWithRetryAsync(request, cancellationToken);
@@ -960,6 +976,90 @@ public sealed class SpClient
     }
 
     #endregion
+
+    /// <summary>
+    /// Fetches a user's profile via the spclient profile endpoint.
+    /// Uses Login5 token + client-token (no public Web API, no 429 issues).
+    /// </summary>
+    public async Task<SpotifyUserProfile> GetUserProfileAsync(
+        string username, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        var url = $"{_baseUrl}/user-profile-view/v3/profile/{Uri.EscapeDataString(username)}?playlist_limit=10&artist_limit=10&episode_limit=10&market=from_token";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        // Add client-token header
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch { /* Continue without client-token */ }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Failed to get user profile: {response.StatusCode} - {body}");
+        }
+
+        var json = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await JsonSerializer.DeserializeAsync(json, SpotifyUserProfileJsonContext.Default.SpotifyUserProfile, cancellationToken)
+            ?? throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty profile response");
+    }
+
+    /// <summary>
+    /// Fetches a user's following list via the spclient profile endpoint.
+    /// </summary>
+    public async Task<SpotifyFollowingResponse> GetUserFollowingAsync(
+        string username, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+
+        var url = $"{_baseUrl}/user-profile-view/v3/profile/{Uri.EscapeDataString(username)}/following?market=from_token";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch { }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Failed to get user following: {response.StatusCode} - {body}");
+        }
+
+        var json = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await JsonSerializer.DeserializeAsync(json, SpotifyUserProfileJsonContext.Default.SpotifyFollowingResponse, cancellationToken)
+            ?? throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty following response");
+    }
 
     /// <summary>
     /// Gets the effective locale for API requests.

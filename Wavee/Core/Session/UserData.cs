@@ -51,6 +51,17 @@ public sealed record UserData
     public string? PreferredLocale { get; init; }
 
     /// <summary>
+    /// User's display name from Spotify Web API /me endpoint.
+    /// May differ from Username (which is the canonical ID).
+    /// </summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// URL to user's profile image from Spotify Web API /me endpoint.
+    /// </summary>
+    public string? ProfileImageUrl { get; init; }
+
+    /// <summary>
     /// URL template for video keyframes (e.g., "http://keyframes-fa.cdn.spotify.com/keyframes/v1/sources/{source_id}/keyframe/heights/{height}/timestamps/{timestamp_ms}.jpg").
     /// Will be null until the ProductInfo packet (0x50) is received.
     /// </summary>

@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Core.Session;
+using Wavee.UI.WinUI.Data.DTOs;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
 
@@ -30,6 +31,17 @@ public interface IAuthState : INotifyPropertyChanged
     /// Logs the user out and clears all auth state.
     /// </summary>
     Task LogoutAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs in using the authorization code flow.
+    /// </summary>
+    Task LoginWithAuthorizationCodeAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs in using the device code flow, invoking the callback when
+    /// the device code is available for the user to enter.
+    /// </summary>
+    Task LoginWithDeviceCodeAsync(Action<DeviceCodeInfo> onDeviceCodeReceived, CancellationToken ct = default);
 
     /// <summary>
     /// Raised when the authentication status changes.

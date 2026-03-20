@@ -6,7 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Builder;
+using Wavee.Core.Authentication;
 using Wavee.Core.DependencyInjection;
+using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -56,8 +58,20 @@ public static class AppLifecycleHelper
                 // App services
                 .AddSingleton<IThemeService, ThemeService>()
 
+                // Spotify session infrastructure
+                .AddTransient<RetryHandler>()
+                .AddHttpClient("Wavee")
+                    .AddHttpMessageHandler<RetryHandler>()
+                    .Services
+                .AddSingleton<ICredentialsCache, CredentialsCache>()
+                .AddSingleton(new SessionConfig { DeviceId = DeviceIdHelper.GetOrCreateDeviceId() })
+                .AddSingleton(sp => Session.Create(
+                    sp.GetRequiredService<SessionConfig>(),
+                    sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(),
+                    sp.GetService<ILogger<Session>>()))
+
                 // Data services
-                .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: true))
+                .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
                 .AddSingleton<ILibraryDataService, MockLibraryDataService>()
                 .AddSingleton<ICatalogService, MockCatalogService>()
 
@@ -74,6 +88,7 @@ public static class AppLifecycleHelper
                 .AddTransient<PlaylistViewModel>()
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>()
+                .AddTransient<SpotifyConnectViewModel>()
 
                 // Drag & drop
                 .AddSingleton<DragStateService>()

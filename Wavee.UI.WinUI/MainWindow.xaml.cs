@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI;
@@ -36,7 +37,7 @@ public sealed partial class MainWindow : WindowEx
 
     private void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
     {
-        var shellVm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
+        var shellVm = Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
         shellVm?.Cleanup();
     }
 
@@ -46,14 +47,22 @@ public sealed partial class MainWindow : WindowEx
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
         themeService.Initialize(RootFrame);
 
-        // Initialize app state (auth + demo playback) BEFORE shell loads
-        var initService = Ioc.Default.GetRequiredService<AppInitializationService>();
-        await initService.InitializeStateAsync();
-
-        // Navigate to shell (PlayerBar will read already-populated state)
+        // Always navigate to ShellPage (app works without Spotify login)
         RootFrame.Navigate(typeof(ShellPage));
 
-        // Show welcome notification AFTER ShellViewModel is listening
-        initService.ShowWelcomeNotification();
+        // Try to restore cached Spotify session in background (non-blocking)
+        var authState = Ioc.Default.GetRequiredService<IAuthState>();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await authState.TryRestoreSessionAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Session restore failed: {ex}");
+                // Not critical -- user can connect manually via sidebar button
+            }
+        });
     }
 }
