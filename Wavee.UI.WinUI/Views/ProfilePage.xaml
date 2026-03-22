@@ -55,7 +55,7 @@
             </Grid>
 
             <!-- ===== Loading shimmer skeletons ===== -->
-            <StackPanel Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+            <StackPanel x:Name="ShimmerContainer"
                         Padding="32,0,32,32" Spacing="32" Margin="0,-30,0,0">
 
                 <!-- Artist section skeleton -->
@@ -175,8 +175,7 @@
             </StackPanel>
 
             <!-- ===== Content sections (negative margin to overlap gradient) ===== -->
-            <StackPanel Padding="32,0,32,32" Spacing="32" Margin="0,-30,0,0"
-                        Visibility="{x:Bind ViewModel.HasData, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel x:Name="ContentContainer" Padding="32,0,32,32" Spacing="32" Margin="0,-30,0,0">
 
                 <!-- ────────────────────────────────────────────── -->
                 <!-- Section 1: Top Artists This Month              -->
@@ -206,7 +205,9 @@
                                         Subtitle="Artist"
                                         PlaceholderGlyph="&#xE77B;"
                                         IsCircularImage="True"
-                                        CenterText="True"/>
+                                        CenterText="True"
+                                        NavigationUri="{x:Bind Uri}"
+                                        NavigationTitle="{x:Bind Name}"/>
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
@@ -265,7 +266,9 @@
                                         ImageUrl="{x:Bind ImageUrl}"
                                         Title="{x:Bind Name}"
                                         Subtitle="{x:Bind OwnerName}"
-                                        IsCircularImage="False"/>
+                                        IsCircularImage="False"
+                                        NavigationUri="{x:Bind Uri}"
+                                        NavigationTitle="{x:Bind Name}"/>
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
@@ -298,7 +301,9 @@
                                         Subtitle="Artist"
                                         PlaceholderGlyph="&#xE77B;"
                                         IsCircularImage="True"
-                                        CenterText="True"/>
+                                        CenterText="True"
+                                        NavigationUri="{x:Bind Uri}"
+                                        NavigationTitle="{x:Bind Name}"/>
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>

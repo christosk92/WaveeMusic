@@ -41,12 +41,6 @@ public sealed partial class ShellPage : Page
         Loaded += ShellPage_Loaded;
         Unloaded += ShellPage_Unloaded;
 
-        // Subscribe to theme changes
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-
-        // Set initial theme icon
-        UpdateThemeIcon();
-
         // Handle track drops on sidebar playlists
         SidebarControl.ItemDropped += SidebarControl_ItemDropped;
 
@@ -75,7 +69,6 @@ public sealed partial class ShellPage : Page
         TitleBarGrid.SizeChanged -= TitleBarGrid_SizeChanged;
         TitleBarGrid.Loaded -= TitleBarGrid_Loaded;
         TabControl.SizeChanged -= TabControl_SizeChanged;
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
@@ -120,21 +113,6 @@ public sealed partial class ShellPage : Page
 
         // Unsubscribe to avoid duplicate calls
         Loaded -= ShellPage_Loaded;
-    }
-
-    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(ShellViewModel.CurrentTheme))
-        {
-            UpdateThemeIcon();
-        }
-    }
-
-    private void UpdateThemeIcon()
-    {
-        // Show moon icon in light mode (clicking will switch to dark)
-        // Show sun icon in dark mode (clicking will switch to light)
-        ThemeIcon.Glyph = ViewModel.CurrentTheme == ElementTheme.Light ? "\uE708" : "\uE706";
     }
 
     private void SetupTitleBar()

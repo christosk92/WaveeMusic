@@ -45,9 +45,18 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         base.OnNavigatedTo(e);
 
+        // Receive connected animation from source card
+        Helpers.ConnectedAnimationHelper.TryStartAnimation(
+            Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
+
         try
         {
-            if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
+            if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
+            {
+                ViewModel.PrefillFrom(nav);
+                await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
+            }
+            else if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
             {
                 await ViewModel.LoadCommand.ExecuteAsync(albumId);
             }

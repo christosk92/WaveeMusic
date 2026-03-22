@@ -403,6 +403,17 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
         return $"{ts.Minutes} min";
     }
 
+    /// <summary>
+    /// Prefills the ViewModel with data already known from the source card,
+    /// so the UI shows something immediately while LoadAsync fetches full details.
+    /// </summary>
+    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav)
+    {
+        if (!string.IsNullOrEmpty(nav.Title)) PlaylistName = nav.Title;
+        if (!string.IsNullOrEmpty(nav.ImageUrl)) PlaylistImageUrl = nav.ImageUrl;
+        if (!string.IsNullOrEmpty(nav.Subtitle)) OwnerName = nav.Subtitle;
+    }
+
     [RelayCommand]
     private async Task LoadAsync(string? playlistId)
     {
@@ -422,10 +433,15 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
             await Task.WhenAll(detailTask, playlistsTask);
 
             var detail = await detailTask;
-            PlaylistName = detail.Name;
-            PlaylistDescription = detail.Description;
-            PlaylistImageUrl = detail.ImageUrl;
-            OwnerName = detail.OwnerName;
+            // Only overwrite prefilled values if the service returned real data
+            if (!string.IsNullOrEmpty(detail.Name) && !detail.Name.StartsWith("Unknown"))
+                PlaylistName = detail.Name;
+            if (!string.IsNullOrEmpty(detail.Description))
+                PlaylistDescription = detail.Description;
+            if (!string.IsNullOrEmpty(detail.ImageUrl))
+                PlaylistImageUrl = detail.ImageUrl;
+            if (!string.IsNullOrEmpty(detail.OwnerName) && detail.OwnerName != "Unknown")
+                OwnerName = detail.OwnerName;
             IsOwner = detail.IsOwner;
             IsPublic = detail.IsPublic;
             FollowerCount = detail.FollowerCount;

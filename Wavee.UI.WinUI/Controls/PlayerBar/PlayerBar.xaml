@@ -27,12 +27,19 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <!-- Main container - Rise layout: 3 columns, 2 rows (compact) -->
-    <Grid
-        Padding="0"
-        Background="{ThemeResource App.Theme.Player.BackgroundBrush}"
-        CornerRadius="0,0,8,0"
+    <!-- Main container - floating bar with acrylic backdrop -->
+    <Border
+        CornerRadius="8"
+        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+        BorderThickness="1"
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+        <Border.Background>
+            <AcrylicBrush
+                TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                TintOpacity="0.85"
+                FallbackColor="{ThemeResource SolidBackgroundFillColorBase}"/>
+        </Border.Background>
+    <Grid Padding="0">
 
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="DisplayItemColumn" Width="Auto" />
@@ -48,6 +55,7 @@
 
         <!-- Full-width progress bar at top edge -->
         <Slider x:Name="ProgressSlider"
+                Margin="0,-4,0,0"
                 Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                 Style="{StaticResource PlayerProgressSliderStyle}"
                 Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
@@ -326,4 +334,5 @@
                 Text="{x:Bind ViewModel.Volume, Mode=OneWay}" />
         </Grid>
     </Grid>
+    </Border>
 </UserControl>

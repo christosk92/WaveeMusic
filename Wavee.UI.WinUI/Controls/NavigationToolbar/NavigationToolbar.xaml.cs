@@ -11,6 +11,14 @@ public sealed partial class NavigationToolbar : UserControl
     public NavigationToolbar()
     {
         InitializeComponent();
+        ActualThemeChanged += (_, _) => UpdateThemeGlyph();
+        Loaded += (_, _) => UpdateThemeGlyph();
+    }
+
+    private void UpdateThemeGlyph()
+    {
+        // Sun for light, moon for dark (shows current state)
+        ThemeGlyph = ActualTheme == ElementTheme.Dark ? "\uE708" : "\uE706";
     }
 
     #region Dependency Properties
@@ -93,6 +101,16 @@ public sealed partial class NavigationToolbar : UserControl
         set => SetValue(IsOnHomePageProperty, value);
     }
 
+    public static readonly DependencyProperty ThemeGlyphProperty =
+        DependencyProperty.Register(nameof(ThemeGlyph), typeof(string), typeof(NavigationToolbar),
+            new PropertyMetadata("\uE708"));
+
+    public string ThemeGlyph
+    {
+        get => (string)GetValue(ThemeGlyphProperty);
+        set => SetValue(ThemeGlyphProperty, value);
+    }
+
     public static readonly DependencyProperty IsOnProfilePageProperty =
         DependencyProperty.Register(nameof(IsOnProfilePage), typeof(bool), typeof(NavigationToolbar),
             new PropertyMetadata(false));
@@ -147,6 +165,13 @@ public sealed partial class NavigationToolbar : UserControl
     private void SearchOmnibar_QuerySubmitted(Omnibar.Omnibar sender, OmnibarQuerySubmittedEventArgs args)
     {
         SearchQuerySubmitted?.Invoke(this, args.QueryText);
+    }
+
+    private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var themeService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Data.Contracts.IThemeService>();
+        themeService?.ToggleTheme();
     }
 
     private void ProfileButton_Click(object sender, RoutedEventArgs e)

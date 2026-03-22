@@ -28,9 +28,8 @@
                 Subtitle="{x:Bind Subtitle}"
                 PlaceholderColorHex="{x:Bind ColorHex}"
                 IsCircularImage="False"
-                CardClick="ContentCard_Click"
-                CardMiddleClick="ContentCard_MiddleClick"
-                CardRightTapped="ContentCard_RightTapped"/>
+                NavigationUri="{x:Bind Uri}"
+                NavigationTitle="{x:Bind Title}"/>
         </DataTemplate>
 
         <!-- Artist card: circular image, centered text -->
@@ -43,9 +42,8 @@
                 PlaceholderGlyph="&#xE77B;"
                 IsCircularImage="True"
                 CenterText="True"
-                CardClick="ContentCard_Click"
-                CardMiddleClick="ContentCard_MiddleClick"
-                CardRightTapped="ContentCard_RightTapped"/>
+                NavigationUri="{x:Bind Uri}"
+                NavigationTitle="{x:Bind Title}"/>
         </DataTemplate>
 
         <!-- Item template selector for mixed-type sections -->

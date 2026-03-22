@@ -423,6 +423,13 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         return $"{ts.Minutes} min";
     }
 
+    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav)
+    {
+        if (!string.IsNullOrEmpty(nav.Title)) AlbumName = nav.Title;
+        if (!string.IsNullOrEmpty(nav.ImageUrl)) AlbumImageUrl = nav.ImageUrl;
+        if (!string.IsNullOrEmpty(nav.Subtitle)) ArtistName = nav.Subtitle;
+    }
+
     [RelayCommand]
     private async Task LoadAsync(string? albumId)
     {
@@ -442,12 +449,19 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             await Task.WhenAll(detailTask, playlistsTask);
 
             var detail = await detailTask;
-            AlbumName = detail.Name;
-            AlbumImageUrl = detail.ImageUrl;
-            ArtistId = detail.ArtistId;
-            ArtistName = detail.ArtistName;
-            Year = detail.Year;
-            AlbumType = detail.AlbumType;
+            // Only overwrite prefilled values if the service returned real data
+            if (!string.IsNullOrEmpty(detail.Name) && !detail.Name.StartsWith("Unknown"))
+                AlbumName = detail.Name;
+            if (!string.IsNullOrEmpty(detail.ImageUrl))
+                AlbumImageUrl = detail.ImageUrl;
+            if (!string.IsNullOrEmpty(detail.ArtistId))
+                ArtistId = detail.ArtistId;
+            if (!string.IsNullOrEmpty(detail.ArtistName) && detail.ArtistName != "Unknown Artist")
+                ArtistName = detail.ArtistName;
+            if (detail.Year > 0)
+                Year = detail.Year;
+            if (!string.IsNullOrEmpty(detail.AlbumType))
+                AlbumType = detail.AlbumType;
             IsSaved = detail.IsSaved;
 
             Playlists = await playlistsTask;

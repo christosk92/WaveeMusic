@@ -37,7 +37,7 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Playlist Cover Image -->
-                    <Border Grid.Column="0"
+                    <Border x:Name="PlaylistArtContainer" Grid.Column="0"
                             Width="140" Height="140"
                             CornerRadius="8"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"

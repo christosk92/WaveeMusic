@@ -17,7 +17,6 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Row 0: TitleBar with TabBar (full width) -->
@@ -79,38 +78,9 @@
                 </ContentPresenter>
             </sidebar:SidebarView.InnerContent>
 
-            <!-- Sidebar Footer (Spotify connect, theme toggle, settings) -->
+            <!-- Sidebar Footer (settings) -->
             <sidebar:SidebarView.Footer>
                 <StackPanel>
-                    <!-- Theme Toggle Button -->
-                    <Button
-                        x:Name="ThemeButton"
-                        Height="32"
-                        Margin="4,0,4,0"
-                        Padding="0"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                        Command="{x:Bind ViewModel.ToggleThemeCommand}">
-                        <Grid
-                            Margin="0,2"
-                            Padding="8,0,12,0"
-                            HorizontalAlignment="Stretch"
-                            Background="{ThemeResource SubtleFillColorTransparentBrush}"
-                            CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="3"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <FontIcon x:Name="ThemeIcon" Grid.Column="1" Glyph="&#xE708;" FontSize="16" Margin="8,0,0,0"
-                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                            <TextBlock Grid.Column="2" Text="Theme" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                        </Grid>
-                    </Button>
-
                     <!-- Settings Button -->
                     <Button
                         x:Name="SettingsButton"
@@ -143,8 +113,14 @@
             </sidebar:SidebarView.Footer>
         </sidebar:SidebarView>
 
-        <!-- Row 3: Player bar -->
-        <playerbar:PlayerBar x:Name="PlayerBarControl" Grid.Row="3" />
+        <!-- Floating player bar (overlays content at bottom) -->
+        <playerbar:PlayerBar
+            x:Name="PlayerBarControl"
+            Grid.Row="2"
+            VerticalAlignment="Bottom"
+            HorizontalAlignment="Stretch"
+            Margin="12,0,12,12"
+            Canvas.ZIndex="2"/>
 
     </Grid>
 </Page>

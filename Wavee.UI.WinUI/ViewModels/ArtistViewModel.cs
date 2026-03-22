@@ -99,6 +99,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         };
     }
 
+    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav)
+    {
+        if (!string.IsNullOrEmpty(nav.Title)) ArtistName = nav.Title;
+        if (!string.IsNullOrEmpty(nav.ImageUrl)) ArtistImageUrl = nav.ImageUrl;
+    }
+
     [RelayCommand]
     private async Task LoadAsync()
     {

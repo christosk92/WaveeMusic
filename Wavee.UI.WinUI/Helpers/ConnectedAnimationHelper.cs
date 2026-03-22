@@ -40,8 +40,8 @@ public static class ConnectedAnimationHelper
 
         if (animation != null)
         {
-            // Configure animation for smooth appearance
-            animation.Configuration = new DirectConnectedAnimationConfiguration();
+            // Use gravity configuration for a smooth, natural-feeling forward navigation
+            animation.Configuration = new GravityConnectedAnimationConfiguration();
             return animation.TryStart(destination);
         }
 

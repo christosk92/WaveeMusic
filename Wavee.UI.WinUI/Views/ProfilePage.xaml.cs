@@ -1,7 +1,11 @@
 using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Animations;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -14,6 +18,7 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class ProfilePage : Page, ITabBarItemContent
 {
     private readonly ProfileCache? _cache;
+    private bool _showingContent;
 
     public ProfileViewModel ViewModel { get; }
 
@@ -26,6 +31,9 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
         ViewModel = Ioc.Default.GetRequiredService<ProfileViewModel>();
         _cache = Ioc.Default.GetService<ProfileCache>();
         InitializeComponent();
+
+        // Hide content initially via composition visual (not XAML Opacity — they multiply)
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -50,7 +58,65 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
                 UpdateHeroColor(ViewModel.HeroColorHex);
                 break;
         }
+
+        // Transition: loading started while showing content → show shimmer
+        if (e.PropertyName == nameof(ProfileViewModel.IsLoading))
+        {
+            if (ViewModel.IsLoading && _showingContent)
+                ShowShimmer();
+        }
+
+        // Transition: loading finished with data → crossfade to content
+        if (e.PropertyName is nameof(ProfileViewModel.IsLoading) or nameof(ProfileViewModel.HasData))
+        {
+            if (!ViewModel.IsLoading && ViewModel.HasData && !_showingContent)
+                CrossfadeToContent();
+        }
     }
+
+    // ── Crossfade transitions (same pattern as HomePage) ──
+
+    private void CrossfadeToContent()
+    {
+        _showingContent = true;
+
+        // Fade out shimmer
+        AnimationBuilder.Create()
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+            .Start(ShimmerContainer);
+
+        // Fade in content
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
+                     delay: TimeSpan.FromMilliseconds(100))
+            .Start(ContentContainer);
+
+        // Collapse shimmer after animation to prevent hit testing
+        _ = CollapseShimmerAfterDelay();
+    }
+
+    private void ShowShimmer()
+    {
+        _showingContent = false;
+        ShimmerContainer.Visibility = Visibility.Visible;
+
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(200))
+            .Start(ShimmerContainer);
+
+        AnimationBuilder.Create()
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+            .Start(ContentContainer);
+    }
+
+    private async Task CollapseShimmerAfterDelay()
+    {
+        await Task.Delay(500);
+        if (_showingContent)
+            ShimmerContainer.Visibility = Visibility.Collapsed;
+    }
+
+    // ── Existing helpers ──
 
     private void UpdateProfileAvatar(string? imageUrl)
     {
@@ -60,7 +126,6 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
             return;
         }
 
-        // Only load https:// URLs directly; spotify: URIs need conversion later
         if (imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             ProfileAvatar.ProfilePicture = new BitmapImage(new Uri(imageUrl));
@@ -87,7 +152,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
         DispatcherQueue.TryEnqueue(() => ViewModel.ApplyBackgroundRefresh(snapshot));
     }
 
-    private void ProfilePage_Unloaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private void ProfilePage_Unloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;

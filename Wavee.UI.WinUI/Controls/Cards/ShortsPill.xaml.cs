@@ -76,13 +76,44 @@ public sealed partial class ShortsPill : UserControl
     private void PillButton_Click(object sender, RoutedEventArgs e)
     {
         if (Item != null)
-            HomeViewModel.NavigateToItem(Item, NavigationHelpers.IsCtrlPressed());
+            NavigateItem(NavigationHelpers.IsCtrlPressed());
     }
 
     private void PillButton_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed && Item != null)
-            HomeViewModel.NavigateToItem(Item, openInNewTab: true);
+            NavigateItem(openInNewTab: true);
+    }
+
+    private void NavigateItem(bool openInNewTab)
+    {
+        if (Item == null || string.IsNullOrEmpty(Item.Uri)) return;
+
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = Item.Uri,
+            Title = Item.Title,
+            Subtitle = Item.Subtitle,
+            ImageUrl = Item.ImageUrl
+        };
+
+        var parts = Item.Uri.Split(':');
+        if (parts.Length < 3) return;
+        var type = parts[1];
+        var title = Item.Title ?? type;
+
+        switch (type)
+        {
+            case "artist":
+                NavigationHelpers.OpenArtist(param, title, openInNewTab);
+                break;
+            case "album":
+                NavigationHelpers.OpenAlbum(param, title, openInNewTab);
+                break;
+            case "playlist":
+                NavigationHelpers.OpenPlaylist(param, title, openInNewTab);
+                break;
+        }
     }
 
     private void PillButton_RightTapped(object sender, RightTappedRoutedEventArgs e)

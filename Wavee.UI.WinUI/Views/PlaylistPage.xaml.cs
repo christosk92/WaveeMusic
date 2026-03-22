@@ -36,9 +36,18 @@ public sealed partial class PlaylistPage : Page
     {
         base.OnNavigatedTo(e);
 
+        // Receive connected animation from source card
+        Helpers.ConnectedAnimationHelper.TryStartAnimation(
+            Helpers.ConnectedAnimationHelper.PlaylistArt, PlaylistArtContainer);
+
         try
         {
-            if (e.Parameter is string playlistId && !string.IsNullOrWhiteSpace(playlistId))
+            if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
+            {
+                ViewModel.PrefillFrom(nav);
+                await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
+            }
+            else if (e.Parameter is string playlistId && !string.IsNullOrWhiteSpace(playlistId))
             {
                 await ViewModel.LoadCommand.ExecuteAsync(playlistId);
             }

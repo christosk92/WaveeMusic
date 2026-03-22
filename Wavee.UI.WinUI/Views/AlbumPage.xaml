@@ -48,7 +48,7 @@
                                  Click="Artist_Click" Padding="0"
                                  HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
 
-                <Border CornerRadius="8" Width="240" Height="240"
+                <Border x:Name="AlbumArtContainer" CornerRadius="8" Width="240" Height="240"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Grid>
                         <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"

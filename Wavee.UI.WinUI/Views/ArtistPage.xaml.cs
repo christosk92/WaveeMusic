@@ -59,7 +59,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             // Try to start connected animation from source page
             ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
 
-            if (e.Parameter is string artistId)
+            if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
+            {
+                ViewModel.PrefillFrom(nav);
+                ViewModel.Initialize(nav.Uri);
+                await ViewModel.LoadCommand.ExecuteAsync(null);
+            }
+            else if (e.Parameter is string artistId)
             {
                 ViewModel.Initialize(artistId);
                 await ViewModel.LoadCommand.ExecuteAsync(null);

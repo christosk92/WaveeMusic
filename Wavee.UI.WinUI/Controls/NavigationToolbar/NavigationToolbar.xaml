@@ -169,6 +169,19 @@
                     RadiusY="2"
                     Visibility="{x:Bind IsOnProfilePage, Mode=OneWay}" />
             </Grid>
+
+            <!-- Separator -->
+            <Border Width="1" Height="20" VerticalAlignment="Center" Margin="4,0"
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+
+            <!-- Theme Toggle -->
+            <Button
+                x:Name="ThemeToggleButton"
+                Style="{StaticResource NavigationButtonStyle}"
+                ToolTipService.ToolTip="Toggle theme"
+                Click="ThemeToggleButton_Click">
+                <FontIcon FontSize="14" Glyph="{x:Bind ThemeGlyph, Mode=OneWay}"/>
+            </Button>
         </StackPanel>
     </Grid>
 </UserControl>

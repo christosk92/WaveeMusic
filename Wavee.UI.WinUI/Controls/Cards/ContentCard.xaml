@@ -8,6 +8,7 @@
     xmlns:ui="using:CommunityToolkit.WinUI.Media" 
     xmlns:winUi="using:CommunityToolkit.WinUI"
     mc:Ignorable="d"
+    Background="Transparent"
     PointerEntered="Card_PointerEntered"
     PointerExited="Card_PointerExited"
     PointerPressed="Card_PointerPressed"

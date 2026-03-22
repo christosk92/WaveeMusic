@@ -95,7 +95,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         ContentFrame.Navigated += ContentFrame_Navigated;
     }
 
-    public void Navigate(Type pageType, object? parameter = null)
+    public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
     {
         _navigationParameter = new TabItemParameter
         {
@@ -103,7 +103,10 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             NavigationParameter = parameter
         };
 
-        ContentFrame.Navigate(pageType, parameter, new DrillInNavigationTransitionInfo());
+        var transition = suppressTransition
+            ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
+            : new DrillInNavigationTransitionInfo();
+        ContentFrame.Navigate(pageType, parameter, transition);
     }
 
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)

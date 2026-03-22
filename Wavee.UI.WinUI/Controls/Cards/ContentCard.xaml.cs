@@ -97,6 +97,48 @@ public sealed partial class ContentCard : UserControl
         set => SetValue(ImageSizeProperty, value);
     }
 
+    public static readonly DependencyProperty NavigationUriProperty =
+        DependencyProperty.Register(nameof(NavigationUri), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty NavigationTitleProperty =
+        DependencyProperty.Register(nameof(NavigationTitle), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Spotify URI to navigate to when clicked (e.g. "spotify:artist:xxx").
+    /// When set, the card handles navigation internally (like ShortsPill).
+    /// </summary>
+    public string? NavigationUri
+    {
+        get => (string?)GetValue(NavigationUriProperty);
+        set => SetValue(NavigationUriProperty, value);
+    }
+
+    /// <summary>
+    /// Fallback title for the navigation tab header.
+    /// </summary>
+    public string? NavigationTitle
+    {
+        get => (string?)GetValue(NavigationTitleProperty);
+        set => SetValue(NavigationTitleProperty, value);
+    }
+
+    public static readonly DependencyProperty IsPassiveProperty =
+        DependencyProperty.Register(nameof(IsPassive), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false, OnIsPassiveChanged));
+
+    /// <summary>
+    /// When true, the internal Button is disabled for hit testing so clicks pass through
+    /// to a parent ItemContainer for selection. Hover/press animations still work via
+    /// the UserControl's own pointer handlers.
+    /// </summary>
+    public bool IsPassive
+    {
+        get => (bool)GetValue(IsPassiveProperty);
+        set => SetValue(IsPassiveProperty, value);
+    }
+
     public static readonly DependencyProperty IsPlayingProperty =
         DependencyProperty.Register(nameof(IsPlaying), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(false, OnIsPlayingChanged));
@@ -119,7 +161,31 @@ public sealed partial class ContentCard : UserControl
     public ContentCard()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+
+        if (IsPassive)
+        {
+            // Apply passive state now that the control is in the visual tree
+            if (CardButton != null)
+                CardButton.IsHitTestVisible = false;
+
+            // Register with handledEventsToo=true so we get pointer events
+            // even when a parent ItemContainer marks them as handled
+            AddHandler(PointerEnteredEvent,
+                new PointerEventHandler(Card_PointerEntered), true);
+            AddHandler(PointerExitedEvent,
+                new PointerEventHandler(Card_PointerExited), true);
+            AddHandler(PointerPressedEvent,
+                new PointerEventHandler(Card_PointerPressed), true);
+            AddHandler(PointerReleasedEvent,
+                new PointerEventHandler(Card_PointerReleased), true);
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -360,6 +426,16 @@ public sealed partial class ContentCard : UserControl
             .Start(CardBorder);
     }
 
+    // ── Passive mode ──
+
+    private static void OnIsPassiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        var passive = (bool)e.NewValue;
+        if (card.CardButton != null)
+            card.CardButton.IsHitTestVisible = !passive;
+    }
+
     // ── Playing state ──
 
     private static void OnIsPlayingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -386,7 +462,17 @@ public sealed partial class ContentCard : UserControl
     // ── Click handlers ──
 
     private void CardButton_Click(object sender, RoutedEventArgs e)
-        => CardClick?.Invoke(this, EventArgs.Empty);
+    {
+        // Self-navigation: if NavigationUri is set, navigate directly
+        if (!string.IsNullOrEmpty(NavigationUri))
+        {
+            PrepareConnectedAnimation();
+            NavigateToUri(Helpers.Navigation.NavigationHelpers.IsCtrlPressed());
+            return;
+        }
+
+        CardClick?.Invoke(this, EventArgs.Empty);
+    }
 
     private void PlayButton_Click(object sender, RoutedEventArgs e)
     {
@@ -396,11 +482,91 @@ public sealed partial class ContentCard : UserControl
     private void CardButton_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
+        {
+            if (!string.IsNullOrEmpty(NavigationUri))
+            {
+                NavigateToUri(openInNewTab: true);
+                return;
+            }
             CardMiddleClick?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void CardButton_RightTapped(object sender, RightTappedRoutedEventArgs e)
-        => CardRightTapped?.Invoke(this, e);
+    {
+        if (!string.IsNullOrEmpty(NavigationUri))
+        {
+            var menu = new MenuFlyout();
+            var openNewTab = new MenuFlyoutItem
+            {
+                Text = "Open in new tab",
+                Icon = new SymbolIcon(Symbol.OpenWith)
+            };
+            openNewTab.Click += (_, _) => NavigateToUri(openInNewTab: true);
+            menu.Items.Add(openNewTab);
+            menu.ShowAt(this, e.GetPosition(this));
+            return;
+        }
+        CardRightTapped?.Invoke(this, e);
+    }
+
+    // ── Navigation ──
+
+    private void NavigateToUri(bool openInNewTab)
+    {
+        var uri = NavigationUri!;
+        var parts = uri.Split(':');
+        if (parts.Length < 3) return;
+
+        var type = parts[1];
+        var title = NavigationTitle ?? Title ?? type;
+
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = uri,
+            Title = title,
+            Subtitle = SubtitleText?.Text,
+            ImageUrl = ImageUrl
+        };
+
+        switch (type)
+        {
+            case "artist":
+                Helpers.Navigation.NavigationHelpers.OpenArtist(param, title, openInNewTab);
+                break;
+            case "album":
+                Helpers.Navigation.NavigationHelpers.OpenAlbum(param, title, openInNewTab);
+                break;
+            case "playlist":
+                Helpers.Navigation.NavigationHelpers.OpenPlaylist(param, title, openInNewTab);
+                break;
+        }
+    }
+
+    private void PrepareConnectedAnimation()
+    {
+        var uri = NavigationUri;
+        if (string.IsNullOrEmpty(uri)) return;
+
+        var parts = uri.Split(':');
+        if (parts.Length < 2) return;
+
+        var type = parts[1];
+        var imageElement = IsCircularImage
+            ? (UIElement)CircleImageContainer
+            : (UIElement)SquareImageContainer;
+
+        var key = type switch
+        {
+            "artist" => Helpers.ConnectedAnimationHelper.ArtistImage,
+            "album" => Helpers.ConnectedAnimationHelper.AlbumArt,
+            "playlist" => Helpers.ConnectedAnimationHelper.PlaylistArt,
+            _ => null
+        };
+
+        if (key != null)
+            Helpers.ConnectedAnimationHelper.PrepareAnimation(key, imageElement);
+    }
 
     // ── Helpers ──
 

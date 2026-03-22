@@ -43,17 +43,17 @@ public static class NavigationHelpers
     /// <summary>
     /// Navigate to artist - within tab by default, new tab if openInNewTab=true
     /// </summary>
-    public static void OpenArtist(string artistId, string artistName, bool openInNewTab = false)
+    public static void OpenArtist(object parameter, string artistName, bool openInNewTab = false)
     {
-        Navigate(typeof(ArtistPage), artistId, artistName, new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
+        Navigate(typeof(ArtistPage), parameter, artistName, new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
     }
 
     /// <summary>
     /// Navigate to album - within tab by default, new tab if openInNewTab=true
     /// </summary>
-    public static void OpenAlbum(string albumId, string albumName, bool openInNewTab = false)
+    public static void OpenAlbum(object parameter, string albumName, bool openInNewTab = false)
     {
-        Navigate(typeof(AlbumPage), albumId, albumName, new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
+        Navigate(typeof(AlbumPage), parameter, albumName, new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
     }
 
     /// <summary>
@@ -75,9 +75,9 @@ public static class NavigationHelpers
     /// <summary>
     /// Navigate to playlist - within tab by default, new tab if openInNewTab=true
     /// </summary>
-    public static void OpenPlaylist(string playlistId, string playlistName, bool openInNewTab = false)
+    public static void OpenPlaylist(object parameter, string playlistName, bool openInNewTab = false)
     {
-        Navigate(typeof(PlaylistPage), playlistId, playlistName, new SymbolIconSource { Symbol = Symbol.MusicInfo }, openInNewTab);
+        Navigate(typeof(PlaylistPage), parameter, playlistName, new SymbolIconSource { Symbol = Symbol.MusicInfo }, openInNewTab);
     }
 
     /// <summary>
@@ -175,11 +175,14 @@ public static class NavigationHelpers
             return;
         }
 
+        // Suppress default transition for content pages (connected animations handle the transition)
+        var hasConnectedAnim = IsContentPage(pageType);
+
         var currentTab = ShellViewModel.TabInstances[currentIndex];
         currentTab.Header = header;
         currentTab.IconSource = icon;
         currentTab.ToolTipText = header;
-        currentTab.Navigate(pageType, parameter);
+        currentTab.Navigate(pageType, parameter, suppressTransition: hasConnectedAnim);
     }
 
     private static void AddNewTab(Type pageType, object? parameter, string header, IconSource icon)
@@ -194,6 +197,13 @@ public static class NavigationHelpers
         tab.Navigate(pageType, parameter);
         ShellViewModel.TabInstances.Add(tab);
         ShellViewModel.SelectTab(ShellViewModel.TabInstances.Count - 1);
+    }
+
+    private static bool IsContentPage(Type pageType)
+    {
+        return pageType == typeof(ArtistPage)
+            || pageType == typeof(AlbumPage)
+            || pageType == typeof(PlaylistPage);
     }
 
     /// <summary>

@@ -486,7 +486,17 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         if (SelectedTabItem?.ContentFrame is Frame frame && frame.CanGoBack)
         {
-            frame.GoBack(new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromLeft });
+            // Suppress default transition for content pages — connected animations handle visuals
+            var currentPage = frame.Content;
+            var isContentPage = currentPage is Views.ArtistPage
+                             or Views.AlbumPage
+                             or Views.PlaylistPage;
+
+            if (isContentPage)
+                frame.GoBack(new SuppressNavigationTransitionInfo());
+            else
+                frame.GoBack(new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromLeft });
+
             UpdateNavigationState();
         }
     }
