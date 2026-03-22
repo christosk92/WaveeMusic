@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Cards.ContentCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media" 
+    xmlns:winUi="using:CommunityToolkit.WinUI"
+    mc:Ignorable="d"
+    PointerEntered="Card_PointerEntered"
+    PointerExited="Card_PointerExited"
+    PointerPressed="Card_PointerPressed"
+    PointerReleased="Card_PointerReleased">
+
+    <Button
+        x:Name="CardButton"
+        Padding="0"
+        Background="Transparent"
+        BorderThickness="0"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch"
+        HorizontalContentAlignment="Stretch"
+        VerticalContentAlignment="Stretch"
+        Click="CardButton_Click"
+        PointerPressed="CardButton_PointerPressed"
+        RightTapped="CardButton_RightTapped">
+        <Border
+            x:Name="CardBorder"
+            CornerRadius="{ThemeResource ControlCornerRadius}"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            Padding="8,8,8,12">
+            <winUi:Effects.Shadow>
+                <ui:AttachedCardShadow x:Name="CardShadow" Opacity="0" BlurRadius="16" Offset="0,4" CornerRadius="4"/>
+            </winUi:Effects.Shadow>
+            <StackPanel Spacing="8">
+                <!-- Square image mode -->
+                <Grid x:Name="SquareImageContainer"
+                      CornerRadius="4"
+                      HorizontalAlignment="Stretch"
+                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                      SizeChanged="SquareImageContainer_SizeChanged">
+                    <FontIcon x:Name="SquarePlaceholderIcon"
+                              Glyph="&#xE8D6;"
+                              FontSize="36"
+                              Opacity="0.4"
+                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                    <Image x:Name="SquareImage"
+                           Stretch="UniformToFill"
+                           ImageOpened="SquareImage_ImageOpened"/>
+
+                    <!-- Play button overlay (shown on hover) -->
+                    <Button x:Name="SquarePlayButton"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,8,8"
+                            Width="36" Height="36"
+                            CornerRadius="18"
+                            Padding="0"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="PlayButton_Click">
+                        <FontIcon Glyph="&#xE768;" FontSize="16"/>
+                    </Button>
+
+                    <!-- Playing indicator (shown when IsPlaying) -->
+                    <Border x:Name="SquarePlayingIndicator"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Bottom"
+                            Margin="6,0,0,6"
+                            Padding="4,2"
+                            CornerRadius="4"
+                            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}">
+                        <FontIcon Glyph="&#xE995;" FontSize="12"
+                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    </Border>
+                </Grid>
+
+                <!-- Circular image mode (hidden by default) -->
+                <Grid x:Name="CircleImageContainer"
+                      HorizontalAlignment="Stretch"
+                      Visibility="Collapsed">
+                    <Ellipse x:Name="CirclePlaceholder"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Ellipse.Fill>
+                            <SolidColorBrush Color="Transparent"/>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <FontIcon x:Name="CirclePlaceholderIcon"
+                              Glyph="&#xE77B;"
+                              FontSize="36"
+                              Opacity="0.4"
+                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                    <Ellipse x:Name="CircleImage"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Ellipse.Fill>
+                            <ImageBrush x:Name="CircleImageBrush"
+                                        Stretch="UniformToFill"/>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <!-- Play button overlay for circle cards -->
+                    <Button x:Name="CirclePlayButton"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,4"
+                            Width="36" Height="36"
+                            CornerRadius="18"
+                            Padding="0"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="PlayButton_Click">
+                        <FontIcon Glyph="&#xE768;" FontSize="16"/>
+                    </Button>
+
+                    <!-- Playing indicator for circle cards -->
+                    <Border x:Name="CirclePlayingIndicator"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,4"
+                            Padding="4,2"
+                            CornerRadius="4"
+                            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}">
+                        <FontIcon Glyph="&#xE995;" FontSize="12"
+                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    </Border>
+                </Grid>
+
+                <!-- Title -->
+                <TextBlock x:Name="TitleText"
+                           MaxLines="1"
+                           TextTrimming="CharacterEllipsis"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           FontSize="13"/>
+
+                <!-- Subtitle -->
+                <TextBlock x:Name="SubtitleText"
+                           MaxLines="2"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           FontSize="12"/>
+            </StackPanel>
+        </Border>
+    </Button>
+</UserControl>

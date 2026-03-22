@@ -18,7 +18,7 @@ namespace Wavee.Core.Http;
 /// Requires access tokens from login5.
 /// Endpoints are resolved dynamically via ApResolver.
 /// </remarks>
-public sealed class SpClient
+public sealed class SpClient : ISpClient
 {
     private readonly string _baseUrl;
     private const int MaxRetries = 3;

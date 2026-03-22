@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
     xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
@@ -29,57 +30,12 @@
         <controls:LibraryGridView.ItemTemplate>
             <DataTemplate x:DataType="dto:LibraryAlbumDto">
                 <ItemContainer>
-                    <Grid Padding="8" RowSpacing="8" VerticalAlignment="Top">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Album Art (1:1 aspect ratio) -->
-                        <primitives:ConstrainedBox
-                            Grid.Row="0"
-                            AspectRatio="1:1"
-                            HorizontalAlignment="Stretch">
-                            <Border
-                                CornerRadius="6"
-                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                <Grid>
-                                    <FontIcon
-                                        Glyph="&#xE93C;"
-                                        FontSize="48"
-                                        Opacity="0.3"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                    <Image
-                                        Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
-                                        Stretch="UniformToFill"
-                                        Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
-                                </Grid>
-                            </Border>
-                        </primitives:ConstrainedBox>
-
-                        <!-- Album Name -->
-                        <TextBlock
-                            Grid.Row="1"
-                            Text="{x:Bind Name}"
-                            Style="{StaticResource BodyStrongTextBlockStyle}"
-                            TextTrimming="CharacterEllipsis"
-                            MaxLines="1"/>
-
-                        <!-- Artist Name -->
-                        <TextBlock
-                            Grid.Row="2"
-                            Text="{x:Bind ArtistName}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextTrimming="CharacterEllipsis"
-                            MaxLines="1"/>
-                    </Grid>
+                    <cards:ContentCard
+                        ImageUrl="{x:Bind ImageUrl}"
+                        Title="{x:Bind Name}"
+                        Subtitle="{x:Bind ArtistName}"
+                        PlaceholderGlyph="&#xE93C;"
+                        IsCircularImage="False"/>
                 </ItemContainer>
             </DataTemplate>
         </controls:LibraryGridView.ItemTemplate>

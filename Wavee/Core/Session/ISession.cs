@@ -66,4 +66,14 @@ public interface ISession
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task ReconnectApAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the Pathfinder client for GraphQL API requests (search, browse, home feed, etc).
+    /// </summary>
+    IPathfinderClient Pathfinder { get; }
+
+    /// <summary>
+    /// Gets the SpClient for spclient HTTP API requests (metadata, lyrics, context, playlists, etc).
+    /// </summary>
+    ISpClient SpClient { get; }
 }

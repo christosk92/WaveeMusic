@@ -56,7 +56,12 @@ public static class AppLifecycleHelper
                 .AddSingleton<AppInitializationService>()
 
                 // App services
+                .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IThemeService, ThemeService>()
+                .AddSingleton<ThemeColorService>()
+                .AddSingleton<Services.HomeFeedCache>()
+                .AddSingleton<Services.ProfileCache>()
+                .AddSingleton<Services.ImageCacheService>()
 
                 // Spotify session infrastructure
                 .AddTransient<RetryHandler>()
@@ -69,6 +74,7 @@ public static class AppLifecycleHelper
                     sp.GetRequiredService<SessionConfig>(),
                     sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(),
                     sp.GetService<ILogger<Session>>()))
+                .AddSingleton<ISession>(sp => sp.GetRequiredService<Session>())
 
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))

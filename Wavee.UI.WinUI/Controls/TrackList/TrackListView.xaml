@@ -216,6 +216,7 @@
                             <!-- Title -->
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="12,0,8,0" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind Title}"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            TextTrimming="CharacterEllipsis"
                                            MaxLines="1"/>
                                 <Border Visibility="{x:Bind IsExplicit, Converter={StaticResource BoolToVisibilityConverter}}"

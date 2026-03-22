@@ -73,6 +73,16 @@ public sealed partial class NavigationToolbar : UserControl
         set => SetValue(UserDisplayNameProperty, value);
     }
 
+    public static readonly DependencyProperty IsConnectingProperty =
+        DependencyProperty.Register(nameof(IsConnecting), typeof(bool), typeof(NavigationToolbar),
+            new PropertyMetadata(false));
+
+    public bool IsConnecting
+    {
+        get => (bool)GetValue(IsConnectingProperty);
+        set => SetValue(IsConnectingProperty, value);
+    }
+
     public static readonly DependencyProperty IsOnHomePageProperty =
         DependencyProperty.Register(nameof(IsOnHomePage), typeof(bool), typeof(NavigationToolbar),
             new PropertyMetadata(false));

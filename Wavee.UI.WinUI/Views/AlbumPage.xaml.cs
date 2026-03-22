@@ -79,4 +79,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: trackIds.ToList());
     }
+
+    private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.NewSize.Width < 600)
+            VisualStateManager.GoToState(this, "NarrowState", true);
+        else
+            VisualStateManager.GoToState(this, "WideState", true);
+    }
 }

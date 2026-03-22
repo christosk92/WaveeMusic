@@ -31,7 +31,7 @@
     <Grid
         Padding="0"
         Background="{ThemeResource App.Theme.Player.BackgroundBrush}"
-        CornerRadius="0,8,8,0"
+        CornerRadius="0,0,8,0"
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
         <Grid.ColumnDefinitions>
@@ -41,13 +41,25 @@
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Progress slider -->
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Full-width progress bar at top edge -->
+        <Slider x:Name="ProgressSlider"
+                Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                Style="{StaticResource PlayerProgressSliderStyle}"
+                Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
+                Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
+                IsThumbToolTipEnabled="False"
+                PointerPressed="ProgressSlider_PointerPressed"
+                PointerReleased="ProgressSlider_PointerReleased"
+                PointerCaptureLost="ProgressSlider_PointerCaptureLost"/>
+
         <!-- Column 0: Display Item (spans 2 rows) - 80x80 album art + track info (Rise style) -->
         <Grid
-            Grid.Row="0"
+            Grid.Row="1"
             Grid.RowSpan="2"
             Grid.Column="0"
             VerticalAlignment="Center"
@@ -95,9 +107,9 @@
             </StackPanel>
         </Grid>
 
-        <!-- Column 1, Row 0: Primary Controls (CommandBar like Rise) -->
+        <!-- Column 1, Row 1: Primary Controls (CommandBar like Rise) -->
         <CommandBar
-            Grid.Row="0"
+            Grid.Row="1"
             Grid.Column="1"
             Margin="0"
             Padding="0"
@@ -215,9 +227,9 @@
             </AppBarToggleButton>
         </CommandBar>
 
-        <!-- Column 2, Row 0: Secondary Controls (Lyrics, Devices, Queue) -->
+        <!-- Column 2, Row 1: Secondary Controls (Lyrics, Devices, Queue) -->
         <StackPanel
-            Grid.Row="0"
+            Grid.Row="1"
             Grid.Column="2"
             Margin="0"
             HorizontalAlignment="Right"
@@ -252,44 +264,27 @@
             </AppBarButton>
         </StackPanel>
 
-        <!-- Column 1, Row 1: Timeline (Rise style) -->
+        <!-- Time text centered under transport controls -->
+        <StackPanel Grid.Row="2" Grid.Column="1"
+                    Orientation="Horizontal" HorizontalAlignment="Center"
+                    Spacing="4" Margin="0,4,0,0">
+            <TextBlock Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontSize="11"/>
+            <TextBlock Text="/"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Opacity="0.5" FontSize="11"/>
+            <TextBlock Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontSize="11"/>
+        </StackPanel>
+
+        <!-- Column 2, Row 2: Volume Control (Rise style with numeric value) -->
         <Grid
-            Grid.Row="1"
-            Grid.Column="1"
-            Margin="12,0"
-            HorizontalAlignment="Stretch"
-            ColumnSpacing="12">
-
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="1*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBlock
-                Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
-                Style="{StaticResource PlayerTimeTextStyle}" />
-
-            <Slider
-                x:Name="ProgressSlider"
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
-                Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
-                IsThumbToolTipEnabled="False"
-                PointerPressed="ProgressSlider_PointerPressed"
-                PointerReleased="ProgressSlider_PointerReleased"
-                PointerCaptureLost="ProgressSlider_PointerCaptureLost" />
-
-            <TextBlock
-                Grid.Column="2"
-                Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
-                Style="{StaticResource PlayerTimeTextStyle}" />
-        </Grid>
-
-        <!-- Column 2, Row 1: Volume Control (Rise style with numeric value) -->
-        <Grid
-            Grid.Row="1"
+            Grid.Row="2"
             Grid.Column="2"
             Height="32"
             Margin="12,0,12,0">

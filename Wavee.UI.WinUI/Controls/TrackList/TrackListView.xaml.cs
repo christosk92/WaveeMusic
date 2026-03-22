@@ -15,6 +15,7 @@ using Wavee.UI.WinUI.Controls.Track;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.DragDrop;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 using Windows.Foundation;
 
@@ -35,6 +36,7 @@ public sealed partial class TrackListView : UserControl
 
     // Playback state tracking for now-playing indicator
     private readonly IPlaybackStateService? _playbackService;
+    private readonly ThemeColorService? _themeColors;
     private string? _currentPlayingTrackId;
     private bool _isCurrentlyPlaying;
 
@@ -43,6 +45,9 @@ public sealed partial class TrackListView : UserControl
         InitializeComponent();
         SetValue(CustomColumnsProperty, new List<TrackListColumnDefinition>());
         _playbackService = Ioc.Default.GetService<IPlaybackStateService>();
+        _themeColors = Ioc.Default.GetService<ThemeColorService>();
+        if (_themeColors != null)
+            _themeColors.ThemeChanged += OnThemeColorsChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -73,6 +78,12 @@ public sealed partial class TrackListView : UserControl
         if (_playbackService != null)
         {
             _playbackService.PropertyChanged -= OnPlaybackStateChanged;
+        }
+
+        // Clean up theme change subscription
+        if (_themeColors != null)
+        {
+            _themeColors.ThemeChanged -= OnThemeColorsChanged;
         }
     }
 
@@ -575,7 +586,7 @@ public sealed partial class TrackListView : UserControl
                     {
                         Text = colDef.Header,
                         Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                        Foreground = _themeColors?.TextSecondary ?? (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
                     }
                 };
                 headerElement = button;
@@ -586,7 +597,7 @@ public sealed partial class TrackListView : UserControl
                 {
                     Text = colDef.Header,
                     Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    Foreground = _themeColors?.TextSecondary ?? (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                     VerticalAlignment = VerticalAlignment.Center,
                     HorizontalAlignment = colDef.TextAlignment,
                     Margin = new Thickness(0, 8, 0, 8)
@@ -685,11 +696,11 @@ public sealed partial class TrackListView : UserControl
                 border.CornerRadius = new CornerRadius(6);
                 border.BorderThickness = isEven ? new Thickness(0) : new Thickness(1);
                 border.BorderBrush = isEven
-                    ? (Brush)Application.Current.Resources["TransparentColorBrush"]
-                    : (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
+                    ? (_themeColors?.TransparentBrush ?? border.BorderBrush)
+                    : (_themeColors?.GetBrush("CardStrokeColorDefaultBrush") ?? border.BorderBrush);
                 border.Background = isEven
-                    ? (Brush)Application.Current.Resources["TransparentColorBrush"]
-                    : (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+                    ? (_themeColors?.TransparentBrush ?? border.Background)
+                    : (_themeColors?.CardBackground ?? border.Background);
             }
 
             // Adjust item container margin for compact mode
@@ -757,7 +768,7 @@ public sealed partial class TrackListView : UserControl
                             {
                                 Tag = cellTag,
                                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                                Foreground = _themeColors?.TextSecondary ?? (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                                 VerticalAlignment = VerticalAlignment.Center,
                                 HorizontalAlignment = colDef.TextAlignment,
                                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -941,6 +952,36 @@ public sealed partial class TrackListView : UserControl
         }
     }
 
+    private void OnThemeColorsChanged()
+    {
+        // Theme changed: re-apply all visible row backgrounds + playback states
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            for (int i = 0; i < InternalListView.Items.Count; i++)
+            {
+                if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
+                if (container.ContentTemplateRoot is Border border && border.Child is Grid grid)
+                {
+                    // Re-apply alternating row background
+                    if (!IsCompact)
+                    {
+                        var isEven = i % 2 == 0;
+                        border.Background = isEven
+                            ? (_themeColors?.TransparentBrush)
+                            : (_themeColors?.CardBackground);
+                        border.BorderBrush = isEven
+                            ? (_themeColors?.TransparentBrush)
+                            : (_themeColors?.GetBrush("CardStrokeColorDefaultBrush"));
+                    }
+
+                    // Re-apply playback state (title color)
+                    if (container.Content is ITrackItem trackItem)
+                        ApplyPlaybackStateToRow(grid, trackItem);
+                }
+            }
+        });
+    }
+
     private void UpdateAllVisibleRowPlaybackState()
     {
         for (int i = 0; i < InternalListView.Items.Count; i++)
@@ -1010,8 +1051,8 @@ public sealed partial class TrackListView : UserControl
             if (titleText != null)
             {
                 titleText.Foreground = isThisTrack
-                    ? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]
-                    : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+                    ? (_themeColors?.AccentText ?? titleText.Foreground)
+                    : (_themeColors?.TextPrimary ?? titleText.Foreground);
             }
         }
     }

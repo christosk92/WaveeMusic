@@ -1,19 +1,26 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
+using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemContent
+public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemContent, ITrackListViewModel
 {
     private readonly ILogger? _logger;
 
@@ -29,11 +36,11 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
     [ObservableProperty]
     private int _publicPlaylistCount;
 
-    /// <summary>
-    /// Raw color integer from the spclient profile response, suitable for hero gradient rendering.
-    /// </summary>
     [ObservableProperty]
     private int _profileColor;
+
+    [ObservableProperty]
+    private string? _heroColorHex;
 
     [ObservableProperty]
     private bool _isLoading = true;
@@ -44,10 +51,37 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
     private readonly ObservableCollection<SpotifyProfileArtist> _recentArtists = [];
     private readonly ObservableCollection<SpotifyProfilePlaylist> _publicPlaylists = [];
     private readonly ObservableCollection<SpotifyProfileArtist> _followingArtists = [];
+    private readonly ObservableCollection<TopTrackItem> _topTracks = [];
+    private readonly ObservableCollection<ITrackItem> _topTrackItems = [];
 
     public ObservableCollection<SpotifyProfileArtist> RecentArtists => _recentArtists;
     public ObservableCollection<SpotifyProfilePlaylist> PublicPlaylists => _publicPlaylists;
     public ObservableCollection<SpotifyProfileArtist> FollowingArtists => _followingArtists;
+    public ObservableCollection<TopTrackItem> TopTracks => _topTracks;
+    public ObservableCollection<ITrackItem> TopTrackItems => _topTrackItems;
+
+    // ── ITrackListViewModel implementation ──
+
+    public ICommand SortByCommand { get; } = new RelayCommand<string>(_ => { });
+    public ICommand PlayTrackCommand { get; } = new RelayCommand<object>(_ => { });
+    public ICommand PlaySelectedCommand { get; } = new RelayCommand(() => { });
+    public ICommand PlayAfterCommand { get; } = new RelayCommand(() => { });
+    public ICommand AddSelectedToQueueCommand { get; } = new RelayCommand(() => { });
+    public ICommand RemoveSelectedCommand { get; } = new RelayCommand(() => { });
+    public ICommand AddToPlaylistCommand { get; } = new RelayCommand<object>(_ => { });
+
+    public string SortChevronGlyph => "";
+    public bool IsSortingByTitle => false;
+    public bool IsSortingByArtist => false;
+    public bool IsSortingByAlbum => false;
+    public bool IsSortingByAddedAt => false;
+
+    public IReadOnlyList<object> SelectedItems { get; set; } = [];
+    public int SelectedCount => 0;
+    public bool HasSelection => false;
+    public string SelectionHeaderText => "";
+
+    public IReadOnlyList<PlaylistSummaryDto> Playlists => [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
 
@@ -66,6 +100,20 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
 
     public async void Initialize()
     {
+        var cache = Ioc.Default.GetService<ProfileCache>();
+
+        // Stage 1: Serve cached data instantly if available
+        if (cache != null && cache.HasData && !cache.IsStale)
+        {
+            var snapshot = cache.GetCached();
+            if (snapshot != null)
+            {
+                ApplySnapshot(snapshot);
+                return;
+            }
+        }
+
+        // Stage 2: Fetch fresh data
         IsLoading = true;
         HasData = false;
 
@@ -78,55 +126,16 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
                 return;
             }
 
-            var userData = session.GetUserData();
-            if (userData is null)
+            if (cache != null)
             {
-                _logger?.LogWarning("Cannot load profile: no user data available");
-                return;
+                var snapshot = await cache.FetchFreshAsync(session);
+                ApplySnapshot(snapshot);
+                cache.StartBackgroundRefresh(session);
             }
-
-            var profile = await session.SpClient.GetUserProfileAsync(userData.Username);
-
-            DisplayName = profile.EffectiveDisplayName ?? userData.Username;
-            ProfileImageUrl = profile.EffectiveImageUrl;
-            FollowingCount = profile.FollowingCount ?? 0;
-            PublicPlaylistCount = profile.TotalPublicPlaylistsCount ?? 0;
-            ProfileColor = profile.Color ?? 0;
-
-            _recentArtists.Clear();
-            _followingArtists.Clear();
-            if (profile.RecentlyPlayedArtists is { Count: > 0 })
+            else
             {
-                foreach (var artist in profile.RecentlyPlayedArtists)
-                {
-                    _recentArtists.Add(artist);
-                }
+                _logger?.LogWarning("ProfileCache not available in DI");
             }
-
-            _publicPlaylists.Clear();
-            if (profile.PublicPlaylists is { Count: > 0 })
-            {
-                foreach (var playlist in profile.PublicPlaylists)
-                {
-                    _publicPlaylists.Add(playlist);
-                }
-            }
-
-            // Fetch following
-            try
-            {
-                var following = await session.SpClient.GetUserFollowingAsync(userData.Username);
-                if (following.Profiles != null)
-                    foreach (var f in following.Profiles) FollowingArtists.Add(f);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Failed to fetch following list");
-            }
-
-            HasData = true;
-
-            ContentChanged?.Invoke(this, TabItemParameter!);
         }
         catch (Exception ex)
         {
@@ -135,6 +144,69 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Called by ProfilePage when background refresh completes. Applies diffs on UI thread.
+    /// </summary>
+    public void ApplyBackgroundRefresh(ProfileSnapshot snapshot)
+    {
+        // Update scalar properties only if changed
+        if (DisplayName != snapshot.DisplayName) DisplayName = snapshot.DisplayName;
+        if (ProfileImageUrl != snapshot.ProfileImageUrl) ProfileImageUrl = snapshot.ProfileImageUrl;
+        if (FollowingCount != snapshot.FollowingCount) FollowingCount = snapshot.FollowingCount;
+        if (PublicPlaylistCount != snapshot.PublicPlaylistCount) PublicPlaylistCount = snapshot.PublicPlaylistCount;
+        if (ProfileColor != snapshot.ProfileColor) ProfileColor = snapshot.ProfileColor;
+        if (HeroColorHex != snapshot.HeroColorHex) HeroColorHex = snapshot.HeroColorHex;
+
+        // Apply collection diffs
+        ProfileCache.DiffArtists(RecentArtists, snapshot.RecentArtists);
+        ProfileCache.DiffPlaylists(PublicPlaylists, snapshot.PublicPlaylists);
+        ProfileCache.DiffArtists(FollowingArtists, snapshot.FollowingArtists);
+
+        // Rebuild top tracks (indexed, so replace entirely)
+        RebuildTopTracks(snapshot.TopTracks);
+    }
+
+    private void ApplySnapshot(ProfileSnapshot snapshot)
+    {
+        DisplayName = snapshot.DisplayName;
+        ProfileImageUrl = snapshot.ProfileImageUrl;
+        FollowingCount = snapshot.FollowingCount;
+        PublicPlaylistCount = snapshot.PublicPlaylistCount;
+        ProfileColor = snapshot.ProfileColor;
+        HeroColorHex = snapshot.HeroColorHex;
+
+        _recentArtists.Clear();
+        foreach (var a in snapshot.RecentArtists) _recentArtists.Add(a);
+
+        _publicPlaylists.Clear();
+        foreach (var p in snapshot.PublicPlaylists) _publicPlaylists.Add(p);
+
+        _followingArtists.Clear();
+        foreach (var f in snapshot.FollowingArtists) _followingArtists.Add(f);
+
+        RebuildTopTracks(snapshot.TopTracks);
+
+        HasData = true;
+        IsLoading = false;
+
+        ContentChanged?.Invoke(this, TabItemParameter!);
+    }
+
+    private void RebuildTopTracks(List<TopTrackItem> tracks)
+    {
+        _topTracks.Clear();
+        _topTrackItems.Clear();
+        foreach (var item in tracks)
+            _topTracks.Add(item);
+
+        int idx = 1;
+        foreach (var item in _topTracks.Take(5))
+        {
+            if (item.Data != null)
+                _topTrackItems.Add(new TopTrackAdapter(item.Data, idx++));
         }
     }
 

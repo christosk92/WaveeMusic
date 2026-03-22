@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Session;
@@ -47,25 +48,30 @@ public sealed class PathfinderClient : IPathfinderClient
         _logger = logger;
     }
 
-    /// <inheritdoc />
-    public async Task<SearchResult> SearchAsync(
-        string query,
-        int limit = 10,
-        int offset = 0,
-        CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Executes a generic Pathfinder GraphQL query and deserializes the response.
+    /// </summary>
+    /// <typeparam name="T">The response type to deserialize into.</typeparam>
+    /// <param name="variables">Variables to include in the GraphQL request.</param>
+    /// <param name="operationName">The GraphQL operation name.</param>
+    /// <param name="sha256Hash">The persisted query SHA-256 hash.</param>
+    /// <param name="jsonTypeInfo">The JSON type info for AOT-compatible deserialization.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The deserialized response.</returns>
+    public async Task<T> QueryAsync<T>(
+        object variables,
+        string operationName,
+        string sha256Hash,
+        JsonTypeInfo<T> jsonTypeInfo,
+        CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        // Build JSON request body using Utf8JsonWriter for AOT compatibility
+        var jsonBody = BuildRequestJson(variables, operationName, sha256Hash);
 
-        // Create the GraphQL request
-        var request = PathfinderRequest.CreateSearchRequest(query, limit, offset);
-
-        // Serialize to JSON using source-generated context
-        var jsonBody = JsonSerializer.Serialize(request, PathfinderJsonContext.Default.PathfinderRequest);
-
-        _logger?.LogDebug("Searching for: {Query} (limit={Limit}, offset={Offset})", query, limit, offset);
+        _logger?.LogDebug("Pathfinder query: {Operation}", operationName);
 
         // Get access token
-        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var accessToken = await _session.GetAccessTokenAsync(ct);
 
         // Build HTTP request
         var url = $"{_baseUrl}/pathfinder/v2/query";
@@ -77,7 +83,7 @@ public sealed class PathfinderClient : IPathfinderClient
         httpRequest.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
         // Send with retry
-        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+        var response = await SendWithRetryAsync(httpRequest, ct);
 
         // Handle errors
         switch (response.StatusCode)
@@ -87,11 +93,11 @@ public sealed class PathfinderClient : IPathfinderClient
                     SpClientFailureReason.Unauthorized,
                     "Access token invalid or expired");
             case HttpStatusCode.BadRequest:
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger?.LogWarning("Search request failed: {Error}", errorContent);
+                var errorContent = await response.Content.ReadAsStringAsync(ct);
+                _logger?.LogWarning("Pathfinder request failed: {Error}", errorContent);
                 throw new SpClientException(
                     SpClientFailureReason.RequestFailed,
-                    $"Invalid search request: {errorContent}");
+                    $"Invalid request: {errorContent}");
             case HttpStatusCode.TooManyRequests:
                 throw new SpClientException(
                     SpClientFailureReason.RateLimited,
@@ -107,18 +113,49 @@ public sealed class PathfinderClient : IPathfinderClient
 
         response.EnsureSuccessStatusCode();
 
-        // Parse response
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        var searchResponse = JsonSerializer.Deserialize(
-            responseJson,
-            PathfinderJsonContext.Default.PathfinderSearchResponse);
+        // Parse response using typed context
+        var responseJson = await response.Content.ReadAsStringAsync(ct);
+        var result = JsonSerializer.Deserialize(responseJson, jsonTypeInfo);
 
-        if (searchResponse == null)
+        if (result == null)
         {
             throw new SpClientException(
                 SpClientFailureReason.RequestFailed,
-                "Failed to parse search response");
+                $"Failed to parse {operationName} response");
         }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<SearchResult> SearchAsync(
+        string query,
+        int limit = 10,
+        int offset = 0,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+
+        var variables = new SearchVariables
+        {
+            SearchTerm = query,
+            Limit = limit,
+            Offset = offset,
+            NumberOfTopResults = 5,
+            IncludeAudiobooks = true,
+            IncludeArtistHasConcertsField = false,
+            IncludePreReleases = true,
+            IncludeAuthors = true
+        };
+
+        _logger?.LogDebug("Searching for: {Query} (limit={Limit}, offset={Offset})", query, limit, offset);
+
+        var searchResponse = await QueryAsync(
+            variables,
+            PathfinderOperations.SearchDesktop,
+            PathfinderOperations.SearchDesktopHash,
+            PathfinderJsonContext.Default.PathfinderSearchResponse,
+            cancellationToken);
 
         var result = SearchResult.FromResponse(searchResponse);
 
@@ -131,6 +168,132 @@ public sealed class PathfinderClient : IPathfinderClient
             result.TotalPlaylists);
 
         return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<UserTopContentResponse> GetUserTopContentAsync(
+        int artistLimit = 10, int trackLimit = 10, CancellationToken ct = default)
+    {
+        var variables = new UserTopContentVariables
+        {
+            IncludeTopArtists = true,
+            TopArtistsInput = new TopContentInput { Offset = 0, Limit = artistLimit, SortBy = "AFFINITY", TimeRange = "SHORT_TERM" },
+            IncludeTopTracks = true,
+            TopTracksInput = new TopContentInput { Offset = 0, Limit = trackLimit, SortBy = "AFFINITY", TimeRange = "SHORT_TERM" }
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.UserTopContent,
+            PathfinderOperations.UserTopContentHash,
+            UserTopContentJsonContext.Default.UserTopContentResponse,
+            ct);
+    }
+
+    /// <summary>
+    /// Fetches extracted colors (dark, light, raw) for a list of image URLs.
+    /// </summary>
+    /// <param name="imageUrls">The image URLs to extract colors from.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The extracted colors response.</returns>
+    public async Task<ExtractedColorsResponse> GetExtractedColorsAsync(
+        IReadOnlyList<string> imageUrls, CancellationToken ct = default)
+    {
+        var variables = new ExtractedColorsVariables
+        {
+            ImageUris = imageUrls
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.FetchExtractedColors,
+            PathfinderOperations.FetchExtractedColorsHash,
+            ExtractedColorsJsonContext.Default.ExtractedColorsResponse,
+            ct);
+    }
+
+    /// <summary>
+    /// Fetches the user's personalized home feed.
+    /// </summary>
+    public async Task<HomeResponse> GetHomeAsync(
+        int sectionItemsLimit = 10, CancellationToken ct = default)
+    {
+        var variables = new HomeVariables
+        {
+            SectionItemsLimit = sectionItemsLimit
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.Home,
+            PathfinderOperations.HomeHash,
+            HomeJsonContext.Default.HomeResponse,
+            ct);
+    }
+
+    /// <summary>
+    /// Builds the JSON request body for a Pathfinder GraphQL query.
+    /// Uses Utf8JsonWriter for AOT compatibility instead of reflection-based serialization.
+    /// </summary>
+    private static string BuildRequestJson(object variables, string operationName, string sha256Hash)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+
+            // Write variables - serialize using the known type's context or raw element
+            writer.WritePropertyName("variables");
+            var variablesJson = SerializeVariables(variables);
+            variablesJson.WriteTo(writer);
+
+            writer.WriteString("operationName", operationName);
+
+            writer.WriteStartObject("extensions");
+            writer.WriteStartObject("persistedQuery");
+            writer.WriteNumber("version", 1);
+            writer.WriteString("sha256Hash", sha256Hash);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>
+    /// Serializes variables to a JsonElement using the appropriate source-generated context.
+    /// </summary>
+    private static JsonElement SerializeVariables(object variables)
+    {
+        byte[] json;
+
+        if (variables is SearchVariables sv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(sv, PathfinderJsonContext.Default.SearchVariables);
+        }
+        else if (variables is UserTopContentVariables utc)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(utc, PathfinderVariablesJsonContext.Default.UserTopContentVariables);
+        }
+        else if (variables is ExtractedColorsVariables ecv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(ecv, PathfinderVariablesJsonContext.Default.ExtractedColorsVariables);
+        }
+        else if (variables is HomeVariables hv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(hv, HomeVariablesJsonContext.Default.HomeVariables);
+        }
+        else
+        {
+            // Fallback: serialize via PathfinderRequest context's object support
+            // This path should not be hit for known variable types
+            throw new ArgumentException($"Unknown variables type: {variables.GetType().Name}. Register it in SerializeVariables.");
+        }
+
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
     }
 
     /// <summary>

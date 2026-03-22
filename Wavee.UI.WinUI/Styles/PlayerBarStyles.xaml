@@ -107,4 +107,113 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
+    <!-- Thumb: small accent circle -->
+    <Style x:Key="PlayerProgressThumbStyle" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Ellipse Width="12" Height="12"
+                             Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Progress slider: thin bar at top of player, thumb hidden until hover -->
+    <Style x:Key="PlayerProgressSliderStyle" TargetType="Slider">
+        <Setter Property="Height" Value="16"/>
+        <Setter Property="MinHeight" Value="16"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="VerticalAlignment" Value="Top"/>
+        <Setter Property="IsThumbToolTipEnabled" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid x:Name="SliderContainer" Background="Transparent"
+                          Margin="{TemplateBinding Padding}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalThumb"
+                                            Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalTrackRect"
+                                            Storyboard.TargetProperty="Height" To="3" Duration="0:0:0.15"/>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalDecreaseRect"
+                                            Storyboard.TargetProperty="Height" To="3" Duration="0:0:0.15"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalThumb"
+                                            Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.1"/>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalTrackRect"
+                                            Storyboard.TargetProperty="Height" To="4" Duration="0:0:0.1"/>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalDecreaseRect"
+                                            Storyboard.TargetProperty="Height" To="4" Duration="0:0:0.1"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalThumb"
+                                            Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalTrackRect"
+                                            Storyboard.TargetProperty="Height" To="4" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalDecreaseRect"
+                                            Storyboard.TargetProperty="Height" To="4" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HorizontalThumb"
+                                            Storyboard.TargetProperty="Opacity" To="0" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Grid x:Name="HorizontalTemplate" MinHeight="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Rectangle x:Name="HorizontalTrackRect" Grid.ColumnSpan="3"
+                                       Height="3" Fill="{ThemeResource ControlFillColorTertiaryBrush}"
+                                       RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Center"/>
+
+                            <Rectangle x:Name="HorizontalDecreaseRect" Grid.Column="0"
+                                       Height="3" Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                                       RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Center"/>
+
+                            <Thumb x:Name="HorizontalThumb" Grid.Column="1"
+                                   Width="12" Height="12" Opacity="0"
+                                   AutomationProperties.AccessibilityView="Raw"
+                                   DataContext="{TemplateBinding Value}"
+                                   FocusVisualMargin="-6,-8,-6,-8"
+                                   Style="{StaticResource PlayerProgressThumbStyle}"/>
+                        </Grid>
+
+                        <!-- Required vertical template (collapsed, prevents crashes) -->
+                        <Grid x:Name="VerticalTemplate" Visibility="Collapsed" MinWidth="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Rectangle x:Name="VerticalTrackRect" Grid.RowSpan="3" Width="3"
+                                       Fill="{ThemeResource ControlFillColorTertiaryBrush}"/>
+                            <Rectangle x:Name="VerticalDecreaseRect" Grid.Row="2" Width="3"
+                                       Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                            <Thumb x:Name="VerticalThumb" Grid.Row="1" Width="12" Height="12"
+                                   Style="{StaticResource PlayerProgressThumbStyle}"/>
+                        </Grid>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

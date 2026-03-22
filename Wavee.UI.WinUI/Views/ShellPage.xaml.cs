@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,7 +17,6 @@ using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -46,12 +44,6 @@ public sealed partial class ShellPage : Page
         // Subscribe to theme changes
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
 
-        // Subscribe to auth state changes to toggle Connect/Profile buttons
-        WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
-        {
-            DispatcherQueue.TryEnqueue(() => UpdateSpotifyAuthVisualState());
-        });
-
         // Set initial theme icon
         UpdateThemeIcon();
 
@@ -62,6 +54,17 @@ public sealed partial class ShellPage : Page
         _dragStateService = Ioc.Default.GetService<DragStateService>();
         if (_dragStateService != null)
             _dragStateService.DragStateChanged += OnDragStateChanged;
+
+        // Subscribe to auth state for User button display name
+        WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
+        {
+            DispatcherQueue.TryEnqueue(UpdateUserButton);
+        });
+        WeakReferenceMessenger.Default.Register<UserProfileUpdatedMessage>(this, (r, m) =>
+        {
+            DispatcherQueue.TryEnqueue(UpdateUserButton);
+        });
+        UpdateUserButton();
     }
 
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
@@ -76,6 +79,33 @@ public sealed partial class ShellPage : Page
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>(this);
+    }
+
+    private void UpdateUserButton()
+    {
+        var authState = Ioc.Default.GetService<IAuthState>();
+        if (authState == null) return;
+
+        switch (authState.Status)
+        {
+            case AuthStatus.Authenticated:
+                NavToolbar.IsConnecting = false;
+                NavToolbar.UserDisplayName = authState.DisplayName ?? "User";
+                break;
+            case AuthStatus.Authenticating:
+                NavToolbar.IsConnecting = true;
+                NavToolbar.UserDisplayName = "Connecting...";
+                break;
+            case AuthStatus.Error:
+                NavToolbar.IsConnecting = false;
+                NavToolbar.UserDisplayName = "Connection failed";
+                break;
+            default:
+                NavToolbar.IsConnecting = false;
+                NavToolbar.UserDisplayName = "Sign in";
+                break;
+        }
     }
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
@@ -322,60 +352,4 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    #region Spotify Connect
-
-    private async void ConnectSpotify_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var dialog = new SpotifyConnectDialog { XamlRoot = XamlRoot };
-            await dialog.ShowAsync();
-            UpdateSpotifyAuthVisualState();
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error showing Spotify connect dialog");
-        }
-    }
-
-    private void SpotifyProfile_Click(object sender, RoutedEventArgs e)
-    {
-        NavigationHelpers.OpenProfile();
-    }
-
-    private async void SpotifySignOut_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var authState = Ioc.Default.GetRequiredService<IAuthState>();
-            await authState.LogoutAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error signing out of Spotify");
-        }
-    }
-
-    private void UpdateSpotifyAuthVisualState()
-    {
-        var authState = Ioc.Default.GetService<IAuthState>();
-        var isAuth = authState?.IsAuthenticated == true;
-
-        ConnectSpotifyButton.Visibility = isAuth ? Visibility.Collapsed : Visibility.Visible;
-        SpotifyProfileButton.Visibility = isAuth ? Visibility.Visible : Visibility.Collapsed;
-
-        if (isAuth && authState != null)
-        {
-            ProfileNameText.Text = authState.DisplayName ?? "Spotify";
-            ProfilePicture.DisplayName = authState.DisplayName ?? "";
-
-            if (!string.IsNullOrEmpty(authState.ProfileImageUrl))
-            {
-                ProfilePicture.ProfilePicture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
-                    new System.Uri(authState.ProfileImageUrl));
-            }
-        }
-    }
-
-    #endregion
 }

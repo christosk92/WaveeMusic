@@ -314,7 +314,7 @@ public sealed class Session : ISession, IAsyncDisposable
             // Create DeviceStateManager with configured initial volume
             _deviceStateManager = new DeviceStateManager(
                 this,
-                SpClient,
+                (SpClient)SpClient,
                 _dealerClient,
                 initialVolume: _config.InitialVolume,
                 logger: _logger);
@@ -328,7 +328,7 @@ public sealed class Session : ISession, IAsyncDisposable
             _logger?.LogDebug("PlaybackStateManager created");
 
             // Create event service for reporting playback events (artist payouts)
-            _eventService = new EventService(SpClient, _logger);
+            _eventService = new EventService((SpClient)SpClient, _logger);
             _logger?.LogDebug("EventService created");
 
             // Signal that subscribers are ready - flush any queued PUT state responses
@@ -393,7 +393,7 @@ public sealed class Session : ISession, IAsyncDisposable
     /// a default fallback endpoint is used.
     /// </remarks>
     /// <returns>SpClient instance.</returns>
-    public SpClient SpClient => new SpClient(
+    public ISpClient SpClient => new SpClient(
         this,
         _httpClient,
         _spClientEndpoint ?? "spclient.wg.spotify.com:443",
@@ -423,7 +423,7 @@ public sealed class Session : ISession, IAsyncDisposable
     /// Access tokens are obtained automatically via login5.
     /// </remarks>
     /// <returns>PathfinderClient instance.</returns>
-    public PathfinderClient Pathfinder => new PathfinderClient(
+    public IPathfinderClient Pathfinder => new PathfinderClient(
         this,
         _httpClient,
         logger: _logger);

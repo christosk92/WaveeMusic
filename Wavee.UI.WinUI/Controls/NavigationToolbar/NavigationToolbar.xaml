@@ -139,10 +139,17 @@
                     ToolTipService.ToolTip="Profile"
                     Click="ProfileButton_Click">
                     <StackPanel Orientation="Horizontal" Spacing="8">
+                        <!-- Connecting spinner (shown while authenticating) -->
+                        <ProgressRing
+                            Width="20" Height="20"
+                            IsActive="{x:Bind IsConnecting, Mode=OneWay}"
+                            Visibility="{x:Bind IsConnecting, Mode=OneWay}"/>
+                        <!-- User avatar (hidden while connecting) -->
                         <PersonPicture
+                            x:Name="UserAvatar"
                             Width="24"
                             Height="24"
-                            DisplayName="{x:Bind UserDisplayName, Mode=OneWay}" />
+                            DisplayName="{x:Bind UserDisplayName, Mode=OneWay}"/>
                         <TextBlock
                             Text="{x:Bind UserDisplayName, Mode=OneWay}"
                             VerticalAlignment="Center"

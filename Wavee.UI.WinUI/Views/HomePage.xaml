@@ -6,9 +6,163 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
+    xmlns:models="using:Wavee.UI.WinUI.Data.Models"
+    xmlns:local="using:Wavee.UI.WinUI.Views"
     mc:Ignorable="d"
     Background="Transparent">
+
+    <Page.Resources>
+
+        <!-- ════════════════════════════════════════════════════════════
+             ITEM-LEVEL TEMPLATES (used inside generic sections)
+             ════════════════════════════════════════════════════════════ -->
+
+        <!-- Playlist / Album / Podcast card: square image -->
+        <DataTemplate x:Key="PlaylistCardTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:ContentCard
+                ImageUrl="{x:Bind ImageUrl}"
+                Title="{x:Bind Title}"
+                Subtitle="{x:Bind Subtitle}"
+                PlaceholderColorHex="{x:Bind ColorHex}"
+                IsCircularImage="False"
+                CardClick="ContentCard_Click"
+                CardMiddleClick="ContentCard_MiddleClick"
+                CardRightTapped="ContentCard_RightTapped"/>
+        </DataTemplate>
+
+        <!-- Artist card: circular image, centered text -->
+        <DataTemplate x:Key="ArtistCardTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:ContentCard
+                ImageUrl="{x:Bind ImageUrl}"
+                Title="{x:Bind Title}"
+                Subtitle="{x:Bind Subtitle}"
+                PlaceholderColorHex="{x:Bind ColorHex}"
+                PlaceholderGlyph="&#xE77B;"
+                IsCircularImage="True"
+                CenterText="True"
+                CardClick="ContentCard_Click"
+                CardMiddleClick="ContentCard_MiddleClick"
+                CardRightTapped="ContentCard_RightTapped"/>
+        </DataTemplate>
+
+        <!-- Item template selector for mixed-type sections -->
+        <local:HomeItemTemplateSelector x:Key="HomeItemSelector"
+            ArtistTemplate="{StaticResource ArtistCardTemplate}"
+            DefaultTemplate="{StaticResource PlaylistCardTemplate}"/>
+
+        <!-- ════════════════════════════════════════════════════════════
+             SECTION-LEVEL TEMPLATES
+             ════════════════════════════════════════════════════════════ -->
+
+        <!-- Shorts section: adaptive 2-row grid of pills -->
+        <DataTemplate x:Key="ShortsSectionTemplate" x:DataType="vm:HomeSection">
+            <ItemsRepeater ItemsSource="{x:Bind Items}" Margin="0,0,0,24">
+                <ItemsRepeater.Layout>
+                    <layouts:ShortcutsGridLayout
+                        ItemHeight="56"
+                        ColumnSpacing="8"
+                        RowSpacing="8"
+                        RowCount="2"/>
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HomeSectionItem">
+                        <cards:ShortsPill
+                            ImageUrl="{x:Bind ImageUrl}"
+                            Title="{x:Bind Title}"
+                            Item="{x:Bind}"/>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </DataTemplate>
+
+        <!-- Generic section: title + horizontal card row with per-item templates -->
+        <DataTemplate x:Key="GenericSectionTemplate" x:DataType="vm:HomeSection">
+            <StackPanel Margin="0,0,0,32">
+                <Grid Margin="0,0,0,16">
+                    <TextBlock
+                        Text="{x:Bind Title}"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        FontWeight="Bold"
+                        HorizontalAlignment="Left"/>
+                </Grid>
+
+                <ItemsRepeater
+                    ItemsSource="{x:Bind Items}"
+                    ItemTemplate="{StaticResource HomeItemSelector}">
+                    <ItemsRepeater.Layout>
+                        <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Baseline section: large card with background image overlay -->
+        <DataTemplate x:Key="BaselineSectionTemplate" x:DataType="vm:HomeSection">
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock
+                    Text="{x:Bind Title}"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Margin="0,0,0,4"/>
+
+                <ItemsRepeater ItemsSource="{x:Bind Items}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="8"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:HomeSectionItem">
+                            <Button
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Click="GenericItem_Click"
+                                PointerPressed="GenericItem_PointerPressed"
+                                Height="200">
+                                <Grid CornerRadius="{ThemeResource ControlCornerRadius}"
+                                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                      BorderThickness="1">
+                                    <Image
+                                        Stretch="UniformToFill"
+                                        Source="{x:Bind ImageUrl}"
+                                        Opacity="0.6"/>
+                                    <Border CornerRadius="{ThemeResource ControlCornerRadius}">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Color="Transparent" Offset="0"/>
+                                                <GradientStop Color="#CC000000" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Bottom" Padding="16">
+                                        <TextBlock
+                                            Text="{x:Bind Title}"
+                                            FontSize="18"
+                                            FontWeight="Bold"
+                                            Foreground="White"
+                                            MaxLines="2"
+                                            TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock
+                                            Text="{x:Bind Subtitle}"
+                                            FontSize="12"
+                                            Foreground="#CCFFFFFF"
+                                            MaxLines="2"
+                                            TextTrimming="CharacterEllipsis"
+                                            Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </DataTemplate>
+    </Page.Resources>
 
     <Grid Padding="24">
         <Grid.RowDefinitions>
@@ -16,89 +170,240 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Greeting header -->
-        <TextBlock
-            Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
-            Style="{StaticResource TitleTextBlockStyle}"
-            Margin="0,0,0,24"/>
+        <!-- Header: Greeting + customize button -->
+        <Grid Margin="0,0,0,24">
+            <TextBlock
+                Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
+                Style="{StaticResource TitleTextBlockStyle}"
+                FontWeight="Bold"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"/>
 
-        <!-- Loading indicator -->
-        <ProgressRing
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
+                <!-- Refresh button -->
+                <Button
+                    ToolTipService.ToolTip="Refresh"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="8"
+                    Command="{x:Bind ViewModel.RefreshCommand}">
+                    <FontIcon Glyph="&#xE72C;" FontSize="16"/>
+                </Button>
+
+                <!-- Customize button -->
+                <Button
+                    ToolTipService.ToolTip="Customize home"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="8">
+                    <FontIcon Glyph="&#xE713;" FontSize="16"/>
+                    <Button.Flyout>
+                        <Flyout x:Name="CustomizeFlyout" Placement="BottomEdgeAlignedRight">
+                            <Grid Width="300" MaxHeight="400">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock
+                                    Grid.Row="0"
+                                    Text="Customize Home"
+                                    Style="{StaticResource SubtitleTextBlockStyle}"
+                                    Margin="0,0,0,12"/>
+
+                                <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.SectionPreferences, Mode=OneWay}">
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout Spacing="2"/>
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="models:HomeSectionPref">
+                                                <Grid Padding="6,4" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Height="36">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <CheckBox
+                                                        Grid.Column="0"
+                                                        IsChecked="{x:Bind IsVisible}"
+                                                        MinWidth="0"
+                                                        Padding="0"
+                                                        Margin="0,0,8,0"
+                                                        VerticalAlignment="Center"
+                                                        Tag="{x:Bind SectionUri}"
+                                                        Checked="VisibilityCheckBox_Changed"
+                                                        Unchecked="VisibilityCheckBox_Changed"/>
+
+                                                    <Button
+                                                        Grid.Column="1"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="0"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left"
+                                                        VerticalAlignment="Center"
+                                                        Tag="{x:Bind SectionUri}"
+                                                        Click="SectionTitle_Click">
+                                                        <TextBlock
+                                                            Text="{x:Bind Title}"
+                                                            TextTrimming="CharacterEllipsis"
+                                                            MaxLines="1"
+                                                            FontSize="13"/>
+                                                    </Button>
+
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
+                                                        <Button Padding="4" Background="Transparent" BorderThickness="0"
+                                                                Tag="{x:Bind SectionUri}"
+                                                                Click="MoveUp_Click"
+                                                                ToolTipService.ToolTip="Move up"
+                                                                Width="28" Height="28">
+                                                            <FontIcon Glyph="&#xE70E;" FontSize="10"/>
+                                                        </Button>
+                                                        <Button Padding="4" Background="Transparent" BorderThickness="0"
+                                                                Tag="{x:Bind SectionUri}"
+                                                                Click="MoveDown_Click"
+                                                                ToolTipService.ToolTip="Move down"
+                                                                Width="28" Height="28">
+                                                            <FontIcon Glyph="&#xE70D;" FontSize="10"/>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </ScrollView>
+
+                                <Button
+                                    Grid.Row="2"
+                                    Content="Reset to default"
+                                    HorizontalAlignment="Stretch"
+                                    Margin="0,12,0,0"
+                                    Command="{x:Bind ViewModel.ResetSectionPreferencesCommand}"/>
+                            </Grid>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Loading: shimmer skeleton (crossfades to content) -->
+        <ScrollView
+            x:Name="ShimmerContainer"
+            Margin="0,0,-24,0"
+            Padding="0,0,24,0"
             Grid.Row="1"
-            IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-            Width="48"
-            Height="48"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"/>
+            VerticalScrollBarVisibility="Hidden"
+            IsHitTestVisible="False">
+            <StackPanel Spacing="24">
+                <!-- Shimmer shortcuts (2 rows x 4 cols) -->
+                <Grid ColumnSpacing="8" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="56"/>
+                        <RowDefinition Height="56"/>
+                    </Grid.RowDefinitions>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="0"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="1"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="2"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="3"/>
+                    <controls:Shimmer Grid.Row="1" Grid.Column="0"/>
+                    <controls:Shimmer Grid.Row="1" Grid.Column="1"/>
+                    <controls:Shimmer Grid.Row="1" Grid.Column="2"/>
+                    <controls:Shimmer Grid.Row="1" Grid.Column="3"/>
+                </Grid>
 
-        <!-- Error State -->
+                <!-- Shimmer section 1 -->
+                <StackPanel Spacing="12">
+                    <controls:Shimmer Height="24" Width="200" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="150" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="90" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Shimmer section 2 -->
+                <StackPanel Spacing="12">
+                    <controls:Shimmer Height="24" Width="160" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="90" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="60" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollView>
+
+        <!-- Error -->
         <controls:ErrorStateView
             Grid.Row="1"
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 
-        <!-- Content sections -->
-        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto"
+        <!-- Content (starts invisible via composition, crossfades in when loaded) -->
+        <ScrollView x:Name="ContentContainer" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                    Margin="0,0,-24,0"
+                    Padding="0,0,24,0"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
-                <ItemsRepeater.ItemTemplate>
-                    <DataTemplate x:DataType="vm:HomeSection">
-                        <StackPanel Margin="0,0,0,32">
-                            <!-- Section header -->
-                            <TextBlock
-                                Text="{x:Bind Title}"
-                                Style="{StaticResource SubtitleTextBlockStyle}"
-                                Margin="0,0,0,16"/>
-
-                            <!-- Section items (horizontal scroll) -->
-                            <ScrollView
-                                HorizontalScrollBarVisibility="Auto"
-                                VerticalScrollBarVisibility="Hidden">
-                                <ItemsRepeater ItemsSource="{x:Bind Items}">
-                                    <ItemsRepeater.Layout>
-                                        <StackLayout Orientation="Horizontal" Spacing="16"/>
-                                    </ItemsRepeater.Layout>
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:HomeSectionItem">
-                                            <Button
-                                                Width="180"
-                                                Padding="0"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                Tag="{x:Bind Id}"
-                                                Click="SectionItem_Click"
-                                                PointerPressed="SectionItem_PointerPressed"
-                                                RightTapped="SectionItem_RightTapped">
-                                                <StackPanel Spacing="8">
-                                                    <!-- Image placeholder -->
-                                                    <Grid
-                                                        Width="180"
-                                                        Height="180"
-                                                        CornerRadius="8"
-                                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                                        <FontIcon Glyph="&#xE8D6;" FontSize="48"/>
-                                                    </Grid>
-                                                    <!-- Title -->
-                                                    <TextBlock
-                                                        Text="{x:Bind Title}"
-                                                        Style="{StaticResource TrackTitleTextBlockStyle}"
-                                                        MaxLines="1"/>
-                                                    <!-- Subtitle -->
-                                                    <TextBlock
-                                                        Text="{x:Bind Subtitle}"
-                                                        Style="{StaticResource ArtistNameTextBlockStyle}"
-                                                        MaxLines="2"/>
-                                                </StackPanel>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
-                            </ScrollView>
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsRepeater.ItemTemplate>
+            <ItemsRepeater
+                x:Name="SectionsRepeater"
+                ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
+                <ItemsRepeater.Layout>
+                    <StackLayout Spacing="0"/>
+                </ItemsRepeater.Layout>
             </ItemsRepeater>
         </ScrollView>
     </Grid>

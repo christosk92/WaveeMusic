@@ -8,7 +8,7 @@ namespace Wavee.Core.Http.Pathfinder;
 public sealed class PathfinderRequest
 {
     [JsonPropertyName("variables")]
-    public required SearchVariables Variables { get; init; }
+    public object? Variables { get; set; }
 
     [JsonPropertyName("operationName")]
     public required string OperationName { get; init; }

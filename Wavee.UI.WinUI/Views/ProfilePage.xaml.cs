@@ -6,12 +6,15 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ProfilePage : Page, ITabBarItemContent
 {
+    private readonly ProfileCache? _cache;
+
     public ProfileViewModel ViewModel { get; }
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
@@ -21,10 +24,15 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
     public ProfilePage()
     {
         ViewModel = Ioc.Default.GetRequiredService<ProfileViewModel>();
+        _cache = Ioc.Default.GetService<ProfileCache>();
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        if (_cache != null)
+            _cache.DataRefreshed += OnCacheDataRefreshed;
+
         Unloaded += ProfilePage_Unloaded;
     }
 
@@ -37,6 +45,9 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
         {
             case nameof(ProfileViewModel.ProfileImageUrl):
                 UpdateProfileAvatar(ViewModel.ProfileImageUrl);
+                break;
+            case nameof(ProfileViewModel.HeroColorHex):
+                UpdateHeroColor(ViewModel.HeroColorHex);
                 break;
         }
     }
@@ -56,10 +67,33 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
         }
     }
 
+    private void UpdateHeroColor(string? hex)
+    {
+        if (string.IsNullOrEmpty(hex)) return;
+
+        hex = hex.TrimStart('#');
+        if (hex.Length < 6) return;
+
+        var r = Convert.ToByte(hex[0..2], 16);
+        var g = Convert.ToByte(hex[2..4], 16);
+        var b = Convert.ToByte(hex[4..6], 16);
+
+        HeroColorTop.Color = Windows.UI.Color.FromArgb(255, r, g, b);
+        HeroColorMid.Color = Windows.UI.Color.FromArgb(120, r, g, b);
+    }
+
+    private void OnCacheDataRefreshed(ProfileSnapshot snapshot)
+    {
+        DispatcherQueue.TryEnqueue(() => ViewModel.ApplyBackgroundRefresh(snapshot));
+    }
+
     private void ProfilePage_Unloaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+
+        if (_cache != null)
+            _cache.DataRefreshed -= OnCacheDataRefreshed;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

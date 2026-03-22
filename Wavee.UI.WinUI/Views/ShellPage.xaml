@@ -82,81 +82,6 @@
             <!-- Sidebar Footer (Spotify connect, theme toggle, settings) -->
             <sidebar:SidebarView.Footer>
                 <StackPanel>
-                    <!-- Connect Spotify Button (shown when signed out) -->
-                    <Button
-                        x:Name="ConnectSpotifyButton"
-                        Height="32"
-                        Margin="4,0,4,0"
-                        Padding="0"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="ConnectSpotify_Click">
-                        <Grid
-                            Margin="0,2"
-                            Padding="8,0,12,0"
-                            HorizontalAlignment="Stretch"
-                            Background="{ThemeResource SubtleFillColorTransparentBrush}"
-                            CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="3"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <FontIcon Grid.Column="1" Glyph="&#xE77B;" FontSize="16" Margin="8,0,0,0"
-                                      Foreground="#1DB954"/>
-                            <TextBlock Grid.Column="2" Text="Connect Spotify" VerticalAlignment="Center"
-                                       Margin="12,0,0,0" FontWeight="SemiBold"/>
-                        </Grid>
-                    </Button>
-
-                    <!-- Spotify Profile Button (shown when signed in) -->
-                    <Button
-                        x:Name="SpotifyProfileButton"
-                        Height="32"
-                        Margin="4,0,4,0"
-                        Padding="0"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Visibility="Collapsed">
-                        <Button.Flyout>
-                            <MenuFlyout Placement="Top">
-                                <MenuFlyoutItem Text="Profile" Click="SpotifyProfile_Click">
-                                    <MenuFlyoutItem.Icon>
-                                        <FontIcon Glyph="&#xE77B;"/>
-                                    </MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                                <MenuFlyoutSeparator/>
-                                <MenuFlyoutItem Text="Sign out" Click="SpotifySignOut_Click">
-                                    <MenuFlyoutItem.Icon>
-                                        <FontIcon Glyph="&#xF3B1;"/>
-                                    </MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
-                            </MenuFlyout>
-                        </Button.Flyout>
-                        <Grid
-                            Margin="0,2"
-                            Padding="8,0,12,0"
-                            HorizontalAlignment="Stretch"
-                            Background="{ThemeResource SubtleFillColorTransparentBrush}"
-                            CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="3"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <PersonPicture Grid.Column="1" Width="16" Height="16" Margin="8,0,0,0"
-                                           x:Name="ProfilePicture"/>
-                            <TextBlock Grid.Column="2" x:Name="ProfileNameText"
-                                       Text="Spotify" VerticalAlignment="Center"
-                                       Margin="12,0,0,0" FontWeight="SemiBold"
-                                       TextTrimming="CharacterEllipsis" MaxLines="1"/>
-                        </Grid>
-                    </Button>
-
                     <!-- Theme Toggle Button -->
                     <Button
                         x:Name="ThemeButton"
@@ -167,6 +92,7 @@
                         HorizontalContentAlignment="Stretch"
                         Background="Transparent"
                         BorderThickness="0"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         Command="{x:Bind ViewModel.ToggleThemeCommand}">
                         <Grid
                             Margin="0,2"
@@ -179,7 +105,8 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon x:Name="ThemeIcon" Grid.Column="1" Glyph="&#xE708;" FontSize="16" Margin="8,0,0,0"/>
+                            <FontIcon x:Name="ThemeIcon" Grid.Column="1" Glyph="&#xE708;" FontSize="16" Margin="8,0,0,0"
+                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
                             <TextBlock Grid.Column="2" Text="Theme" VerticalAlignment="Center" Margin="12,0,0,0"/>
                         </Grid>
                     </Button>
@@ -194,6 +121,7 @@
                         HorizontalContentAlignment="Stretch"
                         Background="Transparent"
                         BorderThickness="0"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         Command="{x:Bind ViewModel.OpenSettingsCommand}">
                         <Grid
                             Margin="0,2"
@@ -206,7 +134,8 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Grid.Column="1" Glyph="&#xE713;" FontSize="16" Margin="8,0,0,0"/>
+                            <FontIcon Grid.Column="1" Glyph="&#xE713;" FontSize="16" Margin="8,0,0,0"
+                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
                             <TextBlock Grid.Column="2" Text="Settings" VerticalAlignment="Center" Margin="12,0,0,0"/>
                         </Grid>
                     </Button>

@@ -28,21 +28,39 @@ public sealed partial class MainWindow : WindowEx
         // Extend content into titlebar
         ExtendsContentIntoTitleBar = true;
 
-        // Make titlebar buttons transparent
+        // Make titlebar buttons blend with content
         AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        AppWindow.TitleBar.ButtonHoverBackgroundColor = Colors.Transparent;
-        AppWindow.TitleBar.ButtonPressedBackgroundColor = Colors.Transparent;
+        AppWindow.TitleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(20, 128, 128, 128);
+        AppWindow.TitleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(40, 128, 128, 128);
+        // Let Windows auto-pick foreground based on theme (don't set = auto)
+        AppWindow.TitleBar.ButtonForegroundColor = null;
+        AppWindow.TitleBar.ButtonInactiveForegroundColor = null;
     }
 
-    private void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
+    private async void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
     {
         var shellVm = Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
         shellVm?.Cleanup();
+
+        // Force save settings on exit
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        if (settings is not null)
+        {
+            await settings.SaveAsync();
+        }
     }
 
     public async Task InitializeApplicationAsync()
     {
+        // Load persistent settings
+        var settingsService = Ioc.Default.GetRequiredService<ISettingsService>();
+        await settingsService.LoadAsync();
+
+        // Initialize color service (before theme, so brushes are cached early)
+        var colorService = Ioc.Default.GetRequiredService<ThemeColorService>();
+        colorService.Initialize(RootFrame);
+
         // Initialize theme service
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
         themeService.Initialize(RootFrame);

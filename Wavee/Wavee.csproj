@@ -30,9 +30,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Google.Protobuf" Version="3.33.2" />
+      <PackageReference Include="Google.Protobuf" Version="3.34.0" />
       <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
-      <PackageReference Include="Grpc.Tools" Version="2.76.0">
+      <PackageReference Include="Grpc.Tools" Version="2.80.0-pre1">
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
@@ -42,8 +42,8 @@
       <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
 
       <!-- Local file support (Phase 2) -->
-      <PackageReference Include="ManagedBass" Version="3.1.1" />
-      <PackageReference Include="z440.atl.core" Version="6.4.0" />
+      <PackageReference Include="ManagedBass" Version="4.0.2" />
+      <PackageReference Include="z440.atl.core" Version="7.11.0" />
     </ItemGroup>
 
     <ItemGroup>

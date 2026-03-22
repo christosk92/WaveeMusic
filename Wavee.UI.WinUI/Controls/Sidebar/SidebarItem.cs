@@ -78,14 +78,18 @@ public sealed partial class SidebarItem : Control
 			if (icon is FontIcon fontIcon)
 			{
 				fontIcon.FontSize = 16;
-				// Bind foreground to the ContentPresenter so it updates with theme changes
-				var binding = new Microsoft.UI.Xaml.Data.Binding
+				// Use ThemeColorService for theme-aware foreground
+				var colors = Ioc.Default.GetService<Services.ThemeColorService>();
+				if (colors != null)
 				{
-					Source = iconPresenter,
-					Path = new PropertyPath("Foreground"),
-					Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay
-				};
-				fontIcon.SetBinding(ForegroundProperty, binding);
+					fontIcon.Foreground = colors.TextPrimary;
+					// Re-apply on theme change
+					colors.ThemeChanged += () =>
+					{
+						if (fontIcon.DispatcherQueue != null)
+							fontIcon.DispatcherQueue.TryEnqueue(() => fontIcon.Foreground = colors.TextPrimary);
+					};
+				}
 			}
 			iconPresenter.Content = icon;
 		}
@@ -363,7 +367,10 @@ public sealed partial class SidebarItem : Control
 		}
 		if (!IsInFlyout)
 		{
-			VisualStateManager.GoToState(this, DisplayMode == SidebarDisplayMode.Compact ? "Compact" : "NonCompact", true);
+			if (DisplayMode == SidebarDisplayMode.Compact)
+				VisualStateManager.GoToState(this, IsGroupHeader ? "CompactGroupHeader" : "Compact", true);
+			else
+				VisualStateManager.GoToState(this, "NonCompact", true);
 		}
 	}
 

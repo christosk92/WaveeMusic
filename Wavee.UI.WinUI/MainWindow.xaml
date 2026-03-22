@@ -13,7 +13,7 @@
     PersistenceId="WaveeMainWindow">
 
     <winuiex:WindowEx.SystemBackdrop>
-        <MicaBackdrop />
+        <MicaBackdrop Kind="BaseAlt" />
     </winuiex:WindowEx.SystemBackdrop>
 
     <Frame x:Name="RootFrame" />
