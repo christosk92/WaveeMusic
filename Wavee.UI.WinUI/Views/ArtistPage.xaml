@@ -8,11 +8,13 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
-    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
     xmlns:hero="using:Wavee.UI.WinUI.Controls.HeroHeader"
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
+    xmlns:albumDetail="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel" 
+    xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -236,8 +238,9 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <!-- Grid view (wrapping multi-row) -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
+                    <!-- Grid view (wrapping multi-row, click to expand inline) -->
+                    <ItemsRepeater x:Name="AlbumsGridRepeater"
+                                   ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.AlbumsGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
                             <UniformGridLayout MinItemWidth="160" MinItemHeight="240"
@@ -247,15 +250,13 @@
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:LazyReleaseItem">
                                 <Grid>
-                                    <!-- Loaded: real card -->
                                     <cards:ContentCard
                                         Visibility="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
-                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                                        NavigationTitle="{x:Bind Data.Name, Mode=OneWay}"/>
-                                    <!-- Loading: shimmer card -->
+                                        CardClick="AlbumCard_Click"
+                                        CardHover="AlbumCard_Hover"/>
                                     <StackPanel Spacing="8" Padding="8"
                                                 Visibility="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                         <controls:Shimmer Height="150" CornerRadius="8"/>
@@ -324,8 +325,9 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <!-- Grid view (wrapping multi-row) -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
+                    <!-- Grid view (wrapping multi-row, click to expand inline) -->
+                    <ItemsRepeater x:Name="SinglesGridRepeater"
+                                   ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.SinglesGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
                             <UniformGridLayout MinItemWidth="160" MinItemHeight="240"
@@ -335,15 +337,13 @@
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:LazyReleaseItem">
                                 <Grid>
-                                    <!-- Loaded: real card -->
                                     <cards:ContentCard
                                         Visibility="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
-                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                                        NavigationTitle="{x:Bind Data.Name, Mode=OneWay}"/>
-                                    <!-- Loading: shimmer card -->
+                                        CardClick="AlbumCard_Click"
+                                        CardHover="AlbumCard_Hover"/>
                                     <StackPanel Spacing="8" Padding="8"
                                                 Visibility="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                         <controls:Shimmer Height="150" CornerRadius="8"/>
@@ -430,8 +430,8 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
-                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                                        NavigationTitle="{x:Bind Data.Name, Mode=OneWay}"/>
+                                        CardClick="AlbumCard_Click"
+                                        CardHover="AlbumCard_Hover"/>
                                     <!-- Loading: shimmer card -->
                                     <StackPanel Spacing="8" Padding="8"
                                                 Visibility="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
@@ -472,7 +472,7 @@
                 <StackPanel Spacing="8"
                             Visibility="{x:Bind ViewModel.Biography, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <TextBlock Text="About" FontWeight="Bold" FontSize="20"/>
-                    <controls:HtmlTextBlock Text="{x:Bind ViewModel.Biography, Mode=OneWay}"
+                    <controls1:HtmlTextBlock Text="{x:Bind ViewModel.Biography, Mode=OneWay}"
                                             MaxLines="6"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>

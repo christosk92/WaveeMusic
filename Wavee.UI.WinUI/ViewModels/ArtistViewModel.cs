@@ -88,6 +88,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     public IEnumerable<LazyTrackItem> PagedTopTracks =>
         TopTracks.Skip(CurrentPage * TracksPerPage).Take(TracksPerPage);
 
+    // ── Expanded album detail ──
+    [ObservableProperty] private LazyReleaseItem? _expandedAlbum;
+    [ObservableProperty] private ObservableCollection<LazyTrackItem> _expandedAlbumTracks = [];
+    [ObservableProperty] private bool _isLoadingExpandedTracks;
+
     // ── Tab management ──
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -359,6 +364,54 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         return dt.ToString("MMM d, yyyy").ToUpperInvariant();
     }
 
+    // ── Album expand/collapse ──
+
+    [RelayCommand]
+    private void ExpandAlbum(LazyReleaseItem? album)
+    {
+        if (album == null || !album.IsLoaded || album.Data == null) return;
+
+        // Toggle: clicking same album collapses
+        if (ExpandedAlbum?.Id == album.Id)
+        {
+            CollapseAlbum();
+            return;
+        }
+
+        ExpandedAlbum = album;
+        IsLoadingExpandedTracks = true;
+        ExpandedAlbumTracks.Clear();
+
+        // Estimate track count if unknown: albums ~12, singles ~2, compilations ~20
+        var trackCount = album.Data.TrackCount;
+        if (trackCount <= 0)
+        {
+            trackCount = album.Data.Type switch
+            {
+                "SINGLE" => 2,
+                "COMPILATION" => 20,
+                _ => 12 // ALBUM default
+            };
+        }
+
+        // Add shimmer placeholders for tracks
+        for (int i = 0; i < trackCount; i++)
+        {
+            ExpandedAlbumTracks.Add(LazyTrackItem.Placeholder($"expanded-{i}", i + 1));
+        }
+
+        // TODO: Fetch real tracks from Pathfinder/SpClient and call .Populate() on each
+        // For now, shimmers will stay until the real endpoint is wired
+        IsLoadingExpandedTracks = false;
+    }
+
+    [RelayCommand]
+    private void CollapseAlbum()
+    {
+        ExpandedAlbum = null;
+        IsLoadingExpandedTracks = false;
+    }
+
     // ── Commands ──
 
     [RelayCommand]
@@ -480,10 +533,10 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
 
 public sealed class ArtistReleaseVm
 {
-    public required string Id { get; init; }
+    public string Id { get; init; }
     public string? Uri { get; init; }
     public string? Name { get; init; }
-    public required string Type { get; init; } // ALBUM, SINGLE, COMPILATION
+    public string Type { get; init; } // ALBUM, SINGLE, COMPILATION
     public string? ImageUrl { get; init; }
     public DateTimeOffset ReleaseDate { get; init; }
     public int TrackCount { get; init; }

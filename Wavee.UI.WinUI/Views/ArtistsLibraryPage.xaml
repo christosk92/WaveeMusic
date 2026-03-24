@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
@@ -13,6 +13,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -180,7 +181,7 @@
         </Grid>
 
         <!-- Grid Splitter -->
-        <controls:GridSplitter
+        <controls1:GridSplitter
             Grid.Column="1"
             Width="12"/>
 
@@ -587,7 +588,7 @@
         </Border>
 
         <!-- Second Grid Splitter (visible when tracks panel open) -->
-        <controls:GridSplitter
+        <controls1:GridSplitter
             Grid.Column="3"
             Width="12"
             Visibility="{x:Bind ViewModel.IsTracksPanelVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>

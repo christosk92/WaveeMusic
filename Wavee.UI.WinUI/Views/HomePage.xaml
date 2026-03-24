@@ -7,10 +7,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
-    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
     xmlns:models="using:Wavee.UI.WinUI.Data.Models"
-    xmlns:local="using:Wavee.UI.WinUI.Views"
+    xmlns:local="using:Wavee.UI.WinUI.Views" 
+    xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -385,7 +386,7 @@
         </ScrollView>
 
         <!-- Error -->
-        <controls:ErrorStateView
+        <controls1:ErrorStateView
             Grid.Row="1"
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"

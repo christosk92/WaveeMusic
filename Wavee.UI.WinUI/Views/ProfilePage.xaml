@@ -8,7 +8,7 @@
     xmlns:http="using:Wavee.Core.Http"
     xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
-    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
     mc:Ignorable="d"

@@ -153,6 +153,7 @@ public sealed partial class ContentCard : UserControl
 
     public event EventHandler? CardClick;
     public event EventHandler? CardMiddleClick;
+    public event EventHandler? CardHover;
     public event EventHandler? PlayRequested;
     public event TypedEventHandler<ContentCard, RightTappedRoutedEventArgs>? CardRightTapped;
 
@@ -363,6 +364,8 @@ public sealed partial class ContentCard : UserControl
 
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        CardHover?.Invoke(this, EventArgs.Empty);
+
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
         if (playBtn != null)
         {

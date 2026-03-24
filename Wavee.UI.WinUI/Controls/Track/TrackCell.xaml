@@ -7,7 +7,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
-    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters" 
+    xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -28,7 +29,7 @@
                    behaviors:ImageFallbackBehavior.HideOnError="True"
                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
         </Border>
-        <controls:Shimmer x:Name="ArtShimmer" Grid.Column="0" Width="48" Height="48" CornerRadius="4"
+        <controls1:Shimmer x:Name="ArtShimmer" Grid.Column="0" Width="48" Height="48" CornerRadius="4"
                           Visibility="Collapsed"/>
 
         <!-- Track info / shimmer -->
@@ -49,8 +50,8 @@
         </StackPanel>
         <StackPanel x:Name="InfoShimmer" Grid.Column="1" VerticalAlignment="Center" Spacing="6"
                     Visibility="Collapsed">
-            <controls:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
-            <controls:Shimmer Width="110" Height="12" HorizontalAlignment="Left"/>
+            <controls1:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
+            <controls1:Shimmer Width="110" Height="12" HorizontalAlignment="Left"/>
         </StackPanel>
 
         <!-- More button (only when loaded) -->
