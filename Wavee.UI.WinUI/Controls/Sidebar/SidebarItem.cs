@@ -1,6 +1,7 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using Microsoft.UI.Input;
@@ -38,6 +39,8 @@ public sealed partial class SidebarItem : Control
 	private INotifyCollectionChanged? _subscribedCollection;
 	private DragStateService? _dragStateService;
 	private Border? _elementBorder;
+	private Action? _themeChangedHandler;
+	private Services.ThemeColorService? _themeColorService;
 
 	public SidebarItem()
 	{
@@ -83,12 +86,14 @@ public sealed partial class SidebarItem : Control
 				if (colors != null)
 				{
 					fontIcon.Foreground = colors.TextPrimary;
-					// Re-apply on theme change
-					colors.ThemeChanged += () =>
+					// Store handler so we can unsubscribe in Unloaded
+					_themeColorService = colors;
+					_themeChangedHandler = () =>
 					{
 						if (fontIcon.DispatcherQueue != null)
 							fontIcon.DispatcherQueue.TryEnqueue(() => fontIcon.Foreground = colors.TextPrimary);
 					};
+					colors.ThemeChanged += _themeChangedHandler;
 				}
 			}
 			iconPresenter.Content = icon;
@@ -199,6 +204,14 @@ public sealed partial class SidebarItem : Control
 		{
 			_dragStateService.DragStateChanged -= OnGlobalDragStateChanged;
 			_dragStateService = null;
+		}
+
+		// Clean up ThemeChanged subscription on singleton
+		if (_themeColorService != null && _themeChangedHandler != null)
+		{
+			_themeColorService.ThemeChanged -= _themeChangedHandler;
+			_themeChangedHandler = null;
+			_themeColorService = null;
 		}
 	}
 

@@ -52,4 +52,14 @@ public interface IPathfinderClient
     Task<HomeResponse> GetHomeAsync(
         int sectionItemsLimit = 10,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches a comprehensive artist overview including profile, discography, top tracks, and related artists.
+    /// </summary>
+    /// <param name="artistUri">Spotify artist URI (e.g. "spotify:artist:xxx").</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The artist overview response.</returns>
+    Task<ArtistOverviewResponse> GetArtistOverviewAsync(
+        string artistUri,
+        CancellationToken ct = default);
 }

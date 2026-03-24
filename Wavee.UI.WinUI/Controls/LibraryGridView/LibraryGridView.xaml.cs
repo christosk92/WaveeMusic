@@ -187,12 +187,24 @@ public sealed partial class LibraryGridView : UserControl
     /// </summary>
     public event EventHandler<string>? SearchQueryChanged;
 
+    /// <summary>
+    /// Occurs when an item is double-tapped (for direct navigation).
+    /// </summary>
+    public event EventHandler<object?>? ItemDoubleTapped;
+
     #endregion
 
     public LibraryGridView()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        ItemsGridView.DoubleTapped += ItemsGridView_DoubleTapped;
+    }
+
+    private void ItemsGridView_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+    {
+        if (SelectedItem != null)
+            ItemDoubleTapped?.Invoke(this, SelectedItem);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

@@ -158,6 +158,8 @@ public sealed partial class ContentCard : UserControl
 
     // ── Constructor ──
 
+    private bool _passiveHandlersAdded;
+
     public ContentCard()
     {
         InitializeComponent();
@@ -169,8 +171,10 @@ public sealed partial class ContentCard : UserControl
     {
         Loaded -= OnLoaded;
 
-        if (IsPassive)
+        if (IsPassive && !_passiveHandlersAdded)
         {
+            _passiveHandlersAdded = true;
+
             // Apply passive state now that the control is in the visual tree
             if (CardButton != null)
                 CardButton.IsHitTestVisible = false;
@@ -193,6 +197,16 @@ public sealed partial class ContentCard : UserControl
         // Clean up SizeChanged subscription to prevent memory leaks
         if (CircleImageContainer != null)
             CircleImageContainer.SizeChanged -= OnCircleContainerSizeChanged;
+
+        // Remove passive pointer handlers to prevent accumulation on recycling
+        if (_passiveHandlersAdded)
+        {
+            RemoveHandler(PointerEnteredEvent, new PointerEventHandler(Card_PointerEntered));
+            RemoveHandler(PointerExitedEvent, new PointerEventHandler(Card_PointerExited));
+            RemoveHandler(PointerPressedEvent, new PointerEventHandler(Card_PointerPressed));
+            RemoveHandler(PointerReleasedEvent, new PointerEventHandler(Card_PointerReleased));
+            _passiveHandlersAdded = false;
+        }
     }
 
     // ── Property changed callbacks ──

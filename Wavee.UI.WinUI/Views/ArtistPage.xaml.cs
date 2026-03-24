@@ -1,12 +1,13 @@
 using System;
+using System.ComponentModel;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -17,6 +18,7 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class ArtistPage : Page, ITabBarItemContent
 {
     private readonly ILogger? _logger;
+    private bool _showingContent;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -30,7 +32,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
         InitializeComponent();
 
+        // Hide content initially — shimmer is visible, content is collapsed
+        ContentContainer.Opacity = 0;
+
         ViewModel.ContentChanged += ViewModel_ContentChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         SizeChanged += OnSizeChanged;
         Unloaded += ArtistPage_Unloaded;
     }
@@ -38,16 +44,59 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
 
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ArtistViewModel.IsLoading))
+        {
+            if (!ViewModel.IsLoading && !_showingContent)
+            {
+                // Defer slightly to let reactive bindings populate collections
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    CrossfadeToContent);
+            }
+        }
+    }
+
+    private async void CrossfadeToContent()
+    {
+        if (_showingContent) return;
+        _showingContent = true;
+
+        // Start both simultaneously — content fades in AS shimmer fades out
+        AnimationBuilder.Create()
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(250),
+                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
+            .Start(ShimmerContainer);
+
+        ContentContainer.Opacity = 1;
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(250),
+                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
+            .Start(ContentContainer);
+
+        // Collapse shimmer after animation completes
+        await Task.Delay(300);
+        if (_showingContent)
+            ShimmerContainer.Visibility = Visibility.Collapsed;
+    }
+
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         SizeChanged -= OnSizeChanged;
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Match the 800px breakpoint from VisualStateManager
-        ViewModel.ColumnCount = e.NewSize.Width >= 800 ? 2 : 1;
+        // Hero height = 45% of page height (min 300)
+        if (HeroGrid != null)
+            HeroGrid.Height = Math.Max(300, e.NewSize.Height * 0.45);
+    }
+
+    private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
+    {
+        ViewModel.ColumnCount = columns;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -56,10 +105,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         try
         {
-            // Try to start connected animation from source page
             ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
 
-            if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
+            if (e.Parameter is ContentNavigationParameter nav)
             {
                 ViewModel.PrefillFrom(nav);
                 ViewModel.Initialize(nav.Uri);
@@ -77,24 +125,31 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
     }
 
-    private void Album_Click(object sender, RoutedEventArgs e)
+    private void Release_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.DataContext is ArtistAlbum album)
+        if (sender is FrameworkElement fe && fe.DataContext is ArtistReleaseVm release)
         {
-            var openInNewTab = NavigationHelpers.IsCtrlPressed();
-            NavigationHelpers.OpenAlbum(album.Id ?? "", album.Title ?? "Album", openInNewTab);
+            var param = new ContentNavigationParameter
+            {
+                Uri = release.Uri ?? release.Id,
+                Title = release.Name,
+                ImageUrl = release.ImageUrl
+            };
+            NavigationHelpers.OpenAlbum(param, release.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
         }
     }
 
-    private void Album_PointerPressed(object sender, PointerRoutedEventArgs e)
+    private void RelatedArtist_Click(object sender, RoutedEventArgs e)
     {
-        // Middle-click to open in new tab
-        if (!e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
-            return;
-
-        if (sender is Button btn && btn.DataContext is ArtistAlbum album)
+        if (sender is FrameworkElement fe && fe.DataContext is RelatedArtistVm artist)
         {
-            NavigationHelpers.OpenAlbum(album.Id ?? "", album.Title ?? "Album", openInNewTab: true);
+            var param = new ContentNavigationParameter
+            {
+                Uri = artist.Uri ?? artist.Id ?? "",
+                Title = artist.Name,
+                ImageUrl = artist.ImageUrl
+            };
+            NavigationHelpers.OpenArtist(param, artist.Name ?? "Artist", NavigationHelpers.IsCtrlPressed());
         }
     }
 }

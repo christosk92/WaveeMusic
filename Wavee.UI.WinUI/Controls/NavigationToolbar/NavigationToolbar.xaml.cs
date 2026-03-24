@@ -11,8 +11,17 @@ public sealed partial class NavigationToolbar : UserControl
     public NavigationToolbar()
     {
         InitializeComponent();
-        ActualThemeChanged += (_, _) => UpdateThemeGlyph();
-        Loaded += (_, _) => UpdateThemeGlyph();
+        ActualThemeChanged += OnActualThemeChanged;
+        Loaded += OnFirstLoaded;
+    }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+        => UpdateThemeGlyph();
+
+    private void OnFirstLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnFirstLoaded; // One-shot
+        UpdateThemeGlyph();
     }
 
     private void UpdateThemeGlyph()

@@ -231,6 +231,22 @@ public sealed class PathfinderClient : IPathfinderClient
             ct);
     }
 
+    /// <inheritdoc />
+    public async Task<ArtistOverviewResponse> GetArtistOverviewAsync(
+        string artistUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artistUri);
+
+        var variables = new ArtistOverviewVariables(artistUri);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryArtistOverview,
+            PathfinderOperations.QueryArtistOverviewHash,
+            ArtistOverviewJsonContext.Default.ArtistOverviewResponse,
+            ct);
+    }
+
     /// <summary>
     /// Builds the JSON request body for a Pathfinder GraphQL query.
     /// Uses Utf8JsonWriter for AOT compatibility instead of reflection-based serialization.
@@ -284,6 +300,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is HomeVariables hv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(hv, HomeVariablesJsonContext.Default.HomeVariables);
+        }
+        else if (variables is ArtistOverviewVariables aov)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(aov, ArtistOverviewVariablesJsonContext.Default.ArtistOverviewVariables);
         }
         else
         {

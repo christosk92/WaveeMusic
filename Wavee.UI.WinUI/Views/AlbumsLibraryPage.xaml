@@ -20,6 +20,7 @@
         ItemsSource="{x:Bind ViewModel.FilteredAlbums, Mode=OneWay}"
         SelectedItem="{x:Bind ViewModel.SelectedAlbum, Mode=TwoWay}"
         SearchQuery="{x:Bind ViewModel.SearchQuery, Mode=TwoWay}"
+        ItemDoubleTapped="LibraryGrid_ItemDoubleTapped"
         SearchPlaceholderText="Filter albums..."
         IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
         EmptyStateText="Select an album to see tracks"
@@ -95,7 +96,7 @@
                             Text="{x:Bind ViewModel.SelectedAlbumMetadata, Mode=OneWay}"/>
 
                         <!-- Action buttons -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                        <primitives:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="6" Margin="0,8,0,0">
                             <Button
                                 Style="{StaticResource AccentButtonStyle}"
                                 Command="{x:Bind ViewModel.PlayAlbumCommand}"
@@ -121,7 +122,7 @@
                                     <TextBlock Text="View album"/>
                                 </StackPanel>
                             </Button>
-                        </StackPanel>
+                        </primitives:WrapPanel>
                     </StackPanel>
                 </Grid>
 

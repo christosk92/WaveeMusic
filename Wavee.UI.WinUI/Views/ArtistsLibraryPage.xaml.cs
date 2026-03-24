@@ -5,7 +5,10 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -106,6 +109,18 @@ public sealed partial class ArtistsLibraryPage : Page
         {
             ViewModel.SelectedArtist = sender.SelectedItem as Data.DTOs.LibraryArtistDto;
         }
+    }
+
+    private void ArtistsView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (ViewModel.SelectedArtist is not { } artist) return;
+        var param = new ContentNavigationParameter
+        {
+            Uri = artist.Id,
+            Title = artist.Name,
+            ImageUrl = artist.ImageUrl
+        };
+        NavigationHelpers.OpenArtist(param, artist.Name, NavigationHelpers.IsCtrlPressed());
     }
 
     private void SyncSelectionToItemsView()

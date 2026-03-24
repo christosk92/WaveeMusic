@@ -60,7 +60,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private string _totalDuration = "";
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
-    private ObservableCollection<ArtistAlbum> _moreByArtist = [];
+    private ObservableCollection<ArtistReleaseVm> _moreByArtist = [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -287,7 +287,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>
     /// More albums by the same artist.
     /// </summary>
-    public ObservableCollection<ArtistAlbum> MoreByArtist
+    public ObservableCollection<ArtistReleaseVm> MoreByArtist
     {
         get => _moreByArtist;
         private set => this.RaiseAndSetIfChanged(ref _moreByArtist, value);
@@ -630,7 +630,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private void OpenRelatedAlbum(string albumId)
     {
         var album = MoreByArtist.FirstOrDefault(a => a.Id == albumId);
-        Helpers.Navigation.NavigationHelpers.OpenAlbum(albumId, album?.Title ?? "Album");
+        Helpers.Navigation.NavigationHelpers.OpenAlbum(albumId, album?.Name ?? "Album");
     }
 
     #region Explicit ITrackListViewModel ICommand Implementation

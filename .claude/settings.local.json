@@ -25,10 +25,8 @@
       "Bash(del \"C:\\\\Users\\\\ckara\\\\Personal\\\\Wavee\\\\Wavee\\\\Wavee.UI.WinUI\\\\Converters\\\\TopCornerRadiusFilterConverter.cs\")",
       "Bash(xargs:*)",
       "Bash(git reset:*)",
-      "WebFetch(domain:commons.wikimedia.org)",
-      "WebFetch(domain:www.last.fm)",
-      "WebFetch(domain:lastfm.freetls.fastly.net)",
-      "Bash(find:*)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:gist.github.com)"
     ],
     "deny": [],
     "ask": []

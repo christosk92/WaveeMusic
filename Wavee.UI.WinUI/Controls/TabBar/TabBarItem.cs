@@ -59,6 +59,9 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     /// </summary>
     public Visibility PinIndicatorVisibility => IsPinned ? Visibility.Visible : Visibility.Collapsed;
 
+    private ITabBarItemContent? _previousContent;
+    private const int MaxBackStackSize = 20;
+
     private TabItemParameter? _navigationParameter;
     public TabItemParameter? NavigationParameter
     {
@@ -114,10 +117,18 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         // Forward navigation event for external subscribers
         Navigated?.Invoke(this, e);
 
+        // Unsubscribe from previous page's ContentChanged to prevent leak
+        if (_previousContent != null)
+            _previousContent.ContentChanged -= TabItemContent_ContentChanged;
+
+        _previousContent = TabItemContent;
+
         if (TabItemContent != null)
-        {
             TabItemContent.ContentChanged += TabItemContent_ContentChanged;
-        }
+
+        // Cap BackStack to prevent unbounded growth
+        while (ContentFrame.BackStack.Count > MaxBackStackSize)
+            ContentFrame.BackStack.RemoveAt(0);
     }
 
     private void TabItemContent_ContentChanged(object? sender, TabItemParameter e)
