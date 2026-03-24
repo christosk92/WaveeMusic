@@ -60,8 +60,15 @@ public static class AppLifecycleHelper
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
                 .AddSingleton<Services.HomeFeedCache>()
+                .AddSingleton<Services.IHomeFeedCache>(sp => sp.GetRequiredService<Services.HomeFeedCache>())
                 .AddSingleton<Services.ProfileCache>()
+                .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton<Services.ImageCacheService>()
+                .AddSingleton<Wavee.Core.Http.IColorService>(sp =>
+                    new Wavee.Core.Http.ExtractedColorService(
+                        sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
+                        sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
+                        sp.GetService<ILogger<Wavee.Core.Http.ExtractedColorService>>()))
 
                 // Spotify session infrastructure
                 .AddTransient<RetryHandler>()
@@ -80,6 +87,10 @@ public static class AppLifecycleHelper
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
                 .AddSingleton<ILibraryDataService, MockLibraryDataService>()
                 .AddSingleton<ICatalogService, MockCatalogService>()
+                .AddSingleton<IArtistService>(sp =>
+                    new Data.Contexts.ArtistService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()

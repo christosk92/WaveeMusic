@@ -247,6 +247,51 @@ public sealed class PathfinderClient : IPathfinderClient
             ct);
     }
 
+    /// <inheritdoc />
+    public Task<ArtistDiscographyResponse> GetArtistDiscographyAlbumsAsync(
+        string artistUri, int offset = 0, int limit = 20, CancellationToken ct = default)
+        => GetArtistDiscographyInternalAsync(artistUri,
+            PathfinderOperations.QueryArtistDiscographyAlbums,
+            PathfinderOperations.QueryArtistDiscographyAlbumsHash,
+            offset, limit, ct);
+
+    /// <inheritdoc />
+    public Task<ArtistDiscographyResponse> GetArtistDiscographySinglesAsync(
+        string artistUri, int offset = 0, int limit = 20, CancellationToken ct = default)
+        => GetArtistDiscographyInternalAsync(artistUri,
+            PathfinderOperations.QueryArtistDiscographySingles,
+            PathfinderOperations.QueryArtistDiscographySinglesHash,
+            offset, limit, ct);
+
+    /// <inheritdoc />
+    public Task<ArtistDiscographyResponse> GetArtistDiscographyCompilationsAsync(
+        string artistUri, int offset = 0, int limit = 20, CancellationToken ct = default)
+        => GetArtistDiscographyInternalAsync(artistUri,
+            PathfinderOperations.QueryArtistDiscographyCompilations,
+            PathfinderOperations.QueryArtistDiscographyCompilationsHash,
+            offset, limit, ct);
+
+    private async Task<ArtistDiscographyResponse> GetArtistDiscographyInternalAsync(
+        string artistUri, string operationName, string sha256Hash,
+        int offset, int limit, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artistUri);
+
+        var variables = new ArtistDiscographyVariables
+        {
+            Uri = artistUri,
+            Offset = offset,
+            Limit = limit
+        };
+
+        return await QueryAsync(
+            variables,
+            operationName,
+            sha256Hash,
+            ArtistDiscographyJsonContext.Default.ArtistDiscographyResponse,
+            ct);
+    }
+
     /// <summary>
     /// Builds the JSON request body for a Pathfinder GraphQL query.
     /// Uses Utf8JsonWriter for AOT compatibility instead of reflection-based serialization.
@@ -304,6 +349,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is ArtistOverviewVariables aov)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(aov, ArtistOverviewVariablesJsonContext.Default.ArtistOverviewVariables);
+        }
+        else if (variables is ArtistDiscographyVariables adv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(adv, ArtistDiscographyVariablesJsonContext.Default.ArtistDiscographyVariables);
         }
         else
         {

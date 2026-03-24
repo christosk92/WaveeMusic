@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.Core.Http;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -152,8 +152,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private ItemsRepeater? _originalRepeater;
     private object? _originalItemsSource;
 
-    // Prefetched extracted colors: imageUrl -> hex
-    private readonly Dictionary<string, string> _colorCache = new();
+    private readonly IColorService _colorService = Ioc.Default.GetRequiredService<IColorService>();
 
     private void AlbumCard_Click(object sender, EventArgs e)
     {
@@ -342,28 +341,29 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         var imageUrl = SpotifyImageHelper.ToHttpsUrl(album.ImageUrl);
         if (string.IsNullOrEmpty(imageUrl)) return;
 
-        // Use cached color if available (prefetched on hover)
-        if (_colorCache.TryGetValue(imageUrl, out var cached))
+        try
         {
-            panel.ColorHex = cached;
-            return;
-        }
+            var color = await _colorService.GetColorAsync(imageUrl);
+            if (color == null) return;
 
-        var hex = await FetchExtractedColorHexAsync(imageUrl);
-        if (!string.IsNullOrEmpty(hex))
+            var isDark = ActualTheme == ElementTheme.Dark;
+            var hex = isDark
+                ? color.DarkHex ?? color.RawHex
+                : color.LightHex ?? color.RawHex;
+
+            if (!string.IsNullOrEmpty(hex))
+                panel.ColorHex = hex;
+        }
+        catch (Exception ex)
         {
-            panel.ColorHex = hex;
+            _logger?.LogWarning(ex, "Failed to fetch album color");
         }
     }
 
-    /// <summary>
-    /// Prefetch color on card hover so it's instant when the user clicks.
-    /// </summary>
     private void AlbumCard_Hover(object sender, EventArgs e)
     {
         if (sender is not FrameworkElement fe) return;
 
-        // Walk up to find the item
         var repeater = FindParent<ItemsRepeater>(fe);
         if (repeater == null) return;
 
@@ -386,45 +386,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (item?.Data?.ImageUrl == null) return;
 
         var imageUrl = SpotifyImageHelper.ToHttpsUrl(item.Data.ImageUrl);
-        if (string.IsNullOrEmpty(imageUrl) || _colorCache.ContainsKey(imageUrl)) return;
+        if (string.IsNullOrEmpty(imageUrl)) return;
 
-        // Fire-and-forget prefetch
-        _ = PrefetchColorAsync(imageUrl);
-    }
-
-    private async Task PrefetchColorAsync(string imageUrl)
-    {
-        var hex = await FetchExtractedColorHexAsync(imageUrl);
-        // Result is cached inside FetchExtractedColorHexAsync
-    }
-
-    private async Task<string?> FetchExtractedColorHexAsync(string imageUrl)
-    {
-        try
-        {
-            var session = Ioc.Default.GetService<Wavee.Core.Session.ISession>();
-            if (session == null || !session.IsConnected()) return null;
-
-            var response = await session.Pathfinder.GetExtractedColorsAsync([imageUrl]);
-            var entry = response.Data?.ExtractedColors?.FirstOrDefault();
-            if (entry == null) return null;
-
-            var isDark = ActualTheme == ElementTheme.Dark;
-            var hex = isDark
-                ? entry.ColorDark?.Hex ?? entry.ColorRaw?.Hex
-                : entry.ColorLight?.Hex ?? entry.ColorRaw?.Hex;
-
-            if (!string.IsNullOrEmpty(hex))
-            {
-                _colorCache[imageUrl] = hex;
-            }
-
-            return hex;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to fetch extracted color");
-            return null;
-        }
+        // Fire-and-forget prefetch via service (hot + SQLite + API)
+        _ = _colorService.GetColorAsync(imageUrl);
     }
 }

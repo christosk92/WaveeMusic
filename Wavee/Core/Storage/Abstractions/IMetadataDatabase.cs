@@ -289,6 +289,21 @@ public interface IMetadataDatabase : IAsyncDisposable
     Task ClearAllPlaylistsAsync(CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Color Cache Operations
+
+    /// <summary>
+    /// Caches extracted colors for an image URL.
+    /// </summary>
+    Task SetColorCacheAsync(string imageUrl, string? darkHex, string? lightHex, string? rawHex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets cached extracted colors for an image URL.
+    /// </summary>
+    /// <returns>Color hex values, or null if not cached.</returns>
+    Task<(string? DarkHex, string? LightHex, string? RawHex)?> GetColorCacheAsync(string imageUrl, CancellationToken ct = default);
+
+    #endregion
 }
 
 /// <summary>

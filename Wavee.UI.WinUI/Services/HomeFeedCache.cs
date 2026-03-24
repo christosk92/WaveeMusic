@@ -19,7 +19,7 @@ public sealed record HomeFeedSnapshot(string? Greeting, List<HomeSection> Sectio
 /// Singleton cache for the home feed. Extends <see cref="PageCache{TSnapshot}"/> with
 /// home-specific diff logic for sections and items.
 /// </summary>
-public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>
+public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 {
     public HomeFeedCache(ILogger<HomeFeedCache>? logger = null) : base(logger)
     {

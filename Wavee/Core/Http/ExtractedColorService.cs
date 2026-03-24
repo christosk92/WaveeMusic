@@ -1,26 +1,52 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.Core.Storage.Abstractions;
 
 namespace Wavee.Core.Http;
 
-public sealed class ExtractedColorService
+/// <summary>
+/// Extracted color service with 3-tier caching: hot (in-memory) → SQLite → API.
+/// Singleton — shared across all pages, persists across navigation.
+/// </summary>
+public sealed class ExtractedColorService : IColorService
 {
-    private readonly PathfinderClient _pathfinder;
+    private readonly IPathfinderClient _pathfinder;
+    private readonly IMetadataDatabase _db;
     private readonly ILogger? _logger;
-    private readonly ConcurrentDictionary<string, ExtractedColor> _cache = new();
+    private readonly ConcurrentDictionary<string, ExtractedColor> _hot = new();
 
-    public ExtractedColorService(PathfinderClient pathfinder, ILogger? logger = null)
+    public ExtractedColorService(IPathfinderClient pathfinder, IMetadataDatabase db, ILogger? logger = null)
     {
         _pathfinder = pathfinder;
+        _db = db;
         _logger = logger;
     }
 
     public async Task<ExtractedColor?> GetColorAsync(string imageUrl, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(imageUrl)) return null;
-        if (_cache.TryGetValue(imageUrl, out var cached)) return cached;
 
+        // 1. Hot cache
+        if (_hot.TryGetValue(imageUrl, out var cached)) return cached;
+
+        // 2. SQLite
+        try
+        {
+            var dbResult = await _db.GetColorCacheAsync(imageUrl, ct);
+            if (dbResult.HasValue)
+            {
+                var color = new ExtractedColor(dbResult.Value.DarkHex, dbResult.Value.LightHex, dbResult.Value.RawHex);
+                _hot.TryAdd(imageUrl, color);
+                return color;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "SQLite color cache read failed for {Url}", imageUrl);
+        }
+
+        // 3. API
         var colors = await GetColorsAsync([imageUrl], ct);
         return colors.GetValueOrDefault(imageUrl);
     }
@@ -33,10 +59,27 @@ public sealed class ExtractedColorService
 
         foreach (var url in imageUrls)
         {
-            if (_cache.TryGetValue(url, out var cached))
+            if (_hot.TryGetValue(url, out var cached))
+            {
                 result[url] = cached;
-            else
-                missing.Add(url);
+                continue;
+            }
+
+            // Check SQLite
+            try
+            {
+                var dbResult = await _db.GetColorCacheAsync(url, ct);
+                if (dbResult.HasValue)
+                {
+                    var color = new ExtractedColor(dbResult.Value.DarkHex, dbResult.Value.LightHex, dbResult.Value.RawHex);
+                    _hot.TryAdd(url, color);
+                    result[url] = color;
+                    continue;
+                }
+            }
+            catch { /* fall through to API */ }
+
+            missing.Add(url);
         }
 
         if (missing.Count > 0)
@@ -56,8 +99,22 @@ public sealed class ExtractedColorService
                             entry.ColorLight?.Hex,
                             entry.ColorRaw?.Hex);
 
-                        _cache.TryAdd(missing[i], color);
+                        _hot.TryAdd(missing[i], color);
                         result[missing[i]] = color;
+
+                        // Persist to SQLite (fire-and-forget, don't block the caller)
+                        var url = missing[i];
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await _db.SetColorCacheAsync(url, color.DarkHex, color.LightHex, color.RawHex);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger?.LogDebug(ex, "Failed to persist color to SQLite for {Url}", url);
+                            }
+                        });
                     }
                 }
             }
@@ -69,6 +126,4 @@ public sealed class ExtractedColorService
 
         return result;
     }
-
-    public void ClearCache() => _cache.Clear();
 }

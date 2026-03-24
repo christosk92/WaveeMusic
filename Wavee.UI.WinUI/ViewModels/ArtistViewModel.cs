@@ -5,24 +5,26 @@ using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using DynamicData;
 using DynamicData.Binding;
 using Microsoft.Extensions.Logging;
-using Wavee.Core.Http.Pathfinder;
-using Wavee.Core.Session;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
+    private readonly IArtistService _artistService;
     private readonly ILogger? _logger;
     private readonly CompositeDisposable _disposables = new();
+    private CancellationTokenSource? _discoCts;
 
     // ── Reactive data sources ──
     private readonly SourceCache<LazyTrackItem, string> _topTracksSource = new(t => t.Id);
@@ -99,8 +101,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Constructor (reactive pipelines) ──
 
-    public ArtistViewModel(ILogger<ArtistViewModel>? logger = null)
+    public ArtistViewModel(IArtistService artistService, ILogger<ArtistViewModel>? logger = null)
     {
+        _artistService = artistService;
         _logger = logger;
 
         // Top tracks: bind in insertion order (already ordered by popularity from API)
@@ -110,7 +113,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             .DisposeWith(_disposables);
 
         // Albums: filter + sort by date desc
+        // AutoRefresh ensures filter/sort re-evaluate when placeholders get populated
         _releasesSource.Connect()
+            .AutoRefresh(r => r.IsLoaded)
+            .AutoRefresh(r => r.Data)
             .Filter(r => r.Data?.Type == "ALBUM" || (!r.IsLoaded && r.Id.StartsWith("album-ph")))
             .Sort(SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
             .Bind(out _albums)
@@ -119,6 +125,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         // Singles
         _releasesSource.Connect()
+            .AutoRefresh(r => r.IsLoaded)
+            .AutoRefresh(r => r.Data)
             .Filter(r => r.Data?.Type == "SINGLE" || (!r.IsLoaded && r.Id.StartsWith("single-ph")))
             .Sort(SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
             .Bind(out _singles)
@@ -127,6 +135,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         // Compilations
         _releasesSource.Connect()
+            .AutoRefresh(r => r.IsLoaded)
+            .AutoRefresh(r => r.Data)
             .Filter(r => r.Data?.Type == "COMPILATION" || (!r.IsLoaded && r.Id.StartsWith("comp-ph")))
             .Sort(SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
             .Bind(out _compilations)
@@ -163,89 +173,61 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         try
         {
-            var session = Ioc.Default.GetService<ISession>();
-            if (session == null || !session.IsConnected())
-            {
-                HasError = true;
-                ErrorMessage = "Not connected to Spotify";
-                return;
-            }
-
-            var response = await session.Pathfinder.GetArtistOverviewAsync(ArtistId);
-            var artist = response.Data?.ArtistUnion;
-            if (artist == null)
-            {
-                HasError = true;
-                ErrorMessage = "Artist not found";
-                return;
-            }
+            var overview = await _artistService.GetOverviewAsync(ArtistId);
 
             // ── Map scalar properties ──
-            ArtistName = artist.Profile?.Name ?? ArtistName;
-            ArtistImageUrl = artist.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url ?? ArtistImageUrl;
-            HeaderImageUrl = artist.HeaderImage?.Data?.Sources
-                ?.OrderByDescending(s => s.MaxWidth ?? s.Width ?? 0)
-                .FirstOrDefault()?.Url;
-            MonthlyListeners = artist.Stats?.MonthlyListeners ?? 0;
-            Followers = artist.Stats?.Followers ?? 0;
-            Biography = artist.Profile?.Biography?.Text;
-            IsVerified = artist.Profile?.Verified ?? false;
+            ArtistName = overview.Name ?? ArtistName;
+            ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
+            HeaderImageUrl = overview.HeaderImageUrl;
+            MonthlyListeners = overview.MonthlyListeners;
+            Followers = overview.Followers;
+            Biography = overview.Biography;
+            IsVerified = overview.IsVerified;
 
             // ── Latest release ──
-            var latest = artist.Discography?.Latest;
-            if (latest != null)
+            if (overview.LatestRelease != null)
             {
-                LatestReleaseName = latest.Name;
-                LatestReleaseImageUrl = latest.CoverArt?.Sources?.LastOrDefault()?.Url;
-                LatestReleaseUri = latest.Uri;
-                LatestReleaseType = latest.Type;
-                LatestReleaseTrackCount = latest.Tracks?.TotalCount ?? 0;
-                LatestReleaseDate = FormatReleaseDate(latest.Date);
+                LatestReleaseName = overview.LatestRelease.Name;
+                LatestReleaseImageUrl = overview.LatestRelease.ImageUrl;
+                LatestReleaseUri = overview.LatestRelease.Uri;
+                LatestReleaseType = overview.LatestRelease.Type;
+                LatestReleaseTrackCount = overview.LatestRelease.TrackCount;
+                LatestReleaseDate = overview.LatestRelease.FormattedDate;
             }
 
-            // ── Top tracks (reactive source update) ──
+            // ── Top tracks ──
             _topTracksSource.Edit(cache =>
             {
                 cache.Clear();
                 int idx = 1;
 
-                // Add loaded tracks from initial API response
-                if (artist.Discography?.TopTracks?.Items != null)
+                foreach (var track in overview.TopTracks)
                 {
-                    foreach (var item in artist.Discography.TopTracks.Items)
+                    var trackVm = new ArtistTopTrackVm
                     {
-                        var track = item.Track;
-                        if (track == null) continue;
+                        Id = track.Id,
+                        Index = idx,
+                        Title = track.Title,
+                        Uri = track.Uri,
+                        AlbumName = null,
+                        AlbumImageUrl = track.AlbumImageUrl,
+                        AlbumUri = track.AlbumUri,
+                        Duration = track.Duration,
+                        PlayCountRaw = track.PlayCount,
+                        ArtistNames = track.ArtistNames,
+                        IsExplicit = track.IsExplicit,
+                        IsPlayable = track.IsPlayable
+                    };
 
-                        var trackVm = new ArtistTopTrackVm
-                        {
-                            Id = track.Id ?? item.Uid ?? $"track-{idx}",
-                            Index = idx,
-                            Title = track.Name,
-                            Uri = track.Uri,
-                            AlbumName = null,
-                            AlbumImageUrl = track.AlbumOfTrack?.CoverArt?.Sources?.FirstOrDefault()?.Url,
-                            AlbumUri = track.AlbumOfTrack?.Uri,
-                            Duration = TimeSpan.FromMilliseconds(track.Duration?.TotalMilliseconds ?? 0),
-                            PlayCountRaw = long.TryParse(track.Playcount, out var pc) ? pc : 0,
-                            ArtistNames = string.Join(", ",
-                                track.Artists?.Items?.Select(a => a.Profile?.Name ?? "") ?? []),
-                            IsExplicit = track.ContentRating?.Label == "EXPLICIT",
-                            IsPlayable = track.Playability?.Playable ?? true
-                        };
-
-                        cache.AddOrUpdate(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
-                        idx++;
-                    }
+                    cache.AddOrUpdate(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
+                    idx++;
                 }
 
-                // Pad to fill the current page so placeholders start on the next page
+                // Pad + shimmer placeholders
                 var loadedCount = idx - 1;
-                var pageSize = TracksPerPage > 0 ? TracksPerPage : 12; // fallback
+                var pageSize = TracksPerPage > 0 ? TracksPerPage : 12;
                 var remainder = loadedCount % pageSize;
                 var padCount = remainder > 0 ? pageSize - remainder : 0;
-
-                // Add placeholders: padding to fill current page + a full page of shimmers
                 for (int i = 0; i < padCount + pageSize; i++)
                 {
                     cache.AddOrUpdate(LazyTrackItem.Placeholder($"placeholder-{idx}", idx));
@@ -253,45 +235,67 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 }
             });
 
-            // ── Releases (all types into one SourceCache with placeholders) ──
-            var albumsTotal = artist.Discography?.Albums?.TotalCount ?? 0;
-            var singlesTotal = artist.Discography?.Singles?.TotalCount ?? 0;
-            var compilationsTotal = artist.Discography?.Compilations?.TotalCount ?? 0;
+            // ── Releases ──
+            var albumsLoaded = overview.Albums.Count;
+            var singlesLoaded = overview.Singles.Count;
+            var compilationsLoaded = overview.Compilations.Count;
 
             _releasesSource.Edit(cache =>
             {
                 cache.Clear();
-                var albumsLoaded = MapReleaseGroup(cache, artist.Discography?.Albums, "ALBUM");
-                var singlesLoaded = MapReleaseGroup(cache, artist.Discography?.Singles, "SINGLE");
-                var compilationsLoaded = MapReleaseGroup(cache, artist.Discography?.Compilations, "COMPILATION");
-
-                // Add shimmer placeholders for remaining items
-                for (int i = albumsLoaded; i < albumsTotal; i++)
-                    cache.AddOrUpdate(LazyReleaseItem.Placeholder($"album-ph-{i}", i));
-                for (int i = singlesLoaded; i < singlesTotal; i++)
-                    cache.AddOrUpdate(LazyReleaseItem.Placeholder($"single-ph-{i}", i));
-                for (int i = compilationsLoaded; i < compilationsTotal; i++)
-                    cache.AddOrUpdate(LazyReleaseItem.Placeholder($"comp-ph-{i}", i));
+                AddReleasesToCache(cache, overview.Albums, "ALBUM", "album-ph", overview.AlbumsTotalCount);
+                AddReleasesToCache(cache, overview.Singles, "SINGLE", "single-ph", overview.SinglesTotalCount);
+                AddReleasesToCache(cache, overview.Compilations, "COMPILATION", "comp-ph", overview.CompilationsTotalCount);
             });
 
-            AlbumsTotalCount = albumsTotal;
-            SinglesTotalCount = singlesTotal;
-            CompilationsTotalCount = compilationsTotal;
+            AlbumsTotalCount = overview.AlbumsTotalCount;
+            SinglesTotalCount = overview.SinglesTotalCount;
+            CompilationsTotalCount = overview.CompilationsTotalCount;
+
+            // ── Background discography pagination ──
+            _discoCts?.Cancel();
+            _discoCts = new CancellationTokenSource();
+            var discoToken = _discoCts.Token;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var tasks = new List<Task>();
+
+                    if (albumsLoaded < overview.AlbumsTotalCount)
+                        tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                            "ALBUM", "album-ph", albumsLoaded, overview.AlbumsTotalCount, discoToken));
+
+                    if (singlesLoaded < overview.SinglesTotalCount)
+                        tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                            "SINGLE", "single-ph", singlesLoaded, overview.SinglesTotalCount, discoToken));
+
+                    if (compilationsLoaded < overview.CompilationsTotalCount)
+                        tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                            "COMPILATION", "comp-ph", compilationsLoaded, overview.CompilationsTotalCount, discoToken));
+
+                    if (tasks.Count > 0)
+                        await Task.WhenAll(tasks);
+                }
+                catch (OperationCanceledException) { /* navigated away */ }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Background discography fetch failed for {ArtistId}", ArtistId);
+                }
+            }, discoToken);
 
             // ── Related artists ──
             RelatedArtists.Clear();
-            if (artist.RelatedContent?.RelatedArtists?.Items != null)
+            foreach (var ra in overview.RelatedArtists)
             {
-                foreach (var ra in artist.RelatedContent.RelatedArtists.Items)
+                RelatedArtists.Add(new RelatedArtistVm
                 {
-                    RelatedArtists.Add(new RelatedArtistVm
-                    {
-                        Id = ra.Id,
-                        Uri = ra.Uri,
-                        Name = ra.Profile?.Name,
-                        ImageUrl = ra.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url
-                    });
-                }
+                    Id = ra.Id,
+                    Uri = ra.Uri,
+                    Name = ra.Name,
+                    ImageUrl = ra.ImageUrl
+                });
             }
 
             // ── Pagination ──
@@ -301,7 +305,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         catch (Exception ex)
         {
             HasError = true;
-            ErrorMessage = ex.Message;
+            ErrorMessage = ErrorMapper.ToUserMessage(ex);
             _logger?.LogError(ex, "Failed to load artist {ArtistId}", ArtistId);
         }
         finally
@@ -312,56 +316,35 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Mapping helpers ──
 
-    private static int MapReleaseGroup(
+    private static void AddReleasesToCache(
         ISourceUpdater<LazyReleaseItem, string> cache,
-        ArtistReleaseGroup? group,
-        string type)
+        List<ArtistReleaseResult> releases,
+        string type,
+        string phPrefix,
+        int totalCount)
     {
-        if (group?.Items == null) return 0;
-
         int count = 0;
-        foreach (var item in group.Items)
+        foreach (var r in releases)
         {
-            var release = item.Releases?.Items?.FirstOrDefault();
-            if (release?.Id == null) continue;
-
             var vm = new ArtistReleaseVm
             {
-                Id = release.Id,
-                Uri = release.Uri,
-                Name = release.Name,
+                Id = r.Id,
+                Uri = r.Uri,
+                Name = r.Name,
                 Type = type,
-                ImageUrl = release.CoverArt?.Sources?.LastOrDefault()?.Url,
-                ReleaseDate = ParseReleaseDate(release.Date),
-                TrackCount = release.Tracks?.TotalCount ?? 0,
-                Label = release.Label,
-                Year = release.Date?.Year ?? 0
+                ImageUrl = r.ImageUrl,
+                ReleaseDate = r.ReleaseDate,
+                TrackCount = r.TrackCount,
+                Label = r.Label,
+                Year = r.Year
             };
-
             cache.AddOrUpdate(LazyReleaseItem.Loaded(vm.Id, count, vm));
             count++;
         }
-        return count;
-    }
 
-    private static DateTimeOffset ParseReleaseDate(ArtistReleaseDate? date)
-    {
-        if (date == null) return DateTimeOffset.MinValue;
-        try
-        {
-            return new DateTimeOffset(date.Year, date.Month ?? 1, date.Day ?? 1, 0, 0, 0, TimeSpan.Zero);
-        }
-        catch
-        {
-            return DateTimeOffset.MinValue;
-        }
-    }
-
-    private static string FormatReleaseDate(ArtistReleaseDate? date)
-    {
-        if (date == null) return "";
-        var dt = new DateTime(date.Year, date.Month ?? 1, date.Day ?? 1);
-        return dt.ToString("MMM d, yyyy").ToUpperInvariant();
+        // Add shimmer placeholders for remaining items
+        for (int i = count; i < totalCount; i++)
+            cache.AddOrUpdate(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
     }
 
     // ── Album expand/collapse ──
@@ -410,6 +393,60 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         ExpandedAlbum = null;
         IsLoadingExpandedTracks = false;
+    }
+
+    // ── Background discography pagination ──
+
+    private async Task FetchDiscographyGroupAsync(
+        string artistUri,
+        string type,
+        string phPrefix,
+        int alreadyLoaded,
+        int totalCount,
+        CancellationToken ct)
+    {
+        const int pageSize = 20;
+        var offset = alreadyLoaded;
+
+        while (offset < totalCount)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSize, ct);
+
+            if (releases.Count == 0)
+                break;
+
+            _releasesSource.Edit(cache =>
+            {
+                int idx = offset;
+                foreach (var r in releases)
+                {
+                    var vm = new ArtistReleaseVm
+                    {
+                        Id = r.Id,
+                        Uri = r.Uri,
+                        Name = r.Name,
+                        Type = type,
+                        ImageUrl = r.ImageUrl,
+                        ReleaseDate = r.ReleaseDate,
+                        TrackCount = r.TrackCount,
+                        Label = r.Label,
+                        Year = r.Year
+                    };
+
+                    var phKey = $"{phPrefix}-{idx}";
+                    var existing = cache.Lookup(phKey);
+                    if (existing.HasValue)
+                        existing.Value.Populate(vm);
+                    else
+                        cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
+                    idx++;
+                }
+            });
+
+            offset += releases.Count;
+        }
     }
 
     // ── Commands ──
@@ -480,6 +517,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void Dispose()
     {
+        _discoCts?.Cancel();
+        _discoCts?.Dispose();
         _disposables.Dispose();
         _topTracksSource.Dispose();
         _releasesSource.Dispose();

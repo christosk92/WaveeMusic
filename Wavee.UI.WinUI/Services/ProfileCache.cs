@@ -32,7 +32,7 @@ public sealed record ProfileSnapshot
 /// Singleton cache for the profile page. Extends <see cref="PageCache{TSnapshot}"/> with
 /// profile-specific fetch logic and flat-list diff helpers.
 /// </summary>
-public sealed class ProfileCache : PageCache<ProfileSnapshot>
+public sealed class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
 {
     public ProfileCache(ILogger<ProfileCache>? logger = null) : base(logger)
     {

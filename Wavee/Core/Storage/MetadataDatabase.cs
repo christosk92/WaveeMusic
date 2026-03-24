@@ -22,7 +22,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     // Schema version for migrations - bump to force fresh start
     // v4: Added is_from_rootlist column to spotify_playlists
-    private const int CurrentSchemaVersion = 4;
+    // v5: Added color_cache table
+    private const int CurrentSchemaVersion = 5;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -102,6 +103,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS podcast_episodes;
             DROP TABLE IF EXISTS episode_progress;
             DROP TABLE IF EXISTS spotify_playlists;
+            DROP TABLE IF EXISTS color_cache;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -348,6 +350,22 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         revision            TEXT,
                         folder_path         TEXT,
                         is_from_rootlist    INTEGER NOT NULL DEFAULT 1
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Color cache table
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS color_cache (
+                        image_url   TEXT PRIMARY KEY NOT NULL,
+                        dark_hex    TEXT,
+                        light_hex   TEXT,
+                        raw_hex     TEXT,
+                        cached_at   INTEGER NOT NULL
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -1649,6 +1667,61 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         _hotCache[cacheKey] = new CachedExtensionEntry(data, etag, expiresAt);
+    }
+
+    #endregion
+
+    #region Color Cache Operations
+
+    /// <inheritdoc />
+    public async Task SetColorCacheAsync(string imageUrl, string? darkHex, string? lightHex, string? rawHex, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO color_cache (image_url, dark_hex, light_hex, raw_hex, cached_at)
+                VALUES (@url, @dark, @light, @raw, @cached)
+                """;
+            cmd.Parameters.AddWithValue("@url", imageUrl);
+            cmd.Parameters.AddWithValue("@dark", (object?)darkHex ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@light", (object?)lightHex ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@raw", (object?)rawHex ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<(string? DarkHex, string? LightHex, string? RawHex)?> GetColorCacheAsync(string imageUrl, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT dark_hex, light_hex, raw_hex FROM color_cache WHERE image_url = @url";
+        cmd.Parameters.AddWithValue("@url", imageUrl);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return (
+                reader.IsDBNull(0) ? null : reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2)
+            );
+        }
+
+        return null;
     }
 
     #endregion
