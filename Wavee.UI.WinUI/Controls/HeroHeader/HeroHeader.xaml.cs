@@ -18,6 +18,7 @@ public sealed partial class HeroHeader : UserControl
     private CompositionSurfaceBrush? _surfaceBrush;
     private SpriteVisual? _spriteVisual;
     private Compositor? _compositor;
+    private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
 
     // ── Dependency Properties ──
 
@@ -102,6 +103,32 @@ public sealed partial class HeroHeader : UserControl
     {
         InitializeComponent();
         ImageBorder.Loaded += OnImageBorderLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        Unloaded -= OnUnloaded;
+
+        _imageSurface?.Dispose();
+        _imageSurface = null;
+
+        if (_surfaceBrush != null)
+        {
+            _surfaceBrush.Surface = null;
+            _surfaceBrush.Dispose();
+            _surfaceBrush = null;
+        }
+
+        if (_spriteVisual != null)
+        {
+            ElementCompositionPreview.SetElementChildVisual(ImageBorder, null);
+            _spriteVisual.Brush?.Dispose();
+            _spriteVisual.Dispose();
+            _spriteVisual = null;
+        }
+
+        _compositor = null;
     }
 
     private void OnImageBorderLoaded(object sender, RoutedEventArgs e)

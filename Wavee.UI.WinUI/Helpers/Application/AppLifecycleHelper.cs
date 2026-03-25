@@ -86,11 +86,15 @@ public static class AppLifecycleHelper
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
                 .AddSingleton<ILibraryDataService, MockLibraryDataService>()
-                .AddSingleton<ICatalogService, MockCatalogService>()
                 .AddSingleton<IArtistService>(sp =>
                     new Data.Contexts.ArtistService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
+                .AddSingleton<IAlbumService>(sp =>
+                    new Data.Contexts.AlbumService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
+                        sp.GetService<ILogger<Data.Contexts.AlbumService>>()))
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()

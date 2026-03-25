@@ -45,14 +45,14 @@ public sealed partial class ArtistAlbumItemViewModel : ObservableObject
         _onSelect?.Invoke(this);
     }
 
-    public async Task LoadTracksAsync(ICatalogService catalogService)
+    public async Task LoadTracksAsync(IAlbumService albumService)
     {
         if (HasLoadedTracks || IsLoadingTracks) return;
 
         try
         {
             IsLoadingTracks = true;
-            var tracks = await catalogService.GetAlbumTracksAsync(Album.Id);
+            var tracks = await albumService.GetTracksAsync(Album.Id);
 
             Tracks.Clear();
             foreach (var track in tracks)

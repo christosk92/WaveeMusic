@@ -23,7 +23,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // Schema version for migrations - bump to force fresh start
     // v4: Added is_from_rootlist column to spotify_playlists
     // v5: Added color_cache table
-    private const int CurrentSchemaVersion = 5;
+    // v6: Added album_tracks_cache table
+    private const int CurrentSchemaVersion = 6;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -104,6 +105,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS episode_progress;
             DROP TABLE IF EXISTS spotify_playlists;
             DROP TABLE IF EXISTS color_cache;
+            DROP TABLE IF EXISTS album_tracks_cache;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -350,6 +352,20 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         revision            TEXT,
                         folder_path         TEXT,
                         is_from_rootlist    INTEGER NOT NULL DEFAULT 1
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Album tracks cache table
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS album_tracks_cache (
+                        album_uri   TEXT PRIMARY KEY NOT NULL,
+                        json_data   TEXT NOT NULL,
+                        cached_at   INTEGER NOT NULL
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -1667,6 +1683,53 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         _hotCache[cacheKey] = new CachedExtensionEntry(data, etag, expiresAt);
+    }
+
+    #endregion
+
+    #region Album Tracks Cache Operations
+
+    /// <inheritdoc />
+    public async Task SetAlbumTracksCacheAsync(string albumUri, string jsonData, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO album_tracks_cache (album_uri, json_data, cached_at)
+                VALUES (@uri, @json, @cached)
+                """;
+            cmd.Parameters.AddWithValue("@uri", albumUri);
+            cmd.Parameters.AddWithValue("@json", jsonData);
+            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GetAlbumTracksCacheAsync(string albumUri, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT json_data FROM album_tracks_cache WHERE album_uri = @uri";
+        cmd.Parameters.AddWithValue("@uri", albumUri);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+            return reader.GetString(0);
+
+        return null;
     }
 
     #endregion

@@ -160,7 +160,8 @@
                         PointerEntered="Row_PointerEntered"
                         PointerExited="Row_PointerExited"
                         RightTapped="Row_RightTapped">
-                        <Grid ColumnSpacing="0">
+                        <Grid>
+                        <Grid x:Name="ContentGrid" ColumnSpacing="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40"/>
                                 <ColumnDefinition Width="42"/>
@@ -203,10 +204,10 @@
                                 <Grid>
                                     <FontIcon Glyph="&#xE8D6;" FontSize="16" Opacity="0.3"
                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                    <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='34'}"
+                                              Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                    <Image Source="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='34'}"
                                            Stretch="UniformToFill"
-                                           Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
+                                           Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                            behaviors:ImageFallbackBehavior.HideOnError="True"
                                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
                                            behaviors:ImageFallbackBehavior.DecodePixelWidth="68"/>
@@ -215,11 +216,11 @@
 
                             <!-- Title -->
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="12,0,8,0" VerticalAlignment="Center">
-                                <TextBlock Text="{x:Bind Title}"
+                                <TextBlock Text="{x:Bind Title, Mode=OneWay}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            TextTrimming="CharacterEllipsis"
                                            MaxLines="1"/>
-                                <Border Visibility="{x:Bind IsExplicit, Converter={StaticResource BoolToVisibilityConverter}}"
+                                <Border Visibility="{x:Bind IsExplicit, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                         Background="{ThemeResource TextFillColorSecondaryBrush}"
                                         CornerRadius="2"
                                         Padding="4,1"
@@ -231,8 +232,8 @@
 
                             <!-- Artist (clickable) -->
                             <HyperlinkButton Grid.Column="3"
-                                             Content="{x:Bind ArtistName}"
-                                             Tag="{x:Bind ArtistId}"
+                                             Content="{x:Bind ArtistName, Mode=OneWay}"
+                                             Tag="{x:Bind ArtistId, Mode=OneWay}"
                                              Click="ArtistLink_Click"
                                              Padding="0"
                                              VerticalAlignment="Center">
@@ -249,8 +250,8 @@
 
                             <!-- Album (clickable) -->
                             <HyperlinkButton Grid.Column="4"
-                                             Content="{x:Bind AlbumName}"
-                                             Tag="{x:Bind AlbumId}"
+                                             Content="{x:Bind AlbumName, Mode=OneWay}"
+                                             Tag="{x:Bind AlbumId, Mode=OneWay}"
                                              Click="AlbumLink_Click"
                                              Padding="0"
                                              VerticalAlignment="Center">
@@ -273,11 +274,31 @@
 
                             <!-- Duration -->
                             <TextBlock Grid.Column="6"
-                                       Text="{x:Bind DurationFormatted}"
+                                       Text="{x:Bind DurationFormatted, Mode=OneWay}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        HorizontalAlignment="Right"
                                        VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- Shimmer overlay for lazy/loading rows -->
+                        <Grid x:Name="ShimmerOverlay" VerticalAlignment="Center"
+                              Visibility="Collapsed"
+                              ColumnSpacing="12" Padding="40,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="34"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="50"/>
+                            </Grid.ColumnDefinitions>
+                            <controls:Shimmer Grid.Column="0" Width="34" Height="34" CornerRadius="4"/>
+                            <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                                <controls:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
+                                <controls:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                            <controls:Shimmer Grid.Column="2" Width="50" Height="12"/>
+                            <controls:Shimmer Grid.Column="3" Width="36" Height="12" HorizontalAlignment="Right"/>
+                        </Grid>
                         </Grid>
                     </Border>
                 </DataTemplate>
@@ -390,10 +411,8 @@
             </Grid>
         </Border>
 
-        <!-- Loading Overlay -->
-        <Grid x:Name="LoadingOverlay" Background="{ThemeResource LayerFillColorDefaultBrush}" Visibility="Collapsed">
-            <ProgressRing IsActive="True" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Grid>
+        <!-- Loading Overlay (no progress ring — shimmer rows handle loading state) -->
+        <Grid x:Name="LoadingOverlay" Visibility="Collapsed"/>
 
         <!-- Empty State -->
         <ContentPresenter x:Name="EmptyStatePresenter"

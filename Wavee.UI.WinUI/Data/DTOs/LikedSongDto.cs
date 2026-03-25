@@ -8,6 +8,7 @@ namespace Wavee.UI.WinUI.Data.DTOs;
 /// </summary>
 public sealed record LikedSongDto : ITrackItem
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }
     public required string Title { get; init; }
     public required string ArtistName { get; init; }
@@ -19,6 +20,7 @@ public sealed record LikedSongDto : ITrackItem
     public DateTime AddedAt { get; init; }
     public bool IsExplicit { get; init; }
     public int OriginalIndex { get; init; }
+    public bool IsLoaded => true;
 
     /// <summary>
     /// Duration formatted as m:ss or h:mm:ss

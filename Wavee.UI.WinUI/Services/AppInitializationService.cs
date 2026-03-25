@@ -16,7 +16,6 @@ internal sealed class AppInitializationService
     private readonly IAuthState _authState;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly INotificationService _notificationService;
-    private readonly ICatalogService _catalogService;
     private readonly IDataServiceConfiguration _config;
     private readonly ILogger? _logger;
 
@@ -24,14 +23,12 @@ internal sealed class AppInitializationService
         IAuthState authState,
         IPlaybackStateService playbackStateService,
         INotificationService notificationService,
-        ICatalogService catalogService,
         IDataServiceConfiguration config,
         ILogger<AppInitializationService>? logger = null)
     {
         _authState = authState;
         _playbackStateService = playbackStateService;
         _notificationService = notificationService;
-        _catalogService = catalogService;
         _config = config;
         _logger = logger;
     }
@@ -74,34 +71,9 @@ internal sealed class AppInitializationService
             autoDismissAfter: TimeSpan.FromSeconds(5));
     }
 
-    private async Task LoadDemoPlaybackAsync()
+    private Task LoadDemoPlaybackAsync()
     {
-        const string demoAlbumId = "spotify:album:1"; // Abbey Road
-
-        var album = await _catalogService.GetAlbumAsync(demoAlbumId);
-        var tracks = await _catalogService.GetAlbumTracksAsync(demoAlbumId);
-
-        if (tracks.Count == 0)
-            return;
-
-        var queueItems = tracks.Select(t => new QueueItem
-        {
-            TrackId = t.Id,
-            Title = t.Title,
-            ArtistName = t.ArtistName,
-            AlbumArt = t.ImageUrl ?? album.ImageUrl,
-            DurationMs = t.Duration.TotalMilliseconds,
-            IsUserQueued = false
-        }).ToList();
-
-        var context = new PlaybackContextInfo
-        {
-            ContextUri = demoAlbumId,
-            Type = PlaybackContextType.Album,
-            Name = album.Name,
-            ImageUrl = album.ImageUrl
-        };
-
-        _playbackStateService.LoadQueue(queueItems, context, startIndex: 0);
+        // Demo playback removed — app uses real Spotify data via IAlbumService
+        return Task.CompletedTask;
     }
 }

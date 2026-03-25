@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -22,7 +24,9 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private readonly IArtistService _artistService;
+    private readonly IAlbumService _albumService;
     private readonly ILogger? _logger;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private readonly CompositeDisposable _disposables = new();
     private CancellationTokenSource? _discoCts;
 
@@ -101,10 +105,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Constructor (reactive pipelines) ──
 
-    public ArtistViewModel(IArtistService artistService, ILogger<ArtistViewModel>? logger = null)
+    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
+        _albumService = albumService;
         _logger = logger;
+        _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
         // Top tracks: bind in insertion order (already ordered by popularity from API)
         _topTracksSource.Connect()
@@ -257,33 +263,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             _discoCts = new CancellationTokenSource();
             var discoToken = _discoCts.Token;
 
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var tasks = new List<Task>();
-
-                    if (albumsLoaded < overview.AlbumsTotalCount)
-                        tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
-                            "ALBUM", "album-ph", albumsLoaded, overview.AlbumsTotalCount, discoToken));
-
-                    if (singlesLoaded < overview.SinglesTotalCount)
-                        tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
-                            "SINGLE", "single-ph", singlesLoaded, overview.SinglesTotalCount, discoToken));
-
-                    if (compilationsLoaded < overview.CompilationsTotalCount)
-                        tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
-                            "COMPILATION", "comp-ph", compilationsLoaded, overview.CompilationsTotalCount, discoToken));
-
-                    if (tasks.Count > 0)
-                        await Task.WhenAll(tasks);
-                }
-                catch (OperationCanceledException) { /* navigated away */ }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "Background discography fetch failed for {ArtistId}", ArtistId);
-                }
-            }, discoToken);
+            // Run API fetches on thread pool, dispatch Populate() to UI thread
+            _ = Task.Run(() => FetchRemainingDiscographyAsync(
+                albumsLoaded, overview.AlbumsTotalCount,
+                singlesLoaded, overview.SinglesTotalCount,
+                compilationsLoaded, overview.CompilationsTotalCount,
+                discoToken), discoToken);
 
             // ── Related artists ──
             RelatedArtists.Clear();
@@ -347,10 +332,44 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             cache.AddOrUpdate(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
     }
 
+    // ── Background discography pagination ──
+
+    private async Task FetchRemainingDiscographyAsync(
+        int albumsLoaded, int albumsTotal,
+        int singlesLoaded, int singlesTotal,
+        int compilationsLoaded, int compilationsTotal,
+        CancellationToken ct)
+    {
+        try
+        {
+            var tasks = new List<Task>();
+
+            if (albumsLoaded < albumsTotal)
+                tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                    "ALBUM", "album-ph", albumsLoaded, albumsTotal, ct));
+
+            if (singlesLoaded < singlesTotal)
+                tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                    "SINGLE", "single-ph", singlesLoaded, singlesTotal, ct));
+
+            if (compilationsLoaded < compilationsTotal)
+                tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                    "COMPILATION", "comp-ph", compilationsLoaded, compilationsTotal, ct));
+
+            if (tasks.Count > 0)
+                await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException) { /* navigated away */ }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Background discography fetch failed for {ArtistId}", ArtistId);
+        }
+    }
+
     // ── Album expand/collapse ──
 
     [RelayCommand]
-    private void ExpandAlbum(LazyReleaseItem? album)
+    private async Task ExpandAlbum(LazyReleaseItem? album)
     {
         if (album == null || !album.IsLoaded || album.Data == null) return;
 
@@ -365,7 +384,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         IsLoadingExpandedTracks = true;
         ExpandedAlbumTracks.Clear();
 
-        // Estimate track count if unknown: albums ~12, singles ~2, compilations ~20
+        // Add shimmer placeholders immediately
         var trackCount = album.Data.TrackCount;
         if (trackCount <= 0)
         {
@@ -373,19 +392,36 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             {
                 "SINGLE" => 2,
                 "COMPILATION" => 20,
-                _ => 12 // ALBUM default
+                _ => 12
             };
         }
 
-        // Add shimmer placeholders for tracks
         for (int i = 0; i < trackCount; i++)
-        {
             ExpandedAlbumTracks.Add(LazyTrackItem.Placeholder($"expanded-{i}", i + 1));
-        }
 
-        // TODO: Fetch real tracks from Pathfinder/SpClient and call .Populate() on each
-        // For now, shimmers will stay until the real endpoint is wired
-        IsLoadingExpandedTracks = false;
+        // Fetch real tracks and populate placeholders
+        try
+        {
+            var albumUri = album.Data.Uri ?? $"spotify:album:{album.Data.Id}";
+            var tracks = await _albumService.GetTracksAsync(albumUri);
+
+            for (int i = 0; i < Math.Min(tracks.Count, ExpandedAlbumTracks.Count); i++)
+            {
+                ExpandedAlbumTracks[i].Populate(tracks[i]);
+            }
+
+            // Remove excess placeholders
+            while (ExpandedAlbumTracks.Count > tracks.Count)
+                ExpandedAlbumTracks.RemoveAt(ExpandedAlbumTracks.Count - 1);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to load album tracks for {AlbumUri}", album.Data.Uri);
+        }
+        finally
+        {
+            IsLoadingExpandedTracks = false;
+        }
     }
 
     [RelayCommand]
@@ -412,38 +448,51 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             ct.ThrowIfCancellationRequested();
 
+            // Fetch on background thread (JSON deserialization + mapping)
             var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSize, ct);
 
             if (releases.Count == 0)
                 break;
 
-            _releasesSource.Edit(cache =>
+            // Dispatch Populate() to UI thread — x:Bind PropertyChanged requires it
+            var capturedOffset = offset;
+            var tcs = new TaskCompletionSource();
+            _dispatcherQueue.TryEnqueue(() =>
             {
-                int idx = offset;
-                foreach (var r in releases)
+                try
                 {
-                    var vm = new ArtistReleaseVm
+                    _releasesSource.Edit(cache =>
                     {
-                        Id = r.Id,
-                        Uri = r.Uri,
-                        Name = r.Name,
-                        Type = type,
-                        ImageUrl = r.ImageUrl,
-                        ReleaseDate = r.ReleaseDate,
-                        TrackCount = r.TrackCount,
-                        Label = r.Label,
-                        Year = r.Year
-                    };
+                        int idx = capturedOffset;
+                        foreach (var r in releases)
+                        {
+                            var vm = new ArtistReleaseVm
+                            {
+                                Id = r.Id,
+                                Uri = r.Uri,
+                                Name = r.Name,
+                                Type = type,
+                                ImageUrl = r.ImageUrl,
+                                ReleaseDate = r.ReleaseDate,
+                                TrackCount = r.TrackCount,
+                                Label = r.Label,
+                                Year = r.Year
+                            };
 
-                    var phKey = $"{phPrefix}-{idx}";
-                    var existing = cache.Lookup(phKey);
-                    if (existing.HasValue)
-                        existing.Value.Populate(vm);
-                    else
-                        cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
-                    idx++;
+                            var phKey = $"{phPrefix}-{idx}";
+                            var existing = cache.Lookup(phKey);
+                            if (existing.HasValue)
+                                existing.Value.Populate(vm);
+                            else
+                                cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
+                            idx++;
+                        }
+                    });
+                    tcs.SetResult();
                 }
+                catch (Exception ex) { tcs.SetException(ex); }
             });
+            await tcs.Task; // wait for UI thread to finish before fetching next page
 
             offset += releases.Count;
         }
@@ -548,6 +597,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     bool Data.Contracts.ITrackItem.IsExplicit => IsExplicit;
     string Data.Contracts.ITrackItem.DurationFormatted => DurationFormatted;
     int Data.Contracts.ITrackItem.OriginalIndex => Index;
+    bool Data.Contracts.ITrackItem.IsLoaded => true;
 
     // ── Public properties ──
     public string? Title { get; init; }
@@ -568,6 +618,21 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
         Duration.TotalHours >= 1
             ? Duration.ToString(@"h\:mm\:ss")
             : Duration.ToString(@"m\:ss");
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        OnPropertyChanged(propertyName);
+        return true;
+    }
 }
 
 public sealed class ArtistReleaseVm

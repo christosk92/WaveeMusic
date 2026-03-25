@@ -259,6 +259,28 @@ public sealed partial class TrackListView : UserControl
             new PropertyMetadata(false));
 
     /// <summary>
+    /// Override background for column headers (scrollable + sticky). Set to Transparent to remove acrylic.
+    /// </summary>
+    public Microsoft.UI.Xaml.Media.Brush? HeaderBackground
+    {
+        get => (Microsoft.UI.Xaml.Media.Brush?)GetValue(HeaderBackgroundProperty);
+        set => SetValue(HeaderBackgroundProperty, value);
+    }
+
+    public static readonly DependencyProperty HeaderBackgroundProperty =
+        DependencyProperty.Register(nameof(HeaderBackground), typeof(Microsoft.UI.Xaml.Media.Brush), typeof(TrackListView),
+            new PropertyMetadata(null, OnHeaderBackgroundChanged));
+
+    private static void OnHeaderBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackListView control && e.NewValue is Microsoft.UI.Xaml.Media.Brush brush)
+        {
+            control.ScrollableColumnHeaders.Background = brush;
+            control.StickyColumnHeaders.Background = brush;
+        }
+    }
+
+    /// <summary>
     /// Page-specific header content (title, icon, stats, play/shuffle buttons).
     /// </summary>
     public object? HeaderContent
@@ -269,6 +291,20 @@ public sealed partial class TrackListView : UserControl
 
     public static readonly DependencyProperty HeaderContentProperty =
         DependencyProperty.Register(nameof(HeaderContent), typeof(object), typeof(TrackListView),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Content rendered below the track list (inside the ListView's scrollable area).
+    /// Use for related albums, copyright info, etc.
+    /// </summary>
+    public object? FooterContent
+    {
+        get => GetValue(FooterContentProperty);
+        set => SetValue(FooterContentProperty, value);
+    }
+
+    public static readonly DependencyProperty FooterContentProperty =
+        DependencyProperty.Register(nameof(FooterContent), typeof(object), typeof(TrackListView),
             new PropertyMetadata(null));
 
     /// <summary>
@@ -685,12 +721,12 @@ public sealed partial class TrackListView : UserControl
             {
                 border.Padding = new Thickness(4, 2, 4, 2);
                 border.CornerRadius = new CornerRadius(2);
-                border.Background = null; // No card background in compact mode
+                border.Background = null;
+                border.BorderThickness = new Thickness(0);
                 CommunityToolkit.WinUI.Effects.SetShadow(border, null);
             }
             else
             {
-                // Set alternating row background
                 var isEven = args.ItemIndex % 2 == 0;
                 border.Padding = new Thickness(4, 2, 4, 2);
                 border.CornerRadius = new CornerRadius(6);
@@ -709,8 +745,52 @@ public sealed partial class TrackListView : UserControl
                 item.Margin = IsCompact ? new Thickness(0, 1, 0, 1) : new Thickness(0, 2, 0, 2);
             }
 
+            // Handle shimmer visibility for lazy items imperatively
+            // (x:Bind in ListView containers can miss PropertyChanged updates)
+            if (border.Child is Grid wrapperGrid)
+            {
+                var shimmerEl = wrapperGrid.FindName("ShimmerOverlay") as UIElement;
+                var contentEl = wrapperGrid.FindName("ContentGrid") as UIElement;
+
+                if (args.Item is ViewModels.LazyTrackItem lazy)
+                {
+                    void UpdateVisibility()
+                    {
+                        if (shimmerEl != null)
+                            shimmerEl.Visibility = lazy.IsLoaded ? Visibility.Collapsed : Visibility.Visible;
+                        if (contentEl != null)
+                            contentEl.Visibility = lazy.IsLoaded ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    UpdateVisibility();
+
+                    // Subscribe to IsLoaded changes for when Populate() is called
+                    void OnPropertyChanged(object? s, System.ComponentModel.PropertyChangedEventArgs e)
+                    {
+                        if (e.PropertyName == nameof(ViewModels.LazyTrackItem.IsLoaded))
+                        {
+                            DispatcherQueue.TryEnqueue(UpdateVisibility);
+                        }
+                    }
+
+                    // Clean up previous subscription (container recycling)
+                    if (args.ItemContainer.Tag is Action cleanup)
+                        cleanup();
+
+                    lazy.PropertyChanged += OnPropertyChanged;
+                    args.ItemContainer.Tag = (Action)(() => lazy.PropertyChanged -= OnPropertyChanged);
+                }
+                else
+                {
+                    // Non-lazy item — always show content
+                    if (shimmerEl != null) shimmerEl.Visibility = Visibility.Collapsed;
+                    if (contentEl != null) contentEl.Visibility = Visibility.Visible;
+                }
+            }
+
             // Set row index, date added, and custom columns
-            if (border.Child is Grid grid)
+            var grid = border.Child is Grid w ? w.FindName("ContentGrid") as Grid : null;
+            if (grid != null)
             {
                 var customCols = CustomColumns;
                 var customCount = customCols?.Count ?? 0;
@@ -814,9 +894,19 @@ public sealed partial class TrackListView : UserControl
         }
     }
 
+    /// <summary>
+    /// Gets the ContentGrid from a row Border (handles the wrapper Grid for shimmer overlay).
+    /// </summary>
+    private static Grid? GetContentGrid(Border border)
+    {
+        if (border.Child is Grid wrapper)
+            return wrapper.FindName("ContentGrid") as Grid ?? wrapper;
+        return null;
+    }
+
     private void Row_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Border border && border.Child is Grid grid)
+        if (sender is Border border && GetContentGrid(border) is Grid grid)
         {
             var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
             if (indexGrid != null)
@@ -832,7 +922,7 @@ public sealed partial class TrackListView : UserControl
 
     private void Row_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Border border && border.Child is Grid grid)
+        if (sender is Border border && GetContentGrid(border) is Grid grid)
         {
             var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
             if (indexGrid != null)
@@ -960,7 +1050,7 @@ public sealed partial class TrackListView : UserControl
             for (int i = 0; i < InternalListView.Items.Count; i++)
             {
                 if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
-                if (container.ContentTemplateRoot is Border border && border.Child is Grid grid)
+                if (container.ContentTemplateRoot is Border border && GetContentGrid(border) is Grid grid)
                 {
                     // Re-apply alternating row background
                     if (!IsCompact)
@@ -987,7 +1077,7 @@ public sealed partial class TrackListView : UserControl
         for (int i = 0; i < InternalListView.Items.Count; i++)
         {
             if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
-            if (container.ContentTemplateRoot is Border border && border.Child is Grid grid && container.Content is ITrackItem trackItem)
+            if (container.ContentTemplateRoot is Border border && GetContentGrid(border) is Grid grid && container.Content is ITrackItem trackItem)
             {
                 ApplyPlaybackStateToRow(grid, trackItem);
             }

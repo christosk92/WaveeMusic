@@ -7,6 +7,7 @@ namespace Wavee.UI.WinUI.Data.DTOs;
 
 public sealed class TopTrackAdapter : ITrackItem
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private readonly TopTrackData _data;
 
     public TopTrackAdapter(TopTrackData data, int index)
@@ -26,4 +27,5 @@ public sealed class TopTrackAdapter : ITrackItem
     public bool IsExplicit => _data.ContentRating?.Label == "EXPLICIT";
     public string DurationFormatted => _data.DisplayDuration;
     public int OriginalIndex { get; }
+    public bool IsLoaded => true;
 }

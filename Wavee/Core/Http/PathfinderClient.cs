@@ -271,6 +271,43 @@ public sealed class PathfinderClient : IPathfinderClient
             PathfinderOperations.QueryArtistDiscographyCompilationsHash,
             offset, limit, ct);
 
+    /// <inheritdoc />
+    public async Task<AlbumTracksResponse> GetAlbumTracksAsync(
+        string albumUri, int offset = 0, int limit = 300, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(albumUri);
+
+        var variables = new AlbumTracksVariables
+        {
+            Uri = albumUri,
+            Offset = offset,
+            Limit = limit
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryAlbumTracks,
+            PathfinderOperations.QueryAlbumTracksHash,
+            AlbumTracksJsonContext.Default.AlbumTracksResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<GetAlbumResponse> GetAlbumAsync(
+        string albumUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(albumUri);
+
+        var variables = new GetAlbumVariables { Uri = albumUri };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.GetAlbum,
+            PathfinderOperations.GetAlbumHash,
+            GetAlbumJsonContext.Default.GetAlbumResponse,
+            ct);
+    }
+
     private async Task<ArtistDiscographyResponse> GetArtistDiscographyInternalAsync(
         string artistUri, string operationName, string sha256Hash,
         int offset, int limit, CancellationToken ct)
@@ -353,6 +390,14 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is ArtistDiscographyVariables adv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(adv, ArtistDiscographyVariablesJsonContext.Default.ArtistDiscographyVariables);
+        }
+        else if (variables is AlbumTracksVariables atv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(atv, AlbumTracksVariablesJsonContext.Default.AlbumTracksVariables);
+        }
+        else if (variables is GetAlbumVariables gav)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(gav, GetAlbumVariablesJsonContext.Default.GetAlbumVariables);
         }
         else
         {

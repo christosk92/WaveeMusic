@@ -293,6 +293,16 @@ public interface IMetadataDatabase : IAsyncDisposable
     #region Color Cache Operations
 
     /// <summary>
+    /// Caches album track list as serialized JSON.
+    /// </summary>
+    Task SetAlbumTracksCacheAsync(string albumUri, string jsonData, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets cached album track list JSON, or null if not cached.
+    /// </summary>
+    Task<string?> GetAlbumTracksCacheAsync(string albumUri, CancellationToken ct = default);
+
+    /// <summary>
     /// Caches extracted colors for an image URL.
     /// </summary>
     Task SetColorCacheAsync(string imageUrl, string? darkHex, string? lightHex, string? rawHex, CancellationToken ct = default);

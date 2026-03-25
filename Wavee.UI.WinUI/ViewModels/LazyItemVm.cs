@@ -1,4 +1,6 @@
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -51,24 +53,51 @@ public partial class LazyItemVm<T> : ObservableObject where T : class
 }
 
 /// <summary>
-/// Non-generic wrapper for LazyItemVm&lt;ArtistTopTrackVm&gt; so XAML x:DataType can reference it.
-/// Use this in SourceCache and DataTemplates.
+/// Lazy-loading wrapper for any ITrackItem. Implements ITrackItem itself so it can
+/// be used directly in TrackListView's ItemsSource. When unloaded, returns safe defaults
+/// and TrackListView shows shimmer rows. When Populate() is called, delegates to real data.
 /// </summary>
-public sealed partial class LazyTrackItem : ObservableObject
+public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 {
     public required string Id { get; init; }
 
     [ObservableProperty] private int _index;
     [ObservableProperty] private bool _isLoaded;
-    [ObservableProperty] private ArtistTopTrackVm? _data;
+    [ObservableProperty] private ITrackItem? _data;
 
-    public void Populate(ArtistTopTrackVm data)
+    public void Populate(ITrackItem data)
     {
         Data = data;
         IsLoaded = true;
     }
 
-    public static LazyTrackItem Loaded(string id, int index, ArtistTopTrackVm data) => new()
+    // Notify all delegated properties when Data changes so OneWay bindings refresh
+    partial void OnDataChanged(ITrackItem? value)
+    {
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(ArtistName));
+        OnPropertyChanged(nameof(ArtistId));
+        OnPropertyChanged(nameof(AlbumName));
+        OnPropertyChanged(nameof(AlbumId));
+        OnPropertyChanged(nameof(ImageUrl));
+        OnPropertyChanged(nameof(Duration));
+        OnPropertyChanged(nameof(IsExplicit));
+        OnPropertyChanged(nameof(DurationFormatted));
+    }
+
+    // ITrackItem — delegate to Data when loaded, safe defaults when not
+    public string Title => Data?.Title ?? "";
+    public string ArtistName => Data?.ArtistName ?? "";
+    public string ArtistId => Data?.ArtistId ?? "";
+    public string AlbumName => Data?.AlbumName ?? "";
+    public string AlbumId => Data?.AlbumId ?? "";
+    public string? ImageUrl => Data?.ImageUrl;
+    public TimeSpan Duration => Data?.Duration ?? TimeSpan.Zero;
+    public bool IsExplicit => Data?.IsExplicit ?? false;
+    public string DurationFormatted => Data?.DurationFormatted ?? "";
+    public int OriginalIndex => Index;
+
+    public static LazyTrackItem Loaded(string id, int index, ITrackItem data) => new()
     {
         Id = id, Index = index, Data = data, IsLoaded = true
     };

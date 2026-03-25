@@ -28,4 +28,10 @@ internal static class PathfinderOperations
 
     public const string QueryArtistDiscographyCompilations = "queryArtistDiscographyCompilations";
     public const string QueryArtistDiscographyCompilationsHash = "0b3a55646384e771ed5b7da7cbf0e6e7e4b653d3da0eb4eb614eac4046c91e38";
+
+    public const string QueryAlbumTracks = "queryAlbumTracks";
+    public const string QueryAlbumTracksHash = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
+
+    public const string GetAlbum = "getAlbum";
+    public const string GetAlbumHash = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
 }

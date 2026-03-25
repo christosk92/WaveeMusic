@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
+using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -13,11 +15,15 @@ namespace Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 
 /// <summary>
 /// Expandable inline album detail panel (Apple Music style).
-/// Shows album info, action buttons, track list, and album art with color-matched gradient.
-/// Triangle notch points up at the source card. Animates in/out via implicit animations.
+/// Album art uses Composition API alpha mask (left fade) matching the hero header pattern.
 /// </summary>
 public sealed partial class AlbumDetailPanel : UserControl
 {
+    private CompositionSurfaceBrush? _surfaceBrush;
+    private SpriteVisual? _spriteVisual;
+    private Compositor? _compositor;
+    private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
+
     public static readonly DependencyProperty AlbumProperty =
         DependencyProperty.Register(nameof(Album), typeof(ArtistReleaseVm), typeof(AlbumDetailPanel),
             new PropertyMetadata(null, OnAlbumChanged));
@@ -38,48 +44,38 @@ public sealed partial class AlbumDetailPanel : UserControl
         DependencyProperty.Register(nameof(NotchOffsetX), typeof(double), typeof(AlbumDetailPanel),
             new PropertyMetadata(0.0, OnNotchOffsetXChanged));
 
-    /// <summary>The album to display.</summary>
     public ArtistReleaseVm? Album
     {
         get => (ArtistReleaseVm?)GetValue(AlbumProperty);
         set => SetValue(AlbumProperty, value);
     }
 
-    /// <summary>Track list items source.</summary>
     public IEnumerable? Tracks
     {
         get => (IEnumerable?)GetValue(TracksProperty);
         set => SetValue(TracksProperty, value);
     }
 
-    /// <summary>Whether tracks are still loading.</summary>
     public bool IsLoading
     {
         get => (bool)GetValue(IsLoadingProperty);
         set => SetValue(IsLoadingProperty, value);
     }
 
-    /// <summary>Hex color string (e.g. "#2A4B7C") extracted from album art. Drives gradient background.</summary>
     public string? ColorHex
     {
         get => (string?)GetValue(ColorHexProperty);
         set => SetValue(ColorHexProperty, value);
     }
 
-    /// <summary>Horizontal offset (px) for the triangle notch, measured from the panel's left edge to the notch center.</summary>
     public double NotchOffsetX
     {
         get => (double)GetValue(NotchOffsetXProperty);
         set => SetValue(NotchOffsetXProperty, value);
     }
 
-    /// <summary>Raised when the close button is clicked.</summary>
     public event EventHandler? CloseRequested;
-
-    /// <summary>Raised when play is clicked.</summary>
     public event EventHandler? PlayRequested;
-
-    /// <summary>Raised when shuffle is clicked.</summary>
     public event EventHandler? ShuffleRequested;
 
     private const double NotchWidth = 28;
@@ -88,11 +84,120 @@ public sealed partial class AlbumDetailPanel : UserControl
     {
         InitializeComponent();
         OuterGrid.SizeChanged += OuterGrid_SizeChanged;
+        ImageArea.Loaded += ImageArea_Loaded;
+        Unloaded += OnUnloaded;
+
+        // Add playcount custom column
+        TrackListControl.CustomColumns.Add(new Controls.TrackList.TrackListColumnDefinition
+        {
+            Header = "Plays",
+            Width = new Microsoft.UI.Xaml.GridLength(70),
+            TextAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Right,
+            ValueSelector = item =>
+            {
+                if (item is LazyTrackItem { Data: ArtistTopTrackVm vm })
+                    return vm.PlayCountFormatted;
+                if (item is ArtistTopTrackVm directVm)
+                    return directVm.PlayCountFormatted;
+                return "";
+            }
+        });
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        Unloaded -= OnUnloaded;
+        OuterGrid.SizeChanged -= OuterGrid_SizeChanged;
+
+        // Dispose composition resources to prevent leaks
+        // (this control is created/destroyed dynamically on each expand/collapse)
+        _imageSurface?.Dispose();
+        _imageSurface = null;
+
+        if (_surfaceBrush != null)
+        {
+            _surfaceBrush.Surface = null;
+            _surfaceBrush.Dispose();
+            _surfaceBrush = null;
+        }
+
+        if (_spriteVisual != null)
+        {
+            ElementCompositionPreview.SetElementChildVisual(ImageArea, null);
+            _spriteVisual.Brush?.Dispose();
+            _spriteVisual.Dispose();
+            _spriteVisual = null;
+        }
+
+        _compositor = null;
+    }
+
+    private void ImageArea_Loaded(object sender, RoutedEventArgs e)
+    {
+        ImageArea.Loaded -= ImageArea_Loaded;
+        SetupCompositionMask();
+        // If album was already set before Loaded, load the image now
+        if (Album != null)
+            LoadImage(Album.ImageUrl);
+    }
+
+    private void SetupCompositionMask()
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(ImageArea);
+        _compositor = visual.Compositor;
+
+        // Gradient mask: transparent on left → opaque on right
+        // This makes the image fade in from the left edge (where the color bg is)
+        var gradientBrush = _compositor.CreateLinearGradientBrush();
+        gradientBrush.StartPoint = new Vector2(0f, 0.5f); // left
+        gradientBrush.EndPoint = new Vector2(1f, 0.5f);   // right
+        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+            Windows.UI.Color.FromArgb(0, 255, 255, 255)));     // transparent (image hidden)
+        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.4f,
+            Windows.UI.Color.FromArgb(255, 255, 255, 255)));   // fully opaque (image visible)
+
+        // Surface brush for the album art
+        _surfaceBrush = _compositor.CreateSurfaceBrush();
+        _surfaceBrush.Stretch = CompositionStretch.UniformToFill;
+        _surfaceBrush.HorizontalAlignmentRatio = 0.5f;
+        _surfaceBrush.VerticalAlignmentRatio = 0.5f;
+
+        // Mask brush: image × gradient
+        var maskBrush = _compositor.CreateMaskBrush();
+        maskBrush.Source = _surfaceBrush;
+        maskBrush.Mask = gradientBrush;
+
+        // Sprite visual fills the ImageArea
+        _spriteVisual = _compositor.CreateSpriteVisual();
+        _spriteVisual.Brush = maskBrush;
+        _spriteVisual.RelativeSizeAdjustment = Vector2.One;
+
+        ElementCompositionPreview.SetElementChildVisual(ImageArea, _spriteVisual);
+    }
+
+    private void LoadImage(string? imageUrl)
+    {
+        if (_surfaceBrush == null || _compositor == null) return;
+
+        // Dispose previous surface to prevent memory leaks
+        _imageSurface?.Dispose();
+        _imageSurface = null;
+
+        if (string.IsNullOrEmpty(imageUrl))
+        {
+            _surfaceBrush.Surface = null;
+            return;
+        }
+
+        var url = SpotifyImageHelper.ToHttpsUrl(imageUrl);
+        if (string.IsNullOrEmpty(url)) return;
+
+        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(url));
+        _surfaceBrush.Surface = _imageSurface;
     }
 
     private void OuterGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Maintain square aspect ratio for the image area, capped at 45% of panel width
         var height = e.NewSize.Height;
         var maxWidth = e.NewSize.Width * 0.45;
         ImageArea.Width = Math.Min(height, maxWidth);
@@ -110,21 +215,11 @@ public sealed partial class AlbumDetailPanel : UserControl
             panel.YearText.Text = album.Year.ToString();
             panel.FooterYearText.Text = album.Year.ToString();
 
-            // Load album art
-            if (!string.IsNullOrEmpty(album.ImageUrl))
-            {
-                var url = SpotifyImageHelper.ToHttpsUrl(album.ImageUrl);
-                if (!string.IsNullOrEmpty(url))
-                {
-                    panel.ArtBrush.ImageSource = new BitmapImage(new Uri(url));
-                }
-            }
+            // Load album art via composition
+            panel.LoadImage(album.ImageUrl);
 
-            // Apply color if not yet set (fallback to theme default)
             if (string.IsNullOrEmpty(panel.ColorHex))
-            {
                 panel.ApplyThemeDefaultColor();
-            }
         }
     }
 
@@ -135,12 +230,8 @@ public sealed partial class AlbumDetailPanel : UserControl
 
         if (!string.IsNullOrEmpty(hex))
         {
-            var raw = ParseHexColor(hex);
-            var isDark = panel.ActualTheme == ElementTheme.Dark;
-            var color = ToneDown(raw, isDark);
-
+            var color = ParseHexColor(hex);
             panel.ColorBackground.Background = new SolidColorBrush(color);
-            panel.ArtGradientStop.Color = color;
             panel.NotchTriangle.Fill = new SolidColorBrush(color);
         }
         else
@@ -153,7 +244,6 @@ public sealed partial class AlbumDetailPanel : UserControl
     {
         var panel = (AlbumDetailPanel)d;
         var offset = (double)e.NewValue;
-        // Center the notch on the offset point
         panel.NotchTranslate.X = offset - (NotchWidth / 2);
     }
 
@@ -165,25 +255,7 @@ public sealed partial class AlbumDetailPanel : UserControl
             : Windows.UI.Color.FromArgb(255, 230, 230, 235);
 
         ColorBackground.Background = new SolidColorBrush(bgColor);
-        ArtGradientStop.Color = bgColor;
         NotchTriangle.Fill = new SolidColorBrush(bgColor);
-    }
-
-    /// <summary>
-    /// Blends the extracted color toward the theme base so it's not overly bright/saturated.
-    /// Dark mode: blend 55% toward dark gray. Light mode: blend 50% toward light gray.
-    /// </summary>
-    private static Windows.UI.Color ToneDown(Windows.UI.Color color, bool isDark)
-    {
-        var factor = isDark ? 0.45 : 0.50; // how much of the original color to keep
-        var baseR = isDark ? 25 : 235;
-        var baseG = isDark ? 25 : 235;
-        var baseB = isDark ? 30 : 240;
-
-        return Windows.UI.Color.FromArgb(255,
-            (byte)(color.R * factor + baseR * (1 - factor)),
-            (byte)(color.G * factor + baseG * (1 - factor)),
-            (byte)(color.B * factor + baseB * (1 - factor)));
     }
 
     private static Windows.UI.Color ParseHexColor(string hex)
@@ -210,7 +282,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     private static void OnTracksChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var panel = (AlbumDetailPanel)d;
-        panel.TrackRepeater.ItemsSource = e.NewValue as IEnumerable;
+        panel.TrackListControl.ItemsSource = e.NewValue as IEnumerable;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)

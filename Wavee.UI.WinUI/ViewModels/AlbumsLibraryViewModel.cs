@@ -15,7 +15,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackListViewModel
 {
     private readonly ILibraryDataService _libraryDataService;
-    private readonly ICatalogService _catalogService;
+    private readonly IAlbumService _albumService;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -60,10 +60,10 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     [ObservableProperty]
     private string _selectedAlbumMetadata = "";
 
-    public AlbumsLibraryViewModel(ILibraryDataService libraryDataService, ICatalogService catalogService)
+    public AlbumsLibraryViewModel(ILibraryDataService libraryDataService, IAlbumService albumService)
     {
         _libraryDataService = libraryDataService;
-        _catalogService = catalogService;
+        _albumService = albumService;
     }
 
     [RelayCommand]
@@ -192,7 +192,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         try
         {
             IsLoadingTracks = true;
-            var tracks = await _catalogService.GetAlbumTracksAsync(SelectedAlbum.Id);
+            var tracks = await _albumService.GetTracksAsync(SelectedAlbum.Id);
 
             SelectedAlbumTracks.Clear();
             var totalDuration = TimeSpan.Zero;

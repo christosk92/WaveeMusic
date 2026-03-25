@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
@@ -96,6 +97,101 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Hero height = 45% of page height (min 300)
         if (HeroGrid != null)
             HeroGrid.Height = Math.Max(300, e.NewSize.Height * 0.45);
+
+        // Debounced recompute of expanded panel position
+        if (_activeDetailPanel != null && _expandedItem != null)
+        {
+            _resizeDebounceCts?.Cancel();
+            _resizeDebounceCts = new CancellationTokenSource();
+            var token = _resizeDebounceCts.Token;
+            _ = RecomputeExpandedPanelAsync(token);
+        }
+    }
+
+    private async Task RecomputeExpandedPanelAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(150, ct); }
+        catch (OperationCanceledException) { return; }
+
+        if (_activeDetailPanel == null || _expandedItem == null ||
+            _originalRepeater == null || _splitParent == null || _originalItemsSource == null)
+            return;
+
+        ApplySplitLayout();
+    }
+
+    /// <summary>
+    /// Shared logic: computes columns from available width, splits items before/after
+    /// the expanded item's row, updates both repeaters, and positions the notch.
+    /// Called on initial expand and on debounced resize.
+    /// </summary>
+    private void ApplySplitLayout()
+    {
+        if (_originalRepeater == null || _splitParent == null || _originalItemsSource == null ||
+            _activeDetailPanel == null)
+            return;
+
+        var layout = _originalRepeater.Layout as UniformGridLayout;
+        var allItems = _originalItemsSource as System.Collections.IList;
+        if (allItems == null) return;
+
+        var availableWidth = _splitParent.ActualWidth;
+        var minWidth = layout?.MinItemWidth ?? 160;
+        var spacing = layout?.MinColumnSpacing ?? 12;
+        var columns = Math.Max(1, (int)Math.Floor((availableWidth + spacing) / (minWidth + spacing)));
+
+        // Split point: end of the expanded item's row
+        var rowOfItem = _expandedItemIndex / columns;
+        var splitAfterIndex = Math.Min((rowOfItem + 1) * columns, allItems.Count);
+
+        var itemsBefore = new System.Collections.Generic.List<object>();
+        var itemsAfter = new System.Collections.Generic.List<object>();
+        for (int i = 0; i < allItems.Count; i++)
+        {
+            if (i < splitAfterIndex)
+                itemsBefore.Add(allItems[i]!);
+            else
+                itemsAfter.Add(allItems[i]!);
+        }
+
+        // Update the first repeater
+        _originalRepeater.ItemsSource = itemsBefore;
+
+        // Update or create/remove the second repeater
+        if (_splitRepeaterAfter != null)
+        {
+            if (itemsAfter.Count > 0)
+                _splitRepeaterAfter.ItemsSource = itemsAfter;
+            else
+            {
+                _splitParent.Children.Remove(_splitRepeaterAfter);
+                _splitRepeaterAfter = null;
+            }
+        }
+        else if (itemsAfter.Count > 0)
+        {
+            _splitRepeaterAfter = new ItemsRepeater
+            {
+                Layout = new UniformGridLayout
+                {
+                    MinItemWidth = minWidth,
+                    MinItemHeight = layout?.MinItemHeight ?? 240,
+                    MinRowSpacing = layout?.MinRowSpacing ?? 12,
+                    MinColumnSpacing = spacing,
+                    ItemsStretch = Microsoft.UI.Xaml.Controls.UniformGridLayoutItemsStretch.Uniform
+                },
+                ItemTemplate = _originalRepeater.ItemTemplate,
+                ItemsSource = itemsAfter
+            };
+            var panelIndex = _splitParent.Children.IndexOf(_activeDetailPanel);
+            if (panelIndex >= 0)
+                _splitParent.Children.Insert(panelIndex + 1, _splitRepeaterAfter);
+        }
+
+        // Position notch at the expanded item's center
+        var columnIndex = _expandedItemIndex % columns;
+        var cellWidth = (availableWidth - (columns - 1) * spacing) / columns;
+        _activeDetailPanel.NotchOffsetX = columnIndex * (cellWidth + spacing) + cellWidth / 2;
     }
 
     private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
@@ -152,12 +248,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private ItemsRepeater? _originalRepeater;
     private object? _originalItemsSource;
 
+    // State needed to recompute split on resize
+    private LazyReleaseItem? _expandedItem;
+    private int _expandedItemIndex;
+    private CancellationTokenSource? _resizeDebounceCts;
+
     private readonly IColorService _colorService = Ioc.Default.GetRequiredService<IColorService>();
 
     private void AlbumCard_Click(object sender, EventArgs e)
     {
-        // sender is the ContentCard. Walk up to find the ItemsRepeater,
-        // then use GetElementIndex to find the data item.
         if (sender is not FrameworkElement fe) return;
 
         var repeater = FindParent<ItemsRepeater>(fe);
@@ -181,61 +280,41 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         var item = items[index] as LazyReleaseItem;
         if (item == null || !item.IsLoaded || item.Data == null) return;
-        if (repeater == null) return;
-
-        // Collapse any existing expansion first
-        CollapseExpandedAlbum();
 
         // If clicking the same album that was expanded, just collapse (toggle)
         if (ViewModel.ExpandedAlbum?.Id == item.Id)
         {
-            ViewModel.CollapseAlbumCommand.Execute(null);
+            CollapseExpandedAlbum();
             return;
         }
 
-        // Find the parent StackPanel and the repeater's index in it
-        var parentPanel = repeater.Parent as StackPanel;
-        if (parentPanel == null) return;
+        // Capture the true original repeater/items before collapsing
+        // (clicking in _splitRepeaterAfter means the real repeater is _originalRepeater)
+        var trueRepeater = _originalRepeater ?? repeater;
+        var trueItemsSource = (_originalItemsSource ?? repeater.ItemsSource) as System.Collections.IList;
 
-        var repeaterIndex = parentPanel.Children.IndexOf(repeater);
-        if (repeaterIndex < 0) return;
+        // Collapse any existing expansion first (restores original state)
+        CollapseExpandedAlbum();
 
-        // Determine row info from the layout
-        var layout = repeater.Layout as UniformGridLayout;
-        var allItems = repeater.ItemsSource as System.Collections.IList;
-        if (allItems == null) return;
+        // Now trueRepeater has its full ItemsSource restored
+        if (trueItemsSource == null) return;
 
-        var itemIndex = allItems.IndexOf(item);
+        var itemIndex = trueItemsSource.IndexOf(item);
         if (itemIndex < 0) return;
 
-        // Calculate columns from layout
-        var availableWidth = repeater.ActualWidth;
-        var minWidth = layout?.MinItemWidth ?? 160;
-        var spacing = layout?.MinColumnSpacing ?? 12;
-        var columns = Math.Max(1, (int)Math.Floor((availableWidth + spacing) / (minWidth + spacing)));
+        // Find the parent StackPanel and the repeater's index in it
+        var parentPanel = trueRepeater.Parent as StackPanel;
+        if (parentPanel == null) return;
 
-        // Find the split point: end of the clicked item's row
-        var rowOfItem = itemIndex / columns;
-        var splitAfterIndex = Math.Min((rowOfItem + 1) * columns, allItems.Count);
+        var repeaterIndex = parentPanel.Children.IndexOf(trueRepeater);
+        if (repeaterIndex < 0) return;
 
-        // Split the items
-        var itemsBefore = new System.Collections.Generic.List<object>();
-        var itemsAfter = new System.Collections.Generic.List<object>();
-        for (int i = 0; i < allItems.Count; i++)
-        {
-            if (i < splitAfterIndex)
-                itemsBefore.Add(allItems[i]!);
-            else
-                itemsAfter.Add(allItems[i]!);
-        }
-
-        // Save original state for restore
-        _originalRepeater = repeater;
-        _originalItemsSource = repeater.ItemsSource;
+        // Save original state for restore + resize recompute
+        _originalRepeater = trueRepeater;
+        _originalItemsSource = trueItemsSource;
         _splitParent = parentPanel;
-
-        // Set the first repeater to show only items before the split
-        repeater.ItemsSource = itemsBefore;
+        _expandedItem = item;
+        _expandedItemIndex = itemIndex;
 
         // Create the detail panel
         _activeDetailPanel = new AlbumDetailPanel();
@@ -243,35 +322,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         _activeDetailPanel.Tracks = ViewModel.ExpandedAlbumTracks;
         _activeDetailPanel.CloseRequested += (_, _) => CollapseExpandedAlbum();
 
-        // Position triangle notch under the clicked card's center
-        var columnIndex = itemIndex % columns;
-        var cellWidth = (availableWidth - (columns - 1) * spacing) / columns;
-        var notchX = columnIndex * (cellWidth + spacing) + cellWidth / 2;
-        _activeDetailPanel.NotchOffsetX = notchX;
-
         // Fetch extracted color for album art gradient (uses cache if available)
         _ = FetchAlbumColorAsync(item.Data, _activeDetailPanel);
 
-        // Create a second repeater for items after the split
-        _splitRepeaterAfter = new ItemsRepeater
-        {
-            Layout = new UniformGridLayout
-            {
-                MinItemWidth = minWidth,
-                MinItemHeight = layout?.MinItemHeight ?? 240,
-                MinRowSpacing = layout?.MinRowSpacing ?? 12,
-                MinColumnSpacing = spacing,
-                ItemsStretch = Microsoft.UI.Xaml.Controls.UniformGridLayoutItemsStretch.Uniform
-            },
-            ItemTemplate = repeater.ItemTemplate,
-            ItemsSource = itemsAfter
-        };
-
-        // Insert detail panel + second repeater after the first repeater
+        // Insert detail panel after the repeater
         _splitInsertIndex = repeaterIndex + 1;
         parentPanel.Children.Insert(_splitInsertIndex, _activeDetailPanel);
-        if (itemsAfter.Count > 0)
-            parentPanel.Children.Insert(_splitInsertIndex + 1, _splitRepeaterAfter);
+
+        // Compute split, notch, and second repeater
+        ApplySplitLayout();
 
         // Update ViewModel state
         ViewModel.ExpandAlbumCommand.Execute(item);
@@ -300,6 +359,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         _splitParent = null;
         _originalRepeater = null;
         _originalItemsSource = null;
+        _expandedItem = null;
+        _expandedItemIndex = -1;
 
         ViewModel.CollapseAlbumCommand.Execute(null);
     }
@@ -346,6 +407,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             var color = await _colorService.GetColorAsync(imageUrl);
             if (color == null) return;
 
+            // Use Spotify's pre-computed theme-appropriate color
             var isDark = ActualTheme == ElementTheme.Dark;
             var hex = isDark
                 ? color.DarkHex ?? color.RawHex

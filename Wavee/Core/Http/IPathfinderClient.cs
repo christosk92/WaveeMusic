@@ -74,4 +74,12 @@ public interface IPathfinderClient
     /// <summary>Fetches a paginated page of an artist's compilations.</summary>
     Task<ArtistDiscographyResponse> GetArtistDiscographyCompilationsAsync(
         string artistUri, int offset = 0, int limit = 20, CancellationToken ct = default);
+
+    /// <summary>Fetches tracks for an album.</summary>
+    Task<AlbumTracksResponse> GetAlbumTracksAsync(
+        string albumUri, int offset = 0, int limit = 300, CancellationToken ct = default);
+
+    /// <summary>Fetches full album detail (metadata, tracks, cover art, artists, more by artist).</summary>
+    Task<GetAlbumResponse> GetAlbumAsync(
+        string albumUri, CancellationToken ct = default);
 }

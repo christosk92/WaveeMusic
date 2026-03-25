@@ -32,12 +32,12 @@ public enum AlbumSortColumn { Title, Artist, TrackNumber }
 /// </summary>
 public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel, ITabBarItemContent, IDisposable
 {
-    private readonly ICatalogService _catalogService;
+    private readonly IAlbumService _albumService;
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
-    private readonly SourceCache<AlbumTrackDto, string> _tracksSource = new(t => t.Id);
-    private readonly ReadOnlyObservableCollection<AlbumTrackDto> _filteredTracks;
+    private readonly SourceCache<LazyTrackItem, string> _tracksSource = new(t => t.Id);
+    private readonly ReadOnlyObservableCollection<LazyTrackItem> _filteredTracks;
     private readonly CompositeDisposable _disposables = new();
 
     private string _albumId = "";
@@ -60,7 +60,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private string _totalDuration = "";
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
-    private ObservableCollection<ArtistReleaseVm> _moreByArtist = [];
+    private ObservableCollection<AlbumRelatedResult> _moreByArtist = [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -287,16 +287,18 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>
     /// More albums by the same artist.
     /// </summary>
-    public ObservableCollection<ArtistReleaseVm> MoreByArtist
+    public ObservableCollection<AlbumRelatedResult> MoreByArtist
     {
         get => _moreByArtist;
         private set => this.RaiseAndSetIfChanged(ref _moreByArtist, value);
     }
 
+    public bool HasMoreByArtist => MoreByArtist.Count > 0;
+
     /// <summary>
     /// Filtered and sorted tracks collection for UI binding.
     /// </summary>
-    public ReadOnlyObservableCollection<AlbumTrackDto> FilteredTracks => _filteredTracks;
+    public ReadOnlyObservableCollection<LazyTrackItem> FilteredTracks => _filteredTracks;
 
     // Sort indicator properties for column headers
     // Albums typically sort by track number, so Title and Artist are the only sortable columns
@@ -310,9 +312,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// </summary>
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
-    public AlbumViewModel(ICatalogService catalogService, ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<AlbumViewModel>? logger = null)
+    public AlbumViewModel(IAlbumService albumService, ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<AlbumViewModel>? logger = null)
     {
-        _catalogService = catalogService;
+        _albumService = albumService;
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _logger = logger;
@@ -383,7 +385,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         }
     }
 
-    private static Func<AlbumTrackDto, bool> CreateFilterPredicate(string? query)
+    private static Func<LazyTrackItem, bool> CreateFilterPredicate(string? query)
     {
         if (string.IsNullOrWhiteSpace(query))
             return _ => true;
@@ -394,24 +396,21 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             t.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IComparer<AlbumTrackDto> CreateSortComparer(AlbumSortColumn column, bool descending)
+    private static IComparer<LazyTrackItem> CreateSortComparer(AlbumSortColumn column, bool descending)
     {
         return (column, descending) switch
         {
-            (AlbumSortColumn.Title, false) => SortExpressionComparer<AlbumTrackDto>.Ascending(t => t.Title),
-            (AlbumSortColumn.Title, true) => SortExpressionComparer<AlbumTrackDto>.Descending(t => t.Title),
-            (AlbumSortColumn.Artist, false) => SortExpressionComparer<AlbumTrackDto>.Ascending(t => t.ArtistName),
-            (AlbumSortColumn.Artist, true) => SortExpressionComparer<AlbumTrackDto>.Descending(t => t.ArtistName),
+            (AlbumSortColumn.Title, false) => SortExpressionComparer<LazyTrackItem>.Ascending(t => t.Title),
+            (AlbumSortColumn.Title, true) => SortExpressionComparer<LazyTrackItem>.Descending(t => t.Title),
+            (AlbumSortColumn.Artist, false) => SortExpressionComparer<LazyTrackItem>.Ascending(t => t.ArtistName),
+            (AlbumSortColumn.Artist, true) => SortExpressionComparer<LazyTrackItem>.Descending(t => t.ArtistName),
             // Default: sort by disc number, then track number
-            (AlbumSortColumn.TrackNumber, false) => SortExpressionComparer<AlbumTrackDto>
-                .Ascending(t => t.DiscNumber)
-                .ThenByAscending(t => t.TrackNumber),
-            (AlbumSortColumn.TrackNumber, true) => SortExpressionComparer<AlbumTrackDto>
-                .Descending(t => t.DiscNumber)
-                .ThenByDescending(t => t.TrackNumber),
-            _ => SortExpressionComparer<AlbumTrackDto>
-                .Ascending(t => t.DiscNumber)
-                .ThenByAscending(t => t.TrackNumber)
+            (AlbumSortColumn.TrackNumber, false) => SortExpressionComparer<LazyTrackItem>
+                .Ascending(t => t.OriginalIndex),
+            (AlbumSortColumn.TrackNumber, true) => SortExpressionComparer<LazyTrackItem>
+                .Descending(t => t.OriginalIndex),
+            _ => SortExpressionComparer<LazyTrackItem>
+                .Ascending(t => t.OriginalIndex)
         };
     }
 
@@ -442,49 +441,64 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         try
         {
-            // Load album details (from catalog) and user playlists (from library) in parallel
-            var detailTask = _catalogService.GetAlbumAsync(albumId);
+            // Add shimmer placeholders for tracks (estimated count)
+            _tracksSource.Edit(cache =>
+            {
+                cache.Clear();
+                for (int i = 0; i < 10; i++)
+                    cache.AddOrUpdate(LazyTrackItem.Placeholder($"ph-{i}", i + 1));
+            });
+
+            // Load album details and user playlists in parallel
+            var detailTask = _albumService.GetDetailAsync(albumId);
             var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
 
             await Task.WhenAll(detailTask, playlistsTask);
 
             var detail = await detailTask;
-            // Only overwrite prefilled values if the service returned real data
-            if (!string.IsNullOrEmpty(detail.Name) && !detail.Name.StartsWith("Unknown"))
+
+            // Map metadata (respect prefilled values from navigation)
+            if (!string.IsNullOrEmpty(detail.Name))
                 AlbumName = detail.Name;
-            if (!string.IsNullOrEmpty(detail.ImageUrl))
-                AlbumImageUrl = detail.ImageUrl;
-            if (!string.IsNullOrEmpty(detail.ArtistId))
-                ArtistId = detail.ArtistId;
-            if (!string.IsNullOrEmpty(detail.ArtistName) && detail.ArtistName != "Unknown Artist")
-                ArtistName = detail.ArtistName;
-            if (detail.Year > 0)
-                Year = detail.Year;
-            if (!string.IsNullOrEmpty(detail.AlbumType))
-                AlbumType = detail.AlbumType;
+            if (!string.IsNullOrEmpty(detail.CoverArtUrl))
+                AlbumImageUrl = detail.CoverArtUrl;
+            var firstArtist = detail.Artists.FirstOrDefault();
+            if (firstArtist != null)
+            {
+                if (!string.IsNullOrEmpty(firstArtist.Uri)) ArtistId = firstArtist.Uri;
+                if (!string.IsNullOrEmpty(firstArtist.Name)) ArtistName = firstArtist.Name;
+            }
+            if (detail.ReleaseDate.Year > 0)
+                Year = detail.ReleaseDate.Year;
+            if (!string.IsNullOrEmpty(detail.Type))
+                AlbumType = detail.Type;
             IsSaved = detail.IsSaved;
 
             Playlists = await playlistsTask;
 
-            // Header is ready, stop main loading
+            // Header is ready
             IsLoading = false;
 
-            // Now load tracks from catalog service
-            var tracks = await _catalogService.GetAlbumTracksAsync(albumId);
-            var indexed = tracks.Select(t => t with { OriginalIndex = t.TrackNumber }).ToList();
+            // Populate track shimmers → real data
             _tracksSource.Edit(cache =>
             {
                 cache.Clear();
-                cache.AddOrUpdate(indexed);
+                int idx = 1;
+                foreach (var t in detail.Tracks)
+                {
+                    cache.AddOrUpdate(LazyTrackItem.Loaded(t.Id, idx, t));
+                    idx++;
+                }
             });
 
-            // Handle empty album case
-            if (tracks.Count == 0)
-            {
+            if (detail.Tracks.Count == 0)
                 IsLoadingTracks = false;
-            }
 
-            // TODO: Load more by artist
+            // Related albums
+            MoreByArtist.Clear();
+            foreach (var r in detail.MoreByArtist)
+                MoreByArtist.Add(r);
+            this.RaisePropertyChanged(nameof(HasMoreByArtist));
         }
         catch (Exception ex)
         {

@@ -16,7 +16,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// </summary>
 public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
 {
-    private readonly ICatalogService _catalogService;
+    private readonly IAlbumService _albumService;
     private readonly Action<ArtistAlbumItemViewModel>? _onAlbumSelected;
 
     public string GroupName { get; }
@@ -35,12 +35,12 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
         string groupName,
         string groupType,
         IEnumerable<LibraryArtistAlbumDto> albums,
-        ICatalogService catalogService,
+        IAlbumService albumService,
         Action<ArtistAlbumItemViewModel>? onAlbumSelected = null)
     {
         GroupName = groupName;
         GroupType = groupType;
-        _catalogService = catalogService;
+        _albumService = albumService;
         _onAlbumSelected = onAlbumSelected;
 
         foreach (var album in albums)
@@ -92,7 +92,7 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
         // Load tracks for all albums that haven't been loaded yet
         var loadTasks = Albums
             .Where(a => !a.HasLoadedTracks && !a.IsLoadingTracks)
-            .Select(a => a.LoadTracksAsync(_catalogService));
+            .Select(a => a.LoadTracksAsync(_albumService));
 
         await Task.WhenAll(loadTasks);
     }

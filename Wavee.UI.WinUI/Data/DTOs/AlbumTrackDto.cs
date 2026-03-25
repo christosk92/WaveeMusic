@@ -8,6 +8,7 @@ namespace Wavee.UI.WinUI.Data.DTOs;
 /// </summary>
 public sealed record AlbumTrackDto : ITrackItem
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }
     public required string Title { get; init; }
     public required string ArtistName { get; init; }
@@ -21,6 +22,7 @@ public sealed record AlbumTrackDto : ITrackItem
     public int DiscNumber { get; init; }
     public bool IsPlayable { get; init; } = true;
     public int OriginalIndex { get; init; }
+    public bool IsLoaded => true;
     public long PlayCount { get; init; }
 
     /// <summary>
