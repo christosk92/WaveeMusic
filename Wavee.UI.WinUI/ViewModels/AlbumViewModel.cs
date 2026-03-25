@@ -479,10 +479,13 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Header is ready
             IsLoading = false;
 
-            // Populate track shimmers → real data
+            // Clear shimmer placeholders first — let the ListView process removals
+            _tracksSource.Clear();
+            await Task.Yield();
+
+            // Add real tracks in a fresh batch — ListView sees these as new entries → staggered entrance animation
             _tracksSource.Edit(cache =>
             {
-                cache.Clear();
                 int idx = 1;
                 foreach (var t in detail.Tracks)
                 {

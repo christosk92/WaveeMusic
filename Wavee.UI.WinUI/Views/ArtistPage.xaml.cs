@@ -9,10 +9,13 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -49,16 +52,102 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
 
+    private Windows.Media.Playback.MediaPlayer? _watchFeedMediaPlayer;
+    private Microsoft.UI.Xaml.Controls.MediaPlayerElement? _watchFeedElement;
+
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ArtistViewModel.IsLoading))
         {
             if (!ViewModel.IsLoading && !_showingContent)
             {
-                // Defer slightly to let reactive bindings populate collections
-                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    CrossfadeToContent);
+                DispatcherQueue.TryEnqueue(CrossfadeToContent);
             }
+        }
+        else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed))
+        {
+            SetupWatchFeedVideo();
+        }
+    }
+
+    private void SetupWatchFeedVideo()
+    {
+        if (ViewModel.WatchFeed?.VideoUrl == null) return;
+
+        // Clean up previous
+        TeardownWatchFeed();
+
+        // Create MediaPlayer
+        _watchFeedMediaPlayer = new Windows.Media.Playback.MediaPlayer
+        {
+            IsLoopingEnabled = true,
+            IsMuted = true,
+            AutoPlay = true
+        };
+        _watchFeedMediaPlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(
+            new Uri(ViewModel.WatchFeed.VideoUrl));
+
+        // Create MediaPlayerElement programmatically (never in XAML — WinUI teardown bug)
+        _watchFeedElement = new Microsoft.UI.Xaml.Controls.MediaPlayerElement
+        {
+            Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill,
+            AreTransportControlsEnabled = false,
+            AutoPlay = true
+        };
+        _watchFeedElement.SetMediaPlayer(_watchFeedMediaPlayer);
+
+        WatchFeedGrid.Children.Insert(0, _watchFeedElement);
+
+        // Constrain the MediaPlayerElement so the swap chain doesn't overflow
+        _watchFeedElement.Width = 120;
+        _watchFeedElement.Height = 120;
+
+        // Apply Composition clip directly on the WatchFeedGrid visual
+        // (must be on the immediate container — swap chains ignore parent clips)
+        var gridVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(WatchFeedGrid);
+        var compositor = gridVisual.Compositor;
+        var ellipse = compositor.CreateEllipseGeometry();
+        ellipse.Center = new System.Numerics.Vector2(60, 60);
+        ellipse.Radius = new System.Numerics.Vector2(60, 60);
+        gridVisual.Clip = compositor.CreateGeometricClip(ellipse);
+
+        // Crossfade: wait for video to start rendering, then fade in over the static image
+        _watchFeedMediaPlayer.VideoFrameAvailable += OnFirstVideoFrame;
+        _watchFeedMediaPlayer.IsVideoFrameServerEnabled = true;
+    }
+
+    private void OnFirstVideoFrame(Windows.Media.Playback.MediaPlayer sender, object args)
+    {
+        // Only need the first frame — unsubscribe immediately
+        sender.VideoFrameAvailable -= OnFirstVideoFrame;
+        sender.IsVideoFrameServerEnabled = false;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            // Fade video in over the static image
+            AnimationBuilder.Create()
+                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(600),
+                         easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+                .Start(WatchFeedGrid);
+
+            // Show hover overlay
+            WatchFeedHoverOverlay.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void TeardownWatchFeed()
+    {
+        if (_watchFeedElement != null)
+        {
+            _watchFeedElement.SetMediaPlayer(null);
+            WatchFeedGrid.Children.Remove(_watchFeedElement);
+            _watchFeedElement = null;
+        }
+        if (_watchFeedMediaPlayer != null)
+        {
+            _watchFeedMediaPlayer.Pause();
+            _watchFeedMediaPlayer.Dispose();
+            _watchFeedMediaPlayer = null;
         }
     }
 
@@ -69,20 +158,23 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         // Start both simultaneously — content fades in AS shimmer fades out
         AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(250),
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(150),
                      layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(ShimmerContainer);
 
         ContentContainer.Opacity = 1;
         AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(250),
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150),
                      layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(ContentContainer);
 
         // Collapse shimmer after animation completes
-        await Task.Delay(300);
+        await Task.Delay(160);
         if (_showingContent)
             ShimmerContainer.Visibility = Visibility.Collapsed;
+
+        // Set up watch feed video now that the content is visible
+        SetupWatchFeedVideo();
     }
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
@@ -90,6 +182,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         SizeChanged -= OnSizeChanged;
+        TeardownWatchFeed();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -218,6 +311,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
                 ViewModel.Initialize(artistId);
                 await ViewModel.LoadCommand.ExecuteAsync(null);
             }
+            // Set up watch feed after data is loaded
+            SetupWatchFeedVideo();
         }
         catch (Exception ex)
         {
@@ -332,6 +427,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Compute split, notch, and second repeater
         ApplySplitLayout();
 
+        // Auto-scroll so the clicked album card row is visible at the top,
+        // with the detail panel below it
+        _activeDetailPanel.StartBringIntoView(new BringIntoViewOptions
+        {
+            AnimationDesired = true,
+            VerticalAlignmentRatio = 0.5, // center the panel, which puts the card row above it
+            VerticalOffset = -200          // nudge up so the card row is also visible
+        });
+
         // Update ViewModel state
         ViewModel.ExpandAlbumCommand.Execute(item);
     }
@@ -395,6 +499,57 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
     }
 
+    /// <summary>
+    /// Detach the MediaPlayer from the visual tree BEFORE the page is removed.
+    /// This prevents COM E_ABORT when WinUI tears down the MediaPlayerElement.
+    /// </summary>
+    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    {
+        base.OnNavigatingFrom(e);
+        TeardownWatchFeed();
+    }
+
+
+    private void WatchFeedOverlay_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        AnimationBuilder.Create()
+            .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(150))
+            .Start(WatchFeedHoverOverlay);
+    }
+
+    private void WatchFeedOverlay_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        AnimationBuilder.Create()
+            .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(150))
+            .Start(WatchFeedHoverOverlay);
+    }
+
+    private void WatchFeedOverlay_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        // Toggle mute on tap
+        if (_watchFeedMediaPlayer != null)
+            _watchFeedMediaPlayer.IsMuted = !_watchFeedMediaPlayer.IsMuted;
+    }
+
+    private void PinnedItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.PinnedItem?.Uri == null) return;
+
+        ConnectedAnimationHelper.CancelPending();
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = ViewModel.PinnedItem.Uri,
+            Title = ViewModel.PinnedItem.Title,
+            ImageUrl = ViewModel.PinnedItem.ImageUrl
+        };
+
+        if (ViewModel.PinnedItem.Type == "ALBUM" || ViewModel.PinnedItem.Type == "SINGLE" || ViewModel.PinnedItem.Type == "EP")
+            NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
+        else
+            NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Release", NavigationHelpers.IsCtrlPressed());
+    }
+
     private async Task FetchAlbumColorAsync(ArtistReleaseVm album, AlbumDetailPanel panel)
     {
         if (string.IsNullOrEmpty(album.ImageUrl)) return;
@@ -452,5 +607,130 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         // Fire-and-forget prefetch via service (hot + SQLite + API)
         _ = _colorService.GetColorAsync(imageUrl);
+    }
+
+    private async void OpenLocationDialog_Click(object sender, RoutedEventArgs e)
+    {
+        var searchBox = new AutoSuggestBox
+        {
+            PlaceholderText = "Search city...",
+            QueryIcon = new SymbolIcon(Symbol.Find),
+            Width = 300,
+            DisplayMemberPath = "FullName"
+        };
+
+        var useCurrentBtn = new HyperlinkButton { Content = "Use current location", Padding = new Thickness(0) };
+
+        var panel = new StackPanel { Spacing = 16 };
+
+        if (!string.IsNullOrEmpty(ViewModel.UserLocationName))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Current: {ViewModel.UserLocationName}",
+                Opacity = 0.6,
+                FontSize = 13
+            });
+        }
+
+        panel.Children.Add(searchBox);
+        panel.Children.Add(useCurrentBtn);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Concert location",
+            Content = panel,
+            CloseButtonText = "Cancel",
+            XamlRoot = XamlRoot
+        };
+
+        // Search via ViewModel → ILocationService
+        CancellationTokenSource? searchCts = null;
+        searchBox.TextChanged += async (s, args) =>
+        {
+            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
+            var query = s.Text?.Trim();
+            if (string.IsNullOrEmpty(query) || query.Length < 2) return;
+
+            searchCts?.Cancel();
+            searchCts = new CancellationTokenSource();
+            var ct = searchCts.Token;
+
+            try
+            {
+                await Task.Delay(300, ct);
+                var results = await ViewModel.SearchLocationsAsync(query, ct);
+                if (!ct.IsCancellationRequested)
+                    s.ItemsSource = results;
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { _logger?.LogWarning(ex, "Location search failed"); }
+        };
+
+        // Save selected location via ViewModel
+        searchBox.SuggestionChosen += async (s, args) =>
+        {
+            if (args.SelectedItem is not LocationSearchResult loc || string.IsNullOrEmpty(loc.GeonameId)) return;
+            try
+            {
+                await ViewModel.SaveLocationAsync(loc.GeonameId, loc.Name);
+                dialog.Hide();
+            }
+            catch (Exception ex) { _logger?.LogWarning(ex, "Failed to save location"); }
+        };
+
+        // Resolve current location, then confirm before saving
+        useCurrentBtn.Click += async (s, args) =>
+        {
+            try
+            {
+                useCurrentBtn.IsEnabled = false;
+                useCurrentBtn.Content = "Detecting location...";
+
+                var resolved = await ViewModel.ResolveCurrentLocationAsync();
+                if (resolved == null)
+                {
+                    useCurrentBtn.Content = "Could not detect location";
+                    useCurrentBtn.IsEnabled = true;
+                    return;
+                }
+
+                // Pre-fill the search box with the resolved city for confirmation
+                searchBox.Text = resolved.FullName ?? resolved.Name ?? "";
+                searchBox.ItemsSource = new[] { resolved };
+
+                useCurrentBtn.Content = $"Detected: {resolved.Name} — select above to confirm";
+                useCurrentBtn.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get current location");
+                useCurrentBtn.Content = "Failed to detect location";
+                useCurrentBtn.IsEnabled = true;
+            }
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private void ConcertCard_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is ConcertVm concert && !string.IsNullOrEmpty(concert.Uri))
+        {
+            // TODO: Navigate to ConcertPage once it exists
+            // NavigationHelpers.OpenConcert(concert.Uri, concert.Title ?? "Concert");
+        }
+    }
+
+    private void ConcertCard_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Border border)
+            border.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+    }
+
+    private void ConcertCard_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Border border)
+            border.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
     }
 }

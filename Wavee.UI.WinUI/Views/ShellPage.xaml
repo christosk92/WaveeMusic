@@ -42,16 +42,26 @@
             HomeRequested="NavToolbar_HomeRequested"
             SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"/>
 
-        <!-- Shell-level notification bar -->
-        <InfoBar
-            Grid.Row="2"
-            VerticalAlignment="Top"
-            HorizontalAlignment="Stretch"
-            IsOpen="{x:Bind ViewModel.IsNotificationOpen, Mode=TwoWay}"
-            Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
-            Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
-            IsClosable="True"
-            Canvas.ZIndex="1"/>
+        <!-- Shell-level notification bars -->
+        <StackPanel Grid.Row="2" Canvas.ZIndex="1">
+            <InfoBar
+                VerticalAlignment="Top"
+                HorizontalAlignment="Stretch"
+                IsOpen="{x:Bind ViewModel.IsNotificationOpen, Mode=TwoWay}"
+                Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
+                Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
+                IsClosable="True"/>
+            <InfoBar
+                x:Name="ConnectionErrorBar"
+                Title="Connection failed"
+                Severity="Error"
+                IsOpen="False"
+                IsClosable="True">
+                <InfoBar.ActionButton>
+                    <Button Content="Retry" Click="RetryConnection_Click"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
 
         <!-- Row 2: Main content area with sidebar -->
         <sidebar:SidebarView

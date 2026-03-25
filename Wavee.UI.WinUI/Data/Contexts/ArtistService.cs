@@ -17,11 +17,13 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 public sealed class ArtistService : IArtistService
 {
     private readonly IPathfinderClient _pathfinder;
+    private readonly ILocationService _locationService;
     private readonly ILogger? _logger;
 
-    public ArtistService(IPathfinderClient pathfinder, ILogger? logger = null)
+    public ArtistService(IPathfinderClient pathfinder, ILocationService locationService, ILogger? logger = null)
     {
         _pathfinder = pathfinder;
+        _locationService = locationService;
         _logger = logger;
     }
 
@@ -63,8 +65,62 @@ public sealed class ArtistService : IArtistService
 
             AlbumsTotalCount = artist.Discography?.Albums?.TotalCount ?? 0,
             SinglesTotalCount = artist.Discography?.Singles?.TotalCount ?? 0,
-            CompilationsTotalCount = artist.Discography?.Compilations?.TotalCount ?? 0
+            CompilationsTotalCount = artist.Discography?.Compilations?.TotalCount ?? 0,
+
+            PinnedItem = artist.Profile?.PinnedItem != null ? new ArtistPinnedItemResult
+            {
+                Title = artist.Profile.PinnedItem.Title,
+                Subtitle = artist.Profile.PinnedItem.Subtitle,
+                Comment = artist.Profile.PinnedItem.Comment,
+                Type = artist.Profile.PinnedItem.Type,
+                Uri = artist.Profile.PinnedItem.Uri,
+                ImageUrl = artist.Profile.PinnedItem.ItemV2?.Data?.CoverArt?.Sources?.LastOrDefault()?.Url,
+                BackgroundImageUrl = artist.Profile.PinnedItem.BackgroundImageV2?.Data?.Sources?.FirstOrDefault()?.Url
+            } : null,
+
+            WatchFeed = artist.WatchFeedEntrypoint?.Video?.FileId != null ? new ArtistWatchFeedResult
+            {
+                VideoUrl = artist.WatchFeedEntrypoint.Video.FileId,
+                ThumbnailUrl = artist.WatchFeedEntrypoint.ThumbnailImage?.Data?.Sources?.FirstOrDefault()?.Url
+            } : null,
+
+            Concerts = await MapConcertsAsync(artist.Goods?.Concerts, ct)
         };
+    }
+
+    private async Task<List<ArtistConcertResult>> MapConcertsAsync(ArtistConcerts? concerts, CancellationToken ct)
+    {
+        if (concerts?.Items == null || concerts.Items.Count == 0) return [];
+
+        // Fetch user city via ILocationService (cached internally)
+        await _locationService.GetUserCityAsync(ct);
+
+        var results = new List<ArtistConcertResult>();
+        foreach (var item in concerts.Items)
+        {
+            var data = item.Data;
+            if (data == null) continue;
+
+            DateTimeOffset date = default;
+            if (!string.IsNullOrEmpty(data.StartDateIsoString))
+                DateTimeOffset.TryParse(data.StartDateIsoString, out date);
+
+            results.Add(new ArtistConcertResult
+            {
+                Title = data.Title,
+                Venue = data.Location?.Name,
+                City = data.Location?.City,
+                Date = date,
+                IsFestival = data.Festival,
+                Uri = data.Uri,
+                IsNearUser = _locationService.IsNearUser(data.Location?.City)
+            });
+        }
+
+        return results
+            .OrderByDescending(c => c.IsNearUser)
+            .ThenBy(c => c.Date)
+            .ToList();
     }
 
     public async Task<List<ArtistReleaseResult>> GetDiscographyPageAsync(
@@ -171,4 +227,5 @@ public sealed class ArtistService : IArtistService
         var dt = new DateTime(date.Year, date.Month ?? 1, date.Day ?? 1);
         return dt.ToString("MMM d, yyyy").ToUpperInvariant();
     }
+
 }

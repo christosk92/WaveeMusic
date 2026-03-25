@@ -17,12 +17,12 @@
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
 
         <!-- Responsive: driven by SizeChanged in code-behind -->
+        <!-- Responsive layout: narrow hides the left panel, wide hides the inline header.
+             Loading state (shimmer vs content) is controlled by IsLoading bindings, NOT by visual states. -->
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
                 <VisualState x:Name="WideState">
                     <VisualState.Setters>
-                        <Setter Target="WideAlbumPanel.Visibility" Value="Visible"/>
-                        <Setter Target="ShimmerContainer.Visibility" Value="Collapsed"/>
                         <Setter Target="NarrowAlbumHeader.Visibility" Value="Collapsed"/>
                     </VisualState.Setters>
                 </VisualState>
@@ -68,7 +68,8 @@
                     <!-- Left panel (sticky via Composition in code-behind) -->
                     <StackPanel x:Name="WideAlbumPanel" Grid.Column="0"
                                 Padding="16,24" Spacing="14" HorizontalAlignment="Center"
-                                MaxWidth="280" VerticalAlignment="Top" Visibility="Collapsed">
+                                MaxWidth="280" VerticalAlignment="Top"
+                                Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
 
                         <HyperlinkButton Content="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                          Click="Artist_Click" Padding="0"
@@ -94,7 +95,8 @@
                                    TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
 
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4"
+                                    Visibility="{x:Bind ViewModel.Year, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock Text="{x:Bind ViewModel.AlbumType, Mode=OneWay}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontWeight="SemiBold"/>
@@ -105,7 +107,8 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4"
+                                    Visibility="{x:Bind ViewModel.TotalTracks, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                                 <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run Text=" songs"/>
@@ -196,7 +199,8 @@
                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
                                     <HyperlinkButton Content="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                                      Click="Artist_Click" Padding="0" FontSize="14" FontWeight="SemiBold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <StackPanel Orientation="Horizontal" Spacing="4"
+                                                Visibility="{x:Bind ViewModel.Year, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                                             <Run Text="{x:Bind ViewModel.Year, Mode=OneWay}"/>

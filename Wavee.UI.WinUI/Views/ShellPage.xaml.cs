@@ -85,20 +85,34 @@ public sealed partial class ShellPage : Page
             case AuthStatus.Authenticated:
                 NavToolbar.IsConnecting = false;
                 NavToolbar.UserDisplayName = authState.DisplayName ?? "User";
+                if (ConnectionErrorBar != null) ConnectionErrorBar.IsOpen = false;
                 break;
             case AuthStatus.Authenticating:
                 NavToolbar.IsConnecting = true;
                 NavToolbar.UserDisplayName = "Connecting...";
+                if (ConnectionErrorBar != null) ConnectionErrorBar.IsOpen = false;
                 break;
             case AuthStatus.Error:
                 NavToolbar.IsConnecting = false;
                 NavToolbar.UserDisplayName = "Connection failed";
+                if (ConnectionErrorBar != null)
+                {
+                    ConnectionErrorBar.Message = authState.ConnectionError ?? "Could not connect to Spotify.";
+                    ConnectionErrorBar.IsOpen = true;
+                }
                 break;
             default:
                 NavToolbar.IsConnecting = false;
                 NavToolbar.UserDisplayName = "Sign in";
                 break;
         }
+    }
+
+    private async void RetryConnection_Click(object sender, RoutedEventArgs e)
+    {
+        var authState = Ioc.Default.GetService<IAuthState>();
+        if (authState != null)
+            await authState.RetryConnectionAsync();
     }
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)

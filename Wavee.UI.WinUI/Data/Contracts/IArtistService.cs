@@ -12,6 +12,7 @@ public interface IArtistService
 {
     Task<ArtistOverviewResult> GetOverviewAsync(string artistUri, CancellationToken ct = default);
     Task<List<ArtistReleaseResult>> GetDiscographyPageAsync(string artistUri, string type, int offset, int limit = 20, CancellationToken ct = default);
+
 }
 
 // ── Domain result types (clean boundary — no Pathfinder types leak to ViewModel) ──
@@ -40,6 +41,13 @@ public sealed record ArtistOverviewResult
     public int AlbumsTotalCount { get; init; }
     public int SinglesTotalCount { get; init; }
     public int CompilationsTotalCount { get; init; }
+
+    // Pinned item + Watch feed
+    public ArtistPinnedItemResult? PinnedItem { get; init; }
+    public ArtistWatchFeedResult? WatchFeed { get; init; }
+
+    // Concerts
+    public required List<ArtistConcertResult> Concerts { get; init; }
 }
 
 public sealed record ArtistLatestReleaseResult
@@ -85,4 +93,32 @@ public sealed record RelatedArtistResult
     public string? Uri { get; init; }
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
+}
+
+public sealed record ArtistPinnedItemResult
+{
+    public string? Title { get; init; }
+    public string? Subtitle { get; init; }
+    public string? Comment { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? BackgroundImageUrl { get; init; }
+    public string? Uri { get; init; }
+    public string? Type { get; init; }
+}
+
+public sealed record ArtistWatchFeedResult
+{
+    public string? ThumbnailUrl { get; init; }
+    public string? VideoUrl { get; init; }
+}
+
+public sealed record ArtistConcertResult
+{
+    public string? Title { get; init; }
+    public string? Venue { get; init; }
+    public string? City { get; init; }
+    public System.DateTimeOffset Date { get; init; }
+    public bool IsFestival { get; init; }
+    public string? Uri { get; init; }
+    public bool IsNearUser { get; init; }
 }

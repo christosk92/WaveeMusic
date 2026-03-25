@@ -86,9 +86,14 @@ public static class AppLifecycleHelper
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
                 .AddSingleton<ILibraryDataService, MockLibraryDataService>()
+                .AddSingleton<ILocationService>(sp =>
+                    new Data.Contexts.LocationService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetService<ILogger<Data.Contexts.LocationService>>()))
                 .AddSingleton<IArtistService>(sp =>
                     new Data.Contexts.ArtistService(
                         sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<ILocationService>(),
                         sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
                 .AddSingleton<IAlbumService>(sp =>
                     new Data.Contexts.AlbumService(

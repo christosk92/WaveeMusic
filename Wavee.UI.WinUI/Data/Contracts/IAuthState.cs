@@ -21,11 +21,17 @@ public interface IAuthState : INotifyPropertyChanged
     string? ProfileImageUrl { get; }
     bool IsAuthenticated { get; }
     bool IsPremium { get; }
+    string? ConnectionError { get; }
 
     /// <summary>
-    /// Attempts to restore a previously cached session.
+    /// Attempts to restore a previously cached session (with retry).
     /// </summary>
     Task<bool> TryRestoreSessionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Manually retry connection after a failure.
+    /// </summary>
+    Task<bool> RetryConnectionAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Logs the user out and clears all auth state.

@@ -74,6 +74,19 @@ public static class ConnectedAnimationHelper
     }
 
     /// <summary>
+    /// Cancel any pending connected animations to prevent E_ABORT during navigation
+    /// when the source element is no longer in the visual tree.
+    /// </summary>
+    public static void CancelPending()
+    {
+        var service = ConnectedAnimationService.GetForCurrentView();
+        // Cancel all known animation keys
+        service.GetAnimation(AlbumArt)?.Cancel();
+        service.GetAnimation(ArtistImage)?.Cancel();
+        service.GetAnimation(PlaylistArt)?.Cancel();
+    }
+
+    /// <summary>
     /// Prepare a connected animation for back navigation.
     /// Call this in the destination page when preparing to go back.
     /// </summary>

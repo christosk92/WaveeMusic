@@ -41,6 +41,9 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
     private AuthStatus _status = AuthStatus.Unknown;
 
     [ObservableProperty]
+    private string? _connectionError;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Username))]
     [NotifyPropertyChangedFor(nameof(DisplayName))]
     [NotifyPropertyChangedFor(nameof(ProfileImageUrl))]
@@ -78,55 +81,79 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
 
     public async Task<bool> TryRestoreSessionAsync(CancellationToken ct = default)
     {
-        try
+        ConnectionError = null;
+        SetStatus(AuthStatus.Authenticating);
+
+        // Demo mode: return mock authenticated state
+        if (_config?.IsDemoMode == true || _session == null)
         {
-            SetStatus(AuthStatus.Authenticating);
-
-            // Demo mode: return mock authenticated state
-            if (_config?.IsDemoMode == true || _session == null)
+            CurrentUser = new UserData
             {
-                CurrentUser = new UserData
+                Username = "demo_user",
+                CountryCode = "US",
+                AccountType = Core.Session.AccountType.Premium
+            };
+            AccountType = Core.Session.AccountType.Premium;
+            SetStatus(AuthStatus.Authenticated);
+            return true;
+        }
+
+        // Already connected
+        if (_session.IsConnected())
+        {
+            await PopulateUserFromSession(ct);
+            return true;
+        }
+
+        // Try cached credentials with retry
+        if (_credentialsCache != null)
+        {
+            var lastUser = await _credentialsCache.LoadLastUsernameAsync(ct);
+            var cached = await _credentialsCache.LoadCredentialsAsync(lastUser, ct);
+            if (cached != null)
+            {
+                var retryDelays = new[] { 0, 2000, 5000 };
+                Exception? lastEx = null;
+
+                for (int attempt = 0; attempt < retryDelays.Length; attempt++)
                 {
-                    Username = "demo_user",
-                    CountryCode = "US",
-                    AccountType = Core.Session.AccountType.Premium
-                };
-                AccountType = Core.Session.AccountType.Premium;
-                SetStatus(AuthStatus.Authenticated);
-                return true;
-            }
+                    try
+                    {
+                        if (attempt > 0)
+                        {
+                            _logger?.LogInformation("Connection retry {Attempt}/3...", attempt + 1);
+                            await Task.Delay(retryDelays[attempt], ct);
+                        }
 
-            // Already connected (shouldn't happen on startup, but be safe)
-            if (_session.IsConnected())
-            {
-                await PopulateUserFromSession(ct);
-                return true;
-            }
-
-            // Try cached credentials
-            if (_credentialsCache != null)
-            {
-                var lastUser = await _credentialsCache.LoadLastUsernameAsync(ct);
-                var cached = await _credentialsCache.LoadCredentialsAsync(lastUser, ct);
-                if (cached != null)
-                {
-                    _logger?.LogInformation("Restoring session from cached credentials for {User}", lastUser);
-                    await _session.ConnectAsync(cached, _credentialsCache, ct);
-                    await PopulateUserFromSession(ct);
-                    return true;
+                        await _session.ConnectAsync(cached, _credentialsCache, ct);
+                        await PopulateUserFromSession(ct);
+                        return true;
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        lastEx = ex;
+                        _logger?.LogWarning(ex, "Connection attempt {Attempt}/3 failed", attempt + 1);
+                    }
                 }
-            }
 
-            SetStatus(AuthStatus.LoggedOut);
-            return false;
+                // All retries exhausted
+                _logger?.LogError(lastEx, "Failed to restore session after 3 attempts");
+                ConnectionError = "Could not connect to Spotify. Check your internet connection.";
+                SetStatus(AuthStatus.Error);
+                return false;
+            }
         }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to restore session");
-            SetStatus(AuthStatus.LoggedOut);
-            return false;
-        }
+
+        SetStatus(AuthStatus.LoggedOut);
+        return false;
     }
+
+    /// <summary>
+    /// Manually retry connection after a failure.
+    /// </summary>
+    public Task<bool> RetryConnectionAsync(CancellationToken ct = default)
+        => TryRestoreSessionAsync(ct);
 
     public async Task LoginWithAuthorizationCodeAsync(CancellationToken ct = default)
     {

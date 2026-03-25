@@ -96,6 +96,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             IsNavigationStackEnabled = true
         };
         ContentFrame.Navigated += ContentFrame_Navigated;
+        ContentFrame.NavigationFailed += (_, e) =>
+        {
+            e.Handled = true;
+            System.Diagnostics.Debug.WriteLine(
+                $"NavigationFailed [{e.SourcePageType?.Name}]: {e.Exception?.Message}");
+        };
     }
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)

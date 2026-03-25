@@ -32,6 +32,13 @@
             ContainerContentChanging="TrackListView_ContainerContentChanging"
             Padding="16,0,18,0">
 
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection>
+                    <EntranceThemeTransition IsStaggeringEnabled="True"/>
+                    <AddDeleteThemeTransition/>
+                </TransitionCollection>
+            </ListView.ItemContainerTransitions>
+
             <!-- Scrollable Header: Page Header + Column Headers -->
             <ListView.Header>
                 <StackPanel>

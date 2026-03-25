@@ -25,6 +25,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 {
     private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;
+    private readonly ILocationService _locationService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private readonly CompositeDisposable _disposables = new();
@@ -48,6 +49,15 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     // ── Non-reactive collections (simple lists) ──
     [ObservableProperty]
     private ObservableCollection<RelatedArtistVm> _relatedArtists = [];
+
+    [ObservableProperty]
+    private ObservableCollection<ConcertVm> _concerts = [];
+
+    [ObservableProperty]
+    private ObservableCollection<LocationSearchResultVm> _locationSuggestions = [];
+
+    [ObservableProperty]
+    private string? _userLocationName;
 
     // ── Scalar properties ──
 
@@ -99,16 +109,65 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private ObservableCollection<LazyTrackItem> _expandedAlbumTracks = [];
     [ObservableProperty] private bool _isLoadingExpandedTracks;
 
+    // Pinned item + Watch feed
+    [ObservableProperty] private ArtistPinnedItemResult? _pinnedItem;
+    [ObservableProperty] private ArtistWatchFeedResult? _watchFeed;
+    public bool HasPinnedItem => PinnedItem != null;
+    public bool HasWatchFeed => WatchFeed != null;
+    public bool HasConcerts => Concerts.Count > 0;
+
+    // ── Location operations (delegated to ILocationService) ──
+
+    public async Task<List<LocationSearchResult>> SearchLocationsAsync(string query, CancellationToken ct = default)
+        => await _locationService.SearchAsync(query, ct);
+
+    public async Task SaveLocationAsync(string geonameId, string? cityName)
+    {
+        await _locationService.SaveByGeonameIdAsync(geonameId, cityName);
+        UserLocationName = cityName ?? _locationService.CurrentCity;
+        RefreshNearUserFlags();
+    }
+
+    /// <summary>
+    /// Resolves device GPS to a city name but does NOT save yet.
+    /// The UI should confirm with the user before calling SaveLocationAsync.
+    /// </summary>
+    public async Task<LocationSearchResult?> ResolveCurrentLocationAsync()
+    {
+        try
+        {
+            var geolocator = new Windows.Devices.Geolocation.Geolocator();
+            var position = await geolocator.GetGeopositionAsync();
+            var lat = position.Coordinate.Point.Position.Latitude;
+            var lon = position.Coordinate.Point.Position.Longitude;
+
+            var results = await _locationService.SearchByCoordinatesAsync(lat, lon);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to resolve current location");
+            return null;
+        }
+    }
+
+    private void RefreshNearUserFlags()
+    {
+        foreach (var c in Concerts)
+            c.IsNearUser = _locationService.IsNearUser(c.City);
+    }
+
     // ── Tab management ──
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     // ── Constructor (reactive pipelines) ──
 
-    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILogger<ArtistViewModel>? logger = null)
+    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
         _albumService = albumService;
+        _locationService = locationService;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
@@ -119,33 +178,27 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             .DisposeWith(_disposables);
 
         // Albums: filter + sort by date desc
-        // AutoRefresh ensures filter/sort re-evaluate when placeholders get populated
+        // Single AutoRefresh on Data (captures both filter and sort changes on Populate)
         _releasesSource.Connect()
-            .AutoRefresh(r => r.IsLoaded)
             .AutoRefresh(r => r.Data)
             .Filter(r => r.Data?.Type == "ALBUM" || (!r.IsLoaded && r.Id.StartsWith("album-ph")))
-            .Sort(SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
-            .Bind(out _albums)
+            .SortAndBind(out _albums, SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
             .Subscribe()
             .DisposeWith(_disposables);
 
         // Singles
         _releasesSource.Connect()
-            .AutoRefresh(r => r.IsLoaded)
             .AutoRefresh(r => r.Data)
             .Filter(r => r.Data?.Type == "SINGLE" || (!r.IsLoaded && r.Id.StartsWith("single-ph")))
-            .Sort(SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
-            .Bind(out _singles)
+            .SortAndBind(out _singles, SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
             .Subscribe()
             .DisposeWith(_disposables);
 
         // Compilations
         _releasesSource.Connect()
-            .AutoRefresh(r => r.IsLoaded)
             .AutoRefresh(r => r.Data)
             .Filter(r => r.Data?.Type == "COMPILATION" || (!r.IsLoaded && r.Id.StartsWith("comp-ph")))
-            .Sort(SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
-            .Bind(out _compilations)
+            .SortAndBind(out _compilations, SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
             .Subscribe()
             .DisposeWith(_disposables);
     }
@@ -283,6 +336,38 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 });
             }
 
+            // ── Concerts ──
+            Concerts.Clear();
+            foreach (var c in overview.Concerts)
+            {
+                Concerts.Add(new ConcertVm
+                {
+                    Title = c.Title,
+                    Venue = c.Venue,
+                    City = c.City,
+                    DateFormatted = c.Date != default
+                        ? c.Date.ToString("MMM d").ToUpperInvariant()
+                        : "",
+                    DayOfWeek = c.Date != default
+                        ? c.Date.ToString("ddd").ToUpperInvariant()
+                        : "",
+                    Year = c.Date != default ? c.Date.Year.ToString() : "",
+                    IsFestival = c.IsFestival,
+                    IsNearUser = c.IsNearUser,
+                    Uri = c.Uri
+                });
+            }
+            OnPropertyChanged(nameof(HasConcerts));
+
+            // ── User location name (for concerts header) ──
+            UserLocationName = _locationService.CurrentCity;
+
+            // ── Pinned item + Watch feed ──
+            PinnedItem = overview.PinnedItem;
+            WatchFeed = overview.WatchFeed;
+            OnPropertyChanged(nameof(HasPinnedItem));
+            OnPropertyChanged(nameof(HasWatchFeed));
+
             // ── Pagination ──
             CurrentPage = 0;
             NotifyPaginationChanged();
@@ -327,8 +412,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             count++;
         }
 
-        // Add shimmer placeholders for remaining items
-        for (int i = count; i < totalCount; i++)
+        // Add shimmer placeholders for remaining items (capped at 20 to avoid AutoRefresh overhead)
+        var maxPlaceholders = Math.Min(totalCount - count, 20);
+        for (int i = count; i < count + maxPlaceholders; i++)
             cache.AddOrUpdate(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
     }
 
@@ -654,4 +740,40 @@ public sealed class RelatedArtistVm
     public string? Uri { get; init; }
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
+}
+
+public sealed class ConcertVm : System.ComponentModel.INotifyPropertyChanged
+{
+    public string? Title { get; init; }
+    public string? Venue { get; init; }
+    public string? City { get; init; }
+    public string? DateFormatted { get; init; } // "MAR 26"
+    public string? DayOfWeek { get; init; }     // "WED"
+    public string? Year { get; init; }
+    public bool IsFestival { get; init; }
+    public string? Uri { get; init; }
+
+    private bool _isNearUser;
+    public bool IsNearUser
+    {
+        get => _isNearUser;
+        set
+        {
+            if (_isNearUser == value) return;
+            _isNearUser = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsNearUser)));
+        }
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed class LocationSearchResultVm
+{
+    public string? Name { get; init; }
+    public string? FullName { get; init; }
+    public string? GeonameId { get; init; }
+    public string? Country { get; init; }
+
+    public override string ToString() => FullName ?? Name ?? "";
 }
