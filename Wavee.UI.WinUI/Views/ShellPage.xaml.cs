@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 using Windows.Graphics;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
@@ -306,6 +307,12 @@ public sealed partial class ShellPage : Page
     private void TabControl_AddTabRequested(object? sender, EventArgs e)
     {
         NavigationHelpers.OpenNewTab();
+    }
+
+    private void DebugAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        NavigationHelpers.OpenDebug(openInNewTab: true);
+        args.Handled = true;
     }
 
     private void OnDragStateChanged(bool isDragging)

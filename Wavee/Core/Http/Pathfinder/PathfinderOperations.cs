@@ -34,4 +34,19 @@ internal static class PathfinderOperations
 
     public const string GetAlbum = "getAlbum";
     public const string GetAlbumHash = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
+
+    public const string UserLocation = "userLocation";
+    public const string UserLocationHash = "079939378ca79b67c6d047be9152ea940d21f10bbfa2f5d4cf4d8320d87774c2";
+
+    public const string ConcertLocationsByLatLon = "concertLocationsByLatLon";
+    public const string ConcertLocationsByLatLonHash = "8a059d072a17a1199feb21fe846271f1680eda87010c832852ced0c55c6c7c96";
+
+    public const string SaveLocation = "saveLocation";
+    public const string SaveLocationHash = "5502351e9f201ae29014ca55d3b24b755ba261a1a9eb35fb498cb4c7df419353";
+
+    public const string SearchConcertLocations = "searchConcertLocations";
+    public const string SearchConcertLocationsHash = "43ededefcba8b3f519fd0c2d6c025dfeec9f742cf47d04a3c3711d95b27deda3";
+
+    public const string Concert = "concert";
+    public const string ConcertHash = "6313561b79fa89c9cd2f0f1c1392a5de6b0c6ab475648ecb176ecb8dc9b43d3a";
 }

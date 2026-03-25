@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 
 namespace Wavee.UI.WinUI.Controls.Omnibar;
@@ -27,7 +28,35 @@ public sealed partial class Omnibar : Control
             _searchBox.TextChanged += SearchBox_TextChanged;
             _searchBox.QuerySubmitted += SearchBox_QuerySubmitted;
             _searchBox.SuggestionChosen += SearchBox_SuggestionChosen;
+            _searchBox.Loaded += SearchBox_Loaded;
         }
+    }
+
+    private void SearchBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_searchBox == null) return;
+        _searchBox.Loaded -= SearchBox_Loaded;
+
+        // The AutoSuggestBox platform template pre-resolves its inner TextBox style,
+        // so XAML resource overrides don't reach it. Apply from code-behind instead.
+        var textBox = FindChild<TextBox>(_searchBox);
+        if (textBox != null
+            && Application.Current.Resources.TryGetValue("OmnibarTextBoxStyle", out var style))
+        {
+            textBox.Style = (Style)style;
+        }
+    }
+
+    private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T found) return found;
+            var result = FindChild<T>(child);
+            if (result != null) return result;
+        }
+        return null;
     }
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)

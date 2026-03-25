@@ -12,6 +12,10 @@
     mc:Ignorable="d"
     Background="Transparent">
 
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="F12" Invoked="DebugAccelerator_Invoked"/>
+    </Page.KeyboardAccelerators>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

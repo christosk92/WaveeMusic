@@ -495,19 +495,9 @@
                             Visibility="{x:Bind ViewModel.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="Concerts" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
-                        <HyperlinkButton Click="OpenLocationDialog_Click" VerticalAlignment="Center" Padding="0">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE81D;" FontSize="12"
-                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <TextBlock Text="{x:Bind ViewModel.UserLocationName, Mode=OneWay}"
-                                           FontSize="13"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Visibility="{x:Bind ViewModel.UserLocationName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                                <TextBlock Text="Set location" FontSize="13"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                           Visibility="{x:Bind ViewModel.UserLocationName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                            </StackPanel>
-                        </HyperlinkButton>
+                        <controls1:LocationButton
+                            LocationName="{x:Bind ViewModel.UserLocationName, Mode=TwoWay}"
+                            LocationChanged="LocationButton_LocationChanged"/>
                     </StackPanel>
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.Concerts, Mode=OneWay}">
                         <ItemsRepeater.Layout>
@@ -515,13 +505,13 @@
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:ConcertVm">
-                                <Border CornerRadius="8" Padding="16,12" Width="200"
+                                <Button Click="ConcertCard_Click" Padding="16,12" Width="200"
+                                        CornerRadius="8"
                                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                         BorderThickness="1"
-                                        Tapped="ConcertCard_Tapped"
-                                        PointerEntered="ConcertCard_PointerEntered"
-                                        PointerExited="ConcertCard_PointerExited">
+                                        HorizontalContentAlignment="Left"
+                                        Tag="{x:Bind Uri}">
                                     <Grid RowSpacing="4">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -556,7 +546,7 @@
                                         <TextBlock Grid.Row="3" Text="{x:Bind Title}" FontSize="11" Opacity="0.5"
                                                    TextTrimming="CharacterEllipsis" MaxLines="1" Margin="0,4,0,0"/>
                                     </Grid>
-                                </Border>
+                                </Button>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>

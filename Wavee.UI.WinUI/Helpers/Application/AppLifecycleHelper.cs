@@ -90,6 +90,11 @@ public static class AppLifecycleHelper
                     new Data.Contexts.LocationService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetService<ILogger<Data.Contexts.LocationService>>()))
+                .AddTransient<IConcertService>(sp =>
+                    new Data.Contexts.ConcertService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetService<ILogger<Data.Contexts.ConcertService>>()))
+                .AddTransient<ConcertViewModel>()
                 .AddSingleton<IArtistService>(sp =>
                     new Data.Contexts.ArtistService(
                         sp.GetRequiredService<ISession>().Pathfinder,
@@ -115,6 +120,7 @@ public static class AppLifecycleHelper
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>()
                 .AddTransient<SpotifyConnectViewModel>()
+                .AddTransient<DebugViewModel>()
 
                 // Drag & drop
                 .AddSingleton<DragStateService>()

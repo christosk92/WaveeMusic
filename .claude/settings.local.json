@@ -26,7 +26,15 @@
       "Bash(xargs:*)",
       "Bash(git reset:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:gist.github.com)"
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:learning.postman.com)",
+      "mcp__postman__getWorkspaces",
+      "mcp__postman__getCollections",
+      "mcp__postman__createCollection",
+      "mcp__postman__getCollection",
+      "mcp__postman__updateCollectionRequest",
+      "mcp__postman__patchCollection",
+      "mcp__postman__createCollectionRequest"
     ],
     "deny": [],
     "ask": []

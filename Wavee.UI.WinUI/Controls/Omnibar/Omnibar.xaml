@@ -74,8 +74,8 @@
                             x:Name="PART_TextBoxInputArea"
                             Grid.Row="1"
                             Margin="{TemplateBinding BorderThickness}"
-                            Padding="16,0,12,0"
-                            VerticalAlignment="Stretch"
+                            Padding="16,8,12,0"
+                            VerticalAlignment="Center"
                             IsTabStop="False"
                             Visibility="Visible">
                             <Grid.ColumnDefinitions>
@@ -87,6 +87,7 @@
                             <ScrollViewer
                                 x:Name="ContentElement"
                                 Grid.Column="0"
+                                Margin="0,0,0,8"
                                 VerticalAlignment="Center"
                                 AutomationProperties.AccessibilityView="Raw"
                                 Foreground="{TemplateBinding Foreground}"
@@ -106,6 +107,7 @@
                                 VerticalAlignment="Center"  
                                 Foreground="{Binding PlaceholderForeground, RelativeSource={RelativeSource TemplatedParent}, TargetNullValue={ThemeResource TextControlPlaceholderForeground}}"
                                 IsHitTestVisible="False"
+                                Margin="0,0,0,8"
                                 Text="{TemplateBinding PlaceholderText}"
                                 TextAlignment="{TemplateBinding TextAlignment}"
                                 TextWrapping="{TemplateBinding TextWrapping}" />
@@ -116,6 +118,8 @@
                                 Grid.Column="1"
                                 Width="36"
                                 Height="28"
+                                Margin="0,0,0,8"
+
                                 Padding="0"
                                 VerticalAlignment="Center"
                                 AutomationProperties.AccessibilityView="Raw"

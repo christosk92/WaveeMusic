@@ -151,7 +151,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    private void RefreshNearUserFlags()
+    public void RefreshNearUserFlags()
     {
         foreach (var c in Concerts)
             c.IsNearUser = _locationService.IsNearUser(c.City);

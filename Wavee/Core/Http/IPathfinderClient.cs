@@ -82,4 +82,20 @@ public interface IPathfinderClient
     /// <summary>Fetches full album detail (metadata, tracks, cover art, artists, more by artist).</summary>
     Task<GetAlbumResponse> GetAlbumAsync(
         string albumUri, CancellationToken ct = default);
+
+    /// <summary>Fetches the user's saved location from their Spotify profile.</summary>
+    Task<UserLocationResponse> GetUserLocationAsync(CancellationToken ct = default);
+
+    /// <summary>Resolves lat/lon coordinates to a concert location (geonameId + name).</summary>
+    Task<ConcertLocationsResponse> GetConcertLocationByLatLonAsync(
+        double lat, double lon, CancellationToken ct = default);
+
+    /// <summary>Saves the user's location to their Spotify profile.</summary>
+    Task<SaveLocationResponse> SaveLocationAsync(string geonameId, CancellationToken ct = default);
+
+    /// <summary>Searches for concert locations by city name.</summary>
+    Task<ConcertLocationsResponse> SearchConcertLocationsAsync(string query, CancellationToken ct = default);
+
+    /// <summary>Fetches full concert detail (artists, offers, related concerts, etc).</summary>
+    Task<ConcertDetailResponse> GetConcertAsync(string concertUri, CancellationToken ct = default);
 }

@@ -47,6 +47,12 @@ public sealed class ArtistUnion
 
     [JsonPropertyName("relatedContent")]
     public ArtistRelatedContent? RelatedContent { get; init; }
+
+    [JsonPropertyName("watchFeedEntrypoint")]
+    public ArtistWatchFeedEntrypoint? WatchFeedEntrypoint { get; init; }
+
+    [JsonPropertyName("goods")]
+    public ArtistGoods? Goods { get; init; }
 }
 
 // ── Profile ──
@@ -64,6 +70,9 @@ public sealed class AoArtistProfile
 
     [JsonPropertyName("externalLinks")]
     public ArtistExternalLinks? ExternalLinks { get; init; }
+
+    [JsonPropertyName("pinnedItem")]
+    public ArtistPinnedItem? PinnedItem { get; init; }
 }
 
 public sealed class ArtistBiography
@@ -453,9 +462,183 @@ public sealed class ArtistRelatedArtistItem
     public AoArtistVisuals? Visuals { get; init; }
 }
 
+// ── Pinned Item ──
+
+public sealed class ArtistPinnedItem
+{
+    [JsonPropertyName("comment")]
+    public string? Comment { get; init; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
+
+    [JsonPropertyName("subtitle")]
+    public string? Subtitle { get; init; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("backgroundImageV2")]
+    public ArtistPinnedItemImage? BackgroundImageV2 { get; init; }
+
+    [JsonPropertyName("thumbnailImage")]
+    public ArtistPinnedItemImage? ThumbnailImage { get; init; }
+
+    [JsonPropertyName("itemV2")]
+    public ArtistPinnedItemWrapper? ItemV2 { get; init; }
+}
+
+public sealed class ArtistPinnedItemImage
+{
+    [JsonPropertyName("data")]
+    public ArtistPinnedItemImageData? Data { get; init; }
+}
+
+public sealed class ArtistPinnedItemImageData
+{
+    [JsonPropertyName("sources")]
+    public List<ArtistImageSource>? Sources { get; init; }
+}
+
+public sealed class ArtistPinnedItemWrapper
+{
+    [JsonPropertyName("data")]
+    public ArtistPinnedItemData? Data { get; init; }
+}
+
+public sealed class ArtistPinnedItemData
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("coverArt")]
+    public ArtistCoverArt? CoverArt { get; init; }
+}
+
+// ── Watch Feed Entrypoint ──
+
+public sealed class ArtistWatchFeedEntrypoint
+{
+    [JsonPropertyName("entrypointUri")]
+    public string? EntrypointUri { get; init; }
+
+    [JsonPropertyName("thumbnailImage")]
+    public ArtistWatchFeedThumbnail? ThumbnailImage { get; init; }
+
+    [JsonPropertyName("video")]
+    public ArtistWatchFeedVideo? Video { get; init; }
+}
+
+public sealed class ArtistWatchFeedThumbnail
+{
+    [JsonPropertyName("data")]
+    public ArtistWatchFeedThumbnailData? Data { get; init; }
+}
+
+public sealed class ArtistWatchFeedThumbnailData
+{
+    [JsonPropertyName("sources")]
+    public List<ArtistImageSource>? Sources { get; init; }
+}
+
+public sealed class ArtistWatchFeedVideo
+{
+    [JsonPropertyName("fileId")]
+    public string? FileId { get; init; }
+
+    [JsonPropertyName("startTime")]
+    public int StartTime { get; init; }
+
+    [JsonPropertyName("endTime")]
+    public int EndTime { get; init; }
+
+    [JsonPropertyName("videoType")]
+    public string? VideoType { get; init; }
+}
+
+// ── Goods (Concerts, Merch) ──
+
+public sealed class ArtistGoods
+{
+    [JsonPropertyName("concerts")]
+    public ArtistConcerts? Concerts { get; init; }
+}
+
+public sealed class ArtistConcerts
+{
+    [JsonPropertyName("items")]
+    public List<ArtistConcertItem>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+}
+
+public sealed class ArtistConcertItem
+{
+    [JsonPropertyName("data")]
+    public ArtistConcertData? Data { get; init; }
+}
+
+public sealed class ArtistConcertData
+{
+    [JsonPropertyName("festival")]
+    public bool Festival { get; init; }
+
+    [JsonPropertyName("location")]
+    public ArtistConcertLocation? Location { get; init; }
+
+    [JsonPropertyName("startDateIsoString")]
+    public string? StartDateIsoString { get; init; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+}
+
+public sealed class ArtistConcertLocation
+{
+    [JsonPropertyName("city")]
+    public string? City { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+}
+
 // ── JSON Source Generation ──
 
 [JsonSerializable(typeof(ArtistOverviewResponse))]
+[JsonSerializable(typeof(ArtistOverviewData))]
+[JsonSerializable(typeof(ArtistUnion))]
+[JsonSerializable(typeof(AoArtistProfile))]
+[JsonSerializable(typeof(AoArtistVisuals))]
+[JsonSerializable(typeof(ArtistHeaderImage))]
+[JsonSerializable(typeof(ArtistStats))]
+[JsonSerializable(typeof(ArtistDiscography))]
+[JsonSerializable(typeof(ArtistRelatedContent))]
+[JsonSerializable(typeof(ArtistWatchFeedEntrypoint))]
+[JsonSerializable(typeof(ArtistWatchFeedVideo))]
+[JsonSerializable(typeof(ArtistWatchFeedThumbnail))]
+[JsonSerializable(typeof(ArtistWatchFeedThumbnailData))]
+[JsonSerializable(typeof(ArtistPinnedItem))]
+[JsonSerializable(typeof(ArtistPinnedItemWrapper))]
+[JsonSerializable(typeof(ArtistPinnedItemData))]
+[JsonSerializable(typeof(ArtistPinnedItemImage))]
+[JsonSerializable(typeof(ArtistPinnedItemImageData))]
+[JsonSerializable(typeof(ArtistGoods))]
+[JsonSerializable(typeof(ArtistConcerts))]
+[JsonSerializable(typeof(ArtistConcertItem))]
+[JsonSerializable(typeof(ArtistConcertData))]
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 internal partial class ArtistOverviewJsonContext : JsonSerializerContext
 {

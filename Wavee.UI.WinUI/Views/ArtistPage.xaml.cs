@@ -609,128 +609,23 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         _ = _colorService.GetColorAsync(imageUrl);
     }
 
-    private async void OpenLocationDialog_Click(object sender, RoutedEventArgs e)
+    private void LocationButton_LocationChanged(object? sender, string city)
     {
-        var searchBox = new AutoSuggestBox
+        ViewModel.UserLocationName = city;
+        ViewModel.RefreshNearUserFlags();
+    }
+
+    private void ConcertCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string uri && !string.IsNullOrEmpty(uri))
         {
-            PlaceholderText = "Search city...",
-            QueryIcon = new SymbolIcon(Symbol.Find),
-            Width = 300,
-            DisplayMemberPath = "FullName"
-        };
-
-        var useCurrentBtn = new HyperlinkButton { Content = "Use current location", Padding = new Thickness(0) };
-
-        var panel = new StackPanel { Spacing = 16 };
-
-        if (!string.IsNullOrEmpty(ViewModel.UserLocationName))
-        {
-            panel.Children.Add(new TextBlock
+            var title = (btn.DataContext as ConcertVm)?.Title;
+            var param = new ContentNavigationParameter
             {
-                Text = $"Current: {ViewModel.UserLocationName}",
-                Opacity = 0.6,
-                FontSize = 13
-            });
+                Uri = uri,
+                Title = title
+            };
+            NavigationHelpers.OpenConcert(param, title ?? "Concert", NavigationHelpers.IsCtrlPressed());
         }
-
-        panel.Children.Add(searchBox);
-        panel.Children.Add(useCurrentBtn);
-
-        var dialog = new ContentDialog
-        {
-            Title = "Concert location",
-            Content = panel,
-            CloseButtonText = "Cancel",
-            XamlRoot = XamlRoot
-        };
-
-        // Search via ViewModel → ILocationService
-        CancellationTokenSource? searchCts = null;
-        searchBox.TextChanged += async (s, args) =>
-        {
-            if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
-            var query = s.Text?.Trim();
-            if (string.IsNullOrEmpty(query) || query.Length < 2) return;
-
-            searchCts?.Cancel();
-            searchCts = new CancellationTokenSource();
-            var ct = searchCts.Token;
-
-            try
-            {
-                await Task.Delay(300, ct);
-                var results = await ViewModel.SearchLocationsAsync(query, ct);
-                if (!ct.IsCancellationRequested)
-                    s.ItemsSource = results;
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { _logger?.LogWarning(ex, "Location search failed"); }
-        };
-
-        // Save selected location via ViewModel
-        searchBox.SuggestionChosen += async (s, args) =>
-        {
-            if (args.SelectedItem is not LocationSearchResult loc || string.IsNullOrEmpty(loc.GeonameId)) return;
-            try
-            {
-                await ViewModel.SaveLocationAsync(loc.GeonameId, loc.Name);
-                dialog.Hide();
-            }
-            catch (Exception ex) { _logger?.LogWarning(ex, "Failed to save location"); }
-        };
-
-        // Resolve current location, then confirm before saving
-        useCurrentBtn.Click += async (s, args) =>
-        {
-            try
-            {
-                useCurrentBtn.IsEnabled = false;
-                useCurrentBtn.Content = "Detecting location...";
-
-                var resolved = await ViewModel.ResolveCurrentLocationAsync();
-                if (resolved == null)
-                {
-                    useCurrentBtn.Content = "Could not detect location";
-                    useCurrentBtn.IsEnabled = true;
-                    return;
-                }
-
-                // Pre-fill the search box with the resolved city for confirmation
-                searchBox.Text = resolved.FullName ?? resolved.Name ?? "";
-                searchBox.ItemsSource = new[] { resolved };
-
-                useCurrentBtn.Content = $"Detected: {resolved.Name} — select above to confirm";
-                useCurrentBtn.IsEnabled = true;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Failed to get current location");
-                useCurrentBtn.Content = "Failed to detect location";
-                useCurrentBtn.IsEnabled = true;
-            }
-        };
-
-        await dialog.ShowAsync();
-    }
-
-    private void ConcertCard_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is FrameworkElement fe && fe.DataContext is ConcertVm concert && !string.IsNullOrEmpty(concert.Uri))
-        {
-            // TODO: Navigate to ConcertPage once it exists
-            // NavigationHelpers.OpenConcert(concert.Uri, concert.Title ?? "Concert");
-        }
-    }
-
-    private void ConcertCard_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is Border border)
-            border.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
-    }
-
-    private void ConcertCard_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is Border border)
-            border.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
     }
 }

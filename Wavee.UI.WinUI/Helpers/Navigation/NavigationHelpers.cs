@@ -83,6 +83,11 @@ public static class NavigationHelpers
     /// <summary>
     /// Navigate to albums library - within tab by default, new tab if openInNewTab=true
     /// </summary>
+    public static void OpenConcert(object parameter, string concertName, bool openInNewTab = false)
+    {
+        Navigate(typeof(ConcertPage), parameter, concertName, new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
+    }
+
     public static void OpenAlbums(bool openInNewTab = false)
     {
         Navigate(typeof(LibraryPage), "albums", "Albums", new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
@@ -134,6 +139,11 @@ public static class NavigationHelpers
         };
 
         Navigate(typeof(CreatePlaylistPage), parameter, header, iconSource, openInNewTab: true);
+    }
+
+    public static void OpenDebug(bool openInNewTab = false)
+    {
+        Navigate(typeof(DebugPage), null, "Debug", new SymbolIconSource { Symbol = Symbol.Repair }, openInNewTab);
     }
 
     private static void Navigate(Type pageType, object? parameter, string header, IconSource icon, bool openInNewTab)

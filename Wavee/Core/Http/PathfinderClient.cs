@@ -79,7 +79,19 @@ public sealed class PathfinderClient : IPathfinderClient
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         httpRequest.Headers.AcceptLanguage.ParseAdd("en");
-        httpRequest.Headers.TryAddWithoutValidation("app-platform", "Win32_x86_64");
+        // Artist overview needs WebPlayer platform to get watchFeedEntrypoint data
+        var useWebPlayer = operationName is PathfinderOperations.QueryArtistOverview
+            or PathfinderOperations.UserLocation
+            or PathfinderOperations.ConcertLocationsByLatLon
+            or PathfinderOperations.SaveLocation
+            or PathfinderOperations.SearchConcertLocations
+            or PathfinderOperations.Concert;
+        httpRequest.Headers.TryAddWithoutValidation("app-platform", useWebPlayer ? "WebPlayer" : "Win32_x86_64");
+        if (useWebPlayer)
+        {
+            httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", "896000000");
+            httpRequest.Headers.TryAddWithoutValidation("origin", "https://open.spotify.com");
+        }
         httpRequest.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
         // Send with retry
@@ -308,6 +320,63 @@ public sealed class PathfinderClient : IPathfinderClient
             ct);
     }
 
+    /// <inheritdoc />
+    public async Task<UserLocationResponse> GetUserLocationAsync(CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new EmptyVariables(),
+            PathfinderOperations.UserLocation,
+            PathfinderOperations.UserLocationHash,
+            UserLocationJsonContext.Default.UserLocationResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<ConcertLocationsResponse> GetConcertLocationByLatLonAsync(
+        double lat, double lon, CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new ConcertLocationsByLatLonVariables { Lat = lat, Lon = lon },
+            PathfinderOperations.ConcertLocationsByLatLon,
+            PathfinderOperations.ConcertLocationsByLatLonHash,
+            ConcertLocationsJsonContext.Default.ConcertLocationsResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<SaveLocationResponse> SaveLocationAsync(string geonameId, CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new SaveLocationVariables { GeonameId = geonameId },
+            PathfinderOperations.SaveLocation,
+            PathfinderOperations.SaveLocationHash,
+            SaveLocationJsonContext.Default.SaveLocationResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<ConcertDetailResponse> GetConcertAsync(string concertUri, CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new ConcertVariables { Uri = concertUri },
+            PathfinderOperations.Concert,
+            PathfinderOperations.ConcertHash,
+            ConcertDetailJsonContext.Default.ConcertDetailResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<ConcertLocationsResponse> SearchConcertLocationsAsync(
+        string query, CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new SearchConcertLocationsVariables { Query = query },
+            PathfinderOperations.SearchConcertLocations,
+            PathfinderOperations.SearchConcertLocationsHash,
+            ConcertLocationsJsonContext.Default.ConcertLocationsResponse,
+            ct);
+    }
+
     private async Task<ArtistDiscographyResponse> GetArtistDiscographyInternalAsync(
         string artistUri, string operationName, string sha256Hash,
         int offset, int limit, CancellationToken ct)
@@ -399,10 +468,28 @@ public sealed class PathfinderClient : IPathfinderClient
         {
             json = JsonSerializer.SerializeToUtf8Bytes(gav, GetAlbumVariablesJsonContext.Default.GetAlbumVariables);
         }
+        else if (variables is EmptyVariables ev)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(ev, EmptyVariablesJsonContext.Default.EmptyVariables);
+        }
+        else if (variables is ConcertLocationsByLatLonVariables clv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(clv, ConcertLocationsByLatLonVariablesJsonContext.Default.ConcertLocationsByLatLonVariables);
+        }
+        else if (variables is SaveLocationVariables slv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(slv, SaveLocationVariablesJsonContext.Default.SaveLocationVariables);
+        }
+        else if (variables is SearchConcertLocationsVariables sclv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(sclv, SearchConcertLocationsVariablesJsonContext.Default.SearchConcertLocationsVariables);
+        }
+        else if (variables is ConcertVariables cv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(cv, ConcertVariablesJsonContext.Default.ConcertVariables);
+        }
         else
         {
-            // Fallback: serialize via PathfinderRequest context's object support
-            // This path should not be hit for known variable types
             throw new ArgumentException($"Unknown variables type: {variables.GetType().Name}. Register it in SerializeVariables.");
         }
 
