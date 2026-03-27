@@ -19,6 +19,8 @@ public interface IHomeFeedCache : IDisposable
     void Invalidate();
     void StartBackgroundRefresh(ISession session);
     void StopBackgroundRefresh();
+    void SuspendRefresh();
+    void ResumeRefresh();
     event Action<HomeFeedSnapshot>? DataRefreshed;
 
     static void ApplyDiff(

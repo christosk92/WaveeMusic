@@ -32,6 +32,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private string? _albumArt;
 
     [ObservableProperty]
+    private string? _albumArtLarge;
+
+    [ObservableProperty]
     private string? _albumArtColor;
 
     [ObservableProperty]
@@ -42,6 +45,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _hasTrack;
+
+    [ObservableProperty]
+    private bool _isAlbumArtExpanded;
+
+    [RelayCommand]
+    private void ToggleAlbumArtExpanded() => IsAlbumArtExpanded = !IsAlbumArtExpanded;
 
     // Remote device indicator
     [ObservableProperty]
@@ -120,6 +129,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _trackTitle = _playbackStateService.CurrentTrackTitle;
         _artistName = _playbackStateService.CurrentArtistName;
         _albumArt = _playbackStateService.CurrentAlbumArt;
+        _albumArtLarge = _playbackStateService.CurrentAlbumArtLarge;
         _albumArtColor = _playbackStateService.CurrentAlbumArtColor;
         _currentArtistId = _playbackStateService.CurrentArtistId;
         _currentAlbumId = _playbackStateService.CurrentAlbumId;
@@ -154,6 +164,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArt):
                 AlbumArt = _playbackStateService.CurrentAlbumArt;
+                break;
+            case nameof(IPlaybackStateService.CurrentAlbumArtLarge):
+                AlbumArtLarge = _playbackStateService.CurrentAlbumArtLarge;
                 break;
             case nameof(IPlaybackStateService.CurrentArtistId):
                 CurrentArtistId = _playbackStateService.CurrentArtistId;

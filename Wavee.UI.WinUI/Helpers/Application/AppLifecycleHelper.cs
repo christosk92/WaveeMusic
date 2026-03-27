@@ -42,7 +42,7 @@ public static class AppLifecycleHelper
             .ConfigureLogging(logging => logging
                 .ClearProviders()
                 .AddDebug()
-                .SetMinimumLevel(LogLevel.Information))
+                .SetMinimumLevel(LogLevel.Debug))
             .ConfigureServices(services => services
                 // Wavee Core services
                 .AddWaveeCache()
@@ -84,7 +84,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IColorService>(),
                         sp.GetRequiredService<IMessenger>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
-                        sp.GetService<ILogger<PlaybackStateService>>()))
+                        sp.GetService<ILogger<PlaybackStateService>>(),
+                        sp.GetService<Services.IHomeFeedCache>()))
                 .AddSingleton<IAuthState, AuthStateService>()
                 .AddSingleton<IConnectivityService, ConnectivityService>()
                 .AddSingleton<IAppState, AppState>()
@@ -111,6 +112,13 @@ public static class AppLifecycleHelper
                 .AddTransient<RetryHandler>()
                 .AddHttpClient("Wavee")
                     .AddHttpMessageHandler<RetryHandler>()
+                    .Services
+                .AddHttpClient("WaveeAudio")
+                    .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.SocketsHttpHandler
+                    {
+                        MaxConnectionsPerServer = 10,
+                        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                    })
                     .Services
                 .AddSingleton<ICredentialsCache, CredentialsCache>()
                 .AddSingleton(new SessionConfig { DeviceId = DeviceIdHelper.GetOrCreateDeviceId() })
@@ -182,7 +190,7 @@ public static class AppLifecycleHelper
     /// Initializes the AudioPipeline for local playback after session connects.
     /// Call once after Session.ConnectAsync succeeds.
     /// </summary>
-    public static void InitializePlaybackEngine(Session session, System.Net.Http.HttpClient httpClient, ILogger? logger)
+    public static void InitializePlaybackEngine(Session session, System.Net.Http.HttpClient httpClient, System.Net.Http.HttpClient audioHttpClient, ILogger? logger)
     {
         try
         {
@@ -218,7 +226,8 @@ public static class AppLifecycleHelper
                 eventService: session.Events,
                 commandHandler: session.CommandHandler,
                 deviceStateManager: session.DeviceState,
-                logger: logger);
+                logger: logger,
+                audioHttpClient: audioHttpClient);
 
             // Enable bidirectional mode — local state changes publish to Spotify
             session.PlaybackState?.EnableBidirectionalMode(

@@ -301,7 +301,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 _queue.LoadedCount > 0 &&
                 (command.PageTracks == null || command.PageTracks.Count == 0))
             {
-                var targetIndex = FindTargetTrackIndex(command);
+                // Queue is already populated — search it directly
+                var targetIndex = !string.IsNullOrEmpty(command.TrackUid)
+                    ? _queue.FindIndexByUid(command.TrackUid)
+                    : !string.IsNullOrEmpty(command.TrackUri)
+                        ? _queue.FindIndexByUri(command.TrackUri)
+                        : command.SkipToIndex ?? -1;
                 if (targetIndex >= 0 && targetIndex < _queue.LoadedCount)
                 {
                     _logger?.LogInformation("Same-context optimization: navigating to index {Index} (skipping API call)",
@@ -380,7 +385,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                         isInfinite: result.IsInfinite,
                         totalTracks: result.TotalCount);
 
-                    _queue.SetTracks(result.Tracks, startIndex: command.SkipToIndex ?? 0);
+                    var targetIndex = ContextResolver.FindTrackIndex(
+                        result.Tracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
+                    _queue.SetTracks(result.Tracks, startIndex: targetIndex);
                     _nextPageUrl = result.NextPageUrl;
 
                     // Find first playable track
@@ -998,6 +1005,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             foreach (var processor in _processingChain.Processors.OfType<NormalizationProcessor>())
             {
                 processor.SetTrackGain(trackStream.Metadata);
+                _logger?.LogInformation(
+                    "Normalization: trackGain={TrackGain:F2}dB, albumGain={AlbumGain:F2}dB, peak={Peak:F4}, appliedFactor={Factor:F4} ({FactorDb:F2}dB), enabled={Enabled}",
+                    trackStream.Metadata.ReplayGainTrackGain,
+                    trackStream.Metadata.ReplayGainAlbumGain,
+                    trackStream.Metadata.ReplayGainTrackPeak,
+                    processor.CurrentGain,
+                    20.0 * Math.Log10(Math.Max(processor.CurrentGain, 0.0001)),
+                    processor.IsEnabled);
             }
 
             // Update state to playing
@@ -1441,11 +1456,16 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         // Subscribe to volume changes
         _subscriptions.Add(_deviceStateManager.Volume.Subscribe(OnVolumeChanged));
 
-        // Apply initial volume — skip if 0 (uninitialized, before Spotify state arrives)
+        // Volume is handled by CallbackVolume in the PortAudio sink (instant, no buffer delay).
+        // Disable VolumeProcessor to prevent double-attenuation.
+        _volumeProcessor.IsEnabled = false;
+
+        // Apply initial volume to the sink callback
         var initialVolume = _deviceStateManager.CurrentVolume / 65535.0f;
         if (initialVolume > 0.001f)
         {
-            _volumeProcessor.Volume = initialVolume;
+            if (_audioSink is Sinks.PortAudioSink portSink)
+                portSink.CallbackVolume = initialVolume;
             _logger?.LogDebug("Initial volume applied: {Percent}%", (int)(initialVolume * 100));
         }
         else
@@ -1673,37 +1693,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         return uriOrUrl;
     }
 
-    /// <summary>
-    /// Finds target track index from PlayCommand. Priority: UID > URI > Index.
-    /// </summary>
-    private int FindTargetTrackIndex(PlayCommand command)
-    {
-        // Priority 1: Track UID (most specific)
-        if (!string.IsNullOrEmpty(command.TrackUid))
-        {
-            var index = _queue.FindIndexByUid(command.TrackUid);
-            if (index >= 0)
-                return index;
-        }
-
-        // Priority 2: Track URI
-        if (!string.IsNullOrEmpty(command.TrackUri))
-        {
-            var normalizedUri = NormalizeToUri(command.TrackUri);
-            var index = _queue.FindIndexByUri(normalizedUri);
-            if (index >= 0)
-                return index;
-        }
-
-        // Priority 3: Explicit index
-        if (command.SkipToIndex.HasValue)
-        {
-            return command.SkipToIndex.Value;
-        }
-
-        // Default: first track
-        return 0;
-    }
+    // Track finding is now handled by ContextResolver.FindTrackIndex (static method)
 
     // ================================================================
     // DISPOSAL

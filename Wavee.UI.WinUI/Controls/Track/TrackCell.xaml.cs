@@ -39,6 +39,8 @@ public sealed partial class TrackCell : UserControl
     public TrackCell()
     {
         InitializeComponent();
+        PointerEntered += (s, e) => VisualStateManager.GoToState(this, "PointerOver", true);
+        PointerExited += (s, e) => VisualStateManager.GoToState(this, "Normal", true);
     }
 
     private static void OnTrackChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

@@ -88,8 +88,20 @@
                                 <Grid>
                                     <StackPanel Orientation="Horizontal" Spacing="8"
                                                 Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                        <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                                   FontSize="44" FontWeight="Black"/>
+                                        <Grid>
+                                            <!-- Shadow layer: dark blurred text behind for readability on any background -->
+                                            <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                                       FontSize="44" FontWeight="Black"
+                                                       Foreground="Black" Opacity="0.5"
+                                                       Translation="0,1,0">
+                                                <TextBlock.RenderTransform>
+                                                    <ScaleTransform ScaleX="1.01" ScaleY="1.01"/>
+                                                </TextBlock.RenderTransform>
+                                            </TextBlock>
+                                            <!-- Actual text -->
+                                            <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                                       FontSize="44" FontWeight="Black"/>
+                                        </Grid>
                                         <Border Width="28" Height="28" CornerRadius="14"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                 Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay}"
@@ -104,14 +116,22 @@
 
                                 <!-- Stats: show text or shimmer -->
                                 <Grid>
-                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                               FontWeight="SemiBold"
-                                               Opacity=".5"
-                                               FontSize="14"
-                                               Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
-                                               Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                        <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
-                                    </TextBlock>
+                                    <Grid Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                        <!-- Shadow layer -->
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                   FontWeight="SemiBold" FontSize="14"
+                                                   Foreground="Black" Opacity="0.4"
+                                                   Translation="0,1,0">
+                                            <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                   FontWeight="SemiBold"
+                                                   Opacity=".5"
+                                                   FontSize="14"
+                                                   Foreground="{ThemeResource ApplicationForegroundThemeBrush}">
+                                            <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
+                                        </TextBlock>
+                                    </Grid>
                                     <controls:Shimmer Width="160" Height="16" HorizontalAlignment="Left"
                                                       Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                 </Grid>

@@ -52,6 +52,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private bool _isLoadingTracks;
     private bool _hasError;
     private string? _errorMessage;
+    private string? _label;
+    private string? _releaseDateFormatted;
+    private string? _copyrightsText;
 
     private string _searchQuery = "";
     private AlbumSortColumn _currentSortColumn = AlbumSortColumn.TrackNumber;
@@ -130,6 +133,24 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     {
         get => _albumType;
         private set => this.RaiseAndSetIfChanged(ref _albumType, value);
+    }
+
+    public string? Label
+    {
+        get => _label;
+        private set => this.RaiseAndSetIfChanged(ref _label, value);
+    }
+
+    public string? ReleaseDateFormatted
+    {
+        get => _releaseDateFormatted;
+        private set => this.RaiseAndSetIfChanged(ref _releaseDateFormatted, value);
+    }
+
+    public string? CopyrightsText
+    {
+        get => _copyrightsText;
+        private set => this.RaiseAndSetIfChanged(ref _copyrightsText, value);
     }
 
     /// <summary>
@@ -473,6 +494,19 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             if (!string.IsNullOrEmpty(detail.Type))
                 AlbumType = detail.Type;
             IsSaved = detail.IsSaved;
+            Label = detail.Label;
+            if (detail.ReleaseDate != default)
+                ReleaseDateFormatted = detail.ReleaseDate.ToString("MMMM d, yyyy");
+            if (detail.Copyrights?.Count > 0)
+                CopyrightsText = string.Join("\n", detail.Copyrights.Select(c =>
+                {
+                    var prefix = c.Type == "P" ? "\u2117" : "\u00A9";
+                    var text = c.Text?.TrimStart() ?? "";
+                    // Don't double-prefix if text already starts with © or ℗
+                    if (text.StartsWith("\u00A9") || text.StartsWith("\u2117"))
+                        return text;
+                    return $"{prefix} {text}";
+                }));
 
             Playlists = await playlistsTask;
 

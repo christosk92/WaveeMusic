@@ -255,8 +255,10 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         AccountType = await _session.GetAccountTypeAsync(ct);
 
         // Initialize local playback engine (AudioPipeline) after session is fully connected
-        var httpClient = Ioc.Default.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("Wavee");
-        Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, _logger);
+        var httpFactory = Ioc.Default.GetRequiredService<System.Net.Http.IHttpClientFactory>();
+        var httpClient = httpFactory.CreateClient("Wavee");
+        var audioHttpClient = httpFactory.CreateClient("WaveeAudio");
+        Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, audioHttpClient, _logger);
 
         SetStatus(AuthStatus.Authenticated);
     }

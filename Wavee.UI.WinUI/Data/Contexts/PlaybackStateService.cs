@@ -16,6 +16,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -32,9 +33,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly IMessenger _messenger;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
+    private readonly IHomeFeedCache? _homeFeedCache;
     private readonly ObservableCollection<QueueItem> _queue = [];
     private IDisposable? _stateSubscription;
     private CancellationTokenSource? _colorCts;
+    private bool _isFirstStateUpdate = true;
+    private double? _pendingSeekPositionMs;
 
     // ── State properties ──
 
@@ -43,6 +47,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private string? _currentTrackTitle;
     [ObservableProperty] private string? _currentArtistName;
     [ObservableProperty] private string? _currentAlbumArt;
+    [ObservableProperty] private string? _currentAlbumArtLarge;
     [ObservableProperty] private string? _currentArtistId;
     [ObservableProperty] private string? _currentAlbumId;
     [ObservableProperty] private string? _currentAlbumArtColor;
@@ -67,7 +72,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         IColorService colorService,
         IMessenger messenger,
         DispatcherQueue dispatcherQueue,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        IHomeFeedCache? homeFeedCache = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _playbackService = playbackService ?? throw new ArgumentNullException(nameof(playbackService));
@@ -75,6 +81,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _messenger = messenger ?? throw new ArgumentNullException(nameof(messenger));
         _dispatcherQueue = dispatcherQueue ?? throw new ArgumentNullException(nameof(dispatcherQueue));
         _logger = logger;
+        _homeFeedCache = homeFeedCache;
 
         // Register for auth status changes to subscribe after session connects
         _messenger.Register<AuthStatusChangedMessage>(this);
@@ -123,9 +130,18 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         _dispatcherQueue.TryEnqueue(() =>
         {
+            // First state received after subscribing — BehaviorSubject replays with partial
+            // change flags, so force a full sync to populate all UI properties
+            if (_isFirstStateUpdate)
+            {
+                _isFirstStateUpdate = false;
+                state = state with { Changes = StateChanges.All };
+            }
+
             // Track info
             if (state.Changes.HasFlag(StateChanges.Track))
             {
+                _pendingSeekPositionMs = null;
                 _logger?.LogInformation("UI bridge: track → {Title} by {Artist} (uri={Uri})",
                     state.Track?.Title, state.Track?.Artist, state.Track?.Uri);
                 // Extract bare ID from URI (e.g. "spotify:track:abc123" → "abc123")
@@ -134,6 +150,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 CurrentTrackTitle = state.Track?.Title;
                 CurrentArtistName = state.Track?.Artist;
                 CurrentAlbumArt = state.Track?.ImageUrl;
+                CurrentAlbumArtLarge = state.Track?.ImageLargeUrl ?? state.Track?.ImageXLargeUrl ?? state.Track?.ImageUrl;
                 CurrentArtistId = state.Track?.ArtistUri;
                 CurrentAlbumId = state.Track?.AlbumUri;
                 Duration = state.DurationMs;
@@ -178,6 +195,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         BufferingTrackId = null;
                     }
                 }
+
+                // Suspend background HTTP activity during audio playback to avoid connection pool contention
+                if (IsPlaying)
+                    _homeFeedCache?.SuspendRefresh();
+                else
+                    _homeFeedCache?.ResumeRefresh();
             }
 
             // Position — must calculate from timestamp when playing
@@ -207,6 +230,11 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     state.DurationMs);
 
                 Position = calculatedPos;
+
+                // Update duration here too — it may change when local engine
+                // starts playing a ghost track (cluster had duration=0)
+                if (state.DurationMs > 0 && Duration != state.DurationMs)
+                    Duration = state.DurationMs;
             }
 
             // Options
@@ -417,10 +445,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void PlayPause()
     {
+        var pendingSeek = _pendingSeekPositionMs;
+        _pendingSeekPositionMs = null;
+
         if (IsLocalPlayback)
         {
-            var engine = LocalEngine!;
             var playing = IsPlaying;
+            var stateManager = _session.PlaybackState!;
 
             // Optimistic UI update — instant visual feedback before engine call
             IsPlaying = !playing;
@@ -428,15 +459,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
             _ = Task.Run(async () =>
             {
-                if (playing) await engine.PauseAsync();
-                else await engine.ResumeAsync();
+                if (playing) await LocalEngine!.PauseAsync();
+                else await stateManager.ResumeAsync(); // Handles ghost state internally
             }).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
-                    // Revert optimistic update on failure
-                    _dispatcherQueue.TryEnqueue(() => IsPlaying = playing);
-                    ClearBuffering();
+                    _dispatcherQueue.TryEnqueue(() => { IsPlaying = playing; ClearBuffering(); });
+                }
+                else if (!playing && pendingSeek.HasValue)
+                {
+                    _dispatcherQueue.TryEnqueue(() => Seek(pendingSeek.Value));
                 }
             });
             return;
@@ -444,7 +477,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         if (!IsPlaying && CurrentTrackId != null)
             SetBuffering(CurrentTrackId);
-        _ = _playbackService.TogglePlayPauseAsync().ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
+        _ = _playbackService.TogglePlayPauseAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted) ClearBuffering();
+            else if (pendingSeek.HasValue)
+                _dispatcherQueue.TryEnqueue(() => Seek(pendingSeek.Value));
+        });
     }
 
     public void Next()
@@ -461,6 +499,18 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void Seek(double positionMs)
     {
+        if (string.IsNullOrEmpty(CurrentTrackId))
+            return;
+
+        // If not playing, store position for when playback starts
+        if (!IsPlaying)
+        {
+            _pendingSeekPositionMs = positionMs;
+            Position = positionMs;
+            return;
+        }
+
+        _pendingSeekPositionMs = null;
         SetBuffering(CurrentTrackId);
         if (IsLocalPlayback)
         {

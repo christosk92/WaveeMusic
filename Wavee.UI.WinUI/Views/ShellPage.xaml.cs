@@ -126,8 +126,23 @@ public sealed partial class ShellPage : Page
             ViewModel.SelectedTabItem = ShellViewModel.TabInstances[0];
         }
 
+        // Keep expanded album art square when sidebar is resized
+        UpdateExpandedArtSize();
+        SidebarControl.RegisterPropertyChangedCallback(
+            SidebarView.OpenPaneLengthProperty, (s, dp) => UpdateExpandedArtSize());
+
         // Unsubscribe to avoid duplicate calls
         Loaded -= ShellPage_Loaded;
+    }
+
+    private void UpdateExpandedArtSize()
+    {
+        ExpandedAlbumArtContainer.Height = SidebarControl.OpenPaneLength - 8;
+    }
+
+    private void ExpandedAlbumArt_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        PlayerBarControl.ViewModel.ToggleAlbumArtExpandedCommand.Execute(null);
     }
 
     private void SetupTitleBar()

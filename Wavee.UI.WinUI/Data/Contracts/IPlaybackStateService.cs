@@ -29,6 +29,7 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     string? CurrentTrackTitle { get; }
     string? CurrentArtistName { get; }
     string? CurrentAlbumArt { get; }
+    string? CurrentAlbumArtLarge { get; }
     string? CurrentArtistId { get; }
     string? CurrentAlbumId { get; }
 

@@ -99,6 +99,11 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public string DurationFormatted => Data?.DurationFormatted ?? "";
     public int OriginalIndex => Index;
 
+    // Extra properties for custom columns (not on ITrackItem, accessed via reflection)
+    public string PlayCountFormatted =>
+        Data is Data.DTOs.AlbumTrackDto album ? album.PlayCountFormatted :
+        Data is ArtistTopTrackVm artist ? artist.PlayCountFormatted : "";
+
     public static LazyTrackItem Loaded(string id, int index, ITrackItem data) => new()
     {
         Id = id, Index = index, Data = data, IsLoaded = true

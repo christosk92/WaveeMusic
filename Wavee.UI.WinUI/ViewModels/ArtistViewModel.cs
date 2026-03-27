@@ -614,7 +614,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (string.IsNullOrEmpty(ArtistId)) return;
         var result = await _playbackService.PlayContextAsync(
-            $"spotify:artist:{ArtistId}",
+            ArtistId,
             new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
         if (!result.IsSuccess)
             _logger?.LogWarning("PlayTopTracks failed: {Error}", result.ErrorMessage);
@@ -624,7 +624,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private async Task PlayTrackAsync(ITrackItem? track)
     {
         if (track == null || string.IsNullOrEmpty(ArtistId)) return;
-        await _playbackService.PlayTrackInContextAsync(track.Uri, $"spotify:artist:{ArtistId}",
+        await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
             new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
     }
 

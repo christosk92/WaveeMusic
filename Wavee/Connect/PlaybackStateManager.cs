@@ -1,5 +1,6 @@
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Http;
@@ -148,6 +149,42 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     public bool IsLocalPlaybackActive => _isLocalPlaybackActive;
 
     /// <summary>
+    /// Smart resume: resumes if engine has a track loaded, otherwise loads the
+    /// ghost track from cluster state and starts fresh playback.
+    /// </summary>
+    public async Task ResumeAsync()
+    {
+        if (_playbackEngine == null) return;
+
+        // Engine has a track loaded → normal resume
+        if (!string.IsNullOrEmpty(_playbackEngine.CurrentState.TrackUri))
+        {
+            await _playbackEngine.ResumeAsync();
+            return;
+        }
+
+        // Ghost state: engine empty but cluster has track/context → start fresh
+        if (_currentState.Track != null)
+        {
+            _logger?.LogInformation("Ghost resume: loading {Track} from cluster state", _currentState.Track.Title);
+            var playCommand = new Commands.PlayCommand
+            {
+                Endpoint = "play",
+                MessageIdent = "ghost-resume",
+                MessageId = 0,
+                SenderDeviceId = _session!.Config.DeviceId,
+                Key = "ghost-resume",
+                TrackUri = _currentState.Track.Uri,
+                TrackUid = _currentState.Track.Uid,
+                ContextUri = _currentState.ContextUri ?? _currentState.Track.Uri,
+                PositionMs = _currentState.PositionMs > 0 ? _currentState.PositionMs : null,
+                SkipToIndex = _currentState.CurrentIndex > 0 ? _currentState.CurrentIndex : null,
+            };
+            await _playbackEngine.PlayAsync(playCommand);
+        }
+    }
+
+    /// <summary>
     /// Initializes PlaybackStateManager in **remote-only mode**.
     /// Reads cluster updates only, does not publish local state.
     /// </summary>
@@ -289,6 +326,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 _logger?.LogTrace("ClusterUpdate parsed: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
                     cluster.ActiveDeviceId, cluster.PlayerState != null);
             }
+
+            // Log incoming PlayerState
+            if (cluster.PlayerState != null)
+                _logger?.LogDebug("Incoming PlayerState → {Json}", JsonFormatter.Default.Format(cluster.PlayerState));
 
             // Ignore cluster updates if we're the active device and in bidirectional mode
             if (IsBidirectional &&
@@ -493,7 +534,8 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             if (_connectionId == null || _spClient == null || _session == null)
                 return;
 
-            _logger?.LogDebug("Publishing playback state to Spotify: messageId={MessageId}", request.MessageId);
+            var json = Google.Protobuf.JsonFormatter.Default.Format(request);
+            _logger?.LogDebug("PutState → {Json}", json);
 
             await _spClient.PutConnectStateAsync(
                 _session.Config.DeviceId,

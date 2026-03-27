@@ -18,6 +18,7 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
     private PeriodicTimer? _refreshTimer;
     private CancellationTokenSource? _cts;
     private Task? _refreshTask;
+    private volatile bool _suspended;
 
     protected readonly ILogger? Logger;
 
@@ -29,6 +30,12 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
 
     /// <summary>Forces the cache to be stale so next access fetches fresh data.</summary>
     public void Invalidate() => _lastFetchTime = DateTimeOffset.MinValue;
+
+    /// <summary>Suspends background refresh (e.g. during active audio playback).</summary>
+    public void SuspendRefresh() => _suspended = true;
+
+    /// <summary>Resumes background refresh.</summary>
+    public void ResumeRefresh() => _suspended = false;
 
     /// <summary>
     /// Raised when background refresh completes with new data.
@@ -94,7 +101,7 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
             {
                 try
                 {
-                    if (!session.IsConnected()) continue;
+                    if (_suspended || !session.IsConnected()) continue;
 
                     Logger?.LogDebug("{CacheType} background refresh starting", GetType().Name);
                     var snapshot = await FetchFreshAsync(session, ct);

@@ -53,7 +53,8 @@ public static class AudioPipelineFactory
         EventService? eventService = null,
         ConnectCommandHandler? commandHandler = null,
         DeviceStateManager? deviceStateManager = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        HttpClient? audioHttpClient = null)
     {
         options ??= AudioPipelineOptions.Default;
 
@@ -70,7 +71,8 @@ public static class AudioPipelineFactory
         }
 
         // Create components - pass extendedMetadataClient to avoid duplicate creation
-        var sourceRegistry = CreateTrackSourceRegistry(session, spClient, httpClient, options, metadataDatabase, extendedMetadataClient, logger);
+        // Use dedicated audio HttpClient for CDN fetches if provided (separate connection pool)
+        var sourceRegistry = CreateTrackSourceRegistry(session, spClient, audioHttpClient ?? httpClient, options, metadataDatabase, extendedMetadataClient, logger);
         var decoderRegistry = CreateDecoderRegistry(logger);
         var audioSink = CreateAudioSink(options.AudioSinkType, logger);
         var processingChain = CreateProcessingChain(options, audioSettings, logger);

@@ -105,27 +105,8 @@ public static class PlaybackStateHelpers
     /// <returns>New PlaybackState with change flags set.</returns>
     public static PlaybackState ClusterToPlaybackState(Cluster cluster, PlaybackState? previousState)
     {
-        var playerState = cluster.PlayerState;
-
-        // Extract track info (null if no track)
-        var track = playerState?.Track != null
-            ? ExtractTrackInfo(playerState.Track)
-            : null;
-
-        // Determine playback status
-        var status = playerState != null
-            ? DeterminePlaybackStatus(playerState)
-            : PlaybackStatus.Stopped;
-
-        // Extract playback options
-        var options = playerState?.Options != null
-            ? new PlaybackOptions
-            {
-                Shuffling = playerState.Options.ShufflingContext,
-                RepeatingContext = playerState.Options.RepeatingContext,
-                RepeatingTrack = playerState.Options.RepeatingTrack
-            }
-            : new PlaybackOptions();
+        var ps = cluster.PlayerState;
+        var prev = previousState ?? PlaybackState.Empty;
 
         // Look up active device info from cluster device map
         string? activeDeviceName = null;
@@ -139,24 +120,31 @@ public static class PlaybackStateHelpers
             isVolumeRestricted = activeDeviceInfo.Capabilities?.DisableVolume ?? false;
         }
 
-        // Create new state
-        var newState = new PlaybackState
+        // Merge: start from previous state, override only fields with real values
+        var newState = prev with
         {
-            Track = track,
-            PositionMs = playerState?.PositionAsOfTimestamp ?? 0,
-            DurationMs = playerState?.Duration ?? 0,
-            Status = status,
-            ContextUri = playerState?.ContextUri,
-            Options = options,
+            Track = ps?.Track != null ? ExtractTrackInfo(ps.Track) : prev.Track,
+            Status = ps != null ? DeterminePlaybackStatus(ps) : PlaybackStatus.Stopped,
+            PositionMs = ps?.PositionAsOfTimestamp ?? prev.PositionMs,
+            DurationMs = ps?.Duration > 0 ? ps.Duration : prev.DurationMs,
+            ContextUri = !string.IsNullOrEmpty(ps?.ContextUri) ? ps!.ContextUri : prev.ContextUri,
+            Options = ps?.Options != null
+                ? new PlaybackOptions
+                {
+                    Shuffling = ps.Options.ShufflingContext,
+                    RepeatingContext = ps.Options.RepeatingContext,
+                    RepeatingTrack = ps.Options.RepeatingTrack
+                }
+                : prev.Options,
+            // Always from cluster
             ActiveDeviceId = cluster.ActiveDeviceId,
             ActiveDeviceName = activeDeviceName,
             Volume = volume,
             IsVolumeRestricted = isVolumeRestricted,
             Timestamp = cluster.ChangedTimestampMs,
-            Source = StateSource.Cluster
+            Source = StateSource.Cluster,
         };
 
-        // Detect changes
         var changes = DetectChanges(previousState, newState);
         return newState with { Changes = changes };
     }
@@ -191,11 +179,13 @@ public static class PlaybackStateHelpers
                      localState.IsPaused ? PlaybackStatus.Paused :
                      PlaybackStatus.Stopped;
 
-        // Create track info if track URI present
-        TrackInfo? track = null;
-        if (!string.IsNullOrEmpty(localState.TrackUri))
-        {
-            track = new TrackInfo
+        // Create track info if track URI present, otherwise carry forward previous
+        var prev = previousState ?? PlaybackState.Empty;
+        var hasTrack = !string.IsNullOrEmpty(localState.TrackUri);
+
+        // Build track info only if engine has a real track
+        TrackInfo? track = hasTrack
+            ? new TrackInfo
             {
                 Uri = localState.TrackUri,
                 Uid = localState.TrackUid,
@@ -214,35 +204,34 @@ public static class PlaybackStateHelpers
                     ["artist_name"] = localState.TrackArtist ?? "",
                     ["album_title"] = localState.TrackAlbum ?? "",
                 }
-            };
-        }
+            }
+            : null;
 
-        var options = new PlaybackOptions
-        {
-            Shuffling = localState.Shuffling,
-            RepeatingContext = localState.RepeatingContext,
-            RepeatingTrack = localState.RepeatingTrack
-        };
-
-        // Generate new SessionId when track changes, otherwise carry over from previous
-        var isNewTrack = previousState?.Track?.Uri != localState.TrackUri;
-        var sessionId = isNewTrack || previousState?.SessionId == null
+        // Generate new SessionId when track changes, otherwise carry over
+        var isNewTrack = prev.Track?.Uri != localState.TrackUri;
+        var sessionId = isNewTrack || prev.SessionId == null
             ? Guid.NewGuid().ToString("N")
-            : previousState.SessionId;
+            : prev.SessionId;
 
-        var newState = new PlaybackState
+        // Merge: start from previous state, override only fields with real values
+        var newState = prev with
         {
-            Track = track,
-            PositionMs = localState.PositionMs,
-            DurationMs = localState.DurationMs,
+            Track = track ?? prev.Track,
+            PositionMs = hasTrack ? localState.PositionMs : prev.PositionMs,
+            DurationMs = localState.DurationMs > 0 ? localState.DurationMs : prev.DurationMs,
             Status = status,
-            ContextUri = localState.ContextUri,
-            ContextUrl = localState.ContextUrl,
+            ContextUri = !string.IsNullOrEmpty(localState.ContextUri) ? localState.ContextUri : prev.ContextUri,
+            ContextUrl = !string.IsNullOrEmpty(localState.ContextUrl) ? localState.ContextUrl : prev.ContextUrl,
             CurrentIndex = localState.CurrentIndex,
             PrevTracks = localState.PrevTracks,
             NextTracks = localState.NextTracks,
             QueueRevision = localState.QueueRevision,
-            Options = options,
+            Options = new PlaybackOptions
+            {
+                Shuffling = localState.Shuffling,
+                RepeatingContext = localState.RepeatingContext,
+                RepeatingTrack = localState.RepeatingTrack
+            },
             ActiveDeviceId = activeDeviceId,
             Timestamp = localState.Timestamp,
             Source = StateSource.Local,
@@ -250,7 +239,6 @@ public static class PlaybackStateHelpers
             CanSeek = localState.CanSeek
         };
 
-        // Detect changes
         var changes = DetectChanges(previousState, newState);
         return newState with { Changes = changes };
     }

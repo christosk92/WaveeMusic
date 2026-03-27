@@ -75,6 +75,17 @@
         <Setter Property="BorderThickness" Value="0" />
     </Style>
 
+    <!-- Subtle toggle button style for shuffle/repeat — transparent, accent when checked -->
+    <Style x:Key="SubtleToggleButtonStyle" BasedOn="{StaticResource DefaultToggleButtonStyle}" TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <!-- Play/Pause AppBarButton style with gradient border on hover (Rise style) -->
     <Style x:Key="PlayPauseAppBarButtonStyle" BasedOn="{StaticResource DefaultAppBarButtonStyle}" TargetType="AppBarButton">
         <Setter Property="LabelPosition" Value="Collapsed" />

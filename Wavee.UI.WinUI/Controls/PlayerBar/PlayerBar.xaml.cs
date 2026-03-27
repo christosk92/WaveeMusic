@@ -55,7 +55,20 @@ public sealed partial class PlayerBar : UserControl
         }
     }
 
+    private void AlbumArt_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        ViewModel.ToggleAlbumArtExpandedCommand.Execute(null);
+    }
+
     private void TrackTitle_Click(object sender, RoutedEventArgs e)
+    {
+        var albumId = ViewModel.CurrentAlbumId;
+        var trackTitle = ViewModel.TrackTitle;
+        if (!string.IsNullOrEmpty(albumId))
+            NavigationHelpers.OpenAlbum(albumId, trackTitle ?? "Album");
+    }
+
+    private void TrackTitle_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
         var albumId = ViewModel.CurrentAlbumId;
         var trackTitle = ViewModel.TrackTitle;

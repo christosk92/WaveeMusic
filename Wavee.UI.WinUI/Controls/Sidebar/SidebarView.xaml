@@ -7,6 +7,8 @@
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
 	xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
 	xmlns:local="using:Wavee.UI.WinUI.Controls.Sidebar"
+	xmlns:media="using:CommunityToolkit.WinUI.Media"
+	xmlns:toolkit="using:CommunityToolkit.WinUI"
 	HorizontalAlignment="Stretch"
 	Loaded="SidebarView_Loaded"
 	TabFocusNavigation="Local"
@@ -133,22 +135,30 @@
 				UseSystemFocusVisuals="True" />
 		</Border>
 
-		<!--  Content Card (Files-style)  -->
+		<!--  Content Card (Files-style) — shadow wrapper separate from CornerRadius  -->
 		<Border
-			x:Name="ContentCardBorder"
+			x:Name="ContentCardShadowHost"
 			Grid.Row="1"
 			Grid.Column="2"
-			Margin="0,0,8,8"
-			Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-			BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-			BorderThickness="1"
-			CornerRadius="8">
-			<ContentPresenter
-				x:Name="ContentPresenter"
-				Margin="0"
-				VerticalAlignment="Stretch"
-				Content="{x:Bind InnerContent, Mode=OneWay}"
-				TabFocusNavigation="Local" />
+			Margin="0,0,8,0">
+			<toolkit:Effects.Shadow>
+				<media:AttachedCardShadow BlurRadius="32" Offset="-4,-2"
+                                          Opacity="0.3" Color="Black" CornerRadius="8" />
+			</toolkit:Effects.Shadow>
+
+			<Border
+				x:Name="ContentCardBorder"
+				Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+				BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+				BorderThickness="1"
+				CornerRadius="8">
+				<ContentPresenter
+					x:Name="ContentPresenter"
+					Margin="0"
+					VerticalAlignment="Stretch"
+					Content="{x:Bind InnerContent, Mode=OneWay}"
+					TabFocusNavigation="Local" />
+			</Border>
 		</Border>
 
 		<VisualStateManager.VisualStateGroups>
@@ -167,9 +177,9 @@
 						<Setter Target="PaneColumnGrid.BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
 						<Setter Target="PaneColumnGrid.BorderThickness" Value="0,1,1,0" />
 						<Setter Target="PaneColumnGrid.CornerRadius" Value="0,8,0,8" />
-						<Setter Target="ContentCardBorder.(Grid.Column)" Value="0" />
-						<Setter Target="ContentCardBorder.(Grid.ColumnSpan)" Value="3" />
-						<Setter Target="ContentCardBorder.Margin" Value="8,0,8,8" />
+						<Setter Target="ContentCardShadowHost.(Grid.Column)" Value="0" />
+						<Setter Target="ContentCardShadowHost.(Grid.ColumnSpan)" Value="3" />
+						<Setter Target="ContentCardShadowHost.Margin" Value="8,0,8,0" />
 						<Setter Target="SidebarResizer.Visibility" Value="Collapsed" />
 						<Setter Target="PaneBackground.Visibility" Value="Collapsed" />
 						<!--  Specific to Collapsed State  -->
@@ -184,9 +194,9 @@
 						<Setter Target="PaneColumnGrid.BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
 						<Setter Target="PaneColumnGrid.BorderThickness" Value="0,1,1,0" />
 						<Setter Target="PaneColumnGrid.CornerRadius" Value="0,8,0,8" />
-						<Setter Target="ContentCardBorder.(Grid.Column)" Value="0" />
-						<Setter Target="ContentCardBorder.(Grid.ColumnSpan)" Value="3" />
-						<Setter Target="ContentCardBorder.Margin" Value="8,0,8,8" />
+						<Setter Target="ContentCardShadowHost.(Grid.Column)" Value="0" />
+						<Setter Target="ContentCardShadowHost.(Grid.ColumnSpan)" Value="3" />
+						<Setter Target="ContentCardShadowHost.Margin" Value="8,0,8,0" />
 						<Setter Target="SidebarResizer.Visibility" Value="Collapsed" />
 						<Setter Target="PaneBackground.Visibility" Value="Collapsed" />
 						<!--  Specific to Expanded State  -->

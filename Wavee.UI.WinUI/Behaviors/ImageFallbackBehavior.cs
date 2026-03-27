@@ -149,6 +149,10 @@ public static class ImageFallbackBehavior
     {
         if (sender is Image image && GetFadeInOnLoad(image))
         {
+            // Restore visibility in case a previous load failure hid the image
+            // (critical for virtualized lists where containers are recycled)
+            image.Visibility = Visibility.Visible;
+
             // When source changes, prepare for fade by setting opacity to 0
             // Only do this if there's a new source (not when clearing)
             if (image.Source != null)

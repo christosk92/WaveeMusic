@@ -33,7 +33,7 @@ public sealed record AudioFetchParams
     /// Maximum number of retries for failed HTTP requests.
     /// Default: 3
     /// </summary>
-    public int MaxRetries { get; init; } = 3;
+    public int MaxRetries { get; init; } = 5;
 
     /// <summary>
     /// Initial delay before first retry (doubles each attempt).
@@ -45,7 +45,7 @@ public sealed record AudioFetchParams
     /// Timeout for individual HTTP requests.
     /// Default: 8 seconds
     /// </summary>
-    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(8);
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// Duration after which a stalled read triggers buffering state.

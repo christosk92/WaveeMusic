@@ -15,7 +15,8 @@
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
     </UserControl.Resources>
 
-    <Grid Padding="8,4" ColumnSpacing="12" Height="56">
+    <Grid x:Name="RootGrid" Padding="8,4" ColumnSpacing="12" Height="56"
+          Background="Transparent" CornerRadius="4">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="PlaybackStates">
                 <VisualState x:Name="NotPlaying"/>
@@ -30,6 +31,14 @@
                         <Setter Target="TitleText.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
                         <Setter Target="NowPlayingIndicator.Visibility" Value="Visible"/>
                         <Setter Target="NowPlayingIndicator.Opacity" Value="0.5"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="HoverStates">
+                <VisualState x:Name="Normal"/>
+                <VisualState x:Name="PointerOver">
+                    <VisualState.Setters>
+                        <Setter Target="RootGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -59,15 +68,19 @@
 
         <!-- Track info / shimmer -->
         <StackPanel x:Name="InfoPanel" Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-            <StackPanel Orientation="Horizontal" Spacing="4">
+            <Grid ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                 <TextBlock x:Name="TitleText" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13"/>
-                <Border x:Name="ExplicitBadge" Visibility="Collapsed"
+                <Border x:Name="ExplicitBadge" Grid.Column="1" Visibility="Collapsed"
                         Background="{ThemeResource TextFillColorTertiaryBrush}"
                         CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
                     <TextBlock Text="E" FontSize="9" FontWeight="Bold"/>
                 </Border>
-            </StackPanel>
+            </Grid>
             <TextBlock x:Name="SubtitleText"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
