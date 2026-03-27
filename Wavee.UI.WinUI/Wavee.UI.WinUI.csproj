@@ -14,12 +14,14 @@
     <Nullable>enable</Nullable>
     <!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
     <LangVersion>preview</LangVersion>
+
+    <!-- Server GC: uses background threads for Gen2 collection instead of stopping the world.
+         Critical for audio playback — workstation GC pauses ALL threads for 50-200ms+ on Gen2. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
     <Content Remove="Assets\MediaPlayerIcons.ttf" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="nul" />
   </ItemGroup>
 
   <ItemGroup>

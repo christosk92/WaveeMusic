@@ -66,7 +66,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
         else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed))
         {
-            SetupWatchFeedVideo();
+            // SetupWatchFeedVideo is called from CrossfadeToContent — no need here
         }
     }
 
@@ -292,32 +292,25 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ViewModel.ColumnCount = columns;
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
-        try
-        {
-            ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
+        ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
 
-            if (e.Parameter is ContentNavigationParameter nav)
-            {
-                ViewModel.PrefillFrom(nav);
-                ViewModel.Initialize(nav.Uri);
-                await ViewModel.LoadCommand.ExecuteAsync(null);
-            }
-            else if (e.Parameter is string artistId)
-            {
-                ViewModel.Initialize(artistId);
-                await ViewModel.LoadCommand.ExecuteAsync(null);
-            }
-            // Set up watch feed after data is loaded
-            SetupWatchFeedVideo();
-        }
-        catch (Exception ex)
+        if (e.Parameter is ContentNavigationParameter nav)
         {
-            _logger?.LogError(ex, "Unhandled error in ArtistPage OnNavigatedTo");
+            ViewModel.PrefillFrom(nav);
+            ViewModel.Initialize(nav.Uri);
         }
+        else if (e.Parameter is string artistId)
+        {
+            ViewModel.Initialize(artistId);
+        }
+
+        // Fire-and-forget: page renders shimmer instantly, data populates as it arrives.
+        // SetupWatchFeedVideo is called from CrossfadeToContent after data loads.
+        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void Release_Click(object sender, RoutedEventArgs e)
@@ -628,4 +621,5 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             NavigationHelpers.OpenConcert(param, title ?? "Concert", NavigationHelpers.IsCtrlPressed());
         }
     }
+
 }

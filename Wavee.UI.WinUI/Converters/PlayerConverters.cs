@@ -167,8 +167,11 @@ public sealed class StringToImageSourceConverter : IValueConverter
 
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
-        if (value is not string uri || string.IsNullOrWhiteSpace(uri))
+        if (value is not string rawUri || string.IsNullOrWhiteSpace(rawUri))
             return null;
+
+        // Convert spotify:image:xxx URIs to loadable HTTPS URLs
+        var uri = Helpers.SpotifyImageHelper.ToHttpsUrl(rawUri) ?? rawUri;
 
         var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 0;
         var cacheKey = new ImageCacheKey(uri, decodeSize);

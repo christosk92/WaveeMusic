@@ -59,3 +59,23 @@ public sealed class NotificationDismissedMessage;
 /// </summary>
 public sealed class ConnectivityChangedMessage(bool isConnected)
     : ValueChangedMessage<bool>(isConnected);
+
+// --- Playback Extended Messages ---
+
+/// <summary>
+/// Sent when the buffering state changes during playback.
+/// </summary>
+public sealed class PlaybackBufferingChangedMessage(bool isBuffering)
+    : ValueChangedMessage<bool>(isBuffering);
+
+/// <summary>
+/// Sent when a playback command encounters an error.
+/// </summary>
+public sealed class PlaybackErrorOccurredMessage(Models.PlaybackErrorEvent error)
+    : ValueChangedMessage<Models.PlaybackErrorEvent>(error);
+
+/// <summary>
+/// Sent when the active playback device changes.
+/// </summary>
+public sealed class ActiveDeviceChangedMessage(string? deviceId)
+    : ValueChangedMessage<string?>(deviceId);

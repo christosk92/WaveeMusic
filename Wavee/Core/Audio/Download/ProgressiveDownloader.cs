@@ -267,8 +267,10 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         if (_downloadedRanges.ContainsRange(start, end))
             return;
 
-        // Fetch synchronously (blocking)
-        FetchRangeAsync(start, end, _disposeCts.Token).GetAwaiter().GetResult();
+        // Run the async fetch on a thread pool thread so the HTTP completion
+        // doesn't need to marshal back to our dedicated playback thread.
+        // This prevents deadlocks when the thread pool is saturated by UI work.
+        Task.Run(() => FetchRangeAsync(start, end, _disposeCts.Token)).GetAwaiter().GetResult();
     }
 
     private async Task EnsureDataAvailableAsync(long start, int length, CancellationToken cancellationToken)
@@ -439,9 +441,13 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             if (gaps.Count == 0)
                 return;
 
-            // Fetch first gap in background (don't block)
-            var gap = gaps[0];
-            await FetchRangeAsync(gap.Start, gap.End, cancellationToken);
+            // Fetch ALL gaps in parallel (not just the first) to prevent future blocking reads
+            var tasks = new List<Task>(gaps.Count);
+            foreach (var gap in gaps)
+            {
+                tasks.Add(FetchRangeAsync(gap.Start, gap.End, cancellationToken));
+            }
+            await Task.WhenAll(tasks);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

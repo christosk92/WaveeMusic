@@ -32,6 +32,7 @@ public sealed class DeviceStateManager : IAsyncDisposable
     private int _currentVolume;
     private bool _isActive;
     private uint _messageId;
+    private PlayerState? _pendingPlayerState;
 
     // Volume observable
     private readonly BehaviorSubject<int> _volumeSubject;
@@ -201,13 +202,16 @@ public sealed class DeviceStateManager : IAsyncDisposable
                 Device = new Device
                 {
                     DeviceInfo = _deviceInfo,
-                    PlayerState = ConnectStateHelpers.CreateEmptyPlayerState()
+                    PlayerState = _pendingPlayerState ?? ConnectStateHelpers.CreateEmptyPlayerState()
                 },
                 PutStateReason = reason,
                 IsActive = _isActive,
                 ClientSideTimestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 MessageId = _messageId++
             };
+
+            // Clear pending state after using it (one-shot)
+            _pendingPlayerState = null;
 
             _logger?.LogDebug("Sending PUT state with reason {Reason}", reason);
             _logger?.LogTrace("PUT state request: deviceId={DeviceId}, connectionId={ConnectionId}, reason={Reason}, messageId={MessageId}, volume={Volume}, isActive={IsActive}",
@@ -263,6 +267,19 @@ public sealed class DeviceStateManager : IAsyncDisposable
 
         var reason = active ? PutStateReason.NewDevice : PutStateReason.BecameInactive;
         await UpdateStateAsync(reason, cancellationToken);
+    }
+
+    /// <summary>
+    /// Activates the device with a specific player state so Spotify preserves the track.
+    /// Used when taking over playback from a ghost device.
+    /// </summary>
+    public async Task SetActiveWithStateAsync(PlayerState playerState, CancellationToken cancellationToken = default)
+    {
+        _pendingPlayerState = playerState;
+        _isActive = true;
+        _logger?.LogInformation("Device activating with player state (track present: {HasTrack})",
+            playerState.Track != null);
+        await UpdateStateAsync(PutStateReason.NewDevice, cancellationToken);
     }
 
     /// <summary>

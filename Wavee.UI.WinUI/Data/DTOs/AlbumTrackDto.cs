@@ -10,6 +10,7 @@ public sealed record AlbumTrackDto : ITrackItem
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public required string Id { get; init; }
+    public required string Uri { get; init; }
     public required string Title { get; init; }
     public required string ArtistName { get; init; }
     public required string ArtistId { get; init; }

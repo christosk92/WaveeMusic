@@ -26,6 +26,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;
     private readonly ILocationService _locationService;
+    private readonly IPlaybackService _playbackService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private readonly CompositeDisposable _disposables = new();
@@ -163,11 +164,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Constructor (reactive pipelines) ──
 
-    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, ILogger<ArtistViewModel>? logger = null)
+    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, IPlaybackService playbackService, ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
         _albumService = albumService;
         _locationService = locationService;
+        _playbackService = playbackService;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
@@ -493,7 +495,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             for (int i = 0; i < Math.Min(tracks.Count, ExpandedAlbumTracks.Count); i++)
             {
-                ExpandedAlbumTracks[i].Populate(tracks[i]);
+                // Replace placeholder with properly-keyed loaded item so track ID matches
+                // for playback state highlighting (LazyTrackItem.Id is init-only)
+                ExpandedAlbumTracks[i] = LazyTrackItem.Loaded(tracks[i].Id, i + 1, tracks[i]);
             }
 
             // Remove excess placeholders
@@ -530,26 +534,30 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         const int pageSize = 20;
         var offset = alreadyLoaded;
 
+        // Collect all pages on background thread first — no UI thread blocking
+        var allReleases = new List<(int Offset, List<ArtistReleaseResult> Items)>();
         while (offset < totalCount)
         {
             ct.ThrowIfCancellationRequested();
-
-            // Fetch on background thread (JSON deserialization + mapping)
             var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSize, ct);
+            if (releases.Count == 0) break;
+            allReleases.Add((offset, releases));
+            offset += releases.Count;
+        }
 
-            if (releases.Count == 0)
-                break;
+        if (allReleases.Count == 0) return;
 
-            // Dispatch Populate() to UI thread — x:Bind PropertyChanged requires it
-            var capturedOffset = offset;
-            var tcs = new TaskCompletionSource();
-            _dispatcherQueue.TryEnqueue(() =>
+        // Single UI thread update with all pages batched
+        var tcs = new TaskCompletionSource();
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            try
             {
-                try
+                _releasesSource.Edit(cache =>
                 {
-                    _releasesSource.Edit(cache =>
+                    foreach (var (pageOffset, releases) in allReleases)
                     {
-                        int idx = capturedOffset;
+                        int idx = pageOffset;
                         foreach (var r in releases)
                         {
                             var vm = new ArtistReleaseVm
@@ -573,15 +581,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                                 cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
                             idx++;
                         }
-                    });
-                    tcs.SetResult();
-                }
-                catch (Exception ex) { tcs.SetException(ex); }
-            });
-            await tcs.Task; // wait for UI thread to finish before fetching next page
-
-            offset += releases.Count;
-        }
+                    }
+                });
+                tcs.SetResult();
+            }
+            catch (Exception ex) { tcs.SetException(ex); }
+        });
+        await tcs.Task;
     }
 
     // ── Commands ──
@@ -598,7 +604,23 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private void ToggleFollow() => IsFollowing = !IsFollowing;
 
     [RelayCommand]
-    private void PlayTopTracks() { /* TODO: Play via Wavee core */ }
+    private async Task PlayTopTracksAsync()
+    {
+        if (string.IsNullOrEmpty(ArtistId)) return;
+        var result = await _playbackService.PlayContextAsync(
+            $"spotify:artist:{ArtistId}",
+            new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
+        if (!result.IsSuccess)
+            _logger?.LogWarning("PlayTopTracks failed: {Error}", result.ErrorMessage);
+    }
+
+    [RelayCommand]
+    private async Task PlayTrackAsync(ITrackItem? track)
+    {
+        if (track == null || string.IsNullOrEmpty(ArtistId)) return;
+        await _playbackService.PlayTrackInContextAsync(track.Uri, $"spotify:artist:{ArtistId}",
+            new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
+    }
 
     [RelayCommand]
     private void ToggleAlbumsView() => AlbumsGridView = !AlbumsGridView;
@@ -673,6 +695,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     public bool IsPlayable { get; init; }
 
     // ── ITrackItem implementation ──
+    string Data.Contracts.ITrackItem.Uri => Uri ?? $"spotify:track:{Id}";
     string Data.Contracts.ITrackItem.Title => Title ?? "";
     string Data.Contracts.ITrackItem.ArtistName => ArtistNames ?? "";
     string Data.Contracts.ITrackItem.ArtistId => "";

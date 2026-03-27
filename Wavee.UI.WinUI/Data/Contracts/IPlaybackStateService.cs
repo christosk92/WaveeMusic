@@ -11,12 +11,47 @@ namespace Wavee.UI.WinUI.Data.Contracts;
 /// </summary>
 public interface IPlaybackStateService : INotifyPropertyChanged
 {
-    // --- Mirrored from IPlayerContext (read-only view) ---
+    // --- Playback state ---
     bool IsPlaying { get; }
+
+    /// <summary>
+    /// True while a track is loading — from click until first audio plays (local) or ack received (remote).
+    /// </summary>
+    bool IsBuffering { get; }
+
+    /// <summary>
+    /// The track ID currently being loaded/buffered (for per-row loading indicators).
+    /// Null when not buffering.
+    /// </summary>
+    string? BufferingTrackId { get; }
+
     string? CurrentTrackId { get; }
     string? CurrentTrackTitle { get; }
     string? CurrentArtistName { get; }
     string? CurrentAlbumArt { get; }
+    string? CurrentArtistId { get; }
+    string? CurrentAlbumId { get; }
+
+    /// <summary>
+    /// Theme-appropriate hex color extracted from the current album art.
+    /// Uses DarkHex in dark theme, LightHex in light theme.
+    /// </summary>
+    string? CurrentAlbumArtColor { get; }
+
+    /// <summary>
+    /// True if playback is on a remote device (not this app).
+    /// </summary>
+    bool IsPlayingRemotely { get; }
+
+    /// <summary>
+    /// True if the active device doesn't support volume control.
+    /// </summary>
+    bool IsVolumeRestricted { get; }
+
+    /// <summary>
+    /// Display name of the active Spotify device, if remote.
+    /// </summary>
+    string? ActiveDeviceName { get; }
     double Position { get; set; }
     double Duration { get; }
     double Volume { get; set; }

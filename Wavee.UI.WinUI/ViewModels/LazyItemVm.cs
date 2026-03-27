@@ -74,6 +74,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     // Notify all delegated properties when Data changes so OneWay bindings refresh
     partial void OnDataChanged(ITrackItem? value)
     {
+        OnPropertyChanged(nameof(Uri));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(ArtistName));
         OnPropertyChanged(nameof(ArtistId));
@@ -86,6 +87,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     }
 
     // ITrackItem — delegate to Data when loaded, safe defaults when not
+    public string Uri => Data?.Uri ?? "";
     public string Title => Data?.Title ?? "";
     public string ArtistName => Data?.ArtistName ?? "";
     public string ArtistId => Data?.ArtistId ?? "";

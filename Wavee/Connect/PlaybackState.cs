@@ -80,6 +80,21 @@ public sealed record PlaybackState
     public string? ActiveDeviceId { get; init; }
 
     /// <summary>
+    /// Display name of the active device (e.g. "iPhone", "Living Room Speaker").
+    /// </summary>
+    public string? ActiveDeviceName { get; init; }
+
+    /// <summary>
+    /// Volume level from active device (0-65535 Spotify scale).
+    /// </summary>
+    public uint Volume { get; init; }
+
+    /// <summary>
+    /// True if the active device doesn't support volume control (Capabilities.DisableVolume).
+    /// </summary>
+    public bool IsVolumeRestricted { get; init; }
+
+    /// <summary>
     /// Timestamp when this state was captured (Unix milliseconds).
     /// </summary>
     public long Timestamp { get; init; }
@@ -274,6 +289,9 @@ public enum StateChanges
     /// <summary>Queue changed (tracks added/removed from queue).</summary>
     Queue = 1 << 7,
 
+    /// <summary>Volume changed on active device.</summary>
+    Volume = 1 << 8,
+
     /// <summary>All state changed (initial state or major update).</summary>
-    All = Track | Position | Status | Context | Options | ActiveDevice | Source | Queue
+    All = Track | Position | Status | Context | Options | ActiveDevice | Source | Queue | Volume
 }

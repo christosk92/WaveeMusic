@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -17,6 +18,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
 {
     private readonly IAlbumService _albumService;
+    private readonly IPlaybackService _playbackService;
     private readonly Action<ArtistAlbumItemViewModel>? _onAlbumSelected;
 
     public string GroupName { get; }
@@ -36,11 +38,13 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
         string groupType,
         IEnumerable<LibraryArtistAlbumDto> albums,
         IAlbumService albumService,
+        IPlaybackService playbackService,
         Action<ArtistAlbumItemViewModel>? onAlbumSelected = null)
     {
         GroupName = groupName;
         GroupType = groupType;
         _albumService = albumService;
+        _playbackService = playbackService;
         _onAlbumSelected = onAlbumSelected;
 
         foreach (var album in albums)
@@ -98,10 +102,10 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void PlayAlbum(ArtistAlbumItemViewModel? album)
+    private async Task PlayAlbumAsync(ArtistAlbumItemViewModel? album)
     {
-        if (album == null) return;
-        // TODO: Play album via Wavee core
+        if (album?.Album == null) return;
+        await _playbackService.PlayContextAsync($"spotify:album:{album.Album.Id}");
     }
 
     [RelayCommand]
@@ -123,9 +127,13 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void PlayTrack(AlbumTrackDto? track)
+    private async Task PlayTrackAsync(AlbumTrackDto? track)
     {
         if (track == null) return;
-        // TODO: Play track via Wavee core
+        var albumId = SelectedAlbum?.Album?.Id;
+        if (albumId != null)
+            await _playbackService.PlayTrackInContextAsync(track.Uri, $"spotify:album:{albumId}");
+        else
+            await _playbackService.PlayTracksAsync([track.Uri]);
     }
 }

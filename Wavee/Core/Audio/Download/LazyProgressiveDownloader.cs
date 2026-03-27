@@ -287,7 +287,9 @@ public sealed class LazyProgressiveDownloader : Stream
 
     private void InitializeCdnResources()
     {
-        InitializeCdnResourcesAsync(CancellationToken.None).GetAwaiter().GetResult();
+        // Run on thread pool to prevent blocking the dedicated playback thread
+        // from deadlocking with HTTP completion continuations.
+        Task.Run(() => InitializeCdnResourcesAsync(CancellationToken.None)).GetAwaiter().GetResult();
     }
 
     private async Task InitializeCdnResourcesAsync(CancellationToken cancellationToken)

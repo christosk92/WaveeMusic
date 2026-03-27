@@ -22,7 +22,7 @@ public sealed class PortAudioSink : IAudioSink
     private AudioFormat? _format;
 
     private bool _disposed;
-    private bool _isPlaying;
+    private volatile bool _isPlaying; // volatile: read by native PortAudio callback thread
     private bool _isInitialized;
     private long _samplesWritten;
     private long _samplesPlayed;
@@ -90,11 +90,14 @@ public sealed class PortAudioSink : IAudioSink
                     32 => SampleFormat.Float32,
                     _ => SampleFormat.Int16
                 },
-                suggestedLatency = deviceInfo.defaultLowOutputLatency
+                suggestedLatency = deviceInfo.defaultHighOutputLatency
             };
 
-            // Calculate frames per buffer
-            var framesPerBuffer = (uint)(format.SampleRate * bufferSizeMs / 1000);
+            // Callback period: 50ms balances low-latency pause/resume with driver stability.
+            // Too small (10ms) causes glitches on some WASAPI drivers.
+            // The circular buffer (bufferSizeMs) handles network buffering separately.
+            const int callbackPeriodMs = 50;
+            var framesPerBuffer = (uint)(format.SampleRate * callbackPeriodMs / 1000);
 
             // Create stream with callback
             _stream = new PortAudioSharp.Stream(
@@ -238,16 +241,10 @@ public sealed class PortAudioSink : IAudioSink
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        lock (_lock)
-        {
-            if (_stream != null && _isPlaying)
-            {
-                _stream.Stop();
-                _isPlaying = false;
-                _logger?.LogDebug("PortAudio playback paused");
-            }
-        }
-
+        // Pure flag flip — callback outputs silence on next invocation (~5ms).
+        // Stream stays running so resume is instant (no device restart).
+        _isPlaying = false;
+        _logger?.LogDebug("PortAudio paused (flag flip)");
         return Task.CompletedTask;
     }
 
@@ -256,16 +253,16 @@ public sealed class PortAudioSink : IAudioSink
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        lock (_lock)
+        // Pure flag flip — callback immediately starts outputting buffered audio.
+        // Stream never stopped, so there's zero startup latency.
+        if (_stream != null)
         {
-            if (_stream != null && !_isPlaying && _buffer?.Available > 0)
-            {
-                return Task.FromResult(StartPlaybackInternal());
-            }
+            _isPlaying = true;
+            _logger?.LogDebug("PortAudio resumed (flag flip)");
+            return Task.FromResult(true);
         }
 
-        // Not in a state to resume (no stream or already playing)
-        return Task.FromResult(_isPlaying);
+        return Task.FromResult(false);
     }
 
     /// <inheritdoc />
@@ -290,7 +287,7 @@ public sealed class PortAudioSink : IAudioSink
         {
             if (_isPlaying)
             {
-                try { _stream.Stop(); } catch { }
+                try { _stream.Abort(); } catch { }
                 _isPlaying = false;
             }
 

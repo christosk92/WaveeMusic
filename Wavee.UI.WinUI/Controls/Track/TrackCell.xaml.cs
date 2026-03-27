@@ -1,7 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
+using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
 
@@ -43,6 +45,9 @@ public sealed partial class TrackCell : UserControl
     {
         var cell = (TrackCell)d;
         var track = e.NewValue as ITrackItem;
+
+        // Forward to TrackBehavior so double-tap play works
+        TrackBehavior.SetTrack(cell, track);
 
         if (track != null)
         {

@@ -188,6 +188,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
                     tracks.Add(new PlaylistTrackDto
                     {
                         Id = likedSong.Id,
+                        Uri = likedSong.Uri,
                         Title = likedSong.Title,
                         ArtistName = likedSong.ArtistName,
                         ArtistId = likedSong.ArtistId,
@@ -546,6 +547,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
                 likedSongs.Add(new LikedSongDto
                 {
                     Id = track.Id,
+                    Uri = $"spotify:track:{track.Id}",
                     Title = track.Title,
                     ArtistName = album.ArtistName,
                     ArtistId = album.ArtistId ?? $"spotify:artist:{album.ArtistName.GetHashCode()}",
@@ -593,6 +595,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
                 tracks.Add(new PlaylistTrackDto
                 {
                     Id = track.Id,
+                    Uri = $"spotify:track:{track.Id}",
                     Title = track.Title,
                     ArtistName = album.ArtistName,
                     ArtistId = album.ArtistId ?? $"spotify:artist:{album.ArtistName.GetHashCode()}",

@@ -12,12 +12,14 @@ using Microsoft.UI.Xaml.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Windows.ApplicationModel.DataTransfer;
 using Wavee.UI.WinUI.Controls.Track;
+using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 using Windows.Foundation;
+using Microsoft.Extensions.Logging;
 
 namespace Wavee.UI.WinUI.Controls.TrackList;
 
@@ -34,17 +36,13 @@ public sealed partial class TrackListView : UserControl
     private readonly List<UIElement> _stickyCustomHeaderElements = [];
     private readonly Dictionary<(Type, string), PropertyInfo?> _propertyCache = [];
 
-    // Playback state tracking for now-playing indicator
-    private readonly IPlaybackStateService? _playbackService;
     private readonly ThemeColorService? _themeColors;
-    private string? _currentPlayingTrackId;
-    private bool _isCurrentlyPlaying;
+    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
 
     public TrackListView()
     {
         InitializeComponent();
         SetValue(CustomColumnsProperty, new List<TrackListColumnDefinition>());
-        _playbackService = Ioc.Default.GetService<IPlaybackStateService>();
         _themeColors = Ioc.Default.GetService<ThemeColorService>();
         if (_themeColors != null)
             _themeColors.ThemeChanged += OnThemeColorsChanged;
@@ -75,10 +73,7 @@ public sealed partial class TrackListView : UserControl
         }
 
         // Clean up playback state subscription
-        if (_playbackService != null)
-        {
-            _playbackService.PropertyChanged -= OnPlaybackStateChanged;
-        }
+        TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChangedFromBehavior;
 
         // Clean up theme change subscription
         if (_themeColors != null)
@@ -505,13 +500,12 @@ public sealed partial class TrackListView : UserControl
         ApplyCustomColumns();
         UpdateColumnVisibility();
 
-        // Subscribe to playback state for now-playing indicator
-        if (_playbackService != null)
-        {
-            _playbackService.PropertyChanged += OnPlaybackStateChanged;
-            _currentPlayingTrackId = _playbackService.CurrentTrackId;
-            _isCurrentlyPlaying = _playbackService.IsPlaying;
-        }
+        // Subscribe to playback state changes via centralized TrackStateBehavior
+        TrackStateBehavior.EnsurePlaybackSubscription();
+        TrackStateBehavior.PlaybackStateChanged += OnPlaybackStateChangedFromBehavior;
+
+        // Initial refresh of all visible rows
+        UpdateAllVisibleRowPlaybackState();
     }
 
     private void UpdateColumnVisibility()
@@ -978,10 +972,11 @@ public sealed partial class TrackListView : UserControl
     {
         if (sender is Button button && button.DataContext is ITrackItem track)
         {
-            if (track.Id == _currentPlayingTrackId)
+            if (track.Id == TrackStateBehavior.CurrentTrackId)
             {
                 // Toggle play/pause for the current track
-                _playbackService?.PlayPause();
+                var playbackService = Ioc.Default.GetService<IPlaybackStateService>();
+                playbackService?.PlayPause();
             }
             else
             {
@@ -1029,17 +1024,9 @@ public sealed partial class TrackListView : UserControl
 
     #region Now-Playing State
 
-    private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnPlaybackStateChangedFromBehavior()
     {
-        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId) or nameof(IPlaybackStateService.IsPlaying))
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                _currentPlayingTrackId = _playbackService!.CurrentTrackId;
-                _isCurrentlyPlaying = _playbackService!.IsPlaying;
-                UpdateAllVisibleRowPlaybackState();
-            });
-        }
+        DispatcherQueue.TryEnqueue(UpdateAllVisibleRowPlaybackState);
     }
 
     private void OnThemeColorsChanged()
@@ -1074,6 +1061,8 @@ public sealed partial class TrackListView : UserControl
 
     private void UpdateAllVisibleRowPlaybackState()
     {
+        _logger?.LogDebug("UpdateAllVisibleRowPlaybackState: currentTrackId={CurrentTrackId}, isPlaying={IsPlaying}, itemCount={Count}",
+            TrackStateBehavior.CurrentTrackId, TrackStateBehavior.IsCurrentlyPlaying, InternalListView.Items.Count);
         for (int i = 0; i < InternalListView.Items.Count; i++)
         {
             if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
@@ -1086,10 +1075,11 @@ public sealed partial class TrackListView : UserControl
 
     private void ApplyPlaybackStateToRow(Grid grid, ITrackItem trackItem)
     {
-        var isThisTrack = trackItem.Id == _currentPlayingTrackId;
-        var isPlaying = isThisTrack && _isCurrentlyPlaying;
+        var isThisTrack = trackItem.Id == TrackStateBehavior.CurrentTrackId;
+        var isPlaying = isThisTrack && TrackStateBehavior.IsCurrentlyPlaying;
+        var isBuffering = trackItem.Id == TrackStateBehavior.BufferingTrackId && TrackStateBehavior.IsCurrentlyBuffering;
 
-        // Column 0: index Grid with RowIndex, NowPlayingIcon, PlayButton
+        // Column 0: index Grid with RowIndex, NowPlayingIcon, PlayButton, (+ ProgressRing for buffering)
         var indexGrid = grid.Children.OfType<Grid>().FirstOrDefault();
         if (indexGrid != null)
         {
@@ -1097,13 +1087,38 @@ public sealed partial class TrackListView : UserControl
             var nowPlayingIcon = indexGrid.Children.OfType<FontIcon>().FirstOrDefault();
             var playButton = indexGrid.Children.OfType<Button>().FirstOrDefault();
 
+            // Find or create ProgressRing for buffering indicator
+            var progressRing = indexGrid.Children.OfType<ProgressRing>().FirstOrDefault();
+            if (progressRing == null && isBuffering)
+            {
+                progressRing = new ProgressRing
+                {
+                    Width = 16, Height = 16,
+                    IsActive = true,
+                    Foreground = _themeColors?.AccentText
+                        ?? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                indexGrid.Children.Add(progressRing);
+            }
+
             bool isHovered = indexGrid.Tag is true;
 
-            if (isHovered)
+            if (isBuffering && !isHovered)
+            {
+                // Buffering: show ProgressRing, hide everything else
+                if (rowIndex != null) rowIndex.Visibility = Visibility.Collapsed;
+                if (nowPlayingIcon != null) nowPlayingIcon.Visibility = Visibility.Collapsed;
+                if (playButton != null) playButton.Visibility = Visibility.Collapsed;
+                if (progressRing != null) { progressRing.Visibility = Visibility.Visible; progressRing.IsActive = true; }
+            }
+            else if (isHovered)
             {
                 // Hovered: show play/pause button, hide others
                 if (rowIndex != null) rowIndex.Visibility = Visibility.Collapsed;
                 if (nowPlayingIcon != null) nowPlayingIcon.Visibility = Visibility.Collapsed;
+                if (progressRing != null) progressRing.Visibility = Visibility.Collapsed;
                 if (playButton != null)
                 {
                     playButton.Visibility = Visibility.Visible;
@@ -1117,6 +1132,7 @@ public sealed partial class TrackListView : UserControl
             {
                 // Not hovered, this is the playing/paused track: show equalizer icon
                 if (rowIndex != null) rowIndex.Visibility = Visibility.Collapsed;
+                if (progressRing != null) progressRing.Visibility = Visibility.Collapsed;
                 if (nowPlayingIcon != null)
                 {
                     nowPlayingIcon.Visibility = Visibility.Visible;
@@ -1130,17 +1146,18 @@ public sealed partial class TrackListView : UserControl
                 if (rowIndex != null) rowIndex.Visibility = Visibility.Visible;
                 if (nowPlayingIcon != null) nowPlayingIcon.Visibility = Visibility.Collapsed;
                 if (playButton != null) playButton.Visibility = Visibility.Collapsed;
+                if (progressRing != null) progressRing.Visibility = Visibility.Collapsed;
             }
         }
 
-        // Title text accent color for playing track (Column 2, StackPanel > first TextBlock)
+        // Title text accent color for playing/buffering track
         var titleStack = grid.Children.OfType<StackPanel>().FirstOrDefault();
         if (titleStack != null)
         {
             var titleText = titleStack.Children.OfType<TextBlock>().FirstOrDefault();
             if (titleText != null)
             {
-                titleText.Foreground = isThisTrack
+                titleText.Foreground = (isThisTrack || isBuffering)
                     ? (_themeColors?.AccentText ?? titleText.Foreground)
                     : (_themeColors?.TextPrimary ?? titleText.Foreground);
             }

@@ -1,11 +1,14 @@
 using System;
 using System.Collections;
 using System.Numerics;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -86,6 +89,9 @@ public sealed partial class AlbumDetailPanel : UserControl
         OuterGrid.SizeChanged += OuterGrid_SizeChanged;
         ImageArea.Loaded += ImageArea_Loaded;
         Unloaded += OnUnloaded;
+
+        // Wire up track click → play via IPlaybackService
+        TrackListControl.TrackClicked += OnTrackClicked;
 
         // Add playcount custom column
         TrackListControl.CustomColumns.Add(new Controls.TrackList.TrackListColumnDefinition
@@ -283,6 +289,18 @@ public sealed partial class AlbumDetailPanel : UserControl
     {
         var panel = (AlbumDetailPanel)d;
         panel.TrackListControl.ItemsSource = e.NewValue as IEnumerable;
+    }
+
+    private void OnTrackClicked(object sender, ITrackItem track)
+    {
+        // Play the clicked track within this album's context
+        var albumUri = Album?.Uri ?? (Album?.Id != null ? $"spotify:album:{Album.Id}" : null);
+
+        var playbackService = Ioc.Default.GetService<IPlaybackService>();
+        if (playbackService != null && albumUri != null)
+        {
+            _ = playbackService.PlayTrackInContextAsync(track.Uri, albumUri);
+        }
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)

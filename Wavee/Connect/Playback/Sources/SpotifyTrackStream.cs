@@ -85,10 +85,11 @@ public sealed class SpotifyTrackStream : ITrackStream
         // Linear estimation: bytePosition = (targetMs / durationMs) * fileSize
         var estimatedBytePosition = (long)((targetMs / durationMs) * fileSize);
 
-        // Prefetch 256KB around the estimated position (64KB before, 192KB after)
-        // This covers OGG page boundaries that NVorbis needs to read
-        var prefetchStart = Math.Max(0, estimatedBytePosition - 64 * 1024);
-        const int prefetchLength = 256 * 1024;
+        // Prefetch 1MB around the estimated position (128KB before, 896KB after)
+        // Large prefetch ensures NVorbis can scan OGG page boundaries + decode
+        // several seconds of audio without triggering additional HTTP range requests.
+        var prefetchStart = Math.Max(0, estimatedBytePosition - 128 * 1024);
+        const int prefetchLength = 1024 * 1024;
 
         // Check if audio stream is a LazyProgressiveDownloader (instant start case)
         if (_audioStream is LazyProgressiveDownloader lazyDownloader)

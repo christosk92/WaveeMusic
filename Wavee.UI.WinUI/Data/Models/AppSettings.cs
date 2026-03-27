@@ -18,6 +18,28 @@ public sealed class AppSettings
     public string? LastOpenedTab { get; set; }
     public Dictionary<string, Dictionary<string, double>> ColumnWidths { get; set; } = new();
     public HomeSectionSettings HomeSettings { get; set; } = new();
+
+    // ── Playback behavior ──
+
+    /// <summary>
+    /// How a track click triggers playback: "SingleTap" or "DoubleTap".
+    /// </summary>
+    public string TrackClickBehavior { get; set; } = "DoubleTap";
+
+    /// <summary>
+    /// Default action when playing a track: "PlayAndClear", "PlayNext", or "PlayLater".
+    /// </summary>
+    public string DefaultPlayAction { get; set; } = "PlayAndClear";
+
+    /// <summary>
+    /// Whether to show the play action dialog every time a track is played.
+    /// </summary>
+    public bool AskPlayAction { get; set; } = true;
+
+    /// <summary>
+    /// True once the user has seen the first-time play behavior setup.
+    /// </summary>
+    public bool PlayBehaviorConfigured { get; set; }
 }
 
 public sealed class HomeSectionSettings

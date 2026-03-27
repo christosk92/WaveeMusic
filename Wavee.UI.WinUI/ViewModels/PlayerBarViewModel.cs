@@ -30,11 +30,33 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private string? _albumArt;
 
     [ObservableProperty]
+    private string? _albumArtColor;
+
+    [ObservableProperty]
+    private string? _currentArtistId;
+
+    [ObservableProperty]
+    private string? _currentAlbumId;
+
+    [ObservableProperty]
     private bool _hasTrack;
+
+    // Remote device indicator
+    [ObservableProperty]
+    private bool _isPlayingRemotely;
+
+    [ObservableProperty]
+    private string? _activeDeviceName;
+
+    [ObservableProperty]
+    private bool _isVolumeRestricted;
 
     // Playback state (synced from IPlaybackStateService)
     [ObservableProperty]
     private bool _isPlaying;
+
+    [ObservableProperty]
+    private bool _isBuffering;
 
     [ObservableProperty]
     private bool _isShuffle;
@@ -96,6 +118,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _trackTitle = _playbackStateService.CurrentTrackTitle;
         _artistName = _playbackStateService.CurrentArtistName;
         _albumArt = _playbackStateService.CurrentAlbumArt;
+        _albumArtColor = _playbackStateService.CurrentAlbumArtColor;
+        _currentArtistId = _playbackStateService.CurrentArtistId;
+        _currentAlbumId = _playbackStateService.CurrentAlbumId;
         _hasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
         _isPlaying = _playbackStateService.IsPlaying;
         _isShuffle = _playbackStateService.IsShuffle;
@@ -103,6 +128,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _position = _playbackStateService.Position;
         _duration = _playbackStateService.Duration;
         _volume = _playbackStateService.Volume;
+        _isVolumeRestricted = _playbackStateService.IsVolumeRestricted;
     }
 
     private void OnPlaybackServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -111,6 +137,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         {
             case nameof(IPlaybackStateService.IsPlaying):
                 IsPlaying = _playbackStateService.IsPlaying;
+                break;
+            case nameof(IPlaybackStateService.IsBuffering):
+                IsBuffering = _playbackStateService.IsBuffering;
                 break;
             case nameof(IPlaybackStateService.CurrentTrackId):
                 HasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
@@ -123,6 +152,15 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArt):
                 AlbumArt = _playbackStateService.CurrentAlbumArt;
+                break;
+            case nameof(IPlaybackStateService.CurrentArtistId):
+                CurrentArtistId = _playbackStateService.CurrentArtistId;
+                break;
+            case nameof(IPlaybackStateService.CurrentAlbumId):
+                CurrentAlbumId = _playbackStateService.CurrentAlbumId;
+                break;
+            case nameof(IPlaybackStateService.CurrentAlbumArtColor):
+                AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
                 break;
             case nameof(IPlaybackStateService.Position):
                 if (!IsSeeking) Position = _playbackStateService.Position;
@@ -138,6 +176,15 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.RepeatMode):
                 RepeatMode = _playbackStateService.RepeatMode;
+                break;
+            case nameof(IPlaybackStateService.IsPlayingRemotely):
+                IsPlayingRemotely = _playbackStateService.IsPlayingRemotely;
+                break;
+            case nameof(IPlaybackStateService.ActiveDeviceName):
+                ActiveDeviceName = _playbackStateService.ActiveDeviceName;
+                break;
+            case nameof(IPlaybackStateService.IsVolumeRestricted):
+                IsVolumeRestricted = _playbackStateService.IsVolumeRestricted;
                 break;
         }
     }

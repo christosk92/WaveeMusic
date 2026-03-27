@@ -22,8 +22,10 @@
             <converters:RepeatModeToSymbolConverter x:Key="RepeatSymbolConverter" />
             <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -35,8 +37,9 @@
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
         <Border.Background>
             <AcrylicBrush
-                TintColor="{ThemeResource SolidBackgroundFillColorBase}"
-                TintOpacity="0.85"
+                x:Name="PlayerBarTintBrush"
+                TintColor="#C05040"
+                TintOpacity="0.2"
                 FallbackColor="{ThemeResource SolidBackgroundFillColorBase}"/>
         </Border.Background>
     <Grid Padding="0">
@@ -53,17 +56,25 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Full-width progress bar at top edge -->
+        <!-- Full-width progress bar at top edge — slider when playing, indeterminate bar when buffering -->
         <Slider x:Name="ProgressSlider"
-                Margin="0,-4,0,0"
+                Margin="0,-6,0,0"
                 Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                 Style="{StaticResource PlayerProgressSliderStyle}"
                 Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
                 Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
                 IsThumbToolTipEnabled="False"
+                Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                 PointerPressed="ProgressSlider_PointerPressed"
                 PointerReleased="ProgressSlider_PointerReleased"
                 PointerCaptureLost="ProgressSlider_PointerCaptureLost"/>
+        <ProgressBar
+                Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                IsIndeterminate="True"
+                Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                Height="3" Margin="0,-2,0,0"
+                VerticalAlignment="Top"
+                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
 
         <!-- Column 0: Display Item (spans 2 rows) - 80x80 album art + track info (Rise style) -->
         <Grid
@@ -71,18 +82,19 @@
             Grid.RowSpan="2"
             Grid.Column="0"
             VerticalAlignment="Center"
-            Margin="0,0,8,0">
+            Margin="0,-4,0,0">
 
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="80" />
-                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" MaxWidth="200" />
             </Grid.ColumnDefinitions>
 
             <!-- Album Art (80x80 like Rise, square 1:1) -->
             <Grid
                 Width="80"
                 Height="80"
-                CornerRadius="0,4,4,0"
+                Margin="4"
+                CornerRadius="4,4,4,0"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                 <Image
                     Width="80"
@@ -103,23 +115,50 @@
             <!-- Track info (Rise style: margin 8,0,0,0) -->
             <StackPanel
                 Grid.Column="1"
-                Margin="8,0,0,0"
+                Margin="4,0,0,0"
                 VerticalAlignment="Center"
-                Spacing="2">
-                <TextBlock
-                    Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
-                    Style="{StaticResource PlayerTrackTitleStyle}" />
-                <TextBlock
-                    Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                    Style="{StaticResource PlayerArtistNameStyle}" />
+                Spacing="0">
+                <HyperlinkButton
+                    Padding="0"
+                    MinHeight="0"
+                    Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
+                    MinWidth="0"
+                    Click="TrackTitle_Click">
+                    <TextBlock
+                        Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                        Style="{StaticResource PlayerTrackTitleStyle}" />
+                </HyperlinkButton>
+                <HyperlinkButton
+                    Padding="0"
+                    MinHeight="0"
+                    MinWidth="0"
+                    Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
+                    Click="ArtistName_Click">
+                    <TextBlock
+                        Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                        Style="{StaticResource PlayerArtistNameStyle}" />
+                </HyperlinkButton>
+                <!-- Remote device indicator -->
+                <StackPanel
+                    Margin="0,4,0,0"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    Visibility="{x:Bind ViewModel.IsPlayingRemotely, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <FontIcon Glyph="&#xE703;" FontSize="10" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock
+                        Text="{x:Bind ViewModel.ActiveDeviceName, Mode=OneWay, FallbackValue='Remote device'}"
+                        FontSize="10"
+                        Opacity="0.7"
+                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                </StackPanel>
             </StackPanel>
         </Grid>
 
         <!-- Column 1, Row 1: Primary Controls (CommandBar like Rise) -->
         <CommandBar
             Grid.Row="1"
-            Grid.Column="1"
-            Margin="0"
+            Grid.Column="1" 
+            Margin="0,8,0,0"
             Padding="0"
             HorizontalAlignment="Center"
             DefaultLabelPosition="Collapsed"
@@ -172,10 +211,11 @@
                 </AppBarButton.Icon>
             </AppBarButton>
 
-            <!-- Play/Pause (Rise style: 52x60, border 4, cornerRadius 50) -->
+            <!-- Play/Pause with buffering spinner -->
             <AppBarButton
                 Style="{StaticResource PlayPauseAppBarButtonStyle}"
                 Command="{x:Bind ViewModel.PlayPauseCommand}"
+                IsEnabled="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                 ToolTipService.ToolTip="Play/Pause">
                 <AppBarButton.Icon>
                     <FontIcon
@@ -275,17 +315,20 @@
         <!-- Time text centered under transport controls -->
         <StackPanel Grid.Row="2" Grid.Column="1"
                     Orientation="Horizontal" HorizontalAlignment="Center"
-                    Spacing="4" Margin="0,4,0,0">
+                    Spacing="4" Margin="0,0,0,0">
             <TextBlock Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
                        Style="{StaticResource CaptionTextBlockStyle}"
+                       FontWeight="Bold"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        FontSize="11"/>
             <TextBlock Text="/"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontWeight="Bold"
                        Opacity="0.5" FontSize="11"/>
             <TextBlock Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
                        Style="{StaticResource CaptionTextBlockStyle}"
+                       FontWeight="Normal"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        FontSize="11"/>
         </StackPanel>
@@ -310,6 +353,7 @@
                 Padding="0"
                 Style="{StaticResource TransparentButtonStyle}"
                 Command="{x:Bind ViewModel.ToggleMuteCommand}"
+                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                 ToolTipService.ToolTip="Volume">
                 <FontIcon
                     FontSize="16"
@@ -323,7 +367,9 @@
                 Minimum="0"
                 Maximum="100"
                 Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                IsThumbToolTipEnabled="False" />
+                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                IsThumbToolTipEnabled="False"
+                ToolTipService.ToolTip="Volume control not available on this device" />
 
             <TextBlock
                 Grid.Column="2"

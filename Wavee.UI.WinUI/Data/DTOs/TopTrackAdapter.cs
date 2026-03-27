@@ -16,7 +16,8 @@ public sealed class TopTrackAdapter : ITrackItem
         OriginalIndex = index;
     }
 
-    public string Id => _data.Uri ?? "";
+    public string Id => _data.Uri?.Replace("spotify:track:", "") ?? "";
+    public string Uri => _data.Uri ?? "";
     public string Title => _data.Name ?? "";
     public string ArtistName => _data.DisplayArtistName;
     public string ArtistId => _data.Artists?.Items?.FirstOrDefault()?.Uri?.Replace("spotify:artist:", "") ?? "";

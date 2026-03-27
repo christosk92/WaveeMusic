@@ -1,5 +1,6 @@
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Events;
@@ -47,12 +48,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // State management
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject;
     private readonly Subject<PlaybackError> _errorSubject = new();
+    private readonly Channel<LocalPlaybackState> _stateChannel;
     private LocalPlaybackState _currentState = LocalPlaybackState.Empty;
     private readonly object _stateLock = new();
 
     // Playback control
     private CancellationTokenSource? _playbackCts;
     private Task? _playbackTask;
+    private Thread? _playbackThread;
     private readonly SemaphoreSlim _commandLock = new(1, 1);
 
     // In-place seeking
@@ -133,6 +136,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _logger = logger;
 
         _stateSubject = new BehaviorSubject<LocalPlaybackState>(_currentState);
+        _stateChannel = Channel.CreateBounded<LocalPlaybackState>(
+            new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest });
+        _ = ConsumeStateChannelAsync();
         _queue = new PlaybackQueue(logger);
 
         // Find VolumeProcessor from processing chain for volume control
@@ -298,7 +304,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                         _playbackCts = new CancellationTokenSource();
                         var token = _playbackCts.Token;
-                        _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, _currentPositionMs, token));
+                        _playbackTask = LaunchPlaybackLoop(_currentTrackUri, _currentPositionMs, token);
 
                         // Send reply
                         if (_commandHandler != null &&
@@ -422,7 +428,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Start playback loop
             _playbackCts = new CancellationTokenSource();
             var playbackToken = _playbackCts.Token; // Capture token value (struct) before Task.Run
-            _playbackTask = Task.Run(() => PlaybackLoopAsync(trackUri, _currentPositionMs, playbackToken));
+            _playbackTask = LaunchPlaybackLoop(trackUri, _currentPositionMs, playbackToken);
 
             // Send success reply if command handler exists AND this is a dealer command (not local)
             // Local commands have keys starting with "local/" - don't send dealer replies for these
@@ -442,11 +448,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <inheritdoc/>
     public async Task PauseAsync(CancellationToken cancellationToken = default)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         await _commandLock.WaitAsync(cancellationToken);
+        _logger?.LogInformation("[PERF] PauseAsync: lock acquired after {Elapsed}ms", sw.ElapsedMilliseconds);
         try
         {
-            _logger?.LogInformation("Pause command received");
-
             if (!_isPlaying || _isPaused)
             {
                 _logger?.LogDebug("Already paused or not playing");
@@ -454,11 +460,13 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             }
 
             await _audioSink.PauseAsync();
+            _logger?.LogInformation("[PERF] PauseAsync: audioSink.PauseAsync completed after {Elapsed}ms", sw.ElapsedMilliseconds);
 
             _isPaused = true;
             _isPlaying = false;
 
             PublishStateUpdate();
+            _logger?.LogInformation("[PERF] PauseAsync: total {Elapsed}ms", sw.ElapsedMilliseconds);
         }
         finally
         {
@@ -521,10 +529,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <inheritdoc/>
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         await _commandLock.WaitAsync(cancellationToken);
+        _logger?.LogInformation("[PERF] ResumeAsync: lock acquired after {Elapsed}ms", sw.ElapsedMilliseconds);
         try
         {
-            _logger?.LogInformation("Resume command received");
 
             // Check if playback loop ended (track finished) but we have a track to resume
             if (!_isPaused && !string.IsNullOrEmpty(_currentTrackUri) &&
@@ -548,7 +557,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                 _playbackCts = new CancellationTokenSource();
                 var playbackToken = _playbackCts.Token;
-                _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, startPosition, playbackToken));
+                _playbackTask = LaunchPlaybackLoop(_currentTrackUri, startPosition, playbackToken);
 
                 PublishStateUpdate();
                 return;
@@ -562,6 +571,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
             // Try to resume the audio sink
             var resumed = await _audioSink.ResumeAsync();
+            _logger?.LogInformation("[PERF] ResumeAsync: audioSink.ResumeAsync completed after {Elapsed}ms", sw.ElapsedMilliseconds);
 
             if (!resumed)
             {
@@ -590,10 +600,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <inheritdoc/>
     public async Task SeekAsync(long positionMs, CancellationToken cancellationToken = default)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         await _commandLock.WaitAsync(cancellationToken);
+        _logger?.LogInformation("[PERF] SeekAsync: lock acquired after {Elapsed}ms, seeking to {PositionMs}ms", sw.ElapsedMilliseconds, positionMs);
         try
         {
-            _logger?.LogInformation("Seek command received: Position={PositionMs}ms", positionMs);
 
             // Check if seeking is supported (disabled for infinite streams)
             if (!_currentCanSeek)
@@ -623,7 +634,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 _currentPositionMs = positionMs;
                 _playbackCts = new CancellationTokenSource();
                 var playbackToken = _playbackCts.Token;
-                _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, positionMs, playbackToken));
+                _playbackTask = LaunchPlaybackLoop(_currentTrackUri, positionMs, playbackToken);
 
                 PublishStateUpdate();
                 return;
@@ -637,6 +648,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
             // Flush audio sink buffer for immediate effect
             await _audioSink.FlushAsync();
+            _logger?.LogInformation("[PERF] SeekAsync: flush completed after {Elapsed}ms, signaled seek to playback loop", sw.ElapsedMilliseconds);
 
             _currentPositionMs = positionMs;
             PublishStateUpdate();
@@ -679,7 +691,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Start playback of next track
             _playbackCts = new CancellationTokenSource();
             var playbackToken = _playbackCts.Token;
-            _playbackTask = Task.Run(() => PlaybackLoopAsync(trackUri, 0, playbackToken));
+            _playbackTask = LaunchPlaybackLoop(trackUri, 0, playbackToken);
         }
         finally
         {
@@ -739,7 +751,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Start playback of previous track
             _playbackCts = new CancellationTokenSource();
             var playbackToken = _playbackCts.Token;
-            _playbackTask = Task.Run(() => PlaybackLoopAsync(trackUri, 0, playbackToken));
+            _playbackTask = LaunchPlaybackLoop(trackUri, 0, playbackToken);
         }
         finally
         {
@@ -820,7 +832,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 // Start new playback (current loop will exit after this returns)
                 _playbackCts = new CancellationTokenSource();
                 var playbackToken = _playbackCts.Token;
-                _playbackTask = Task.Run(() => PlaybackLoopAsync(_currentTrackUri, 0, playbackToken));
+                _playbackTask = LaunchPlaybackLoop(_currentTrackUri, 0, playbackToken);
                 return;
             }
         }
@@ -852,6 +864,39 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // PLAYBACK LOOP - Core audio processing
     // ================================================================
 
+    /// <summary>
+    /// Launches PlaybackLoopAsync on a dedicated high-priority thread
+    /// to isolate it from thread pool starvation caused by UI work.
+    /// </summary>
+    private Task LaunchPlaybackLoop(string trackUri, long startPositionMs, CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource();
+        _playbackThread = new Thread(() =>
+        {
+            try
+            {
+                PlaybackLoopAsync(trackUri, startPositionMs, cancellationToken)
+                    .GetAwaiter().GetResult();
+                tcs.TrySetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                tcs.TrySetCanceled();
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+            }
+        })
+        {
+            Name = "Wavee-AudioPlayback",
+            IsBackground = true,
+            Priority = ThreadPriority.AboveNormal
+        };
+        _playbackThread.Start();
+        return tcs.Task;
+    }
+
     private async Task PlaybackLoopAsync(string trackUri, long startPositionMs, CancellationToken cancellationToken)
     {
         ITrackStream? trackStream = null;
@@ -863,6 +908,17 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Load track from source registry
             trackStream = await _sourceRegistry.LoadAsync(trackUri, cancellationToken);
             _logger?.LogDebug("Track loaded: {Title} by {Artist}", trackStream.Metadata.Title, trackStream.Metadata.Artist);
+
+            // Pre-warm the stream: trigger CDN init + first data fetch BEFORE entering decode loop.
+            // This avoids the sync-over-async block in LazyProgressiveDownloader.EnsureCdnInitialized()
+            // that otherwise stalls the playback thread on the first Read() call.
+            if (trackStream.AudioStream.CanRead)
+            {
+                var warmBuf = new byte[1];
+                _ = trackStream.AudioStream.Read(warmBuf, 0, 1);
+                if (trackStream.AudioStream.CanSeek)
+                    trackStream.AudioStream.Seek(0, SeekOrigin.Begin);
+            }
 
             // Store track metadata
             _currentTrackTitle = trackStream.Metadata.Title;
@@ -895,7 +951,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
 
             // Initialize audio sink and processing chain
-            await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 100, cancellationToken);
+            await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 2000, cancellationToken);
             await _processingChain.InitializeAsync(audioFormat, cancellationToken);
 
             // Set track gain for normalization processor (if exists)
@@ -946,10 +1002,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                     if (seekRequested)
                     {
+                        var seekSw = System.Diagnostics.Stopwatch.StartNew();
+
                         // Prefetch data at seek position for streaming tracks
                         await trackStream.PrefetchForSeekAsync(
                             TimeSpan.FromMilliseconds(currentStartPosition),
                             cancellationToken);
+                        _logger?.LogInformation("[PERF] Seek prefetch completed in {Elapsed}ms for position {Position}ms",
+                            seekSw.ElapsedMilliseconds, currentStartPosition);
 
                         // Reset stream position if seekable
                         if (decodingStream.CanSeek)
@@ -1054,9 +1114,21 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _isPlaying = false;
             PublishStateUpdate();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogError(ex, "Error in playback loop");
+
+            // Emit error to subscribers (UI notification, etc.)
+            var errorType = ex switch
+            {
+                Core.Audio.AudioKeyException => PlaybackErrorType.TrackUnavailable,
+                NotSupportedException => PlaybackErrorType.DecodeError,
+                System.Net.Http.HttpRequestException => PlaybackErrorType.NetworkError,
+                System.IO.IOException => PlaybackErrorType.NetworkError,
+                _ => PlaybackErrorType.Unknown
+            };
+            _errorSubject.OnNext(new PlaybackError(errorType, ex.Message, ex));
+
             // Send transition event on error
             EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
             _isPlaying = false;
@@ -1130,7 +1202,29 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
 
-            _stateSubject.OnNext(_currentState);
+            // Non-blocking: queue state for publishing on a separate thread
+            // so we never block the playback thread waiting for Rx subscribers
+            _stateChannel.Writer.TryWrite(_currentState);
+        }
+    }
+
+    /// <summary>
+    /// Background consumer that reads state from the channel and publishes to Rx subscribers.
+    /// Runs independently from the playback thread so OnNext never blocks decoding.
+    /// </summary>
+    private async Task ConsumeStateChannelAsync()
+    {
+        try
+        {
+            await foreach (var state in _stateChannel.Reader.ReadAllAsync())
+            {
+                _stateSubject.OnNext(state);
+            }
+        }
+        catch (ChannelClosedException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "State channel consumer failed");
         }
     }
 

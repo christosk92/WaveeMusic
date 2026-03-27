@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
-    xmlns:converters="using:Wavee.UI.WinUI.Converters" 
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
@@ -16,6 +16,24 @@
     </UserControl.Resources>
 
     <Grid Padding="8,4" ColumnSpacing="12" Height="56">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="PlaybackStates">
+                <VisualState x:Name="NotPlaying"/>
+                <VisualState x:Name="Playing">
+                    <VisualState.Setters>
+                        <Setter Target="TitleText.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        <Setter Target="NowPlayingIndicator.Visibility" Value="Visible"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Paused">
+                    <VisualState.Setters>
+                        <Setter Target="TitleText.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        <Setter Target="NowPlayingIndicator.Visibility" Value="Visible"/>
+                        <Setter Target="NowPlayingIndicator.Opacity" Value="0.5"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="48"/>
             <ColumnDefinition Width="*"/>
@@ -28,6 +46,13 @@
             <Image x:Name="AlbumArt" Stretch="UniformToFill"
                    behaviors:ImageFallbackBehavior.HideOnError="True"
                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+        </Border>
+        <!-- Now playing indicator (overlays album art, theme-aware) -->
+        <Border x:Name="NowPlayingIndicator" Grid.Column="0" Width="48" Height="48" CornerRadius="4"
+                Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" Visibility="Collapsed"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Opacity="0.85">
+            <FontIcon Glyph="&#xE995;" FontSize="18" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <controls1:Shimmer x:Name="ArtShimmer" Grid.Column="0" Width="48" Height="48" CornerRadius="4"
                           Visibility="Collapsed"/>

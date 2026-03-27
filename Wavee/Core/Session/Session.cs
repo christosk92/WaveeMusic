@@ -518,6 +518,22 @@ public sealed class Session : ISession, IAsyncDisposable
     }
 
     /// <summary>
+    /// Activates this device with the last known player state so Spotify preserves the current track.
+    /// Used when taking over playback from a ghost/disconnected device.
+    /// </summary>
+    public async Task<bool> ActivateWithCurrentStateAsync(CancellationToken cancellationToken = default)
+    {
+        if (_deviceStateManager == null || _playbackStateManager == null)
+            return false;
+
+        // Override status to Playing — user wants to resume, not stay paused
+        var currentState = _playbackStateManager.CurrentState with { Status = PlaybackStatus.Playing };
+        var playerState = PlaybackStateHelpers.ToPlayerState(currentState, Config.DeviceId);
+        await _deviceStateManager.SetActiveWithStateAsync(playerState, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
     /// Sets the device volume (Spotify's 0-65535 range).
     /// </summary>
     /// <param name="volume">Volume level (0-65535).</param>

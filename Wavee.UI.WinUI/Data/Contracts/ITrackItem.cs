@@ -11,9 +11,14 @@ namespace Wavee.UI.WinUI.Data.Contracts;
 public interface ITrackItem : INotifyPropertyChanged
 {
     /// <summary>
-    /// Unique identifier for the track (e.g., spotify:track:xxx).
+    /// Unique identifier for the track (bare ID, e.g. "4xeugB5MqWh0jwvXZPxahq").
     /// </summary>
     string Id { get; }
+
+    /// <summary>
+    /// Full URI for playback and identification (e.g. "spotify:track:xxx", "spotify:episode:xxx").
+    /// </summary>
+    string Uri { get; }
 
     /// <summary>
     /// Track title.

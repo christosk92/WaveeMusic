@@ -141,6 +141,7 @@ public sealed class AlbumService : IAlbumService
         return new AlbumTrackDto
         {
             Id = r.Id,
+            Uri = r.Uri ?? $"spotify:track:{r.Id}",
             Title = r.Title ?? "",
             ArtistName = r.ArtistNames ?? "",
             ArtistId = "",

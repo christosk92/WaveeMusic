@@ -127,6 +127,18 @@ public static class PlaybackStateHelpers
             }
             : new PlaybackOptions();
 
+        // Look up active device info from cluster device map
+        string? activeDeviceName = null;
+        uint volume = 0;
+        bool isVolumeRestricted = false;
+        if (!string.IsNullOrEmpty(cluster.ActiveDeviceId) &&
+            cluster.Device.TryGetValue(cluster.ActiveDeviceId, out var activeDeviceInfo))
+        {
+            activeDeviceName = activeDeviceInfo.Name;
+            volume = activeDeviceInfo.Volume;
+            isVolumeRestricted = activeDeviceInfo.Capabilities?.DisableVolume ?? false;
+        }
+
         // Create new state
         var newState = new PlaybackState
         {
@@ -137,6 +149,9 @@ public static class PlaybackStateHelpers
             ContextUri = playerState?.ContextUri,
             Options = options,
             ActiveDeviceId = cluster.ActiveDeviceId,
+            ActiveDeviceName = activeDeviceName,
+            Volume = volume,
+            IsVolumeRestricted = isVolumeRestricted,
             Timestamp = cluster.ChangedTimestampMs,
             Source = StateSource.Cluster
         };
@@ -436,8 +451,12 @@ public static class PlaybackStateHelpers
             Title = title,
             Artist = artist,
             Album = album,
-            AlbumUri = providedTrack.AlbumUri,
-            ArtistUri = providedTrack.ArtistUri,
+            AlbumUri = !string.IsNullOrEmpty(providedTrack.AlbumUri)
+                ? providedTrack.AlbumUri
+                : metadata.GetValueOrDefault("album_uri"),
+            ArtistUri = !string.IsNullOrEmpty(providedTrack.ArtistUri)
+                ? providedTrack.ArtistUri
+                : metadata.GetValueOrDefault("artist_uri"),
             ImageUrl = imageUrl,
             ImageSmallUrl = imageSmallUrl,
             ImageLargeUrl = imageLargeUrl,
@@ -454,6 +473,10 @@ public static class PlaybackStateHelpers
     /// </summary>
     private static PlaybackStatus DeterminePlaybackStatus(PlayerState playerState)
     {
+        // Log the raw flags for debugging
+        System.Diagnostics.Debug.WriteLine(
+            $"[PlaybackStatus] Raw flags: IsPlaying={playerState.IsPlaying}, IsPaused={playerState.IsPaused}, IsBuffering={playerState.IsBuffering}");
+
         // CRITICAL: Check IsPaused FIRST before IsPlaying!
         // When paused, Spotify sets ALL three flags to true for UI compatibility.
         // Paused: is_playing=true, is_paused=true, is_buffering=true (triple-flag pattern)
@@ -525,6 +548,10 @@ public static class PlaybackStateHelpers
         // Source changed (cluster → local or vice versa)
         if (previous.Source != current.Source)
             changes |= StateChanges.Source;
+
+        // Volume changed
+        if (previous.Volume != current.Volume || previous.IsVolumeRestricted != current.IsVolumeRestricted)
+            changes |= StateChanges.Volume;
 
         // PRIORITY: If status changed, suppress position changes (status is more significant)
         // This prevents "Position" spam when pausing/resuming

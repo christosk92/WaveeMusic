@@ -9,25 +9,25 @@ public sealed record AudioFetchParams
     /// Minimum size of each HTTP range request in bytes.
     /// Default: 64KB
     /// </summary>
-    public int MinimumChunkSize { get; init; } = 64 * 1024;
+    public int MinimumChunkSize { get; init; } = 256 * 1024;
 
     /// <summary>
     /// Maximum size of each HTTP range request in bytes.
-    /// Default: 256KB
+    /// Default: 512KB
     /// </summary>
-    public int MaximumChunkSize { get; init; } = 256 * 1024;
+    public int MaximumChunkSize { get; init; } = 512 * 1024;
 
     /// <summary>
     /// Bytes to prefetch before playback starts (for instant start).
-    /// Default: 128KB (enough for ~1 second at 320kbps)
+    /// Default: 256KB (enough for ~2 seconds at 320kbps)
     /// </summary>
-    public int InitialPrefetchBytes { get; init; } = 128 * 1024;
+    public int InitialPrefetchBytes { get; init; } = 256 * 1024;
 
     /// <summary>
     /// Seconds of audio to keep buffered ahead during playback.
-    /// Default: 5 seconds
+    /// Default: 15 seconds (ensures data is pre-downloaded before decode needs it)
     /// </summary>
-    public TimeSpan ReadAheadDuration { get; init; } = TimeSpan.FromSeconds(5);
+    public TimeSpan ReadAheadDuration { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// Maximum number of retries for failed HTTP requests.

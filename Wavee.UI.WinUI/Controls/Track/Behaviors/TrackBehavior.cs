@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -7,7 +8,8 @@ using Wavee.UI.WinUI.Data.Contracts;
 namespace Wavee.UI.WinUI.Controls.Track.Behaviors;
 
 /// <summary>
-/// Attached behavior for track items. Handles double-tap to play, right-click/hold for context menu.
+/// Attached behavior for track items. Handles tap/double-tap to play (configurable),
+/// right-click/hold for context menu, first-time play action dialog.
 /// </summary>
 public static class TrackBehavior
 {
@@ -32,7 +34,7 @@ public static class TrackBehavior
 
         if (e.OldValue != null)
         {
-            // Unsubscribe from events
+            element.Tapped -= OnTapped;
             element.DoubleTapped -= OnDoubleTapped;
             element.RightTapped -= OnRightTapped;
             element.Holding -= OnHolding;
@@ -42,7 +44,7 @@ public static class TrackBehavior
 
         if (e.NewValue != null)
         {
-            // Subscribe to events
+            element.Tapped += OnTapped;
             element.DoubleTapped += OnDoubleTapped;
             element.RightTapped += OnRightTapped;
             element.Holding += OnHolding;
@@ -140,18 +142,42 @@ public static class TrackBehavior
 
     #region Event Handlers
 
+    private static void OnTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not DependencyObject d) return;
+
+        var settings = TryGetSettings();
+        if (settings == null) return;
+
+        // Only handle single-tap play if configured
+        if (settings.Settings.TrackClickBehavior != "SingleTap") return;
+
+        HandleTrackPlay(d, e.OriginalSource as FrameworkElement);
+        e.Handled = true;
+    }
+
     private static void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (sender is not DependencyObject d) return;
 
+        var settings = TryGetSettings();
+
+        // Double-tap always plays (default behavior, and when setting is "DoubleTap")
+        if (settings?.Settings.TrackClickBehavior == "SingleTap") return;
+
+        HandleTrackPlay(d, e.OriginalSource as FrameworkElement);
+        e.Handled = true;
+    }
+
+    private static void HandleTrackPlay(DependencyObject d, FrameworkElement? sourceElement)
+    {
         var track = GetTrack(d);
         var command = GetPlayCommand(d);
+        if (track == null || command?.CanExecute(track) != true) return;
 
-        if (track != null && command?.CanExecute(track) == true)
-        {
-            command.Execute(track);
-            e.Handled = true;
-        }
+        // Just execute the play command — the PlaybackService handles
+        // prompting via IPlaybackPromptService (dialog, settings, etc.)
+        command.Execute(track);
     }
 
     private static void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -182,17 +208,13 @@ public static class TrackBehavior
     private static void OnPointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is DependencyObject d)
-        {
             SetIsPointerOver(d, true);
-        }
     }
 
     private static void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
         if (sender is DependencyObject d)
-        {
             SetIsPointerOver(d, false);
-        }
     }
 
     private static void ShowContextMenu(FrameworkElement element, ITrackItem track, Windows.Foundation.Point position)
@@ -206,6 +228,12 @@ public static class TrackBehavior
 
         var menu = TrackContextMenu.Create(track, options);
         menu.ShowAt(element, position);
+    }
+
+    private static ISettingsService? TryGetSettings()
+    {
+        try { return Ioc.Default.GetService<ISettingsService>(); }
+        catch { return null; }
     }
 
     #endregion
