@@ -267,10 +267,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             }
 
             // Volume (convert 0-65535 → 0-100 for UI)
+            // Suppress command feedback: remote state sync should NOT trigger set_volume back
             if (state.Changes.HasFlag(StateChanges.Volume) || state.Changes.HasFlag(StateChanges.ActiveDevice))
             {
                 var uiVolume = state.Volume / 655.35;
-                Volume = Math.Clamp(uiVolume, 0, 100);
+                // Don't overwrite to 0 if the remote volume is uninitialized
+                if (state.Volume > 0 || Volume == 0)
+                {
+                    _suppressVolumeCommand = true;
+                    Volume = Math.Clamp(uiVolume, 0, 100);
+                    _suppressVolumeCommand = false;
+                }
                 IsVolumeRestricted = state.IsVolumeRestricted;
                 _logger?.LogDebug("UI bridge: volume → {Volume:F0}% (raw={Raw}/65535, restricted={Restricted})",
                     Volume, state.Volume, state.IsVolumeRestricted);
@@ -485,12 +492,29 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _ = _playbackService.SetRepeatModeAsync(mode);
     }
 
+    // Guard: when true, volume changes are from remote state sync — don't send commands back
+    private bool _suppressVolumeCommand;
+
+    /// <summary>
+    /// Sets volume on the UI property without triggering a remote command.
+    /// Used during init when we want to sync the slider without sending set_volume to Spotify.
+    /// </summary>
+    public void SetVolumeWithoutCommand(double volume)
+    {
+        _suppressVolumeCommand = true;
+        Volume = volume;
+        _suppressVolumeCommand = false;
+    }
+
     /// <summary>
     /// Called by MVVM source generator when the Volume property changes.
     /// Propagates the volume to the local engine or remote service.
+    /// Only fires commands for user-initiated changes (not remote state sync).
     /// </summary>
     partial void OnVolumeChanged(double value)
     {
+        if (_suppressVolumeCommand) return;
+
         // Convert 0-100 UI range to 0.0-1.0 linear for local engine
         if (IsLocalPlayback)
         {

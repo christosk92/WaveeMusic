@@ -231,16 +231,19 @@ public static class AppLifecycleHelper
             if (executor != null)
                 executor.LocalEngine = audioPipeline;
 
-            // Sync initial volume from DeviceStateManager to UI (must be on UI thread)
+            // Sync initial volume: set local engine + UI (without triggering remote commands)
             var volumePercent = session.GetVolumePercentage() ?? 50;
+            audioPipeline.SetVolumeAsync((float)(volumePercent / 100.0));
+
             var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
-            if (playbackState != null)
+            if (playbackState is Data.Contexts.PlaybackStateService pss)
             {
                 var dispatcher = _uiDispatcher;
                 if (dispatcher != null)
-                    dispatcher.TryEnqueue(() => playbackState.Volume = volumePercent);
-                else
-                    playbackState.Volume = volumePercent;
+                    dispatcher.TryEnqueue(() =>
+                    {
+                        pss.SetVolumeWithoutCommand(volumePercent);
+                    });
             }
 
             // Surface playback engine errors to the user via notifications

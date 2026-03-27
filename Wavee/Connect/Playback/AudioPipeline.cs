@@ -1458,6 +1458,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     {
         if (_volumeProcessor == null) return;
 
+        // Skip 0 — DeviceStateManager often emits 0 before real state arrives,
+        // which would mute audio and override user's slider changes.
+        if (volume <= 0) return;
+
         // Convert Spotify's 0-65535 range to 0.0-1.0 linear
         var linearVolume = volume / 65535.0f;
         _volumeProcessor.Volume = linearVolume;

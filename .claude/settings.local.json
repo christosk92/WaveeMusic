@@ -34,7 +34,11 @@
       "mcp__postman__getCollection",
       "mcp__postman__updateCollectionRequest",
       "mcp__postman__patchCollection",
-      "mcp__postman__createCollectionRequest"
+      "mcp__postman__createCollectionRequest",
+      "Bash(grep -r SetVolumeAsync C:UsersckaraPersonalWaveeFinalWaveeMusicWaveeConnect --include=*.cs)",
+      "Bash(grep -r Style.*Button /c/Users/ckara/Personal/WaveeFinal/WaveeMusic/Wavee.UI.WinUI/Views/*.xaml)",
+      "Bash(grep -n \"AccentButtonStyle\\\\|DefaultButtonStyle\\\\|SubtleButtonStyle\" /c/Users/ckara/Personal/WaveeFinal/WaveeMusic/Wavee.UI.WinUI/Styles/*.xaml)",
+      "Bash(git status:*)"
     ],
     "deny": [],
     "ask": []
