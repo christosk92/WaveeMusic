@@ -821,19 +821,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     {
         _logger?.LogInformation("Set volume: {Volume:F2}", volume);
 
-        var clamped = Math.Clamp(volume, 0f, 1.0f);
-
-        // Set on VolumeProcessor (affects newly decoded buffers)
-        if (_volumeProcessor != null)
-        {
-            _volumeProcessor.Volume = clamped;
-        }
-
-        // Also set on the sink for instant effect (applies in the audio callback,
-        // bypassing the ~8 second circular buffer delay)
+        // Apply directly in the sink's audio callback for instant effect (~50ms).
+        // No need for the VolumeProcessor — callback scaling is immediate and
+        // doesn't suffer from the circular buffer delay.
         if (_audioSink is Sinks.PortAudioSink portSink)
         {
-            portSink.CallbackVolume = clamped;
+            portSink.CallbackVolume = Math.Clamp(volume, 0f, 1.0f);
         }
 
         return Task.CompletedTask;
@@ -1466,17 +1459,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// </summary>
     private void OnVolumeChanged(int volume)
     {
-        if (_volumeProcessor == null) return;
-
-        // Skip 0 — DeviceStateManager often emits 0 before real state arrives,
-        // which would mute audio and override user's slider changes.
+        // Skip 0 — DeviceStateManager often emits 0 before real state arrives
         if (volume <= 0) return;
 
-        // Convert Spotify's 0-65535 range to 0.0-1.0 linear
         var linearVolume = volume / 65535.0f;
-        _volumeProcessor.Volume = linearVolume;
 
-        // Also update sink callback volume for instant effect
         if (_audioSink is Sinks.PortAudioSink portSink)
             portSink.CallbackVolume = linearVolume;
 
