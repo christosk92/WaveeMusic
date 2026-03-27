@@ -516,13 +516,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         if (_suppressVolumeCommand) return;
 
         // Convert 0-100 UI range to 0.0-1.0 linear for local engine
-        if (IsLocalPlayback)
+        var engine = LocalEngine;
+        if (engine != null)
         {
+            // Direct call — SetVolumeAsync is synchronous (just sets a float)
             var linear = (float)(value / 100.0);
-            _ = Task.Run(() => LocalEngine!.SetVolumeAsync(linear));
+            engine.SetVolumeAsync(linear);
             return;
         }
-        // Remote: send 0-100 integer percent
+        // Remote: send 0-100 integer percent (only if no local engine)
         _ = _playbackService.SetVolumeAsync((int)Math.Round(value));
     }
 

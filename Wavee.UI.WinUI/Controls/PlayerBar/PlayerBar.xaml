@@ -377,7 +377,8 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 FontSize="12"
-                Text="{x:Bind ViewModel.Volume, Mode=OneWay}" />
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.VolumeText, Mode=OneWay}" />
         </Grid>
     </Grid>
     </Border>

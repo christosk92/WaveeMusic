@@ -236,6 +236,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         }
     }
 
+    public string VolumeText => $"{(int)Math.Round(Volume)}";
+
     partial void OnVolumeChanged(double value)
     {
         if (!IsMuted && value > 0)
@@ -243,6 +245,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             PreviousVolume = value;
         }
 
+        OnPropertyChanged(nameof(VolumeText));
         _playbackStateService.Volume = value;
     }
 
