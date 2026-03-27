@@ -27,7 +27,26 @@ public sealed class PortAudioSink : IAudioSink
     private long _samplesWritten;
     private long _samplesPlayed;
 
+    // Playback position tracking (based on bytes actually played through speakers)
+    private long _basePositionMs;
+    private long _bytesPlayedSinceBase;
+    private double _bytesPerMs; // cached for callback performance
+
+    // Device change monitoring
+    private int _currentDeviceIndex;
+    private Timer? _deviceCheckTimer;
+
     public string SinkName => "PortAudio";
+
+    /// <inheritdoc />
+    public long PlaybackPositionMs
+    {
+        get
+        {
+            var bytesPlayed = Interlocked.Read(ref _bytesPlayedSinceBase);
+            return _basePositionMs + (long)(bytesPlayed / _bytesPerMs);
+        }
+    }
 
     /// <summary>
     /// Creates a new PortAudioSink.
@@ -64,6 +83,7 @@ public sealed class PortAudioSink : IAudioSink
             CleanupStream();
 
             _format = format;
+            _bytesPerMs = format.BytesPerSecond / 1000.0;
 
             // Calculate buffer size in bytes (4x requested for safety margin)
             var bufferBytes = format.BytesPerSecond * bufferSizeMs * 4 / 1000;
@@ -76,6 +96,7 @@ public sealed class PortAudioSink : IAudioSink
                 throw new InvalidOperationException("No default audio output device found");
             }
 
+            _currentDeviceIndex = deviceIndex;
             var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(deviceIndex);
 
             // Configure output parameters
@@ -112,10 +133,15 @@ public sealed class PortAudioSink : IAudioSink
             _isInitialized = true;
             _samplesWritten = 0;
             _samplesPlayed = 0;
+            _basePositionMs = 0;
+            Interlocked.Exchange(ref _bytesPlayedSinceBase, 0);
+
+            // Start device change monitoring (check every 2 seconds)
+            _deviceCheckTimer = new Timer(CheckDeviceChange, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
             _logger?.LogDebug(
-                "Initialized PortAudio sink: {SampleRate}Hz, {Channels}ch, {BitsPerSample}bit, buffer={BufferMs}ms",
-                format.SampleRate, format.Channels, format.BitsPerSample, bufferSizeMs);
+                "Initialized PortAudio sink: {SampleRate}Hz, {Channels}ch, {BitsPerSample}bit, buffer={BufferMs}ms, device={DeviceIndex}",
+                format.SampleRate, format.Channels, format.BitsPerSample, bufferSizeMs, deviceIndex);
         }
 
         return Task.CompletedTask;
@@ -132,31 +158,42 @@ public sealed class PortAudioSink : IAudioSink
         StreamCallbackFlags statusFlags,
         IntPtr userData)
     {
-        if (_buffer == null || _format == null || !_isPlaying)
+        // Capture references locally to avoid TOCTOU race with CleanupStream/InitializeAsync.
+        // These are reference-type fields that could be set to null by another thread
+        // between our null-check and the actual dereference.
+        var buffer = _buffer;
+        var format = _format;
+
+        if (buffer == null || format == null || !_isPlaying)
         {
-            // Output silence
-            var silenceBytes = (int)(frameCount * _format!.BytesPerFrame);
+            // Output silence. Use format if available, otherwise fall back to a safe estimate.
+            var bytesPerFrame = format?.BytesPerFrame ?? 4; // fallback: 2ch * 16bit = 4
+            var silenceBytes = (int)(frameCount * bytesPerFrame);
             unsafe
             {
-                var ptr = (byte*)output;
-                for (int i = 0; i < silenceBytes; i++)
-                    ptr[i] = 0;
+                new Span<byte>((void*)output, silenceBytes).Clear();
             }
             return StreamCallbackResult.Continue;
         }
 
-        var bytesNeeded = (int)(frameCount * _format.BytesPerFrame);
+        var bytesNeeded = (int)(frameCount * format.BytesPerFrame);
 
         // Read from circular buffer into unmanaged memory
         unsafe
         {
             var span = new Span<byte>((void*)output, bytesNeeded);
-            var bytesRead = _buffer.Read(span);
+            var bytesRead = buffer.Read(span);
 
             // If we didn't get enough data, pad with silence
             if (bytesRead < bytesNeeded)
             {
                 span.Slice(bytesRead).Clear();
+            }
+
+            // Track playback position from bytes actually sent to the speaker
+            if (bytesRead > 0)
+            {
+                Interlocked.Add(ref _bytesPlayedSinceBase, bytesRead);
             }
 
             Interlocked.Add(ref _samplesPlayed, bytesRead);
@@ -230,9 +267,8 @@ public sealed class PortAudioSink : IAudioSink
 
             var bufferedBytes = _buffer.Available;
             var bufferedMs = (int)_format.BytesToMilliseconds(bufferedBytes);
-            var positionMs = _format.BytesToMilliseconds(Interlocked.Read(ref _samplesPlayed));
 
-            return Task.FromResult(new AudioSinkStatus(positionMs, bufferedMs, _isPlaying));
+            return Task.FromResult(new AudioSinkStatus(PlaybackPositionMs, bufferedMs, _isPlaying));
         }
     }
 
@@ -275,14 +311,162 @@ public sealed class PortAudioSink : IAudioSink
             _buffer?.Clear();
             _samplesWritten = 0;
             _samplesPlayed = 0;
+            Interlocked.Exchange(ref _bytesPlayedSinceBase, 0);
             _logger?.LogDebug("PortAudio buffer flushed");
         }
 
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
+    public void SetBasePosition(long positionMs)
+    {
+        _basePositionMs = positionMs;
+        Interlocked.Exchange(ref _bytesPlayedSinceBase, 0);
+        _logger?.LogDebug("PortAudio base position set to {PositionMs}ms", positionMs);
+    }
+
+    /// <inheritdoc />
+    public async Task DrainAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var buffer = _buffer;
+        if (buffer == null)
+            return;
+
+        _logger?.LogDebug("Draining audio sink buffer...");
+
+        // Wait for the buffer to empty (audio callback is draining it)
+        // Safety timeout: 10 seconds max to avoid hanging forever
+        var timeout = TimeSpan.FromSeconds(10);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        while (buffer.Available > 0 && sw.Elapsed < timeout && !cancellationToken.IsCancellationRequested)
+        {
+            await Task.Delay(50, cancellationToken);
+        }
+
+        if (sw.Elapsed >= timeout)
+        {
+            _logger?.LogWarning("Drain timed out after {Elapsed}ms with {Remaining} bytes remaining",
+                sw.ElapsedMilliseconds, buffer.Available);
+        }
+        else
+        {
+            _logger?.LogDebug("Drain completed in {Elapsed}ms", sw.ElapsedMilliseconds);
+        }
+    }
+
+    // ================================================================
+    // DEVICE CHANGE DETECTION
+    // ================================================================
+
+    /// <summary>
+    /// Periodically checks if the default output device has changed (e.g., Bluetooth connected).
+    /// If so, reinitializes the PortAudio stream on the new device.
+    /// </summary>
+    private void CheckDeviceChange(object? state)
+    {
+        if (_disposed || !_isInitialized || _format == null)
+            return;
+
+        try
+        {
+            var newDeviceIndex = PortAudioSharp.PortAudio.DefaultOutputDevice;
+            if (newDeviceIndex == _currentDeviceIndex || newDeviceIndex == PortAudioSharp.PortAudio.NoDevice)
+                return;
+
+            _logger?.LogInformation(
+                "Audio output device changed: {OldDevice} -> {NewDevice}, reinitializing...",
+                _currentDeviceIndex, newDeviceIndex);
+
+            lock (_lock)
+            {
+                if (_disposed || _format == null)
+                    return;
+
+                var wasPlaying = _isPlaying;
+                var format = _format;
+
+                // Save remaining buffer data
+                byte[]? savedData = null;
+                int savedLength = 0;
+                if (_buffer != null && _buffer.Available > 0)
+                {
+                    savedData = new byte[_buffer.Available];
+                    savedLength = _buffer.Read(savedData);
+                }
+
+                // Stop current stream
+                _isPlaying = false;
+                if (_stream != null)
+                {
+                    try { _stream.Abort(); } catch { }
+                    _stream.Dispose();
+                    _stream = null;
+                }
+
+                // Create new stream on the new device
+                _currentDeviceIndex = newDeviceIndex;
+                var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex);
+
+                var outputParams = new StreamParameters
+                {
+                    device = newDeviceIndex,
+                    channelCount = format.Channels,
+                    sampleFormat = format.BitsPerSample switch
+                    {
+                        16 => SampleFormat.Int16,
+                        24 => SampleFormat.Int24,
+                        32 => SampleFormat.Float32,
+                        _ => SampleFormat.Int16
+                    },
+                    suggestedLatency = deviceInfo.defaultHighOutputLatency
+                };
+
+                const int callbackPeriodMs = 50;
+                var framesPerBuffer = (uint)(format.SampleRate * callbackPeriodMs / 1000);
+
+                var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 4 / 1000);
+                _buffer = new CircularAudioBuffer(bufferCapacity);
+
+                _stream = new PortAudioSharp.Stream(
+                    inParams: null,
+                    outParams: outputParams,
+                    sampleRate: format.SampleRate,
+                    framesPerBuffer: framesPerBuffer,
+                    streamFlags: StreamFlags.NoFlag,
+                    callback: StreamCallback,
+                    userData: null);
+
+                // Restore saved buffer data
+                if (savedData != null && savedLength > 0)
+                {
+                    _buffer.WriteImmediate(savedData.AsSpan(0, savedLength));
+                }
+
+                // Restart playback if it was playing
+                if (wasPlaying)
+                {
+                    StartPlaybackInternal();
+                }
+
+                _logger?.LogInformation("Audio output device switched successfully to device {DeviceIndex}", newDeviceIndex);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to switch audio output device");
+        }
+    }
+
     private void CleanupStream()
     {
+        // Stop device monitoring
+        _deviceCheckTimer?.Dispose();
+        _deviceCheckTimer = null;
+
         if (_stream != null)
         {
             if (_isPlaying)
@@ -388,6 +572,18 @@ internal sealed class CircularAudioBuffer
                     throw;
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Synchronously writes data to the buffer without blocking.
+    /// Used for restoring buffer data during device switches.
+    /// </summary>
+    public void WriteImmediate(ReadOnlySpan<byte> data)
+    {
+        lock (_lock)
+        {
+            WriteInternal(data);
         }
     }
 

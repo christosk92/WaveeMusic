@@ -11,6 +11,20 @@
 
     <Style BasedOn="{StaticResource DefaultOmnibarStyle}" TargetType="local:Omnibar" />
 
+    <!-- BoldMatchTextBlock default style -->
+    <Style TargetType="local:BoldMatchTextBlock">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:BoldMatchTextBlock">
+                    <RichTextBlock x:Name="PART_RichTextBlock"
+                                   MaxLines="1" TextTrimming="CharacterEllipsis"
+                                   FontSize="14" VerticalAlignment="Center"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Custom TextBox style for AutoSuggestBox matching Files app -->
     <Style x:Key="OmnibarTextBoxStyle" BasedOn="{StaticResource AutoSuggestBoxTextBoxStyle}" TargetType="TextBox">
         <Setter Property="Foreground" Value="{ThemeResource TextControlForeground}" />
@@ -226,6 +240,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{TemplateBinding CornerRadius}"
                             PlaceholderText="{TemplateBinding PlaceholderText}"
+                            TextMemberPath="Title"
                             QueryIcon="Find"
                             Text="{Binding Text, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                             <AutoSuggestBox.Resources>

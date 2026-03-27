@@ -19,7 +19,11 @@
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
-
+    <Page.Transitions>
+        <TransitionCollection>
+            <EntranceThemeTransition />
+        </TransitionCollection>
+    </Page.Transitions>
     <Page.Resources>
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
@@ -31,6 +35,11 @@
     </Page.Resources>
 
     <ScrollView x:Name="PageScrollView">
+        <ScrollView.Transitions>
+            <TransitionCollection>
+                <EntranceThemeTransition />
+            </TransitionCollection>
+        </ScrollView.Transitions>
         <StackPanel>
 
             <!-- HERO HEADER -->
@@ -80,11 +89,14 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8"
                                                 Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                                         <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                                   FontSize="36" FontWeight="Bold"/>
-                                        <FontIcon Glyph="&#xE735;" FontSize="18"
-                                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                                  Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay}"
-                                                  VerticalAlignment="Center"/>
+                                                   FontSize="44" FontWeight="Black"/>
+                                        <Border Width="28" Height="28" CornerRadius="14"
+                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay}"
+                                                VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE73E;" FontSize="14" Foreground="White"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
                                     </StackPanel>
                                     <controls:Shimmer Width="280" Height="36" HorizontalAlignment="Left"
                                                       Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
@@ -93,10 +105,12 @@
                                 <!-- Stats: show text or shimmer -->
                                 <Grid>
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               FontWeight="SemiBold"
+                                               Opacity=".5"
+                                               FontSize="14"
+                                               Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
                                                Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                        <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/>
-                                        <Run Text=" monthly listeners"/>
+                                        <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
                                     </TextBlock>
                                     <controls:Shimmer Width="160" Height="16" HorizontalAlignment="Left"
                                                       Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>

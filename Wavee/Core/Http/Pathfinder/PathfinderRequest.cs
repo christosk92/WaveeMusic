@@ -101,3 +101,42 @@ public sealed class PersistedQuery
     [JsonPropertyName("sha256Hash")]
     public required string Sha256Hash { get; init; }
 }
+
+/// <summary>
+/// Variables for the recentSearches query.
+/// </summary>
+public sealed class RecentSearchesVariables
+{
+    [JsonPropertyName("limit")]
+    public int Limit { get; init; } = 50;
+
+    [JsonPropertyName("includeAuthors")]
+    public bool IncludeAuthors { get; init; } = true;
+}
+
+[JsonSerializable(typeof(RecentSearchesVariables))]
+internal partial class RecentSearchesVariablesJsonContext : JsonSerializerContext { }
+
+/// <summary>
+/// Variables for the searchSuggestions query.
+/// </summary>
+public sealed class SearchSuggestionsVariables
+{
+    [JsonPropertyName("query")]
+    public required string Query { get; init; }
+
+    [JsonPropertyName("limit")]
+    public int Limit { get; init; } = 30;
+
+    [JsonPropertyName("numberOfTopResults")]
+    public int NumberOfTopResults { get; init; } = 30;
+
+    [JsonPropertyName("offset")]
+    public int Offset { get; init; }
+
+    [JsonPropertyName("includeAuthors")]
+    public bool IncludeAuthors { get; init; } = true;
+}
+
+[JsonSerializable(typeof(SearchSuggestionsVariables))]
+internal partial class SearchSuggestionsVariablesJsonContext : JsonSerializerContext { }

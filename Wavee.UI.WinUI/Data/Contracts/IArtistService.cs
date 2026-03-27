@@ -12,7 +12,7 @@ public interface IArtistService
 {
     Task<ArtistOverviewResult> GetOverviewAsync(string artistUri, CancellationToken ct = default);
     Task<List<ArtistReleaseResult>> GetDiscographyPageAsync(string artistUri, string type, int offset, int limit = 20, CancellationToken ct = default);
-
+    Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(string artistUri, CancellationToken ct = default);
 }
 
 // ── Domain result types (clean boundary — no Pathfinder types leak to ViewModel) ──
@@ -67,11 +67,13 @@ public sealed record ArtistTopTrackResult
     public string? Uri { get; init; }
     public string? AlbumImageUrl { get; init; }
     public string? AlbumUri { get; init; }
+    public string? AlbumName { get; init; }
     public System.TimeSpan Duration { get; init; }
     public long PlayCount { get; init; }
     public string? ArtistNames { get; init; }
     public bool IsExplicit { get; init; }
     public bool IsPlayable { get; init; }
+    public bool HasVideo { get; init; }
 }
 
 public sealed record ArtistReleaseResult

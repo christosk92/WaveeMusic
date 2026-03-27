@@ -133,15 +133,22 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<Data.Contexts.ConcertService>>()))
                 .AddTransient<ConcertViewModel>()
                 .AddSingleton<IArtistService>(sp =>
-                    new Data.Contexts.ArtistService(
-                        sp.GetRequiredService<ISession>().Pathfinder,
+                {
+                    var session = sp.GetRequiredService<ISession>();
+                    return new Data.Contexts.ArtistService(
+                        session.Pathfinder,
                         sp.GetRequiredService<ILocationService>(),
-                        sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
+                        sp.GetService<ILogger<Data.Contexts.ArtistService>>(),
+                        spClient: session.SpClient);
+                })
                 .AddSingleton<IAlbumService>(sp =>
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetService<ILogger<Data.Contexts.AlbumService>>()))
+                .AddSingleton<ISearchService>(sp =>
+                    new Data.Contexts.SearchService(
+                        sp.GetRequiredService<ISession>().Pathfinder))
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()
@@ -182,6 +189,24 @@ public static class AppLifecycleHelper
             var metadataDb = Ioc.Default.GetService<IMetadataDatabase>();
             var cacheService = Ioc.Default.GetService<Wavee.Core.Storage.ICacheService>();
 
+            // Create extended metadata client for track enrichment (shared with ArtistService)
+            Wavee.Core.Http.IExtendedMetadataClient? extMetadataClient = null;
+            if (metadataDb != null)
+            {
+                cacheService ??= new Wavee.Core.Storage.CacheService(metadataDb, logger: logger);
+                var spClientBase = ((Wavee.Core.Http.SpClient)session.SpClient).BaseUrl;
+                extMetadataClient = new Wavee.Core.Http.ExtendedMetadataClient(
+                    session, httpClient, spClientBase, metadataDb, logger);
+            }
+
+            // Wire late-bound metadata services into ArtistService
+            if (cacheService != null && extMetadataClient != null)
+            {
+                var artistService = Ioc.Default.GetService<IArtistService>();
+                if (artistService is Data.Contexts.ArtistService svc)
+                    svc.SetMetadataServices(cacheService, extMetadataClient);
+            }
+
             var audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 session,
                 (SpClient)session.SpClient,
@@ -206,11 +231,17 @@ public static class AppLifecycleHelper
             if (executor != null)
                 executor.LocalEngine = audioPipeline;
 
-            // Sync initial volume from DeviceStateManager to UI
+            // Sync initial volume from DeviceStateManager to UI (must be on UI thread)
             var volumePercent = session.GetVolumePercentage() ?? 50;
             var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
             if (playbackState != null)
-                playbackState.Volume = volumePercent;
+            {
+                var dispatcher = _uiDispatcher;
+                if (dispatcher != null)
+                    dispatcher.TryEnqueue(() => playbackState.Volume = volumePercent);
+                else
+                    playbackState.Volume = volumePercent;
+            }
 
             // Surface playback engine errors to the user via notifications
             var notificationService = Ioc.Default.GetService<INotificationService>();
@@ -236,6 +267,44 @@ public static class AppLifecycleHelper
                             Severity = Data.Models.NotificationSeverity.Error,
                             AutoDismissAfter = TimeSpan.FromSeconds(5)
                         }));
+                });
+            }
+
+            // Subscribe AudioPipeline to session connection state for buffering indicator
+            audioPipeline.SubscribeToConnectionState(session.ConnectionState);
+
+            // Show notification during AP reconnection
+            if (notificationService != null)
+            {
+                var dispatcher2 = _uiDispatcher;
+                session.ConnectionState.Subscribe(state =>
+                {
+                    dispatcher2?.TryEnqueue(() =>
+                    {
+                        if (state == Wavee.Core.Session.SessionConnectionState.Reconnecting)
+                        {
+                            notificationService.Show(new Data.Models.NotificationInfo
+                            {
+                                Message = "Reconnecting to Spotify...",
+                                Severity = Data.Models.NotificationSeverity.Warning,
+                                AutoDismissAfter = TimeSpan.FromSeconds(10)
+                            });
+                        }
+                        else if (state == Wavee.Core.Session.SessionConnectionState.Disconnected)
+                        {
+                            notificationService.Show(new Data.Models.NotificationInfo
+                            {
+                                Message = "Connection lost. Playback may be interrupted.",
+                                Severity = Data.Models.NotificationSeverity.Error,
+                                AutoDismissAfter = TimeSpan.FromSeconds(10)
+                            });
+                        }
+                        else
+                        {
+                            // Connected — dismiss any reconnection notification
+                            notificationService.Dismiss();
+                        }
+                    });
                 });
             }
 

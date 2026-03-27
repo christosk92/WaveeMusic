@@ -48,7 +48,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private string? _currentAlbumArtColor;
     [ObservableProperty] private double _position;
     [ObservableProperty] private double _duration;
-    [ObservableProperty] private double _volume = 1.0;
+    [ObservableProperty] private double _volume = 100.0;
     [ObservableProperty] private bool _isShuffle;
     [ObservableProperty] private RepeatMode _repeatMode = RepeatMode.Off;
     [ObservableProperty] private PlaybackContextInfo? _currentContext;
@@ -483,6 +483,23 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             return;
         }
         _ = _playbackService.SetRepeatModeAsync(mode);
+    }
+
+    /// <summary>
+    /// Called by MVVM source generator when the Volume property changes.
+    /// Propagates the volume to the local engine or remote service.
+    /// </summary>
+    partial void OnVolumeChanged(double value)
+    {
+        // Convert 0-100 UI range to 0.0-1.0 linear for local engine
+        if (IsLocalPlayback)
+        {
+            var linear = (float)(value / 100.0);
+            _ = Task.Run(() => LocalEngine!.SetVolumeAsync(linear));
+            return;
+        }
+        // Remote: send 0-100 integer percent
+        _ = _playbackService.SetVolumeAsync((int)Math.Round(value));
     }
 
     public void PlayContext(PlaybackContextInfo context, int startIndex = 0)

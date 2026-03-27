@@ -79,11 +79,10 @@
             <controls1:Shimmer Width="110" Height="12" HorizontalAlignment="Left"/>
         </StackPanel>
 
-        <!-- More button (only when loaded) -->
-        <Button x:Name="MoreButton" Grid.Column="2" Background="Transparent" BorderThickness="0"
-                Padding="6" VerticalAlignment="Center">
-            <FontIcon Glyph="&#xE712;" FontSize="14"
-                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-        </Button>
+        <!-- Duration (only when loaded) -->
+        <TextBlock x:Name="DurationText" Grid.Column="2"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   VerticalAlignment="Center" Padding="6,0"/>
     </Grid>
 </UserControl>

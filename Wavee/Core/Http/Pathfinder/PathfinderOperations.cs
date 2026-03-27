@@ -49,4 +49,10 @@ internal static class PathfinderOperations
 
     public const string Concert = "concert";
     public const string ConcertHash = "6313561b79fa89c9cd2f0f1c1392a5de6b0c6ab475648ecb176ecb8dc9b43d3a";
+
+    public const string RecentSearches = "recentSearches";
+    public const string RecentSearchesHash = "b77e1eb3eeb020bd38b95ae2a127065dd5e8616cc075186b8b62c90b1b77e1b2";
+
+    public const string SearchSuggestions = "searchSuggestions";
+    public const string SearchSuggestionsHash = "dea90d34a7ee20d54354f1bf3171a65c36b9f242401494d56451d468d516125e";
 }

@@ -44,7 +44,10 @@
             BackRequested="NavToolbar_BackRequested"
             ForwardRequested="NavToolbar_ForwardRequested"
             HomeRequested="NavToolbar_HomeRequested"
-            SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"/>
+            SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"
+            SearchTextChanged="NavToolbar_SearchTextChanged"
+            SearchSuggestionChosen="NavToolbar_SearchSuggestionChosen"
+            SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"/>
 
         <!-- Shell-level notification bars -->
         <StackPanel Grid.Row="2" Canvas.ZIndex="1">

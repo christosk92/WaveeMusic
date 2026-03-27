@@ -76,4 +76,9 @@ public interface ITrackItem : INotifyPropertyChanged
     /// When false, TrackListView shows shimmer placeholders for this row.
     /// </summary>
     bool IsLoaded { get; }
+
+    /// <summary>
+    /// Whether this entry is a music video (has audio associations).
+    /// </summary>
+    bool HasVideo => false;
 }

@@ -377,6 +377,29 @@ public sealed class PathfinderClient : IPathfinderClient
             ct);
     }
 
+    /// <inheritdoc />
+    public async Task<RecentSearchesResponse> GetRecentSearchesAsync(int limit = 50, CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new RecentSearchesVariables { Limit = limit },
+            PathfinderOperations.RecentSearches,
+            PathfinderOperations.RecentSearchesHash,
+            PathfinderJsonContext.Default.RecentSearchesResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<SearchSuggestionsResponse> GetSearchSuggestionsAsync(
+        string query, int limit = 30, CancellationToken ct = default)
+    {
+        return await QueryAsync(
+            new SearchSuggestionsVariables { Query = query, Limit = limit, NumberOfTopResults = limit },
+            PathfinderOperations.SearchSuggestions,
+            PathfinderOperations.SearchSuggestionsHash,
+            PathfinderJsonContext.Default.SearchSuggestionsResponse,
+            ct);
+    }
+
     private async Task<ArtistDiscographyResponse> GetArtistDiscographyInternalAsync(
         string artistUri, string operationName, string sha256Hash,
         int offset, int limit, CancellationToken ct)
@@ -487,6 +510,14 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is ConcertVariables cv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(cv, ConcertVariablesJsonContext.Default.ConcertVariables);
+        }
+        else if (variables is RecentSearchesVariables rsv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(rsv, RecentSearchesVariablesJsonContext.Default.RecentSearchesVariables);
+        }
+        else if (variables is SearchSuggestionsVariables ssv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(ssv, SearchSuggestionsVariablesJsonContext.Default.SearchSuggestionsVariables);
         }
         else
         {

@@ -115,7 +115,8 @@
             Margin="8,0"
             PlaceholderText="Search songs, artists, albums..."
             QuerySubmitted="SearchOmnibar_QuerySubmitted"
-            TextChanged="SearchOmnibar_TextChanged" />
+            TextChanged="SearchOmnibar_TextChanged"
+            SuggestionChosen="SearchOmnibar_SuggestionChosen" />
 
         <!-- Right-side actions -->
         <StackPanel

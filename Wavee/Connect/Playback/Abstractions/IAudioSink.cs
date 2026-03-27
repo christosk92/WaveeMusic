@@ -46,6 +46,27 @@ public interface IAudioSink : IAsyncDisposable
     /// Flushes any buffered audio data.
     /// </summary>
     Task FlushAsync();
+
+    /// <summary>
+    /// Gets the current playback position in milliseconds, based on audio actually
+    /// played through the speakers (not the decode position).
+    /// </summary>
+    long PlaybackPositionMs { get; }
+
+    /// <summary>
+    /// Sets the base position offset for playback position tracking.
+    /// Call this when starting a new track or after seeking so that
+    /// <see cref="PlaybackPositionMs"/> returns the correct absolute position.
+    /// </summary>
+    /// <param name="positionMs">The base position in milliseconds.</param>
+    void SetBasePosition(long positionMs);
+
+    /// <summary>
+    /// Waits for all buffered audio to be played through the speakers.
+    /// Returns when the circular buffer is empty (drained).
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task DrainAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -266,4 +266,12 @@ public interface ISpClient
     Task<SpotifyFollowingResponse> GetUserFollowingAsync(
         string username,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches extended top track URIs for an artist (beyond the initial overview set).
+    /// Returns just URIs — caller must enrich via extended-metadata.
+    /// </summary>
+    Task<List<string>> GetArtistTopTrackExtensionsAsync(
+        string artistUri,
+        CancellationToken cancellationToken = default);
 }

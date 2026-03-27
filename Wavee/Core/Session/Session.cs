@@ -11,6 +11,7 @@ using Wavee.Core.Audio;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
 using Wavee.Core.Http;
+using System.Reactive.Subjects;
 using Wavee.Core.Mercury;
 
 namespace Wavee.Core.Session;
@@ -55,6 +56,10 @@ public sealed class Session : ISession, IAsyncDisposable
 
     // Keymaster token provider (for Web API scoped tokens)
     private KeymasterTokenProvider? _keymasterTokenProvider;
+
+    // Connection state observable
+    private readonly BehaviorSubject<SessionConnectionState> _connectionState = new(SessionConnectionState.Connected);
+    public IObservable<SessionConnectionState> ConnectionState => _connectionState;
 
     // Connect subsystem
     private DealerClient? _dealerClient;
@@ -1086,6 +1091,7 @@ public sealed class Session : ISession, IAsyncDisposable
         try
         {
             _logger?.LogWarning("Reconnecting to Access Point due to stale connection");
+            _connectionState.OnNext(SessionConnectionState.Reconnecting);
 
             // 1. Close old transport FIRST (unblocks socket reads in dispatcher)
             var oldTransport = _data.GetTransport();
@@ -1180,6 +1186,12 @@ public sealed class Session : ISession, IAsyncDisposable
             _logger?.LogDebug("Restarted packet dispatcher");
 
             _logger?.LogInformation("AP reconnection successful");
+            _connectionState.OnNext(SessionConnectionState.Connected);
+        }
+        catch
+        {
+            _connectionState.OnNext(SessionConnectionState.Disconnected);
+            throw;
         }
         finally
         {

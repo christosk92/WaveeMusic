@@ -70,7 +70,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private string? _artistName;
     [ObservableProperty] private string? _artistImageUrl;
     [ObservableProperty] private string? _headerImageUrl;
-    [ObservableProperty] private long _monthlyListeners;
+    [ObservableProperty] private string? _monthlyListeners;
     [ObservableProperty] private long _followers;
     [ObservableProperty] private string? _biography;
     [ObservableProperty] private bool _isVerified;
@@ -240,7 +240,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             ArtistName = overview.Name ?? ArtistName;
             ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
             HeaderImageUrl = overview.HeaderImageUrl;
-            MonthlyListeners = overview.MonthlyListeners;
+            MonthlyListeners = overview.MonthlyListeners > 0
+                ? overview.MonthlyListeners.ToString("N0")
+                : null;
             Followers = overview.Followers;
             Biography = overview.Biography;
             IsVerified = overview.IsVerified;
@@ -270,14 +272,15 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         Index = idx,
                         Title = track.Title,
                         Uri = track.Uri,
-                        AlbumName = null,
+                        AlbumName = track.AlbumName,
                         AlbumImageUrl = track.AlbumImageUrl,
                         AlbumUri = track.AlbumUri,
                         Duration = track.Duration,
                         PlayCountRaw = track.PlayCount,
                         ArtistNames = track.ArtistNames,
                         IsExplicit = track.IsExplicit,
-                        IsPlayable = track.IsPlayable
+                        IsPlayable = track.IsPlayable,
+                        HasVideo = track.HasVideo
                     };
 
                     cache.AddOrUpdate(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
@@ -295,6 +298,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     idx++;
                 }
             });
+
+            // ── Extended top tracks (background, parallel) ──
+            _ = LoadExtendedTopTracksAsync(ArtistId!);
 
             // ── Releases ──
             var albumsLoaded = overview.Albums.Count;
@@ -672,6 +678,73 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Cleanup ──
 
+    /// <summary>
+    /// Background-loads extended top tracks and replaces shimmer placeholders.
+    /// </summary>
+    private async Task LoadExtendedTopTracksAsync(string artistUri)
+    {
+        try
+        {
+            var extendedTracks = await _artistService.GetExtendedTopTracksAsync(artistUri);
+            if (extendedTracks.Count == 0) return;
+
+            // Get existing track URIs to avoid duplicates
+            var existingUris = new HashSet<string>(
+                _topTracksSource.Items
+                    .Where(i => i.IsLoaded && i.Data != null)
+                    .Select(i => ((ArtistTopTrackVm)i.Data!).Uri ?? ""));
+
+            var startIdx = _topTracksSource.Items.Count(i => i.IsLoaded) + 1;
+
+            _dispatcherQueue?.TryEnqueue(() =>
+            {
+                _topTracksSource.Edit(cache =>
+                {
+                    // Remove all placeholder items
+                    var placeholders = cache.Items
+                        .Where(i => !i.IsLoaded)
+                        .Select(i => i.Id)
+                        .ToList();
+                    cache.RemoveKeys(placeholders);
+
+                    int idx = startIdx;
+                    foreach (var track in extendedTracks)
+                    {
+                        if (existingUris.Contains(track.Uri ?? "")) continue;
+
+                        var trackVm = new ArtistTopTrackVm
+                        {
+                            Id = track.Id,
+                            Index = idx,
+                            Title = track.Title,
+                            Uri = track.Uri,
+                            AlbumName = track.AlbumName,
+                            AlbumImageUrl = track.AlbumImageUrl,
+                            AlbumUri = track.AlbumUri,
+                            Duration = track.Duration,
+                            PlayCountRaw = track.PlayCount,
+                            ArtistNames = track.ArtistNames,
+                            IsExplicit = track.IsExplicit,
+                            IsPlayable = track.IsPlayable,
+                            HasVideo = track.HasVideo
+                        };
+
+                        cache.AddOrUpdate(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
+                        idx++;
+                    }
+                });
+
+                // Refresh pagination
+                OnPropertyChanged(nameof(TotalPages));
+                OnPropertyChanged(nameof(PagedTopTracks));
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to load extended top tracks for {Artist}", artistUri);
+        }
+    }
+
     public void Dispose()
     {
         _discoCts?.Cancel();
@@ -693,11 +766,13 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     public string? AlbumUri { get; init; }
     public long PlayCountRaw { get; init; }
     public bool IsPlayable { get; init; }
+    public bool HasVideo { get; init; }
 
     // ── ITrackItem implementation ──
     string Data.Contracts.ITrackItem.Uri => Uri ?? $"spotify:track:{Id}";
     string Data.Contracts.ITrackItem.Title => Title ?? "";
-    string Data.Contracts.ITrackItem.ArtistName => ArtistNames ?? "";
+    string Data.Contracts.ITrackItem.ArtistName =>
+        HasVideo ? $"{PlayCountFormatted} \u00B7 Video" : PlayCountFormatted;
     string Data.Contracts.ITrackItem.ArtistId => "";
     string Data.Contracts.ITrackItem.AlbumName => AlbumName ?? "";
     string Data.Contracts.ITrackItem.AlbumId => AlbumUri ?? "";
@@ -707,6 +782,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     string Data.Contracts.ITrackItem.DurationFormatted => DurationFormatted;
     int Data.Contracts.ITrackItem.OriginalIndex => Index;
     bool Data.Contracts.ITrackItem.IsLoaded => true;
+    bool Data.Contracts.ITrackItem.HasVideo => HasVideo;
 
     // ── Public properties ──
     public string? Title { get; init; }
@@ -715,13 +791,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     public TimeSpan Duration { get; init; }
     public bool IsExplicit { get; init; }
 
-    public string PlayCountFormatted => PlayCountRaw switch
-    {
-        >= 1_000_000_000 => $"{PlayCountRaw / 1_000_000_000.0:0.#}B",
-        >= 1_000_000 => $"{PlayCountRaw / 1_000_000.0:0.#}M",
-        >= 1_000 => $"{PlayCountRaw / 1_000.0:0.#}K",
-        _ => PlayCountRaw.ToString("N0")
-    };
+    public string PlayCountFormatted => PlayCountRaw.ToString("N0");
 
     public string DurationFormatted =>
         Duration.TotalHours >= 1

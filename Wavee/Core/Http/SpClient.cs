@@ -1061,6 +1061,42 @@ public sealed class SpClient : ISpClient
             ?? throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty following response");
     }
 
+    /// <inheritdoc />
+    public async Task<List<string>> GetArtistTopTrackExtensionsAsync(
+        string artistUri, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artistUri);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/artistplaycontext/v1/page/spotify/artist-top-tracks-extensions/{Uri.EscapeDataString(artistUri)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("Failed to get artist top track extensions: {Status}", response.StatusCode);
+            return [];
+        }
+
+        using var json = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var doc = await JsonDocument.ParseAsync(json, cancellationToken: cancellationToken);
+
+        var uris = new List<string>();
+        if (doc.RootElement.TryGetProperty("tracks", out var tracks))
+        {
+            foreach (var track in tracks.EnumerateArray())
+            {
+                if (track.TryGetProperty("uri", out var uri) && uri.GetString() is { } u)
+                    uris.Add(u);
+            }
+        }
+        return uris;
+    }
+
     /// <summary>
     /// Gets the effective locale for API requests.
     /// </summary>

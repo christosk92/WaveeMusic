@@ -18,6 +18,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private readonly IPlaybackStateService _playbackStateService;
     private bool _disposed;
     private DispatcherTimer? _positionTimer;
+    private DateTime _lastServicePositionUpdate = DateTime.UtcNow;
+    private double _lastServicePosition;
 
     // Track info (synced from IPlaybackStateService)
     [ObservableProperty]
@@ -87,7 +89,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     // Volume (0-100)
     [ObservableProperty]
-    private double _volume = 50;
+    private double _volume = 100;
 
     [ObservableProperty]
     private bool _isMuted;
@@ -163,7 +165,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
                 break;
             case nameof(IPlaybackStateService.Position):
-                if (!IsSeeking) Position = _playbackStateService.Position;
+                if (!IsSeeking)
+                {
+                    Position = _playbackStateService.Position;
+                    _lastServicePosition = Position;
+                    _lastServicePositionUpdate = DateTime.UtcNow;
+                }
                 break;
             case nameof(IPlaybackStateService.Duration):
                 Duration = _playbackStateService.Duration;
@@ -193,14 +200,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (!IsSeeking && IsPlaying)
         {
-            // TODO: Get actual position from AudioPipeline
-            // For now, simulate progress
-            Position += 250;
-            if (Position >= Duration && Duration > 0)
+            // Interpolate position from the last known service update.
+            // The service pushes real position updates every ~500ms from the audio sink.
+            // Between updates, we interpolate based on elapsed wall-clock time for smooth UI.
+            var elapsed = (DateTime.UtcNow - _lastServicePositionUpdate).TotalMilliseconds;
+            var interpolated = _lastServicePosition + elapsed;
+            if (Duration > 0 && interpolated > Duration)
             {
-                Position = 0;
-                IsPlaying = false;
+                interpolated = Duration;
             }
+            Position = interpolated;
         }
     }
 

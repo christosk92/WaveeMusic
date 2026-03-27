@@ -53,6 +53,7 @@ public sealed partial class TrackCell : UserControl
         {
             cell.TitleText.Text = track.Title ?? "";
             cell.SubtitleText.Text = track.ArtistName ?? "";
+            cell.DurationText.Text = track.DurationFormatted ?? "";
             cell.ExplicitBadge.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
 
             // Load album art
@@ -72,6 +73,7 @@ public sealed partial class TrackCell : UserControl
         {
             cell.TitleText.Text = "";
             cell.SubtitleText.Text = "";
+            cell.DurationText.Text = "";
             cell.AlbumArt.Source = null;
         }
     }
@@ -86,6 +88,6 @@ public sealed partial class TrackCell : UserControl
         cell.ArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
         cell.InfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
         cell.InfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-        cell.MoreButton.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+        cell.DurationText.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
     }
 }

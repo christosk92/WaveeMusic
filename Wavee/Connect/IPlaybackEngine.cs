@@ -120,6 +120,14 @@ public interface IPlaybackEngine
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Task completing when repeat mode set.</returns>
     Task SetRepeatTrackAsync(bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the playback volume.
+    /// </summary>
+    /// <param name="volume">Volume level from 0.0 (silence) to 1.0 (full).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Task completing when volume is set.</returns>
+    Task SetVolumeAsync(float volume, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

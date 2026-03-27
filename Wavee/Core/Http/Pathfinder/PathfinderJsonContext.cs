@@ -10,6 +10,8 @@ namespace Wavee.Core.Http.Pathfinder;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(PathfinderRequest))]
 [JsonSerializable(typeof(PathfinderSearchResponse))]
+[JsonSerializable(typeof(RecentSearchesResponse))]
+[JsonSerializable(typeof(SearchSuggestionsResponse))]
 [JsonSerializable(typeof(SearchVariables))]
 [JsonSerializable(typeof(QueryExtensions))]
 [JsonSerializable(typeof(PersistedQuery))]

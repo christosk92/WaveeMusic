@@ -13,9 +13,17 @@
     mc:Ignorable="d"
     NavigationCacheMode="Disabled"
     Background="Transparent">
-
+    <Page.Transitions>
+        <TransitionCollection>
+            <EntranceThemeTransition />
+        </TransitionCollection>
+    </Page.Transitions>
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
-
+        <Grid.Transitions>
+            <TransitionCollection>
+                <EntranceThemeTransition />
+            </TransitionCollection>
+        </Grid.Transitions>
         <!-- Responsive: driven by SizeChanged in code-behind -->
         <!-- Responsive layout: narrow hides the left panel, wide hides the inline header.
              Loading state (shimmer vs content) is controlled by IsLoading bindings, NOT by visual states. -->

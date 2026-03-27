@@ -96,6 +96,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // Command subscriptions
     private readonly CompositeDisposable _subscriptions = new();
 
+    // Reconnection state (set by session connection observable)
+    private volatile bool _isReconnecting;
+
     // Disposal
     private bool _disposed;
 
@@ -239,6 +242,25 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// Gets or sets the event reporting configuration.
     /// Controls which playback sources report events to Spotify.
     /// </summary>
+    /// <summary>
+    /// Subscribes to session connection state changes so the pipeline can
+    /// publish IsBuffering=true during AP reconnection.
+    /// </summary>
+    public void SubscribeToConnectionState(IObservable<Wavee.Core.Session.SessionConnectionState> connectionState)
+    {
+        _subscriptions.Add(connectionState.Subscribe(state =>
+        {
+            var wasReconnecting = _isReconnecting;
+            _isReconnecting = state == Wavee.Core.Session.SessionConnectionState.Reconnecting;
+
+            // Publish state change so UI picks up the buffering flag
+            if (_isReconnecting != wasReconnecting && _isPlaying)
+            {
+                PublishStateUpdate();
+            }
+        }));
+    }
+
     public EventReportingOptions EventReporting
     {
         get => _eventReportingOptions;
@@ -646,8 +668,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 _pendingSeekMs = positionMs;
             }
 
-            // Flush audio sink buffer for immediate effect
+            // Flush audio sink buffer for immediate effect and reset position tracking
             await _audioSink.FlushAsync();
+            _audioSink.SetBasePosition(positionMs);
             _logger?.LogInformation("[PERF] SeekAsync: flush completed after {Elapsed}ms, signaled seek to playback loop", sw.ElapsedMilliseconds);
 
             _currentPositionMs = positionMs;
@@ -789,6 +812,19 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
         _repeatingTrack = enabled;
         PublishStateUpdate();
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public Task SetVolumeAsync(float volume, CancellationToken cancellationToken = default)
+    {
+        _logger?.LogInformation("Set volume: {Volume:F2}", volume);
+
+        if (_volumeProcessor != null)
+        {
+            _volumeProcessor.Volume = Math.Clamp(volume, 0f, 1.0f);
+        }
 
         return Task.CompletedTask;
     }
@@ -952,6 +988,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
             // Initialize audio sink and processing chain
             await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 2000, cancellationToken);
+            _audioSink.SetBasePosition(startPositionMs);
             await _processingChain.InitializeAsync(audioFormat, cancellationToken);
 
             // Set track gain for normalization processor (if exists)
@@ -1017,6 +1054,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                             decodingStream.Position = 0;
                         }
 
+                        // Reset sink position tracking to the new seek target
+                        _audioSink.SetBasePosition(currentStartPosition);
+
                         break; // Exit decode loop to restart from new position
                     }
 
@@ -1026,8 +1066,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                     // Write to sink
                     await _audioSink.WriteAsync(processed.Data, cancellationToken);
 
-                    // Update position
-                    _currentPositionMs = buffer.PositionMs;
+                    // Update position from the sink (tracks what's actually been played
+                    // through the speakers, not the decode-ahead position)
+                    _currentPositionMs = _audioSink.PlaybackPositionMs;
 
                     // Publish state update periodically (every ~500ms)
                     if (_currentPositionMs % 500 < 100)
@@ -1040,6 +1081,15 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 if (!seekRequested)
                     break;
             }
+
+            // Drain the audio sink buffer so the last seconds of audio are actually
+            // heard through the speakers before we advance to the next track.
+            // Without this, the circular buffer (up to 8s of audio) gets discarded.
+            await _audioSink.DrainAsync(cancellationToken);
+
+            // Update position one final time after drain completes
+            _currentPositionMs = _audioSink.PlaybackPositionMs;
+            PublishStateUpdate();
 
             // Playback completed
             _logger?.LogInformation("Playback completed for track: {TrackUri}", trackUri);
@@ -1189,7 +1239,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 DurationMs = _currentDurationMs,
                 IsPlaying = _isPlaying,
                 IsPaused = _isPaused,
-                IsBuffering = false,
+                IsBuffering = _isReconnecting,
                 PlaybackSpeed = 1.0,
                 Shuffling = _shuffling,
                 RepeatingContext = _repeatingContext,
@@ -1388,10 +1438,17 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         // Subscribe to volume changes
         _subscriptions.Add(_deviceStateManager.Volume.Subscribe(OnVolumeChanged));
 
-        // Apply initial volume
+        // Apply initial volume — skip if 0 (uninitialized, before Spotify state arrives)
         var initialVolume = _deviceStateManager.CurrentVolume / 65535.0f;
-        _volumeProcessor.Volume = initialVolume;
-        _logger?.LogDebug("Initial volume applied: {Percent}%", (int)(initialVolume * 100));
+        if (initialVolume > 0.001f)
+        {
+            _volumeProcessor.Volume = initialVolume;
+            _logger?.LogDebug("Initial volume applied: {Percent}%", (int)(initialVolume * 100));
+        }
+        else
+        {
+            _logger?.LogDebug("Skipped initial volume (0 = uninitialized), keeping default 1.0");
+        }
     }
 
     /// <summary>

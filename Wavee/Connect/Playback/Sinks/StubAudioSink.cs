@@ -69,6 +69,19 @@ public sealed class StubAudioSink : IAudioSink
         return Task.CompletedTask;
     }
 
+    public long PlaybackPositionMs => _positionMs;
+
+    public void SetBasePosition(long positionMs)
+    {
+        _positionMs = positionMs;
+    }
+
+    public Task DrainAsync(CancellationToken cancellationToken = default)
+    {
+        // Stub: nothing to drain
+        return Task.CompletedTask;
+    }
+
     public ValueTask DisposeAsync()
     {
         return ValueTask.CompletedTask;

@@ -247,6 +247,16 @@ public sealed partial class ShellPage : Page
         ViewModel.Search(queryText);
     }
 
+    private void NavToolbar_SearchTextChanged(NavigationToolbar sender, string text)
+    {
+        ViewModel.OnSearchTextChanged(text);
+    }
+
+    private void NavToolbar_SearchSuggestionChosen(NavigationToolbar sender, object item)
+    {
+        ViewModel.OnSuggestionChosen(item);
+    }
+
     private void SidebarControl_ItemInvoked(object? sender, ItemInvokedEventArgs e)
     {
         if (sender is not SidebarItem item || item.Item is not SidebarItemModel model)

@@ -98,4 +98,10 @@ public interface IPathfinderClient
 
     /// <summary>Fetches full concert detail (artists, offers, related concerts, etc).</summary>
     Task<ConcertDetailResponse> GetConcertAsync(string concertUri, CancellationToken ct = default);
+
+    /// <summary>Fetches the user's recent search history.</summary>
+    Task<RecentSearchesResponse> GetRecentSearchesAsync(int limit = 50, CancellationToken ct = default);
+
+    /// <summary>Fetches search autocomplete suggestions for a query prefix.</summary>
+    Task<SearchSuggestionsResponse> GetSearchSuggestionsAsync(string query, int limit = 30, CancellationToken ct = default);
 }

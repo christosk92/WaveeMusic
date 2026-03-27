@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,8 +27,10 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ILibraryDataService _libraryDataService;
     private readonly IThemeService _themeService;
     private readonly INotificationService _notificationService;
+    private readonly ISearchService _searchService;
     private readonly AppModel _appModel;
     private readonly ILogger? _logger;
+    private readonly Helpers.Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
 
     // UI element references for cleanup
     private Microsoft.UI.Xaml.Controls.SplitButton? _playlistsSplitButton;
@@ -113,12 +117,14 @@ public sealed partial class ShellViewModel : ObservableObject
         ILibraryDataService libraryDataService,
         IThemeService themeService,
         INotificationService notificationService,
+        ISearchService searchService,
         AppModel appModel,
         ILogger<ShellViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
         _themeService = themeService;
         _notificationService = notificationService;
+        _searchService = searchService;
         _appModel = appModel;
         _logger = logger;
 
@@ -512,12 +518,66 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    [ObservableProperty]
+    private List<SearchSuggestionItem>? _searchSuggestions;
+
     public void Search(string query)
     {
         if (string.IsNullOrWhiteSpace(query)) return;
 
         // Navigate to search page with query
         Helpers.Navigation.NavigationHelpers.OpenSearch(query);
+    }
+
+    public async void OnSearchTextChanged(string text)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                // Empty → show recent searches immediately (no debounce)
+                _searchDebouncer.Cancel();
+                var recents = await _searchService.GetRecentSearchesAsync();
+                SearchSuggestions = recents;
+            }
+            else
+            {
+                // Debounce 300ms before calling API
+                await _searchDebouncer.DebounceAsync(async ct =>
+                {
+                    var suggestions = await _searchService.GetSuggestionsAsync(text, ct);
+                    SearchSuggestions = suggestions;
+                });
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to fetch search suggestions");
+        }
+    }
+
+    public void OnSuggestionChosen(object? item)
+    {
+        if (item is not SearchSuggestionItem suggestion) return;
+
+        switch (suggestion.Type)
+        {
+            case SearchSuggestionType.Artist:
+                Helpers.Navigation.NavigationHelpers.OpenArtist(suggestion.Uri, suggestion.Title);
+                break;
+            case SearchSuggestionType.Album:
+                Helpers.Navigation.NavigationHelpers.OpenAlbum(suggestion.Uri, suggestion.Title);
+                break;
+            case SearchSuggestionType.TextQuery:
+                var query = suggestion.Uri.Replace("spotify:search:", "").Replace("+", " ");
+                Helpers.Navigation.NavigationHelpers.OpenSearch(query);
+                break;
+            default:
+                // Track, Playlist, etc → search for the title
+                Helpers.Navigation.NavigationHelpers.OpenSearch(suggestion.Title);
+                break;
+        }
     }
 
     public void UpdateNavigationState()

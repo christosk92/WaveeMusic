@@ -76,4 +76,20 @@ public interface ISession
     /// Gets the SpClient for spclient HTTP API requests (metadata, lyrics, context, playlists, etc).
     /// </summary>
     ISpClient SpClient { get; }
+
+    /// <summary>
+    /// Observable that emits when the session connection state changes
+    /// (e.g., reconnecting after AudioKey timeout).
+    /// </summary>
+    IObservable<SessionConnectionState> ConnectionState { get; }
+}
+
+/// <summary>
+/// Represents the state of the session's connection to Spotify's Access Point.
+/// </summary>
+public enum SessionConnectionState
+{
+    Connected,
+    Reconnecting,
+    Disconnected
 }

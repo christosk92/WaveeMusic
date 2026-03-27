@@ -76,7 +76,7 @@ public sealed partial class NavigationToolbar : UserControl
     {
         if (d is NavigationToolbar toolbar)
         {
-            toolbar.SearchOmnibar.ItemsSource = e.NewValue;
+            toolbar.SearchOmnibar.SearchResults = e.NewValue;
         }
     }
 
@@ -140,6 +140,7 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? RefreshRequested;
     public event TypedEventHandler<NavigationToolbar, string>? SearchTextChanged;
     public event TypedEventHandler<NavigationToolbar, string>? SearchQuerySubmitted;
+    public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
 
     #endregion
 
@@ -174,6 +175,12 @@ public sealed partial class NavigationToolbar : UserControl
     private void SearchOmnibar_QuerySubmitted(Omnibar.Omnibar sender, OmnibarQuerySubmittedEventArgs args)
     {
         SearchQuerySubmitted?.Invoke(this, args.QueryText);
+    }
+
+    private void SearchOmnibar_SuggestionChosen(Omnibar.Omnibar sender, OmnibarSuggestionChosenEventArgs args)
+    {
+        if (args.SelectedItem != null)
+            SearchSuggestionChosen?.Invoke(this, args.SelectedItem);
     }
 
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)

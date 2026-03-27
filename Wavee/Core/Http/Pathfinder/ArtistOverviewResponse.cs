@@ -276,6 +276,44 @@ public sealed class ArtistTrack
 
     [JsonPropertyName("playability")]
     public ArtistPlayability? Playability { get; init; }
+
+    [JsonPropertyName("associationsV3")]
+    public ArtistTrackAssociationsInfo? AssociationsV3 { get; init; }
+
+    /// <summary>
+    /// True if this entry has a music video (has video associations pointing to the real track).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasVideo => AssociationsV3?.VideoAssociations?.TotalCount >0;
+}
+
+public sealed class ArtistTrackAssociationsInfo
+{
+    [JsonPropertyName("videoAssociations")]
+    public ArtistVideoAssociationsInfo? VideoAssociations { get; init; }
+
+}
+public sealed class ArtistVideoAssociationsInfo
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+}
+public sealed class ArtistAudioAssociations
+{
+    [JsonPropertyName("items")]
+    public List<ArtistAudioAssociationItem>? Items { get; init; }
+}
+
+public sealed class ArtistAudioAssociationItem
+{
+    [JsonPropertyName("trackAudio")]
+    public ArtistTrackAudioRef? TrackAudio { get; init; }
+}
+
+public sealed class ArtistTrackAudioRef
+{
+    [JsonPropertyName("_uri")]
+    public string? Uri { get; init; }
 }
 
 public sealed class ArtistTrackDuration
@@ -294,6 +332,9 @@ public sealed class ArtistTrackAlbum
 {
     [JsonPropertyName("uri")]
     public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
 
     [JsonPropertyName("coverArt")]
     public ArtistCoverArt? CoverArt { get; init; }
