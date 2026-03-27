@@ -821,9 +821,19 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     {
         _logger?.LogInformation("Set volume: {Volume:F2}", volume);
 
+        var clamped = Math.Clamp(volume, 0f, 1.0f);
+
+        // Set on VolumeProcessor (affects newly decoded buffers)
         if (_volumeProcessor != null)
         {
-            _volumeProcessor.Volume = Math.Clamp(volume, 0f, 1.0f);
+            _volumeProcessor.Volume = clamped;
+        }
+
+        // Also set on the sink for instant effect (applies in the audio callback,
+        // bypassing the ~8 second circular buffer delay)
+        if (_audioSink is Sinks.PortAudioSink portSink)
+        {
+            portSink.CallbackVolume = clamped;
         }
 
         return Task.CompletedTask;
@@ -1465,6 +1475,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         // Convert Spotify's 0-65535 range to 0.0-1.0 linear
         var linearVolume = volume / 65535.0f;
         _volumeProcessor.Volume = linearVolume;
+
+        // Also update sink callback volume for instant effect
+        if (_audioSink is Sinks.PortAudioSink portSink)
+            portSink.CallbackVolume = linearVolume;
 
         _logger?.LogDebug("Volume applied to audio output: {Percent}%", (int)(linearVolume * 100));
     }

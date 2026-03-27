@@ -36,7 +36,20 @@ public sealed class PortAudioSink : IAudioSink
     private int _currentDeviceIndex;
     private Timer? _deviceCheckTimer;
 
+    // Real-time volume applied in the callback (instant, no buffer delay)
+    private volatile float _callbackVolume = 1.0f;
+
     public string SinkName => "PortAudio";
+
+    /// <summary>
+    /// Sets the playback volume applied directly in the audio callback.
+    /// Takes effect within ~50ms (next callback), bypassing the circular buffer delay.
+    /// </summary>
+    public float CallbackVolume
+    {
+        get => _callbackVolume;
+        set => _callbackVolume = Math.Clamp(value, 0f, 1.0f);
+    }
 
     /// <inheritdoc />
     public long PlaybackPositionMs
@@ -188,6 +201,20 @@ public sealed class PortAudioSink : IAudioSink
             if (bytesRead < bytesNeeded)
             {
                 span.Slice(bytesRead).Clear();
+            }
+
+            // Apply real-time volume scaling directly in the callback.
+            // This bypasses the circular buffer delay — volume changes take effect
+            // on the very next callback (~50ms) instead of after 8s of buffered audio.
+            var vol = _callbackVolume;
+            if (bytesRead > 0 && Math.Abs(vol - 1.0f) > 0.0001f && format.BitsPerSample == 16)
+            {
+                var samples = bytesRead / 2;
+                var ptr = (short*)output;
+                for (int i = 0; i < samples; i++)
+                {
+                    ptr[i] = (short)Math.Clamp((int)(ptr[i] * vol), short.MinValue, short.MaxValue);
+                }
             }
 
             // Track playback position from bytes actually sent to the speaker
