@@ -56,6 +56,7 @@
             SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"
             SearchTextChanged="NavToolbar_SearchTextChanged"
             SearchSuggestionChosen="NavToolbar_SearchSuggestionChosen"
+            SearchPlayRequested="NavToolbar_SearchPlayRequested"
             SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"/>
 
         <!-- Shell-level notification bars -->
@@ -78,6 +79,25 @@
                 </InfoBar.ActionButton>
             </InfoBar>
         </StackPanel>
+
+        <!-- Connection overlay — blocks interaction while disconnected -->
+        <Border
+            x:Name="ConnectionOverlay"
+            Grid.Row="2"
+            Canvas.ZIndex="2"
+            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+            Opacity="0.85"
+            IsHitTestVisible="True"
+            Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+                <ProgressRing x:Name="ReconnectingRing" IsActive="True" Width="36" Height="36"/>
+                <TextBlock x:Name="ConnectionOverlayText"
+                           Text="Reconnecting to Spotify..."
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+            </StackPanel>
+        </Border>
 
         <!-- Row 2: Main content area with sidebar -->
         <sidebar:SidebarView

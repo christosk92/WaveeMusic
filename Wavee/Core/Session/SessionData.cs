@@ -23,11 +23,6 @@ internal sealed class SessionData : IDisposable
     private string? _apUrl;
     private DateTime _connectedAt;
 
-    // Keep-alive state
-    private DateTime _lastPingSent;
-    private DateTime _lastPongReceived;
-    private int _missedPongs;
-
     // User data
     private UserData? _userData;
 
@@ -127,71 +122,6 @@ internal sealed class SessionData : IDisposable
         try
         {
             return _userData;
-        }
-        finally
-        {
-            _lock.ExitReadLock();
-        }
-    }
-
-    /// <summary>
-    /// Updates keep-alive ping timestamp.
-    /// </summary>
-    public void RecordPingSent()
-    {
-        _lock.EnterWriteLock();
-        try
-        {
-            _lastPingSent = DateTime.UtcNow;
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-        }
-    }
-
-    /// <summary>
-    /// Updates keep-alive pong timestamp and resets missed counter.
-    /// </summary>
-    public void RecordPongReceived()
-    {
-        _lock.EnterWriteLock();
-        try
-        {
-            _lastPongReceived = DateTime.UtcNow;
-            _missedPongs = 0;
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-        }
-    }
-
-    /// <summary>
-    /// Increments missed pong counter.
-    /// </summary>
-    public void RecordMissedPong()
-    {
-        _lock.EnterWriteLock();
-        try
-        {
-            _missedPongs++;
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-        }
-    }
-
-    /// <summary>
-    /// Gets current keep-alive state.
-    /// </summary>
-    public (DateTime lastPingSent, DateTime lastPongReceived, int missedPongs) GetKeepAliveState()
-    {
-        _lock.EnterReadLock();
-        try
-        {
-            return (_lastPingSent, _lastPongReceived, _missedPongs);
         }
         finally
         {

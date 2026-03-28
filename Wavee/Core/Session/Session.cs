@@ -70,6 +70,9 @@ public sealed class Session : ISession, IAsyncDisposable
     // Audio subsystem
     private AudioKeyManager? _audioKeyManager;
 
+    // Keep-alive state machine (set by DispatchLoop, accessed by HandlePacket)
+    private KeepAlive? _keepAlive;
+
     // Event subsystem
     private EventService? _eventService;
 
@@ -744,7 +747,7 @@ public sealed class Session : ISession, IAsyncDisposable
 
     private async Task DispatchLoop(CancellationToken cancellationToken)
     {
-        var keepAlive = new KeepAlive(_logger);
+        _keepAlive = new KeepAlive(_logger);
 
         // Reuse the same receive task across loop iterations to avoid concurrent PipeReader access
         // This is critical: creating a new ReceiveAsync while the previous one is pending causes corruption
@@ -763,22 +766,22 @@ public sealed class Session : ISession, IAsyncDisposable
                     break;
                 }
 
-            // Handle keep-alive (timeouts only; no proactive Ping)
-            var (lastPing, lastPong, missedPongs) = _data.GetKeepAliveState();
-            var action = keepAlive.GetNextAction(lastPing, lastPong, missedPongs);
+                // Evaluate keep-alive state machine
+                var action = _keepAlive.Evaluate();
 
-            switch (action)
-            {
-                case KeepAliveAction.IncrementMissedPong:
-                    _data.RecordMissedPong();
-                    break;
+                switch (action)
+                {
+                    case KeepAliveAction.SendPong:
+                        _sendQueue.Writer.TryWrite(((byte)PacketType.Pong, new byte[] { 0x00, 0x00, 0x00, 0x00 }));
+                        _logger?.LogDebug("Keep-alive: sending Pong (delayed response)");
+                        break;
 
-                case KeepAliveAction.Disconnect:
-                    _logger?.LogError("Keep-alive failed, disconnecting");
-                    await DisconnectInternalAsync();
-                    OnDisconnected();
-                    return;
-            }
+                    case KeepAliveAction.Disconnect:
+                        _logger?.LogError("Keep-alive failed, disconnecting");
+                        await DisconnectInternalAsync();
+                        OnDisconnected();
+                        return;
+                }
 
                 // Process send queue (non-blocking peek)
                 while (_sendQueue.Reader.TryRead(out var item))
@@ -871,6 +874,7 @@ public sealed class Session : ISession, IAsyncDisposable
         }
         finally
         {
+            _keepAlive = null;
             _logger?.LogDebug("Packet dispatcher stopped");
         }
     }
@@ -883,21 +887,34 @@ public sealed class Session : ISession, IAsyncDisposable
         switch (packetType)
         {
             case PacketType.Ping:
-                // Respond to server Ping with Pong (4 zero bytes)
-                // Queue immediately; dispatcher will send on next loop iteration
-                _sendQueue.Writer.TryWrite(((byte)PacketType.Pong, new byte[] { 0x00, 0x00, 0x00, 0x00 }));
-                _data.RecordPingSent();
-                _logger?.LogTrace("Received Ping from server, queued Pong response");
+                // Server Ping received — transition keep-alive to PendingPong.
+                // Pong will be sent after 60s delay (matching librespot protocol).
+                _keepAlive?.OnPingReceived();
+
+                // Extract server timestamp for time_delta calculation (like librespot)
+                if (payload.Length >= 4)
+                {
+                    var serverTimestamp = (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(payload);
+                    var localTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    var timeDelta = serverTimestamp - localTimestamp;
+                    _logger?.LogTrace("Received Ping from server (timestamp={ServerTs}, delta={Delta}s)",
+                        serverTimestamp, timeDelta);
+                }
+                else
+                {
+                    _logger?.LogTrace("Received Ping from server (no timestamp)");
+                }
                 return;
 
             case PacketType.PongAck:
-                // Server acknowledges our Pong; treat as successful keep-alive
-                _data.RecordPongReceived();
+                // Server acknowledges our Pong — keep-alive cycle complete
+                _keepAlive?.OnPongAckReceived();
                 _logger?.LogTrace("Received PongAck from server (keep-alive confirmed)");
                 return;
 
             case PacketType.Pong:
-                _data.RecordPongReceived();
+                // Direct Pong from server (rare, treat as PongAck)
+                _keepAlive?.OnPongAckReceived();
                 _logger?.LogTrace("Received Pong from server");
                 return;
 

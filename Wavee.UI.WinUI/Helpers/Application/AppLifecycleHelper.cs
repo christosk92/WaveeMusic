@@ -172,6 +172,7 @@ public static class AppLifecycleHelper
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>()
                 .AddTransient<SpotifyConnectViewModel>()
+                .AddTransient<SearchViewModel>()
                 .AddTransient<DebugViewModel>()
 
                 // Drag & drop
@@ -285,10 +286,16 @@ public static class AppLifecycleHelper
             // Subscribe AudioPipeline to session connection state for buffering indicator
             audioPipeline.SubscribeToConnectionState(session.ConnectionState);
 
-            // Show notification during AP reconnection
+            // Wire ConnectivityService to session connection state
+            var connectivity = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Data.Contracts.IConnectivityService>() as Data.Contexts.ConnectivityService;
+            connectivity?.SubscribeToSession(session.ConnectionState);
+
+            // Show persistent notification during AP reconnection/disconnection
             if (notificationService != null)
             {
                 var dispatcher2 = _uiDispatcher;
+                var sessionRef = session;
                 session.ConnectionState.Subscribe(state =>
                 {
                     dispatcher2?.TryEnqueue(() =>
@@ -298,17 +305,28 @@ public static class AppLifecycleHelper
                             notificationService.Show(new Data.Models.NotificationInfo
                             {
                                 Message = "Reconnecting to Spotify...",
-                                Severity = Data.Models.NotificationSeverity.Warning,
-                                AutoDismissAfter = TimeSpan.FromSeconds(10)
+                                Severity = Data.Models.NotificationSeverity.Warning
                             });
                         }
                         else if (state == Wavee.Core.Session.SessionConnectionState.Disconnected)
                         {
                             notificationService.Show(new Data.Models.NotificationInfo
                             {
-                                Message = "Connection lost. Playback may be interrupted.",
+                                Message = "Unable to reach Spotify. Check your network connection.",
                                 Severity = Data.Models.NotificationSeverity.Error,
-                                AutoDismissAfter = TimeSpan.FromSeconds(10)
+                                ActionLabel = "Retry",
+                                Action = () => _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                                        await sessionRef.ReconnectApAsync(cts.Token);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        logger?.LogWarning(ex, "Manual reconnection attempt failed");
+                                    }
+                                })
                             });
                         }
                         else

@@ -106,14 +106,16 @@ public sealed class AudioKeyManager : IAsyncDisposable
                 lastException = ex;
                 _logger?.LogWarning("AudioKey attempt {Attempt}/{Max} timed out", attempt + 1, MaxRetries);
 
-                // On first timeout, try reconnecting to AP (connection may be stale)
+                // On first timeout, try reconnecting to AP (connection may be stale).
+                // Use a separate CTS so user actions (skip, pause) don't cancel the reconnect.
                 if (!reconnectAttempted)
                 {
                     reconnectAttempted = true;
                     try
                     {
                         _logger?.LogInformation("AudioKey timeout, attempting AP reconnection");
-                        await _session.ReconnectApAsync(cancellationToken);
+                        using var reconnectCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                        await _session.ReconnectApAsync(reconnectCts.Token);
                         _logger?.LogInformation("AP reconnection successful, retrying AudioKey");
                         // Continue loop to retry with fresh connection
                     }

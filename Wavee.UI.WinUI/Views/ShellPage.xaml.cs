@@ -50,6 +50,31 @@ public sealed partial class ShellPage : Page
         if (_dragStateService != null)
             _dragStateService.DragStateChanged += OnDragStateChanged;
 
+        // Subscribe to connectivity state for overlay
+        WeakReferenceMessenger.Default.Register<Data.Messages.ConnectivityChangedMessage>(this, (r, m) =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                var connectivity = Ioc.Default.GetService<IConnectivityService>();
+                if (m.Value)
+                {
+                    // Connected — hide overlay
+                    ConnectionOverlay.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    // Disconnected — show overlay
+                    var isReconnecting = connectivity?.IsReconnecting ?? false;
+                    ReconnectingRing.IsActive = isReconnecting;
+                    ReconnectingRing.Visibility = isReconnecting ? Visibility.Visible : Visibility.Collapsed;
+                    ConnectionOverlayText.Text = isReconnecting
+                        ? "Reconnecting to Spotify..."
+                        : "Connection lost";
+                    ConnectionOverlay.Visibility = Visibility.Visible;
+                }
+            });
+        });
+
         // Subscribe to auth state for User button display name
         WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
         {
@@ -74,6 +99,7 @@ public sealed partial class ShellPage : Page
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<Data.Messages.ConnectivityChangedMessage>(this);
     }
 
     private void UpdateUserButton()
@@ -270,6 +296,11 @@ public sealed partial class ShellPage : Page
     private void NavToolbar_SearchSuggestionChosen(NavigationToolbar sender, object item)
     {
         ViewModel.OnSuggestionChosen(item);
+    }
+
+    private async void NavToolbar_SearchPlayRequested(NavigationToolbar sender, Data.Contracts.SearchSuggestionItem item)
+    {
+        await ViewModel.PlaySearchResultAsync(item);
     }
 
     private void SidebarControl_ItemInvoked(object? sender, ItemInvokedEventArgs e)

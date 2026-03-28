@@ -16,6 +16,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
     private readonly IPlaybackStateService _playbackStateService;
+    private readonly IConnectivityService? _connectivityService;
     private bool _disposed;
     private DispatcherTimer? _positionTimer;
     private DateTime _lastServicePositionUpdate = DateTime.UtcNow;
@@ -106,9 +107,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private double _previousVolume = 50;
 
-    public PlayerBarViewModel(IPlaybackStateService playbackStateService)
+    public PlayerBarViewModel(IPlaybackStateService playbackStateService,
+                              IConnectivityService? connectivityService = null)
     {
         _playbackStateService = playbackStateService;
+        _connectivityService = connectivityService;
 
         // Sync initial state
         SyncFromService();
@@ -116,12 +119,32 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         // Subscribe to service changes
         _playbackStateService.PropertyChanged += OnPlaybackServicePropertyChanged;
 
+        // Subscribe to connectivity changes to disable playback commands
+        if (_connectivityService != null)
+            _connectivityService.PropertyChanged += OnConnectivityPropertyChanged;
+
         // Initialize position update timer (display concern)
         _positionTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _positionTimer.Tick += OnPositionTimerTick;
+    }
+
+    private bool CanExecutePlayback => _connectivityService?.IsConnected ?? true;
+
+    private void OnConnectivityPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IConnectivityService.IsConnected))
+        {
+            PlayPauseCommand.NotifyCanExecuteChanged();
+            PreviousCommand.NotifyCanExecuteChanged();
+            NextCommand.NotifyCanExecuteChanged();
+            SkipBackwardCommand.NotifyCanExecuteChanged();
+            SkipForwardCommand.NotifyCanExecuteChanged();
+            ToggleShuffleCommand.NotifyCanExecuteChanged();
+            ToggleRepeatCommand.NotifyCanExecuteChanged();
+        }
     }
 
     private void SyncFromService()
@@ -272,7 +295,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         return timeSpan.ToString(@"m\:ss");
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void PlayPause()
     {
         if (!HasTrack)
@@ -283,19 +306,19 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _playbackStateService.PlayPause();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void Previous()
     {
         _playbackStateService.Previous();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void Next()
     {
         _playbackStateService.Next();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void SkipBackward()
     {
         // Skip back 10 seconds
@@ -303,7 +326,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _playbackStateService.Seek(newPos);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void SkipForward()
     {
         // Skip forward 30 seconds
@@ -311,13 +334,13 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _playbackStateService.Seek(newPos);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void ToggleShuffle()
     {
         _playbackStateService.SetShuffle(!IsShuffle);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void ToggleRepeat()
     {
         // Cycle: Off -> Context (repeat all) -> Track (repeat one) -> Off
@@ -432,6 +455,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _disposed = true;
 
         _playbackStateService.PropertyChanged -= OnPlaybackServicePropertyChanged;
+        if (_connectivityService != null)
+            _connectivityService.PropertyChanged -= OnConnectivityPropertyChanged;
 
         if (_positionTimer != null)
         {
