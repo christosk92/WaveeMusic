@@ -38,7 +38,17 @@
       "Bash(grep -r SetVolumeAsync C:UsersckaraPersonalWaveeFinalWaveeMusicWaveeConnect --include=*.cs)",
       "Bash(grep -r Style.*Button /c/Users/ckara/Personal/WaveeFinal/WaveeMusic/Wavee.UI.WinUI/Views/*.xaml)",
       "Bash(grep -n \"AccentButtonStyle\\\\|DefaultButtonStyle\\\\|SubtleButtonStyle\" /c/Users/ckara/Personal/WaveeFinal/WaveeMusic/Wavee.UI.WinUI/Styles/*.xaml)",
-      "Bash(git status:*)"
+      "Bash(git status:*)",
+      "Bash(cargo check:*)",
+      "Bash(find . -name *search* -type f)",
+      "Bash(grep -r 'class HomeSection' C:UsersckaraPersonalWaveeFinalWaveeMusic --include=*.cs)",
+      "Bash(xargs grep:*)",
+      "Bash(find C:/Users/ckara/Personal/WaveeFinal/WaveeMusic -type f -name *.cs -exec grep -l RxSchedulers {})",
+      "Bash(2)",
+      "Bash(grep -r \"class RxSchedulers\\\\|static class RxSchedulers\\\\|MainThreadScheduler\" C:/Users/ckara/Personal/WaveeFinal/WaveeMusic/Wavee.UI.WinUI/ --include=*.cs)",
+      "Bash(find C:UsersckaraPersonalWaveeFinalWaveeMusicWavee.UI.WinUIControlsPlayerBar -type f -name *.cs)",
+      "Bash(grep -r \"Friends\\\\|Lyrics\\\\|Queue\" C:UsersckaraPersonalWaveeFinalWaveeMusicWavee.UI.WinUIViews --include=*.xaml)",
+      "Bash(find C:UsersckaraPersonalWaveeFinalWaveeMusicWavee.UI.WinUIViews -type f -name *.xaml)"
     ],
     "deny": [],
     "ask": []

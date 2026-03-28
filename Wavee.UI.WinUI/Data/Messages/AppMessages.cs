@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using Wavee.Core.Session;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Messages;
@@ -79,3 +80,17 @@ public sealed class PlaybackErrorOccurredMessage(Models.PlaybackErrorEvent error
 /// </summary>
 public sealed class ActiveDeviceChangedMessage(string? deviceId)
     : ValueChangedMessage<string?>(deviceId);
+
+// --- Right Panel Messages ---
+
+/// <summary>
+/// Sent by PlayerBar to request toggling a right panel mode.
+/// </summary>
+public sealed class ToggleRightPanelMessage(RightPanelMode mode)
+    : ValueChangedMessage<RightPanelMode>(mode);
+
+/// <summary>
+/// Sent by ShellViewModel to notify PlayerBar of the current right panel state.
+/// </summary>
+public sealed class RightPanelStateChangedMessage(bool isOpen, RightPanelMode mode)
+    : ValueChangedMessage<(bool IsOpen, RightPanelMode Mode)>((isOpen, mode));

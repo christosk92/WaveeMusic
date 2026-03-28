@@ -534,11 +534,11 @@ public sealed class PortAudioSink : IAudioSink
 internal sealed class CircularAudioBuffer
 {
     private readonly byte[] _buffer;
-    private readonly object _lock = new();
+    private readonly object _writeLock = new();
     private readonly ManualResetEventSlim _spaceAvailable = new(true);
-    private int _readPos;
-    private int _writePos;
-    private int _available;
+    private volatile int _readPos;
+    private int _writePos;   // only touched under _writeLock
+    private int _available;  // updated via Interlocked from reader, under _writeLock from writer
 
     public CircularAudioBuffer(int capacity)
     {
@@ -546,14 +546,8 @@ internal sealed class CircularAudioBuffer
     }
 
     public int Capacity => _buffer.Length;
-    public int FreeSpace
-    {
-        get { lock (_lock) return _buffer.Length - _available; }
-    }
-    public int Available
-    {
-        get { lock (_lock) return _available; }
-    }
+    public int FreeSpace => _buffer.Length - Volatile.Read(ref _available);
+    public int Available => Volatile.Read(ref _available);
 
     /// <summary>
     /// Writes data to the buffer, blocking if necessary until space is available.
@@ -567,7 +561,7 @@ internal sealed class CircularAudioBuffer
             cancellationToken.ThrowIfCancellationRequested();
 
             int written;
-            lock (_lock)
+            lock (_writeLock)
             {
                 var freeSpace = _buffer.Length - _available;
                 if (freeSpace > 0)
@@ -608,7 +602,7 @@ internal sealed class CircularAudioBuffer
     /// </summary>
     public void WriteImmediate(ReadOnlySpan<byte> data)
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             WriteInternal(data);
         }
@@ -616,8 +610,9 @@ internal sealed class CircularAudioBuffer
 
     private void WriteInternal(ReadOnlySpan<byte> data)
     {
-        // Caller holds _lock
-        var toWrite = Math.Min(data.Length, _buffer.Length - _available);
+        // Caller holds _writeLock
+        var avail = Volatile.Read(ref _available);
+        var toWrite = Math.Min(data.Length, _buffer.Length - avail);
         if (toWrite == 0) return;
 
         var firstChunk = Math.Min(toWrite, _buffer.Length - _writePos);
@@ -629,37 +624,41 @@ internal sealed class CircularAudioBuffer
         }
 
         _writePos = (_writePos + toWrite) % _buffer.Length;
-        _available += toWrite;
+        Interlocked.Add(ref _available, toWrite);
     }
 
+    /// <summary>
+    /// Lock-free read for the PortAudio callback thread.
+    /// Safe because: single reader (callback), _readPos only modified here,
+    /// _available decremented atomically. Writer only touches _writePos and increments _available.
+    /// </summary>
     public int Read(Span<byte> destination)
     {
-        lock (_lock)
+        var avail = _available;
+        var toRead = Math.Min(destination.Length, avail);
+        if (toRead == 0) return 0;
+
+        var readPos = _readPos;
+        var firstChunk = Math.Min(toRead, _buffer.Length - readPos);
+        _buffer.AsSpan(readPos, firstChunk).CopyTo(destination);
+
+        if (toRead > firstChunk)
         {
-            var toRead = Math.Min(destination.Length, _available);
-            if (toRead == 0) return 0;
-
-            var firstChunk = Math.Min(toRead, _buffer.Length - _readPos);
-            _buffer.AsSpan(_readPos, firstChunk).CopyTo(destination);
-
-            if (toRead > firstChunk)
-            {
-                _buffer.AsSpan(0, toRead - firstChunk).CopyTo(destination[firstChunk..]);
-            }
-
-            _readPos = (_readPos + toRead) % _buffer.Length;
-            _available -= toRead;
-
-            // Signal that space is available for writers
-            _spaceAvailable.Set();
-
-            return toRead;
+            _buffer.AsSpan(0, toRead - firstChunk).CopyTo(destination[firstChunk..]);
         }
+
+        _readPos = (readPos + toRead) % _buffer.Length;
+        Interlocked.Add(ref _available, -toRead);
+
+        // Signal that space is available for writers
+        _spaceAvailable.Set();
+
+        return toRead;
     }
 
     public void Clear()
     {
-        lock (_lock)
+        lock (_writeLock)
         {
             _readPos = 0;
             _writePos = 0;

@@ -38,6 +38,13 @@ public sealed partial class ShellPage : Page
         // Set up titlebar drag region
         SetupTitleBar();
 
+        // Suppress search flyout when on SearchPage
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ShellViewModel.IsOnSearchPage))
+                NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
+        };
+
         // Open initial tab after page is fully loaded
         Loaded += ShellPage_Loaded;
         Unloaded += ShellPage_Unloaded;

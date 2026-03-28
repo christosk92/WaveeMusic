@@ -1,3 +1,4 @@
+using System.Reactive.Linq;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 
@@ -89,4 +90,11 @@ internal class MockSession : ISession
     {
         return Task.CompletedTask;
     }
+
+    public IPathfinderClient Pathfinder => throw new NotImplementedException("Mock does not support Pathfinder");
+
+    public ISpClient SpClient => throw new NotImplementedException("Mock does not support SpClient");
+
+    public IObservable<SessionConnectionState> ConnectionState =>
+        Observable.Return(SessionConnectionState.Connected);
 }

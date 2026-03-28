@@ -7,12 +7,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
 using Wavee.UI.WinUI.DragDrop;
@@ -73,6 +76,15 @@ public sealed partial class ShellViewModel : ObservableObject
     private double _sidebarWidth = 280;
 
     [ObservableProperty]
+    private double _rightPanelWidth = 300;
+
+    [ObservableProperty]
+    private bool _isRightPanelOpen;
+
+    [ObservableProperty]
+    private RightPanelMode _rightPanelMode = RightPanelMode.Queue;
+
+    [ObservableProperty]
     private ObservableCollection<SidebarItemModel> _sidebarItems = [];
 
     [ObservableProperty]
@@ -130,7 +142,14 @@ public sealed partial class ShellViewModel : ObservableObject
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
+        _rightPanelWidth = appModel.RightPanelWidth;
         _selectedTabIndex = appModel.TabStripSelectedIndex;
+
+        // Listen for right panel toggle requests from PlayerBar
+        WeakReferenceMessenger.Default.Register<ToggleRightPanelMessage>(this, (r, m) =>
+        {
+            ((ShellViewModel)r).ToggleRightPanel(m.Value);
+        });
 
         // Subscribe to notification service changes to forward to XAML bindings
         _notificationService.PropertyChanged += OnNotificationServicePropertyChanged;
@@ -445,6 +464,35 @@ public sealed partial class ShellViewModel : ObservableObject
         _appModel.SidebarWidth = value;
     }
 
+    partial void OnRightPanelWidthChanged(double value)
+    {
+        _appModel.RightPanelWidth = value;
+    }
+
+    partial void OnIsRightPanelOpenChanged(bool value)
+    {
+        WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(value, RightPanelMode));
+    }
+
+    partial void OnRightPanelModeChanged(RightPanelMode value)
+    {
+        if (IsRightPanelOpen)
+            WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(true, value));
+    }
+
+    private void ToggleRightPanel(RightPanelMode mode)
+    {
+        if (IsRightPanelOpen && RightPanelMode == mode)
+        {
+            IsRightPanelOpen = false;
+        }
+        else
+        {
+            RightPanelMode = mode;
+            IsRightPanelOpen = true;
+        }
+    }
+
     partial void OnSelectedSidebarItemChanged(ISidebarItemModel? value)
     {
         // Navigation is handled in ShellPage.SidebarControl_ItemInvoked
@@ -533,6 +581,17 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         try
         {
+            // If already on SearchPage, re-search directly instead of showing suggestions
+            if (SelectedTabItem?.ContentFrame?.Content is SearchPage searchPage
+                && !string.IsNullOrWhiteSpace(text))
+            {
+                await _searchDebouncer.DebounceAsync(async _ =>
+                {
+                    await searchPage.ViewModel.LoadAsync(text);
+                });
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(text))
             {
                 // Empty → show recent searches immediately (no debounce)
@@ -580,6 +639,15 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    public Task PlaySearchResultAsync(SearchSuggestionItem item)
+    {
+        OnSuggestionChosen(item);
+        return Task.CompletedTask;
+    }
+
+    [ObservableProperty]
+    private bool _isOnSearchPage;
+
     public void UpdateNavigationState()
     {
         if (SelectedTabItem?.ContentFrame is Frame frame)
@@ -588,6 +656,7 @@ public sealed partial class ShellViewModel : ObservableObject
             CanGoForward = frame.CanGoForward;
             IsOnHomePage = frame.Content is HomePage;
             IsOnProfilePage = frame.Content is ProfilePage;
+            IsOnSearchPage = frame.Content is SearchPage;
         }
         else
         {
@@ -595,6 +664,7 @@ public sealed partial class ShellViewModel : ObservableObject
             CanGoForward = false;
             IsOnHomePage = false;
             IsOnProfilePage = false;
+            IsOnSearchPage = false;
         }
     }
 
@@ -605,6 +675,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
+        WeakReferenceMessenger.Default.Unregister<ToggleRightPanelMessage>(this);
 
         // Cleanup sidebar button handlers
         if (_playlistsSplitButton != null)

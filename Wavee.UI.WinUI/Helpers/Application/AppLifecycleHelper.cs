@@ -1,5 +1,7 @@
 using System;
 using System.Reactive.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
@@ -172,7 +174,10 @@ public static class AppLifecycleHelper
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>()
                 .AddTransient<SpotifyConnectViewModel>()
-                .AddTransient<SearchViewModel>()
+                .AddTransient<SearchViewModel>(sp =>
+                    new SearchViewModel(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetService<ILogger<SearchViewModel>>()))
                 .AddTransient<DebugViewModel>()
 
                 // Drag & drop

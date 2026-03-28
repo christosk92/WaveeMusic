@@ -2,9 +2,11 @@ using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.UI.Xaml;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Messages;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -129,6 +131,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _positionTimer.Tick += OnPositionTimerTick;
+
+        // Sync right panel button states from ShellViewModel
+        WeakReferenceMessenger.Default.Register<RightPanelStateChangedMessage>(this, (r, m) =>
+        {
+            var vm = (PlayerBarViewModel)r;
+            var (isOpen, mode) = m.Value;
+            vm.IsQueuePanelActive = isOpen && mode == RightPanelMode.Queue;
+            vm.IsLyricsPanelActive = isOpen && mode == RightPanelMode.Lyrics;
+            vm.IsFriendsPanelActive = isOpen && mode == RightPanelMode.FriendsActivity;
+        });
     }
 
     private bool CanExecutePlayback => _connectivityService?.IsConnected ?? true;
@@ -372,10 +384,32 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         }
     }
 
+    // Right panel toggle state (synced from ShellViewModel via messenger)
+    [ObservableProperty]
+    private bool _isQueuePanelActive;
+
+    [ObservableProperty]
+    private bool _isLyricsPanelActive;
+
+    [ObservableProperty]
+    private bool _isFriendsPanelActive;
+
     [RelayCommand]
-    private void OpenQueue()
+    private void ToggleQueuePanel()
     {
-        // TODO: Open queue panel/flyout
+        WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.Queue));
+    }
+
+    [RelayCommand]
+    private void ToggleLyricsPanel()
+    {
+        WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.Lyrics));
+    }
+
+    [RelayCommand]
+    private void ToggleFriendsPanel()
+    {
+        WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.FriendsActivity));
     }
 
     /// <summary>
@@ -457,6 +491,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _playbackStateService.PropertyChanged -= OnPlaybackServicePropertyChanged;
         if (_connectivityService != null)
             _connectivityService.PropertyChanged -= OnConnectivityPropertyChanged;
+        WeakReferenceMessenger.Default.Unregister<RightPanelStateChangedMessage>(this);
 
         if (_positionTimer != null)
         {

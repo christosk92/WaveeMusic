@@ -130,6 +130,15 @@ public sealed partial class NavigationToolbar : UserControl
         set => SetValue(IsOnProfilePageProperty, value);
     }
 
+    /// <summary>
+    /// Suppresses the search flyout popup (used when already on SearchPage).
+    /// </summary>
+    public bool SuppressSearchFlyout
+    {
+        get => SearchOmnibar?.SuppressFlyout ?? false;
+        set { if (SearchOmnibar != null) SearchOmnibar.SuppressFlyout = value; }
+    }
+
     #endregion
 
     #region Events

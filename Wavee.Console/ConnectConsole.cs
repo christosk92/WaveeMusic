@@ -116,7 +116,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 // Create SpotifyLibraryService using unified MetadataDatabase
                 _libraryService = new SpotifyLibraryService(
                     metadataDatabase,
-                    _session.SpClient,
+                    (SpClient)_session.SpClient,
                     _session,
                     libraryChangeManager,
                     _serviceProvider?.GetService<IExtendedMetadataClient>(),
@@ -144,7 +144,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 
             _audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 _session,
-                _session.SpClient,
+                (SpClient)_session.SpClient,
                 _httpClient,
                 options: AudioPipelineOptions.Default,
                 audioSettings: _audioSettings,
@@ -166,7 +166,7 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             {
                 _session.PlaybackState.EnableBidirectionalMode(
                     _audioPipeline,
-                    _session.SpClient,
+                    (SpClient)_session.SpClient,
                     _session);
                 _ui.AddLog("INF", "Audio pipeline initialized - bidirectional playback enabled!");
             }

@@ -6,6 +6,7 @@ public sealed class AppSettings
 {
     public string Theme { get; set; } = "Default";
     public double SidebarWidth { get; set; } = 280;
+    public double RightPanelWidth { get; set; } = 300;
     public Dictionary<string, double> PanelWidths { get; set; } = new();
     public double WindowWidth { get; set; } = 1200;
     public double WindowHeight { get; set; } = 800;

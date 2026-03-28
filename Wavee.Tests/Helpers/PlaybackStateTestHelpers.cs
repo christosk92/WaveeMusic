@@ -300,4 +300,10 @@ internal sealed class MockPlaybackEngine : IPlaybackEngine
         SimulateStop();
         return Task.CompletedTask;
     }
+
+    public Task SetVolumeAsync(float volume, CancellationToken cancellationToken = default)
+    {
+        CommandsReceived.Add($"Volume:{volume}");
+        return Task.CompletedTask;
+    }
 }

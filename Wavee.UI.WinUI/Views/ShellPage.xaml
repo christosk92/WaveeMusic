@@ -9,6 +9,7 @@
     xmlns:tabbar="using:Wavee.UI.WinUI.Controls.TabBar"
     xmlns:navtoolbar="using:Wavee.UI.WinUI.Controls.NavigationToolbar"
     xmlns:playerbar="using:Wavee.UI.WinUI.Controls.PlayerBar"
+    xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
@@ -56,7 +57,6 @@
             SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"
             SearchTextChanged="NavToolbar_SearchTextChanged"
             SearchSuggestionChosen="NavToolbar_SearchSuggestionChosen"
-            SearchPlayRequested="NavToolbar_SearchPlayRequested"
             SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"/>
 
         <!-- Shell-level notification bars -->
@@ -109,19 +109,34 @@
             SelectedItem="{x:Bind ViewModel.SelectedSidebarItem, Mode=TwoWay}"
             ItemInvoked="SidebarControl_ItemInvoked">
 
-            <!-- Main Content (no toolbar, just page content) -->
+            <!-- Main Content + Right Panel -->
             <sidebar:SidebarView.InnerContent>
-                <ContentPresenter
-                    x:Name="TabContentPresenter"
-                    Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
-                    HorizontalAlignment="Stretch"
-                    VerticalAlignment="Stretch">
-                    <ContentPresenter.ContentTransitions>
-                        <TransitionCollection>
-                            <EntranceThemeTransition/>
-                        </TransitionCollection>
-                    </ContentPresenter.ContentTransitions>
-                </ContentPresenter>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ContentPresenter
+                        x:Name="TabContentPresenter"
+                        Grid.Column="0"
+                        Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch">
+                        <ContentPresenter.ContentTransitions>
+                            <TransitionCollection>
+                                <EntranceThemeTransition/>
+                            </TransitionCollection>
+                        </ContentPresenter.ContentTransitions>
+                    </ContentPresenter>
+
+                    <rightpanel:RightPanelView
+                        x:Name="RightPanelControl"
+                        Grid.Column="1"
+                        PanelWidth="{x:Bind ViewModel.RightPanelWidth, Mode=TwoWay}"
+                        IsOpen="{x:Bind ViewModel.IsRightPanelOpen, Mode=TwoWay}"
+                        SelectedMode="{x:Bind ViewModel.RightPanelMode, Mode=TwoWay}"/>
+                </Grid>
             </sidebar:SidebarView.InnerContent>
 
             <!-- Sidebar Footer (settings) -->

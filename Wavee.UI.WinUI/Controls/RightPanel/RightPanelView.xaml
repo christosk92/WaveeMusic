@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.RightPanel.RightPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    MinWidth="200"
+    MaxWidth="500"
+    Loaded="RightPanelView_Loaded">
+
+    <animations:Implicit.ShowAnimations>
+        <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1" />
+        <animations:TranslationAnimation Duration="0:0:0.25" From="40,0,0" To="0" />
+    </animations:Implicit.ShowAnimations>
+    <animations:Implicit.HideAnimations>
+        <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0" />
+        <animations:TranslationAnimation Duration="0:0:0.2" From="0" To="40,0,0" />
+    </animations:Implicit.HideAnimations>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>  <!-- Resize gripper -->
+            <ColumnDefinition Width="*"/>     <!-- Panel content -->
+        </Grid.ColumnDefinitions>
+
+        <!-- Resize gripper -->
+        <Border
+            x:Name="PanelResizer"
+            Grid.Column="0"
+            MinWidth="4"
+            Margin="0,60,0,40"
+            HorizontalAlignment="Left"
+            Background="Transparent"
+            BorderBrush="Transparent"
+            Canvas.ZIndex="100"
+            CornerRadius="2"
+            ManipulationMode="TranslateX"
+            ManipulationStarted="Resizer_ManipulationStarted"
+            ManipulationDelta="Resizer_ManipulationDelta"
+            ManipulationCompleted="Resizer_ManipulationCompleted"
+            PointerEntered="Resizer_PointerEntered"
+            PointerExited="Resizer_PointerExited"
+            DoubleTapped="Resizer_DoubleTapped"/>
+
+        <!-- Panel content -->
+        <Grid Grid.Column="1" Margin="0,0,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Tab header -->
+                <RowDefinition Height="*"/>     <!-- Content -->
+            </Grid.RowDefinitions>
+
+            <!-- Tab header -->
+            <StackPanel
+                Grid.Row="0"
+                Orientation="Horizontal"
+                Spacing="2"
+                Padding="12,12,12,8"
+                HorizontalAlignment="Left">
+
+                <ToggleButton
+                    x:Name="QueueTab"
+                    Content="Queue"
+                    Click="QueueTab_Click"
+                    Style="{StaticResource DefaultToggleButtonStyle}"
+                    MinHeight="28"
+                    Padding="12,4"
+                    FontSize="12"
+                    CornerRadius="14"/>
+
+                <ToggleButton
+                    x:Name="LyricsTab"
+                    Content="Lyrics"
+                    Click="LyricsTab_Click"
+                    Style="{StaticResource DefaultToggleButtonStyle}"
+                    MinHeight="28"
+                    Padding="12,4"
+                    FontSize="12"
+                    CornerRadius="14"/>
+
+                <ToggleButton
+                    x:Name="FriendsTab"
+                    Content="Friends"
+                    Click="FriendsTab_Click"
+                    Style="{StaticResource DefaultToggleButtonStyle}"
+                    MinHeight="28"
+                    Padding="12,4"
+                    FontSize="12"
+                    CornerRadius="14"/>
+            </StackPanel>
+
+            <!-- Content area -->
+            <Grid Grid.Row="1" Padding="12,0,12,12">
+
+                <!-- Queue placeholder -->
+                <StackPanel x:Name="QueueContent" Spacing="8">
+                    <TextBlock
+                        Text="Queue"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        Margin="0,0,0,8"/>
+                    <TextBlock
+                        Text="Your queue is empty. Play something to see it here."
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="WrapWholeWords"
+                        FontSize="13"/>
+                </StackPanel>
+
+                <!-- Lyrics placeholder -->
+                <StackPanel x:Name="LyricsContent" Spacing="8" Visibility="Collapsed">
+                    <TextBlock
+                        Text="Lyrics"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        Margin="0,0,0,8"/>
+                    <TextBlock
+                        Text="Lyrics will appear here when a track is playing."
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="WrapWholeWords"
+                        FontSize="13"/>
+                </StackPanel>
+
+                <!-- Friends Activity placeholder -->
+                <StackPanel x:Name="FriendsContent" Spacing="8" Visibility="Collapsed">
+                    <TextBlock
+                        Text="Friends Activity"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        Margin="0,0,0,8"/>
+                    <TextBlock
+                        Text="See what your friends are listening to."
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="WrapWholeWords"
+                        FontSize="13"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="ResizerStates">
+                <VisualState x:Name="ResizerNormal" />
+                <VisualState x:Name="ResizerPointerOver">
+                    <Storyboard>
+                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="PanelResizer" Storyboard.TargetProperty="Background">
+                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource CardStrokeColorDefaultSolidBrush}" />
+                        </ObjectAnimationUsingKeyFrames>
+                    </Storyboard>
+                </VisualState>
+                <VisualState x:Name="ResizerPressed">
+                    <Storyboard>
+                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="PanelResizer" Storyboard.TargetProperty="Background">
+                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource SolidBackgroundFillColorSecondaryBrush}" />
+                        </ObjectAnimationUsingKeyFrames>
+                    </Storyboard>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+</UserControl>

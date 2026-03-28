@@ -20,6 +20,12 @@ public sealed partial class Omnibar : Control
     private SearchFlyoutPanel? _flyoutPanel;
     private bool _hasFocus;
 
+    /// <summary>
+    /// When true, the suggestions flyout is suppressed (e.g., when already on SearchPage).
+    /// Text changes still fire events but the popup won't open.
+    /// </summary>
+    public bool SuppressFlyout { get; set; }
+
     public Omnibar()
     {
         DefaultStyleKey = typeof(Omnibar);
@@ -172,6 +178,7 @@ public sealed partial class Omnibar : Control
 
     private void ShowPopup()
     {
+        if (SuppressFlyout) return;
         if (_popup == null || _flyoutPanel == null || _searchBox == null) return;
 
         // XamlRoot is required for unparented popups (created in code-behind)

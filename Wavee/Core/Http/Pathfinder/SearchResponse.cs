@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Wavee.Core.Http.Pathfinder;
@@ -475,6 +476,7 @@ public sealed class Playability
 public sealed class SearchResult
 {
     public List<SearchResultItem> Items { get; init; } = new();
+    public SearchResultItem? TopResult { get; set; }
     public int TotalTracks { get; init; }
     public int TotalArtists { get; init; }
     public int TotalAlbums { get; init; }
@@ -584,7 +586,131 @@ public sealed class SearchResult
             }
         }
 
+        // Extract top result from topResultsV2
+        var topItems = response.Data?.SearchV2?.TopResultsV2?.ItemsV2;
+        if (topItems is { Count: > 0 })
+        {
+            foreach (var topWrapper in topItems)
+            {
+                var topItem = topWrapper.Item;
+                if (topItem?.Data is not JsonElement je) continue;
+
+                var mapped = MapTopResultFromJson(topItem.TypeName, je);
+                if (mapped != null)
+                {
+                    result.TopResult = mapped;
+                    break;
+                }
+            }
+        }
+
         return result;
+    }
+
+    private static SearchResultItem? MapTopResultFromJson(string? typeName, JsonElement data)
+    {
+        try
+        {
+            if (!data.TryGetProperty("uri", out var uriProp)) return null;
+            var uri = uriProp.GetString();
+            if (string.IsNullOrEmpty(uri)) return null;
+
+            return typeName switch
+            {
+                "ArtistResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Artist,
+                    Uri = uri,
+                    Name = GetNestedString(data, "profile", "name") ?? "Unknown",
+                    ImageUrl = GetFirstImageUrl(data, "visuals", "avatarImage"),
+                },
+                "TrackResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Track,
+                    Uri = uri,
+                    Name = data.TryGetProperty("name", out var n) ? n.GetString() ?? "Unknown" : "Unknown",
+                    ArtistNames = GetArtistNames(data),
+                    AlbumName = GetNestedString(data, "albumOfTrack", "name"),
+                    ImageUrl = GetFirstImageUrl(data, "albumOfTrack", "coverArt"),
+                    DurationMs = data.TryGetProperty("duration", out var d)
+                        && d.TryGetProperty("totalMilliseconds", out var ms) ? ms.GetInt64() : 0
+                },
+                "AlbumResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Album,
+                    Uri = uri,
+                    Name = data.TryGetProperty("name", out var an) ? an.GetString() ?? "Unknown" : "Unknown",
+                    ArtistNames = GetArtistNames(data),
+                    ImageUrl = GetFirstImageUrl(data, "coverArt"),
+                    ReleaseYear = data.TryGetProperty("date", out var dt)
+                        && dt.TryGetProperty("year", out var yr) ? yr.GetInt32() : null,
+                    AlbumType = data.TryGetProperty("type", out var at) ? at.GetString() : null
+                },
+                "PlaylistResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Playlist,
+                    Uri = uri,
+                    Name = data.TryGetProperty("name", out var pn) ? pn.GetString() ?? "Unknown" : "Unknown",
+                    OwnerName = data.TryGetProperty("ownerV2", out var ov)
+                        && ov.TryGetProperty("data", out var od)
+                        && od.TryGetProperty("name", out var on) ? on.GetString() : null,
+                    ImageUrl = data.TryGetProperty("images", out var imgs)
+                        && imgs.TryGetProperty("items", out var imgItems)
+                        && imgItems.GetArrayLength() > 0
+                        && imgItems[0].TryGetProperty("sources", out var srcs)
+                        && srcs.GetArrayLength() > 0
+                        && srcs[0].TryGetProperty("url", out var pu) ? pu.GetString() : null,
+                },
+                _ => null
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetNestedString(JsonElement root, string prop1, string prop2)
+    {
+        if (root.TryGetProperty(prop1, out var p1) && p1.TryGetProperty(prop2, out var p2))
+            return p2.GetString();
+        return null;
+    }
+
+    private static string? GetFirstImageUrl(JsonElement root, params string[] path)
+    {
+        var current = root;
+        foreach (var segment in path)
+        {
+            if (!current.TryGetProperty(segment, out current))
+                return null;
+        }
+        // current is now the image container (e.g., coverArt or avatarImage)
+        if (current.TryGetProperty("sources", out var sources) && sources.GetArrayLength() > 0)
+        {
+            if (sources[0].TryGetProperty("url", out var url))
+                return url.GetString();
+        }
+        return null;
+    }
+
+    private static List<string> GetArtistNames(JsonElement data)
+    {
+        var names = new List<string>();
+        if (data.TryGetProperty("artists", out var artists)
+            && artists.TryGetProperty("items", out var items))
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.TryGetProperty("profile", out var profile)
+                    && profile.TryGetProperty("name", out var name))
+                {
+                    var n = name.GetString();
+                    if (n != null) names.Add(n);
+                }
+            }
+        }
+        return names;
     }
 }
 

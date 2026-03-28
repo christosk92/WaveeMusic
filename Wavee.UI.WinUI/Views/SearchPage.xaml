@@ -5,24 +5,315 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
+    xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
-    <Grid>
-        <StackPanel
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="16">
-            <FontIcon
-                Glyph="&#xE721;"
-                FontSize="64"
-                Opacity="0.3"/>
-            <TextBlock
-                x:Name="SearchQueryText"
-                Text="Search results coming soon..."
+    <ScrollView VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="0">
+
+            <!-- ══════════════════ Filter Chips ══════════════════ -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,24">
+                <RadioButton x:Name="FilterAll" Content="All" GroupName="SearchFilter"
+                             IsChecked="True" Click="FilterChip_Click" Tag="All"
+                             Style="{StaticResource DefaultToggleButtonStyle}"
+                             CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
+                <RadioButton x:Name="FilterSongs" Content="Songs" GroupName="SearchFilter"
+                             Click="FilterChip_Click" Tag="Songs"
+                             Style="{StaticResource DefaultToggleButtonStyle}"
+                             CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
+                <RadioButton x:Name="FilterArtists" Content="Artists" GroupName="SearchFilter"
+                             Click="FilterChip_Click" Tag="Artists"
+                             Style="{StaticResource DefaultToggleButtonStyle}"
+                             CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
+                <RadioButton x:Name="FilterAlbums" Content="Albums" GroupName="SearchFilter"
+                             Click="FilterChip_Click" Tag="Albums"
+                             Style="{StaticResource DefaultToggleButtonStyle}"
+                             CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
+                <RadioButton x:Name="FilterPlaylists" Content="Playlists" GroupName="SearchFilter"
+                             Click="FilterChip_Click" Tag="Playlists"
+                             Style="{StaticResource DefaultToggleButtonStyle}"
+                             CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
+            </StackPanel>
+
+            <!-- ══════════════════ Shimmer Loading State ══════════════════ -->
+            <Grid Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                  ColumnSpacing="24" Margin="0,0,0,32">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="3*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Shimmer: Top Result card -->
+                <Border Grid.Column="0"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}"
+                        Padding="20">
+                    <StackPanel Spacing="16">
+                        <toolkit:Shimmer Width="100" Height="18" CornerRadius="4" HorizontalAlignment="Left"/>
+                        <toolkit:Shimmer Width="92" Height="92" CornerRadius="4" HorizontalAlignment="Left"/>
+                        <toolkit:Shimmer Width="160" Height="24" CornerRadius="4" HorizontalAlignment="Left"/>
+                        <toolkit:Shimmer Width="80" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Shimmer: Songs list -->
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <toolkit:Shimmer Width="60" Height="20" CornerRadius="4" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+                    <Grid Height="56" Padding="8,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <toolkit:Shimmer Width="40" Height="40" CornerRadius="4"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                            <toolkit:Shimmer Width="200" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
+                            <toolkit:Shimmer Width="120" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Height="56" Padding="8,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <toolkit:Shimmer Width="40" Height="40" CornerRadius="4"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                            <toolkit:Shimmer Width="240" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
+                            <toolkit:Shimmer Width="140" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Height="56" Padding="8,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <toolkit:Shimmer Width="40" Height="40" CornerRadius="4"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                            <toolkit:Shimmer Width="180" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
+                            <toolkit:Shimmer Width="100" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Height="56" Padding="8,4" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <toolkit:Shimmer Width="40" Height="40" CornerRadius="4"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                            <toolkit:Shimmer Width="220" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
+                            <toolkit:Shimmer Width="130" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <!-- ══════════════════ Top Result + Songs (side by side) ══════════════════ -->
+            <Grid ColumnSpacing="24" Margin="0,0,0,32"
+                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="3*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Top Result Card -->
+                <Border Grid.Column="0" VerticalAlignment="Top"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}"
+                        Padding="20"
+                        Visibility="{x:Bind ViewModel.TopResult, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="Top result"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                   FontWeight="Bold"/>
+
+                        <Grid Width="92" Height="92" HorizontalAlignment="Left"
+                              CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Rectangle Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                       RadiusX="4" RadiusY="4"/>
+                            <Image Source="{x:Bind ViewModel.TopResult.ImageUrl, Mode=OneWay}"
+                                   Stretch="UniformToFill"
+                                   Width="92" Height="92"/>
+                        </Grid>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{x:Bind ViewModel.TopResult.Name, Mode=OneWay}"
+                                       Style="{StaticResource TitleTextBlockStyle}"
+                                       FontWeight="Bold"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{x:Bind ViewModel.TopResult.GetDisplayString(), Mode=OneWay}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="12"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Right: Songs (column-first grid, capped at 4 rows) -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Top" Spacing="12"
+                            Visibility="{x:Bind ViewModel.ShowTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="Songs"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               FontWeight="Bold"/>
+
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Tracks, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <layouts:ColumnsFirstGridLayout MaxRows="4" MinItemWidth="280"
+                                                            ItemHeight="56" RowSpacing="4" ColumnSpacing="8"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="pathfinder:SearchResultItem">
+                                <Grid Height="56" Padding="8,4" ColumnSpacing="12"
+                                      Background="Transparent"
+                                      CornerRadius="{ThemeResource ControlCornerRadius}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Grid.Column="0" Width="40" Height="40" CornerRadius="4">
+                                        <Rectangle Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                   RadiusX="4" RadiusY="4"/>
+                                        <Image Source="{x:Bind ImageUrl}"
+                                               Stretch="UniformToFill"
+                                               Width="40" Height="40"/>
+                                    </Grid>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{x:Bind Name}"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   MaxLines="1"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{x:Bind AlbumName}"
+                                                   FontSize="12"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   MaxLines="1"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </Grid>
+
+            <!-- ══════════════════ Artists Section ══════════════════ -->
+            <StackPanel Margin="0,0,0,32"
+                        Visibility="{x:Bind ViewModel.ShowArtists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="Artists"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           FontWeight="Bold"
+                           Margin="0,0,0,16"/>
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Artists, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="pathfinder:SearchResultItem">
+                            <cards:ContentCard
+                                ImageUrl="{x:Bind ImageUrl}"
+                                Title="{x:Bind Name}"
+                                Subtitle="Artist"
+                                PlaceholderGlyph="&#xE77B;"
+                                IsCircularImage="True"
+                                CenterText="True"
+                                NavigationUri="{x:Bind Uri}"
+                                NavigationTitle="{x:Bind Name}"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+
+            <!-- ══════════════════ Albums Section ══════════════════ -->
+            <StackPanel Margin="0,0,0,32"
+                        Visibility="{x:Bind ViewModel.ShowAlbums, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="Albums"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           FontWeight="Bold"
+                           Margin="0,0,0,16"/>
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="pathfinder:SearchResultItem">
+                            <cards:ContentCard
+                                ImageUrl="{x:Bind ImageUrl}"
+                                Title="{x:Bind Name}"
+                                Subtitle="{x:Bind AlbumType}"
+                                IsCircularImage="False"
+                                NavigationUri="{x:Bind Uri}"
+                                NavigationTitle="{x:Bind Name}"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+
+            <!-- ══════════════════ Playlists Section ══════════════════ -->
+            <StackPanel Margin="0,0,0,32"
+                        Visibility="{x:Bind ViewModel.ShowPlaylists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="Playlists"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           FontWeight="Bold"
+                           Margin="0,0,0,16"/>
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Playlists, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="pathfinder:SearchResultItem">
+                            <cards:ContentCard
+                                ImageUrl="{x:Bind ImageUrl}"
+                                Title="{x:Bind Name}"
+                                Subtitle="{x:Bind OwnerName}"
+                                IsCircularImage="False"
+                                NavigationUri="{x:Bind Uri}"
+                                NavigationTitle="{x:Bind Name}"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+
+            <!-- ══════════════════ Error State ══════════════════ -->
+            <StackPanel
                 HorizontalAlignment="Center"
-                Style="{StaticResource SubtitleTextBlockStyle}"
-                Opacity="0.5"/>
+                VerticalAlignment="Center"
+                Spacing="12"
+                Margin="0,40,0,0"
+                Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <FontIcon Glyph="&#xE783;" FontSize="48" Opacity="0.3"/>
+                <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                           HorizontalAlignment="Center"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Opacity="0.5"/>
+            </StackPanel>
+
+            <!-- ══════════════════ Empty State ══════════════════ -->
+            <StackPanel
+                x:Name="EmptyState"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12"
+                Margin="0,40,0,0"
+                Visibility="Collapsed">
+                <FontIcon Glyph="&#xE721;" FontSize="48" Opacity="0.3"/>
+                <TextBlock x:Name="SearchQueryText"
+                           HorizontalAlignment="Center"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Opacity="0.5"/>
+            </StackPanel>
+
         </StackPanel>
-    </Grid>
+    </ScrollView>
 </Page>

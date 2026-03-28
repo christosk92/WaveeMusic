@@ -276,13 +276,34 @@
                     IsThumbToolTipEnabled="False" />
 
                 <!-- Queue -->
-                <Button
-                    Style="{StaticResource TransparentButtonStyle}"
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
-                    Command="{x:Bind ViewModel.OpenQueueCommand}"
+                    IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ToggleQueuePanelCommand}"
                     ToolTipService.ToolTip="Queue">
                     <FontIcon Glyph="&#xE142;" FontSize="14" />
-                </Button>
+                </ToggleButton>
+
+                <!-- Lyrics -->
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="32" Height="32" Padding="0"
+                    IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
+                    ToolTipService.ToolTip="Lyrics">
+                    <FontIcon Glyph="&#xED1E;" FontSize="14" />
+                </ToggleButton>
+
+                <!-- Friends Activity -->
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="32" Height="32" Padding="0"
+                    IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
+                    ToolTipService.ToolTip="Friends Activity">
+                    <FontIcon Glyph="&#xE716;" FontSize="14" />
+                </ToggleButton>
             </StackPanel>
         </Grid>
         </Border>
