@@ -1,0 +1,6 @@
+<linker>
+  <assembly fullname="Wavee.UI.WinUI">
+    <type fullname="Wavee.UI.WinUI.Controls.Layouts.ColumnsFirstGridLayout" />
+    <type fullname="Wavee.UI.WinUI.Controls.Layouts.SingleRowLayout" />
+  </assembly>
+</linker>

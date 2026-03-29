@@ -99,7 +99,7 @@ public sealed partial class DebugViewModel : ObservableObject
         try
         {
             var doc = JsonDocument.Parse(RequestBody);
-            RequestBody = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+            RequestBody = PrettyPrintJson(doc);
         }
         catch { /* not valid JSON, leave as-is */ }
     }
@@ -165,7 +165,7 @@ public sealed partial class DebugViewModel : ObservableObject
                 try
                 {
                     var doc = JsonDocument.Parse(raw);
-                    ResponseBody = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+                    ResponseBody = PrettyPrintJson(doc);
                 }
                 catch { ResponseBody = raw; }
             }
@@ -259,6 +259,15 @@ public sealed partial class DebugViewModel : ObservableObject
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(protoContentType);
         request.Headers.Accept.Clear();
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(protoContentType));
+    }
+
+    private static string PrettyPrintJson(JsonDocument doc)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true });
+        doc.WriteTo(writer);
+        writer.Flush();
+        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
     }
 
     private string FormatProtobufResponse(byte[] bytes)

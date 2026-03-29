@@ -16,6 +16,32 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += OnUnhandledException;
+    }
+
+    private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        // Log the actual exception so we can diagnose Release crashes
+        var ex = e.Exception;
+        System.Diagnostics.Debug.WriteLine($"*** UNHANDLED EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+        System.Diagnostics.Debug.WriteLine($"*** Stack: {ex.StackTrace}");
+        if (ex.InnerException != null)
+            System.Diagnostics.Debug.WriteLine($"*** Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}");
+
+        // Write to a crash log file for Release builds
+        try
+        {
+            var crashLog = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "Wavee", "crash.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(crashLog)!);
+            System.IO.File.AppendAllText(crashLog,
+                $"\n[{System.DateTime.UtcNow:O}] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n" +
+                (ex.InnerException != null ? $"Inner: {ex.InnerException}\n" : ""));
+        }
+        catch { /* best effort */ }
+
+        e.Handled = true; // Prevent crash — let the app try to continue
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -8,6 +9,10 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Services;
+
+[JsonSerializable(typeof(AppSettings))]
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)]
+internal partial class AppSettingsJsonContext : JsonSerializerContext { }
 
 public sealed class SettingsService : ISettingsService, IDisposable
 {
@@ -35,7 +40,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             if (File.Exists(SettingsPath))
             {
                 var json = await File.ReadAllTextAsync(SettingsPath);
-                _settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                _settings = JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
                 _logger?.LogInformation("Settings loaded from {Path}", SettingsPath);
             }
             else
@@ -63,7 +68,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             var dir = Path.GetDirectoryName(SettingsPath)!;
             Directory.CreateDirectory(dir);
-            var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(_settings, AppSettingsJsonContext.Default.AppSettings);
             await File.WriteAllTextAsync(SettingsPath, json);
             _logger?.LogDebug("Settings saved to {Path}", SettingsPath);
         }

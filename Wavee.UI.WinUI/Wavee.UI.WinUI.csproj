@@ -100,5 +100,15 @@
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
+
+  <!-- Preserve assemblies whose types are resolved via XAML reflection (invisible to the IL trimmer).
+       Microsoft.WinUI is marked IsTrimmable, so even TrimMode=partial trims it —
+       stripping StackLayout, UniformGridLayout, etc. that ItemsRepeater.Layout needs.
+       See: https://github.com/microsoft/microsoft-ui-xaml/issues/9675 -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Microsoft.WinUI" />
+    <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
+  </ItemGroup>
 </Project>

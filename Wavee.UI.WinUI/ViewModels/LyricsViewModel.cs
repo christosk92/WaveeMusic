@@ -94,6 +94,11 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     /// </summary>
     public event Action<int, int>? ActiveLineChanged;
 
+    /// <summary>
+    /// Raised when new lyrics are loaded (or cleared). View should reset scroll position.
+    /// </summary>
+    public event Action? LyricsLoaded;
+
     public LyricsViewModel(IPlaybackStateService playbackStateService, ISession session)
     {
         _playbackStateService = playbackStateService;
@@ -196,6 +201,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             _startTimesMs = startTimes;
             HasLyrics = true;
             IsLoading = false;
+            LyricsLoaded?.Invoke();
 
             // Sync position immediately
             _lastServicePosition = _playbackStateService.Position;

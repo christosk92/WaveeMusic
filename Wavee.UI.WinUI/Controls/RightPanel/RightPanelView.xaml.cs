@@ -46,6 +46,7 @@ public sealed partial class RightPanelView : UserControl
         UpdateContentVisibility();
 
         _lyricsVm.ActiveLineChanged += OnActiveLineChanged;
+        _lyricsVm.LyricsLoaded += OnLyricsLoaded;
 
         var visual = ElementCompositionPreview.GetElementVisual(this);
         _compositor = visual.Compositor;
@@ -56,6 +57,7 @@ public sealed partial class RightPanelView : UserControl
     private void RightPanelView_Unloaded(object sender, RoutedEventArgs e)
     {
         _lyricsVm.ActiveLineChanged -= OnActiveLineChanged;
+        _lyricsVm.LyricsLoaded -= OnLyricsLoaded;
         _lyricsVm.IsVisible = false;
 
         if (LyricsScrollViewer != null)
@@ -98,6 +100,15 @@ public sealed partial class RightPanelView : UserControl
         FriendsTab.IsChecked = SelectedMode == RightPanelMode.FriendsActivity;
 
         _lyricsVm.IsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
+    }
+
+    private void OnLyricsLoaded()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            LyricsScrollViewer?.ChangeView(null, 0, null, disableAnimation: false);
+            _prevActiveIndex = -1;
+        });
     }
 
     // ── Lyrics: alpha fade mask on LyricsContent grid via CompositionVisualSurface ──

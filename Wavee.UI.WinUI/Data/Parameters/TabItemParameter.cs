@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Text.Json;
 using Wavee.UI.WinUI.Data.Enums;
 
@@ -23,11 +24,14 @@ public sealed class TabItemParameter
 
     public string Serialize()
     {
-        return JsonSerializer.Serialize(new
-        {
-            InitialPageType = InitialPageType?.AssemblyQualifiedName,
-            NavigationParameter
-        });
+        using var ms = new MemoryStream();
+        using var writer = new Utf8JsonWriter(ms);
+        writer.WriteStartObject();
+        writer.WriteString("InitialPageType", InitialPageType?.AssemblyQualifiedName);
+        writer.WriteString("NavigationParameter", NavigationParameter?.ToString());
+        writer.WriteEndObject();
+        writer.Flush();
+        return System.Text.Encoding.UTF8.GetString(ms.ToArray());
     }
 
     public static TabItemParameter? Deserialize(string json)

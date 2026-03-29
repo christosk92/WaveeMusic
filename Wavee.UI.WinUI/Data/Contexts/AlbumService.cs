@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,10 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
+
+[JsonSerializable(typeof(List<AlbumTrackResult>))]
+[JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
+internal partial class AlbumTrackResultJsonContext : JsonSerializerContext { }
 
 /// <summary>
 /// Album service with 3-tier caching: hot (in-memory) → SQLite → API.
@@ -44,7 +49,7 @@ public sealed class AlbumService : IAlbumService
             var json = await _db.GetAlbumTracksCacheAsync(albumUri, ct);
             if (json != null)
             {
-                var raw = JsonSerializer.Deserialize<List<AlbumTrackResult>>(json);
+                var raw = JsonSerializer.Deserialize(json, AlbumTrackResultJsonContext.Default.ListAlbumTrackResult);
                 if (raw != null)
                 {
                     var dtos = raw.Select(r => ToDto(r, albumUri)).ToList();
@@ -68,7 +73,7 @@ public sealed class AlbumService : IAlbumService
         {
             try
             {
-                var jsonData = JsonSerializer.Serialize(rawResult);
+                var jsonData = JsonSerializer.Serialize(rawResult, AlbumTrackResultJsonContext.Default.ListAlbumTrackResult);
                 await _db.SetAlbumTracksCacheAsync(albumUri, jsonData);
             }
             catch (Exception ex)
