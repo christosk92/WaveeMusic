@@ -43,11 +43,24 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         PageScrollView.ViewChanged += OnPageScrollViewChanged;
+        Loaded += AlbumPage_Loaded;
         Unloaded += AlbumPage_Unloaded;
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
+
+    private void AlbumPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        // If AlbumImageUrl was already set before the page was fully loaded
+        // (e.g. via PrefillFrom during OnNavigatedTo), set up the blur now
+        if (!string.IsNullOrEmpty(ViewModel.AlbumImageUrl) && _blurSprite == null)
+        {
+            var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
+            if (!string.IsNullOrEmpty(url))
+                SetupBlurredBackground(url);
+        }
+    }
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
     {

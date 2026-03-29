@@ -42,6 +42,9 @@ A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
   <tr>
     <td colspan="2"><img src="screenshots/app_3.png" alt="App Screenshot 3" width="810"></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="screenshots/album_app.png" alt="Album Page" width="810"></td>
+  </tr>
 </table>
 
 ### Console
@@ -119,7 +122,6 @@ WaveeMusic/
 ### Planned
 - Mercury protocol for metadata
 - Offline playback
-- Lyrics display
 
 ## Building
 

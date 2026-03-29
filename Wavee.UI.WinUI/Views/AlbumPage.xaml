@@ -45,7 +45,7 @@
         </VisualStateManager.VisualStateGroups>
 
         <!-- Blurred album art background (composition visual inserted in code-behind) -->
-        <Border x:Name="BlurredBackground" Opacity="0"/>
+        <Border x:Name="BlurredBackground" Opacity="1"/>
 
         <ScrollView x:Name="PageScrollView" VerticalScrollBarVisibility="Auto">
             <StackPanel>
@@ -275,38 +275,21 @@
                         </ItemsRepeater>
                     </StackPanel>
 
-                    <!-- Album details footer -->
-                    <StackPanel Margin="16,32,16,24" Spacing="16"
+                    <!-- Album info: release date, label, copyrights -->
+                    <StackPanel Margin="16,24,16,16" Spacing="6"
                                 Visibility="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-
-                        <!-- Thin separator -->
-                        <Border Height="1" Opacity="0.15"
-                                Background="{ThemeResource TextFillColorSecondaryBrush}" />
-
-                        <!-- Release date with calendar icon -->
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE787;" FontSize="15"
-                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                            <TextBlock Text="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay}"
-                                       FontSize="13"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-
-                        <!-- Label with building icon -->
-                        <StackPanel Orientation="Horizontal" Spacing="10"
-                                    Visibility="{x:Bind ViewModel.Label, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                            <FontIcon Glyph="&#xE8B8;" FontSize="15"
-                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                            <TextBlock Text="{x:Bind ViewModel.Label, Mode=OneWay}"
-                                       FontSize="13"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-
-                        <!-- Copyrights -->
+                        <TextBlock Text="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay}"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.Label, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind ViewModel.Label, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
                         <TextBlock Text="{x:Bind ViewModel.CopyrightsText, Mode=OneWay}"
-                                   FontSize="11"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                   TextWrapping="Wrap" Opacity="0.6" LineHeight="18"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0"
                                    Visibility="{x:Bind ViewModel.CopyrightsText, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
                     </StackPanel>
                     </StackPanel>
