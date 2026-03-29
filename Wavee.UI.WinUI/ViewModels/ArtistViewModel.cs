@@ -94,6 +94,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private bool _singlesGridView = true;
     [ObservableProperty] private bool _compilationsGridView = true;
 
+    // Per-group error state (background pagination failures)
+    [ObservableProperty] private bool _hasAlbumsError;
+    [ObservableProperty] private bool _hasSinglesError;
+    [ObservableProperty] private bool _hasCompilationsError;
+
     // Top tracks pagination (Apple Music style)
     private const int RowsPerPage = 3;
     [ObservableProperty] private int _columnCount = 4;
@@ -231,6 +236,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         IsLoading = true;
         HasError = false;
         ErrorMessage = null;
+        HasAlbumsError = false;
+        HasSinglesError = false;
+        HasCompilationsError = false;
 
         try
         {
@@ -434,30 +442,23 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         int compilationsLoaded, int compilationsTotal,
         CancellationToken ct)
     {
-        try
-        {
-            var tasks = new List<Task>();
+        // Each group handles its own errors (removes placeholders + sets error flag)
+        var tasks = new List<Task>();
 
-            if (albumsLoaded < albumsTotal)
-                tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
-                    "ALBUM", "album-ph", albumsLoaded, albumsTotal, ct));
+        if (albumsLoaded < albumsTotal)
+            tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                "ALBUM", "album-ph", albumsLoaded, albumsTotal, ct));
 
-            if (singlesLoaded < singlesTotal)
-                tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
-                    "SINGLE", "single-ph", singlesLoaded, singlesTotal, ct));
+        if (singlesLoaded < singlesTotal)
+            tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                "SINGLE", "single-ph", singlesLoaded, singlesTotal, ct));
 
-            if (compilationsLoaded < compilationsTotal)
-                tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
-                    "COMPILATION", "comp-ph", compilationsLoaded, compilationsTotal, ct));
+        if (compilationsLoaded < compilationsTotal)
+            tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+                "COMPILATION", "comp-ph", compilationsLoaded, compilationsTotal, ct));
 
-            if (tasks.Count > 0)
-                await Task.WhenAll(tasks);
-        }
-        catch (OperationCanceledException) { /* navigated away */ }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Background discography fetch failed for {ArtistId}", ArtistId);
-        }
+        if (tasks.Count > 0)
+            await Task.WhenAll(tasks);
     }
 
     // ── Album expand/collapse ──
@@ -537,63 +538,101 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         int totalCount,
         CancellationToken ct)
     {
-        const int pageSize = 20;
-        var offset = alreadyLoaded;
-
-        // Collect all pages on background thread first — no UI thread blocking
-        var allReleases = new List<(int Offset, List<ArtistReleaseResult> Items)>();
-        while (offset < totalCount)
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSize, ct);
-            if (releases.Count == 0) break;
-            allReleases.Add((offset, releases));
-            offset += releases.Count;
-        }
+            const int pageSize = 20;
+            var offset = alreadyLoaded;
 
-        if (allReleases.Count == 0) return;
-
-        // Single UI thread update with all pages batched
-        var tcs = new TaskCompletionSource();
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            try
+            // Collect all pages on background thread first — no UI thread blocking
+            var allReleases = new List<(int Offset, List<ArtistReleaseResult> Items)>();
+            while (offset < totalCount)
             {
-                _releasesSource.Edit(cache =>
-                {
-                    foreach (var (pageOffset, releases) in allReleases)
-                    {
-                        int idx = pageOffset;
-                        foreach (var r in releases)
-                        {
-                            var vm = new ArtistReleaseVm
-                            {
-                                Id = r.Id,
-                                Uri = r.Uri,
-                                Name = r.Name,
-                                Type = type,
-                                ImageUrl = r.ImageUrl,
-                                ReleaseDate = r.ReleaseDate,
-                                TrackCount = r.TrackCount,
-                                Label = r.Label,
-                                Year = r.Year
-                            };
-
-                            var phKey = $"{phPrefix}-{idx}";
-                            var existing = cache.Lookup(phKey);
-                            if (existing.HasValue)
-                                existing.Value.Populate(vm);
-                            else
-                                cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
-                            idx++;
-                        }
-                    }
-                });
-                tcs.SetResult();
+                ct.ThrowIfCancellationRequested();
+                var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSize, ct);
+                if (releases.Count == 0) break;
+                allReleases.Add((offset, releases));
+                offset += releases.Count;
             }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
-        await tcs.Task;
+
+            if (allReleases.Count == 0) return;
+
+            // Single UI thread update with all pages batched
+            var tcs = new TaskCompletionSource();
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    _releasesSource.Edit(cache =>
+                    {
+                        foreach (var (pageOffset, releases) in allReleases)
+                        {
+                            int idx = pageOffset;
+                            foreach (var r in releases)
+                            {
+                                var vm = new ArtistReleaseVm
+                                {
+                                    Id = r.Id,
+                                    Uri = r.Uri,
+                                    Name = r.Name,
+                                    Type = type,
+                                    ImageUrl = r.ImageUrl,
+                                    ReleaseDate = r.ReleaseDate,
+                                    TrackCount = r.TrackCount,
+                                    Label = r.Label,
+                                    Year = r.Year
+                                };
+
+                                var phKey = $"{phPrefix}-{idx}";
+                                var existing = cache.Lookup(phKey);
+                                if (existing.HasValue)
+                                    existing.Value.Populate(vm);
+                                else
+                                    cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
+                                idx++;
+                            }
+                        }
+                    });
+                    tcs.SetResult();
+                }
+                catch (Exception ex) { tcs.SetException(ex); }
+            });
+            await tcs.Task;
+        }
+        catch (OperationCanceledException) { /* navigated away */ }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Discography {Type} fetch failed for {ArtistId}", type, artistUri);
+
+            // Remove shimmer placeholders for this group so they don't stay forever
+            var tcsCleanup = new TaskCompletionSource();
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    _releasesSource.Edit(cache =>
+                    {
+                        var placeholders = cache.Items
+                            .Where(i => !i.IsLoaded && i.Id.StartsWith(phPrefix))
+                            .Select(i => i.Id).ToList();
+                        cache.RemoveKeys(placeholders);
+                    });
+
+                    // Set per-group error flag
+                    switch (type)
+                    {
+                        case "ALBUM": HasAlbumsError = true; break;
+                        case "SINGLE": HasSinglesError = true; break;
+                        case "COMPILATION": HasCompilationsError = true; break;
+                    }
+
+                    tcsCleanup.SetResult();
+                }
+                catch (Exception cleanupEx) { tcsCleanup.SetException(cleanupEx); }
+            });
+
+            try { await tcsCleanup.Task; }
+            catch { /* cleanup failure is non-critical */ }
+        }
     }
 
     // ── Commands ──
@@ -604,6 +643,28 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         HasError = false;
         ErrorMessage = null;
         await LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task RetryDiscographyAsync()
+    {
+        var albumsLoaded = Albums.Count(a => a.IsLoaded);
+        var singlesLoaded = Singles.Count(s => s.IsLoaded);
+        var compilationsLoaded = Compilations.Count(c => c.IsLoaded);
+
+        HasAlbumsError = false;
+        HasSinglesError = false;
+        HasCompilationsError = false;
+
+        _discoCts?.Cancel();
+        _discoCts = new CancellationTokenSource();
+        var ct = _discoCts.Token;
+
+        await Task.Run(() => FetchRemainingDiscographyAsync(
+            albumsLoaded, AlbumsTotalCount,
+            singlesLoaded, SinglesTotalCount,
+            compilationsLoaded, CompilationsTotalCount,
+            ct), ct);
     }
 
     [RelayCommand]

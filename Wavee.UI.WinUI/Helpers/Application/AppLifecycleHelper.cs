@@ -164,6 +164,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<MainWindowViewModel>()
                 .AddSingleton<ShellViewModel>()
                 .AddSingleton<PlayerBarViewModel>()
+                .AddSingleton<LyricsViewModel>()
                 .AddTransient<HomeViewModel>()
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()

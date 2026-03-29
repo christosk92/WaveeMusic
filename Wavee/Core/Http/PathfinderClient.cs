@@ -114,6 +114,10 @@ public sealed class PathfinderClient : IPathfinderClient
                 throw new SpClientException(
                     SpClientFailureReason.RateLimited,
                     "Rate limit exceeded");
+            case HttpStatusCode.PreconditionFailed:
+                throw new SpClientException(
+                    SpClientFailureReason.RequestFailed,
+                    "Precondition failed — the request could not be completed");
         }
 
         if ((int)response.StatusCode >= 500)
@@ -555,7 +559,7 @@ public sealed class PathfinderClient : IPathfinderClient
                 var response = await _httpClient.SendAsync(requestToSend, cancellationToken);
 
                 // Check for retryable status codes
-                if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+                if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable or HttpStatusCode.PreconditionFailed)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
                     _logger?.LogWarning(

@@ -135,23 +135,15 @@
 				UseSystemFocusVisuals="True" />
 		</Border>
 
-		<!--  Content Card (Files-style) — shadow wrapper separate from CornerRadius  -->
+		<!--  Content area — shadows are applied per-panel inside InnerContent  -->
 		<Border
 			x:Name="ContentCardShadowHost"
 			Grid.Row="1"
 			Grid.Column="2"
 			Margin="0,0,8,0">
-			<toolkit:Effects.Shadow>
-				<media:AttachedCardShadow BlurRadius="32" Offset="-4,-2"
-                                          Opacity="0.3" Color="Black" CornerRadius="8" />
-			</toolkit:Effects.Shadow>
 
 			<Border
-				x:Name="ContentCardBorder"
-				Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-				BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-				BorderThickness="1"
-				CornerRadius="8">
+				x:Name="ContentCardBorder">
 				<ContentPresenter
 					x:Name="ContentPresenter"
 					Margin="0"

@@ -92,7 +92,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         ContentFrame = new Frame
         {
-            CacheSize = 5,
+            CacheSize = 0,
             IsNavigationStackEnabled = true
         };
         ContentFrame.Navigated += ContentFrame_Navigated;
@@ -111,6 +111,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             InitialPageType = pageType,
             NavigationParameter = parameter
         };
+
+        // WinUI Frame suppresses navigation to the same page type.
+        // Force it by clearing the content first.
+        if (ContentFrame.Content?.GetType() == pageType)
+            ContentFrame.Content = null;
 
         var transition = suppressTransition
             ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
@@ -146,12 +151,14 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     public void Dispose()
     {
         ContentFrame.Navigated -= ContentFrame_Navigated;
-        ContentFrame.BackStack.Clear();
 
+        // Dispose current page
         if (TabItemContent is IDisposable disposable)
-        {
             disposable.Dispose();
-        }
+
+        // Clear back stack and frame cache so cached pages can be GC'd
+        ContentFrame.BackStack.Clear();
         ContentFrame.Content = null;
+        ContentFrame.CacheSize = 0;
     }
 }

@@ -13,6 +13,8 @@
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:media="using:CommunityToolkit.WinUI.Media"
+    xmlns:toolkit="using:CommunityToolkit.WinUI"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -109,33 +111,54 @@
             SelectedItem="{x:Bind ViewModel.SelectedSidebarItem, Mode=TwoWay}"
             ItemInvoked="SidebarControl_ItemInvoked">
 
-            <!-- Main Content + Right Panel -->
+            <!-- Main Content + Right Panel (each with independent shadow) -->
             <sidebar:SidebarView.InnerContent>
-                <Grid>
+                <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <ContentPresenter
-                        x:Name="TabContentPresenter"
-                        Grid.Column="0"
-                        Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch">
-                        <ContentPresenter.ContentTransitions>
-                            <TransitionCollection>
-                                <EntranceThemeTransition/>
-                            </TransitionCollection>
-                        </ContentPresenter.ContentTransitions>
-                    </ContentPresenter>
+                    <!-- Main content card -->
+                    <Border Grid.Column="0">
+                        <toolkit:Effects.Shadow>
+                            <media:AttachedCardShadow BlurRadius="32" Offset="-4,-2"
+                                                      Opacity="0.3" Color="Black" CornerRadius="8"/>
+                        </toolkit:Effects.Shadow>
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8">
+                            <ContentPresenter
+                                x:Name="TabContentPresenter"
+                                Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch">
+                                <ContentPresenter.ContentTransitions>
+                                    <TransitionCollection>
+                                        <EntranceThemeTransition/>
+                                    </TransitionCollection>
+                                </ContentPresenter.ContentTransitions>
+                            </ContentPresenter>
+                        </Border>
+                    </Border>
 
-                    <rightpanel:RightPanelView
-                        x:Name="RightPanelControl"
-                        Grid.Column="1"
-                        PanelWidth="{x:Bind ViewModel.RightPanelWidth, Mode=TwoWay}"
-                        IsOpen="{x:Bind ViewModel.IsRightPanelOpen, Mode=TwoWay}"
-                        SelectedMode="{x:Bind ViewModel.RightPanelMode, Mode=TwoWay}"/>
+                    <!-- Right panel card -->
+                    <Border Grid.Column="1"
+                            Visibility="{x:Bind ViewModel.IsRightPanelOpen, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <toolkit:Effects.Shadow>
+                            <media:AttachedCardShadow BlurRadius="32" Offset="4,-2"
+                                                      Opacity="0.3" Color="Black" CornerRadius="8"/>
+                        </toolkit:Effects.Shadow>
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8">
+                            <rightpanel:RightPanelView
+                                x:Name="RightPanelControl"
+                                PanelWidth="{x:Bind ViewModel.RightPanelWidth, Mode=TwoWay}"
+                                IsOpen="{x:Bind ViewModel.IsRightPanelOpen, Mode=TwoWay}"
+                                SelectedMode="{x:Bind ViewModel.RightPanelMode, Mode=TwoWay}"/>
+                        </Border>
+                    </Border>
                 </Grid>
             </sidebar:SidebarView.InnerContent>
 

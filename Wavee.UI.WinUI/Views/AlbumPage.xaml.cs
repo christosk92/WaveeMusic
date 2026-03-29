@@ -71,7 +71,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         if (e.PropertyName == nameof(AlbumViewModel.AlbumImageUrl) && !string.IsNullOrEmpty(ViewModel.AlbumImageUrl))
         {
-            var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl);
+            var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
             if (!string.IsNullOrEmpty(url))
                 SetupBlurredBackground(url);
         }

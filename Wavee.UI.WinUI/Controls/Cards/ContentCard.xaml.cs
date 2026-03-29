@@ -161,6 +161,12 @@ public sealed partial class ContentCard : UserControl
 
     private bool _passiveHandlersAdded;
 
+    // Store handler references so RemoveHandler can match the exact instances
+    private PointerEventHandler? _passivePointerEntered;
+    private PointerEventHandler? _passivePointerExited;
+    private PointerEventHandler? _passivePointerPressed;
+    private PointerEventHandler? _passivePointerReleased;
+
     public ContentCard()
     {
         InitializeComponent();
@@ -181,15 +187,17 @@ public sealed partial class ContentCard : UserControl
                 CardButton.IsHitTestVisible = false;
 
             // Register with handledEventsToo=true so we get pointer events
-            // even when a parent ItemContainer marks them as handled
-            AddHandler(PointerEnteredEvent,
-                new PointerEventHandler(Card_PointerEntered), true);
-            AddHandler(PointerExitedEvent,
-                new PointerEventHandler(Card_PointerExited), true);
-            AddHandler(PointerPressedEvent,
-                new PointerEventHandler(Card_PointerPressed), true);
-            AddHandler(PointerReleasedEvent,
-                new PointerEventHandler(Card_PointerReleased), true);
+            // even when a parent ItemContainer marks them as handled.
+            // Store references so RemoveHandler can match the exact instances.
+            _passivePointerEntered = new PointerEventHandler(Card_PointerEntered);
+            _passivePointerExited = new PointerEventHandler(Card_PointerExited);
+            _passivePointerPressed = new PointerEventHandler(Card_PointerPressed);
+            _passivePointerReleased = new PointerEventHandler(Card_PointerReleased);
+
+            AddHandler(PointerEnteredEvent, _passivePointerEntered, true);
+            AddHandler(PointerExitedEvent, _passivePointerExited, true);
+            AddHandler(PointerPressedEvent, _passivePointerPressed, true);
+            AddHandler(PointerReleasedEvent, _passivePointerReleased, true);
         }
     }
 
@@ -199,13 +207,22 @@ public sealed partial class ContentCard : UserControl
         if (CircleImageContainer != null)
             CircleImageContainer.SizeChanged -= OnCircleContainerSizeChanged;
 
-        // Remove passive pointer handlers to prevent accumulation on recycling
+        // Remove passive pointer handlers using the SAME instances that were added
         if (_passiveHandlersAdded)
         {
-            RemoveHandler(PointerEnteredEvent, new PointerEventHandler(Card_PointerEntered));
-            RemoveHandler(PointerExitedEvent, new PointerEventHandler(Card_PointerExited));
-            RemoveHandler(PointerPressedEvent, new PointerEventHandler(Card_PointerPressed));
-            RemoveHandler(PointerReleasedEvent, new PointerEventHandler(Card_PointerReleased));
+            if (_passivePointerEntered != null)
+                RemoveHandler(PointerEnteredEvent, _passivePointerEntered);
+            if (_passivePointerExited != null)
+                RemoveHandler(PointerExitedEvent, _passivePointerExited);
+            if (_passivePointerPressed != null)
+                RemoveHandler(PointerPressedEvent, _passivePointerPressed);
+            if (_passivePointerReleased != null)
+                RemoveHandler(PointerReleasedEvent, _passivePointerReleased);
+
+            _passivePointerEntered = null;
+            _passivePointerExited = null;
+            _passivePointerPressed = null;
+            _passivePointerReleased = null;
             _passiveHandlersAdded = false;
         }
     }

@@ -330,6 +330,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     // ── Inline album expand (DOM-style visual tree manipulation) ──
 
     private AlbumDetailPanel? _activeDetailPanel;
+    private EventHandler? _closeRequestedHandler;
     private ItemsRepeater? _splitRepeaterAfter;
     private StackPanel? _splitParent;
     private int _splitInsertIndex;
@@ -408,7 +409,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         _activeDetailPanel = new AlbumDetailPanel();
         _activeDetailPanel.Album = item.Data;
         _activeDetailPanel.Tracks = ViewModel.ExpandedAlbumTracks;
-        _activeDetailPanel.CloseRequested += (_, _) => CollapseExpandedAlbum();
+        _closeRequestedHandler = (_, _) => CollapseExpandedAlbum();
+        _activeDetailPanel.CloseRequested += _closeRequestedHandler;
 
         // Fetch extracted color for album art gradient (uses cache if available)
         _ = FetchAlbumColorAsync(item.Data, _activeDetailPanel);
@@ -436,6 +438,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private void CollapseExpandedAlbum()
     {
         if (_splitParent == null || _originalRepeater == null) return;
+
+        // Unsubscribe event handler to prevent memory leak
+        if (_activeDetailPanel != null && _closeRequestedHandler != null)
+            _activeDetailPanel.CloseRequested -= _closeRequestedHandler;
+        _closeRequestedHandler = null;
 
         // Detach tracks BEFORE removing from visual tree to prevent COMException
         // (ItemsRepeater can't process CollectionChanged while disconnected)

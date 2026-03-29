@@ -18,6 +18,7 @@
     xmlns:albumDetail="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel" 
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
+    NavigationCacheMode="Disabled"
     Background="Transparent">
     <Page.Transitions>
         <TransitionCollection>
@@ -389,6 +390,13 @@
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
+                    <controls1:ErrorStateView
+                        Visibility="{x:Bind ViewModel.HasAlbumsError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Title="Couldn't load all albums"
+                        Message="Some albums may be missing"
+                        RetryCommand="{x:Bind ViewModel.RetryDiscographyCommand}"
+                        HorizontalAlignment="Left"
+                        Padding="0,4,0,0"/>
                 </StackPanel>
 
                 <!-- ─── Singles ─── -->
@@ -473,6 +481,13 @@
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
+                    <controls1:ErrorStateView
+                        Visibility="{x:Bind ViewModel.HasSinglesError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Title="Couldn't load all singles"
+                        Message="Some singles may be missing"
+                        RetryCommand="{x:Bind ViewModel.RetryDiscographyCommand}"
+                        HorizontalAlignment="Left"
+                        Padding="0,4,0,0"/>
                 </StackPanel>
 
                 <!-- ─── Compilations ─── -->
@@ -526,6 +541,13 @@
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
+                    <controls1:ErrorStateView
+                        Visibility="{x:Bind ViewModel.HasCompilationsError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Title="Couldn't load all compilations"
+                        Message="Some compilations may be missing"
+                        RetryCommand="{x:Bind ViewModel.RetryDiscographyCommand}"
+                        HorizontalAlignment="Left"
+                        Padding="0,4,0,0"/>
                 </StackPanel>
 
                 <!-- ─── Concerts ─── -->

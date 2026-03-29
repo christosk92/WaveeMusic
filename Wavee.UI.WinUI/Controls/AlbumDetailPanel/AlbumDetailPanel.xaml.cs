@@ -114,6 +114,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     {
         Unloaded -= OnUnloaded;
         OuterGrid.SizeChanged -= OuterGrid_SizeChanged;
+        TrackListControl.TrackClicked -= OnTrackClicked;
 
         // Dispose composition resources to prevent leaks
         // (this control is created/destroyed dynamically on each expand/collapse)
