@@ -86,6 +86,11 @@ public sealed class LazyProgressiveDownloader : Stream
         _logger?.LogDebug(
             "LazyProgressiveDownloader created with {HeadSize} bytes head data",
             headData.Length);
+
+        // Eagerly start CDN initialization in the background so it's ready by the
+        // time head data is exhausted. This avoids the sync-over-async block in
+        // EnsureCdnInitialized() that would otherwise stall the playback thread.
+        _ = Task.Run(() => EnsureCdnInitializedAsync(CancellationToken.None));
     }
 
     #region Stream Properties

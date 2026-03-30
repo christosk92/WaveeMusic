@@ -23,11 +23,12 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Data;
 using Wavee.UI.WinUI.ViewModels;
-
+using System.Collections.Generic;
 namespace Wavee.UI.WinUI.Helpers.Application;
 
 public static class AppLifecycleHelper
 {
+    private static readonly List<IDisposable> _appSubscriptions = [];
     // Captured on UI thread during ConfigureHost, used by background init
     private static Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
 
@@ -267,7 +268,7 @@ public static class AppLifecycleHelper
             if (notificationService != null)
             {
                 var dispatcher = _uiDispatcher;
-                audioPipeline.Errors.Subscribe(error =>
+                var errorSub = audioPipeline.Errors.Subscribe(error =>
                 {
                     var message = error.ErrorType switch
                     {
@@ -287,6 +288,7 @@ public static class AppLifecycleHelper
                             AutoDismissAfter = TimeSpan.FromSeconds(5)
                         }));
                 });
+                _appSubscriptions.Add(errorSub);
             }
 
             // Subscribe AudioPipeline to session connection state for buffering indicator
@@ -302,7 +304,7 @@ public static class AppLifecycleHelper
             {
                 var dispatcher2 = _uiDispatcher;
                 var sessionRef = session;
-                session.ConnectionState.Subscribe(state =>
+                var connSub = session.ConnectionState.Subscribe(state =>
                 {
                     dispatcher2?.TryEnqueue(() =>
                     {
@@ -342,6 +344,7 @@ public static class AppLifecycleHelper
                         }
                     });
                 });
+                _appSubscriptions.Add(connSub);
             }
 
             logger?.LogInformation("AudioPipeline initialized — local playback enabled");

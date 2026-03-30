@@ -1078,11 +1078,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                         break; // Exit decode loop to restart from new position
                     }
 
-                    // Process audio through chain
+                    // Process audio through chain (zero-copy: single pooled buffer, in-place transforms)
                     var processed = _processingChain.Process(buffer);
 
-                    // Write to sink
+                    // Write to sink (copies into circular buffer)
                     await _audioSink.WriteAsync(processed.Data, cancellationToken);
+
+                    // Return the pooled pipeline buffer to ArrayPool
+                    processed.Return();
 
                     // Update position from the sink (tracks what's actually been played
                     // through the speakers, not the decode-ahead position)
@@ -1217,63 +1220,99 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
     private void PublishStateUpdate()
     {
+        // Snapshot volatile data under lock (fast — no LINQ projections)
+        QueueTrack? currentTrack;
+        IReadOnlyList<QueueTrack> prevRaw, nextRaw;
+        string? trackUri, trackUid, contextUri, albumUri, artistUri;
+        string? trackTitle, trackArtist, trackAlbum;
+        string? imgSmall, imgUrl, imgLarge, imgXLarge;
+        long positionMs, durationMs;
+        bool isPlaying, isPaused, isBuffering, shuffling, repeatingCtx, repeatingTrack, canSeek;
+        int currentIndex;
+        string? queueRevision;
+
         lock (_stateLock)
         {
-            // Get current track from queue for URIs
-            var currentTrack = _queue.Current;
-
-            // Build prev/next track references
-            var prevTracks = _queue.GetPrevTracks()
-                .Select(t => new TrackReference(t.Uri, t.Uid ?? string.Empty, t.AlbumUri, t.ArtistUri, t.IsUserQueued))
-                .ToList();
-            var nextTracks = _queue.GetNextTracks()
-                .Select(t => new TrackReference(t.Uri, t.Uid ?? string.Empty, t.AlbumUri, t.ArtistUri, t.IsUserQueued))
-                .ToList();
-
-            // ContextUrl format: "context://<uri>" (from librespot)
-            var contextUrl = !string.IsNullOrEmpty(_currentContextUri)
-                ? $"context://{_currentContextUri}"
-                : null;
-
-            _currentState = new LocalPlaybackState
-            {
-                TrackUri = _currentTrackUri,
-                TrackUid = _currentTrackUid,
-                // Use stored URIs from loaded track metadata (fallback to queue)
-                AlbumUri = _currentAlbumUri ?? currentTrack?.AlbumUri,
-                ArtistUri = _currentArtistUri ?? currentTrack?.ArtistUri,
-                // Use stored metadata from loaded track (not queue which may not have it)
-                TrackTitle = _currentTrackTitle,
-                TrackArtist = _currentTrackArtist,
-                TrackAlbum = _currentTrackAlbum,
-                // Image URLs from loaded track metadata
-                ImageSmallUrl = _currentImageSmallUrl,
-                ImageUrl = _currentImageUrl,
-                ImageLargeUrl = _currentImageLargeUrl,
-                ImageXLargeUrl = _currentImageXLargeUrl,
-                ContextUri = _currentContextUri,
-                ContextUrl = contextUrl,
-                PositionMs = _currentPositionMs,
-                DurationMs = _currentDurationMs,
-                IsPlaying = _isPlaying,
-                IsPaused = _isPaused,
-                IsBuffering = _isReconnecting,
-                PlaybackSpeed = 1.0,
-                Shuffling = _shuffling,
-                RepeatingContext = _repeatingContext,
-                RepeatingTrack = _repeatingTrack,
-                CanSeek = _currentCanSeek,
-                CurrentIndex = _queue.CurrentIndex,
-                PrevTracks = prevTracks,
-                NextTracks = nextTracks,
-                QueueRevision = _queue.GetQueueRevision(),
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            };
-
-            // Non-blocking: queue state for publishing on a separate thread
-            // so we never block the playback thread waiting for Rx subscribers
-            _stateChannel.Writer.TryWrite(_currentState);
+            currentTrack = _queue.Current;
+            prevRaw = _queue.GetPrevTracks();
+            nextRaw = _queue.GetNextTracks();
+            trackUri = _currentTrackUri;
+            trackUid = _currentTrackUid;
+            contextUri = _currentContextUri;
+            albumUri = _currentAlbumUri ?? currentTrack?.AlbumUri;
+            artistUri = _currentArtistUri ?? currentTrack?.ArtistUri;
+            trackTitle = _currentTrackTitle;
+            trackArtist = _currentTrackArtist;
+            trackAlbum = _currentTrackAlbum;
+            imgSmall = _currentImageSmallUrl;
+            imgUrl = _currentImageUrl;
+            imgLarge = _currentImageLargeUrl;
+            imgXLarge = _currentImageXLargeUrl;
+            positionMs = _currentPositionMs;
+            durationMs = _currentDurationMs;
+            isPlaying = _isPlaying;
+            isPaused = _isPaused;
+            isBuffering = _isReconnecting;
+            shuffling = _shuffling;
+            repeatingCtx = _repeatingContext;
+            repeatingTrack = _repeatingTrack;
+            canSeek = _currentCanSeek;
+            currentIndex = _queue.CurrentIndex;
+            queueRevision = _queue.GetQueueRevision();
         }
+
+        // Build TrackReference lists outside the lock (LINQ allocation, no contention)
+        var prevTracks = prevRaw
+            .Select(t => new TrackReference(t.Uri, t.Uid ?? string.Empty, t.AlbumUri, t.ArtistUri, t.IsUserQueued))
+            .ToList();
+        var nextTracks = nextRaw
+            .Select(t => new TrackReference(t.Uri, t.Uid ?? string.Empty, t.AlbumUri, t.ArtistUri, t.IsUserQueued))
+            .ToList();
+
+        var contextUrl = !string.IsNullOrEmpty(contextUri)
+            ? $"context://{contextUri}"
+            : null;
+
+        var state = new LocalPlaybackState
+        {
+            TrackUri = trackUri,
+            TrackUid = trackUid,
+            AlbumUri = albumUri,
+            ArtistUri = artistUri,
+            TrackTitle = trackTitle,
+            TrackArtist = trackArtist,
+            TrackAlbum = trackAlbum,
+            ImageSmallUrl = imgSmall,
+            ImageUrl = imgUrl,
+            ImageLargeUrl = imgLarge,
+            ImageXLargeUrl = imgXLarge,
+            ContextUri = contextUri,
+            ContextUrl = contextUrl,
+            PositionMs = positionMs,
+            DurationMs = durationMs,
+            IsPlaying = isPlaying,
+            IsPaused = isPaused,
+            IsBuffering = isBuffering,
+            PlaybackSpeed = 1.0,
+            Shuffling = shuffling,
+            RepeatingContext = repeatingCtx,
+            RepeatingTrack = repeatingTrack,
+            CanSeek = canSeek,
+            CurrentIndex = currentIndex,
+            PrevTracks = prevTracks,
+            NextTracks = nextTracks,
+            QueueRevision = queueRevision,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        };
+
+        lock (_stateLock)
+        {
+            _currentState = state;
+        }
+
+        // Non-blocking: queue state for publishing on a separate thread
+        // so we never block the playback thread waiting for Rx subscribers
+        _stateChannel.Writer.TryWrite(state);
     }
 
     /// <summary>

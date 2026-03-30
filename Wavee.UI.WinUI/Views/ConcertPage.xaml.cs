@@ -39,6 +39,7 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         InitializeComponent();
         ContentContainer.Opacity = 0;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        Unloaded += ConcertPage_Unloaded;
         SetupGradientOverlay();
         ActualThemeChanged += (_, _) => SetupGradientOverlay();
 
@@ -47,6 +48,14 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         {
             if (_heroSurfaces.Count > 0) SetupHeroImages();
         };
+    }
+
+    private void ConcertPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        foreach (var surface in _heroSurfaces)
+            surface.Dispose();
+        _heroSurfaces.Clear();
     }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

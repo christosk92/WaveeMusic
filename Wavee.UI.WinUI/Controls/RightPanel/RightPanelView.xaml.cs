@@ -59,6 +59,7 @@ public sealed partial class RightPanelView : UserControl
         _lyricsVm.ActiveLineChanged -= OnActiveLineChanged;
         _lyricsVm.LyricsLoaded -= OnLyricsLoaded;
         _lyricsVm.IsVisible = false;
+        (_lyricsVm as IDisposable)?.Dispose();
 
         if (LyricsScrollViewer != null)
             LyricsScrollViewer.SizeChanged -= OnScrollViewerSizeChanged;

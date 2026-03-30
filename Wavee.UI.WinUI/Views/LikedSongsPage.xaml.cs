@@ -22,6 +22,7 @@ public sealed partial class LikedSongsPage : Page
         ViewModel = Ioc.Default.GetRequiredService<LikedSongsViewModel>();
         _logger = Ioc.Default.GetService<ILogger<LikedSongsPage>>();
         InitializeComponent();
+        Unloaded += (_, _) => (ViewModel as IDisposable)?.Dispose();
 
         // Set up the date formatter for the track list
         TrackList.DateAddedFormatter = item =>

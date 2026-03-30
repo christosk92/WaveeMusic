@@ -549,7 +549,9 @@ public sealed class PlaybackQueue : IDisposable
             return;
         }
 
-        _shuffledIndices = Enumerable.Range(0, _contextTracks.Count).ToList();
+        _shuffledIndices = new List<int>(_contextTracks.Count);
+        for (int i = 0; i < _contextTracks.Count; i++)
+            _shuffledIndices.Add(i);
 
         var random = new Random();
 

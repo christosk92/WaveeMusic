@@ -1,3 +1,4 @@
+using System.Buffers;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Processors;
@@ -127,6 +128,16 @@ public sealed class CrossfadeProcessor : IAudioProcessor
 
         // Mix current and next track with crossfade
         return MixBuffers(input, _nextTrackBuffer, progress);
+    }
+
+    public void ProcessInPlace(Span<byte> data)
+    {
+        if (_format == null || data.Length == 0 || _state == CrossfadeState.Normal || !_crossfadeEnabled)
+            return;
+
+        // During crossfade, we need position info which isn't available here.
+        // The chain falls back to Process(AudioBuffer) for CrossfadeProcessor
+        // when it's actively crossfading. In Normal state (99% of the time) this is a no-op.
     }
 
     public void Reset()

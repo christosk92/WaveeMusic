@@ -31,6 +31,14 @@ public interface IAudioProcessor
     AudioBuffer Process(AudioBuffer input);
 
     /// <summary>
+    /// Transforms audio data in-place on the pipeline buffer.
+    /// Called by AudioProcessingChain for zero-copy processing.
+    /// All processors must support in-place operation (same span for read and write).
+    /// </summary>
+    /// <param name="data">Audio data to transform in-place.</param>
+    void ProcessInPlace(Span<byte> data);
+
+    /// <summary>
     /// Resets the processor state (e.g., when seeking or changing tracks).
     /// </summary>
     void Reset();

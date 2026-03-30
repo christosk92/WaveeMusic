@@ -1,3 +1,4 @@
+using System.Buffers;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Processors;
@@ -77,6 +78,19 @@ public sealed class CompressorProcessor : IAudioProcessor
         }
 
         return new AudioBuffer(output, input.PositionMs);
+    }
+
+    public void ProcessInPlace(Span<byte> data)
+    {
+        if (_format == null || data.Length == 0)
+            return;
+
+        if (_format.BitsPerSample == 16)
+            ProcessInt16(data, data, _format.Channels);
+        else if (_format.BitsPerSample == 24)
+            ProcessInt24(data, data, _format.Channels);
+        else if (_format.BitsPerSample == 32)
+            ProcessInt32(data, data, _format.Channels);
     }
 
     public void Reset()

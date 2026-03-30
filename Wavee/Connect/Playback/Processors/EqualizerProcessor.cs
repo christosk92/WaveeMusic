@@ -1,3 +1,4 @@
+using System.Buffers;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Processors;
@@ -130,6 +131,20 @@ public sealed class EqualizerProcessor : IAudioProcessor
         }
 
         return new AudioBuffer(output, input.PositionMs);
+    }
+
+    public void ProcessInPlace(Span<byte> data)
+    {
+        if (_format == null || _filters == null || _filters.Length == 0 || data.Length == 0)
+            return;
+
+        // EQ already processes in-place — its internal methods take a single Span<byte>
+        if (_format.BitsPerSample == 16)
+            ProcessInt16(data, _format.Channels);
+        else if (_format.BitsPerSample == 24)
+            ProcessInt24(data, _format.Channels);
+        else if (_format.BitsPerSample == 32)
+            ProcessInt32(data, _format.Channels);
     }
 
     public void Reset()

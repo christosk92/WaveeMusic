@@ -67,6 +67,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         PageScrollView.ViewChanged -= OnPageScrollViewChanged;
+        (ViewModel as IDisposable)?.Dispose();
 
         // Dispose composition resources
         _blurSurface?.Dispose();

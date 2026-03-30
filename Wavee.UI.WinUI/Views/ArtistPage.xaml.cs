@@ -183,6 +183,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         SizeChanged -= OnSizeChanged;
         TeardownWatchFeed();
+        (ViewModel as IDisposable)?.Dispose();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)

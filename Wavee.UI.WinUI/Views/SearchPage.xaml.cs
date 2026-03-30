@@ -1,3 +1,4 @@
+using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,6 +15,7 @@ public sealed partial class SearchPage : Page
     {
         ViewModel = Ioc.Default.GetRequiredService<SearchViewModel>();
         InitializeComponent();
+        Unloaded += (_, _) => (ViewModel as IDisposable)?.Dispose();
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)

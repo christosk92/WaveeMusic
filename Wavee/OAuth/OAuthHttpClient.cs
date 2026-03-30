@@ -10,6 +10,9 @@ namespace Wavee.OAuth;
 /// </summary>
 internal sealed class OAuthHttpClient : IDisposable
 {
+    private static readonly TimeSpan[] RetryDelays =
+        [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4)];
+
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
 
@@ -59,7 +62,6 @@ internal sealed class OAuthHttpClient : IDisposable
 
         // Retry logic with exponential backoff
         const int maxRetries = 3;
-        var delays = new[] { TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4) };
 
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
@@ -85,7 +87,7 @@ internal sealed class OAuthHttpClient : IDisposable
                 // Retry on transient errors
                 if (IsTransientError(response.StatusCode, error) && attempt < maxRetries)
                 {
-                    var delay = delays[attempt];
+                    var delay = RetryDelays[attempt];
                     _logger?.LogInformation("Transient error, retrying in {Delay}...", delay);
                     await Task.Delay(delay, cancellationToken);
                     continue;
@@ -101,7 +103,7 @@ internal sealed class OAuthHttpClient : IDisposable
                 // Retry on network errors
                 if (attempt < maxRetries)
                 {
-                    await Task.Delay(delays[attempt], cancellationToken);
+                    await Task.Delay(RetryDelays[attempt], cancellationToken);
                     continue;
                 }
 

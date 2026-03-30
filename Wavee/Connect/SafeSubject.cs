@@ -13,6 +13,7 @@ internal sealed class SafeSubject<T> : ISubject<T>, IDisposable
     private readonly object _lock = new();
     private readonly List<IObserver<T>> _observers = new();
     private readonly ILogger? _logger;
+    private IObserver<T>[] _observerSnapshot = []; // Cached snapshot — rebuilt on subscribe/unsubscribe
     private bool _isDisposed;
     private bool _isCompleted;
     private Exception? _error;
@@ -59,8 +60,8 @@ internal sealed class SafeSubject<T> : ISubject<T>, IDisposable
             if (_isDisposed || _isCompleted || _error != null)
                 return;
 
-            // Copy to array to avoid holding lock during notifications
-            observers = _observers.ToArray();
+            // Use cached snapshot — rebuilt only on subscribe/unsubscribe (zero-alloc hot path)
+            observers = _observerSnapshot;
         }
 
         // Notify each observer, isolating exceptions
@@ -155,6 +156,7 @@ internal sealed class SafeSubject<T> : ISubject<T>, IDisposable
             }
 
             _observers.Add(observer);
+            _observerSnapshot = [.. _observers];
 
             return new Subscription(this, observer);
         }
@@ -193,6 +195,7 @@ internal sealed class SafeSubject<T> : ISubject<T>, IDisposable
                 lock (subject._lock)
                 {
                     subject._observers.Remove(observer);
+                    subject._observerSnapshot = [.. subject._observers];
                 }
             }
         }

@@ -1059,14 +1059,30 @@ public sealed partial class TrackListView : UserControl
         });
     }
 
+    private string? _lastPlayingTrackId;
+
     private void UpdateAllVisibleRowPlaybackState()
     {
+        var newTrackId = TrackStateBehavior.CurrentTrackId;
+        var oldTrackId = _lastPlayingTrackId;
+        _lastPlayingTrackId = newTrackId;
+
         _logger?.LogDebug("UpdateAllVisibleRowPlaybackState: currentTrackId={CurrentTrackId}, isPlaying={IsPlaying}, itemCount={Count}",
-            TrackStateBehavior.CurrentTrackId, TrackStateBehavior.IsCurrentlyPlaying, InternalListView.Items.Count);
+            newTrackId, TrackStateBehavior.IsCurrentlyPlaying, InternalListView.Items.Count);
+
+        // Optimization: only update the rows that actually changed (old playing + new playing + buffering)
+        // instead of iterating every item in the list.
+        var bufferingId = TrackStateBehavior.BufferingTrackId;
         for (int i = 0; i < InternalListView.Items.Count; i++)
         {
             if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
-            if (container.ContentTemplateRoot is Border border && GetContentGrid(border) is Grid grid && container.Content is ITrackItem trackItem)
+            if (container.Content is not ITrackItem trackItem) continue;
+
+            var id = trackItem.Id;
+            if (id != oldTrackId && id != newTrackId && id != bufferingId)
+                continue; // This row isn't affected
+
+            if (container.ContentTemplateRoot is Border border && GetContentGrid(border) is Grid grid)
             {
                 ApplyPlaybackStateToRow(grid, trackItem);
             }

@@ -1,3 +1,4 @@
+using System.Buffers;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Processors;
@@ -110,6 +111,19 @@ public sealed class NormalizationProcessor : IAudioProcessor
         }
 
         return new AudioBuffer(output, input.PositionMs);
+    }
+
+    public void ProcessInPlace(Span<byte> data)
+    {
+        if (_format == null || Math.Abs(_currentGainLinear - 1.0f) < 0.0001f || data.Length == 0)
+            return;
+
+        if (_format.BitsPerSample == 16)
+            ProcessInt16(data, data, _currentGainLinear, _preventClipping);
+        else if (_format.BitsPerSample == 24)
+            ProcessInt24(data, data, _currentGainLinear, _preventClipping);
+        else if (_format.BitsPerSample == 32)
+            ProcessInt32(data, data, _currentGainLinear, _preventClipping);
     }
 
     public void Reset()

@@ -68,7 +68,9 @@ internal sealed class SessionData : IDisposable
         _lock.EnterWriteLock();
         try
         {
-            _transport?.DisposeAsync().AsTask().Wait();
+            // Fire-and-forget: old transport is being replaced, no need to block
+            var old = _transport;
+            if (old != null) _ = old.DisposeAsync().AsTask();
             _transport = transport;
             _apUrl = apUrl;
             _connectedAt = DateTime.UtcNow;

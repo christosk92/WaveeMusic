@@ -34,6 +34,8 @@ namespace Wavee.Core.Session;
 /// </remarks>
 public sealed class Session : ISession, IAsyncDisposable
 {
+    private static readonly byte[] PongPayload = [0x00, 0x00, 0x00, 0x00];
+
     private readonly SessionConfig _config;
     private readonly SessionData _data;
     private readonly ILogger? _logger;
@@ -772,7 +774,7 @@ public sealed class Session : ISession, IAsyncDisposable
                 switch (action)
                 {
                     case KeepAliveAction.SendPong:
-                        _sendQueue.Writer.TryWrite(((byte)PacketType.Pong, new byte[] { 0x00, 0x00, 0x00, 0x00 }));
+                        _sendQueue.Writer.TryWrite(((byte)PacketType.Pong, PongPayload));
                         _logger?.LogDebug("Keep-alive: sending Pong (delayed response)");
                         break;
 

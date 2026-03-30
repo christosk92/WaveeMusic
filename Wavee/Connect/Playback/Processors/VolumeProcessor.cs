@@ -1,3 +1,4 @@
+using System.Buffers;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Processors;
@@ -68,6 +69,19 @@ public sealed class VolumeProcessor : IAudioProcessor
         }
 
         return new AudioBuffer(output, input.PositionMs);
+    }
+
+    public void ProcessInPlace(Span<byte> data)
+    {
+        if (_format == null || Math.Abs(_volumeLinear - 1.0f) < 0.0001f)
+            return;
+
+        if (_format.BitsPerSample == 16)
+            ProcessInt16(data, data, _volumeLinear);
+        else if (_format.BitsPerSample == 24)
+            ProcessInt24(data, data, _volumeLinear);
+        else if (_format.BitsPerSample == 32)
+            ProcessInt32(data, data, _volumeLinear);
     }
 
     public void Reset()
