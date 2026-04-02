@@ -81,4 +81,10 @@ public interface ITrackItem : INotifyPropertyChanged
     /// Whether this entry is a music video (has audio associations).
     /// </summary>
     bool HasVideo => false;
+
+    /// <summary>
+    /// Whether this track is saved/liked in the user's library.
+    /// Mutable — updated by the library save service.
+    /// </summary>
+    bool IsLiked { get; set; }
 }

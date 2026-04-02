@@ -14,6 +14,7 @@ public sealed class TrackContextMenuOptions
     public ICommand? AddToQueueCommand { get; init; }
     public ICommand? RemoveCommand { get; init; }
     public string? RemoveLabel { get; init; }
+    public ICommand? ToggleLikeCommand { get; init; }
 }
 
 /// <summary>
@@ -61,6 +62,19 @@ public static class TrackContextMenu
             addToQueueItem.CommandParameter = track;
         }
         menu.Items.Add(addToQueueItem);
+
+        // Save to Liked Songs / Remove from Liked Songs
+        var likeItem = new MenuFlyoutItem
+        {
+            Text = track.IsLiked ? "Remove from Liked Songs" : "Save to Liked Songs",
+            Icon = new FontIcon { Glyph = track.IsLiked ? "\uEB52" : "\uEB51" }
+        };
+        if (options.ToggleLikeCommand != null)
+        {
+            likeItem.Command = options.ToggleLikeCommand;
+            likeItem.CommandParameter = track;
+        }
+        menu.Items.Add(likeItem);
 
         menu.Items.Add(new MenuFlyoutSeparator());
 

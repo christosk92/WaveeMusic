@@ -24,6 +24,7 @@ public sealed record AlbumTrackDto : ITrackItem
     public bool IsPlayable { get; init; } = true;
     public int OriginalIndex { get; init; }
     public bool IsLoaded => true;
+    public bool IsLiked { get; set; }
     public long PlayCount { get; init; }
 
     /// <summary>

@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Wavee.UI.WinUI.Controls.NavigationToolbar"
     xmlns:omnibar="using:Wavee.UI.WinUI.Controls.Omnibar"
+    xmlns:activityBell="using:Wavee.UI.WinUI.Controls.ActivityBell"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -116,7 +117,8 @@
             PlaceholderText="Search songs, artists, albums..."
             QuerySubmitted="SearchOmnibar_QuerySubmitted"
             TextChanged="SearchOmnibar_TextChanged"
-            SuggestionChosen="SearchOmnibar_SuggestionChosen" />
+            SuggestionChosen="SearchOmnibar_SuggestionChosen"
+            ActionButtonClicked="SearchOmnibar_ActionButtonClicked" />
 
         <!-- Right-side actions -->
         <StackPanel
@@ -137,8 +139,27 @@
                     Style="{StaticResource NavigationButtonStyle}"
                     Width="Auto"
                     Padding="4,0,8,0"
-                    ToolTipService.ToolTip="Profile"
-                    Click="ProfileButton_Click">
+                    ToolTipService.ToolTip="Profile">
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuFlyoutItem Text="View Profile" Click="ViewProfileMenuItem_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE77B;" FontSize="14"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Settings" Click="SettingsMenuItem_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE713;" FontSize="14"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutItem Text="Sign out" Click="SignOutMenuItem_Click">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xF3B1;" FontSize="14"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <!-- Connecting spinner (shown while authenticating) -->
                         <ProgressRing
@@ -170,6 +191,9 @@
                     RadiusY="2"
                     Visibility="{x:Bind IsOnProfilePage, Mode=OneWay}" />
             </Grid>
+
+            <!-- Activity Bell -->
+            <activityBell:ActivityBell VerticalAlignment="Center"/>
 
             <!-- Separator -->
             <Border Width="1" Height="20" VerticalAlignment="Center" Margin="4,0"

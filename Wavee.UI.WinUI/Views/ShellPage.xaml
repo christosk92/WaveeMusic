@@ -15,6 +15,7 @@
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:toolkit="using:CommunityToolkit.WinUI"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -23,11 +24,17 @@
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
     </Page.Resources>
 
+    <!-- F12 debug shortcut removed — use Settings > Diagnostics instead -->
+
     <Page.KeyboardAccelerators>
-        <KeyboardAccelerator Key="F12" Invoked="DebugAccelerator_Invoked"/>
+        <!-- Zoom: Ctrl+Plus / Ctrl+Minus / Ctrl+0 (numpad) -->
+        <KeyboardAccelerator Key="Add" Modifiers="Control" Invoked="ZoomIn_Invoked"/>
+        <KeyboardAccelerator Key="Subtract" Modifiers="Control" Invoked="ZoomOut_Invoked"/>
+        <KeyboardAccelerator Key="Number0" Modifiers="Control" Invoked="ZoomReset_Invoked"/>
     </Page.KeyboardAccelerators>
 
-    <Grid>
+    <controls:ZoomContentControl x:Name="ZoomControl">
+    <Grid x:Name="RootLayoutGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -59,6 +66,7 @@
             SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"
             SearchTextChanged="NavToolbar_SearchTextChanged"
             SearchSuggestionChosen="NavToolbar_SearchSuggestionChosen"
+            SearchActionButtonClicked="NavToolbar_SearchActionButtonClicked"
             SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"/>
 
         <!-- Shell-level notification bars -->
@@ -198,4 +206,5 @@
             HorizontalAlignment="Stretch"/>
 
     </Grid>
+    </controls:ZoomContentControl>
 </Page>

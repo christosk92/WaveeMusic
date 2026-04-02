@@ -8,6 +8,7 @@
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -81,6 +82,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Album Art (48x48) — tap to expand in sidebar -->
@@ -158,6 +160,13 @@
                             Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                     </StackPanel>
                 </StackPanel>
+
+                <!-- Heart button (after track info) -->
+                <controls:HeartButton x:Name="PlayerHeartButton"
+                                       Grid.Column="2"
+                                       VerticalAlignment="Center"
+                                       Width="28" Height="28"
+                                       Margin="0,0,4,0"/>
             </Grid>
 
             <!-- Column 1: Transport Controls (prev, play/pause, next) -->
@@ -178,11 +187,18 @@
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="36" Height="36" Padding="0"
                     Command="{x:Bind ViewModel.PlayPauseCommand}"
-                    IsEnabled="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                     ToolTipService.ToolTip="Play/Pause">
-                    <FontIcon
-                        FontSize="18"
-                        Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}" />
+                    <Grid>
+                        <FontIcon
+                            FontSize="18"
+                            Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}"
+                            Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <ProgressRing
+                            Width="20" Height="20"
+                            IsActive="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    </Grid>
                 </Button>
                 <Button
                     Style="{StaticResource TransparentButtonStyle}"

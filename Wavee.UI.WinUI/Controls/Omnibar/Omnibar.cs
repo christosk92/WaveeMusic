@@ -16,6 +16,7 @@ namespace Wavee.UI.WinUI.Controls.Omnibar;
 public sealed partial class Omnibar : Control
 {
     private AutoSuggestBox? _searchBox;
+    private TextBox? _searchTextBox;
     private Popup? _popup;
     private SearchFlyoutPanel? _flyoutPanel;
     private bool _hasFocus;
@@ -35,6 +36,25 @@ public sealed partial class Omnibar : Control
     {
         base.OnApplyTemplate();
 
+        // Unhook from old template parts before switching to new ones
+        if (_searchBox != null)
+        {
+            _searchBox.TextChanged -= SearchBox_TextChanged;
+            _searchBox.QuerySubmitted -= SearchBox_QuerySubmitted;
+            _searchBox.GotFocus -= SearchBox_GotFocus;
+            _searchBox.LostFocus -= SearchBox_LostFocus;
+        }
+        if (_searchTextBox != null)
+        {
+            _searchTextBox.PreviewKeyDown -= TextBox_PreviewKeyDown;
+            _searchTextBox = null;
+        }
+        if (_flyoutPanel != null)
+        {
+            _flyoutPanel.ItemClicked -= FlyoutPanel_ItemClicked;
+            _flyoutPanel.ActionClicked -= FlyoutPanel_ActionClicked;
+        }
+
         _searchBox = GetTemplateChild("PART_SearchBox") as AutoSuggestBox;
 
         if (_searchBox != null)
@@ -49,6 +69,7 @@ public sealed partial class Omnibar : Control
         // Create the custom popup
         _flyoutPanel = new SearchFlyoutPanel();
         _flyoutPanel.ItemClicked += FlyoutPanel_ItemClicked;
+        _flyoutPanel.ActionClicked += FlyoutPanel_ActionClicked;
 
         _popup = new Popup
         {
@@ -63,14 +84,14 @@ public sealed partial class Omnibar : Control
         if (_searchBox == null) return;
         _searchBox.Loaded -= SearchBox_Loaded;
 
-        var textBox = FindChild<TextBox>(_searchBox);
-        if (textBox != null)
+        _searchTextBox = FindChild<TextBox>(_searchBox);
+        if (_searchTextBox != null)
         {
             if (Application.Current.Resources.TryGetValue("OmnibarTextBoxStyle", out var style))
-                textBox.Style = (Style)style;
+                _searchTextBox.Style = (Style)style;
 
             // Intercept arrow keys before AutoSuggestBox handles them
-            textBox.PreviewKeyDown += TextBox_PreviewKeyDown;
+            _searchTextBox.PreviewKeyDown += TextBox_PreviewKeyDown;
         }
     }
 
@@ -172,6 +193,12 @@ public sealed partial class Omnibar : Control
     {
         HidePopup();
         SuggestionChosen?.Invoke(this, new OmnibarSuggestionChosenEventArgs(item));
+    }
+
+    private void FlyoutPanel_ActionClicked(object? sender, SearchSuggestionItem item)
+    {
+        // Don't close popup - user might want to queue multiple tracks
+        ActionButtonClicked?.Invoke(this, item);
     }
 
     // ── Popup management ──
@@ -288,6 +315,7 @@ public sealed partial class Omnibar : Control
     public event TypedEventHandler<Omnibar, OmnibarTextChangedEventArgs>? TextChanged;
     public event TypedEventHandler<Omnibar, OmnibarQuerySubmittedEventArgs>? QuerySubmitted;
     public event TypedEventHandler<Omnibar, OmnibarSuggestionChosenEventArgs>? SuggestionChosen;
+    public event TypedEventHandler<Omnibar, SearchSuggestionItem>? ActionButtonClicked;
 
     #endregion
 }

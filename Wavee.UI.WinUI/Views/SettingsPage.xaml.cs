@@ -1,0 +1,118 @@
+using System;
+using System.Collections.Specialized;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Wavee.Connect.Playback.Processors;
+using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.ViewModels;
+
+namespace Wavee.UI.WinUI.Views;
+
+public sealed partial class SettingsPage : Page, ITabBarItemContent
+{
+    public SettingsViewModel ViewModel { get; }
+
+    public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
+
+    public event EventHandler<TabItemParameter>? ContentChanged;
+
+    private readonly UIElement[] _contents;
+
+    public SettingsPage()
+    {
+        ViewModel = Ioc.Default.GetRequiredService<SettingsViewModel>();
+        InitializeComponent();
+        _contents = [GeneralContent, PlaybackContent, AudioContent, StorageContent, DiagnosticsContent, AboutContent];
+
+        // Initialize the equalizer with the shared processor from DI
+        var eqProcessor = Ioc.Default.GetService<EqualizerProcessor>();
+        if (eqProcessor != null)
+            ViewModel.InitializeEqualizer(eqProcessor);
+
+        // Auto-scroll log list to bottom on new entries
+        ViewModel.FilteredLogEntries.CollectionChanged += OnLogEntriesChanged;
+        LogListView.PointerWheelChanged += (_, _) => _userScrolledLogs = true;
+    }
+
+    private bool _userScrolledLogs;
+
+    private void OnLogEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            _userScrolledLogs = false;
+            ResumeScrollButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (e.Action == NotifyCollectionChangedAction.Add && ViewModel.FilteredLogEntries.Count > 0)
+        {
+            if (_userScrolledLogs)
+            {
+                // User is reading — show the "New logs" pill instead of scrolling
+                ResumeScrollButton.Visibility = Visibility.Visible;
+                return;
+            }
+
+            try
+            {
+                LogListView.ScrollIntoView(ViewModel.FilteredLogEntries[0]);
+            }
+            catch { }
+        }
+    }
+
+    private void ResumeScroll_Click(object sender, RoutedEventArgs e)
+    {
+        _userScrolledLogs = false;
+        ResumeScrollButton.Visibility = Visibility.Collapsed;
+        if (ViewModel.FilteredLogEntries.Count > 0)
+            LogListView.ScrollIntoView(ViewModel.FilteredLogEntries[0]);
+    }
+
+    private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.SelectedItem is not NavigationViewItem item) return;
+        var tag = item.Tag?.ToString() ?? "";
+
+        foreach (var c in _contents)
+            c.Visibility = Visibility.Collapsed;
+
+        var target = tag switch
+        {
+            "general" => GeneralContent,
+            "playback" => PlaybackContent,
+            "audio" => (UIElement)AudioContent,
+            "storage" => StorageContent,
+            "diagnostics" => (UIElement)DiagnosticsContent,
+            "about" => AboutContent,
+            _ => GeneralContent
+        };
+        target.Visibility = Visibility.Visible;
+    }
+
+    private void OpenLogFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.CommandParameter is string path)
+            ViewModel.OpenLogFileCommand.Execute(path);
+    }
+
+    private void MoveProviderUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is LyricsProviderItemViewModel item)
+            ViewModel.MoveProviderUpCommand.Execute(item);
+    }
+
+    private void MoveProviderDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is LyricsProviderItemViewModel item)
+            ViewModel.MoveProviderDownCommand.Execute(item);
+    }
+
+    private async void GitHub_Click(object sender, RoutedEventArgs e)
+    {
+        await Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/christosk92/WaveeMusic"));
+    }
+}

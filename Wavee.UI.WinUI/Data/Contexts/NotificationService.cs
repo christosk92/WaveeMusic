@@ -50,6 +50,15 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
 
     public void Show(NotificationInfo notification)
     {
+        // Ensure UI thread — Show can be called from background threads (Task.Run playback commands)
+        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (dispatcher == null)
+        {
+            // On background thread — dispatch to UI
+            MainWindow.Instance?.DispatcherQueue?.TryEnqueue(() => Show(notification));
+            return;
+        }
+
         // Stop any pending auto-dismiss
         StopAutoDismissTimer();
 

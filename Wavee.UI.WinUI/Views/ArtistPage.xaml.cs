@@ -293,6 +293,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ViewModel.ColumnCount = columns;
     }
 
+    private void TopTracksRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
+    {
+        if (args.Element is Controls.Track.TrackItem trackItem)
+        {
+            trackItem.PlayCommand = ViewModel.PlayTrackCommand;
+            trackItem.RefreshPlaybackState();
+        }
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);

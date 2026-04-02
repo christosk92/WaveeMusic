@@ -1,13 +1,12 @@
 using System;
-using System.Numerics;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using CommunityToolkit.WinUI.Animations;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
@@ -24,10 +23,6 @@ public sealed partial class RightPanelView : UserControl
 
     // Lyrics state
     private readonly LyricsViewModel _lyricsVm;
-    private Compositor? _compositor;
-    private SpriteVisual? _fadeMaskSprite;
-    private CompositionVisualSurface? _scrollSurface;
-    private int _prevActiveIndex = -1;
 
     public RightPanelView()
     {
@@ -45,47 +40,21 @@ public sealed partial class RightPanelView : UserControl
     {
         UpdateContentVisibility();
 
-        _lyricsVm.ActiveLineChanged += OnActiveLineChanged;
-        _lyricsVm.LyricsLoaded += OnLyricsLoaded;
+        // Wire up the Win2D lyrics canvas
+        LyricsCanvas?.SetViewModel(_lyricsVm);
 
-        var visual = ElementCompositionPreview.GetElementVisual(this);
-        _compositor = visual.Compositor;
+        _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
 
-        SetupScrollViewerFadeMask();
+        // Apply initial background color if lyrics are already loaded
+        UpdateGradientBackground(_lyricsVm.BackgroundColor);
     }
 
     private void RightPanelView_Unloaded(object sender, RoutedEventArgs e)
     {
-        _lyricsVm.ActiveLineChanged -= OnActiveLineChanged;
-        _lyricsVm.LyricsLoaded -= OnLyricsLoaded;
+        _lyricsVm.PropertyChanged -= OnLyricsVmPropertyChanged;
         _lyricsVm.IsVisible = false;
-        (_lyricsVm as IDisposable)?.Dispose();
 
-        if (LyricsScrollViewer != null)
-            LyricsScrollViewer.SizeChanged -= OnScrollViewerSizeChanged;
-
-        // Dispose composition resources
-        if (_fadeMaskSprite != null)
-        {
-            ElementCompositionPreview.SetElementChildVisual(LyricsFadeMaskHost, null);
-            _fadeMaskSprite.Brush?.Dispose();
-            _fadeMaskSprite.Dispose();
-            _fadeMaskSprite = null;
-        }
-        if (_scrollSurface != null)
-        {
-            // Restore original ScrollViewer visual
-            if (LyricsScrollViewer != null)
-            {
-                var sv = ElementCompositionPreview.GetElementVisual(LyricsScrollViewer);
-                sv.Opacity = 1f;
-            }
-            _scrollSurface.Dispose();
-            _scrollSurface = null;
-        }
-
-        _prevActiveIndex = -1;
-        _compositor = null;
+        LyricsCanvas?.Dispose();
     }
 
     private void UpdateContentVisibility()
@@ -101,147 +70,79 @@ public sealed partial class RightPanelView : UserControl
         FriendsTab.IsChecked = SelectedMode == RightPanelMode.FriendsActivity;
 
         _lyricsVm.IsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
+
+        // Pause/resume the Win2D canvas based on visibility
+        var isLyricsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
+        LyricsCanvas?.SetPaused(!isLyricsVisible || !_lyricsVm.HasLyrics);
     }
 
-    private void OnLyricsLoaded()
+    // ── Gradient background ──
+
+    private void OnLyricsVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        DispatcherQueue.TryEnqueue(() =>
+        switch (e.PropertyName)
         {
-            LyricsScrollViewer?.ChangeView(null, 0, null, disableAnimation: false);
-            _prevActiveIndex = -1;
-        });
-    }
-
-    // ── Lyrics: alpha fade mask on LyricsContent grid via CompositionVisualSurface ──
-    //
-    // Technique: capture LyricsContent's visual into a CompositionVisualSurface,
-    // render it through a MaskBrush (source × alpha gradient) onto a SpriteVisual
-    // placed on a sibling container. The original LyricsContent is hidden.
-    // This avoids the circular parent-child issue.
-
-    private void SetupScrollViewerFadeMask()
-    {
-        if (_compositor == null || LyricsScrollViewer == null || LyricsFadeMaskHost == null) return;
-
-        // Get the ScrollViewer's visual
-        var scrollVisual = ElementCompositionPreview.GetElementVisual(LyricsScrollViewer);
-
-        // Capture into a CompositionVisualSurface
-        _scrollSurface = _compositor.CreateVisualSurface();
-        _scrollSurface.SourceVisual = scrollVisual;
-        _scrollSurface.SourceSize = new Vector2(
-            Math.Max(1, (float)LyricsScrollViewer.ActualWidth),
-            Math.Max(1, (float)LyricsScrollViewer.ActualHeight));
-
-        var surfaceBrush = _compositor.CreateSurfaceBrush(_scrollSurface);
-        surfaceBrush.Stretch = CompositionStretch.None;
-
-        // Alpha gradient mask (HeroHeader pattern: white alpha channel)
-        var gradientMask = _compositor.CreateLinearGradientBrush();
-        gradientMask.StartPoint = new Vector2(0.5f, 0f);
-        gradientMask.EndPoint = new Vector2(0.5f, 1f);
-
-        var transparent = Windows.UI.Color.FromArgb(0, 255, 255, 255);
-        var opaque = Windows.UI.Color.FromArgb(255, 255, 255, 255);
-
-        gradientMask.ColorStops.Add(_compositor.CreateColorGradientStop(0.00f, transparent));
-        gradientMask.ColorStops.Add(_compositor.CreateColorGradientStop(0.06f, opaque));
-        gradientMask.ColorStops.Add(_compositor.CreateColorGradientStop(0.88f, opaque));
-        gradientMask.ColorStops.Add(_compositor.CreateColorGradientStop(1.00f, transparent));
-
-        // Combine: captured content × alpha mask
-        var maskBrush = _compositor.CreateMaskBrush();
-        maskBrush.Source = surfaceBrush;
-        maskBrush.Mask = gradientMask;
-
-        // Sprite visual renders the masked content
-        _fadeMaskSprite = _compositor.CreateSpriteVisual();
-        _fadeMaskSprite.Brush = maskBrush;
-        _fadeMaskSprite.RelativeSizeAdjustment = Vector2.One;
-
-        // Place the masked sprite on the sibling host (LyricsFadeMaskHost overlays the ScrollViewer)
-        ElementCompositionPreview.SetElementChildVisual(LyricsFadeMaskHost, _fadeMaskSprite);
-
-        // Hide the original ScrollViewer visual — the sprite replaces it
-        scrollVisual.Opacity = 0f;
-
-        LyricsScrollViewer.SizeChanged += OnScrollViewerSizeChanged;
-    }
-
-    private void OnScrollViewerSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (_scrollSurface != null)
-        {
-            _scrollSurface.SourceSize = new Vector2(
-                Math.Max(1, (float)e.NewSize.Width),
-                Math.Max(1, (float)e.NewSize.Height));
+            case nameof(LyricsViewModel.BackgroundColor):
+                DispatcherQueue.TryEnqueue(() => UpdateGradientBackground(_lyricsVm.BackgroundColor));
+                break;
+            case nameof(LyricsViewModel.HasLyrics):
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    var isLyricsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
+                    LyricsCanvas?.SetPaused(!isLyricsVisible || !_lyricsVm.HasLyrics);
+                });
+                break;
         }
     }
 
-    // ── Lyrics: active line animation + progressive dimming ──
-
-    private void OnActiveLineChanged(int newIndex, int prevIndex)
+    private void UpdateGradientBackground(Windows.UI.Color baseColor)
     {
-        DispatcherQueue.TryEnqueue(() =>
+        if (LyricsBackground == null || GradientTop == null || GradientBottom == null) return;
+
+        var topColor = Windows.UI.Color.FromArgb(65, baseColor.R, baseColor.G, baseColor.B);
+        var bottomColor = Windows.UI.Color.FromArgb(130,
+            (byte)(baseColor.R / 2),
+            (byte)(baseColor.G / 2),
+            (byte)(baseColor.B / 2));
+
+        var storyboard = new Storyboard();
+
+        var topAnim = new ColorAnimation
         {
-            if (_compositor == null) return;
+            To = topColor,
+            Duration = TimeSpan.FromMilliseconds(600),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(topAnim, GradientTop);
+        Storyboard.SetTargetProperty(topAnim, "Color");
+        storyboard.Children.Add(topAnim);
 
-            var lineCount = _lyricsVm.Lines.Count;
+        var bottomAnim = new ColorAnimation
+        {
+            To = bottomColor,
+            Duration = TimeSpan.FromMilliseconds(600),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(bottomAnim, GradientBottom);
+        Storyboard.SetTargetProperty(bottomAnim, "Color");
+        storyboard.Children.Add(bottomAnim);
 
-            for (var i = 0; i < lineCount; i++)
+        storyboard.Begin();
+
+        if (LyricsBackground.Opacity < 0.01)
+        {
+            var fadeIn = new Storyboard();
+            var opacityAnim = new DoubleAnimation
             {
-                var element = LyricsRepeater.TryGetElement(i);
-                if (element is not FrameworkElement fe) continue;
-
-                var visual = ElementCompositionPreview.GetElementVisual(fe);
-                var distance = Math.Abs(i - newIndex);
-
-                if (i == newIndex)
-                {
-                    // Active line: full opacity, slight scale
-                    visual.CenterPoint = new Vector3(
-                        (float)fe.ActualWidth / 2,
-                        (float)fe.ActualHeight / 2, 0);
-
-                    AnimationBuilder.Create()
-                        .Scale(to: new Vector3(1.02f), duration: TimeSpan.FromMilliseconds(300))
-                        .Opacity(to: 1.0, duration: TimeSpan.FromMilliseconds(300))
-                        .Start(fe);
-                }
-                else
-                {
-                    // Progressive dimming: closer lines are more visible
-                    var targetOpacity = distance switch
-                    {
-                        1 => 0.45,
-                        2 => 0.30,
-                        _ => 0.18
-                    };
-
-                    visual.CenterPoint = new Vector3(
-                        (float)fe.ActualWidth / 2,
-                        (float)fe.ActualHeight / 2, 0);
-
-                    AnimationBuilder.Create()
-                        .Scale(to: Vector3.One, duration: TimeSpan.FromMilliseconds(250))
-                        .Opacity(to: targetOpacity, duration: TimeSpan.FromMilliseconds(300))
-                        .Start(fe);
-                }
-            }
-
-            // Auto-scroll active line to ~25% from top
-            var activeElement = LyricsRepeater.TryGetElement(newIndex);
-            if (activeElement is FrameworkElement activeFe)
-            {
-                activeFe.StartBringIntoView(new BringIntoViewOptions
-                {
-                    VerticalAlignmentRatio = 0.25,
-                    AnimationDesired = true
-                });
-            }
-
-            _prevActiveIndex = newIndex;
-        });
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(600),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(opacityAnim, LyricsBackground);
+            Storyboard.SetTargetProperty(opacityAnim, "Opacity");
+            fadeIn.Children.Add(opacityAnim);
+            fadeIn.Begin();
+        }
     }
 
     // ── Tab header clicks ──

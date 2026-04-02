@@ -11,12 +11,13 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 
 /// <summary>
 /// A reusable hero header with a background image that fades to transparent via composition
-/// gradient mask, and scales in with a smooth pop-in animation on load.
+/// gradient mask, overlaid with a dark scrim for text readability, and scales in with
+/// a smooth pop-in animation on load.
 /// </summary>
 public sealed partial class HeroHeader : UserControl
 {
     private CompositionSurfaceBrush? _surfaceBrush;
-    private SpriteVisual? _spriteVisual;
+    private ContainerVisual? _containerVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
 
@@ -50,49 +51,42 @@ public sealed partial class HeroHeader : UserControl
         DependencyProperty.Register(nameof(FadeEnd), typeof(double), typeof(HeroHeader),
             new PropertyMetadata(0.95));
 
-    /// <summary>Image URL to display as the hero background.</summary>
     public string? ImageUrl
     {
         get => (string?)GetValue(ImageUrlProperty);
         set => SetValue(ImageUrlProperty, value);
     }
 
-    /// <summary>Content overlaid on the hero (e.g. artist name, buttons).</summary>
     public object? OverlayContent
     {
         get => GetValue(OverlayContentProperty);
         set => SetValue(OverlayContentProperty, value);
     }
 
-    /// <summary>Starting scale of the image (default 1.0).</summary>
     public double InitialScale
     {
         get => (double)GetValue(InitialScaleProperty);
         set => SetValue(InitialScaleProperty, value);
     }
 
-    /// <summary>Final scale after the pop-in animation (default 1.05).</summary>
     public double FinalScale
     {
         get => (double)GetValue(FinalScaleProperty);
         set => SetValue(FinalScaleProperty, value);
     }
 
-    /// <summary>Duration of the scale + opacity pop-in animation.</summary>
     public TimeSpan AnimationDuration
     {
         get => (TimeSpan)GetValue(AnimationDurationProperty);
         set => SetValue(AnimationDurationProperty, value);
     }
 
-    /// <summary>Gradient fade start position (0-1, top to bottom). Default 0.55.</summary>
     public double FadeStart
     {
         get => (double)GetValue(FadeStartProperty);
         set => SetValue(FadeStartProperty, value);
     }
 
-    /// <summary>Gradient fade end position (0-1, fully transparent). Default 0.95.</summary>
     public double FadeEnd
     {
         get => (double)GetValue(FadeEndProperty);
@@ -120,12 +114,11 @@ public sealed partial class HeroHeader : UserControl
             _surfaceBrush = null;
         }
 
-        if (_spriteVisual != null)
+        if (_containerVisual != null)
         {
             ElementCompositionPreview.SetElementChildVisual(ImageBorder, null);
-            _spriteVisual.Brush?.Dispose();
-            _spriteVisual.Dispose();
-            _spriteVisual = null;
+            _containerVisual.Dispose();
+            _containerVisual = null;
         }
 
         _compositor = null;
@@ -143,46 +136,46 @@ public sealed partial class HeroHeader : UserControl
         var visual = ElementCompositionPreview.GetElementVisual(ImageBorder);
         _compositor = visual.Compositor;
 
-        // Gradient mask: opaque at top → transparent at bottom
-        var gradientBrush = _compositor.CreateLinearGradientBrush();
-        gradientBrush.StartPoint = new Vector2(0.5f, 0f);
-        gradientBrush.EndPoint = new Vector2(0.5f, 1f);
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+        _containerVisual = _compositor.CreateContainerVisual();
+        _containerVisual.RelativeSizeAdjustment = Vector2.One;
+
+        // 1. Image layer with gradient fade mask (opaque top → transparent bottom = blends with page)
+        var fadeMask = _compositor.CreateLinearGradientBrush();
+        fadeMask.StartPoint = new Vector2(0.5f, 0f);
+        fadeMask.EndPoint = new Vector2(0.5f, 1f);
+        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
             Windows.UI.Color.FromArgb(255, 255, 255, 255)));
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeStart,
+        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeStart,
             Windows.UI.Color.FromArgb(255, 255, 255, 255)));
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeEnd,
+        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeEnd,
             Windows.UI.Color.FromArgb(0, 255, 255, 255)));
 
-        // Surface brush for the image
         _surfaceBrush = _compositor.CreateSurfaceBrush();
         _surfaceBrush.Stretch = CompositionStretch.UniformToFill;
         _surfaceBrush.VerticalAlignmentRatio = 0.5f;
 
-        // Mask brush: image × gradient
-        var maskBrush = _compositor.CreateMaskBrush();
-        maskBrush.Source = _surfaceBrush;
-        maskBrush.Mask = gradientBrush;
+        var maskedBrush = _compositor.CreateMaskBrush();
+        maskedBrush.Source = _surfaceBrush;
+        maskedBrush.Mask = fadeMask;
 
-        // Sprite visual to render the masked image
-        _spriteVisual = _compositor.CreateSpriteVisual();
-        _spriteVisual.Brush = maskBrush;
-        _spriteVisual.RelativeSizeAdjustment = Vector2.One;
+        var imageVisual = _compositor.CreateSpriteVisual();
+        imageVisual.Brush = maskedBrush;
+        imageVisual.RelativeSizeAdjustment = Vector2.One;
+        _containerVisual.Children.InsertAtBottom(imageVisual);
 
-        // Start with initial scale, centered
-        _spriteVisual.Scale = new Vector3((float)InitialScale);
-        _spriteVisual.CenterPoint = new Vector3(
+        // Start hidden, pop-in animation reveals it
+        _containerVisual.Scale = new Vector3((float)InitialScale);
+        _containerVisual.CenterPoint = new Vector3(
             (float)(ImageBorder.ActualWidth / 2),
             (float)(ImageBorder.ActualHeight / 2), 0);
-        _spriteVisual.Opacity = 0f;
+        _containerVisual.Opacity = 0f;
 
-        ElementCompositionPreview.SetElementChildVisual(ImageBorder, _spriteVisual);
+        ElementCompositionPreview.SetElementChildVisual(ImageBorder, _containerVisual);
 
-        // Update center point on resize
         ImageBorder.SizeChanged += (_, args) =>
         {
-            if (_spriteVisual != null)
-                _spriteVisual.CenterPoint = new Vector3(
+            if (_containerVisual != null)
+                _containerVisual.CenterPoint = new Vector3(
                     (float)(args.NewSize.Width / 2),
                     (float)(args.NewSize.Height / 2), 0);
         };
@@ -195,18 +188,18 @@ public sealed partial class HeroHeader : UserControl
         if (string.IsNullOrEmpty(url))
         {
             _surfaceBrush.Surface = null;
-            if (_spriteVisual != null) _spriteVisual.Opacity = 0f;
+            if (_containerVisual != null) _containerVisual.Opacity = 0f;
             return;
         }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
         if (string.IsNullOrEmpty(httpsUrl)) return;
 
-        var surface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl));
-        _surfaceBrush.Surface = surface;
+        _imageSurface?.Dispose();
+        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl));
+        _surfaceBrush.Surface = _imageSurface;
 
-        // Animate: pop-in from center with scale + opacity
-        surface.LoadCompleted += (_, _) =>
+        _imageSurface.LoadCompleted += (_, _) =>
         {
             DispatcherQueue.TryEnqueue(() => PlayPopInAnimation());
         };
@@ -214,26 +207,24 @@ public sealed partial class HeroHeader : UserControl
 
     private void PlayPopInAnimation()
     {
-        if (_spriteVisual == null || _compositor == null) return;
+        if (_containerVisual == null || _compositor == null) return;
 
         var duration = AnimationDuration;
 
-        // Scale: InitialScale → FinalScale with decelerate easing
         var scaleAnim = _compositor.CreateVector3KeyFrameAnimation();
         scaleAnim.InsertKeyFrame(0f, new Vector3((float)InitialScale));
         scaleAnim.InsertKeyFrame(1f, new Vector3((float)FinalScale),
             _compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f)));
         scaleAnim.Duration = duration;
 
-        // Opacity: 0 → 1 (fast, front-loaded)
         var opacityAnim = _compositor.CreateScalarKeyFrameAnimation();
         opacityAnim.InsertKeyFrame(0f, 0f);
         opacityAnim.InsertKeyFrame(0.4f, 1f,
             _compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f)));
         opacityAnim.Duration = duration;
 
-        _spriteVisual.StartAnimation("Scale", scaleAnim);
-        _spriteVisual.StartAnimation("Opacity", opacityAnim);
+        _containerVisual.StartAnimation("Scale", scaleAnim);
+        _containerVisual.StartAnimation("Opacity", opacityAnim);
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

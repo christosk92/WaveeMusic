@@ -58,18 +58,39 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
         };
     }
 
-    private async Task<PlaybackResult> SendAsync(string endpoint, Dictionary<string, object>? data, CancellationToken ct)
+    private Task<PlaybackResult> SendAsync(string endpoint, Dictionary<string, object>? data, CancellationToken ct)
+        => SendAsync(endpoint, data, typedPlayCommand: null, ct);
+
+    private async Task<PlaybackResult> SendAsync(
+        string endpoint, Dictionary<string, object>? data,
+        Wavee.Connect.Commands.PlayCommand? typedPlayCommand, CancellationToken ct)
     {
         var target = GetTargetDeviceId();
         var selfId = _session.Config.DeviceId;
 
         // No active device OR self-targeted: route to local AudioPipeline.
-        // The pipeline handles device activation + state publishing automatically.
         if (string.IsNullOrEmpty(target) || target == selfId)
         {
             if (_localEngine != null)
             {
                 _logger?.LogInformation("Routing {Endpoint} to local engine (target={Target})", endpoint, target ?? "none");
+
+                // For play commands: prefer the typed PlayCommand over lossy dict deserialization
+                if (endpoint == "play" && typedPlayCommand != null)
+                {
+                    try
+                    {
+                        _logger?.LogInformation("Routing play to local AudioPipeline");
+                        await _localEngine.PlayAsync(typedPlayCommand, ct);
+                        return PlaybackResult.Success();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Local engine failed for play");
+                        return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+                    }
+                }
+
                 return await RouteToLocalEngineAsync(_localEngine, endpoint, data, ct);
             }
 
@@ -77,6 +98,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
                 "No active device and no local playback engine available.");
         }
 
+        // Remote: always use dict for JSON serialization
         var result = await _client.SendCommandAsync(target, endpoint, data, ct: ct);
         return ToPlaybackResult(result);
     }
@@ -115,12 +137,25 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
         if (commandOptions.Count > 0)
             data["options"] = commandOptions;
 
-        return SendAsync("play", data, ct);
+        var typedCmd = new Wavee.Connect.Commands.PlayCommand
+        {
+            Endpoint = "play", Key = "local/0", MessageId = 0, MessageIdent = "local", SenderDeviceId = "",
+            ContextUri = contextUri,
+            TrackUri = options?.StartTrackUri,
+            SkipToIndex = options?.StartIndex,
+            PositionMs = options?.PositionMs,
+        };
+
+        return SendAsync("play", data, typedCmd, ct);
     }
 
     public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, CancellationToken ct)
     {
-        var tracks = trackUris.Select(uri => new Dictionary<string, object>
+        // Normalize bare IDs to full spotify:track: URIs
+        var normalizedUris = trackUris.Select(uri =>
+            uri.StartsWith("spotify:", StringComparison.Ordinal) ? uri : $"spotify:track:{uri}").ToList();
+
+        var tracks = normalizedUris.Select(uri => new Dictionary<string, object>
         {
             ["uri"] = uri,
             ["uid"] = ""
@@ -141,7 +176,15 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
                 ["skip_to"] = new Dictionary<string, object> { ["track_index"] = startIndex }
             };
 
-        return SendAsync("play", data, ct);
+        var typedCmd = new Wavee.Connect.Commands.PlayCommand
+        {
+            Endpoint = "play", Key = "local/0", MessageId = 0, MessageIdent = "local", SenderDeviceId = "",
+            ContextUri = "spotify:internal:queue",
+            SkipToIndex = startIndex > 0 ? startIndex : null,
+            PageTracks = trackUris.Select(uri => new Wavee.Connect.Commands.PageTrack(uri, "")).ToList(),
+        };
+
+        return SendAsync("play", data, typedCmd, ct);
     }
 
     public Task<PlaybackResult> ResumeAsync(CancellationToken ct)
@@ -230,7 +273,6 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
                         await engine.SetRepeatTrackAsync(Convert.ToBoolean(repeatTrkVal), ct);
                     break;
                 case "play":
-                    // Build PlayCommand from the data dictionary
                     var playCmd = BuildPlayCommand(data);
                     await engine.PlayAsync(playCmd, ct);
                     break;
@@ -253,9 +295,35 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
         string? contextUri = null;
         string? trackUri = null;
         int? skipToIndex = null;
+        List<Wavee.Connect.Commands.PageTrack>? pageTracks = null;
 
         if (data?.TryGetValue("context", out var ctxObj) == true && ctxObj is Dictionary<string, object> ctx)
+        {
             contextUri = ctx.GetValueOrDefault("uri") as string;
+
+            // Extract inline tracks from context pages (e.g. PlayTracksAsync embeds them here)
+            if (ctx.TryGetValue("pages", out var pagesObj) && pagesObj is System.Collections.IEnumerable pages)
+            {
+                foreach (var page in pages)
+                {
+                    if (page is Dictionary<string, object> pageDict
+                        && pageDict.TryGetValue("tracks", out var tracksObj)
+                        && tracksObj is System.Collections.IEnumerable tracks)
+                    {
+                        pageTracks ??= [];
+                        foreach (var t in tracks)
+                        {
+                            if (t is Dictionary<string, object> trackDict)
+                            {
+                                pageTracks.Add(new Wavee.Connect.Commands.PageTrack(
+                                    trackDict.GetValueOrDefault("uri") as string ?? "",
+                                    trackDict.GetValueOrDefault("uid") as string ?? ""));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if (data?.TryGetValue("options", out var optObj) == true && optObj is Dictionary<string, object> opts)
         {
@@ -276,7 +344,8 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
             SenderDeviceId = "",
             ContextUri = contextUri,
             TrackUri = trackUri,
-            SkipToIndex = skipToIndex
+            SkipToIndex = skipToIndex,
+            PageTracks = pageTracks
         };
     }
 

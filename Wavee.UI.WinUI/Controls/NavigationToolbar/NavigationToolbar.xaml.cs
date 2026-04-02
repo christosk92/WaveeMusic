@@ -12,6 +12,7 @@ public sealed partial class NavigationToolbar : UserControl
     {
         InitializeComponent();
         ActualThemeChanged += OnActualThemeChanged;
+        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
         Loaded += OnFirstLoaded;
     }
 
@@ -150,6 +151,7 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, string>? SearchTextChanged;
     public event TypedEventHandler<NavigationToolbar, string>? SearchQuerySubmitted;
     public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
+    public event TypedEventHandler<NavigationToolbar, Data.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
 
     #endregion
 
@@ -192,6 +194,11 @@ public sealed partial class NavigationToolbar : UserControl
             SearchSuggestionChosen?.Invoke(this, args.SelectedItem);
     }
 
+    private void SearchOmnibar_ActionButtonClicked(Omnibar.Omnibar sender, Data.Contracts.SearchSuggestionItem item)
+    {
+        SearchActionButtonClicked?.Invoke(this, item);
+    }
+
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
     {
         var themeService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
@@ -199,10 +206,27 @@ public sealed partial class NavigationToolbar : UserControl
         themeService?.ToggleTheme();
     }
 
-    private void ProfileButton_Click(object sender, RoutedEventArgs e)
+    private void ViewProfileMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var openInNewTab = NavigationHelpers.IsCtrlPressed();
         NavigationHelpers.OpenProfile(openInNewTab);
+    }
+
+    private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var openInNewTab = NavigationHelpers.IsCtrlPressed();
+        NavigationHelpers.OpenSettings(openInNewTab);
+    }
+
+    private async void SignOutMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var authState = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetRequiredService<Data.Contracts.IAuthState>();
+            await authState.LogoutAsync();
+        }
+        catch { /* best effort */ }
     }
 
     #endregion

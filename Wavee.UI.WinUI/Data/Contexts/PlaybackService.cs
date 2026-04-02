@@ -38,6 +38,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     [ObservableProperty] private bool _isPlayingRemotely;
 
     public IObservable<PlaybackErrorEvent> Errors => _errorSubject.AsObservable();
+    public event Action<string?>? BufferingStarted;
 
     public PlaybackService(
         IPlaybackCommandExecutor executor,
@@ -111,6 +112,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
 
     public async Task<PlaybackResult> PlayTrackInContextAsync(string trackUri, string contextUri, PlayContextOptions? options, CancellationToken ct)
     {
+        BufferingStarted?.Invoke(ExtractId(trackUri));
         var action = await _promptService.ResolvePlayActionAsync();
         return action switch
         {
@@ -127,6 +129,8 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
 
     public async Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, CancellationToken ct)
     {
+        if (startIndex >= 0 && startIndex < trackUris.Count)
+            BufferingStarted?.Invoke(ExtractId(trackUris[startIndex]));
         var action = await _promptService.ResolvePlayActionAsync();
         return action switch
         {
@@ -288,6 +292,13 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         PlaybackErrorKind.Network or
         PlaybackErrorKind.RateLimited or
         PlaybackErrorKind.Unavailable;
+
+    private static string? ExtractId(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+        var lastColon = uri.LastIndexOf(':');
+        return lastColon >= 0 ? uri[(lastColon + 1)..] : uri;
+    }
 
     public void Dispose()
     {

@@ -90,11 +90,11 @@
                                 <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                           Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                <Image Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                <Image x:Name="AlbumArtImage"
+                                       Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
                                        Stretch="UniformToFill"
                                        Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                       behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="560"/>
                             </Grid>
                         </Border>
@@ -163,16 +163,14 @@
                         ShowAlbumColumn="False"
                         ShowAlbumArtColumn="False"
                         ShowDateAddedColumn="False"
-                        ShowArtistColumn="True"
+                        ShowArtistColumn="False"
                         RemoveActionLabel="Remove from library"
                         ArtistClicked="TrackList_ArtistClicked"
                         NewPlaylistRequested="TrackList_NewPlaylistRequested"
                         ScrollViewer.VerticalScrollMode="Disabled"
                         ScrollViewer.VerticalScrollBarVisibility="Hidden">
 
-                        <trackList:TrackListView.CustomColumns>
-                            <trackList:TrackListColumnDefinition Header="Plays" Width="80" PropertyName="PlayCountFormatted" TextAlignment="Right"/>
-                        </trackList:TrackListView.CustomColumns>
+                        <!-- CustomColumns set in code-behind with ValueSelector (no reflection) -->
 
                         <!-- NARROW MODE: Compact header -->
                         <trackList:TrackListView.HeaderContent>
@@ -192,7 +190,6 @@
                                                Stretch="UniformToFill"
                                                Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                                behaviors:ImageFallbackBehavior.HideOnError="True"
-                                               behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
                                                behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
                                     </Grid>
                                 </Border>

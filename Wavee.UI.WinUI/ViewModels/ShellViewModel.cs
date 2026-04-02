@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
@@ -31,8 +32,10 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IThemeService _themeService;
     private readonly INotificationService _notificationService;
     private readonly ISearchService _searchService;
+    private readonly IPlaybackStateService _playbackStateService;
     private readonly AppModel _appModel;
     private readonly ILogger? _logger;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
     private readonly Helpers.Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
 
     // UI element references for cleanup
@@ -130,6 +133,7 @@ public sealed partial class ShellViewModel : ObservableObject
         IThemeService themeService,
         INotificationService notificationService,
         ISearchService searchService,
+        IPlaybackStateService playbackStateService,
         AppModel appModel,
         ILogger<ShellViewModel>? logger = null)
     {
@@ -137,6 +141,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _themeService = themeService;
         _notificationService = notificationService;
         _searchService = searchService;
+        _playbackStateService = playbackStateService;
         _appModel = appModel;
         _logger = logger;
 
@@ -156,6 +161,28 @@ public sealed partial class ShellViewModel : ObservableObject
 
         // Subscribe to playlist changes for reactive updates
         _libraryDataService.PlaylistsChanged += OnPlaylistsChanged;
+
+        // Subscribe to all library data changes (sync complete, Dealer deltas, etc.)
+        _libraryDataService.DataChanged += OnLibraryDataChanged;
+
+        // Capture UI thread dispatcher for background → UI marshalling
+        _uiDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncStartedMessage>(this, (_, _) =>
+        {
+            _uiDispatcher?.TryEnqueue(() =>
+            {
+                _logger?.LogDebug("Sidebar: sync started — clearing badges");
+                ClearLibraryBadges();
+            });
+        });
+        WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncFailedMessage>(this, (_, msg) =>
+        {
+            _uiDispatcher?.TryEnqueue(() =>
+            {
+                _logger?.LogWarning("Sidebar: sync failed — {Error}", msg.Value);
+                ShowNotification($"Library sync failed: {msg.Value}");
+            });
+        });
 
         InitializeSidebarItems();
         _ = LoadLibraryDataAsync();
@@ -190,17 +217,46 @@ public sealed partial class ShellViewModel : ObservableObject
         _notificationService.Show(message, mapped);
     }
 
-    private async void OnPlaylistsChanged(object? sender, EventArgs e)
+    private void ClearLibraryBadges()
     {
-        try
+        var librarySection = SidebarItems.FirstOrDefault(x => x.Text == "Your Library");
+        if (librarySection?.Children is ObservableCollection<SidebarItemModel> libraryChildren)
         {
-            await RefreshPlaylistsAsync();
+            foreach (var item in libraryChildren)
+                item.BadgeCount = null;
         }
-        catch (Exception ex)
+    }
+
+    private void OnLibraryDataChanged(object? sender, EventArgs e)
+    {
+        _uiDispatcher?.TryEnqueue(async () =>
         {
-            _logger?.LogError(ex, "Failed to handle playlists change event");
-            ShowNotification("Failed to refresh playlists");
-        }
+            try
+            {
+                _logger?.LogDebug("Library data changed — refreshing sidebar");
+                await LoadLibraryDataAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to refresh library data after change");
+            }
+        });
+    }
+
+    private void OnPlaylistsChanged(object? sender, EventArgs e)
+    {
+        _uiDispatcher?.TryEnqueue(async () =>
+        {
+            try
+            {
+                await RefreshPlaylistsAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to handle playlists change event");
+                ShowNotification("Failed to refresh playlists");
+            }
+        });
     }
 
     private async Task RefreshPlaylistsAsync()
@@ -623,26 +679,37 @@ public sealed partial class ShellViewModel : ObservableObject
         switch (suggestion.Type)
         {
             case SearchSuggestionType.Artist:
-                Helpers.Navigation.NavigationHelpers.OpenArtist(suggestion.Uri, suggestion.Title);
+                NavigationHelpers.OpenArtist(suggestion.Uri, suggestion.Title);
                 break;
             case SearchSuggestionType.Album:
-                Helpers.Navigation.NavigationHelpers.OpenAlbum(suggestion.Uri, suggestion.Title);
+                NavigationHelpers.OpenAlbum(suggestion.Uri, suggestion.Title);
+                break;
+            case SearchSuggestionType.Playlist:
+                NavigationHelpers.OpenPlaylist(suggestion.Uri, suggestion.Title);
+                break;
+            case SearchSuggestionType.Track:
+                var trackId = suggestion.Uri.Replace("spotify:track:", "");
+                _playbackStateService.PlayTrack(trackId);
                 break;
             case SearchSuggestionType.TextQuery:
                 var query = suggestion.Uri.Replace("spotify:search:", "").Replace("+", " ");
-                Helpers.Navigation.NavigationHelpers.OpenSearch(query);
+                NavigationHelpers.OpenSearch(query);
                 break;
             default:
-                // Track, Playlist, etc → search for the title
-                Helpers.Navigation.NavigationHelpers.OpenSearch(suggestion.Title);
+                NavigationHelpers.OpenSearch(suggestion.Title);
                 break;
         }
     }
 
-    public Task PlaySearchResultAsync(SearchSuggestionItem item)
+    public void OnSuggestionActionClicked(SearchSuggestionItem item)
     {
-        OnSuggestionChosen(item);
-        return Task.CompletedTask;
+        switch (item.Type)
+        {
+            case SearchSuggestionType.Track:
+                var trackId = item.Uri.Replace("spotify:track:", "");
+                _playbackStateService.AddToQueue(trackId);
+                break;
+        }
     }
 
     [ObservableProperty]
@@ -674,6 +741,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public void Cleanup()
     {
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
+        _libraryDataService.DataChanged -= OnLibraryDataChanged;
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
         WeakReferenceMessenger.Default.Unregister<ToggleRightPanelMessage>(this);
 

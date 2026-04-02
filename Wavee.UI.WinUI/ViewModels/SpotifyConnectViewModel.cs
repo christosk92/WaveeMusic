@@ -1,10 +1,13 @@
 using System;
 using System.Diagnostics;
+using System.Reactive.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 using QRCoder;
@@ -210,24 +213,8 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
             ("Syncing artists...", 0.75, 500),
         };
 
-        // Run fake stages in parallel with the real sync
-        var realSyncTask = Task.Run(async () =>
-        {
-            try
-            {
-                var libraryService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-                    .GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>();
-
-                if (libraryService != null)
-                {
-                    await libraryService.SyncAllAsync(ct);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Library sync failed: {ex}");
-            }
-        }, ct);
+        // Library sync is handled by LibrarySyncOrchestrator — reacts to AuthStatusChangedMessage
+        // No sync code here. Just animate the loading stages.
 
         // Animate through stages regardless of real sync speed
         foreach (var (message, progress, delayMs) in stages)
@@ -240,8 +227,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
             await Task.Delay(delayMs, CancellationToken.None);
         }
 
-        // Wait for real sync to finish (if it hasn't already)
-        await realSyncTask;
+        // Sync runs in background via LibrarySyncOrchestrator (no awaiting here)
 
         // Final stage
         _dispatcherQueue.TryEnqueue(() =>

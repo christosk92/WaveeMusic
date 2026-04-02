@@ -23,6 +23,7 @@ public sealed record PlaylistTrackDto : ITrackItem
     public bool IsExplicit { get; init; }
     public int OriginalIndex { get; init; }
     public bool IsLoaded => true;
+    public bool IsLiked { get; set; }
 
     /// <summary>
     /// Duration formatted as "m:ss" or "h:mm:ss".

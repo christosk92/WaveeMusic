@@ -4,8 +4,10 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Windows.Foundation;
 using Windows.UI;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -488,7 +490,8 @@ public sealed partial class ContentCard : UserControl
 
         // Accent color on title when playing
         if (isPlaying)
-            TitleText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+            TitleText.Foreground = Ioc.Default.GetService<ThemeColorService>()?.AccentText
+                ?? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
         else
             TitleText.ClearValue(TextBlock.ForegroundProperty);
     }

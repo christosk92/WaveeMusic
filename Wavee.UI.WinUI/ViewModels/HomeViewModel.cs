@@ -528,16 +528,24 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         var type = parts[1]; // artist, playlist, album, show, etc.
         var id = item.Uri;   // full URI as ID
 
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = id,
+            Title = item.Title,
+            Subtitle = item.Subtitle,
+            ImageUrl = item.ImageUrl
+        };
+
         switch (type)
         {
             case "artist":
-                Helpers.Navigation.NavigationHelpers.OpenArtist(id, item.Title ?? "Artist", openInNewTab);
+                Helpers.Navigation.NavigationHelpers.OpenArtist(param, item.Title ?? "Artist", openInNewTab);
                 break;
             case "album":
-                Helpers.Navigation.NavigationHelpers.OpenAlbum(id, item.Title ?? "Album", openInNewTab);
+                Helpers.Navigation.NavigationHelpers.OpenAlbum(param, item.Title ?? "Album", openInNewTab);
                 break;
             case "playlist":
-                Helpers.Navigation.NavigationHelpers.OpenPlaylist(id, item.Title ?? "Playlist", openInNewTab);
+                Helpers.Navigation.NavigationHelpers.OpenPlaylist(param, item.Title ?? "Playlist", openInNewTab);
                 break;
         }
     }

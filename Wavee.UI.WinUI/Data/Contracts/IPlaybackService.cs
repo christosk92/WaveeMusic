@@ -87,4 +87,7 @@ public interface IPlaybackService : INotifyPropertyChanged
 
     /// <summary>Observable stream of playback errors for toast/notification display.</summary>
     IObservable<PlaybackErrorEvent> Errors { get; }
+
+    /// <summary>Raised when a play command starts loading a track. Carries the track URI being loaded.</summary>
+    event Action<string?>? BufferingStarted;
 }

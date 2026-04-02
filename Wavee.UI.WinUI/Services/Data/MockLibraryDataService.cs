@@ -82,6 +82,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
     private readonly Dictionary<string, List<PlaylistTrackDto>> _mockPlaylistTracks;
 
     public event EventHandler? PlaylistsChanged;
+    public event EventHandler? DataChanged;
 
     public MockLibraryDataService()
     {

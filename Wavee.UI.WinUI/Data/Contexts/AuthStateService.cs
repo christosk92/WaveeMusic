@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Reactive.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -260,6 +261,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         var audioHttpClient = httpFactory.CreateClient("WaveeAudio");
         Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, audioHttpClient, _logger);
 
+        // SetStatus fires AuthStatusChangedMessage → LibrarySyncOrchestrator handles sync
         SetStatus(AuthStatus.Authenticated);
     }
 

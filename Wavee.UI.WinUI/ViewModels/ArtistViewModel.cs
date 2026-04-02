@@ -808,8 +808,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void Dispose()
     {
-        _discoCts?.Cancel();
-        _discoCts?.Dispose();
+        if (_discoCts is not null)
+        {
+            _discoCts?.Cancel();
+            _discoCts?.Dispose();
+            _discoCts = null;
+        }
+
         _disposables.Dispose();
         _topTracksSource.Dispose();
         _releasesSource.Dispose();
@@ -833,7 +838,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     string Data.Contracts.ITrackItem.Uri => Uri ?? $"spotify:track:{Id}";
     string Data.Contracts.ITrackItem.Title => Title ?? "";
     string Data.Contracts.ITrackItem.ArtistName =>
-        HasVideo ? $"{PlayCountFormatted} \u00B7 Video" : PlayCountFormatted;
+        PlayCountRaw > 0 ? PlayCountFormatted : (ArtistNames ?? "");
     string Data.Contracts.ITrackItem.ArtistId => "";
     string Data.Contracts.ITrackItem.AlbumName => AlbumName ?? "";
     string Data.Contracts.ITrackItem.AlbumId => AlbumUri ?? "";
@@ -858,6 +863,13 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
         Duration.TotalHours >= 1
             ? Duration.ToString(@"h\:mm\:ss")
             : Duration.ToString(@"m\:ss");
+
+    private bool _isLiked;
+    public bool IsLiked
+    {
+        get => _isLiked;
+        set => SetField(ref _isLiked, value);
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

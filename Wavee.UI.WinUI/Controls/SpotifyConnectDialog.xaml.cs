@@ -16,13 +16,21 @@ public sealed partial class SpotifyConnectDialog : ContentDialog
     {
         ViewModel = Ioc.Default.GetRequiredService<SpotifyConnectViewModel>();
         InitializeComponent();
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        ViewModel.RequestClose += OnRequestClose;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.RequestClose -= OnRequestClose;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.RequestClose += OnRequestClose;
+
         var accentBrush = Application.Current.Resources["AccentFillColorDefaultBrush"] as Microsoft.UI.Xaml.Media.SolidColorBrush;
         if (accentBrush != null)
         {

@@ -108,4 +108,9 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// Replaces the queue, sets the playback context, and loads the track at startIndex as current.
     /// </summary>
     void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0);
+
+    /// <summary>
+    /// Sets the buffering indicator for a track ID. Call before async play commands.
+    /// </summary>
+    void NotifyBuffering(string? trackId);
 }

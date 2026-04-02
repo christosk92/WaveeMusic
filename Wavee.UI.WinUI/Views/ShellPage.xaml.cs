@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 using Windows.Graphics;
+using Windows.System;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -25,6 +26,10 @@ public sealed partial class ShellPage : Page
 {
     private readonly ILogger? _logger;
 
+    private const double ZoomStep = 0.1;
+    private const double ZoomMin = 0.5;
+    private const double ZoomMax = 2.0;
+
     public ShellViewModel ViewModel { get; }
     private InputNonClientPointerSource? _nonClientSource;
     private DragStateService? _dragStateService;
@@ -35,15 +40,14 @@ public sealed partial class ShellPage : Page
         _logger = Ioc.Default.GetService<ILogger<ShellPage>>();
         InitializeComponent();
 
+        // Apply saved zoom level
+        InitializeZoom();
+
         // Set up titlebar drag region
         SetupTitleBar();
 
         // Suppress search flyout when on SearchPage
-        ViewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(ShellViewModel.IsOnSearchPage))
-                NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
-        };
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         // Open initial tab after page is fully loaded
         Loaded += ShellPage_Loaded;
@@ -104,9 +108,16 @@ public sealed partial class ShellPage : Page
         TabControl.SizeChanged -= TabControl_SizeChanged;
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<Data.Messages.ConnectivityChangedMessage>(this);
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ShellViewModel.IsOnSearchPage))
+            NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
     }
 
     private void UpdateUserButton()
@@ -305,9 +316,9 @@ public sealed partial class ShellPage : Page
         ViewModel.OnSuggestionChosen(item);
     }
 
-    private async void NavToolbar_SearchPlayRequested(NavigationToolbar sender, Data.Contracts.SearchSuggestionItem item)
+    private void NavToolbar_SearchActionButtonClicked(NavigationToolbar sender, Data.Contracts.SearchSuggestionItem item)
     {
-        await ViewModel.PlaySearchResultAsync(item);
+        ViewModel.OnSuggestionActionClicked(item);
     }
 
     private void SidebarControl_ItemInvoked(object? sender, ItemInvokedEventArgs e)
@@ -414,4 +425,68 @@ public sealed partial class ShellPage : Page
         }
     }
 
+    // ── App-wide zoom (Ctrl+Plus / Ctrl+Minus / Ctrl+0) ──
+
+    private void InitializeZoom()
+    {
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        if (settings != null)
+        {
+            ZoomControl.Zoom = Math.Clamp(settings.Settings.ZoomLevel, ZoomMin, ZoomMax);
+        }
+    }
+
+    private void ApplyZoom(double zoom)
+    {
+        zoom = Math.Clamp(zoom, ZoomMin, ZoomMax);
+        ZoomControl.Zoom = zoom;
+
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        settings?.Update(s => s.ZoomLevel = zoom);
+    }
+
+    private void ZoomIn_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        ApplyZoom(Math.Round(ZoomControl.Zoom + ZoomStep, 2));
+        args.Handled = true;
+    }
+
+    private void ZoomOut_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        ApplyZoom(Math.Round(ZoomControl.Zoom - ZoomStep, 2));
+        args.Handled = true;
+    }
+
+    private void ZoomReset_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        ApplyZoom(1.0);
+        args.Handled = true;
+    }
+
+    /// <summary>
+    /// Handles Ctrl+= (zoom in) and Ctrl+- (zoom out) on the main keyboard row.
+    /// The XAML KeyboardAccelerators only cover the numpad Add/Subtract keys.
+    /// </summary>
+    protected override void OnProcessKeyboardAccelerators(ProcessKeyboardAcceleratorEventArgs args)
+    {
+        if (args.Modifiers == VirtualKeyModifiers.Control)
+        {
+            // OemPlus (=+ key) → VirtualKey 187
+            if ((int)args.Key == 187)
+            {
+                ApplyZoom(Math.Round(ZoomControl.Zoom + ZoomStep, 2));
+                args.Handled = true;
+                return;
+            }
+            // OemMinus (-_ key) → VirtualKey 189
+            if ((int)args.Key == 189)
+            {
+                ApplyZoom(Math.Round(ZoomControl.Zoom - ZoomStep, 2));
+                args.Handled = true;
+                return;
+            }
+        }
+
+        base.OnProcessKeyboardAccelerators(args);
+    }
 }

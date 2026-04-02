@@ -90,18 +90,18 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8"
                                                 Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                                         <Grid>
-                                            <!-- Shadow layer: dark blurred text behind for readability on any background -->
+                                            <!-- Shadow: contrasts with any background -->
                                             <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                                        FontSize="44" FontWeight="Black"
                                                        Foreground="Black" Opacity="0.5"
                                                        Translation="0,1,0">
                                                 <TextBlock.RenderTransform>
-                                                    <ScaleTransform ScaleX="1.01" ScaleY="1.01"/>
+                                                    <ScaleTransform ScaleX="1.05" ScaleY="1.05"/>
                                                 </TextBlock.RenderTransform>
                                             </TextBlock>
-                                            <!-- Actual text -->
                                             <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                                       FontSize="44" FontWeight="Black"/>
+                                                       FontSize="48" FontWeight="Black"
+                                                       Foreground="White"/>
                                         </Grid>
                                         <Border Width="28" Height="28" CornerRadius="14"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
@@ -118,18 +118,15 @@
                                 <!-- Stats: show text or shimmer -->
                                 <Grid>
                                     <Grid Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                        <!-- Shadow layer -->
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                    FontWeight="SemiBold" FontSize="14"
-                                                   Foreground="Black" Opacity="0.4"
+                                                   Foreground="Black" Opacity="0.6"
                                                    Translation="0,1,0">
                                             <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
                                         </TextBlock>
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                                   FontWeight="SemiBold"
-                                                   Opacity=".5"
-                                                   FontSize="14"
-                                                   Foreground="{ThemeResource ApplicationForegroundThemeBrush}">
+                                                   FontWeight="SemiBold" FontSize="14"
+                                                   Foreground="White" Opacity=".9">
                                             <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
                                         </TextBlock>
                                     </Grid>
@@ -287,7 +284,8 @@
                     </Grid>
 
                     <!-- Top tracks grid (column-first, max 3 rows) -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.PagedTopTracks, Mode=OneWay}">
+                    <ItemsRepeater x:Name="TopTracksRepeater" ItemsSource="{x:Bind ViewModel.PagedTopTracks, Mode=OneWay}"
+                                    ElementPrepared="TopTracksRepeater_ElementPrepared">
                         <ItemsRepeater.Layout>
                             <layouts:ColumnsFirstGridLayout x:Name="TopTracksLayout" MaxRows="3" MinItemWidth="280"
                                                             ItemHeight="56" RowSpacing="4" ColumnSpacing="8"
@@ -295,11 +293,10 @@
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:LazyTrackItem">
-                                <track:TrackCell
+                                <track:TrackItem
                                     Track="{x:Bind Data, Mode=OneWay}"
                                     IsLoading="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                    trackBehaviors:TrackStateBehavior.TrackId="{x:Bind Id, Mode=OneWay}"
-                                    trackBehaviors:TrackBehavior.PlayCommand="{Binding ViewModel.PlayTrackCommand, ElementName=ArtistPageRoot}"/>
+                                    PlayCommand="{Binding ViewModel.PlayTrackCommand, ElementName=ArtistPageRoot}"/>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>

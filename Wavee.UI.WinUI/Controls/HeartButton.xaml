@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.HeartButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Button x:Name="InternalButton"
+            Click="OnClick"
+            Background="Transparent"
+            BorderThickness="0"
+            Padding="0"
+            Width="32" Height="32"
+            MinWidth="0" MinHeight="0"
+            ToolTipService.ToolTip="Save to Liked Songs">
+        <FontIcon x:Name="HeartIcon"
+                  Glyph="&#xEB51;"
+                  FontSize="14"/>
+    </Button>
+</UserControl>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Equalizer.EqualizerCurveControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    SizeChanged="OnSizeChanged">
+
+    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            CornerRadius="8"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1">
+        <Grid>
+            <Canvas x:Name="EqCanvas">
+                <!-- dB axis labels (left) -->
+                <TextBlock x:Name="LabelPlus12" Text="+12" FontSize="10" FontFamily="Consolas"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                <TextBlock x:Name="LabelPlus6" Text="+6" FontSize="10" FontFamily="Consolas"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                <TextBlock x:Name="LabelZero" Text="0 dB" FontSize="10" FontFamily="Consolas"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontWeight="SemiBold"/>
+                <TextBlock x:Name="LabelMinus6" Text="-6" FontSize="10" FontFamily="Consolas"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                <TextBlock x:Name="LabelMinus12" Text="-12" FontSize="10" FontFamily="Consolas"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+
+                <!-- 0dB baseline -->
+                <Line x:Name="BaselineLine" StrokeThickness="1" StrokeDashArray="4,4"
+                      Stroke="{ThemeResource TextFillColorTertiaryBrush}" Opacity="0.5"/>
+
+                <!-- Gradient fill under curve -->
+                <Path x:Name="FillPath" Opacity="0.15"/>
+
+                <!-- Curve line -->
+                <Path x:Name="CurvePath" StrokeThickness="2.5" StrokeLineJoin="Round"
+                      Fill="Transparent"/>
+
+                <!-- Nodes added dynamically in code-behind -->
+            </Canvas>
+
+            <!-- Hidden, labels added to canvas instead -->
+            <StackPanel x:Name="FreqLabelsPanel" Visibility="Collapsed"/>
+        </Grid>
+    </Border>
+</UserControl>

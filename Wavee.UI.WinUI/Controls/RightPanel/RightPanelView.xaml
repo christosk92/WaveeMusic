@@ -8,6 +8,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:lyricsctl="using:Wavee.UI.WinUI.Controls.Lyrics"
     mc:Ignorable="d"
     MinWidth="200"
     MaxWidth="500"
@@ -112,63 +113,45 @@
                 <!-- Lyrics panel -->
                 <Grid x:Name="LyricsContent" Visibility="Collapsed">
 
-                    <!-- Loading shimmer -->
-                    <StackPanel x:Name="LyricsShimmer"
-                                Visibility="{x:Bind _lyricsVm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                Spacing="16" Padding="8,16" VerticalAlignment="Top">
-                        <controls:Shimmer Width="200" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                        <controls:Shimmer Width="240" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                        <controls:Shimmer Width="160" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                        <controls:Shimmer Width="220" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                        <controls:Shimmer Width="180" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                        <controls:Shimmer Width="250" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                    </StackPanel>
+                    <!-- Gradient background -->
+                    <Border x:Name="LyricsBackground" CornerRadius="8" Opacity="0">
+                        <Border.Background>
+                            <LinearGradientBrush x:Name="LyricsBgBrush" StartPoint="0.5,0" EndPoint="0.5,1">
+                                <GradientStop x:Name="GradientTop" Offset="0" Color="#20000000"/>
+                                <GradientStop x:Name="GradientMid" Offset="0.6" Color="#40000000"/>
+                                <GradientStop x:Name="GradientBottom" Offset="1" Color="#90000000"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
 
-                    <!-- No lyrics available -->
-                    <StackPanel Visibility="{x:Bind _lyricsVm.HasNoLyrics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
-                        <FontIcon Glyph="&#xED11;" FontSize="32" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Opacity="0.5"/>
-                        <TextBlock Text="No lyrics available"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="13" HorizontalAlignment="Center"/>
-                    </StackPanel>
+                    <!-- Lyrics content area -->
+                    <Grid>
+                        <!-- Loading shimmer -->
+                        <StackPanel x:Name="LyricsShimmer"
+                                    Visibility="{x:Bind _lyricsVm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Spacing="16" Padding="8,16" VerticalAlignment="Top">
+                            <controls:Shimmer Width="200" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="240" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="160" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="220" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="180" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="250" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
 
-                    <!-- Lyrics list -->
-                    <ScrollViewer x:Name="LyricsScrollViewer"
-                                  Visibility="{x:Bind _lyricsVm.HasLyrics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                  VerticalScrollBarVisibility="Hidden"
-                                  Padding="0">
-                        <ItemsRepeater x:Name="LyricsRepeater"
-                                       ItemsSource="{x:Bind _lyricsVm.Lines, Mode=OneWay}"
-                                       Margin="4,40,4,200">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Spacing="2"/>
-                            </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LyricsLineItem">
-                                    <Button Command="{x:Bind SeekCommand}"
-                                            Background="Transparent"
-                                            BorderBrush="Transparent"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Left"
-                                            Padding="8,8"
-                                            CornerRadius="4"
-                                            Opacity="{x:Bind Opacity, Mode=OneWay}">
-                                        <TextBlock Text="{x:Bind Words, Mode=OneTime}"
-                                                   FontSize="18"
-                                                   FontWeight="SemiBold"
-                                                   TextWrapping="WrapWholeWords"
-                                                   Foreground="White"/>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
-                    </ScrollViewer>
+                        <!-- No lyrics available -->
+                        <StackPanel Visibility="{x:Bind _lyricsVm.HasNoLyrics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+                            <FontIcon Glyph="&#xED11;" FontSize="32" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Opacity="0.5"/>
+                            <TextBlock Text="No lyrics available"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="13" HorizontalAlignment="Center"/>
+                        </StackPanel>
 
-                    <!-- Fade mask host: overlays the ScrollViewer, renders the masked visual -->
-                    <Border x:Name="LyricsFadeMaskHost"
-                            IsHitTestVisible="False"
+                        <!-- Win2D lyrics canvas with karaoke sweep -->
+                        <lyricsctl:LyricsCanvasControl
+                            x:Name="LyricsCanvas"
                             Visibility="{x:Bind _lyricsVm.HasLyrics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </Grid>
                 </Grid>
 
                 <!-- Friends Activity placeholder -->

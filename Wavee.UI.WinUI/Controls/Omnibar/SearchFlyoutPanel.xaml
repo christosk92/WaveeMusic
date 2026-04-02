@@ -58,7 +58,8 @@
                 <Button Grid.Column="2" VerticalAlignment="Center"
                         Style="{StaticResource IconButtonStyle}"
                         Visibility="{x:Bind local:SearchFlyoutPanel.GetActionVisibility(Type)}"
-                        ToolTipService.ToolTip="{x:Bind local:SearchFlyoutPanel.GetActionTooltip(Type)}">
+                        ToolTipService.ToolTip="{x:Bind local:SearchFlyoutPanel.GetActionTooltip(Type)}"
+                        Click="ActionButton_Click">
                     <FontIcon Glyph="{x:Bind local:SearchFlyoutPanel.GetActionGlyph(Type)}" FontSize="16"/>
                 </Button>
             </Grid>

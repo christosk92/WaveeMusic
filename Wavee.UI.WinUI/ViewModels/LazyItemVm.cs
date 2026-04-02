@@ -84,6 +84,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         OnPropertyChanged(nameof(Duration));
         OnPropertyChanged(nameof(IsExplicit));
         OnPropertyChanged(nameof(DurationFormatted));
+        OnPropertyChanged(nameof(IsLiked));
     }
 
     // ITrackItem — delegate to Data when loaded, safe defaults when not
@@ -98,6 +99,11 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public bool IsExplicit => Data?.IsExplicit ?? false;
     public string DurationFormatted => Data?.DurationFormatted ?? "";
     public int OriginalIndex => Index;
+    public bool IsLiked
+    {
+        get => Data?.IsLiked ?? false;
+        set { if (Data != null) Data.IsLiked = value; }
+    }
 
     // Extra properties for custom columns (not on ITrackItem, accessed via reflection)
     public string PlayCountFormatted =>

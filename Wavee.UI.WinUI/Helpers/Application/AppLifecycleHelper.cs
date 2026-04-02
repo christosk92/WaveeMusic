@@ -23,6 +23,8 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Data;
 using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.Services.Lyrics;
+using Wavee.UI.WinUI.Services.Lyrics.Providers;
 using System.Collections.Generic;
 namespace Wavee.UI.WinUI.Helpers.Application;
 
@@ -95,6 +97,8 @@ public static class AppLifecycleHelper
 
                 // App initialization
                 .AddSingleton<AppInitializationService>()
+                .AddSingleton<Data.Contexts.LibrarySyncOrchestrator>()
+                .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
 
                 // App services
                 .AddSingleton<ISettingsService, SettingsService>()
@@ -105,6 +109,9 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton<Services.ImageCacheService>()
+                .AddSingleton<Services.InMemorySink>(sp =>
+                    new Services.InMemorySink(
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
                 .AddSingleton<Wavee.Core.Http.IColorService>(sp =>
                     new Wavee.Core.Http.ExtractedColorService(
                         sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
@@ -130,6 +137,15 @@ public static class AppLifecycleHelper
                     sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(),
                     sp.GetService<ILogger<Session>>()))
                 .AddSingleton<ISession>(sp => sp.GetRequiredService<Session>())
+                .AddSingleton<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(sp =>
+                {
+                    var session = sp.GetRequiredService<ISession>();
+                    return new Wavee.Core.Library.Spotify.SpotifyLibraryService(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        (Wavee.Core.Http.SpClient)session.SpClient,
+                        session,
+                        logger: sp.GetService<ILogger<Wavee.Core.Library.Spotify.SpotifyLibraryService>>());
+                })
 
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
@@ -165,6 +181,28 @@ public static class AppLifecycleHelper
                 .AddSingleton<MainWindowViewModel>()
                 .AddSingleton<ShellViewModel>()
                 .AddSingleton<PlayerBarViewModel>()
+                // Lyrics services
+                .AddSingleton<Wavee.Core.Http.Lyrics.LrcLibClient>()
+                .AddSingleton<ILyricsCacheService, MemoryLyricsCacheService>()
+                .AddSingleton<LyricsSearchService>(sp =>
+                {
+                    var providers = new ILyricsProvider[]
+                    {
+                        new MusixmatchLyricsProvider(sp.GetRequiredService<ISettingsService>()),
+                        new QQMusicLyricsProvider(),
+                        new NeteaseLyricsProvider(),
+                        new LrcLibLyricsProvider(sp.GetRequiredService<Wavee.Core.Http.Lyrics.LrcLibClient>()),
+                        new SpotifyLyricsProvider(sp.GetRequiredService<ISession>()),
+                        new AppleMusicLyricsProvider(),
+                        new KugouLyricsProvider(),
+                        new SodaMusicLyricsProvider(),
+                    };
+                    return new LyricsSearchService(
+                        sp.GetRequiredService<ISettingsService>(),
+                        providers,
+                        sp.GetRequiredService<ILyricsCacheService>(),
+                        sp.GetService<ILogger<LyricsSearchService>>());
+                })
                 .AddSingleton<LyricsViewModel>()
                 .AddTransient<HomeViewModel>()
                 .AddTransient<ArtistViewModel>()
@@ -179,8 +217,10 @@ public static class AppLifecycleHelper
                 .AddTransient<SearchViewModel>(sp =>
                     new SearchViewModel(
                         sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>()))
                 .AddTransient<DebugViewModel>()
+                .AddTransient<SettingsViewModel>()
 
                 // Drag & drop
                 .AddSingleton<DragStateService>()
@@ -222,6 +262,10 @@ public static class AppLifecycleHelper
                 if (artistService is Data.Contexts.ArtistService svc)
                     svc.SetMetadataServices(cacheService, extMetadataClient);
             }
+
+            // Wire metadata client into PlaybackStateManager for enriching incomplete cluster metadata
+            if (extMetadataClient != null)
+                session.PlaybackState?.SetMetadataClient(extMetadataClient);
 
             var audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 session,

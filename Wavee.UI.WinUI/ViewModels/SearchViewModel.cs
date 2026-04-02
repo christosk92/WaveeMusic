@@ -5,6 +5,7 @@ using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using DynamicData;
 using DynamicData.Binding;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,8 @@ using ReactiveUI;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Parameters;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -28,12 +31,14 @@ public enum SearchFilterType
 public sealed partial class SearchViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private readonly IPathfinderClient _pathfinderClient;
+    private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
     private readonly SourceCache<SearchResultItem, string> _resultsSource = new(r => r.Uri);
     private readonly CompositeDisposable _disposables = new();
 
     // Per-section output collections
     private readonly ReadOnlyObservableCollection<SearchResultItem> _tracks;
+    private readonly ReadOnlyObservableCollection<ITrackItem> _adaptedTracks;
     private readonly ReadOnlyObservableCollection<SearchResultItem> _artists;
     private readonly ReadOnlyObservableCollection<SearchResultItem> _albums;
     private readonly ReadOnlyObservableCollection<SearchResultItem> _playlists;
@@ -72,6 +77,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private bool _showPlaylists = true;
 
     public ReadOnlyObservableCollection<SearchResultItem> Tracks => _tracks;
+    public ReadOnlyObservableCollection<ITrackItem> AdaptedTracks => _adaptedTracks;
     public ReadOnlyObservableCollection<SearchResultItem> Artists => _artists;
     public ReadOnlyObservableCollection<SearchResultItem> Albums => _albums;
     public ReadOnlyObservableCollection<SearchResultItem> Playlists => _playlists;
@@ -81,9 +87,11 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
     public SearchViewModel(
         IPathfinderClient pathfinderClient,
+        IPlaybackStateService playbackStateService,
         ILogger<SearchViewModel>? logger = null)
     {
         _pathfinderClient = pathfinderClient;
+        _playbackStateService = playbackStateService;
         _logger = logger;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, null)
@@ -96,6 +104,14 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         _resultsSource.Connect()
             .Filter(r => r.Type == SearchResultType.Track)
             .Bind(out _tracks)
+            .DisposeMany()
+            .Subscribe()
+            .DisposeWith(_disposables);
+
+        _resultsSource.Connect()
+            .Filter(r => r.Type == SearchResultType.Track)
+            .Transform(r => (ITrackItem)new SearchTrackAdapter(r))
+            .Bind(out _adaptedTracks)
             .DisposeMany()
             .Subscribe()
             .DisposeWith(_disposables);
@@ -180,6 +196,13 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    private void PlayTrack(object? track)
+    {
+        if (track is not ITrackItem trackItem) return;
+        _playbackStateService.PlayTrack(trackItem.Id);
     }
 
     public void Dispose()

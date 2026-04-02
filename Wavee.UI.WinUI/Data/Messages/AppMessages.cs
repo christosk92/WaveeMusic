@@ -81,6 +81,74 @@ public sealed class PlaybackErrorOccurredMessage(Models.PlaybackErrorEvent error
 public sealed class ActiveDeviceChangedMessage(string? deviceId)
     : ValueChangedMessage<string?>(deviceId);
 
+// --- Library Sync Messages ---
+
+/// <summary>
+/// Sent when library sync starts (clear stale UI, show loading state).
+/// </summary>
+public sealed class LibrarySyncStartedMessage;
+
+/// <summary>
+/// Sent when library sync completes successfully (refresh UI with real data).
+/// </summary>
+public sealed class LibrarySyncCompletedMessage(LibrarySyncSummary summary)
+    : ValueChangedMessage<LibrarySyncSummary>(summary);
+
+/// <summary>
+/// Summary of what changed during library sync (delta, not totals).
+/// Exposes changes as a list for WinUI rendering.
+/// </summary>
+public sealed record LibrarySyncSummary(
+    int TracksAdded = 0,
+    int TracksRemoved = 0,
+    int AlbumsAdded = 0,
+    int AlbumsRemoved = 0,
+    int ArtistsAdded = 0,
+    int ArtistsRemoved = 0,
+    bool HadPartialFailure = false,
+    string? PartialFailureReason = null)
+{
+    public bool HasChanges => TracksAdded + TracksRemoved + AlbumsAdded + AlbumsRemoved + ArtistsAdded + ArtistsRemoved > 0;
+
+    /// <summary>Flat list of individual changes for rendering in ItemsControl.</summary>
+    public System.Collections.Generic.IReadOnlyList<SyncDeltaEntry> Entries
+    {
+        get
+        {
+            var list = new System.Collections.Generic.List<SyncDeltaEntry>();
+            if (TracksAdded > 0) list.Add(new("Tracks", TracksAdded, true, "\uE8D6"));
+            if (TracksRemoved > 0) list.Add(new("Tracks", TracksRemoved, false, "\uE8D6"));
+            if (AlbumsAdded > 0) list.Add(new("Albums", AlbumsAdded, true, "\uE93C"));
+            if (AlbumsRemoved > 0) list.Add(new("Albums", AlbumsRemoved, false, "\uE93C"));
+            if (ArtistsAdded > 0) list.Add(new("Artists", ArtistsAdded, true, "\uE77B"));
+            if (ArtistsRemoved > 0) list.Add(new("Artists", ArtistsRemoved, false, "\uE77B"));
+            return list;
+        }
+    }
+}
+
+/// <summary>A single delta entry: "+12 Tracks" or "-2 Albums".</summary>
+public sealed record SyncDeltaEntry(string Label, int Count, bool IsAdded, string IconGlyph)
+{
+    public string CountText => IsAdded ? $"+{Count}" : $"-{Count}";
+}
+
+/// <summary>
+/// Sent when library sync fails (show error notification).
+/// </summary>
+public sealed class LibrarySyncFailedMessage(string error)
+    : ValueChangedMessage<string>(error);
+
+/// <summary>
+/// Sent when library data changes (sync complete, Dealer delta, user action).
+/// </summary>
+public sealed class LibraryDataChangedMessage;
+
+/// <summary>
+/// Sent when playlists specifically change.
+/// </summary>
+public sealed class PlaylistsChangedMessage;
+
 // --- Right Panel Messages ---
 
 /// <summary>

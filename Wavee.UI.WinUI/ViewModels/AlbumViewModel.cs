@@ -513,9 +513,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Header is ready
             IsLoading = false;
 
-            // Clear shimmer placeholders first — let the ListView process removals
+            // Clear shimmer placeholders first — let the ListView process removals.
+            // Task.Delay ensures at least one full render frame passes so the ListView
+            // treats the subsequent adds as fresh entries → staggered entrance animation.
             _tracksSource.Clear();
-            await Task.Yield();
+            await Task.Delay(50);
 
             // Add real tracks in a fresh batch — ListView sees these as new entries → staggered entrance animation
             _tracksSource.Edit(cache =>
@@ -631,7 +633,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         };
 
         _playbackStateService.LoadQueue(queueItems, context, startIndex);
-        _playbackStateService.PlayPause();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

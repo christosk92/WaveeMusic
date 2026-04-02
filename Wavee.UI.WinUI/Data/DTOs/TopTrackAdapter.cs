@@ -29,4 +29,5 @@ public sealed class TopTrackAdapter : ITrackItem
     public string DurationFormatted => _data.DisplayDuration;
     public int OriginalIndex { get; }
     public bool IsLoaded => true;
+    public bool IsLiked { get; set; }
 }

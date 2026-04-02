@@ -41,6 +41,83 @@ public sealed class AppSettings
     /// True once the user has seen the first-time play behavior setup.
     /// </summary>
     public bool PlayBehaviorConfigured { get; set; }
+
+    /// <summary>
+    /// Audio processing preset: "None" or "Radio".
+    /// </summary>
+    public string AudioPreset { get; set; } = "None";
+
+    /// <summary>
+    /// Audio streaming quality: "Normal" (96kbps), "High" (160kbps), or "VeryHigh" (320kbps).
+    /// </summary>
+    public string AudioQuality { get; set; } = "VeryHigh";
+
+    /// <summary>
+    /// Whether to normalize audio volume across tracks.
+    /// </summary>
+    public bool NormalizationEnabled { get; set; } = true;
+
+    // ── Lyrics ──
+
+    /// <summary>
+    /// Legacy lyrics source: "Spotify" or "LRCLIB". Superseded by <see cref="LyricsProviders"/>.
+    /// Kept for backward compat — ignored when LyricsProviders.Providers is populated.
+    /// </summary>
+    public string LyricsSource { get; set; } = "LRCLIB";
+
+    /// <summary>
+    /// Multi-provider lyrics configuration: provider order, enabled state, search strategy, thresholds.
+    /// </summary>
+    public LyricsProviderSettings LyricsProviders { get; set; } = new();
+
+    // ── Cache (applied on next launch) ──
+
+    /// <summary>
+    /// Whether audio caching is enabled.
+    /// </summary>
+    public bool CacheEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Maximum cache size in bytes. Default 1 GB.
+    /// </summary>
+    public long CacheSizeLimitBytes { get; set; } = 1L * 1024 * 1024 * 1024;
+
+    // ── Connection (applied on next launch) ──
+
+    /// <summary>
+    /// Whether to automatically reconnect on connection failure.
+    /// </summary>
+    public bool AutoReconnect { get; set; } = true;
+
+    /// <summary>
+    /// Connection timeout in seconds.
+    /// </summary>
+    public int ConnectionTimeoutSeconds { get; set; } = 30;
+
+    // ── UI zoom ──
+
+    /// <summary>
+    /// App-wide zoom level (1.0 = 100%). Range: 0.5 – 2.0.
+    /// </summary>
+    public double ZoomLevel { get; set; } = 1.0;
+
+    // ── Equalizer ──
+
+    /// <summary>
+    /// Whether the user EQ is enabled.
+    /// </summary>
+    public bool EqualizerEnabled { get; set; }
+
+    /// <summary>
+    /// Active EQ preset name: "Flat", "Bass Boost", "Treble Boost", "Vocal", "Radio", "Custom".
+    /// </summary>
+    public string EqualizerPreset { get; set; } = "Flat";
+
+    /// <summary>
+    /// EQ band gains in dB, indexed 0-9 for the 10-band graphic EQ.
+    /// Frequencies: 31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz.
+    /// </summary>
+    public double[] EqualizerBandGains { get; set; } = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 }
 
 public sealed class HomeSectionSettings

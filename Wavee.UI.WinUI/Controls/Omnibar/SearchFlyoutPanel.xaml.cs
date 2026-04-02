@@ -14,6 +14,7 @@ public sealed partial class SearchFlyoutPanel : UserControl
     private int _keyboardIndex = -1; // -1 = nothing selected via keyboard
 
     public event EventHandler<SearchSuggestionItem>? ItemClicked;
+    public event EventHandler<SearchSuggestionItem>? ActionClicked;
 
     public SearchFlyoutPanel()
     {
@@ -94,6 +95,12 @@ public sealed partial class SearchFlyoutPanel : UserControl
     {
         if (e.ClickedItem is SearchSuggestionItem item)
             ItemClicked?.Invoke(this, item);
+    }
+
+    private void ActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.DataContext is SearchSuggestionItem item)
+            ActionClicked?.Invoke(this, item);
     }
 
     // Called after the ListView renders items to apply bold matching on text suggestions

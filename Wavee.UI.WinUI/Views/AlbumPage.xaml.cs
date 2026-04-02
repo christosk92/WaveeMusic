@@ -40,6 +40,21 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         _logger = Ioc.Default.GetService<ILogger<AlbumPage>>();
         InitializeComponent();
 
+        // Custom columns with compile-time delegate (no reflection)
+        TrackList.CustomColumns = new List<Controls.TrackList.TrackListColumnDefinition>
+        {
+            new()
+            {
+                Header = "Plays",
+                Width = new GridLength(80),
+                TextAlignment = HorizontalAlignment.Right,
+                ValueSelector = item => item is ViewModels.LazyTrackItem lazy
+                    && lazy.Data is Data.DTOs.AlbumTrackDto dto
+                    ? dto.PlayCountFormatted
+                    : ""
+            }
+        };
+
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         PageScrollView.ViewChanged += OnPageScrollViewChanged;
@@ -145,15 +160,23 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         _blurSprite.Brush = maskBrush;
         _blurSprite.RelativeSizeAdjustment = Vector2.One;
 
+        // Start invisible, fade in after image loads to avoid flash
+        _blurSprite.Opacity = 0f;
         ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
 
-        // Fade in the background
-        var fadeAnim = compositor.CreateScalarKeyFrameAnimation();
-        fadeAnim.InsertKeyFrame(0f, 0f);
-        fadeAnim.InsertKeyFrame(1f, 1f,
-            compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f)));
-        fadeAnim.Duration = TimeSpan.FromMilliseconds(600);
-        visual.StartAnimation("Opacity", fadeAnim);
+        _blurSurface.LoadCompleted += (_, _) =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_blurSprite == null || compositor == null) return;
+                var fadeAnim = compositor.CreateScalarKeyFrameAnimation();
+                fadeAnim.InsertKeyFrame(0f, 0f);
+                fadeAnim.InsertKeyFrame(1f, 1f,
+                    compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f)));
+                fadeAnim.Duration = TimeSpan.FromMilliseconds(600);
+                _blurSprite.StartAnimation("Opacity", fadeAnim);
+            });
+        };
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)

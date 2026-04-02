@@ -56,6 +56,10 @@ public partial class App : Application
         // Start background cache cleanup
         Ioc.Default.GetRequiredService<CacheCleanupService>().Start();
 
+        // Eagerly activate — registers IMessenger handlers
+        Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
+        Ioc.Default.GetRequiredService<Data.Contracts.IActivityService>();
+
         // Launch main window
         MainWindow.Instance.Activate();
         _ = MainWindow.Instance.InitializeApplicationAsync();

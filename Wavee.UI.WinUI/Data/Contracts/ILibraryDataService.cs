@@ -80,4 +80,10 @@ public interface ILibraryDataService
     /// Event raised when playlists change (created, deleted, updated).
     /// </summary>
     event EventHandler? PlaylistsChanged;
+
+    /// <summary>
+    /// Event raised when any library data changes (sync complete, Dealer delta, user action).
+    /// Subscribe to refresh UI (sidebar badges, library pages, etc.).
+    /// </summary>
+    event EventHandler? DataChanged;
 }

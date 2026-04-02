@@ -146,7 +146,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     state.Track?.Title, state.Track?.Artist, state.Track?.Uri);
                 // Extract bare ID from URI (e.g. "spotify:track:abc123" → "abc123")
                 // ITrackItem.Id uses bare IDs, not full URIs
-                CurrentTrackId = ExtractTrackId(state.Track?.Uri);
                 CurrentTrackTitle = state.Track?.Title;
                 CurrentArtistName = state.Track?.Artist;
                 CurrentAlbumArt = state.Track?.ImageUrl;
@@ -154,6 +153,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 CurrentArtistId = state.Track?.ArtistUri;
                 CurrentAlbumId = state.Track?.AlbumUri;
                 Duration = state.DurationMs;
+                // Set CurrentTrackId last — it fires PropertyChanged which triggers
+                // LyricsViewModel.LoadLyricsAsync, so title/artist must be ready first
+                CurrentTrackId = ExtractTrackId(state.Track?.Uri);
 
                 // Extract color from album art (fire-and-forget)
                 var imageUrl = state.Track?.ImageUrl;
@@ -611,6 +613,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     }
 
     // ── Buffering state helpers ──
+
+    public void NotifyBuffering(string? trackId) => SetBuffering(trackId);
 
     private void SetBuffering(string? trackId)
     {

@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.ActivityBell.ActivityBell"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:Wavee.UI.WinUI.Data.Models"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.ActivityBell"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToBoolConverter x:Key="NullToBoolConverter"/>
+        <converters:StatusToActiveConverter x:Key="StatusToActiveConverter"/>
+        <converters:NullableDoubleToDoubleConverter x:Key="NullableDoubleToDoubleConverter"/>
+
+        <!-- ═══ Progress template (sync, download) ═══ -->
+        <DataTemplate x:Key="ProgressTemplate" x:DataType="models:ProgressActivityItem">
+            <Grid Padding="12,10" ColumnSpacing="12"
+                  Background="Transparent"
+                  CornerRadius="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="32"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Icon / spinner -->
+                <Grid Width="32" Height="32" CornerRadius="16"
+                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    <ProgressRing Width="32" Height="32"
+                                  IsActive="{x:Bind Status, Mode=OneWay, Converter={StaticResource StatusToActiveConverter}}"
+                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
+                </Grid>
+
+                <!-- Content -->
+                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+
+                    <!-- Progress bar (only when in progress) -->
+                    <ProgressBar Value="{x:Bind Progress, Mode=OneWay, Converter={StaticResource NullableDoubleToDoubleConverter}}"
+                                 IsIndeterminate="{x:Bind Progress, Mode=OneWay, Converter={StaticResource NullToBoolConverter}}"
+                                 Maximum="1.0" Height="2" CornerRadius="1"
+                                 Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
+
+                    <!-- Status text -->
+                    <TextBlock Text="{x:Bind Message, Mode=OneWay}"
+                               FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" MaxLines="2"
+                               Visibility="{x:Bind Message, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- ═══ Notification template (errors, release notes) ═══ -->
+        <DataTemplate x:Key="NotificationTemplate" x:DataType="models:NotificationActivityItem">
+            <Grid Padding="12,10" ColumnSpacing="12"
+                  Background="Transparent"
+                  CornerRadius="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="32"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Width="32" Height="32" CornerRadius="16"
+                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Grid>
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="{x:Bind Message, Mode=OneWay}" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" MaxLines="2"
+                               Visibility="{x:Bind Message, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                </StackPanel>
+
+                <!-- Unread indicator -->
+                <Ellipse Grid.Column="2" Width="8" Height="8"
+                         Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                         VerticalAlignment="Center"
+                         Visibility="{x:Bind IsRead, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- ═══ Spotify template (new releases, friend activity) ═══ -->
+        <DataTemplate x:Key="SpotifyTemplate" x:DataType="models:SpotifyActivityItem">
+            <Grid Padding="12,10" ColumnSpacing="12"
+                  Background="Transparent"
+                  CornerRadius="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Width="40" Height="40" CornerRadius="6"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Image Source="{x:Bind ImageUrl}" Stretch="UniformToFill"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="{x:Bind Message, Mode=OneWay}" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" MaxLines="1"
+                               Visibility="{x:Bind Message, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                </StackPanel>
+
+                <Ellipse Grid.Column="2" Width="8" Height="8"
+                         Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                         VerticalAlignment="Center"
+                         Visibility="{x:Bind IsRead, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+            </Grid>
+        </DataTemplate>
+
+        <local:ActivityItemTemplateSelector x:Key="ActivityTemplateSelector"
+            ProgressTemplate="{StaticResource ProgressTemplate}"
+            NotificationTemplate="{StaticResource NotificationTemplate}"
+            SpotifyTemplate="{StaticResource SpotifyTemplate}"
+            DefaultTemplate="{StaticResource NotificationTemplate}"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Button x:Name="BellButton"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="8,6"
+                MinWidth="0" MinHeight="0"
+                ToolTipService.ToolTip="Activity">
+            <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedRight">
+                    <Flyout.FlyoutPresenterStyle>
+                        <Style TargetType="FlyoutPresenter">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="CornerRadius" Value="8"/>
+                            <Setter Property="MinWidth" Value="380"/>
+                        </Style>
+                    </Flyout.FlyoutPresenterStyle>
+
+                    <Grid Width="380" MaxHeight="480">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <Grid Padding="16,12,12,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Activity" FontSize="16" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                <Button Content="Read all" Click="MarkAllRead_Click"
+                                        Background="Transparent" BorderThickness="0"
+                                        Padding="8,4" FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <Button Content="Clear" Click="ClearAll_Click"
+                                        Background="Transparent" BorderThickness="0"
+                                        Padding="8,4" FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Divider -->
+                        <Border Grid.Row="1" Height="1"
+                                Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                Margin="12,0"/>
+
+                        <!-- Activity list -->
+                        <ListView x:Name="ActivityList" Grid.Row="2"
+                                  SelectionMode="None"
+                                  Padding="4,4"
+                                  ItemTemplateSelector="{StaticResource ActivityTemplateSelector}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="0"/>
+                                    <Setter Property="MinHeight" Value="0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                        </ListView>
+
+                        <!-- Empty state -->
+                        <StackPanel Grid.Row="2" x:Name="EmptyState"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Visibility="Collapsed" Spacing="8" Padding="0,32">
+                            <FontIcon Glyph="&#xEA8F;" FontSize="28" Opacity="0.2"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="No recent activity" Opacity="0.4"
+                                       FontSize="13" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Flyout>
+            </Button.Flyout>
+
+            <!-- Bell icon + badge -->
+            <Grid>
+                <FontIcon Glyph="&#xEA8F;" FontSize="15"/>
+                <InfoBadge x:Name="UnreadBadge"
+                           Value="0"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Top"
+                           Margin="8,-6,-6,0"
+                           Visibility="Collapsed"/>
+            </Grid>
+        </Button>
+    </Grid>
+</UserControl>

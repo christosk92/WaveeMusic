@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Track.TrackItem"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:media="using:CommunityToolkit.WinUI.Media"
+    xmlns:ui="using:CommunityToolkit.WinUI"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <media:AttachedCardShadow x:Key="RowShadow" Offset="0,1" BlurRadius="4" Opacity="0.08" CornerRadius="6"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- ═══════════════ COMPACT MODE (grid cells: artist top tracks, search) ═══════════════ -->
+        <Border x:Name="CompactBorder" Visibility="Visible"
+                CornerRadius="6" BorderThickness="0" Background="Transparent">
+        <Grid x:Name="CompactRoot"
+              Padding="8,4" ColumnSpacing="12" Height="56">
+
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Album art stack (art + now-playing overlay + hover play button) -->
+            <Grid Grid.Column="0" Width="48" Height="48">
+                <Border CornerRadius="4"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Image x:Name="CompactAlbumArt" Stretch="UniformToFill"
+                           behaviors:ImageFallbackBehavior.HideOnError="True"
+                           behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+                </Border>
+
+                <Border x:Name="CompactNowPlaying" CornerRadius="4"
+                        Background="#D9000000" Visibility="Collapsed">
+                    <FontIcon x:Name="CompactNowPlayingIcon" Glyph="&#xE995;" FontSize="20"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <ProgressRing x:Name="CompactBufferingRing"
+                              Width="24" Height="24"
+                              IsActive="False" Visibility="Collapsed"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <Button x:Name="CompactPlayButton"
+                        Visibility="Collapsed" Opacity="0"
+                        Width="48" Height="48" CornerRadius="4"
+                        Padding="0" Background="#CC000000" BorderThickness="0"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    <FontIcon x:Name="CompactPlayIcon" Glyph="&#xE768;" FontSize="20"
+                              Foreground="White"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+
+                <controls1:Shimmer x:Name="CompactArtShimmer" Width="48" Height="48"
+                                   CornerRadius="4" Visibility="Collapsed"/>
+            </Grid>
+
+            <StackPanel x:Name="CompactInfoPanel" Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <Grid ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="CompactTitle" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="13"/>
+                    <Border x:Name="CompactExplicit" Grid.Column="1" Visibility="Collapsed"
+                            Background="{ThemeResource TextFillColorTertiaryBrush}"
+                            CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
+                        <TextBlock Text="E" FontSize="9" FontWeight="Bold"/>
+                    </Border>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="0">
+                    <TextBlock x:Name="CompactSubtitle"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                    <TextBlock x:Name="CompactVideoSeparator" Text=" · "
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Visibility="Collapsed"/>
+                    <FontIcon x:Name="CompactVideoIcon" Glyph="&#xE714;" FontSize="9"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              VerticalAlignment="Center" Margin="0,0,3,0"
+                              Visibility="Collapsed"/>
+                    <TextBlock x:Name="CompactVideoLabel" Text="Music Video"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Visibility="Collapsed"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel x:Name="CompactInfoShimmer" Grid.Column="1" VerticalAlignment="Center"
+                        Spacing="6" Visibility="Collapsed">
+                <controls1:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
+                <controls1:Shimmer Width="110" Height="12" HorizontalAlignment="Left"/>
+            </StackPanel>
+
+            <!-- Heart button (left of duration) -->
+            <controls:HeartButton x:Name="CompactHeartButton" Grid.Column="2"
+                                   VerticalAlignment="Center"
+                                   Width="28" Height="28" Visibility="Collapsed"/>
+
+            <TextBlock x:Name="CompactDuration" Grid.Column="3"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center" Padding="6,0"/>
+        </Grid>
+        </Border>
+
+        <!-- ═══════════════ ROW MODE (table rows: playlists, albums, liked songs) ═══════════════ -->
+        <Border x:Name="RowRoot" Visibility="Collapsed"
+                Padding="8,8" CornerRadius="6"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                ui:Effects.Shadow="{StaticResource RowShadow}">
+            <Grid>
+                <Grid x:Name="RowContentGrid" ColumnSpacing="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="RowIndexColDef" Width="40"/>
+                        <ColumnDefinition x:Name="RowHeartColDef" Width="32"/>
+                        <ColumnDefinition x:Name="RowArtColDef" Width="42"/>
+                        <ColumnDefinition Width="*" MinWidth="120"/>
+                        <ColumnDefinition x:Name="RowArtistColDef" Width="180"/>
+                        <ColumnDefinition x:Name="RowAlbumColDef" Width="180"/>
+                        <ColumnDefinition x:Name="RowDateColDef" Width="120"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Row number / Now Playing icon / Play button area -->
+                    <Grid Grid.Column="0">
+                        <TextBlock x:Name="RowIndexText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                        <FontIcon x:Name="RowNowPlayingIcon"
+                                  Glyph="&#xE995;"
+                                  FontSize="14"
+                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
+                        <ProgressRing x:Name="RowBufferingRing"
+                                      Width="16" Height="16"
+                                      IsActive="False" Visibility="Collapsed"
+                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Button x:Name="RowPlayButton"
+                                Visibility="Collapsed"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <FontIcon x:Name="RowPlayIcon" Glyph="&#xE768;" FontSize="14"
+                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- Heart button -->
+                    <controls:HeartButton x:Name="RowHeartButton" Grid.Column="1"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                                           Width="28" Height="28" Visibility="Collapsed"/>
+
+                    <!-- Album thumbnail (34x34) -->
+                    <Border Grid.Column="2" Width="34" Height="34" CornerRadius="4"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <Grid>
+                            <FontIcon x:Name="RowArtPlaceholder" Glyph="&#xE8D6;" FontSize="16" Opacity="0.3"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image x:Name="RowAlbumArt" Stretch="UniformToFill"
+                                   behaviors:ImageFallbackBehavior.HideOnError="True"
+                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                   behaviors:ImageFallbackBehavior.DecodePixelWidth="68"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Title + Explicit badge -->
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                                Margin="12,0,8,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="RowTitle"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"/>
+                        <Border x:Name="RowExplicit" Visibility="Collapsed"
+                                Background="{ThemeResource TextFillColorSecondaryBrush}"
+                                CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
+                            <TextBlock Text="E" FontSize="9" FontWeight="Bold"
+                                       Foreground="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Artist (clickable) -->
+                    <HyperlinkButton x:Name="RowArtistLink" Grid.Column="4"
+                                     Padding="0" VerticalAlignment="Center">
+                        <HyperlinkButton.ContentTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </DataTemplate>
+                        </HyperlinkButton.ContentTemplate>
+                    </HyperlinkButton>
+
+                    <!-- Album (clickable) -->
+                    <HyperlinkButton x:Name="RowAlbumLink" Grid.Column="5"
+                                     Padding="0" VerticalAlignment="Center">
+                        <HyperlinkButton.ContentTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </DataTemplate>
+                        </HyperlinkButton.ContentTemplate>
+                    </HyperlinkButton>
+
+                    <!-- Date Added -->
+                    <TextBlock x:Name="RowDateAdded" Grid.Column="6"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center"/>
+
+                    <!-- Duration -->
+                    <TextBlock x:Name="RowDuration" Grid.Column="7"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- Shimmer overlay for lazy/loading rows -->
+                <Grid x:Name="RowShimmerOverlay" VerticalAlignment="Center"
+                      Visibility="Collapsed"
+                      ColumnSpacing="12" Padding="40,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="34"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="50"/>
+                    </Grid.ColumnDefinitions>
+                    <controls1:Shimmer Grid.Column="0" Width="34" Height="34" CornerRadius="4"/>
+                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                        <controls1:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
+                        <controls1:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                    <controls1:Shimmer Grid.Column="2" Width="50" Height="12"/>
+                    <controls1:Shimmer Grid.Column="3" Width="36" Height="12" HorizontalAlignment="Right"/>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+
+</UserControl>
