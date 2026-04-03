@@ -165,6 +165,23 @@
                         TextWrapping="WrapWholeWords"
                         FontSize="13"
                         Visibility="Collapsed"/>
+
+                    <!-- Debug info button (DEBUG builds only) -->
+                    <Button
+                        x:Name="LyricsDebugButton"
+                        Content="&#xEBE8;"
+                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                        Click="LyricsDebugButton_Click"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,4,4,0"
+                        Padding="6"
+                        MinWidth="0" MinHeight="0"
+                        CornerRadius="4"
+                        FontSize="12"
+                        Opacity="0.5"
+                        Background="Transparent"
+                        Visibility="Collapsed"/>
                 </Grid>
 
                 <!-- Friends Activity placeholder -->

@@ -125,7 +125,7 @@ namespace Wavee.Controls.Lyrics.Core
         private DirtyFlags _dirty = DirtyFlags.Layout;
         private RenderContext? _renderContext;
 
-        private int _primaryPlayingLineIndex;
+        private int _primaryPlayingLineIndex = -1;
         private (int Start, int End) _visibleRange;
         private double _canvasTargetScrollOffset;
 
@@ -299,7 +299,7 @@ namespace Wavee.Controls.Lyrics.Core
 
             if (isPrimaryPlayingLineChanged || (_dirty & DirtyFlags.Layout) != 0)
             {
-                var targetScroll = LyricsLayoutManager.CalculateTargetScrollOffset(_renderLyricsLines, _primaryPlayingLineIndex);
+                var targetScroll = LyricsLayoutManager.CalculateTargetScrollOffset(_renderLyricsLines, Math.Max(0, _primaryPlayingLineIndex));
                 if (targetScroll.HasValue) _canvasTargetScrollOffset = targetScroll.Value;
 
                 if ((_dirty & DirtyFlags.Layout) != 0)
@@ -668,7 +668,7 @@ namespace Wavee.Controls.Lyrics.Core
             _songPosition = TimeSpan.Zero;
             _songPositionWithOffset = TimeSpan.FromMilliseconds(_positionOffsetMs);
             _synchronizer.Reset();
-            _primaryPlayingLineIndex = 0;
+            _primaryPlayingLineIndex = -1;
         }
 
         private async Task ReloadCoverBackgroundResourcesAsync()

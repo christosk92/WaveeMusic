@@ -15,6 +15,7 @@ using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.Controls.Lyrics.Models.Settings;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 using Microsoft.UI;
 using Windows.UI;
 using ColorHelper = Wavee.Controls.Lyrics.Helper.ColorHelper;
@@ -51,6 +52,9 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private NowPlayingPalette? _currentPalette;
+
+    [ObservableProperty]
+    private LyricsSearchDiagnostics? _lastDiagnostics;
 
     public LyricsWindowStatus WindowStatus { get; }
 
@@ -135,7 +139,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 
         try
         {
-            var lyrics = await _lyricsService.GetLyricsForTrackAsync(
+            var (lyrics, diagnostics) = await _lyricsService.GetLyricsForTrackAsync(
                 trackId,
                 _playbackState.CurrentTrackTitle,
                 _playbackState.CurrentArtistName,
@@ -147,6 +151,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 
             CurrentLyrics = lyrics;
             HasLyrics = lyrics != null;
+            LastDiagnostics = diagnostics;
 
             CurrentSongInfo = new SongInfo
             {

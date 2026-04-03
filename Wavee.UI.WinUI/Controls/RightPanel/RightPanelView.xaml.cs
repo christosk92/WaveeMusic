@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -235,6 +236,10 @@ public sealed partial class RightPanelView : UserControl
                          && (_lyricsVm.HasLyrics || _lyricsVm.IsLoading);
         NowPlayingCanvas.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
         LyricsInteractionOverlay.Visibility = _lyricsVm.HasLyrics ? Visibility.Visible : Visibility.Collapsed;
+
+#if DEBUG
+        LyricsDebugButton.Visibility = Visibility.Visible;
+#endif
 
         if (_lyricsVm.CurrentLyrics != null)
         {
@@ -513,5 +518,68 @@ public sealed partial class RightPanelView : UserControl
     {
         IsOpen = !IsOpen;
         e.Handled = true;
+    }
+
+    // ── Lyrics debug ──
+
+    private async void LyricsDebugButton_Click(object sender, RoutedEventArgs e)
+    {
+        var diag = _lyricsVm?.LastDiagnostics;
+        if (diag == null)
+        {
+            await ShowDebugDialog("No diagnostics available yet.");
+            return;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Track ID: {diag.TrackId}");
+        sb.AppendLine($"Query: \"{diag.QueryTitle}\" by \"{diag.QueryArtist}\"");
+        sb.AppendLine($"Duration: {diag.QueryDurationMs:F0}ms");
+        sb.AppendLine($"Search time: {diag.TotalSearchTime.TotalMilliseconds:F0}ms");
+        sb.AppendLine($"Selected: {diag.SelectedProvider ?? "none"} — {diag.SelectionReason}");
+        sb.AppendLine();
+
+        foreach (var p in diag.Providers)
+        {
+            sb.AppendLine($"── {p.Name} ({p.Status}) ──");
+            if (p.Error != null)
+                sb.AppendLine($"  Error: {p.Error}");
+            if (p.Status == ProviderStatus.Success)
+            {
+                sb.AppendLine($"  Lines: {p.LineCount}, Syllable sync: {p.HasSyllableSync}");
+                if (p.RawPreview != null)
+                {
+                    sb.AppendLine($"  Preview:");
+                    foreach (var line in p.RawPreview.Split('\n'))
+                        sb.AppendLine($"    {line}");
+                }
+            }
+            sb.AppendLine();
+        }
+
+        await ShowDebugDialog(sb.ToString());
+    }
+
+    private async Task ShowDebugDialog(string content)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Lyrics Debug Info",
+            Content = new ScrollViewer
+            {
+                Content = new TextBlock
+                {
+                    Text = content,
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11,
+                    IsTextSelectionEnabled = true,
+                    TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+                },
+                MaxHeight = 500,
+            },
+            CloseButtonText = "Close",
+            XamlRoot = this.XamlRoot,
+        };
+        await dialog.ShowAsync();
     }
 }

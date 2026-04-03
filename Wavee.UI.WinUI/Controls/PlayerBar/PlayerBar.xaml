@@ -132,7 +132,7 @@
                             Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
                             FontSize="13"
                             FontWeight="SemiBold"
-                            MaxLines="2"
+                            MaxLines="1"
                             TextWrapping="WrapWholeWords"
                             TextTrimming="CharacterEllipsis" />
                     </HyperlinkButton>

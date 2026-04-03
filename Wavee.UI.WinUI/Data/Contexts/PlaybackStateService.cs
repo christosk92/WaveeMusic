@@ -10,8 +10,10 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Wavee.Connect;
+using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
+using Wavee.Protocol.Metadata;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
@@ -36,7 +38,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly IHomeFeedCache? _homeFeedCache;
     private readonly ObservableCollection<QueueItem> _queue = [];
     private IDisposable? _stateSubscription;
+    private IExtendedMetadataClient? _metadataClient;
     private CancellationTokenSource? _colorCts;
+    private CancellationTokenSource? _metadataFetchCts;
     private bool _isFirstStateUpdate = true;
     private double? _pendingSeekPositionMs;
 
@@ -90,6 +94,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         TrySubscribeToRemoteState();
     }
 
+    public void SetMetadataClient(IExtendedMetadataClient metadataClient)
+        => _metadataClient = metadataClient;
+
     // ── IRecipient<AuthStatusChangedMessage> ──
 
     public void Receive(AuthStatusChangedMessage message)
@@ -138,31 +145,16 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 state = state with { Changes = StateChanges.All };
             }
 
-            // Track info
+            // Track info — always fetch full metadata from Spotify API before
+            // setting properties, because Connect state frequently omits fields
             if (state.Changes.HasFlag(StateChanges.Track))
             {
                 _pendingSeekPositionMs = null;
-                _logger?.LogInformation("UI bridge: track → {Title} by {Artist} (uri={Uri})",
-                    state.Track?.Title, state.Track?.Artist, state.Track?.Uri);
-                // Extract bare ID from URI (e.g. "spotify:track:abc123" → "abc123")
-                // ITrackItem.Id uses bare IDs, not full URIs
-                CurrentTrackTitle = state.Track?.Title;
-                CurrentArtistName = state.Track?.Artist;
-                CurrentAlbumArt = state.Track?.ImageUrl;
-                CurrentAlbumArtLarge = state.Track?.ImageLargeUrl ?? state.Track?.ImageXLargeUrl ?? state.Track?.ImageUrl;
-                CurrentArtistId = state.Track?.ArtistUri;
-                CurrentAlbumId = state.Track?.AlbumUri;
                 Duration = state.DurationMs;
-                // Set CurrentTrackId last — it fires PropertyChanged which triggers
-                // LyricsViewModel.LoadLyricsAsync, so title/artist must be ready first
-                CurrentTrackId = ExtractTrackId(state.Track?.Uri);
 
-                // Extract color from album art (fire-and-forget)
-                var imageUrl = state.Track?.ImageUrl;
-                if (!string.IsNullOrEmpty(imageUrl))
-                    _ = ExtractAlbumColorAsync(imageUrl);
-                else
-                    CurrentAlbumArtColor = null;
+                var trackUri = state.Track?.Uri;
+                if (!string.IsNullOrEmpty(trackUri))
+                    _ = FetchAndApplyTrackMetadataAsync(trackUri, state);
             }
 
             // Playback status
@@ -313,6 +305,121 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     Volume, state.Volume, state.IsVolumeRestricted);
             }
         });
+    }
+
+    /// <summary>
+    /// Fetches full track metadata from the Spotify API and updates UI properties.
+    /// Connect state frequently omits fields like artist_name — this ensures we always
+    /// have complete metadata for lyrics matching and display.
+    /// </summary>
+    private async Task FetchAndApplyTrackMetadataAsync(string trackUri, PlaybackState connectState)
+    {
+        _metadataFetchCts?.Cancel();
+        _metadataFetchCts = new CancellationTokenSource();
+        var ct = _metadataFetchCts.Token;
+
+        try
+        {
+            if (_metadataClient == null)
+            {
+                // Metadata client not wired yet — fall back to Connect state
+                ApplyConnectState(trackUri, connectState);
+                return;
+            }
+
+            var track = await _metadataClient.GetTrackAsync(trackUri, ct);
+            if (ct.IsCancellationRequested || track == null) return;
+
+            var trackId = ExtractTrackId(trackUri);
+
+            // API is authoritative; fall back to Connect state only if API field is missing
+            var title = track.Name ?? connectState.Track?.Title;
+            var artist = track.Artist.Count > 0
+                ? string.Join(", ", track.Artist.Select(a => a.Name))
+                : connectState.Track?.Artist;
+
+            var imageDefault = GetImageUrl(track.Album, Image.Types.Size.Default) ?? connectState.Track?.ImageUrl;
+            var imageLarge = GetImageUrl(track.Album, Image.Types.Size.Large)
+                ?? connectState.Track?.ImageLargeUrl;
+            var imageXLarge = GetImageUrl(track.Album, Image.Types.Size.Xlarge)
+                ?? connectState.Track?.ImageXLargeUrl;
+
+            string? artistUri = connectState.Track?.ArtistUri;
+            if (track.Artist.Count > 0 && track.Artist[0].Gid is { Length: > 0 } gid)
+                artistUri = $"spotify:artist:{Wavee.Core.Audio.SpotifyId.FromRaw(gid.Span, Wavee.Core.Audio.SpotifyIdType.Artist).ToBase62()}";
+
+            string? albumUri = connectState.Track?.AlbumUri;
+            if (track.Album?.Gid is { Length: > 0 } albumGid)
+                albumUri = $"spotify:album:{Wavee.Core.Audio.SpotifyId.FromRaw(albumGid.Span, Wavee.Core.Audio.SpotifyIdType.Album).ToBase62()}";
+
+            _logger?.LogInformation("Track metadata fetched: \"{Title}\" by \"{Artist}\" (uri={Uri})",
+                title, artist, trackUri);
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                CurrentTrackTitle = title;
+                CurrentArtistName = artist;
+                CurrentAlbumArt = imageDefault;
+                CurrentAlbumArtLarge = imageLarge ?? imageXLarge ?? imageDefault;
+                CurrentArtistId = artistUri;
+                CurrentAlbumId = albumUri;
+
+                // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
+                CurrentTrackId = trackId;
+
+                // Extract color from album art
+                if (!string.IsNullOrEmpty(imageDefault))
+                    _ = ExtractAlbumColorAsync(imageDefault);
+                else
+                    CurrentAlbumArtColor = null;
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to fetch track metadata for {Uri} — falling back to Connect state", trackUri);
+            ApplyConnectState(trackUri, connectState);
+        }
+    }
+
+    /// <summary>
+    /// Fallback: applies track metadata from the Connect state when the API fetch
+    /// is unavailable or fails. Connect state may have incomplete fields.
+    /// </summary>
+    private void ApplyConnectState(string trackUri, PlaybackState connectState)
+    {
+        var trackId = ExtractTrackId(trackUri);
+
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            CurrentTrackTitle = connectState.Track?.Title;
+            CurrentArtistName = connectState.Track?.Artist;
+            CurrentAlbumArt = connectState.Track?.ImageUrl;
+            CurrentAlbumArtLarge = connectState.Track?.ImageLargeUrl
+                ?? connectState.Track?.ImageXLargeUrl
+                ?? connectState.Track?.ImageUrl;
+            CurrentArtistId = connectState.Track?.ArtistUri;
+            CurrentAlbumId = connectState.Track?.AlbumUri;
+
+            // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
+            CurrentTrackId = trackId;
+
+            // Extract color from album art
+            var imageUrl = connectState.Track?.ImageUrl;
+            if (!string.IsNullOrEmpty(imageUrl))
+                _ = ExtractAlbumColorAsync(imageUrl);
+            else
+                CurrentAlbumArtColor = null;
+        });
+    }
+
+    private static string? GetImageUrl(Album? album, Image.Types.Size preferredSize)
+    {
+        if (album?.CoverGroup?.Image.Count is not > 0) return null;
+        var image = album.CoverGroup.Image.FirstOrDefault(i => i.Size == preferredSize)
+                    ?? album.CoverGroup.Image.FirstOrDefault();
+        if (image == null) return null;
+        return $"spotify:image:{Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant()}";
     }
 
     private async Task ExtractAlbumColorAsync(string imageUrl)
@@ -645,6 +752,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void Dispose()
     {
+        _metadataFetchCts?.Cancel();
         _stateSubscription?.Dispose();
         _messenger.UnregisterAll(this);
     }

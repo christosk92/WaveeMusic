@@ -6,16 +6,20 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
 {
     public class LyricsSynchronizer
     {
-        private int _lastFoundIndex = 0;
+        private int _lastFoundIndex = -1;
 
         public void Reset()
         {
-            _lastFoundIndex = 0;
+            _lastFoundIndex = -1;
         }
 
         public int GetCurrentLineIndex(double currentTimeMs, IList<RenderLyricsLine>? lines)
         {
-            if (lines == null || lines.Count == 0) return 0;
+            if (lines == null || lines.Count == 0) return -1;
+
+            // Before the first line starts — no line is active
+            if (currentTimeMs < lines[0].StartMs)
+                return -1;
 
             if (_lastFoundIndex >= 0 && _lastFoundIndex < lines.Count)
             {
@@ -60,7 +64,7 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
                 return bestCandidateIndex;
             }
 
-            return Math.Min(_lastFoundIndex, lines.Count - 1);
+            return _lastFoundIndex >= 0 ? Math.Min(_lastFoundIndex, lines.Count - 1) : -1;
         }
 
         private static bool IsTimeInLine(double time, IList<RenderLyricsLine> lines, int index)

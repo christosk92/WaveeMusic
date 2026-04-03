@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Lyricify.Lyrics.Helpers;
 using Lyricify.Lyrics.Models;
+using Lyricify.Lyrics.Parsers;
 using Lyricify.Lyrics.Searchers;
 using Lyricify.Lyrics.Searchers.Helpers;
 using Microsoft.Extensions.Logging;
@@ -25,6 +26,8 @@ public sealed class LyricsService : ILyricsService
 {
     private readonly ISession _session;
     private readonly LrcLibClient _lrcLibClient = new();
+    private readonly AmllTtmlDbClient _amllClient = new();
+    private readonly Lyricify.Lyrics.Providers.Web.Musixmatch.Api _musixmatchApi = new();
     private readonly ILogger? _logger;
 
     private static readonly TimeSpan ProviderTimeout = TimeSpan.FromSeconds(10);
@@ -37,12 +40,15 @@ public sealed class LyricsService : ILyricsService
         _logger = logger;
     }
 
-    public async Task<ControlsLyricsData?> GetLyricsForTrackAsync(
+    public async Task<(ControlsLyricsData? Lyrics, LyricsSearchDiagnostics Diagnostics)> GetLyricsForTrackAsync(
         string trackId, string? title, string? artist,
         double durationMs, string? imageUrl, CancellationToken ct = default)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var providerDiags = new List<ProviderDiagnostic>();
+
         if (string.IsNullOrEmpty(title))
-            return null;
+            return (null, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, null, null, sw.Elapsed));
 
         var trackMeta = new TrackMultiArtistMetadata
         {
@@ -58,35 +64,165 @@ public sealed class LyricsService : ILyricsService
             SearchProviderAsync("Kugou", () => SearchKugouAsync(trackMeta, ct), ct),
             SearchProviderAsync("Netease", () => SearchNeteaseAsync(trackMeta, ct), ct),
             SearchProviderAsync("LRCLIB", () => SearchLrcLibAsync(title, artist, durationMs, ct), ct),
+            //SearchProviderAsync("Musixmatch", () => SearchMusixmatchAsync(title, artist, durationMs, ct), ct),
+            SearchProviderAsync("AMLL-TTML-DB", () => SearchAmllTtmlDbAsync(title, artist, ct), ct),
             SearchProviderAsync("Spotify", () => SearchSpotifyAsync(trackId, imageUrl, ct), ct),
         };
 
         var results = await Task.WhenAll(tasks);
         ct.ThrowIfCancellationRequested();
 
+        // Build diagnostics for each provider
+        var providerNames = new[] { "QQMusic", "Kugou", "Netease", "LRCLIB", "Musixmatch", "AMLL-TTML-DB", "Spotify" };
+        for (int i = 0; i < results.Length; i++)
+        {
+            var r = results[i];
+            providerDiags.Add(new ProviderDiagnostic
+            {
+                Name = providerNames[i],
+                Status = r?.Data != null ? ProviderStatus.Success
+                       : r?.Error != null ? (r.Error.Contains("timed out") ? ProviderStatus.Timeout : ProviderStatus.Error)
+                       : ProviderStatus.NoResult,
+                Error = r?.Error,
+                LineCount = r?.Data?.LyricsLines.Count ?? 0,
+                HasSyllableSync = r?.Data?.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo) ?? false,
+                RawPreview = r?.Data?.LyricsLines.Count > 0
+                    ? string.Join("\n", r!.Data!.LyricsLines.Take(5).Select(l => l.PrimaryText))
+                    : null,
+            });
+        }
+
         var completed = results.Where(r => r?.Data != null).ToList();
 
-        // Spotify result (clean, used as reference for trimming)
+        // Spotify result (always correct — fetched by track ID, used as ground truth)
         var spotifyResult = completed.FirstOrDefault(r => r!.Provider == "Spotify");
+        var spotifyLines = spotifyResult?.Data?.LyricsLines;
 
-        // Best non-Spotify result: prefer syllable-synced, then most lines
-        var best = completed
-            .Where(r => r!.Provider != "Spotify")
-            .OrderByDescending(r => r!.Data!.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo) ? 1 : 0)
-            .ThenByDescending(r => r!.Data!.LyricsLines.Count)
-            .FirstOrDefault();
+        // Trim headers from external results before scoring against Spotify
+        var external = completed.Where(r => r!.Provider != "Spotify").ToList();
+        foreach (var ext in external)
+            TrimMetadataHeaders(ext!.Data!, spotifyResult?.Data);
+
+        // Score each external result against Spotify lyrics to verify correctness,
+        // then prefer syllable-synced and highest line count among verified results.
+        ProviderResult? best = null;
+        double bestScore = -1;
+        string? bestReason = null;
+
+        foreach (var ext in external)
+        {
+            var data = ext!.Data!;
+            double contentScore = spotifyLines is { Count: > 0 }
+                ? ScoreAgainstSpotify(data, spotifyLines)
+                : 1.0; // No Spotify to compare — accept all
+
+            // Reject results with very low similarity to Spotify (<20% line overlap)
+            if (contentScore < 0.2 && spotifyLines is { Count: > 0 })
+            {
+                _logger?.LogDebug("{Provider} rejected: content score {Score:P0} vs Spotify", ext.Provider, contentScore);
+                continue;
+            }
+
+            bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
+
+            // Composite score: content match (0-1) * 100, + syllable bonus, + line count tiebreak
+            double composite = contentScore * 100
+                + (hasSyllable ? 50 : 0)
+                + Math.Min(data.LyricsLines.Count, 20) * 0.1;
+
+            var reason = $"Content match: {contentScore:P0}, syllable: {hasSyllable}, lines: {data.LyricsLines.Count}";
+
+            if (composite > bestScore)
+            {
+                bestScore = composite;
+                best = ext;
+                bestReason = reason;
+            }
+        }
 
         if (best?.Data != null)
         {
-            TrimMetadataHeaders(best.Data, spotifyResult?.Data);
-            _logger?.LogDebug("Lyrics from {Provider} for \"{Title}\" ({Lines} lines, syllable={Syllable})",
-                best.Provider, title, best.Data.LyricsLines.Count,
-                best.Data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo));
-            return best.Data;
+            _logger?.LogDebug("Lyrics from {Provider} for \"{Title}\" ({Reason})",
+                best.Provider, title, bestReason);
+            sw.Stop();
+            return (best.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, best.Provider, bestReason, sw.Elapsed));
         }
 
-        // No non-Spotify result — use Spotify directly (already clean)
-        return spotifyResult?.Data;
+        // No external result passed validation — use Spotify directly
+        sw.Stop();
+        var selectedProvider = spotifyResult?.Data != null ? "Spotify" : null;
+        var selectionReason = spotifyResult?.Data != null ? "Fallback (no external provider matched Spotify)" : "No lyrics found";
+        return (spotifyResult?.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, selectedProvider, selectionReason, sw.Elapsed));
+    }
+
+    /// <summary>
+    /// Scores an external lyrics result against Spotify's (ground truth) lyrics.
+    /// Compares normalized text of sampled lines. Returns 0.0–1.0 overlap ratio.
+    /// </summary>
+    private static double ScoreAgainstSpotify(
+        ControlsLyricsData candidate,
+        List<Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine> spotifyLines)
+    {
+        // Build normalized set of Spotify lyric words (skip instrumental markers)
+        var spotifyTexts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in spotifyLines)
+        {
+            var text = NormalizeForMatch(line.PrimaryText);
+            if (text.Length > 0)
+                spotifyTexts.Add(text);
+        }
+
+        if (spotifyTexts.Count == 0)
+            return 1.0; // Spotify has no real text — can't compare, accept
+
+        // Sample candidate lines (skip very short/empty) and check how many match Spotify
+        int matched = 0;
+        int sampled = 0;
+
+        foreach (var line in candidate.LyricsLines)
+        {
+            var text = NormalizeForMatch(line.PrimaryText);
+            if (text.Length < 3) continue; // skip empty/instrumental markers
+
+            sampled++;
+
+            // Check if this line (or close enough) exists in Spotify
+            if (spotifyTexts.Contains(text))
+            {
+                matched++;
+                continue;
+            }
+
+            // Fuzzy: check if any Spotify line contains this text or vice versa
+            foreach (var st in spotifyTexts)
+            {
+                if (st.Contains(text, StringComparison.OrdinalIgnoreCase)
+                    || text.Contains(st, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched++;
+                    break;
+                }
+            }
+        }
+
+        return sampled == 0 ? 0.0 : (double)matched / sampled;
+    }
+
+    private static LyricsSearchDiagnostics BuildDiagnostics(
+        string? trackId, string? title, string? artist, double durationMs,
+        List<ProviderDiagnostic> providers, string? selectedProvider, string? reason, TimeSpan elapsed)
+    {
+        return new LyricsSearchDiagnostics
+        {
+            TrackId = trackId,
+            QueryTitle = title,
+            QueryArtist = artist,
+            QueryDurationMs = durationMs,
+            Providers = providers,
+            SelectedProvider = selectedProvider,
+            SelectionReason = reason,
+            TotalSearchTime = elapsed,
+        };
     }
 
     // ── Provider wrappers ──
@@ -104,12 +240,12 @@ public sealed class LyricsService : ILyricsService
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             _logger?.LogDebug("{Provider} timed out", name);
-            return null;
+            return new ProviderResult(name, null, "timed out");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogDebug(ex, "{Provider} search failed", name);
-            return null;
+            return new ProviderResult(name, null, ex.Message);
         }
     }
 
@@ -120,7 +256,7 @@ public sealed class LyricsService : ILyricsService
     {
         var result = await SearchHelper.Search(track,
             Lyricify.Lyrics.Searchers.Searchers.QQMusic,
-            CompareHelper.MatchType.NoMatch);
+            CompareHelper.MatchType.Low);
         ct.ThrowIfCancellationRequested();
 
         if (result is not QQMusicSearchResult qqResult)
@@ -141,7 +277,7 @@ public sealed class LyricsService : ILyricsService
     {
         var result = await SearchHelper.Search(track,
             Lyricify.Lyrics.Searchers.Searchers.Kugou,
-            CompareHelper.MatchType.NoMatch);
+            CompareHelper.MatchType.Low);
         ct.ThrowIfCancellationRequested();
 
         if (result is not KugouSearchResult kugouResult)
@@ -169,7 +305,7 @@ public sealed class LyricsService : ILyricsService
     {
         var result = await SearchHelper.Search(track,
             Lyricify.Lyrics.Searchers.Searchers.Netease,
-            CompareHelper.MatchType.NoMatch);
+            CompareHelper.MatchType.Low);
         ct.ThrowIfCancellationRequested();
 
         if (result is not NeteaseSearchResult neteaseResult)
@@ -264,6 +400,108 @@ public sealed class LyricsService : ILyricsService
 
         // Last resort: build line-level from API response
         return new ProviderResult("LRCLIB", ConvertApiLineLyrics(lrcResponse.Lyrics));
+    }
+
+    // ── AMLL-TTML-DB (GitHub syllable-synced TTML database) ──
+
+    private async Task<ProviderResult?> SearchAmllTtmlDbAsync(
+        string? title, string? artist, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(artist))
+            return null;
+
+        var rawLyricFile = await _amllClient.SearchAsync(title, artist, ct);
+        ct.ThrowIfCancellationRequested();
+
+        if (rawLyricFile == null)
+            return null;
+
+        var ttml = await _amllClient.FetchTtmlAsync(rawLyricFile, ct);
+        ct.ThrowIfCancellationRequested();
+
+        var parsed = LyricsContentParser.Parse(ttml);
+        return parsed != null ? new ProviderResult("AMLL-TTML-DB", parsed) : null;
+    }
+
+    // ── Musixmatch (richsync syllable format) ──
+
+    private async Task<ProviderResult?> SearchMusixmatchAsync(
+        string? title, string? artist, double durationMs, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(title))
+            return null;
+
+        var durationSec = durationMs > 0 ? (int?)(durationMs / 1000) : null;
+        var rawJson = await _musixmatchApi.GetFullLyricsRaw(title, artist ?? string.Empty, durationSec);
+        ct.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrEmpty(rawJson))
+            return null;
+
+        var lyricifyData = MusixmatchParser.Parse(rawJson);
+        if (lyricifyData?.Lines is not { Count: > 0 })
+            return null;
+
+        // Convert Lyricify LyricsData → ControlsLyricsData using the same QRC/KRC path
+        // (MusixmatchParser produces SyllableLineInfo which ParseQrcKrc handles)
+        var lines = lyricifyData.Lines.Where(x => x.Text != string.Empty).ToList();
+        if (lines.Count == 0)
+            return null;
+
+        var controlsLines = new List<Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine>(lines.Count);
+        foreach (var lineRead in lines)
+        {
+            var lineWrite = new Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine
+            {
+                StartMs = lineRead.StartTime ?? 0,
+                PrimaryText = lineRead.Text,
+                IsPrimaryHasRealSyllableInfo = true,
+            };
+
+            var syllables = (lineRead as Lyricify.Lyrics.Models.SyllableLineInfo)?.Syllables;
+            if (syllables != null)
+            {
+                int startIndex = 0;
+                foreach (var syllable in syllables)
+                {
+                    lineWrite.PrimarySyllables.Add(new Wavee.Controls.Lyrics.Models.Lyrics.BaseLyrics
+                    {
+                        StartMs = syllable.StartTime,
+                        EndMs = syllable.EndTime,
+                        Text = syllable.Text,
+                        StartIndex = startIndex,
+                    });
+                    startIndex += syllable.Text.Length;
+                }
+            }
+
+            controlsLines.Add(lineWrite);
+        }
+
+        // Fill EndMs gaps
+        for (int i = 0; i < controlsLines.Count; i++)
+        {
+            var line = controlsLines[i];
+            if (line.EndMs is null or 0 && i + 1 < controlsLines.Count)
+                line.EndMs = controlsLines[i + 1].StartMs;
+
+            for (int j = 0; j < line.PrimarySyllables.Count; j++)
+            {
+                var syl = line.PrimarySyllables[j];
+                if (syl.EndMs is null or 0)
+                    syl.EndMs = j + 1 < line.PrimarySyllables.Count
+                        ? line.PrimarySyllables[j + 1].StartMs
+                        : line.EndMs;
+            }
+        }
+
+        var result = new ControlsLyricsData
+        {
+            LyricsLines = controlsLines,
+            LanguageCode = lyricifyData.TrackMetadata?.Language?.FirstOrDefault(),
+        };
+
+        return new ProviderResult("Musixmatch", result);
     }
 
     // ── Spotify (parallel provider) ──
@@ -482,5 +720,5 @@ public sealed class LyricsService : ILyricsService
         };
     }
 
-    private sealed record ProviderResult(string Provider, ControlsLyricsData? Data);
+    private sealed record ProviderResult(string Provider, ControlsLyricsData? Data, string? Error = null);
 }

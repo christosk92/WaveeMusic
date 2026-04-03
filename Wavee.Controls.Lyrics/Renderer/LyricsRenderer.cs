@@ -1,4 +1,5 @@
 ﻿using Wavee.Controls.Lyrics.Extensions;
+using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.Controls.Lyrics.Models.Settings;
 using Microsoft.Graphics.Canvas;
@@ -116,6 +117,18 @@ namespace Wavee.Controls.Lyrics.Renderer
 
             var yOffsetBase = userScrollOffset + lyricsY + lyricsHeight * playingLineTopOffsetFactor;
 
+            // Countdown dots during instrumental intro (before first line)
+            if (lines.Count > 0 && currentProgressMs < lines[0].StartMs
+                && lines[0].StartMs - currentProgressMs > 1500)
+            {
+                // Position dots above the first line's current rendered position
+                double firstLineY = lines[0].YOffsetTransition.Value + yOffsetBase;
+                double dotsY = firstLineY - 30; // 30px above the first line
+                DrawCountdownDots(ds, currentProgressMs, lines[0].StartMs,
+                    lyricsX, lyricsWidth, dotsY,
+                    windowStatus.WindowPalette);
+            }
+
             for (int i = startVisibleIndex; i <= endVisibleIndex; i++)
             {
                 if (i < 0 || i >= lines.Count) continue;
@@ -218,6 +231,61 @@ namespace Wavee.Controls.Lyrics.Renderer
         public void Update(float bassEnergy, int breathingIntensity)
         {
             base.UpdateBreathing(bassEnergy, breathingIntensity);
+        }
+
+        /// <summary>
+        /// Draws 3 countdown dots (Apple Music style) during instrumental intros.
+        /// Each dot fills one-by-one in the last 3 seconds before the first lyrics line.
+        /// </summary>
+        private static void DrawCountdownDots(
+            CanvasDrawingSession ds,
+            double currentMs,
+            double firstLineStartMs,
+            double lyricsX,
+            double lyricsWidth,
+            double firstLineY,
+            NowPlayingPalette palette)
+        {
+            const float dotRadius = 5f;
+            const float dotSpacing = 22f;
+            const int dotCount = 3;
+
+            float centerX = (float)(lyricsX + lyricsWidth / 2);
+            float centerY = (float)firstLineY;
+            float totalWidth = (dotCount - 1) * dotSpacing;
+            float startX = centerX - totalWidth / 2;
+
+            double timeUntil = firstLineStartMs - currentMs;
+            double totalGap = firstLineStartMs; // total intro duration from 0
+
+            // Overall progress across the entire intro: 0.0 at song start → 1.0 at first line
+            // Map to 3 dots: dot 0 fills in first third, dot 1 in second third, dot 2 in last third
+            double overallProgress = Math.Clamp(1.0 - timeUntil / Math.Max(totalGap, 1), 0.0, 1.0);
+            // Scale to 0..3 range: each dot owns a range of 1.0
+            double scaledProgress = overallProgress * dotCount;
+
+            var dimColor = palette.NonCurrentLineFillColor;
+            dimColor.A = (byte)(dimColor.A * 0.3);
+            var brightColor = palette.PlayedCurrentLineFillColor;
+
+            for (int i = 0; i < dotCount; i++)
+            {
+                float x = startX + i * dotSpacing;
+
+                // Each dot fills smoothly over its 1/3 of the total intro
+                double dotProgress = Math.Clamp(scaledProgress - i, 0.0, 1.0);
+
+                // Draw dim base dot
+                ds.FillCircle(x, centerY, dotRadius, dimColor);
+
+                // Overlay bright dot with interpolated opacity
+                if (dotProgress > 0)
+                {
+                    var fillColor = brightColor;
+                    fillColor.A = (byte)(brightColor.A * dotProgress);
+                    ds.FillCircle(x, centerY, dotRadius, fillColor);
+                }
+            }
         }
 
     }

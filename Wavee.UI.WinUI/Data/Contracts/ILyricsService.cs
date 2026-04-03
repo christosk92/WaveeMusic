@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Controls.Lyrics.Models.Lyrics;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
 
@@ -10,7 +11,7 @@ namespace Wavee.UI.WinUI.Data.Contracts;
 /// </summary>
 public interface ILyricsService
 {
-    Task<LyricsData?> GetLyricsForTrackAsync(
+    Task<(LyricsData? Lyrics, LyricsSearchDiagnostics Diagnostics)> GetLyricsForTrackAsync(
         string trackId,
         string? title,
         string? artist,

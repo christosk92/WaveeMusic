@@ -256,7 +256,14 @@ public static class AppLifecycleHelper
 
             // Wire metadata client into PlaybackStateManager for enriching incomplete cluster metadata
             if (extMetadataClient != null)
+            {
                 session.PlaybackState?.SetMetadataClient(extMetadataClient);
+
+                // Also wire into PlaybackStateService for fetching full track metadata on track change
+                var playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+                if (playbackStateService is Data.Contexts.PlaybackStateService pss)
+                    pss.SetMetadataClient(extMetadataClient);
+            }
 
             // Create a shared EqualizerProcessor — registered in DI during ConfigureHost,
             // resolved here to pass into the audio pipeline
@@ -292,13 +299,13 @@ public static class AppLifecycleHelper
             audioPipeline.SetVolumeAsync((float)(volumePercent / 100.0));
 
             var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
-            if (playbackState is Data.Contexts.PlaybackStateService pss)
+            if (playbackState is Data.Contexts.PlaybackStateService pssVolume)
             {
                 var dispatcher = _uiDispatcher;
                 if (dispatcher != null)
                     dispatcher.TryEnqueue(() =>
                     {
-                        pss.SetVolumeWithoutCommand(volumePercent);
+                        pssVolume.SetVolumeWithoutCommand(volumePercent);
                     });
             }
 

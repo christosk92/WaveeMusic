@@ -73,7 +73,8 @@ namespace Lyricify.Lyrics.Parsers
             track_get = calls["track.subtitles.get"] as JObject;
             if (CheckHeader200(track_get))
             {
-                var list = track_get?["message"]?["body"]?["subtitle_list"] as JArray;
+                var body = track_get?["message"]?["body"];
+                var list = (body is JObject ? body["subtitle_list"] : null) as JArray;
                 if (list is { Count: > 0 })
                 {
                     var subtitle = list[0]["subtitle"]?["subtitle_body"]?.Value<string>();

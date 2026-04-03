@@ -35,7 +35,11 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
         {
             if (lines == null || lines.Count == 0) return;
 
-            if (primaryPlayingLineIndex < 0 || primaryPlayingLineIndex >= lines.Count) return;
+            // Pre-lyrics state: no line is active yet — use line 0 as layout reference
+            // but mark all lines as unplayed
+            bool isPreLyrics = primaryPlayingLineIndex < 0;
+            if (isPreLyrics) primaryPlayingLineIndex = 0;
+            if (primaryPlayingLineIndex >= lines.Count) return;
             var primaryPlayingLine = lines[primaryPlayingLineIndex];
 
             var phoneticOpacity = lyricsStyle.PhoneticLyricsOpacity / 100.0;
@@ -88,7 +92,7 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
 
                 var maxAnimationDurationMs = Math.Max(line.EndMs ?? 0 - currentPositionMs, 0);
 
-                bool isSecondaryLinePlaying = line.GetIsPlaying(currentPositionMs);
+                bool isSecondaryLinePlaying = !isPreLyrics && line.GetIsPlaying(currentPositionMs);
                 bool isSecondaryLinePlayingChanged = line.IsPlayingLastFrame != isSecondaryLinePlaying;
                 line.IsPlayingLastFrame = isSecondaryLinePlaying;
 
@@ -107,6 +111,11 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
                     {
                         distanceFactor = Math.Clamp(distanceFromPlayingLine / bottomHeightFactor, 0, 1);
                     }
+
+                    // Pre-lyrics: no line should look "current" — force a small distance factor
+                    // so line 0 doesn't get the bright/highlighted treatment
+                    if (isPreLyrics && distanceFactor == 0)
+                        distanceFactor = 0.01;
 
                     double yScrollDuration;
                     double yScrollDelay;

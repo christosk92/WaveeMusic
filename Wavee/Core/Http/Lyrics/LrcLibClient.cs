@@ -44,12 +44,12 @@ public sealed class LrcLibClient
             if (results is not { Length: > 0 })
                 return (null, null);
 
-            // Pick the first result with synced lyrics
-            var match = Array.Find(results, r => !string.IsNullOrWhiteSpace(r.SyncedLyrics));
+            // Score results by artist/title similarity and pick the best match
+            var match = PickBestResult(results, title, artist, durationMs, synced: true);
             if (match == null)
             {
                 // Fall back to plain lyrics
-                match = Array.Find(results, r => !string.IsNullOrWhiteSpace(r.PlainLyrics));
+                match = PickBestResult(results, title, artist, durationMs, synced: false);
                 if (match == null) return (null, null);
 
                 return (BuildUnsyncedResponse(match.PlainLyrics!), null);
@@ -80,6 +80,63 @@ public sealed class LrcLibClient
         {
             return (null, null);
         }
+    }
+
+    /// <summary>
+    /// Scores and picks the best matching result, preferring artist+title match over first-found.
+    /// </summary>
+    private static LrcLibSearchResult? PickBestResult(
+        LrcLibSearchResult[] results, string? title, string? artist, double durationMs, bool synced)
+    {
+        LrcLibSearchResult? best = null;
+        int bestScore = -1;
+
+        foreach (var r in results)
+        {
+            bool hasLyrics = synced
+                ? !string.IsNullOrWhiteSpace(r.SyncedLyrics)
+                : !string.IsNullOrWhiteSpace(r.PlainLyrics);
+            if (!hasLyrics) continue;
+
+            int score = 0;
+
+            // Artist match is most important to avoid cross-artist confusion
+            if (!string.IsNullOrWhiteSpace(artist) && !string.IsNullOrWhiteSpace(r.ArtistName))
+            {
+                if (string.Equals(r.ArtistName, artist, StringComparison.OrdinalIgnoreCase))
+                    score += 10;
+                else if (r.ArtistName.Contains(artist, StringComparison.OrdinalIgnoreCase)
+                         || artist.Contains(r.ArtistName, StringComparison.OrdinalIgnoreCase))
+                    score += 5;
+                // No match on artist: score stays 0
+            }
+
+            // Title match
+            if (!string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(r.TrackName))
+            {
+                if (string.Equals(r.TrackName, title, StringComparison.OrdinalIgnoreCase))
+                    score += 4;
+                else if (r.TrackName.Contains(title, StringComparison.OrdinalIgnoreCase)
+                         || title.Contains(r.TrackName, StringComparison.OrdinalIgnoreCase))
+                    score += 2;
+            }
+
+            // Duration proximity bonus (within 3 seconds)
+            if (durationMs > 0 && r.Duration > 0)
+            {
+                var diff = Math.Abs(durationMs / 1000.0 - r.Duration);
+                if (diff < 3) score += 3;
+                else if (diff < 10) score += 1;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = r;
+            }
+        }
+
+        return best;
     }
 
     private static LyricsResponse BuildUnsyncedResponse(string plainLyrics)
