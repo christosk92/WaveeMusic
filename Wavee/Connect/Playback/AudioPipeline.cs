@@ -9,6 +9,7 @@ using Wavee.Connect.Playback.Abstractions;
 using Wavee.Connect.Playback.Decoders;
 using Wavee.Connect.Playback.Sources;
 using Wavee.Connect.Playback.Processors;
+using Wavee.Core.Audio;
 using Wavee.Core.Audio.Download;
 
 namespace Wavee.Connect.Playback;
@@ -44,6 +45,8 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
     // Volume control
     private readonly VolumeProcessor? _volumeProcessor;
+    private EqualizerProcessor? _userEq;
+    private Action? _eqFiltersChangedHandler;
 
     // State management
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject;
@@ -56,6 +59,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     private CancellationTokenSource? _playbackCts;
     private Task? _playbackTask;
     private Thread? _playbackThread;
+    private TaskCompletionSource? _playbackStartedTcs;
     private readonly SemaphoreSlim _commandLock = new(1, 1);
 
     // In-place seeking
@@ -146,6 +150,18 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
         // Find VolumeProcessor from processing chain for volume control
         _volumeProcessor = _processingChain.Processors.OfType<VolumeProcessor>().FirstOrDefault();
+
+        // Subscribe to EQ filter changes — flush the sink buffer so new EQ is audible immediately
+        _userEq = _processingChain.Processors.OfType<EqualizerProcessor>().FirstOrDefault();
+        if (_userEq != null)
+        {
+            _eqFiltersChangedHandler = () =>
+            {
+                try { _ = _audioSink.FlushAsync(); }
+                catch { /* sink may be disposed */ }
+            };
+            _userEq.FiltersChanged += _eqFiltersChangedHandler;
+        }
 
         // Subscribe to NeedsMoreTracks for infinite contexts / large playlists
         _subscriptions.Add(_queue.NeedsMoreTracks.Subscribe(async _ =>
@@ -270,22 +286,54 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     /// <inheritdoc/>
     public async Task PlayAsync(PlayCommand command, CancellationToken cancellationToken = default)
     {
+        _logger?.LogInformation("Play command received: Track={TrackUri}, Context={ContextUri}, Position={PositionMs}, PageTracks={PageTrackCount}",
+            command.TrackUri, command.ContextUri, command.PositionMs, command.PageTracks?.Count ?? 0);
+
+        // Normalize context URI early for comparison
+        var normalizedContextUri = !string.IsNullOrEmpty(command.ContextUri)
+            ? NormalizeToUri(command.ContextUri)
+            : null;
+
+        // If the command already includes tracks (e.g. inline queue), skip context resolution entirely
+        var hasInlineTracks = command.PageTracks?.Count > 0;
+
+        // ── Phase 1: Pre-load context OUTSIDE the lock (network I/O) ──
+        // This prevents context resolution from blocking Pause/Resume/Seek
+        ContextLoadResult? preloadedContext = null;
+        if (!hasInlineTracks && !string.IsNullOrEmpty(normalizedContextUri) && _contextResolver != null)
+        {
+            // Check if same-context optimization applies (no preload needed)
+            var isSameContext = string.Equals(_queue.ContextUri, normalizedContextUri, StringComparison.Ordinal)
+                && _queue.LoadedCount > 0
+                && (command.PageTracks == null || command.PageTracks.Count == 0);
+
+            if (!isSameContext)
+            {
+                try
+                {
+                    preloadedContext = await _contextResolver.LoadContextAsync(
+                        normalizedContextUri,
+                        maxTracks: 100,
+                        enrichMetadata: true,
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Failed to preload context {ContextUri}", normalizedContextUri);
+                    // Will fall back to single track inside the lock
+                }
+            }
+        }
+
+        // ── Phase 2: Acquire lock for state changes ──
         await _commandLock.WaitAsync(cancellationToken);
         try
         {
-            _logger?.LogInformation("Play command received: Track={TrackUri}, Context={ContextUri}, Position={PositionMs}",
-                command.TrackUri, command.ContextUri, command.PositionMs);
-
             // Activate device when playback starts
             if (_deviceStateManager != null)
             {
                 await _deviceStateManager.SetActiveAsync(true, cancellationToken);
             }
-
-            // Normalize context URI early for comparison
-            var normalizedContextUri = !string.IsNullOrEmpty(command.ContextUri)
-                ? NormalizeToUri(command.ContextUri)
-                : null;
 
             // Update playback options from command (before same-context check for shuffle handling)
             if (command.Options != null)
@@ -362,83 +410,101 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
             // Store context URI (already normalized above)
             _currentContextUri = normalizedContextUri;
-            // Note: _currentTrackUri is set AFTER context resolution below (to get actual track from playlist/album)
             _currentTrackUid = string.Empty;
             _currentPositionMs = command.PositionMs ?? 0;
 
-            // Setup queue
-            // For single track playback (no context), create a single-item queue
-            // For context playback, load tracks from context resolver
-            if (!string.IsNullOrEmpty(_currentContextUri) && _contextResolver != null)
+            // Resolve context if preload was skipped/failed (but NOT if we have inline tracks)
+            if (!hasInlineTracks && preloadedContext == null && !string.IsNullOrEmpty(_currentContextUri) && _contextResolver != null)
             {
                 try
                 {
-                    // Load context tracks with batch metadata enrichment (use normalized URI)
-                    var result = await _contextResolver.LoadContextAsync(
-                        _currentContextUri,
-                        maxTracks: 100,  // Initial load, more via lazy loading
-                        enrichMetadata: true,
-                        cancellationToken);
-
-                    _queue.SetContext(
-                        _currentContextUri,
-                        isInfinite: result.IsInfinite,
-                        totalTracks: result.TotalCount);
-
-                    var targetIndex = ContextResolver.FindTrackIndex(
-                        result.Tracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
-                    _queue.SetTracks(result.Tracks, startIndex: targetIndex);
-                    _nextPageUrl = result.NextPageUrl;
-
-                    // Find first playable track
-                    var current = _queue.Current;
-                    while (current != null && !current.IsPlayable)
-                    {
-                        _logger?.LogWarning("Skipping unplayable track: {Uri}", current.Uri);
-                        current = _queue.MoveNext();
-                    }
-
-                    if (current != null)
-                    {
-                        // Get actual track URI from resolved context (not the playlist/album URI)
-                        trackUri = current.Uri;
-                        _currentTrackUri = trackUri;
-                        _currentTrackUid = current.Uid ?? string.Empty;
-                    }
-                    else
-                    {
-                        _logger?.LogError("No playable tracks in context: {ContextUri}", _currentContextUri);
-                        return;
-                    }
-
-                    _logger?.LogInformation("Context loaded: {TrackCount} tracks, playing {TrackUri}",
-                        result.Tracks.Count, trackUri);
+                    _logger?.LogDebug("Resolving context {ContextUri}", _currentContextUri);
+                    preloadedContext = await _contextResolver.LoadContextAsync(
+                        _currentContextUri, maxTracks: 100, enrichMetadata: true, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Failed to load context {ContextUri}, falling back to single track",
-                        _currentContextUri);
-                    // Fall back to single track playback
-                    _queue.Clear();
-                    _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
-                    _currentTrackUri = trackUri;
+                    _logger?.LogError(ex, "Failed to resolve context {ContextUri}", _currentContextUri);
                 }
             }
-            else if (!string.IsNullOrEmpty(_currentContextUri))
+
+            // Setup queue from inline tracks or resolved context
+            if (hasInlineTracks)
             {
-                // Context provided but no resolver - cannot resolve album/playlist to tracks
-                _logger?.LogError("Cannot play context {ContextUri}: ContextResolver not available. " +
-                    "Ensure IMetadataDatabase is registered in DI.", _currentContextUri);
-                throw new InvalidOperationException(
-                    $"Cannot play context URI '{_currentContextUri}' without ContextResolver. " +
-                    "Provide IMetadataDatabase to AudioPipelineFactory.");
+                // Inline tracks from PageTracks — use directly, no context resolution needed
+                var queueTracks = command.PageTracks!
+                    .Select(pt => new QueueTrack(pt.Uri, pt.Uid))
+                    .ToList();
+                _queue.Clear();
+                _queue.SetTracks(queueTracks, startIndex: command.SkipToIndex ?? 0);
+
+                var current = _queue.Current;
+                if (current != null)
+                {
+                    trackUri = current.Uri;
+                    _currentTrackUri = trackUri;
+                    _currentTrackUid = current.Uid ?? "";
+                }
+                else
+                {
+                    _logger?.LogError("No tracks in inline PageTracks");
+                    return;
+                }
+
+                _logger?.LogInformation("Inline tracks loaded: {Count} tracks, playing {TrackUri}",
+                    queueTracks.Count, trackUri);
             }
-            else
+            else if (preloadedContext?.Tracks.Count > 0)
             {
-                // Single track playback - add to queue
+                _queue.SetContext(
+                    _currentContextUri!,
+                    isInfinite: preloadedContext.IsInfinite,
+                    totalTracks: preloadedContext.TotalCount);
+
+                var targetIndex = ContextResolver.FindTrackIndex(
+                    preloadedContext.Tracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
+                _queue.SetTracks(preloadedContext.Tracks, startIndex: targetIndex);
+                _nextPageUrl = preloadedContext.NextPageUrl;
+
+                // Find first playable track
+                var current = _queue.Current;
+                while (current != null && !current.IsPlayable)
+                {
+                    _logger?.LogWarning("Skipping unplayable track: {Uri}", current.Uri);
+                    current = _queue.MoveNext();
+                }
+
+                if (current != null)
+                {
+                    trackUri = current.Uri;
+                    _currentTrackUri = trackUri;
+                    _currentTrackUid = current.Uid ?? string.Empty;
+                }
+                else
+                {
+                    _logger?.LogError("No playable tracks in context: {ContextUri}", _currentContextUri);
+                    return;
+                }
+
+                _logger?.LogInformation("Context loaded: {TrackCount} tracks, playing {TrackUri}",
+                    preloadedContext.Tracks.Count, trackUri);
+            }
+            else if (trackUri.StartsWith("spotify:track:", StringComparison.Ordinal))
+            {
+                // Single track playback (no context or context resolution failed)
                 _queue.Clear();
                 _queue.SetTracks([new QueueTrack(trackUri)], startIndex: 0);
                 _currentTrackUri = trackUri;
+            }
+            else if (!string.IsNullOrEmpty(_currentContextUri) && _contextResolver == null)
+            {
+                _logger?.LogError("Cannot play context {ContextUri}: ContextResolver not available", _currentContextUri);
+                return;
+            }
+            else
+            {
+                _logger?.LogError("No playable content for URI: {Uri}", trackUri);
+                return;
             }
 
             // Sync shuffle state with queue
@@ -454,13 +520,21 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                     "Must be a Spotify track URI, file path, or stream URL.");
             }
 
-            // Start playback loop
+            // Start playback loop with a signal for when audio actually starts
+            _playbackStartedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _playbackCts = new CancellationTokenSource();
-            var playbackToken = _playbackCts.Token; // Capture token value (struct) before Task.Run
+            var playbackToken = _playbackCts.Token;
             _playbackTask = LaunchPlaybackLoop(trackUri, _currentPositionMs, playbackToken);
 
+            // Wait for audio to actually start (up to 2s) before sending success reply
+            // This prevents the "playing but silent" race condition
+            try
+            {
+                await Task.WhenAny(_playbackStartedTcs.Task, Task.Delay(2000, cancellationToken));
+            }
+            catch (OperationCanceledException) { }
+
             // Send success reply if command handler exists AND this is a dealer command (not local)
-            // Local commands have keys starting with "local/" - don't send dealer replies for these
             if (_commandHandler != null &&
                 !string.IsNullOrEmpty(command.Key) &&
                 !command.Key.StartsWith("local/", StringComparison.Ordinal))
@@ -619,6 +693,59 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             _isPlaying = true;
 
             PublishStateUpdate();
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Toggles the normalization processor on/off. Takes effect immediately.
+    /// </summary>
+    public void SetNormalizationEnabled(bool enabled)
+    {
+        foreach (var proc in _processingChain.Processors.OfType<NormalizationProcessor>())
+            proc.IsEnabled = enabled;
+        _logger?.LogInformation("Normalization {State}", enabled ? "enabled" : "disabled");
+    }
+
+    /// <summary>
+    /// Switches audio quality mid-playback by reloading the current track at the new bitrate.
+    /// Causes a brief ~500ms audio gap while the new file is fetched and decoded.
+    /// </summary>
+    public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken cancellationToken = default)
+    {
+        // Update the track source's preferred quality
+        var spotifySource = _sourceRegistry.FindSource(_currentTrackUri ?? "") as SpotifyTrackSource;
+        if (spotifySource == null)
+        {
+            _logger?.LogWarning("Cannot switch quality: no SpotifyTrackSource found");
+            return;
+        }
+
+        spotifySource.SetPreferredQuality(quality);
+        _logger?.LogInformation("Switching audio quality to {Quality} at position {Position}ms", quality, _currentPositionMs);
+
+        // If nothing is playing, just update for next track
+        if (!_isPlaying || string.IsNullOrEmpty(_currentTrackUri)) return;
+
+        // Save current state
+        var trackUri = _currentTrackUri;
+        var positionMs = _currentPositionMs;
+
+        await _commandLock.WaitAsync(cancellationToken);
+        try
+        {
+            await StopInternalAsync();
+
+            _currentPositionMs = positionMs;
+            _playbackStartedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _playbackCts = new CancellationTokenSource();
+            _playbackTask = LaunchPlaybackLoop(trackUri, positionMs, _playbackCts.Token);
+
+            // Wait for audio to start
+            await Task.WhenAny(_playbackStartedTcs.Task, Task.Delay(3000, cancellationToken));
         }
         finally
         {
@@ -1018,10 +1145,15 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             // Update state to playing
             _isPlaying = true;
             _isPaused = false;
+            _playbackStartedTcs?.TrySetResult();
             PublishStateUpdate();
 
             // Start playback event tracking
             StartPlaybackSession(trackUri, _currentContextUri ?? trackUri, PlaybackReason.PlayBtn);
+
+            // Clear any seek that was queued for a previous track — it must not bleed into this one
+            lock (_seekLock)
+                _pendingSeekMs = null;
 
             // Decode and play using the decoder's async enumerable
             long currentStartPosition = startPositionMs;
@@ -1546,7 +1678,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         {
             try
             {
-                await _playbackTask;
+                // Wait for playback loop to finish, but cap at 500ms to avoid blocking commands
+                var completed = await Task.WhenAny(_playbackTask, Task.Delay(500));
+                if (completed != _playbackTask)
+                {
+                    _logger?.LogWarning("Playback loop did not stop within 500ms, continuing without waiting");
+                }
             }
             catch (OperationCanceledException)
             {
@@ -1745,11 +1882,21 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
         _logger?.LogInformation("Disposing AudioPipeline");
 
+        // Signal state channel consumer to exit
+        _stateChannel.Writer.TryComplete();
+
         // Stop playback
         await StopInternalAsync();
 
         // Dispose subscriptions
         _subscriptions.Dispose();
+
+        // Unsubscribe EQ handler before disposing sink
+        if (_userEq != null && _eqFiltersChangedHandler != null)
+        {
+            _userEq.FiltersChanged -= _eqFiltersChangedHandler;
+            _eqFiltersChangedHandler = null;
+        }
 
         // Dispose sink
         await _audioSink.DisposeAsync();

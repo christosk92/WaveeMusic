@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+		<TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+		<RootNamespace>Wavee.Controls.Lyrics</RootNamespace>
+		<Platforms>x86;x64;ARM64</Platforms>
+		<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+		<UseWinUI>true</UseWinUI>
+		<Nullable>enable</Nullable>
+		<LangVersion>preview</LangVersion>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.3.260402-preview2" />
+		<PackageReference Include="ComputeSharp.D2D1.WinUI" Version="3.2.0" />
+		<PackageReference Include="csharp-pinyin" Version="1.0.1" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
+		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
+		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.0-preview2" />
+		<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
+		<PackageReference Include="NTextCat" Version="0.3.65" />
+		<PackageReference Include="SpoutDx.Net.Interop.MultiPlatform" Version="0.1.0" />
+		<PackageReference Include="Vanara.PInvoke.User32" Version="5.0.1" />
+		<PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+		<PackageReference Include="WanaKana-net" Version="1.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Assets\AlbumArtPlaceholder.png">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Assets\Wiki82.profile.xml">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="ColorThief\" />
+	  <Folder Include="NewFolder\" />
+	</ItemGroup>
+</Project>

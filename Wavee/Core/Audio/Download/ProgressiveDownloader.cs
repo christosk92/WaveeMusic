@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Audio.Cache;
 
 namespace Wavee.Core.Audio.Download;
 
@@ -26,6 +27,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     private readonly FileId _fileId;
     private readonly AudioFetchParams _params;
     private readonly ILogger? _logger;
+    private readonly AudioCacheManager? _cache;
 
     private readonly RangeSet _downloadedRanges = new();
     private readonly FileStream _tempFile;
@@ -73,7 +75,8 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         FileId fileId,
         byte[]? headData = null,
         AudioFetchParams? @params = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        AudioCacheManager? cache = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(cdnUrl);
@@ -86,6 +89,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _fileId = fileId;
         _params = @params ?? AudioFetchParams.Default;
         _logger = logger;
+        _cache = cache;
 
         // Create temp file for random access storage
         _tempFilePath = Path.Combine(Path.GetTempPath(), $"wavee_audio_{fileId.ToBase16()}.tmp");
@@ -100,12 +104,32 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         // Pre-allocate file size
         _tempFile.SetLength(fileSize);
 
+        // Initialize cache entry so chunks can be written
+        if (_cache != null)
+        {
+            _cache.GetOrCreateEntry(fileId, fileSize, AudioFileFormat.OGG_VORBIS_320);
+        }
+
         // Write head data if provided (for instant playback)
         if (headData != null && headData.Length > 0)
         {
             WriteToTempFile(0, headData);
             _downloadedRanges.AddRange(0, headData.Length);
             _bytesDownloadedTotal = headData.Length;
+
+            // Cache the head data too
+            if (_cache != null)
+            {
+                var cacheChunkSize = AudioCacheConfig.Default.ChunkSize;
+                for (var offset = 0; offset < headData.Length; offset += cacheChunkSize)
+                {
+                    var chunkIdx = offset / cacheChunkSize;
+                    var len = Math.Min(cacheChunkSize, headData.Length - offset);
+                    var chunk = new byte[len];
+                    Buffer.BlockCopy(headData, offset, chunk, 0, len);
+                    _ = _cache.WriteChunkAsync(fileId, chunkIdx, chunk, CancellationToken.None);
+                }
+            }
 
             _logger?.LogDebug(
                 "Initialized ProgressiveDownloader with {HeadSize} bytes head data for file {FileId}",
@@ -362,6 +386,29 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
     private async Task FetchChunkAsync(long start, long end, CancellationToken cancellationToken)
     {
+        // Try reading from cache first
+        if (_cache != null)
+        {
+            var chunkSize = AudioCacheConfig.Default.ChunkSize;
+            var startChunk = (int)(start / chunkSize);
+            var endChunk = (int)((end - 1) / chunkSize);
+
+            // Simple case: single chunk request that's fully cached
+            if (startChunk == endChunk && _cache.HasChunk(_fileId, startChunk))
+            {
+                var cached = _cache.ReadChunk(_fileId, startChunk);
+                if (cached != null)
+                {
+                    var chunkStart = (long)startChunk * chunkSize;
+                    WriteToTempFile(chunkStart, cached);
+                    _downloadedRanges.AddRange(chunkStart, chunkStart + cached.Length);
+                    _logger?.LogDebug("Cache hit: chunk {Chunk} for file {FileId}", startChunk, _fileId.ToBase16());
+                    BufferStateChanged?.Invoke(GetBufferStatus());
+                    return;
+                }
+            }
+        }
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(_params.RequestTimeout);
 
@@ -399,6 +446,16 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
             // Write to temp file
             WriteToTempFile(start, buffer.AsSpan(0, totalRead));
+
+            // Write to cache (fire-and-forget, don't block playback)
+            if (_cache != null && totalRead > 0)
+            {
+                var cacheChunkSize = AudioCacheConfig.Default.ChunkSize;
+                var chunkIdx = (int)(start / cacheChunkSize);
+                var chunkData = new byte[totalRead];
+                Buffer.BlockCopy(buffer, 0, chunkData, 0, totalRead);
+                _ = _cache.WriteChunkAsync(_fileId, chunkIdx, chunkData, _disposeCts.Token);
+            }
 
             // Update tracking
             _downloadedRanges.AddRange(start, start + totalRead);

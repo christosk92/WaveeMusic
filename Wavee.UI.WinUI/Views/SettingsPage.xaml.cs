@@ -99,18 +99,6 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
             ViewModel.OpenLogFileCommand.Execute(path);
     }
 
-    private void MoveProviderUp_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is LyricsProviderItemViewModel item)
-            ViewModel.MoveProviderUpCommand.Execute(item);
-    }
-
-    private void MoveProviderDown_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is LyricsProviderItemViewModel item)
-            ViewModel.MoveProviderDownCommand.Execute(item);
-    }
-
     private async void GitHub_Click(object sender, RoutedEventArgs e)
     {
         await Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/christosk92/WaveeMusic"));

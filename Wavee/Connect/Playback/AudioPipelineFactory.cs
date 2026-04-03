@@ -329,7 +329,7 @@ public static class AudioPipelineFactory
         // Add equalizer if enabled (separate from radio mode EQ - user-configurable)
         if (options.EnableEqualizer)
         {
-            chain.AddProcessor(new EqualizerProcessor());
+            chain.AddProcessor(options.UserEqualizer ?? new EqualizerProcessor());
         }
 
         return chain;
@@ -374,7 +374,13 @@ public sealed record AudioPipelineOptions
     /// <summary>
     /// Whether to enable equalizer.
     /// </summary>
-    public bool EnableEqualizer { get; init; } = false;
+    public bool EnableEqualizer { get; init; } = true;
+
+    /// <summary>
+    /// Optional pre-created EqualizerProcessor instance to use instead of creating a new one.
+    /// Allows sharing the instance with UI for real-time band adjustments.
+    /// </summary>
+    public EqualizerProcessor? UserEqualizer { get; init; }
 
     /// <summary>
     /// Enables "Radio Mode" - compression, limiting, and EQ for that FM radio broadcast sound.

@@ -1,0 +1,269 @@
+﻿using Wavee.Controls.Lyrics.Enums;
+using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using System;
+using System.Text.Json.Serialization;
+using Windows.Foundation;
+
+namespace Wavee.Controls.Lyrics.Models.Settings
+{
+    public partial class LyricsWindowStatus : ObservableRecipient, ICloneable
+    {
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial string Name { get; set; } = string.Empty;
+        [ObservableProperty] public partial bool IsDefault { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial string MonitorDeviceName { get; set; } = string.Empty;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsWorkArea { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsAlwaysOnTop { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsAlwaysOnTopPolling { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsShownInSwitchers { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsWallpaper { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLocked { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsBorderlessWhenLocked { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsAlwaysHideUnlockButton { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool KeepNowPlayingBarInteractiveWhenLocked { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsTimelineLyricsPreviewEnabled { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsAlwaysHidePlayingBar { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsPinToTaskbar { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial TaskbarPlacement TaskbarPlacement { get; set; } = TaskbarPlacement.Right;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsMaximized { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsFullscreen { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial LyricsLayoutOrientation LyricsLayoutOrientation { get; set; } = LyricsLayoutOrientation.Horizontal;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial LyricsDisplayType LyricsDisplayType { get; set; } = LyricsDisplayType.SplitView;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool SwitchLyricsDisplayTypeSplitView { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsDisplayTypeSplitViewRatio { get; set; } = 50; // 50%
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial Rect WindowBounds { get; set; } = new Rect(100, 100, 800, 500);
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial double DockHeight { get; set; } = 64;
+        [ObservableProperty] public partial Rect MonitorBounds { get; set; }
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial DockPlacement DockPlacement { get; set; } = DockPlacement.Top;
+        [ObservableProperty] public partial LyricsStyleSettings LyricsStyleSettings { get; set; } = new();
+        [ObservableProperty] public partial LyricsEffectSettings LyricsEffectSettings { get; set; } = new(500, 500, 500, EasingType.Quad);
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial LyricsBackgroundSettings LyricsBackgroundSettings { get; set; } = new();
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial AlbumArtAreaStyleSettings AlbumArtLayoutSettings { get; set; } = new();
+        [ObservableProperty] public partial AlbumArtAreaEffectSettings AlbumArtAreaEffectSettings { get; set; } = new();
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsAdaptToEnvironment { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial WindowPixelSampleMode EnvironmentSampleMode { get; set; } = WindowPixelSampleMode.WindowEdge;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial ElementTheme WindowTheme { get; set; } = ElementTheme.Dark;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial PaletteGeneratorType PaletteGeneratorType { get; set; } = PaletteGeneratorType.MedianCut;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial NowPlayingPalette WindowPalette { get; set; } = new();
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool AutoShowOrHideWindow { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int AutoShowOrHideWindowDelay { get; set; } = 250; // 250ms
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial TitleBarArea TitleBarArea { get; set; } = TitleBarArea.Top;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsKeepScreenOpen { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsEdgeFeatheringEnabled { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int EdgeFeatheringLeft { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int EdgeFeatheringTop { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int EdgeFeatheringRight { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int EdgeFeatheringBottom { get; set; } = 0;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int PaddingLeft { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int PaddingTop { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int PaddingRight { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int PaddingBottom { get; set; } = 0;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool ShowLyricsCard { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial string LyricsCardStyleKey { get; set; } = "";
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsSpoutOutputEnabled { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial FPS FPS { get; set; } = FPS.Hz60;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool ShowDebugOverlay { get; set; } = false;
+        [JsonIgnore][ObservableProperty] public partial bool IsOverlayInputHelperRunning { get; set; } = false;
+        [JsonIgnore][ObservableProperty] public partial bool IsAlwaysOnTopPollingTimerRunning { get; set; } = false;
+        [JsonIgnore][ObservableProperty] public partial bool IsUnderlayColorTimerRunning { get; set; } = false;
+
+        [JsonIgnore][ObservableProperty][NotifyPropertyChangedRecipients] public partial WindowStatus WindowStatus { get; set; } = WindowStatus.Closed;
+        [JsonIgnore] public DispatcherQueueTimer? VisibilityTimer { get; set; }
+
+        public LyricsWindowStatus()
+        {
+            LyricsStyleSettings.PropertyChanged += LyricsStyleSettings_PropertyChanged;
+            LyricsEffectSettings.PropertyChanged += LyricsEffectSettings_PropertyChanged;
+            LyricsBackgroundSettings.PropertyChanged += LyricsBackgroundSettings_PropertyChanged;
+            AlbumArtLayoutSettings.PropertyChanged += AlbumArtLayoutSettings_PropertyChanged;
+            AlbumArtAreaEffectSettings.PropertyChanged += AlbumArtAreaEffectSettings_PropertyChanged;
+        }
+
+        public LyricsWindowStatus(Window? targetWindow = null) : this()
+        {
+            MonitorBounds = WindowBounds;
+        }
+
+        partial void OnLyricsStyleSettingsChanged(LyricsStyleSettings oldValue, LyricsStyleSettings newValue)
+        {
+            oldValue.PropertyChanged -= LyricsStyleSettings_PropertyChanged;
+            newValue.PropertyChanged += LyricsStyleSettings_PropertyChanged;
+        }
+
+        private void LyricsStyleSettings_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(LyricsStyleSettings));
+        }
+
+        partial void OnLyricsEffectSettingsChanged(LyricsEffectSettings oldValue, LyricsEffectSettings newValue)
+        {
+            oldValue.PropertyChanged -= LyricsEffectSettings_PropertyChanged;
+            newValue.PropertyChanged += LyricsEffectSettings_PropertyChanged;
+        }
+
+        private void LyricsEffectSettings_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(LyricsEffectSettings));
+        }
+
+        partial void OnLyricsBackgroundSettingsChanged(LyricsBackgroundSettings oldValue, LyricsBackgroundSettings newValue)
+        {
+            oldValue.PropertyChanged -= LyricsBackgroundSettings_PropertyChanged;
+            newValue.PropertyChanged += LyricsBackgroundSettings_PropertyChanged;
+        }
+
+        private void LyricsBackgroundSettings_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(LyricsBackgroundSettings));
+        }
+
+        partial void OnAlbumArtLayoutSettingsChanged(AlbumArtAreaStyleSettings oldValue, AlbumArtAreaStyleSettings newValue)
+        {
+            oldValue.PropertyChanged -= AlbumArtLayoutSettings_PropertyChanged;
+            newValue.PropertyChanged += AlbumArtLayoutSettings_PropertyChanged;
+        }
+
+        private void AlbumArtLayoutSettings_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(AlbumArtLayoutSettings));
+        }
+
+        partial void OnAlbumArtAreaEffectSettingsChanged(AlbumArtAreaEffectSettings oldValue, AlbumArtAreaEffectSettings newValue)
+        {
+            oldValue.PropertyChanged -= AlbumArtAreaEffectSettings_PropertyChanged;
+            newValue.PropertyChanged += AlbumArtAreaEffectSettings_PropertyChanged;
+        }
+
+        private void AlbumArtAreaEffectSettings_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(AlbumArtAreaEffectSettings));
+        }
+
+        partial void OnWindowBoundsChanged(Rect value)
+        {
+            MonitorBounds = value;
+        }
+
+        private void UpdateMonitorNameAndBounds(Window? targetWindow = null)
+        {
+            _ = targetWindow;
+            MonitorBounds = WindowBounds;
+        }
+
+        public void UpdateMonitorBounds()
+        {
+            MonitorBounds = WindowBounds;
+        }
+
+        public Rect GetWindowBoundsWhenWorkArea()
+        {
+            return new Rect(
+                MonitorBounds.X,
+                DockPlacement switch
+                {
+                    DockPlacement.Top => MonitorBounds.Top,
+                    DockPlacement.Bottom => MonitorBounds.Bottom - DockHeight,
+                    _ => MonitorBounds.Top,
+                },
+                MonitorBounds.Width,
+                DockPlacement switch
+                {
+                    DockPlacement.Top => DockHeight,
+                    DockPlacement.Bottom => DockHeight,
+                    _ => DockHeight,
+                }
+            );
+        }
+
+        public object Clone()
+        {
+            return new LyricsWindowStatus(null)
+            {
+                Name = this.Name,
+                IsDefault = this.IsDefault,
+                MonitorDeviceName = this.MonitorDeviceName,
+                IsWorkArea = this.IsWorkArea,
+                IsAlwaysOnTop = this.IsAlwaysOnTop,
+                IsAlwaysOnTopPolling = this.IsAlwaysOnTopPolling,
+                IsShownInSwitchers = this.IsShownInSwitchers,
+                IsWallpaper = this.IsWallpaper,
+                IsLocked = this.IsLocked,
+                IsBorderlessWhenLocked = this.IsBorderlessWhenLocked,
+                IsAlwaysHideUnlockButton = this.IsAlwaysHideUnlockButton,
+
+                IsPinToTaskbar = this.IsPinToTaskbar,
+                TaskbarPlacement = this.TaskbarPlacement,
+
+                IsMaximized = this.IsMaximized,
+                IsFullscreen = this.IsFullscreen,
+
+                LyricsLayoutOrientation = this.LyricsLayoutOrientation,
+                LyricsDisplayType = this.LyricsDisplayType,
+                SwitchLyricsDisplayTypeSplitView = this.SwitchLyricsDisplayTypeSplitView,
+                LyricsDisplayTypeSplitViewRatio = this.LyricsDisplayTypeSplitViewRatio,
+
+                WindowBounds = this.WindowBounds,
+                DockHeight = this.DockHeight,
+                MonitorBounds = this.MonitorBounds,
+                DockPlacement = this.DockPlacement,
+
+                LyricsStyleSettings = (LyricsStyleSettings)this.LyricsStyleSettings.Clone(),
+                LyricsEffectSettings = (LyricsEffectSettings)this.LyricsEffectSettings.Clone(),
+                LyricsBackgroundSettings = (LyricsBackgroundSettings)this.LyricsBackgroundSettings.Clone(),
+                AlbumArtLayoutSettings = (AlbumArtAreaStyleSettings)this.AlbumArtLayoutSettings.Clone(),
+                AlbumArtAreaEffectSettings = (AlbumArtAreaEffectSettings)this.AlbumArtAreaEffectSettings.Clone(),
+
+                IsAdaptToEnvironment = this.IsAdaptToEnvironment,
+                EnvironmentSampleMode = this.EnvironmentSampleMode,
+                WindowTheme = this.WindowTheme,
+                PaletteGeneratorType = this.PaletteGeneratorType,
+                WindowPalette = this.WindowPalette,
+
+                AutoShowOrHideWindow = this.AutoShowOrHideWindow,
+                AutoShowOrHideWindowDelay = this.AutoShowOrHideWindowDelay,
+                TitleBarArea = this.TitleBarArea,
+                IsKeepScreenOpen = this.IsKeepScreenOpen,
+
+                IsEdgeFeatheringEnabled = this.IsEdgeFeatheringEnabled,
+                EdgeFeatheringLeft = this.EdgeFeatheringLeft,
+                EdgeFeatheringTop = this.EdgeFeatheringTop,
+                EdgeFeatheringRight = this.EdgeFeatheringRight,
+                EdgeFeatheringBottom = this.EdgeFeatheringBottom,
+
+                PaddingLeft = this.PaddingLeft,
+                PaddingTop = this.PaddingTop,
+                PaddingRight = this.PaddingRight,
+                PaddingBottom = this.PaddingBottom,
+
+                ShowLyricsCard = this.ShowLyricsCard,
+                LyricsCardStyleKey = this.LyricsCardStyleKey,
+
+                IsSpoutOutputEnabled = this.IsSpoutOutputEnabled,
+
+                FPS = this.FPS,
+                ShowDebugOverlay = this.ShowDebugOverlay,
+
+                IsTimelineLyricsPreviewEnabled = this.IsTimelineLyricsPreviewEnabled,
+                KeepNowPlayingBarInteractiveWhenLocked = this.KeepNowPlayingBarInteractiveWhenLocked,
+                IsAlwaysHidePlayingBar = this.IsAlwaysHidePlayingBar,
+            };
+
+        }
+    }
+}

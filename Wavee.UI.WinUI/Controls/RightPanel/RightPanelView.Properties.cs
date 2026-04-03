@@ -41,11 +41,7 @@ public sealed partial class RightPanelView
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is RightPanelView view)
-        {
             view.Visibility = (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed;
-            // Sync lyrics timer with open/close state
-            view._lyricsVm.IsVisible = (bool)e.NewValue && view.SelectedMode == RightPanelMode.Lyrics;
-        }
     }
 
     private static void OnSelectedModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

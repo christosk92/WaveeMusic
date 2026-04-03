@@ -1,0 +1,70 @@
+﻿using Wavee.Controls.Lyrics.Shaders;
+using ComputeSharp.D2D1.WinUI;
+using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.UI.Xaml;
+using System;
+using System.Numerics;
+
+namespace Wavee.Controls.Lyrics.Renderer
+{
+    public partial class FogRenderer : BreathingRendererBase, IBackgroundRenderer
+    {
+        private PixelShaderEffect<FogEffect>? _fogEffect;
+        private float _timeAccumulator = 0f;
+
+        public bool IsEnabled { get; set; } = false;
+
+        public void LoadResources()
+        {
+            Dispose();
+            _fogEffect = new PixelShaderEffect<FogEffect>();
+        }
+
+        public void Update(double deltaTime, float bassEnergy, int breathingIntensity)
+        {
+            if (_fogEffect == null || !IsEnabled) return;
+            base.UpdateBreathing(bassEnergy, breathingIntensity);
+            _timeAccumulator += (float)deltaTime;
+        }
+
+        public void Draw(ICanvasAnimatedControl control, CanvasDrawingSession ds, bool isBreathingEffectEnabled)
+        {
+            if (_fogEffect == null || !IsEnabled) return;
+
+            float width = control.ConvertDipsToPixels((float)control.Size.Width, CanvasDpiRounding.Round);
+            float height = control.ConvertDipsToPixels((float)control.Size.Height, CanvasDpiRounding.Round);
+
+            var center = new Vector2((float)control.Size.Width / 2, (float)control.Size.Height / 2);
+
+            _fogEffect.ConstantBuffer = new FogEffect(
+                 _timeAccumulator,
+                 new float2(width, height)
+             );
+
+            ApplyBreathingTransform(ds, center, isBreathingEffectEnabled);
+            ds.DrawImage(_fogEffect);
+            ResetTransform(ds, isBreathingEffectEnabled);
+        }
+
+        // IBackgroundRenderer
+        void IBackgroundRenderer.LoadResources(ICanvasResourceCreator creator) => LoadResources();
+
+        void IBackgroundRenderer.Update(RenderContext ctx)
+        {
+            var bg = ctx.Settings.LyricsBackgroundSettings;
+            IsEnabled = bg.IsFogOverlayEnabled;
+            Update(ctx.Elapsed.TotalSeconds, ctx.BassEnergy, bg.FogOverlayBreathingIntensity);
+        }
+
+        void IBackgroundRenderer.Draw(CanvasDrawingSession ds, RenderContext ctx)
+        {
+            Draw(ctx.Control, ds, ctx.Settings.LyricsBackgroundSettings.IsFogOverlayBrethingEffectEnabled);
+        }
+
+        public void Dispose()
+        {
+            _fogEffect?.Dispose();
+            _fogEffect = null;
+        }
+    }
+}

@@ -3,9 +3,11 @@ using System.Reactive.Subjects;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Protocol;
+using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Utilities;
+using Wavee.Protocol.Metadata;
 using Wavee.Protocol.Player;
 
 namespace Wavee.Connect;
@@ -58,6 +60,8 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     private IPlaybackEngine? _playbackEngine;  // Null in remote-only mode
     private SpClient? _spClient;                // Null in remote-only mode
     private ISession? _session;                 // Null in remote-only mode
+    private IExtendedMetadataClient? _metadataClient; // For enriching incomplete cluster metadata
+    private CancellationTokenSource? _enrichCts;
     private readonly ILogger? _logger;
 
     // State
@@ -75,6 +79,12 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
     // State publisher (bidirectional mode only)
     private AsyncWorker<PutStateRequest>? _statePublisher;
+
+    // PutState debounce — position-only updates are debounced 200ms, critical changes flush immediately
+    private CancellationTokenSource? _debounceCts;
+    private PlaybackState? _pendingState;
+    private readonly object _debounceLock = new();
+    private const int DebounceMs = 200;
 
     private bool _disposed;
 
@@ -152,7 +162,13 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// Smart resume: resumes if engine has a track loaded, otherwise loads the
     /// ghost track from cluster state and starts fresh playback.
     /// </summary>
-    public async Task ResumeAsync()
+    /// <summary>
+    /// Resumes playback. If the engine has a track loaded, resumes normally.
+    /// Otherwise loads the ghost track from cluster state.
+    /// </summary>
+    /// <param name="userInitiated">True when the user explicitly pressed play
+    /// (skips freshness and paused-state guards).</param>
+    public async Task ResumeAsync(bool userInitiated = false)
     {
         if (_playbackEngine == null) return;
 
@@ -166,7 +182,45 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         // Ghost state: engine empty but cluster has track/context → start fresh
         if (_currentState.Track != null)
         {
-            _logger?.LogInformation("Ghost resume: loading {Track} from cluster state", _currentState.Track.Title);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var stateAge = _currentState.Timestamp > 0
+                ? now - _currentState.Timestamp
+                : long.MaxValue;
+
+            if (!userInitiated)
+            {
+                // Auto-resume guards: don't auto-play stale or paused state
+                if (stateAge > 30_000)
+                {
+                    _logger?.LogInformation("Ghost resume skipped: cluster state is {Age}s old (track: {Track})",
+                        stateAge / 1000, _currentState.Track.Title);
+                    return;
+                }
+
+                if (_currentState.Status != PlaybackStatus.Playing)
+                {
+                    _logger?.LogInformation("Ghost resume skipped: remote state is {Status} (track: {Track})",
+                        _currentState.Status, _currentState.Track.Title);
+                    return;
+                }
+            }
+
+            // For auto-resume, compensate for elapsed time; for user-initiated, use stored position
+            var resumePosition = _currentState.PositionMs;
+            if (!userInitiated && stateAge < 30_000)
+            {
+                resumePosition += stateAge;
+                if (_currentState.DurationMs > 0 && resumePosition >= _currentState.DurationMs)
+                {
+                    _logger?.LogInformation("Ghost resume skipped: track would have ended (elapsed={Elapsed}ms, duration={Duration}ms)",
+                        stateAge, _currentState.DurationMs);
+                    return;
+                }
+            }
+
+            _logger?.LogInformation("Ghost resume: loading {Track} from cluster state (userInitiated={UserInitiated}, position={Position}ms)",
+                _currentState.Track.Title, userInitiated, resumePosition);
+
             var playCommand = new Commands.PlayCommand
             {
                 Endpoint = "play",
@@ -177,7 +231,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 TrackUri = _currentState.Track.Uri,
                 TrackUid = _currentState.Track.Uid,
                 ContextUri = _currentState.ContextUri ?? _currentState.Track.Uri,
-                PositionMs = _currentState.PositionMs > 0 ? _currentState.PositionMs : null,
+                PositionMs = resumePosition > 0 ? resumePosition : null,
                 SkipToIndex = _currentState.CurrentIndex > 0 ? _currentState.CurrentIndex : null,
             };
             await _playbackEngine.PlayAsync(playCommand);
@@ -292,6 +346,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Sets the metadata client for enriching incomplete cluster track metadata.
+    /// Call after IExtendedMetadataClient is available (post-session-connect).
+    /// </summary>
+    public void SetMetadataClient(IExtendedMetadataClient metadataClient)
+    {
+        _metadataClient = metadataClient;
+        _logger?.LogDebug("PlaybackStateManager: metadata client set for track enrichment");
+    }
+
+    /// <summary>
     /// Handles cluster update messages from dealer (ClusterUpdate) and PUT state responses (Cluster).
     /// </summary>
     private void OnClusterUpdate(DealerMessage message)
@@ -365,24 +429,31 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 _isLocalPlaybackActive = false;
                 _playbackStartedAt = 0;
 
-                // Stop local playback immediately - fire and forget
-                _ = Task.Run(async () =>
+                // Stop local playback — observe the task so exceptions are not silently swallowed
+                _ = _playbackEngine!.StopAsync().ContinueWith(t =>
                 {
-                    try
-                    {
-                        await _playbackEngine!.StopAsync();
+                    if (t.IsFaulted)
+                        _logger?.LogError(t.Exception?.InnerException, "Failed to stop local playback after device takeover");
+                    else
                         _logger?.LogDebug("Local playback stopped due to device takeover");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError(ex, "Failed to stop local playback after device takeover");
-                    }
-                });
+                }, TaskContinuationOptions.ExecuteSynchronously);
             }
 
             // Update state
             _currentState = newState;
             _stateSubject.OnNext(newState);
+
+            // If track metadata is incomplete, fetch from API and re-emit enriched state
+            if (newState.Changes.HasFlag(Connect.StateChanges.Track) && _metadataClient != null)
+            {
+                var track = newState.Track;
+                if (track != null && (track.Title == null || track.Artist == null ||
+                    track.ArtistUri == null || track.AlbumUri == null || track.ImageUrl == null))
+                {
+                    _logger?.LogDebug("Incomplete track metadata — enriching from API for {Uri}", track.Uri);
+                    _ = EnrichTrackMetadataAsync(track.Uri);
+                }
+            }
 
             _logger?.LogTrace("State update published to subscribers");
         }
@@ -452,7 +523,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 }
                 else
                 {
-                    PublishLocalState(newState);
+                    // Critical changes (track, status, device, context) flush immediately.
+                    // Position-only changes are debounced to reduce PutState flooding.
+                    var isCritical = newState.Changes.HasFlag(Connect.StateChanges.Track)
+                        || newState.Changes.HasFlag(Connect.StateChanges.Status)
+                        || newState.Changes.HasFlag(Connect.StateChanges.ActiveDevice)
+                        || newState.Changes.HasFlag(Connect.StateChanges.Context);
+
+                    if (isCritical)
+                    {
+                        FlushAndPublishState(newState);
+                    }
+                    else
+                    {
+                        DebouncedPublishState(newState);
+                    }
                 }
             }
 
@@ -461,6 +546,50 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to process local playback state");
+        }
+    }
+
+    /// <summary>
+    /// Cancels any pending debounce and publishes state immediately.
+    /// Used for critical changes (track, status, device, context).
+    /// </summary>
+    private void FlushAndPublishState(PlaybackState state)
+    {
+        lock (_debounceLock)
+        {
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+            _debounceCts = null;
+            _pendingState = null;
+        }
+        PublishLocalState(state);
+    }
+
+    /// <summary>
+    /// Debounces non-critical state updates (position-only) to reduce PutState flooding.
+    /// Waits 200ms — if no new update arrives, publishes. If a new update arrives, resets the timer.
+    /// </summary>
+    private void DebouncedPublishState(PlaybackState state)
+    {
+        lock (_debounceLock)
+        {
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+            _pendingState = state;
+            _debounceCts = new CancellationTokenSource();
+            var token = _debounceCts.Token;
+
+            _ = Task.Delay(DebounceMs, token).ContinueWith(_ =>
+            {
+                PlaybackState? toPublish;
+                lock (_debounceLock)
+                {
+                    toPublish = _pendingState;
+                    _pendingState = null;
+                }
+                if (toPublish != null)
+                    PublishLocalState(toPublish);
+            }, TaskContinuationOptions.OnlyOnRanToCompletion);
         }
     }
 
@@ -552,6 +681,89 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Fetches full track metadata from the Spotify API and re-emits an enriched state
+    /// if the current track still matches. Uses IExtendedMetadataClient which has caching.
+    /// </summary>
+    private async Task EnrichTrackMetadataAsync(string trackUri)
+    {
+        _enrichCts?.Cancel();
+        _enrichCts = new CancellationTokenSource();
+        var ct = _enrichCts.Token;
+
+        try
+        {
+            var track = await _metadataClient!.GetTrackAsync(trackUri, ct);
+            if (ct.IsCancellationRequested || track == null) return;
+
+            // Don't apply if track changed while we were fetching
+            if (_currentState.Track?.Uri != trackUri) return;
+
+            var existingTrack = _currentState.Track;
+
+            var title = existingTrack.Title ?? track.Name;
+            var artist = existingTrack.Artist ?? (track.Artist.Count > 0
+                ? string.Join(", ", track.Artist.Select(a => a.Name))
+                : null);
+
+            var albumUri = existingTrack.AlbumUri;
+            if (albumUri == null && track.Album?.Gid is { Length: > 0 })
+                albumUri = $"spotify:album:{SpotifyId.FromRaw(track.Album.Gid.Span, SpotifyIdType.Album).ToBase62()}";
+
+            var artistUri = existingTrack.ArtistUri;
+            if (artistUri == null && track.Artist.Count > 0 && track.Artist[0].Gid is { Length: > 0 })
+                artistUri = $"spotify:artist:{SpotifyId.FromRaw(track.Artist[0].Gid.Span, SpotifyIdType.Artist).ToBase62()}";
+
+            var imageUrl = existingTrack.ImageUrl ?? GetAlbumImageUrl(track.Album, Image.Types.Size.Default);
+            var imageLargeUrl = existingTrack.ImageLargeUrl ?? GetAlbumImageUrl(track.Album, Image.Types.Size.Large);
+            var imageXLargeUrl = existingTrack.ImageXLargeUrl ?? GetAlbumImageUrl(track.Album, Image.Types.Size.Xlarge);
+            var imageSmallUrl = existingTrack.ImageSmallUrl ?? GetAlbumImageUrl(track.Album, Image.Types.Size.Small);
+            var album = existingTrack.Album ?? track.Album?.Name;
+
+            var enrichedTrack = existingTrack with
+            {
+                Title = title,
+                Artist = artist,
+                Album = album,
+                AlbumUri = albumUri,
+                ArtistUri = artistUri,
+                ImageUrl = imageUrl,
+                ImageSmallUrl = imageSmallUrl,
+                ImageLargeUrl = imageLargeUrl,
+                ImageXLargeUrl = imageXLargeUrl
+            };
+
+            // Guard again after building enriched track
+            if (_currentState.Track?.Uri != trackUri) return;
+
+            var enrichedState = _currentState with
+            {
+                Track = enrichedTrack,
+                Changes = Connect.StateChanges.Track
+            };
+
+            _currentState = enrichedState;
+            _stateSubject.OnNext(enrichedState);
+
+            _logger?.LogInformation("Enriched track metadata for {Uri}: title={Title}, artist={Artist}",
+                trackUri, title, artist);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to enrich track metadata for {TrackUri}", trackUri);
+        }
+    }
+
+    private static string? GetAlbumImageUrl(Album? album, Image.Types.Size preferredSize)
+    {
+        if (album?.CoverGroup?.Image.Count is not > 0) return null;
+        var image = album.CoverGroup.Image.FirstOrDefault(i => i.Size == preferredSize)
+                    ?? album.CoverGroup.Image.FirstOrDefault();
+        if (image == null) return null;
+        return $"spotify:image:{Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant()}";
+    }
+
+    /// <summary>
     /// Calculates the current playback position accounting for elapsed time.
     /// Only valid when status is Playing.
     /// </summary>
@@ -581,6 +793,18 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         // Complete state subject
         _stateSubject.OnCompleted();
         _stateSubject.Dispose();
+
+        // Dispose enrichment
+        _enrichCts?.Cancel();
+        _enrichCts?.Dispose();
+
+        // Dispose debounce
+        lock (_debounceLock)
+        {
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+            _debounceCts = null;
+        }
 
         // Dispose state publisher
         if (_statePublisher != null)

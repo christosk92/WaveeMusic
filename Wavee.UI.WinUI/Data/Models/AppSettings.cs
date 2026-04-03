@@ -57,19 +57,6 @@ public sealed class AppSettings
     /// </summary>
     public bool NormalizationEnabled { get; set; } = true;
 
-    // ── Lyrics ──
-
-    /// <summary>
-    /// Legacy lyrics source: "Spotify" or "LRCLIB". Superseded by <see cref="LyricsProviders"/>.
-    /// Kept for backward compat — ignored when LyricsProviders.Providers is populated.
-    /// </summary>
-    public string LyricsSource { get; set; } = "LRCLIB";
-
-    /// <summary>
-    /// Multi-provider lyrics configuration: provider order, enabled state, search strategy, thresholds.
-    /// </summary>
-    public LyricsProviderSettings LyricsProviders { get; set; } = new();
-
     // ── Cache (applied on next launch) ──
 
     /// <summary>

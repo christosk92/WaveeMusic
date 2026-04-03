@@ -1,15 +1,21 @@
 using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
+using Wavee.Controls.Lyrics.Models.Lyrics;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
+using Windows.Foundation;
+using Windows.UI;
+using Microsoft.UI;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
 
@@ -21,41 +27,408 @@ public sealed partial class RightPanelView : UserControl
     private bool _draggingResizer;
     private double _preManipulationWidth;
 
-    // Lyrics state
-    private readonly LyricsViewModel _lyricsVm;
+    // Lyrics integration
+    private LyricsViewModel? _lyricsVm;
+    private DispatcherQueueTimer? _positionTimer;
+    private DispatcherQueueTimer? _scrollResetTimer;
+    private bool _lyricsInitialized;
+    private bool _showingLoadingDots;
+    private readonly ThemeColorService? _themeColors;
+    private bool _themeColorsSubscribed;
+
+    private static readonly LyricsData LoadingDotsData = CreateLoadingDotsData();
+
+    private static LyricsData CreateLoadingDotsData()
+    {
+        var dot = "●";
+        var line = new LyricsLine
+        {
+            PrimaryText = $"{dot}  {dot}  {dot}",
+            StartMs = 0,
+            EndMs = 1200,
+            IsPrimaryHasRealSyllableInfo = true,
+            PrimarySyllables =
+            [
+                new BaseLyrics { Text = dot, StartMs = 0,   EndMs = 400,  StartIndex = 0 },
+                new BaseLyrics { Text = dot, StartMs = 400,  EndMs = 800,  StartIndex = 3 },
+                new BaseLyrics { Text = dot, StartMs = 800,  EndMs = 1200, StartIndex = 6 },
+            ]
+        };
+        return new LyricsData { LyricsLines = [line] };
+    }
 
     public RightPanelView()
     {
-        _lyricsVm = Ioc.Default.GetRequiredService<LyricsViewModel>();
-
         InitializeComponent();
+        _themeColors = Ioc.Default.GetService<ThemeColorService>();
         Visibility = Visibility.Collapsed;
         Width = PanelWidth;
-
-        Loaded += RightPanelView_Loaded;
-        Unloaded += RightPanelView_Unloaded;
     }
+
+    // ── Lifecycle ──
 
     private void RightPanelView_Loaded(object sender, RoutedEventArgs e)
     {
-        UpdateContentVisibility();
+        if (_themeColors != null && !_themeColorsSubscribed)
+        {
+            _themeColors.ThemeChanged += OnThemeColorsChanged;
+            _themeColorsSubscribed = true;
+        }
 
-        // Wire up the Win2D lyrics canvas
-        LyricsCanvas?.SetViewModel(_lyricsVm);
+        InitializeLyrics();
+        ActualThemeChanged += OnActualThemeChanged;
+        SizeChanged += OnPanelSizeChanged;
+        UpdateCanvasClearColor();
+    }
 
-        _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
-
-        // Apply initial background color if lyrics are already loaded
-        UpdateGradientBackground(_lyricsVm.BackgroundColor);
+    private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (SelectedMode == RightPanelMode.Lyrics)
+            UpdateCanvasLayout();
     }
 
     private void RightPanelView_Unloaded(object sender, RoutedEventArgs e)
     {
-        _lyricsVm.PropertyChanged -= OnLyricsVmPropertyChanged;
-        _lyricsVm.IsVisible = false;
+        if (_themeColors != null && _themeColorsSubscribed)
+        {
+            _themeColors.ThemeChanged -= OnThemeColorsChanged;
+            _themeColorsSubscribed = false;
+        }
 
-        LyricsCanvas?.Dispose();
+        ActualThemeChanged -= OnActualThemeChanged;
+        SizeChanged -= OnPanelSizeChanged;
+        TeardownLyrics();
     }
+
+    private void OnThemeColorsChanged()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateCanvasClearColor();
+            UpdateLyricsPaletteForTheme();
+        });
+    }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        UpdateCanvasClearColor();
+        UpdateLyricsPaletteForTheme();
+    }
+
+    private void UpdateLyricsPaletteForTheme()
+    {
+        if (_lyricsVm == null) return;
+
+        bool isDark = ActualTheme != ElementTheme.Light;
+        var fg = isDark ? Colors.White : Colors.Black;
+
+        var palette = _lyricsVm.WindowStatus.WindowPalette;
+        palette.NonCurrentLineFillColor = fg;
+        palette.PlayedCurrentLineFillColor = fg;
+        palette.UnplayedCurrentLineFillColor = fg;
+        palette.ThemeType = isDark
+            ? Microsoft.UI.Xaml.ElementTheme.Dark
+            : Microsoft.UI.Xaml.ElementTheme.Light;
+
+        NowPlayingCanvas.SetNowPlayingPalette(palette);
+    }
+
+    private void InitializeLyrics()
+    {
+        if (_lyricsInitialized) return;
+
+        _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
+        if (_lyricsVm == null) return;
+
+        _lyricsInitialized = true;
+
+        // Configure the canvas
+        NowPlayingCanvas.LyricsWindowStatus = _lyricsVm.WindowStatus;
+        var bg = _lyricsVm.WindowStatus.LyricsBackgroundSettings;
+        bg.IsPureColorOverlayEnabled = false;
+        bg.PureColorOverlayOpacity = 0;
+        bg.IsFluidOverlayEnabled = false;
+        bg.IsCoverOverlayEnabled = false;
+        bg.IsSpectrumOverlayEnabled = false;
+        bg.IsFogOverlayEnabled = false;
+        bg.IsRaindropOverlayEnabled = false;
+        bg.IsSnowFlakeOverlayEnabled = false;
+        NowPlayingCanvas.SeekRequested += OnSeekRequested;
+        UpdateCanvasClearColor();
+        UpdateLyricsPaletteForTheme();
+
+        // Subscribe to ViewModel state changes
+        _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
+
+        // Subscribe to playback state for play/pause/buffering changes
+        _lyricsVm.PlaybackState.PropertyChanged += OnPlaybackStateChanged;
+
+        // Position timer — 33ms (~30fps) for smooth lyrics sync
+        _positionTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _positionTimer.Interval = TimeSpan.FromMilliseconds(33);
+        _positionTimer.Tick += OnPositionTimerTick;
+
+        // If there's already a track loaded, apply it
+        ApplyCurrentLyricsState();
+
+        // Start the timer if lyrics tab is visible and playing
+        UpdateTimerState();
+    }
+
+    private void TeardownLyrics()
+    {
+        if (!_lyricsInitialized) return;
+
+        _positionTimer?.Stop();
+        _scrollResetTimer?.Stop();
+
+        if (_lyricsVm != null)
+        {
+            _lyricsVm.PropertyChanged -= OnLyricsVmPropertyChanged;
+            _lyricsVm.PlaybackState.PropertyChanged -= OnPlaybackStateChanged;
+        }
+
+        NowPlayingCanvas.SeekRequested -= OnSeekRequested;
+        NowPlayingCanvas.SetIsPlaying(false);
+    }
+
+    // ── Playback state → Timer sync ──
+
+    private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IPlaybackStateService.IsPlaying))
+            UpdateTimerState();
+    }
+
+    // ── ViewModel → Canvas binding ──
+
+    private void OnLyricsVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(LyricsViewModel.CurrentLyrics):
+            case nameof(LyricsViewModel.CurrentSongInfo):
+            case nameof(LyricsViewModel.HasLyrics):
+            case nameof(LyricsViewModel.IsLoading):
+                ApplyCurrentLyricsState();
+                break;
+            case nameof(LyricsViewModel.CurrentPalette):
+                if (_lyricsVm?.CurrentPalette is { } palette)
+                    NowPlayingCanvas.SetNowPlayingPalette(palette);
+                break;
+        }
+    }
+
+    private void ApplyCurrentLyricsState()
+    {
+        if (_lyricsVm == null) return;
+
+        // Never show the ProgressRing — use canvas dots instead
+        LyricsLoadingRing.Visibility = Visibility.Collapsed;
+
+        var showNoLyrics = !_lyricsVm.IsLoading && !_lyricsVm.HasLyrics
+                           && !string.IsNullOrEmpty(_lyricsVm.PlaybackState.CurrentTrackId);
+        NoLyricsText.Visibility = showNoLyrics ? Visibility.Visible : Visibility.Collapsed;
+
+        // Canvas visible for both loading (dots) and lyrics
+        var showCanvas = SelectedMode == RightPanelMode.Lyrics
+                         && (_lyricsVm.HasLyrics || _lyricsVm.IsLoading);
+        NowPlayingCanvas.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
+        LyricsInteractionOverlay.Visibility = _lyricsVm.HasLyrics ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_lyricsVm.CurrentLyrics != null)
+        {
+            _showingLoadingDots = false;
+            NowPlayingCanvas.SetLyricsData(_lyricsVm.CurrentLyrics);
+            NowPlayingCanvas.SetSongInfo(_lyricsVm.CurrentSongInfo);
+            NowPlayingCanvas.SetIsPlaying(_lyricsVm.PlaybackState.IsPlaying);
+            NowPlayingCanvas.SetPosition(_lyricsVm.GetInterpolatedPosition());
+        }
+        else if (_lyricsVm.IsLoading)
+        {
+            _showingLoadingDots = true;
+            NowPlayingCanvas.SetLyricsData(LoadingDotsData);
+            NowPlayingCanvas.SetIsPlaying(true);
+        }
+
+        UpdateTimerState();
+    }
+
+    private void UpdateTimerState()
+    {
+        if (_positionTimer == null || _lyricsVm == null) return;
+
+        var shouldRun = SelectedMode == RightPanelMode.Lyrics
+                        && Visibility == Visibility.Visible
+                        && ((_lyricsVm.HasLyrics && _lyricsVm.PlaybackState.IsPlaying)
+                            || _showingLoadingDots);
+
+        if (shouldRun)
+            _positionTimer.Start();
+        else
+            _positionTimer.Stop();
+    }
+
+    private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        if (_lyricsVm == null) return;
+
+        if (_showingLoadingDots)
+        {
+            // Loop 0→1200ms for dot animation
+            var elapsed = (DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond) % 1200;
+            NowPlayingCanvas.SetPosition(TimeSpan.FromMilliseconds(elapsed));
+        }
+        else
+        {
+            NowPlayingCanvas.SetPosition(_lyricsVm.GetInterpolatedPosition());
+            NowPlayingCanvas.SetIsPlaying(_lyricsVm.PlaybackState.IsPlaying);
+        }
+    }
+
+    // ── Seek ──
+
+    private void OnSeekRequested(object? sender, TimeSpan position)
+    {
+        _lyricsVm?.PlaybackState.Seek(position.TotalMilliseconds);
+    }
+
+    // ── Mouse interaction ──
+
+    private void LyricsOverlay_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        NowPlayingCanvas.IsMouseInLyricsArea = true;
+    }
+
+    private void LyricsOverlay_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        NowPlayingCanvas.IsMouseInLyricsArea = false;
+    }
+
+    private void LyricsOverlay_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(LyricsInteractionOverlay).Position;
+        NowPlayingCanvas.MousePosition = point;
+    }
+
+    private void LyricsOverlay_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        NowPlayingCanvas.IsMousePressing = true;
+    }
+
+    private void LyricsOverlay_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        NowPlayingCanvas.IsMousePressing = false;
+        NowPlayingCanvas.FireSeekIfHovering();
+    }
+
+    private void LyricsOverlay_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        NowPlayingCanvas.IsMouseScrolling = true;
+        LyricsSyncButton.Visibility = Visibility.Visible;
+
+        var point = e.GetCurrentPoint(LyricsInteractionOverlay);
+        var delta = point.Properties.MouseWheelDelta;
+        var value = NowPlayingCanvas.MouseScrollOffset + delta;
+
+        // Clamp scroll range
+        if (value > 0)
+            value = Math.Min(-NowPlayingCanvas.CurrentCanvasYScroll, value);
+        else
+            value = Math.Max(
+                -NowPlayingCanvas.CurrentCanvasYScroll - NowPlayingCanvas.ActualLyricsHeight,
+                value);
+
+        NowPlayingCanvas.MouseScrollOffset = value;
+
+        // Auto-resume after 3s of no scrolling
+        _scrollResetTimer ??= CreateScrollResetTimer();
+        _scrollResetTimer.Stop();
+        _scrollResetTimer.Interval = TimeSpan.FromSeconds(3);
+        _scrollResetTimer.Start();
+
+        e.Handled = true;
+    }
+
+    private DispatcherQueueTimer CreateScrollResetTimer()
+    {
+        var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => ResumeSync();
+        return timer;
+    }
+
+    private void LyricsSyncButton_Click(object sender, RoutedEventArgs e)
+    {
+        _scrollResetTimer?.Stop();
+        ResumeSync();
+    }
+
+    private void ResumeSync()
+    {
+        NowPlayingCanvas.MouseScrollOffset = 0;
+        NowPlayingCanvas.IsMouseScrolling = false;
+        LyricsSyncButton.Visibility = Visibility.Collapsed;
+    }
+
+    // ── Layout ──
+
+    private void LyricsContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateCanvasLayout();
+    }
+
+    private void UpdateCanvasLayout()
+    {
+        var w = RootGrid.ActualWidth;
+        var h = RootGrid.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        // Canvas spans the entire root; offset lyrics to the content area below tabs.
+        var resizerW = PanelResizer.ActualWidth;
+        var tabH = TabHeader.ActualHeight;
+        const double padLeft = 12, padRight = 12, padBottom = 12;
+
+        NowPlayingCanvas.LyricsStartX = resizerW + padLeft;
+        NowPlayingCanvas.LyricsStartY = tabH;
+        NowPlayingCanvas.LyricsWidth = w - resizerW - padLeft - padRight;
+        NowPlayingCanvas.LyricsHeight = h - tabH - padBottom;
+        NowPlayingCanvas.LyricsOpacity = 1;
+        NowPlayingCanvas.AlbumArtRect = Rect.Empty;
+    }
+
+    private void UpdateCanvasClearColor()
+    {
+        // SwapChainPanel can't blend with XAML content, so composite the semi-transparent
+        // card color onto an opaque base to approximate the card surface appearance.
+        var cardColor = (_themeColors?.CardBackground as SolidColorBrush)?.Color
+                        ?? Colors.Transparent;
+
+        Windows.UI.Color baseColor;
+        if (Application.Current.Resources.TryGetValue("SolidBackgroundFillColorBase", out var baseObj)
+            && baseObj is Windows.UI.Color resolved)
+        {
+            baseColor = resolved;
+        }
+        else
+        {
+            baseColor = ActualTheme == ElementTheme.Light
+                ? Color.FromArgb(255, 243, 243, 243)
+                : Color.FromArgb(255, 32, 32, 32);
+        }
+
+        float a = cardColor.A / 255f;
+        var color = Color.FromArgb(174,
+            (byte)(cardColor.R * a + baseColor.R * (1 - a)),
+            (byte)(cardColor.G * a + baseColor.G * (1 - a)),
+            (byte)(cardColor.B * a + baseColor.B * (1 - a)));
+
+        NowPlayingCanvas.SetClearColor(color);
+    }
+
+    
+
+    // ── Tab / visibility management ──
 
     private void UpdateContentVisibility()
     {
@@ -65,84 +438,21 @@ public sealed partial class RightPanelView : UserControl
         LyricsContent.Visibility = SelectedMode == RightPanelMode.Lyrics ? Visibility.Visible : Visibility.Collapsed;
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
 
+        // Canvas provides the opaque background for the entire panel (all tabs)
+        NowPlayingCanvas.Visibility = Visibility.Visible;
+
         QueueTab.IsChecked = SelectedMode == RightPanelMode.Queue;
         LyricsTab.IsChecked = SelectedMode == RightPanelMode.Lyrics;
         FriendsTab.IsChecked = SelectedMode == RightPanelMode.FriendsActivity;
 
-        _lyricsVm.IsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
-
-        // Pause/resume the Win2D canvas based on visibility
-        var isLyricsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
-        LyricsCanvas?.SetPaused(!isLyricsVisible || !_lyricsVm.HasLyrics);
-    }
-
-    // ── Gradient background ──
-
-    private void OnLyricsVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        switch (e.PropertyName)
+        // When switching to lyrics tab, ensure we have the latest state
+        if (SelectedMode == RightPanelMode.Lyrics && _lyricsInitialized)
         {
-            case nameof(LyricsViewModel.BackgroundColor):
-                DispatcherQueue.TryEnqueue(() => UpdateGradientBackground(_lyricsVm.BackgroundColor));
-                break;
-            case nameof(LyricsViewModel.HasLyrics):
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    var isLyricsVisible = SelectedMode == RightPanelMode.Lyrics && IsOpen;
-                    LyricsCanvas?.SetPaused(!isLyricsVisible || !_lyricsVm.HasLyrics);
-                });
-                break;
+            _lyricsVm?.InvalidateTrack();
+            UpdateCanvasLayout();
         }
-    }
 
-    private void UpdateGradientBackground(Windows.UI.Color baseColor)
-    {
-        if (LyricsBackground == null || GradientTop == null || GradientBottom == null) return;
-
-        var topColor = Windows.UI.Color.FromArgb(65, baseColor.R, baseColor.G, baseColor.B);
-        var bottomColor = Windows.UI.Color.FromArgb(130,
-            (byte)(baseColor.R / 2),
-            (byte)(baseColor.G / 2),
-            (byte)(baseColor.B / 2));
-
-        var storyboard = new Storyboard();
-
-        var topAnim = new ColorAnimation
-        {
-            To = topColor,
-            Duration = TimeSpan.FromMilliseconds(600),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(topAnim, GradientTop);
-        Storyboard.SetTargetProperty(topAnim, "Color");
-        storyboard.Children.Add(topAnim);
-
-        var bottomAnim = new ColorAnimation
-        {
-            To = bottomColor,
-            Duration = TimeSpan.FromMilliseconds(600),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(bottomAnim, GradientBottom);
-        Storyboard.SetTargetProperty(bottomAnim, "Color");
-        storyboard.Children.Add(bottomAnim);
-
-        storyboard.Begin();
-
-        if (LyricsBackground.Opacity < 0.01)
-        {
-            var fadeIn = new Storyboard();
-            var opacityAnim = new DoubleAnimation
-            {
-                To = 1.0,
-                Duration = TimeSpan.FromMilliseconds(600),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            };
-            Storyboard.SetTarget(opacityAnim, LyricsBackground);
-            Storyboard.SetTargetProperty(opacityAnim, "Opacity");
-            fadeIn.Children.Add(opacityAnim);
-            fadeIn.Begin();
-        }
+        UpdateTimerState();
     }
 
     // ── Tab header clicks ──
@@ -169,7 +479,7 @@ public sealed partial class RightPanelView : UserControl
     private void Resizer_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
     {
         var newWidth = _preManipulationWidth - e.Cumulative.Translation.X;
-        newWidth = System.Math.Clamp(newWidth, MinPanelWidth, MaxPanelWidth);
+        newWidth = Math.Clamp(newWidth, MinPanelWidth, MaxPanelWidth);
         PanelWidth = newWidth;
         e.Handled = true;
     }

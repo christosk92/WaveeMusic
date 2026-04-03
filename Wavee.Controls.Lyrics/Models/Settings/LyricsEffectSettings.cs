@@ -1,0 +1,111 @@
+﻿using Wavee.Controls.Lyrics.Enums;
+using CommunityToolkit.Mvvm.ComponentModel;
+using System;
+
+namespace Wavee.Controls.Lyrics.Models.Settings
+{
+    public partial class LyricsEffectSettings : ObservableRecipient, ICloneable
+    {
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial WordByWordEffectMode WordByWordEffectMode { get; set; } = WordByWordEffectMode.Auto;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsBlurEffectEnabled { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsFadeOutEffectEnabled { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsOutOfSightEffectEnabled { get; set; } = true;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsGlowEffectEnabled { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial LyricsEffectScope LyricsGlowEffectScope { get; set; } = LyricsEffectScope.LongDurationSyllable;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsGlowEffectLongSyllableDuration { get; set; } = 700; // 700ms
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsGlowEffectAmountAutoAdjust { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsGlowEffectAmount { get; set; } = 8;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsShadowEffectEnabled { get; set; } = false;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsScaleEffectEnabled { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScaleEffectLongSyllableDuration { get; set; } = 700; // 700ms
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsScaleEffectAmountAutoAdjust { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScaleEffectAmount { get; set; } = 115; // 115%
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsFloatAnimationEnabled { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsFloatAnimationAmountAutoAdjust { get; set; } = true;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsFloatAnimationAmount { get; set; } = 8;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsFloatAnimationDuration { get; set; } = 450; // 450ms
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial EasingType LyricsScrollEasingType { get; set; }
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial EaseMode LyricsScrollEasingMode { get; set; } = EaseMode.Out;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScrollDuration { get; set; }
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScrollTopDuration { get; set; }
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScrollBottomDuration { get; set; }
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScrollTopDelay { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsScrollBottomDelay { get; set; } = 0;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsFanLyricsEnabled { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int FanLyricsAngle { get; set; } = 30;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool Is3DLyricsEnabled { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int Lyrics3DXAngle { get; set; } = 30;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int Lyrics3DYAngle { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int Lyrics3DZAngle { get; set; } = 0;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool Lyrics3DAutoFitLayout { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int Lyrics3DDepth { get; set; } = 1000;
+
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial bool IsLyricsBrethingEffectEnabled { get; set; } = false;
+        [ObservableProperty][NotifyPropertyChangedRecipients] public partial int LyricsBreathingIntensity { get; set; } = 80;
+
+        public LyricsEffectSettings(int lyricsScrollTopDuration, int lyricsScrollDuration, int lyricsScrollBottomDuration, EasingType lyricsScrollEasingType)
+        {
+            LyricsScrollTopDuration = lyricsScrollTopDuration;
+            LyricsScrollDuration = lyricsScrollDuration;
+            LyricsScrollBottomDuration = lyricsScrollBottomDuration;
+            LyricsScrollEasingType = lyricsScrollEasingType;
+        }
+
+        public object Clone()
+        {
+            return new LyricsEffectSettings(this.LyricsScrollTopDuration, this.LyricsScrollDuration, this.LyricsScrollBottomDuration, this.LyricsScrollEasingType)
+            {
+                WordByWordEffectMode = this.WordByWordEffectMode,
+
+                IsLyricsBlurEffectEnabled = this.IsLyricsBlurEffectEnabled,
+                IsLyricsFadeOutEffectEnabled = this.IsLyricsFadeOutEffectEnabled,
+                IsLyricsOutOfSightEffectEnabled = this.IsLyricsOutOfSightEffectEnabled,
+
+                IsLyricsGlowEffectEnabled = this.IsLyricsGlowEffectEnabled,
+                LyricsGlowEffectLongSyllableDuration = this.LyricsGlowEffectLongSyllableDuration,
+                IsLyricsGlowEffectAmountAutoAdjust = this.IsLyricsGlowEffectAmountAutoAdjust,
+                LyricsGlowEffectAmount = this.LyricsGlowEffectAmount,
+                LyricsGlowEffectScope = this.LyricsGlowEffectScope,
+
+                IsLyricsScaleEffectEnabled = this.IsLyricsScaleEffectEnabled,
+                LyricsScaleEffectLongSyllableDuration = this.LyricsScaleEffectLongSyllableDuration,
+                IsLyricsScaleEffectAmountAutoAdjust = this.IsLyricsScaleEffectAmountAutoAdjust,
+                LyricsScaleEffectAmount = this.LyricsScaleEffectAmount,
+
+                IsLyricsFloatAnimationEnabled = this.IsLyricsFloatAnimationEnabled,
+                IsLyricsFloatAnimationAmountAutoAdjust = this.IsLyricsFloatAnimationAmountAutoAdjust,
+                LyricsFloatAnimationAmount = this.LyricsFloatAnimationAmount,
+                LyricsFloatAnimationDuration = this.LyricsFloatAnimationDuration,
+
+                LyricsScrollEasingType = this.LyricsScrollEasingType,
+                LyricsScrollEasingMode = this.LyricsScrollEasingMode,
+                LyricsScrollDuration = this.LyricsScrollDuration,
+                LyricsScrollTopDuration = this.LyricsScrollTopDuration,
+                LyricsScrollBottomDuration = this.LyricsScrollBottomDuration,
+                LyricsScrollTopDelay = this.LyricsScrollTopDelay,
+                LyricsScrollBottomDelay = this.LyricsScrollBottomDelay,
+
+                IsFanLyricsEnabled = this.IsFanLyricsEnabled,
+                FanLyricsAngle = this.FanLyricsAngle,
+
+                Is3DLyricsEnabled = this.Is3DLyricsEnabled,
+                Lyrics3DXAngle = this.Lyrics3DXAngle,
+                Lyrics3DYAngle = this.Lyrics3DYAngle,
+                Lyrics3DZAngle = this.Lyrics3DZAngle,
+                Lyrics3DAutoFitLayout = this.Lyrics3DAutoFitLayout,
+                Lyrics3DDepth = this.Lyrics3DDepth,
+
+                IsLyricsBrethingEffectEnabled = this.IsLyricsBrethingEffectEnabled,
+                LyricsBreathingIntensity = this.LyricsBreathingIntensity,
+            };
+        }
+    }
+}

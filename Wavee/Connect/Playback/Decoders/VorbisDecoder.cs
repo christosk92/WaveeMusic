@@ -169,11 +169,11 @@ public sealed class VorbisDecoder : IAudioDecoder
                     // Calculate position in milliseconds
                     var positionMs = (long)(reader.TimePosition.TotalMilliseconds);
 
-                    // Copy to new buffer for the AudioBuffer (since we reuse the arrays)
-                    var bufferCopy = new byte[pcmBytes];
-                    pcmBuffer.AsSpan(0, pcmBytes).CopyTo(bufferCopy);
+                    // Rent from pool — caller returns via AudioBuffer.Return() after consuming
+                    var pooled = ArrayPool<byte>.Shared.Rent(pcmBytes);
+                    pcmBuffer.AsSpan(0, pcmBytes).CopyTo(pooled);
 
-                    yield return new AudioBuffer(bufferCopy, positionMs);
+                    yield return new AudioBuffer(pooled, pcmBytes, positionMs);
                 }
 
                 _logger?.LogDebug("Vorbis decode complete");

@@ -1,0 +1,19 @@
+﻿using Windows.Foundation;
+using Windows.Graphics;
+
+namespace Wavee.Controls.Lyrics.Extensions
+{
+    public static class PointExtensions
+    {
+        extension(Point point)
+        {
+            public PointInt32 ToPointInt32() => new((int)point.X, (int)point.Y);
+
+            public Point AddX(double deltaX) => new(point.X + deltaX, point.Y);
+            public Point AddY(double deltaY) => new(point.X, point.Y + deltaY);
+
+            public Point WithX(double x) => new(x, point.Y);
+            public Point WithY(double y) => new(point.X, y);
+        }
+    }
+}

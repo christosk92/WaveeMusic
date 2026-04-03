@@ -200,14 +200,17 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             }
         }
 
+        // Ensure cached entities have rows in SQLite entities table (required for FK constraints)
+        if (cachedData.Count > 0)
+        {
+            await EnsureEntitiesFromCacheAsync(cachedData, cancellationToken);
+        }
+
         // If everything is cached, return synthetic response
         if (uncachedRequests.Count == 0)
         {
             _logger?.LogDebug("All {Count} extensions served from cache",
                 requestList.Sum(r => r.Extensions.Count()));
-
-            // Ensure entities exist for cached data (handles data cached before entity parsing was added)
-            await EnsureEntitiesFromCacheAsync(cachedData, cancellationToken);
 
             return BuildResponseFromCache(cachedData);
         }

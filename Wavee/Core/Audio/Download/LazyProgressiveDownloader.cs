@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Audio.Cache;
 using Wavee.Core.Crypto;
 using Wavee.Protocol.Storage;
 
@@ -24,6 +25,7 @@ public sealed class LazyProgressiveDownloader : Stream
     private readonly FileId _fileId;
     private readonly ILogger? _logger;
     private readonly Func<long>? _fileSizeResolver;
+    private readonly AudioCacheManager? _cache;
 
     private long _position;
     private long _fileSize;
@@ -36,6 +38,7 @@ public sealed class LazyProgressiveDownloader : Stream
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private bool _disposed;
+    private readonly CancellationTokenSource _disposeCts = new();
 
     /// <summary>
     /// Raised when buffer state changes (forwarded from ProgressiveDownloader).
@@ -64,7 +67,8 @@ public sealed class LazyProgressiveDownloader : Stream
         HttpClient httpClient,
         FileId fileId,
         Func<long>? fileSizeResolver = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        AudioCacheManager? cache = null)
     {
         ArgumentNullException.ThrowIfNull(headData);
         ArgumentNullException.ThrowIfNull(audioKeyTask);
@@ -78,6 +82,7 @@ public sealed class LazyProgressiveDownloader : Stream
         _fileId = fileId;
         _fileSizeResolver = fileSizeResolver;
         _logger = logger;
+        _cache = cache;
 
         // Estimate initial size from head data - will update when CDN initialized
         _fileSize = headData.Length;
@@ -90,7 +95,7 @@ public sealed class LazyProgressiveDownloader : Stream
         // Eagerly start CDN initialization in the background so it's ready by the
         // time head data is exhausted. This avoids the sync-over-async block in
         // EnsureCdnInitialized() that would otherwise stall the playback thread.
-        _ = Task.Run(() => EnsureCdnInitializedAsync(CancellationToken.None));
+        _ = Task.Run(() => EnsureCdnInitializedAsync(_disposeCts.Token));
     }
 
     #region Stream Properties
@@ -327,7 +332,8 @@ public sealed class LazyProgressiveDownloader : Stream
             _fileSize,
             _fileId,
             _headData,
-            logger: _logger);
+            logger: _logger,
+            cache: _cache);
 
         // Forward events
         _cdnDownloader.BufferStateChanged += status => BufferStateChanged?.Invoke(status);
@@ -440,6 +446,8 @@ public sealed class LazyProgressiveDownloader : Stream
 
         if (disposing)
         {
+            _disposeCts.Cancel();
+            _disposeCts.Dispose();
             _decryptStream?.Dispose();
             _cdnDownloader?.Dispose();
             _initLock.Dispose();
@@ -453,6 +461,9 @@ public sealed class LazyProgressiveDownloader : Stream
     {
         if (_disposed)
             return;
+
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
 
         if (_decryptStream != null)
             await _decryptStream.DisposeAsync();

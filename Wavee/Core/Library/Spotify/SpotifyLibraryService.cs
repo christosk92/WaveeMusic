@@ -604,33 +604,26 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uri);
-        var username = GetUsername();
 
         try
         {
-            // Optimistically update local database first
+            // 1. Optimistically update local database (instant UI feedback)
             var addedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             await _database.AddToSpotifyLibraryAsync(uri, itemType, addedAt, ct);
 
-            // Then update Spotify
-            var item = new CollectionItem
-            {
-                Uri = uri,
-                AddedAt = (int)addedAt,
-                IsRemoved = false
-            };
+            // 2. Enqueue for background API sync (no rollback — local state is source of truth)
+            await _database.EnqueueLibraryOpAsync(uri, itemType, LibraryOutboxOperation.Save, ct);
 
-            await _spClient.WriteCollectionAsync(username, set, new[] { item }, ct);
+            _logger?.LogInformation("{ItemType} saved locally + enqueued: {Uri}", displayName, uri);
 
-            _logger?.LogInformation("{ItemType} saved: {Uri}", displayName, uri);
+            // 3. Try immediate sync (fire-and-forget, don't block the caller)
+            _ = ProcessOutboxAsync();
+
             return true;
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to save {ItemType}: {Uri}", displayName, uri);
-
-            // Rollback local change on failure
-            await _database.RemoveFromSpotifyLibraryAsync(uri, ct);
             return false;
         }
     }
@@ -643,35 +636,79 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uri);
-        var username = GetUsername();
 
         try
         {
-            // Optimistically update local database first
+            // 1. Optimistically update local database (instant UI feedback)
             await _database.RemoveFromSpotifyLibraryAsync(uri, ct);
 
-            // Then update Spotify
-            var item = new CollectionItem
-            {
-                Uri = uri,
-                IsRemoved = true
-            };
+            // 2. Enqueue for background API sync
+            await _database.EnqueueLibraryOpAsync(uri, itemType, LibraryOutboxOperation.Remove, ct);
 
-            await _spClient.WriteCollectionAsync(username, set, new[] { item }, ct);
+            _logger?.LogInformation("{ItemType} removed locally + enqueued: {Uri}", displayName, uri);
 
-            _logger?.LogInformation("{ItemType} removed: {Uri}", displayName, uri);
+            // 3. Try immediate sync
+            _ = ProcessOutboxAsync();
+
             return true;
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to remove {ItemType}: {Uri}", displayName, uri);
-
-            // Rollback: add back to local database on failure
-            var addedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            await _database.AddToSpotifyLibraryAsync(uri, itemType, addedAt, ct);
             return false;
         }
     }
+
+    /// <summary>
+    /// Processes pending outbox operations, syncing local changes to Spotify API.
+    /// Safe to call multiple times — operations are idempotent.
+    /// </summary>
+    public async Task ProcessOutboxAsync()
+    {
+        try
+        {
+            var username = GetUsername();
+            var ops = await _database.DequeueLibraryOpsAsync(50);
+            if (ops.Count == 0) return;
+
+            foreach (var op in ops)
+            {
+                try
+                {
+                    var set = GetSetForItemType(op.ItemType);
+                    var item = new CollectionItem
+                    {
+                        Uri = op.ItemUri,
+                        AddedAt = (int)op.CreatedAt,
+                        IsRemoved = op.Operation == LibraryOutboxOperation.Remove
+                    };
+
+                    await _spClient.WriteCollectionAsync(username, set, new[] { item });
+                    await _database.CompleteLibraryOpAsync(op.Id);
+
+                    _logger?.LogDebug("Outbox synced: {Op} {Uri}", op.Operation, op.ItemUri);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Outbox op failed (retry {Count}): {Uri}", op.RetryCount + 1, op.ItemUri);
+                    await _database.FailLibraryOpAsync(op.Id, ex.Message);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Outbox processing failed");
+        }
+    }
+
+    private static string GetSetForItemType(SpotifyLibraryItemType itemType) => itemType switch
+    {
+        SpotifyLibraryItemType.Track => CollectionSet,
+        SpotifyLibraryItemType.Album => CollectionSet,
+        SpotifyLibraryItemType.Artist => ArtistsSet,
+        SpotifyLibraryItemType.Show => ShowsSet,
+        _ => CollectionSet
+    };
 
     #endregion
 

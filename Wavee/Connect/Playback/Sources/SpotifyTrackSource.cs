@@ -37,7 +37,12 @@ public sealed class SpotifyTrackSource : ITrackSource
     private readonly HeadFileClient _headFileClient;
     private readonly HttpClient _httpClient;
     private readonly AudioCacheManager? _cache;
-    private readonly AudioQuality _preferredQuality;
+    private AudioQuality _preferredQuality;
+
+    /// <summary>
+    /// Updates the preferred audio quality. Takes effect on the next track load or quality switch.
+    /// </summary>
+    public void SetPreferredQuality(AudioQuality quality) => _preferredQuality = quality;
     private readonly ILogger? _logger;
 
     public string SourceName => "Spotify";
@@ -192,7 +197,8 @@ public sealed class SpotifyTrackSource : ITrackSource
                 cdnTask,
                 _httpClient,
                 fileId,
-                logger: _logger);
+                logger: _logger,
+                cache: _cache);
 
             // Build metadata
             var metadata = BuildMetadata(uri, track, normalizationData);
@@ -604,7 +610,8 @@ public sealed class SpotifyTrackSource : ITrackSource
                 cdnTask,
                 _httpClient,
                 fileId,
-                logger: _logger);
+                logger: _logger,
+                cache: _cache);
 
             var metadata = BuildEpisodeMetadata(uri, episode, normalizationData);
 

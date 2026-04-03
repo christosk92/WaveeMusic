@@ -17,14 +17,13 @@ using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contexts;
+using Wavee.Connect.Playback.Processors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Data;
 using Wavee.UI.WinUI.ViewModels;
-using Wavee.UI.WinUI.Services.Lyrics;
-using Wavee.UI.WinUI.Services.Lyrics.Providers;
 using System.Collections.Generic;
 namespace Wavee.UI.WinUI.Helpers.Application;
 
@@ -100,7 +99,11 @@ public static class AppLifecycleHelper
                 .AddSingleton<Data.Contexts.LibrarySyncOrchestrator>()
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
 
+                // Audio processors (shared with UI for real-time control)
+                .AddSingleton<EqualizerProcessor>()
+
                 // App services
+                .AddSingleton<Wavee.Controls.Lyrics.Services.LocalizationService.ILocalizationService, Wavee.Controls.Lyrics.Services.LocalizationService.LocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
@@ -177,33 +180,21 @@ public static class AppLifecycleHelper
                     new Data.Contexts.SearchService(
                         sp.GetRequiredService<ISession>().Pathfinder))
 
+                // Lyrics
+                .AddSingleton<ILyricsService>(sp =>
+                    new Services.LyricsService(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetService<ILogger<Services.LyricsService>>()))
+                .AddSingleton<LyricsViewModel>(sp =>
+                    new LyricsViewModel(
+                        sp.GetRequiredService<IPlaybackStateService>(),
+                        sp.GetRequiredService<ILyricsService>(),
+                        sp.GetService<ILogger<LyricsViewModel>>()))
+
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()
                 .AddSingleton<ShellViewModel>()
                 .AddSingleton<PlayerBarViewModel>()
-                // Lyrics services
-                .AddSingleton<Wavee.Core.Http.Lyrics.LrcLibClient>()
-                .AddSingleton<ILyricsCacheService, MemoryLyricsCacheService>()
-                .AddSingleton<LyricsSearchService>(sp =>
-                {
-                    var providers = new ILyricsProvider[]
-                    {
-                        new MusixmatchLyricsProvider(sp.GetRequiredService<ISettingsService>()),
-                        new QQMusicLyricsProvider(),
-                        new NeteaseLyricsProvider(),
-                        new LrcLibLyricsProvider(sp.GetRequiredService<Wavee.Core.Http.Lyrics.LrcLibClient>()),
-                        new SpotifyLyricsProvider(sp.GetRequiredService<ISession>()),
-                        new AppleMusicLyricsProvider(),
-                        new KugouLyricsProvider(),
-                        new SodaMusicLyricsProvider(),
-                    };
-                    return new LyricsSearchService(
-                        sp.GetRequiredService<ISettingsService>(),
-                        providers,
-                        sp.GetRequiredService<ILyricsCacheService>(),
-                        sp.GetService<ILogger<LyricsSearchService>>());
-                })
-                .AddSingleton<LyricsViewModel>()
                 .AddTransient<HomeViewModel>()
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
@@ -267,11 +258,15 @@ public static class AppLifecycleHelper
             if (extMetadataClient != null)
                 session.PlaybackState?.SetMetadataClient(extMetadataClient);
 
+            // Create a shared EqualizerProcessor — registered in DI during ConfigureHost,
+            // resolved here to pass into the audio pipeline
+            var sharedEqualizer = Ioc.Default.GetRequiredService<EqualizerProcessor>();
+
             var audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 session,
                 (SpClient)session.SpClient,
                 httpClient,
-                options: AudioPipelineOptions.Default,
+                options: new AudioPipelineOptions { UserEqualizer = sharedEqualizer },
                 metadataDatabase: metadataDb,
                 cacheService: cacheService,
                 deviceId: session.Config.DeviceId,

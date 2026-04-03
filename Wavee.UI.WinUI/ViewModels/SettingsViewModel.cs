@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Serilog.Events;
 using Wavee.Connect.Playback.Processors;
@@ -25,6 +26,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly InMemorySink _inMemorySink;
+    private readonly ILogger? _logger;
 
     private static readonly string LogDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -58,11 +60,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string AppVersion { get; } = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
-    public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, InMemorySink inMemorySink)
+    public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, InMemorySink inMemorySink,
+        ILogger<SettingsViewModel>? logger = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
         _inMemorySink = inMemorySink;
+        _logger = logger;
         LogEntries = inMemorySink.Entries;
 
         // Initialize from persisted settings
@@ -101,25 +105,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         };
 
         _normalizationEnabled = s.NormalizationEnabled;
-
-        _selectedLyricsSourceIndex = s.LyricsSource == "Spotify" ? 0 : 1;
-
-        // Multi-provider lyrics settings
-        var lp = s.LyricsProviders;
-        _searchStrategyIndex = lp.SearchStrategy == "BestMatch" ? 1 : 0;
-        _matchThresholdIndex = lp.DefaultMatchThreshold switch
-        {
-            <= 30 => 0,
-            <= 70 => 1,
-            <= 90 => 2,
-            _ => 3
-        };
-        foreach (var entry in lp.Providers)
-        {
-            var item = new LyricsProviderItemViewModel(entry.Id, GetProviderDisplayName(entry.Id), entry.IsEnabled);
-            item.Changed += PersistLyricsProviders;
-            LyricsProviderItems.Add(item);
-        }
 
         _cacheEnabled = s.CacheEnabled;
         _cacheSizeLimitIndex = s.CacheSizeLimitBytes switch
@@ -269,77 +254,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (pipeline != null)
             pipeline.SetNormalizationEnabled(value);
     }
-
-    // ── Lyrics ──
-
-    [ObservableProperty]
-    private int _selectedLyricsSourceIndex;
-
-    partial void OnSelectedLyricsSourceIndexChanged(int value)
-    {
-        _settingsService.Update(s => s.LyricsSource = value == 1 ? "LRCLIB" : "Spotify");
-    }
-
-    public ObservableCollection<LyricsProviderItemViewModel> LyricsProviderItems { get; } = [];
-
-    [ObservableProperty]
-    private int _searchStrategyIndex;
-
-    partial void OnSearchStrategyIndexChanged(int value)
-    {
-        var strategy = value == 1 ? "BestMatch" : "Sequential";
-        _settingsService.Update(s => s.LyricsProviders.SearchStrategy = strategy);
-    }
-
-    [ObservableProperty]
-    private int _matchThresholdIndex;
-
-    partial void OnMatchThresholdIndexChanged(int value)
-    {
-        var threshold = value switch { 0 => 30, 1 => 70, 2 => 90, 3 => 100, _ => 70 };
-        _settingsService.Update(s => s.LyricsProviders.DefaultMatchThreshold = threshold);
-    }
-
-    [RelayCommand]
-    private void MoveProviderUp(LyricsProviderItemViewModel item)
-    {
-        var idx = LyricsProviderItems.IndexOf(item);
-        if (idx <= 0) return;
-        LyricsProviderItems.Move(idx, idx - 1);
-        PersistLyricsProviders();
-    }
-
-    [RelayCommand]
-    private void MoveProviderDown(LyricsProviderItemViewModel item)
-    {
-        var idx = LyricsProviderItems.IndexOf(item);
-        if (idx < 0 || idx >= LyricsProviderItems.Count - 1) return;
-        LyricsProviderItems.Move(idx, idx + 1);
-        PersistLyricsProviders();
-    }
-
-    private void PersistLyricsProviders()
-    {
-        _settingsService.Update(s =>
-        {
-            s.LyricsProviders.Providers = LyricsProviderItems
-                .Select(p => new LyricsProviderEntry { Id = p.Id, IsEnabled = p.IsEnabled })
-                .ToList();
-        });
-    }
-
-    private static string GetProviderDisplayName(string id) => id switch
-    {
-        "Musixmatch" => "Musixmatch",
-        "QQMusic" => "QQ Music",
-        "Netease" => "NetEase Cloud Music",
-        "LRCLIB" => "LRCLIB",
-        "Spotify" => "Spotify",
-        "AppleMusic" => "Apple Music",
-        "Kugou" => "Kugou",
-        "SodaMusic" => "Soda Music",
-        _ => id
-    };
 
     // ── Cache (requires restart) ──
 
@@ -618,6 +532,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         OnPropertyChanged(nameof(IsEqualizerEnabled));
         OnPropertyChanged(nameof(SelectedEqPresetIndex));
+
+        _logger?.LogInformation("Equalizer initialized: preset={Preset}, enabled={Enabled}, bands={Bands}",
+            EqPresetNames[_selectedEqPresetIndex], _isEqualizerEnabled, EqBands.Count);
     }
 
     partial void OnIsEqualizerEnabledChanged(bool value)
@@ -625,6 +542,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (_equalizerProcessor != null)
             _equalizerProcessor.IsEnabled = value;
         _settingsService.Update(s => s.EqualizerEnabled = value);
+        _logger?.LogInformation("Equalizer toggled: {State}", value ? "ON" : "OFF");
     }
 
     partial void OnSelectedEqPresetIndexChanged(int value)
@@ -638,6 +556,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         _settingsService.Update(s => s.EqualizerPreset = presetName);
         OnPropertyChanged(nameof(EqPresetDescription));
+        _logger?.LogInformation("Equalizer preset changed to: {Preset}", presetName);
     }
 
     private CancellationTokenSource? _eqRefreshCts;
@@ -733,24 +652,4 @@ public sealed class PastLogFile
     public string FilePath { get; init; } = "";
     public string FileSize { get; init; } = "";
     public DateTime LastModified { get; init; }
-}
-
-public sealed partial class LyricsProviderItemViewModel : ObservableObject
-{
-    public string Id { get; }
-    public string DisplayName { get; }
-
-    [ObservableProperty]
-    private bool _isEnabled;
-
-    public event Action? Changed;
-
-    public LyricsProviderItemViewModel(string id, string displayName, bool isEnabled)
-    {
-        Id = id;
-        DisplayName = displayName;
-        _isEnabled = isEnabled;
-    }
-
-    partial void OnIsEnabledChanged(bool value) => Changed?.Invoke();
 }

@@ -1,0 +1,18 @@
+﻿using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+
+namespace Wavee.Controls.Lyrics.Extensions
+{
+    public static class ElementThemeExtensions
+    {
+        extension(ElementTheme elementTheme)
+        {
+            public TitleBarTheme ToTitleBarTheme() => elementTheme switch
+            {
+                ElementTheme.Light => TitleBarTheme.Light,
+                ElementTheme.Dark => TitleBarTheme.Dark,
+                _ => TitleBarTheme.UseDefaultAppMode
+            };
+        }
+    }
+}

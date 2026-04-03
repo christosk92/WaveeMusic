@@ -11,6 +11,7 @@ using Wavee.Core.Audio;
 using Wavee.Core.Authentication;
 using Wavee.Core.Connection;
 using Wavee.Core.Http;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Wavee.Core.Mercury;
 
@@ -74,6 +75,10 @@ public sealed class Session : ISession, IAsyncDisposable
 
     // Keep-alive state machine (set by DispatchLoop, accessed by HandlePacket)
     private KeepAlive? _keepAlive;
+
+    // Proactive AP health check: timestamp of last packet received from AP
+    private DateTime _lastApPacketUtc = DateTime.UtcNow;
+    private IDisposable? _dealerReconnectSubscription;
 
     // Event subsystem
     private EventService? _eventService;
@@ -320,6 +325,13 @@ public sealed class Session : ISession, IAsyncDisposable
             _dealerClient = new DealerClient(config: new DealerClientConfig { Logger = _logger });
             await _dealerClient.ConnectAsync(this, _httpClient, cancellationToken);
             _logger?.LogDebug("DealerClient connected");
+
+            // Proactive AP health check: when dealer reconnects, check if AP is stale
+            _dealerReconnectSubscription = _dealerClient.ConnectionState
+                .DistinctUntilChanged()
+                .Where(s => s == Connect.Connection.ConnectionState.Connected)
+                .Skip(1) // skip initial connection, only react to RE-connections
+                .Subscribe(_ => OnDealerReconnected());
 
             // Create DeviceStateManager with configured initial volume
             _deviceStateManager = new DeviceStateManager(
@@ -856,6 +868,7 @@ public sealed class Session : ISession, IAsyncDisposable
                     }
 
                     var (cmd, payload) = packet.Value;
+                    _lastApPacketUtc = DateTime.UtcNow;
                     HandlePacket((PacketType)cmd, payload);
                 }
                 // else: timeout, receiveTask stays assigned and will be checked on next iteration
@@ -1218,6 +1231,39 @@ public sealed class Session : ISession, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Called when the dealer WebSocket reconnects. Checks if the AP TCP connection
+    /// is likely stale and proactively reconnects to avoid AudioKey timeout delays.
+    /// </summary>
+    private async void OnDealerReconnected()
+    {
+        const int stalenessThresholdSeconds = 10;
+        var elapsed = DateTime.UtcNow - _lastApPacketUtc;
+
+        if (elapsed.TotalSeconds < stalenessThresholdSeconds)
+        {
+            _logger?.LogDebug(
+                "Dealer reconnected; AP last packet {Elapsed:F1}s ago — AP appears healthy",
+                elapsed.TotalSeconds);
+            return;
+        }
+
+        _logger?.LogWarning(
+            "Dealer reconnected; AP last packet {Elapsed:F1}s ago — proactively reconnecting AP",
+            elapsed.TotalSeconds);
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await ReconnectApAsync(cts.Token);
+            _logger?.LogInformation("Proactive AP reconnection succeeded after dealer reconnect");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Proactive AP reconnection failed after dealer reconnect");
+        }
+    }
+
     private void OnDisconnected()
     {
         Disconnected?.Invoke(this, EventArgs.Empty);
@@ -1246,6 +1292,9 @@ public sealed class Session : ISession, IAsyncDisposable
             await _deviceStateManager.DisposeAsync();
             _deviceStateManager = null;
         }
+
+        _dealerReconnectSubscription?.Dispose();
+        _dealerReconnectSubscription = null;
 
         if (_dealerClient is not null)
         {

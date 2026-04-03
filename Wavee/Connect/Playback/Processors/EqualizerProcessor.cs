@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Linq;
+using Microsoft.Extensions.Logging;
 using Wavee.Connect.Playback.Abstractions;
 
 namespace Wavee.Connect.Playback.Processors;
@@ -10,11 +12,28 @@ namespace Wavee.Connect.Playback.Processors;
 public sealed class EqualizerProcessor : IAudioProcessor
 {
     private readonly List<EqualizerBand> _bands = new();
+    private readonly ILogger? _logger;
     private AudioFormat? _format;
     private BiquadFilter[][]? _filters; // [band][channel]
+    private bool _isEnabled = true;
 
     public string ProcessorName => "Equalizer";
-    public bool IsEnabled { get; set; } = true;
+
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set
+        {
+            if (_isEnabled == value) return;
+            _isEnabled = value;
+            _logger?.LogInformation("Equalizer {State}", value ? "enabled" : "disabled");
+        }
+    }
+
+    public EqualizerProcessor(ILogger<EqualizerProcessor>? logger = null)
+    {
+        _logger = logger;
+    }
 
     /// <summary>
     /// Gets the list of EQ bands.
@@ -56,6 +75,27 @@ public sealed class EqualizerProcessor : IAudioProcessor
     }
 
     /// <summary>
+    /// Fired when filters are rebuilt, so the pipeline can flush buffered audio
+    /// and apply the new EQ immediately instead of waiting for the buffer to drain.
+    /// </summary>
+    public event Action? FiltersChanged;
+
+    /// <summary>
+    /// Rebuilds biquad filter coefficients after band parameters have been modified externally.
+    /// Call this after changing GainDb, Q, or FrequencyHz on any band.
+    /// </summary>
+    public void RefreshFilters()
+    {
+        RebuildFilters();
+        if (_bands.Count > 0)
+        {
+            var gains = string.Join(", ", _bands.Select(b => $"{b.FrequencyHz}Hz={b.GainDb:+0.0;-0.0;0}dB"));
+            _logger?.LogDebug("Equalizer filters rebuilt: [{Gains}]", gains);
+        }
+        FiltersChanged?.Invoke();
+    }
+
+    /// <summary>
     /// Creates a standard 10-band graphic EQ with frequencies: 31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz.
     /// </summary>
     public void CreateGraphicEq10Band()
@@ -66,6 +106,7 @@ public sealed class EqualizerProcessor : IAudioProcessor
         {
             AddBand(new EqualizerBand(freq, 0.0, 1.0, BandType.Peaking));
         }
+        _logger?.LogInformation("Equalizer: created 10-band graphic EQ");
     }
 
     /// <summary>
@@ -96,6 +137,8 @@ public sealed class EqualizerProcessor : IAudioProcessor
     {
         _format = format;
         RebuildFilters();
+        _logger?.LogInformation("Equalizer initialized: {SampleRate}Hz, {Channels}ch, {Bits}bit, {Bands} bands",
+            format.SampleRate, format.Channels, format.BitsPerSample, _bands.Count);
         return Task.CompletedTask;
     }
 

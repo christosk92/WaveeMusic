@@ -5,14 +5,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
-    xmlns:lyricsctl="using:Wavee.UI.WinUI.Controls.Lyrics"
     mc:Ignorable="d"
     MinWidth="200"
     MaxWidth="500"
-    Loaded="RightPanelView_Loaded">
+    Loaded="RightPanelView_Loaded"
+    Unloaded="RightPanelView_Unloaded"
+>
 
     <animations:Implicit.ShowAnimations>
         <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1" />
@@ -23,11 +25,16 @@
         <animations:TranslationAnimation Duration="0:0:0.2" From="0" To="40,0,0" />
     </animations:Implicit.HideAnimations>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>  <!-- Resize gripper -->
             <ColumnDefinition Width="*"/>     <!-- Panel content -->
         </Grid.ColumnDefinitions>
+
+        <!-- Win2D canvas as full-panel background (swap chain can't blend with XAML, so it owns the background) -->
+        <lyrics:NowPlayingCanvas x:Name="NowPlayingCanvas"
+                                 Grid.ColumnSpan="2"
+                                 Visibility="Collapsed"/>
 
         <!-- Resize gripper -->
         <Border
@@ -49,7 +56,7 @@
             DoubleTapped="Resizer_DoubleTapped"/>
 
         <!-- Panel content -->
-        <Grid Grid.Column="1" Margin="0,0,0,0">
+        <Grid x:Name="PanelContentGrid" Grid.Column="1" Margin="0,0,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>  <!-- Tab header -->
                 <RowDefinition Height="*"/>     <!-- Content -->
@@ -57,6 +64,7 @@
 
             <!-- Tab header -->
             <StackPanel
+                x:Name="TabHeader"
                 Grid.Row="0"
                 Orientation="Horizontal"
                 Spacing="2"
@@ -111,47 +119,52 @@
                 </StackPanel>
 
                 <!-- Lyrics panel -->
-                <Grid x:Name="LyricsContent" Visibility="Collapsed">
+                <Grid x:Name="LyricsContent" Visibility="Collapsed"
+                      SizeChanged="LyricsContent_SizeChanged">
 
-                    <!-- Gradient background -->
-                    <Border x:Name="LyricsBackground" CornerRadius="8" Opacity="0">
-                        <Border.Background>
-                            <LinearGradientBrush x:Name="LyricsBgBrush" StartPoint="0.5,0" EndPoint="0.5,1">
-                                <GradientStop x:Name="GradientTop" Offset="0" Color="#20000000"/>
-                                <GradientStop x:Name="GradientMid" Offset="0.6" Color="#40000000"/>
-                                <GradientStop x:Name="GradientBottom" Offset="1" Color="#90000000"/>
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
+                    <!-- Transparent overlay for mouse interaction (seek, scroll) -->
+                    <Border
+                        x:Name="LyricsInteractionOverlay"
+                        Background="Transparent"
+                        PointerEntered="LyricsOverlay_PointerEntered"
+                        PointerExited="LyricsOverlay_PointerExited"
+                        PointerMoved="LyricsOverlay_PointerMoved"
+                        PointerPressed="LyricsOverlay_PointerPressed"
+                        PointerReleased="LyricsOverlay_PointerReleased"
+                        PointerWheelChanged="LyricsOverlay_PointerWheelChanged"/>
 
-                    <!-- Lyrics content area -->
-                    <Grid>
-                        <!-- Loading shimmer -->
-                        <StackPanel x:Name="LyricsShimmer"
-                                    Visibility="{x:Bind _lyricsVm.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    Spacing="16" Padding="8,16" VerticalAlignment="Top">
-                            <controls:Shimmer Width="200" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <controls:Shimmer Width="240" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <controls:Shimmer Width="160" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <controls:Shimmer Width="220" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <controls:Shimmer Width="180" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <controls:Shimmer Width="250" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                        </StackPanel>
+                    <!-- Sync button (visible when user scrolls away) -->
+                    <Button
+                        x:Name="LyricsSyncButton"
+                        Content="&#xE72C;"
+                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                        Click="LyricsSyncButton_Click"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,12"
+                        Padding="12,6"
+                        CornerRadius="16"
+                        Visibility="Collapsed"/>
 
-                        <!-- No lyrics available -->
-                        <StackPanel Visibility="{x:Bind _lyricsVm.HasNoLyrics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
-                            <FontIcon Glyph="&#xED11;" FontSize="32" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Opacity="0.5"/>
-                            <TextBlock Text="No lyrics available"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       FontSize="13" HorizontalAlignment="Center"/>
-                        </StackPanel>
+                    <!-- Loading indicator -->
+                    <ProgressRing
+                        x:Name="LyricsLoadingRing"
+                        IsActive="False"
+                        Width="24" Height="24"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed"/>
 
-                        <!-- Win2D lyrics canvas with karaoke sweep -->
-                        <lyricsctl:LyricsCanvasControl
-                            x:Name="LyricsCanvas"
-                            Visibility="{x:Bind _lyricsVm.HasLyrics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    </Grid>
+                    <!-- No lyrics fallback -->
+                    <TextBlock
+                        x:Name="NoLyricsText"
+                        Text="No lyrics available for this track"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        TextWrapping="WrapWholeWords"
+                        FontSize="13"
+                        Visibility="Collapsed"/>
                 </Grid>
 
                 <!-- Friends Activity placeholder -->

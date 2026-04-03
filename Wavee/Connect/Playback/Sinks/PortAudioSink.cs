@@ -39,6 +39,13 @@ public sealed class PortAudioSink : IAudioSink
     // Real-time volume applied in the callback (instant, no buffer delay)
     private volatile float _callbackVolume = 1.0f;
 
+    // Underrun detection (logged from callback thread)
+    private long _underrunCount;
+
+    // Seek muting: output silence between flush and first write to prevent
+    // partial-buffer clicks/pops during seek transitions
+    private volatile bool _seekMute;
+
     public string SinkName => "PortAudio";
 
     /// <summary>
@@ -98,8 +105,8 @@ public sealed class PortAudioSink : IAudioSink
             _format = format;
             _bytesPerMs = format.BytesPerSecond / 1000.0;
 
-            // Calculate buffer size in bytes (4x requested for safety margin)
-            var bufferBytes = format.BytesPerSecond * bufferSizeMs * 4 / 1000;
+            // Calculate buffer size in bytes (2x requested for safety margin)
+            var bufferBytes = format.BytesPerSecond * bufferSizeMs * 2 / 1000;
             _buffer = new CircularAudioBuffer(bufferBytes);
 
             // Get default output device
@@ -124,7 +131,7 @@ public sealed class PortAudioSink : IAudioSink
                     32 => SampleFormat.Float32,
                     _ => SampleFormat.Int16
                 },
-                suggestedLatency = deviceInfo.defaultHighOutputLatency
+                suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.2)
             };
 
             // Callback period: 50ms balances low-latency pause/resume with driver stability.
@@ -171,13 +178,21 @@ public sealed class PortAudioSink : IAudioSink
         StreamCallbackFlags statusFlags,
         IntPtr userData)
     {
+        // Log PortAudio status flags (underflow/overflow detection)
+        if ((statusFlags & StreamCallbackFlags.OutputUnderflow) != 0)
+        {
+            Interlocked.Increment(ref _underrunCount);
+            _logger?.LogWarning("PortAudio output underflow detected (total: {Count})",
+                Volatile.Read(ref _underrunCount));
+        }
+
         // Capture references locally to avoid TOCTOU race with CleanupStream/InitializeAsync.
         // These are reference-type fields that could be set to null by another thread
         // between our null-check and the actual dereference.
         var buffer = _buffer;
         var format = _format;
 
-        if (buffer == null || format == null || !_isPlaying)
+        if (_seekMute || buffer == null || format == null || !_isPlaying)
         {
             // Output silence. Use format if available, otherwise fall back to a safe estimate.
             var bytesPerFrame = format?.BytesPerFrame ?? 4; // fallback: 2ch * 16bit = 4
@@ -201,6 +216,12 @@ public sealed class PortAudioSink : IAudioSink
             if (bytesRead < bytesNeeded)
             {
                 span.Slice(bytesRead).Clear();
+                if (bytesRead > 0)
+                {
+                    _logger?.LogWarning(
+                        "PortAudio buffer underrun: got {BytesRead}/{BytesNeeded} bytes, padded {Silence} bytes with silence",
+                        bytesRead, bytesNeeded, bytesNeeded - bytesRead);
+                }
             }
 
             // Apply real-time volume scaling directly in the callback.
@@ -248,6 +269,7 @@ public sealed class PortAudioSink : IAudioSink
 
         // Write to circular buffer (blocks if buffer is full - provides backpressure)
         await _buffer.WriteAsync(audioData, cancellationToken);
+        _seekMute = false; // unmute callback now that new audio is available
         Interlocked.Add(ref _samplesWritten, audioData.Length);
     }
 
@@ -335,6 +357,7 @@ public sealed class PortAudioSink : IAudioSink
 
         lock (_lock)
         {
+            _seekMute = true; // mute callback until first post-flush write
             _buffer?.Clear();
             _samplesWritten = 0;
             _samplesPlayed = 0;
@@ -449,13 +472,13 @@ public sealed class PortAudioSink : IAudioSink
                         32 => SampleFormat.Float32,
                         _ => SampleFormat.Int16
                     },
-                    suggestedLatency = deviceInfo.defaultHighOutputLatency
+                    suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.2)
                 };
 
                 const int callbackPeriodMs = 50;
                 var framesPerBuffer = (uint)(format.SampleRate * callbackPeriodMs / 1000);
 
-                var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 4 / 1000);
+                var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
                 _buffer = new CircularAudioBuffer(bufferCapacity);
 
                 _stream = new PortAudioSharp.Stream(

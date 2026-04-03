@@ -24,7 +24,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v4: Added is_from_rootlist column to spotify_playlists
     // v5: Added color_cache table
     // v6: Added album_tracks_cache table
-    private const int CurrentSchemaVersion = 6;
+    // v7: Added library_outbox table
+    // v8: Removed FK constraint from spotify_library (decoupled from entities)
+    private const int CurrentSchemaVersion = 8;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -209,8 +211,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         item_uri    TEXT PRIMARY KEY NOT NULL,
                         item_type   INTEGER NOT NULL,
                         added_at    INTEGER NOT NULL,
-                        synced_at   INTEGER NOT NULL,
-                        FOREIGN KEY (item_uri) REFERENCES entities(uri) ON DELETE CASCADE
+                        synced_at   INTEGER NOT NULL
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -382,6 +383,25 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         light_hex   TEXT,
                         raw_hex     TEXT,
                         cached_at   INTEGER NOT NULL
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Library outbox (pending API sync operations)
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS library_outbox (
+                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_uri    TEXT NOT NULL,
+                        item_type   INTEGER NOT NULL,
+                        operation   INTEGER NOT NULL,
+                        created_at  INTEGER NOT NULL,
+                        retry_count INTEGER NOT NULL DEFAULT 0,
+                        last_error  TEXT,
+                        UNIQUE(item_uri)
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -1146,6 +1166,95 @@ public sealed class MetadataDatabase : IMetadataDatabase
         {
             _writeLock.Release();
         }
+    }
+
+    #endregion
+
+    #region Library Outbox Operations
+
+    public async Task EnqueueLibraryOpAsync(string itemUri, SpotifyLibraryItemType itemType, LibraryOutboxOperation operation, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO library_outbox (item_uri, item_type, operation, created_at)
+                VALUES ($uri, $type, $op, $created)
+                ON CONFLICT(item_uri) DO UPDATE SET
+                    item_type = excluded.item_type,
+                    operation = excluded.operation,
+                    created_at = excluded.created_at,
+                    retry_count = 0,
+                    last_error = NULL;
+                """;
+            cmd.Parameters.AddWithValue("$uri", itemUri);
+            cmd.Parameters.AddWithValue("$type", (int)itemType);
+            cmd.Parameters.AddWithValue("$op", (int)operation);
+            cmd.Parameters.AddWithValue("$created", now);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    public async Task<List<LibraryOutboxEntry>> DequeueLibraryOpsAsync(int limit = 50, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT id, item_uri, item_type, operation, created_at, retry_count, last_error FROM library_outbox ORDER BY created_at LIMIT $limit;";
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var results = new List<LibraryOutboxEntry>();
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(new LibraryOutboxEntry
+            {
+                Id = reader.GetInt64(0),
+                ItemUri = reader.GetString(1),
+                ItemType = (SpotifyLibraryItemType)reader.GetInt32(2),
+                Operation = (LibraryOutboxOperation)reader.GetInt32(3),
+                CreatedAt = reader.GetInt64(4),
+                RetryCount = reader.GetInt32(5),
+                LastError = reader.IsDBNull(6) ? null : reader.GetString(6)
+            });
+        }
+        return results;
+    }
+
+    public async Task CompleteLibraryOpAsync(long id, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM library_outbox WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    public async Task FailLibraryOpAsync(long id, string? error, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "UPDATE library_outbox SET retry_count = retry_count + 1, last_error = $error WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.Parameters.AddWithValue("$error", (object?)error ?? DBNull.Value);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
     }
 
     #endregion

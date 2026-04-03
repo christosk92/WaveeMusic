@@ -9,6 +9,10 @@ namespace Lyricify.Lyrics.Helpers.Optimization
     /// </summary>
     public static class InfoLines
     {
+        private static readonly Regex EnglishCreditLineRegex = new(
+            @"^\s*(?:produced|production|producer|written|lyrics?|lyricist|composed|composition|arranged|arrangement|mixed|mixing|mastered|recorded|engineered|programmed|programming|vocals?|backing vocals?|chorus)\s*(?:by\b|:)\s*.+$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         public static List<bool> CheckInfoLines(LyricsData lyrics)
             => CheckInfoLines(lyrics.Lines!, lyrics.TrackMetadata);
 
@@ -145,6 +149,9 @@ namespace Lyricify.Lyrics.Helpers.Optimization
                 return true;
 
             if (IsStringCreditBy(str))
+                return true;
+
+            if (IsEnglishCreditLine(str))
                 return true;
 
             bool hitDict = ContainsAnyKeyword(str, TitleLineInfoDict);
@@ -522,6 +529,14 @@ namespace Lyricify.Lyrics.Helpers.Optimization
             if (str.Contains("版权")) score++;
 
             return score >= 4;
+        }
+
+        private static bool IsEnglishCreditLine(string str)
+        {
+            if (string.IsNullOrWhiteSpace(str))
+                return false;
+
+            return EnglishCreditLineRegex.IsMatch(str);
         }
     }
 }

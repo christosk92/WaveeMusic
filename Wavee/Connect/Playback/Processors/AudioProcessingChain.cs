@@ -105,7 +105,12 @@ public sealed class AudioProcessingChain
         foreach (var processor in _processors)
         {
             if (processor.IsEnabled)
-                current = processor.Process(current);
+            {
+                var next = processor.Process(current);
+                if (!ReferenceEquals(current, input))
+                    current.Return();
+                current = next;
+            }
         }
         return current;
     }

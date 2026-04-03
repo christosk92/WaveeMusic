@@ -314,6 +314,50 @@ public interface IMetadataDatabase : IAsyncDisposable
     Task<(string? DarkHex, string? LightHex, string? RawHex)?> GetColorCacheAsync(string imageUrl, CancellationToken ct = default);
 
     #endregion
+
+    #region Library Outbox Operations
+
+    /// <summary>
+    /// Enqueues a library operation for background API sync.
+    /// If a pending op for the same URI exists, it is replaced.
+    /// </summary>
+    Task EnqueueLibraryOpAsync(string itemUri, SpotifyLibraryItemType itemType, LibraryOutboxOperation operation, CancellationToken ct = default);
+
+    /// <summary>
+    /// Dequeues pending library operations ordered by creation time.
+    /// </summary>
+    Task<List<LibraryOutboxEntry>> DequeueLibraryOpsAsync(int limit = 50, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks a library outbox entry as completed (deletes it).
+    /// </summary>
+    Task CompleteLibraryOpAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks a library outbox entry as failed, incrementing retry count.
+    /// </summary>
+    Task FailLibraryOpAsync(long id, string? error, CancellationToken ct = default);
+
+    #endregion
+}
+
+/// <summary>
+/// Outbox operation type.
+/// </summary>
+public enum LibraryOutboxOperation { Save = 0, Remove = 1 }
+
+/// <summary>
+/// A pending library operation in the outbox.
+/// </summary>
+public sealed record LibraryOutboxEntry
+{
+    public long Id { get; init; }
+    public required string ItemUri { get; init; }
+    public SpotifyLibraryItemType ItemType { get; init; }
+    public LibraryOutboxOperation Operation { get; init; }
+    public long CreatedAt { get; init; }
+    public int RetryCount { get; init; }
+    public string? LastError { get; init; }
 }
 
 /// <summary>
