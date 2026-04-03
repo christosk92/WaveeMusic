@@ -3,6 +3,7 @@ using Wavee.Controls.Lyrics.Enums;
 using Wavee.Controls.Lyrics.Helper;
 using Microsoft.Graphics.Canvas.Effects;
 using System;
+using System.Numerics;
 using Windows.Foundation;
 
 namespace Wavee.Controls.Lyrics.Models.Lyrics
@@ -16,6 +17,7 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
         public ValueTransition<double> FloatTransition { get; set; }
 
         public CropEffect Crop { get; }
+        public ColorMatrixEffect GlowWhiten { get; }
         public GaussianBlurEffect Glow { get; }
 
         public double ProgressPlayed { get; set; } = 0; // 0~1
@@ -39,7 +41,17 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
             );
             LayoutRect = layoutRect;
             Crop = new CropEffect { BorderMode = EffectBorderMode.Hard };
-            Glow = new GaussianBlurEffect { Source = Crop, BorderMode = EffectBorderMode.Soft };
+            GlowWhiten = new ColorMatrixEffect
+            {
+                Source = Crop,
+                ColorMatrix = new Matrix5x4
+                {
+                    // Zero out color-to-color mapping, set RGB offset to white, keep alpha
+                    M44 = 1,
+                    M51 = 1, M52 = 1, M53 = 1,
+                }
+            };
+            Glow = new GaussianBlurEffect { Source = GlowWhiten, BorderMode = EffectBorderMode.Soft };
         }
 
         public void Update(TimeSpan elapsedTime)
@@ -52,6 +64,7 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
         public void DisposeEffetcts()
         {
             Crop?.Dispose();
+            GlowWhiten?.Dispose();
             Glow?.Dispose();
         }
 

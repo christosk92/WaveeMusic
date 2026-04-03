@@ -6,6 +6,8 @@ A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
 ![WinUI](https://img.shields.io/badge/WinUI-3-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+![Wavee](screenshots/Animation.gif)
+
 ## Features
 
 ### Desktop Application
