@@ -27,6 +27,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly IAlbumService _albumService;
     private readonly ILocationService _locationService;
     private readonly IPlaybackService _playbackService;
+    private readonly ITrackLikeService? _likeService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private readonly CompositeDisposable _disposables = new();
@@ -169,14 +170,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Constructor (reactive pipelines) ──
 
-    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, IPlaybackService playbackService, ILogger<ArtistViewModel>? logger = null)
+    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, IPlaybackService playbackService, ITrackLikeService? likeService = null, ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
         _albumService = albumService;
         _locationService = locationService;
         _playbackService = playbackService;
+        _likeService = likeService;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+        // React to follow state changes from other sources (Dealer WebSocket, other pages)
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
 
         // Top tracks: bind in insertion order (already ordered by popularity from API)
         _topTracksSource.Connect()
@@ -219,6 +225,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             Title = "Artist"
         };
+        RefreshFollowState();
     }
 
     public void PrefillFrom(ContentNavigationParameter nav)
@@ -670,7 +677,23 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     }
 
     [RelayCommand]
-    private void ToggleFollow() => IsFollowing = !IsFollowing;
+    private void ToggleFollow()
+    {
+        if (string.IsNullOrEmpty(ArtistId) || _likeService == null) return;
+        _likeService.ToggleSave(SavedItemType.Artist, $"spotify:artist:{ArtistId}", IsFollowing);
+        // IsFollowing will be updated reactively via OnSaveStateChanged
+    }
+
+    private void RefreshFollowState()
+    {
+        if (!string.IsNullOrEmpty(ArtistId) && _likeService != null)
+            IsFollowing = _likeService.IsSaved(SavedItemType.Artist, ArtistId);
+    }
+
+    private void OnSaveStateChanged()
+    {
+        _dispatcherQueue?.TryEnqueue(RefreshFollowState);
+    }
 
     [RelayCommand]
     private async Task PlayTopTracksAsync()
@@ -687,8 +710,25 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private async Task PlayTrackAsync(ITrackItem? track)
     {
         if (track == null || string.IsNullOrEmpty(ArtistId)) return;
-        await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
-            new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
+
+        // Build full track list so extended tracks beyond the Spotify artist context play correctly
+        var allTrackUris = TopTracks
+            .Where(t => t.IsLoaded && t.Data != null)
+            .Select(t => t.Data!.Uri)
+            .Where(uri => !string.IsNullOrEmpty(uri))
+            .ToList();
+
+        var startIndex = allTrackUris.IndexOf(track.Uri);
+        if (startIndex >= 0)
+        {
+            await _playbackService.PlayTracksAsync(allTrackUris, startIndex);
+        }
+        else
+        {
+            // Track not in loaded list — play within artist context as fallback
+            await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
+                new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
+        }
     }
 
     [RelayCommand]
@@ -810,6 +850,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void Dispose()
     {
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+
         if (_discoCts is not null)
         {
             _discoCts?.Cancel();

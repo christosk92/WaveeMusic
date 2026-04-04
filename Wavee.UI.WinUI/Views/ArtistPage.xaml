@@ -139,8 +139,8 @@
                                     VerticalAlignment="Center"
                                     Padding="16,10" CornerRadius="20">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xEB51;" FontSize="14"/>
-                                    <TextBlock Text="Follow"/>
+                                    <FontIcon Glyph="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowGlyphConverter}}" FontSize="14"/>
+                                    <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
                                 </StackPanel>
                             </Button>
 

@@ -317,6 +317,10 @@ public sealed partial class AlbumDetailPanel : UserControl
     private void ViewAlbumButton_Click(object sender, RoutedEventArgs e)
     {
         if (Album == null) return;
+
+        Helpers.ConnectedAnimationHelper.PrepareAnimation(
+            Helpers.ConnectedAnimationHelper.AlbumArt, ImageArea);
+
         var param = new ContentNavigationParameter
         {
             Uri = Album.Uri ?? Album.Id,

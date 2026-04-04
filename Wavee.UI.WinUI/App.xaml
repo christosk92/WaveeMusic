@@ -100,6 +100,7 @@
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
             <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter" />
+            <converters:BoolToFollowGlyphConverter x:Key="BoolToFollowGlyphConverter" />
             <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter" />
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
             <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
