@@ -246,7 +246,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             // ── Map scalar properties ──
             ArtistName = overview.Name ?? ArtistName;
-            ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
+            // Only update image if not already prefilled (avoids flash during connected animation)
+            if (string.IsNullOrEmpty(ArtistImageUrl))
+                ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
             HeaderImageUrl = overview.HeaderImageUrl;
             MonthlyListeners = overview.MonthlyListeners > 0
                 ? overview.MonthlyListeners.ToString("N0")
@@ -631,7 +633,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             });
 
             try { await tcsCleanup.Task; }
-            catch { /* cleanup failure is non-critical */ }
+            catch (Exception cleanupEx2) { _logger?.LogDebug(cleanupEx2, "Discography cleanup failed (non-critical)"); }
         }
     }
 

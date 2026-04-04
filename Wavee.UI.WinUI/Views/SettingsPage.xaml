@@ -134,6 +134,37 @@
                             <ToggleSwitch IsOn="{x:Bind ViewModel.NormalizationEnabled, Mode=TwoWay}"
                                           OnContent="" OffContent=""/>
                         </controls:SettingsCard>
+
+                        <TextBlock Text="Lyrics sources" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,4"/>
+                        <TextBlock Text="Drag to reorder by preference. Higher position = stronger weight when multiple sources match."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,8"/>
+                        <ListView ItemsSource="{x:Bind ViewModel.LyricsSources}"
+                                  CanReorderItems="True"
+                                  AllowDrop="True"
+                                  SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LyricsSourceItem">
+                                    <Grid Padding="0,4" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Name}" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                            <TextBlock Text="{x:Bind Description}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsOn="{x:Bind IsEnabled, Mode=TwoWay}"
+                                                      OnContent="" OffContent=""
+                                                      VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                     </StackPanel>
                 </ScrollViewer>
 

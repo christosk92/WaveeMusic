@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
@@ -22,6 +21,9 @@ namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemContent, ITrackListViewModel
 {
+    private readonly ProfileCache? _profileCache;
+    private readonly Wavee.Core.Session.Session? _session;
+    private readonly IAuthState? _authState;
     private readonly ILogger? _logger;
 
     [ObservableProperty]
@@ -87,8 +89,15 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public ProfileViewModel(ILogger<ProfileViewModel>? logger = null)
+    public ProfileViewModel(
+        ProfileCache? profileCache = null,
+        Wavee.Core.Session.Session? session = null,
+        IAuthState? authState = null,
+        ILogger<ProfileViewModel>? logger = null)
     {
+        _profileCache = profileCache;
+        _session = session;
+        _authState = authState;
         _logger = logger;
 
         TabItemParameter = new TabItemParameter
@@ -100,12 +109,10 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
 
     public async void Initialize()
     {
-        var cache = Ioc.Default.GetService<ProfileCache>();
-
         // Stage 1: Serve cached data instantly if available
-        if (cache != null && cache.HasData && !cache.IsStale)
+        if (_profileCache != null && _profileCache.HasData && !_profileCache.IsStale)
         {
-            var snapshot = cache.GetCached();
+            var snapshot = _profileCache.GetCached();
             if (snapshot != null)
             {
                 ApplySnapshot(snapshot);
@@ -119,18 +126,17 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
 
         try
         {
-            var session = Ioc.Default.GetService<Wavee.Core.Session.Session>();
-            if (session is null || !session.IsConnected())
+            if (_session is null || !_session.IsConnected())
             {
                 _logger?.LogWarning("Cannot load profile: session is null or not connected");
                 return;
             }
 
-            if (cache != null)
+            if (_profileCache != null)
             {
-                var snapshot = await cache.FetchFreshAsync(session);
-                ApplySnapshot(snapshot);
-                cache.StartBackgroundRefresh(session);
+                var snapshot2 = await _profileCache.FetchFreshAsync(_session);
+                ApplySnapshot(snapshot2);
+                _profileCache.StartBackgroundRefresh(_session);
             }
             else
             {
@@ -215,8 +221,7 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
     {
         try
         {
-            var authState = Ioc.Default.GetRequiredService<IAuthState>();
-            await authState.LogoutAsync();
+            await _authState!.LogoutAsync();
         }
         catch (Exception ex)
         {

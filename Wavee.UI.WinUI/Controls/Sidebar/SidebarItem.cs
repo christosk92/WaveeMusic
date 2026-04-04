@@ -44,6 +44,7 @@ public sealed partial class SidebarItem : Control
 
 	public SidebarItem()
 	{
+		_themeColorService = Ioc.Default.GetService<Services.ThemeColorService>();
 		DefaultStyleKey = typeof(SidebarItem);
 
 		PointerReleased += Item_PointerReleased;
@@ -82,12 +83,11 @@ public sealed partial class SidebarItem : Control
 			{
 				fontIcon.FontSize = 16;
 				// Use ThemeColorService for theme-aware foreground
-				var colors = Ioc.Default.GetService<Services.ThemeColorService>();
-				if (colors != null)
+				if (_themeColorService != null)
 				{
+					var colors = _themeColorService;
 					fontIcon.Foreground = colors.TextPrimary;
 					// Store handler so we can unsubscribe in Unloaded
-					_themeColorService = colors;
 					_themeChangedHandler = () =>
 					{
 						if (fontIcon.DispatcherQueue != null)

@@ -105,6 +105,14 @@ public sealed class AppSettings
     /// Frequencies: 31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz.
     /// </summary>
     public double[] EqualizerBandGains { get; set; } = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    // ── Lyrics ──
+
+    /// <summary>
+    /// Ordered list of lyrics source preferences. Position 0 = highest priority.
+    /// Each entry has a name and enabled flag. If empty, defaults are used.
+    /// </summary>
+    public List<LyricsSourcePref> LyricsSourcePreferences { get; set; } = [];
 }
 
 public sealed class HomeSectionSettings
@@ -118,6 +126,12 @@ public sealed class HomeSectionSettings
     /// When true, user has done initial setup (first load seeds all sections as visible).
     /// </summary>
     public bool Initialized { get; set; }
+}
+
+public sealed class LyricsSourcePref
+{
+    public string Name { get; set; } = "";
+    public bool IsEnabled { get; set; } = true;
 }
 
 public sealed class HomeSectionPref

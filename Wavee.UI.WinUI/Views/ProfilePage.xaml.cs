@@ -109,9 +109,11 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
             .Start(ContentContainer);
     }
 
+    private const int ShimmerCollapseDelayMs = 500;
+
     private async Task CollapseShimmerAfterDelay()
     {
-        await Task.Delay(500);
+        await Task.Delay(ShimmerCollapseDelayMs);
         if (_showingContent)
             ShimmerContainer.Visibility = Visibility.Collapsed;
     }

@@ -315,6 +315,26 @@ public interface IMetadataDatabase : IAsyncDisposable
 
     #endregion
 
+    #region Lyrics Cache Operations
+
+    /// <summary>
+    /// Gets cached lyrics JSON for a track URI.
+    /// </summary>
+    /// <returns>JSON data and provider name, or null if not cached.</returns>
+    Task<(string JsonData, string? Provider)?> GetLyricsCacheAsync(string trackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Caches lyrics JSON for a track URI.
+    /// </summary>
+    Task SetLyricsCacheAsync(string trackUri, string? provider, string jsonData, bool hasSyllableSync, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes cached lyrics for a track URI.
+    /// </summary>
+    Task DeleteLyricsCacheAsync(string trackUri, CancellationToken ct = default);
+
+    #endregion
+
     #region Library Outbox Operations
 
     /// <summary>

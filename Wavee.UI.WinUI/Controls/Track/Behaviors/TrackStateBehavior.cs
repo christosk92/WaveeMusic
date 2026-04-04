@@ -29,6 +29,7 @@ public static class TrackStateBehavior
 
     // Global element registry — tracks all elements with TrackId set
     private static readonly List<WeakReference<FrameworkElement>> _trackedElements = [];
+    private static IPlaybackStateService? _playbackStateService;
     private static bool _subscribedToPlayback;
     private static string? _currentTrackId;
     private static bool _isPlaying;
@@ -215,7 +216,7 @@ public static class TrackStateBehavior
     {
         if (_subscribedToPlayback) return;
 
-        var service = Ioc.Default.GetService<IPlaybackStateService>();
+        var service = _playbackStateService ??= Ioc.Default.GetService<IPlaybackStateService>();
         if (service == null) return;
 
         _currentTrackId = service.CurrentTrackId;

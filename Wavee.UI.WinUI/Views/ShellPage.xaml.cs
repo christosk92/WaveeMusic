@@ -25,6 +25,9 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class ShellPage : Page
 {
     private readonly ILogger? _logger;
+    private readonly IAuthState? _authState;
+    private readonly ISettingsService? _settingsService;
+    private readonly IConnectivityService? _connectivity;
 
     private const double ZoomStep = 0.1;
     private const double ZoomMin = 0.5;
@@ -37,7 +40,11 @@ public sealed partial class ShellPage : Page
     public ShellPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
+        NavigationHelpers.Initialize(ViewModel);
         _logger = Ioc.Default.GetService<ILogger<ShellPage>>();
+        _authState = Ioc.Default.GetService<IAuthState>();
+        _settingsService = Ioc.Default.GetService<ISettingsService>();
+        _connectivity = Ioc.Default.GetService<IConnectivityService>();
         InitializeComponent();
 
         // Apply saved zoom level
@@ -66,7 +73,6 @@ public sealed partial class ShellPage : Page
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                var connectivity = Ioc.Default.GetService<IConnectivityService>();
                 if (m.Value)
                 {
                     // Connected — hide overlay
@@ -75,7 +81,7 @@ public sealed partial class ShellPage : Page
                 else
                 {
                     // Disconnected — show overlay
-                    var isReconnecting = connectivity?.IsReconnecting ?? false;
+                    var isReconnecting = _connectivity?.IsReconnecting ?? false;
                     ReconnectingRing.IsActive = isReconnecting;
                     ReconnectingRing.Visibility = isReconnecting ? Visibility.Visible : Visibility.Collapsed;
                     ConnectionOverlayText.Text = isReconnecting
@@ -106,6 +112,7 @@ public sealed partial class ShellPage : Page
         TitleBarGrid.SizeChanged -= TitleBarGrid_SizeChanged;
         TitleBarGrid.Loaded -= TitleBarGrid_Loaded;
         TabControl.SizeChanged -= TabControl_SizeChanged;
+        SidebarControl.ItemDropped -= SidebarControl_ItemDropped;
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -122,14 +129,13 @@ public sealed partial class ShellPage : Page
 
     private void UpdateUserButton()
     {
-        var authState = Ioc.Default.GetService<IAuthState>();
-        if (authState == null) return;
+        if (_authState == null) return;
 
-        switch (authState.Status)
+        switch (_authState.Status)
         {
             case AuthStatus.Authenticated:
                 NavToolbar.IsConnecting = false;
-                NavToolbar.UserDisplayName = authState.DisplayName ?? "User";
+                NavToolbar.UserDisplayName = _authState.DisplayName ?? "User";
                 if (ConnectionErrorBar != null) ConnectionErrorBar.IsOpen = false;
                 break;
             case AuthStatus.Authenticating:
@@ -142,7 +148,7 @@ public sealed partial class ShellPage : Page
                 NavToolbar.UserDisplayName = "Connection failed";
                 if (ConnectionErrorBar != null)
                 {
-                    ConnectionErrorBar.Message = authState.ConnectionError ?? "Could not connect to Spotify.";
+                    ConnectionErrorBar.Message = _authState.ConnectionError ?? "Could not connect to Spotify.";
                     ConnectionErrorBar.IsOpen = true;
                 }
                 break;
@@ -155,9 +161,8 @@ public sealed partial class ShellPage : Page
 
     private async void RetryConnection_Click(object sender, RoutedEventArgs e)
     {
-        var authState = Ioc.Default.GetService<IAuthState>();
-        if (authState != null)
-            await authState.RetryConnectionAsync();
+        if (_authState != null)
+            await _authState.RetryConnectionAsync();
     }
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
@@ -429,10 +434,9 @@ public sealed partial class ShellPage : Page
 
     private void InitializeZoom()
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
-        if (settings != null)
+        if (_settingsService != null)
         {
-            ZoomControl.Zoom = Math.Clamp(settings.Settings.ZoomLevel, ZoomMin, ZoomMax);
+            ZoomControl.Zoom = Math.Clamp(_settingsService.Settings.ZoomLevel, ZoomMin, ZoomMax);
         }
     }
 
@@ -441,8 +445,7 @@ public sealed partial class ShellPage : Page
         zoom = Math.Clamp(zoom, ZoomMin, ZoomMax);
         ZoomControl.Zoom = zoom;
 
-        var settings = Ioc.Default.GetService<ISettingsService>();
-        settings?.Update(s => s.ZoomLevel = zoom);
+        _settingsService?.Update(s => s.ZoomLevel = zoom);
     }
 
     private void ZoomIn_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)

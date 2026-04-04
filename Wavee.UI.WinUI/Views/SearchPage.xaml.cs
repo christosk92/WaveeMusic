@@ -17,12 +17,14 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class SearchPage : Page
 {
     private bool _isNarrowLayout;
+    private readonly Services.ThemeColorService? _themeColors;
 
     public SearchViewModel ViewModel { get; }
 
     public SearchPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<SearchViewModel>();
+        _themeColors = Ioc.Default.GetService<Services.ThemeColorService>();
         InitializeComponent();
         Unloaded += (_, _) => (ViewModel as IDisposable)?.Dispose();
     }
@@ -88,8 +90,7 @@ public sealed partial class SearchPage : Page
     {
         if (sender is Border border)
         {
-            var tc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Services.ThemeColorService>();
-            border.Background = tc?.CardBackgroundSecondary ??
+            border.Background = _themeColors?.CardBackgroundSecondary ??
                                 (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
         }
     }
@@ -98,8 +99,7 @@ public sealed partial class SearchPage : Page
     {
         if (sender is Border border)
         {
-            var tc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Services.ThemeColorService>();
-            border.Background = tc?.CardBackground ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            border.Background = _themeColors?.CardBackground ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
         }
     }
 

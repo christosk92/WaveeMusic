@@ -143,9 +143,11 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         _ = CollapseShimmerAfterDelay();
     }
 
+    private const int ShimmerCollapseDelayMs = 500;
+
     private async Task CollapseShimmerAfterDelay()
     {
-        await Task.Delay(500);
+        await Task.Delay(ShimmerCollapseDelayMs);
         if (_showingContent)
             ShimmerContainer.Visibility = Visibility.Collapsed;
     }
@@ -244,6 +246,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         }
     }
 
+    private const int HighlightBlinkDelayMs = 120;
+
     private static async void HighlightSection(FrameworkElement element)
     {
         // Store original opacity, flash it
@@ -251,9 +255,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         for (int i = 0; i < 3; i++)
         {
             element.Opacity = 0.5;
-            await Task.Delay(120);
+            await Task.Delay(HighlightBlinkDelayMs);
             element.Opacity = original;
-            await Task.Delay(120);
+            await Task.Delay(HighlightBlinkDelayMs);
         }
     }
 

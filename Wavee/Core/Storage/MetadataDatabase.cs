@@ -26,7 +26,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v6: Added album_tracks_cache table
     // v7: Added library_outbox table
     // v8: Removed FK constraint from spotify_library (decoupled from entities)
-    private const int CurrentSchemaVersion = 8;
+    private const int CurrentSchemaVersion = 9;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -383,6 +383,22 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         light_hex   TEXT,
                         raw_hex     TEXT,
                         cached_at   INTEGER NOT NULL
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Lyrics cache table
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS lyrics_cache (
+                        track_uri        TEXT PRIMARY KEY,
+                        provider         TEXT,
+                        json_data        TEXT NOT NULL,
+                        has_syllable_sync INTEGER NOT NULL DEFAULT 0,
+                        cached_at        INTEGER NOT NULL
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -1894,6 +1910,81 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         return null;
+    }
+
+    #endregion
+
+    #region Lyrics Cache Operations
+
+    /// <inheritdoc />
+    public async Task<(string JsonData, string? Provider)?> GetLyricsCacheAsync(string trackUri, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT json_data, provider FROM lyrics_cache WHERE track_uri = @uri";
+        cmd.Parameters.AddWithValue("@uri", trackUri);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return (
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1)
+            );
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task SetLyricsCacheAsync(string trackUri, string? provider, string jsonData, bool hasSyllableSync, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO lyrics_cache (track_uri, provider, json_data, has_syllable_sync, cached_at)
+                VALUES (@uri, @provider, @json, @sync, @cached)
+                """;
+            cmd.Parameters.AddWithValue("@uri", trackUri);
+            cmd.Parameters.AddWithValue("@provider", (object?)provider ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@json", jsonData);
+            cmd.Parameters.AddWithValue("@sync", hasSyllableSync ? 1 : 0);
+            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteLyricsCacheAsync(string trackUri, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM lyrics_cache WHERE track_uri = @uri";
+            cmd.Parameters.AddWithValue("@uri", trackUri);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     #endregion

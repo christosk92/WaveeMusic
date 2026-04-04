@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Storage.Streams;
@@ -122,7 +123,7 @@ namespace Wavee.Controls.Lyrics.Core
         private List<RenderLyricsLine>? _renderLyricsLines;
         private Color _clearColor = Colors.Transparent;
 
-        private DirtyFlags _dirty = DirtyFlags.Layout;
+        private volatile int _dirtyFlags = (int)DirtyFlags.Layout;
         private RenderContext? _renderContext;
 
         private int _primaryPlayingLineIndex = -1;
@@ -159,17 +160,17 @@ namespace Wavee.Controls.Lyrics.Core
         public void SetSettings(LyricsWindowStatus settings)
         {
             _lyricsWindowStatus = settings;
-            _dirty |= DirtyFlags.Layout;
+            Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
             UpdatePalette();
         }
 
         public void SetAlbumArtRect(Rect rect) => _albumArtRect = rect;
 
-        public void SetLyricsStartX(double x) { _renderLyricsStartX = x; _dirty |= DirtyFlags.Layout; }
-        public void SetLyricsStartY(double y) { _renderLyricsStartY = y; _dirty |= DirtyFlags.Layout; }
-        public void SetLyricsWidth(double w) { _renderLyricsWidth = w; _dirty |= DirtyFlags.Layout; }
-        public void SetLyricsHeight(double h) { _renderLyricsHeight = h; _dirty |= DirtyFlags.Layout; }
-        public void SetLyricsOpacity(double o) { _renderLyricsOpacity = o; _dirty |= DirtyFlags.Layout; }
+        public void SetLyricsStartX(double x) { _renderLyricsStartX = x; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
+        public void SetLyricsStartY(double y) { _renderLyricsStartY = y; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
+        public void SetLyricsWidth(double w) { _renderLyricsWidth = w; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
+        public void SetLyricsHeight(double h) { _renderLyricsHeight = h; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
+        public void SetLyricsOpacity(double o) { _renderLyricsOpacity = o; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
 
         public void SetMouseScrollOffset(double offset) => _mouseYScrollTransition.Start(offset);
         public void SetMousePosition(Point p) => _mousePosition = p;
@@ -180,7 +181,7 @@ namespace Wavee.Controls.Lyrics.Core
         {
             _isMouseScrolling = newValue;
             if (newValue != oldValue)
-                _dirty |= DirtyFlags.MouseScrolling;
+                Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.MouseScrolling);
         }
 
         // ================================================================
@@ -201,7 +202,7 @@ namespace Wavee.Controls.Lyrics.Core
         {
             _lyricsData = lyricsData;
             _synchronizer.Reset();
-            _dirty |= DirtyFlags.Layout;
+            Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
         }
 
         public void SetSongInfo(SongInfo songInfo)
@@ -261,7 +262,7 @@ namespace Wavee.Controls.Lyrics.Core
             InitSpectrumAnalyzer();
             InitSpoutHook(sender);
 
-            _dirty |= DirtyFlags.Layout;
+            Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
             TriggerRelayout();
         }
 
@@ -269,6 +270,9 @@ namespace Wavee.Controls.Lyrics.Core
         {
             _control = sender;
             if (_lyricsWindowStatus == null) return;
+
+            // Atomically snapshot and clear dirty flags — prevents race with UI thread setters
+            var frameDirty = (DirtyFlags)Interlocked.Exchange(ref _dirtyFlags, 0);
 
             var lyricsBg = _lyricsWindowStatus.LyricsBackgroundSettings;
             var lyricsStyle = _lyricsWindowStatus.LyricsStyleSettings;
@@ -285,7 +289,8 @@ namespace Wavee.Controls.Lyrics.Core
 
             UpdatePlaybackState(elapsedTime);
 
-            TriggerRelayout();
+            if ((frameDirty & DirtyFlags.Layout) != 0)
+                TriggerRelayout();
 
             #region UpdatePlayingLineIndex
 
@@ -297,12 +302,12 @@ namespace Wavee.Controls.Lyrics.Core
 
             #region UpdateTargetScrollOffset
 
-            if (isPrimaryPlayingLineChanged || (_dirty & DirtyFlags.Layout) != 0)
+            if (isPrimaryPlayingLineChanged || (frameDirty & DirtyFlags.Layout) != 0)
             {
                 var targetScroll = LyricsLayoutManager.CalculateTargetScrollOffset(_renderLyricsLines, Math.Max(0, _primaryPlayingLineIndex));
                 if (targetScroll.HasValue) _canvasTargetScrollOffset = targetScroll.Value;
 
-                if ((_dirty & DirtyFlags.Layout) != 0)
+                if ((frameDirty & DirtyFlags.Layout) != 0)
                 {
                     _canvasYScrollTransition.JumpTo(_canvasTargetScrollOffset);
                 }
@@ -339,6 +344,10 @@ namespace Wavee.Controls.Lyrics.Core
 
             var maxRange = LyricsLayoutManager.CalculateMaxRange(_renderLyricsLines);
 
+            bool frameLayoutChanged = (frameDirty & DirtyFlags.Layout) != 0;
+            bool framePaletteChanged = (frameDirty & DirtyFlags.Palette) != 0;
+            bool frameMouseScrollingChanged = (frameDirty & DirtyFlags.MouseScrolling) != 0;
+
             _animator.UpdateLines(
                 _renderLyricsLines,
                 _isMouseScrolling ? maxRange.Start : _visibleRange.Start,
@@ -353,17 +362,12 @@ namespace Wavee.Controls.Lyrics.Core
                 _lyricsWindowStatus.WindowPalette,
                 elapsedTime,
                 _isMouseScrolling,
-                (_dirty & DirtyFlags.Layout) != 0,
+                frameLayoutChanged,
                 isPrimaryPlayingLineChanged,
-                (_dirty & DirtyFlags.MouseScrolling) != 0,
-                (_dirty & DirtyFlags.Palette) != 0,
+                frameMouseScrollingChanged,
+                framePaletteChanged,
                 _songPositionWithOffset.TotalMilliseconds
             );
-
-            // Capture dirty flags before clearing
-            bool frameLayoutChanged = (_dirty & DirtyFlags.Layout) != 0;
-            bool framePaletteChanged = (_dirty & DirtyFlags.Palette) != 0;
-            bool frameMouseScrollingChanged = (_dirty & DirtyFlags.MouseScrolling) != 0;
 
             if (!_lyricsWindowStatus.ShowLyricsCard)
             {
@@ -377,8 +381,6 @@ namespace Wavee.Controls.Lyrics.Core
                     frameLayoutChanged
                 );
             }
-
-            _dirty = DirtyFlags.None;
 
             if (_spectrumAnalyzer.IsCapturing)
             {
@@ -633,7 +635,7 @@ namespace Wavee.Controls.Lyrics.Core
 
         private void TriggerRelayout()
         {
-            if ((_dirty & DirtyFlags.Layout) == 0 || _lyricsWindowStatus == null || _control == null) return;
+            if (_lyricsWindowStatus == null || _control == null) return;
 
             DisposeRenderLyricsLines();
             _renderLyricsLines = _lyricsData?.LyricsLines.Select(x => new RenderLyricsLine(x)).ToList();
@@ -727,7 +729,7 @@ namespace Wavee.Controls.Lyrics.Core
             _accentColor3Transition.Start(palette.AccentColor3);
             _accentColor4Transition.Start(palette.AccentColor4);
 
-            _dirty |= DirtyFlags.Palette;
+            Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Palette);
         }
 
         public void Dispose()

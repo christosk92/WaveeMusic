@@ -10,10 +10,8 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Wavee.Connect;
-using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
-using Wavee.Protocol.Metadata;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
@@ -27,7 +25,8 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Delegates all commands to <see cref="IPlaybackService"/> (fire-and-forget for backward compat).
 /// </summary>
 internal sealed partial class PlaybackStateService : ObservableObject, IPlaybackStateService, IDisposable,
-    IRecipient<AuthStatusChangedMessage>
+    IRecipient<AuthStatusChangedMessage>,
+    IRecipient<TrackMetadataEnrichedMessage>
 {
     private readonly Session _session;
     private readonly IPlaybackService _playbackService;
@@ -38,9 +37,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly IHomeFeedCache? _homeFeedCache;
     private readonly ObservableCollection<QueueItem> _queue = [];
     private IDisposable? _stateSubscription;
-    private IExtendedMetadataClient? _metadataClient;
     private CancellationTokenSource? _colorCts;
-    private CancellationTokenSource? _metadataFetchCts;
     private bool _isFirstStateUpdate = true;
     private double? _pendingSeekPositionMs;
 
@@ -89,13 +86,11 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         // Register for auth status changes to subscribe after session connects
         _messenger.Register<AuthStatusChangedMessage>(this);
+        _messenger.Register<TrackMetadataEnrichedMessage>(this);
 
         // Try subscribing now in case session is already connected
         TrySubscribeToRemoteState();
     }
-
-    public void SetMetadataClient(IExtendedMetadataClient metadataClient)
-        => _metadataClient = metadataClient;
 
     // ── IRecipient<AuthStatusChangedMessage> ──
 
@@ -145,8 +140,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 state = state with { Changes = StateChanges.All };
             }
 
-            // Track info — always fetch full metadata from Spotify API before
-            // setting properties, because Connect state frequently omits fields
+            // Track info — apply Connect state immediately, request API enrichment
             if (state.Changes.HasFlag(StateChanges.Track))
             {
                 _pendingSeekPositionMs = null;
@@ -154,7 +148,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
                 var trackUri = state.Track?.Uri;
                 if (!string.IsNullOrEmpty(trackUri))
-                    _ = FetchAndApplyTrackMetadataAsync(trackUri, state);
+                {
+                    // Apply connect state immediately (may be incomplete)
+                    ApplyConnectState(trackUri, state);
+
+                    // Request enrichment from TrackMetadataEnricher (if it exists post-connect)
+                    _messenger.Send(new TrackEnrichmentRequestMessage(trackUri));
+                }
             }
 
             // Playback status
@@ -307,79 +307,26 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         });
     }
 
-    /// <summary>
-    /// Fetches full track metadata from the Spotify API and updates UI properties.
-    /// Connect state frequently omits fields like artist_name — this ensures we always
-    /// have complete metadata for lyrics matching and display.
-    /// </summary>
-    private async Task FetchAndApplyTrackMetadataAsync(string trackUri, PlaybackState connectState)
+    // ── IRecipient<TrackMetadataEnrichedMessage> ──
+
+    public void Receive(TrackMetadataEnrichedMessage message)
     {
-        _metadataFetchCts?.Cancel();
-        _metadataFetchCts = new CancellationTokenSource();
-        var ct = _metadataFetchCts.Token;
-
-        try
+        _dispatcherQueue.TryEnqueue(() =>
         {
-            if (_metadataClient == null)
-            {
-                // Metadata client not wired yet — fall back to Connect state
-                ApplyConnectState(trackUri, connectState);
-                return;
-            }
+            // Only apply if this enrichment is for the currently playing track
+            if (CurrentTrackId != message.TrackId) return;
 
-            var track = await _metadataClient.GetTrackAsync(trackUri, ct);
-            if (ct.IsCancellationRequested || track == null) return;
+            if (message.Title != null) CurrentTrackTitle = message.Title;
+            if (message.ArtistName != null) CurrentArtistName = message.ArtistName;
+            if (message.AlbumArt != null) CurrentAlbumArt = message.AlbumArt;
+            if (message.AlbumArtLarge != null) CurrentAlbumArtLarge = message.AlbumArtLarge;
+            if (message.ArtistId != null) CurrentArtistId = message.ArtistId;
+            if (message.AlbumId != null) CurrentAlbumId = message.AlbumId;
 
-            var trackId = ExtractTrackId(trackUri);
-
-            // API is authoritative; fall back to Connect state only if API field is missing
-            var title = track.Name ?? connectState.Track?.Title;
-            var artist = track.Artist.Count > 0
-                ? string.Join(", ", track.Artist.Select(a => a.Name))
-                : connectState.Track?.Artist;
-
-            var imageDefault = GetImageUrl(track.Album, Image.Types.Size.Default) ?? connectState.Track?.ImageUrl;
-            var imageLarge = GetImageUrl(track.Album, Image.Types.Size.Large)
-                ?? connectState.Track?.ImageLargeUrl;
-            var imageXLarge = GetImageUrl(track.Album, Image.Types.Size.Xlarge)
-                ?? connectState.Track?.ImageXLargeUrl;
-
-            string? artistUri = connectState.Track?.ArtistUri;
-            if (track.Artist.Count > 0 && track.Artist[0].Gid is { Length: > 0 } gid)
-                artistUri = $"spotify:artist:{Wavee.Core.Audio.SpotifyId.FromRaw(gid.Span, Wavee.Core.Audio.SpotifyIdType.Artist).ToBase62()}";
-
-            string? albumUri = connectState.Track?.AlbumUri;
-            if (track.Album?.Gid is { Length: > 0 } albumGid)
-                albumUri = $"spotify:album:{Wavee.Core.Audio.SpotifyId.FromRaw(albumGid.Span, Wavee.Core.Audio.SpotifyIdType.Album).ToBase62()}";
-
-            _logger?.LogInformation("Track metadata fetched: \"{Title}\" by \"{Artist}\" (uri={Uri})",
-                title, artist, trackUri);
-
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                CurrentTrackTitle = title;
-                CurrentArtistName = artist;
-                CurrentAlbumArt = imageDefault;
-                CurrentAlbumArtLarge = imageLarge ?? imageXLarge ?? imageDefault;
-                CurrentArtistId = artistUri;
-                CurrentAlbumId = albumUri;
-
-                // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
-                CurrentTrackId = trackId;
-
-                // Extract color from album art
-                if (!string.IsNullOrEmpty(imageDefault))
-                    _ = ExtractAlbumColorAsync(imageDefault);
-                else
-                    CurrentAlbumArtColor = null;
-            });
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to fetch track metadata for {Uri} — falling back to Connect state", trackUri);
-            ApplyConnectState(trackUri, connectState);
-        }
+            // Re-extract color if album art was enriched
+            if (message.AlbumArt != null)
+                _ = ExtractAlbumColorAsync(message.AlbumArt);
+        });
     }
 
     /// <summary>
@@ -411,15 +358,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             else
                 CurrentAlbumArtColor = null;
         });
-    }
-
-    private static string? GetImageUrl(Album? album, Image.Types.Size preferredSize)
-    {
-        if (album?.CoverGroup?.Image.Count is not > 0) return null;
-        var image = album.CoverGroup.Image.FirstOrDefault(i => i.Size == preferredSize)
-                    ?? album.CoverGroup.Image.FirstOrDefault();
-        if (image == null) return null;
-        return $"spotify:image:{Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant()}";
     }
 
     private async Task ExtractAlbumColorAsync(string imageUrl)
@@ -532,79 +470,30 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     partial void OnCurrentContextChanged(PlaybackContextInfo? value) => _messenger.Send(new PlaybackContextChangedMessage(value));
 
     // ── Commands ──
-    // Fast path: local engine commands bypass the retry engine + semaphore entirely.
-    // Slow path: remote device commands go through PlaybackService (retry + error handling).
-
-    private Wavee.Connect.IPlaybackEngine? _cachedLocalEngine;
-
-    private Wavee.Connect.IPlaybackEngine? LocalEngine =>
-        _cachedLocalEngine ??= (CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor)?.LocalEngine;
-
-    private bool IsLocalPlayback
-    {
-        get
-        {
-            var engine = LocalEngine;
-            if (engine == null) return false;
-            var activeDevice = _session.PlaybackState?.CurrentState.ActiveDeviceId;
-            return string.IsNullOrEmpty(activeDevice) || activeDevice == _session.Config.DeviceId;
-        }
-    }
+    // All commands delegate to IPlaybackService, which routes through ConnectCommandExecutor
+    // (handles both local engine and remote device routing internally).
 
     public void PlayPause()
     {
         var pendingSeek = _pendingSeekPositionMs;
         _pendingSeekPositionMs = null;
 
-        if (IsLocalPlayback)
-        {
-            var playing = IsPlaying;
-            var stateManager = _session.PlaybackState!;
+        var playing = IsPlaying;
+        IsPlaying = !playing; // optimistic
+        if (!playing && CurrentTrackId != null) SetBuffering(CurrentTrackId);
 
-            // Optimistic UI update — instant visual feedback before engine call
-            IsPlaying = !playing;
-            if (!playing && CurrentTrackId != null) SetBuffering(CurrentTrackId);
-
-            _ = Task.Run(async () =>
-            {
-                if (playing) await LocalEngine!.PauseAsync();
-                else await stateManager.ResumeAsync(); // Handles ghost state internally
-            }).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _dispatcherQueue.TryEnqueue(() => { IsPlaying = playing; ClearBuffering(); });
-                }
-                else if (!playing && pendingSeek.HasValue)
-                {
-                    _dispatcherQueue.TryEnqueue(() => Seek(pendingSeek.Value));
-                }
-            });
-            return;
-        }
-
-        if (!IsPlaying && CurrentTrackId != null)
-            SetBuffering(CurrentTrackId);
         _ = _playbackService.TogglePlayPauseAsync().ContinueWith(t =>
         {
-            if (t.IsFaulted) ClearBuffering();
-            else if (pendingSeek.HasValue)
+            if (t.IsFaulted)
+                _dispatcherQueue.TryEnqueue(() => { IsPlaying = playing; ClearBuffering(); });
+            else if (!playing && pendingSeek.HasValue)
                 _dispatcherQueue.TryEnqueue(() => Seek(pendingSeek.Value));
         });
     }
 
-    public void Next()
-    {
-        if (IsLocalPlayback) { _ = Task.Run(() => LocalEngine!.SkipNextAsync()); return; }
-        _ = _playbackService.SkipNextAsync();
-    }
+    public void Next() => _ = _playbackService.SkipNextAsync();
 
-    public void Previous()
-    {
-        if (IsLocalPlayback) { _ = Task.Run(() => LocalEngine!.SkipPreviousAsync()); return; }
-        _ = _playbackService.SkipPreviousAsync();
-    }
+    public void Previous() => _ = _playbackService.SkipPreviousAsync();
 
     public void Seek(double positionMs)
     {
@@ -621,35 +510,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         _pendingSeekPositionMs = null;
         SetBuffering(CurrentTrackId);
-        if (IsLocalPlayback)
-        {
-            _ = Task.Run(() => LocalEngine!.SeekAsync((long)positionMs))
-                .ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
-            return;
-        }
         _ = _playbackService.SeekAsync((long)positionMs)
             .ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
     }
 
-    public void SetShuffle(bool shuffle)
-    {
-        if (IsLocalPlayback) { _ = Task.Run(() => LocalEngine!.SetShuffleAsync(shuffle)); return; }
-        _ = _playbackService.SetShuffleAsync(shuffle);
-    }
+    public void SetShuffle(bool shuffle) => _ = _playbackService.SetShuffleAsync(shuffle);
 
-    public void SetRepeatMode(RepeatMode mode)
-    {
-        if (IsLocalPlayback)
-        {
-            _ = Task.Run(async () =>
-            {
-                await LocalEngine!.SetRepeatContextAsync(mode == RepeatMode.Context);
-                await LocalEngine!.SetRepeatTrackAsync(mode == RepeatMode.Track);
-            });
-            return;
-        }
-        _ = _playbackService.SetRepeatModeAsync(mode);
-    }
+    public void SetRepeatMode(RepeatMode mode) => _ = _playbackService.SetRepeatModeAsync(mode);
 
     // Guard: when true, volume changes are from remote state sync — don't send commands back
     private bool _suppressVolumeCommand;
@@ -673,17 +540,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     partial void OnVolumeChanged(double value)
     {
         if (_suppressVolumeCommand) return;
-
-        // Convert 0-100 UI range to 0.0-1.0 linear for local engine
-        var engine = LocalEngine;
-        if (engine != null)
-        {
-            // Direct call — SetVolumeAsync is synchronous (just sets a float)
-            var linear = (float)(value / 100.0);
-            engine.SetVolumeAsync(linear);
-            return;
-        }
-        // Remote: send 0-100 integer percent (only if no local engine)
         _ = _playbackService.SetVolumeAsync((int)Math.Round(value));
     }
 
@@ -752,7 +608,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void Dispose()
     {
-        _metadataFetchCts?.Cancel();
         _stateSubscription?.Dispose();
         _messenger.UnregisterAll(this);
     }

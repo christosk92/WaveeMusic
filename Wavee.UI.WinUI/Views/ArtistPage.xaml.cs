@@ -25,6 +25,9 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ArtistPage : Page, ITabBarItemContent
 {
+    private const int ShimmerCollapseDelayMs = 160;
+    private const int ResizeDebounceDelayMs = 150;
+
     private readonly ILogger? _logger;
     private bool _showingContent;
 
@@ -169,7 +172,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             .Start(ContentContainer);
 
         // Collapse shimmer after animation completes
-        await Task.Delay(160);
+        await Task.Delay(ShimmerCollapseDelayMs);
         if (_showingContent)
             ShimmerContainer.Visibility = Visibility.Collapsed;
 
@@ -204,7 +207,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private async Task RecomputeExpandedPanelAsync(CancellationToken ct)
     {
-        try { await Task.Delay(150, ct); }
+        try { await Task.Delay(ResizeDebounceDelayMs, ct); }
         catch (OperationCanceledException) { return; }
 
         if (_activeDetailPanel == null || _expandedItem == null ||
@@ -298,7 +301,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (args.Element is Controls.Track.TrackItem trackItem)
         {
             trackItem.PlayCommand = ViewModel.PlayTrackCommand;
-            trackItem.RefreshPlaybackState();
         }
     }
 

@@ -40,6 +40,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private readonly ReadOnlyObservableCollection<LazyTrackItem> _filteredTracks;
     private readonly CompositeDisposable _disposables = new();
 
+    private const int RenderFrameSettleDelayMs = 50;
+
     private string _albumId = "";
     private string _albumName = "";
     private string? _albumImageUrl;
@@ -454,7 +456,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private async Task LoadAsync(string? albumId)
     {
         if (string.IsNullOrEmpty(albumId) || IsLoading) return;
-        IsLoading = true;
+        // Only show shimmer skeleton if we don't have prefilled album art
+        // (e.g., from connected animation). Otherwise the panel swap causes
+        // the image to flash/disappear during the API call.
+        IsLoading = string.IsNullOrEmpty(AlbumImageUrl);
         IsLoadingTracks = true;
         HasError = false;
         ErrorMessage = null;
@@ -481,7 +486,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Map metadata (respect prefilled values from navigation)
             if (!string.IsNullOrEmpty(detail.Name))
                 AlbumName = detail.Name;
-            if (!string.IsNullOrEmpty(detail.CoverArtUrl))
+            if (!string.IsNullOrEmpty(detail.CoverArtUrl) && string.IsNullOrEmpty(AlbumImageUrl))
                 AlbumImageUrl = detail.CoverArtUrl;
             var firstArtist = detail.Artists.FirstOrDefault();
             if (firstArtist != null)
@@ -517,7 +522,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Task.Delay ensures at least one full render frame passes so the ListView
             // treats the subsequent adds as fresh entries → staggered entrance animation.
             _tracksSource.Clear();
-            await Task.Delay(50);
+            await Task.Delay(RenderFrameSettleDelayMs);
 
             // Add real tracks in a fresh batch — ListView sees these as new entries → staggered entrance animation
             _tracksSource.Edit(cache =>

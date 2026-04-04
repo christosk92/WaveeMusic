@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http.Pathfinder;
@@ -17,6 +16,9 @@ namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 {
+    private readonly Wavee.Core.Session.ISession? _session;
+    private readonly ISettingsService? _settingsService;
+    private readonly Services.HomeFeedCache? _homeFeedCache;
     private readonly ILogger? _logger;
 
     [ObservableProperty]
@@ -47,8 +49,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public HomeViewModel(ILogger<HomeViewModel>? logger = null)
+    public HomeViewModel(
+        Wavee.Core.Session.ISession? session = null,
+        ISettingsService? settingsService = null,
+        Services.HomeFeedCache? homeFeedCache = null,
+        ILogger<HomeViewModel>? logger = null)
     {
+        _session = session;
+        _settingsService = settingsService;
+        _homeFeedCache = homeFeedCache;
         _logger = logger;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Home, null)
@@ -67,19 +76,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         try
         {
-            var session = Ioc.Default.GetService<Wavee.Core.Session.ISession>();
-            if (session == null || !session.IsConnected())
+            if (_session == null || !_session.IsConnected())
             {
                 UpdateGreeting();
                 return;
             }
 
-            var cache = Ioc.Default.GetService<Services.HomeFeedCache>();
-
             // 1. Serve cached data instantly if available
-            if (cache != null && cache.HasData && !cache.IsStale)
+            if (_homeFeedCache != null && _homeFeedCache.HasData && !_homeFeedCache.IsStale)
             {
-                var snapshot = cache.GetCached();
+                var snapshot = _homeFeedCache.GetCached();
                 if (snapshot != null)
                 {
                     Greeting = snapshot.Greeting ?? Greeting;
@@ -93,9 +99,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             }
 
             // 2. Fetch fresh data
-            if (cache != null)
+            if (_homeFeedCache != null)
             {
-                var snapshot = await cache.FetchFreshAsync(session);
+                var snapshot = await _homeFeedCache.FetchFreshAsync(_session);
                 Greeting = snapshot.Greeting ?? Greeting;
                 var ordered = ApplyPreferences(snapshot.Sections);
 
@@ -105,12 +111,12 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
 
                 // Start background refresh
-                cache.StartBackgroundRefresh(session);
+                _homeFeedCache.StartBackgroundRefresh(_session);
             }
             else
             {
                 // No cache service — direct fetch
-                var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10);
+                var response = await _session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10);
                 var apiGreeting = response.Data?.Home?.Greeting?.TransformedLabel;
                 Greeting = apiGreeting ?? Greeting;
                 var apiSections = MapSectionsFromResponse(response);
@@ -325,7 +331,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private List<HomeSection> ApplyPreferences(List<HomeSection> apiSections)
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         if (settings == null) return apiSections;
 
         var homeSettings = settings.Settings.HomeSettings;
@@ -403,7 +409,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// </summary>
     public void SetSectionVisibility(string sectionUri, bool visible)
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         if (settings == null) return;
 
         var pref = settings.Settings.HomeSettings.Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
@@ -421,7 +427,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         else
         {
             // Re-add from cache at the correct position
-            var cache = Ioc.Default.GetService<Services.HomeFeedCache>();
+            var cache = _homeFeedCache;
             var cachedSections = cache?.GetCached()?.Sections;
             if (cachedSections != null)
             {
@@ -443,7 +449,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [RelayCommand]
     private void ToggleSectionVisibility(string sectionUri)
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         var pref = settings?.Settings.HomeSettings.Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
         if (pref != null)
             SetSectionVisibility(sectionUri, !pref.IsVisible);
@@ -452,7 +458,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [RelayCommand]
     private void ToggleSectionPin(string sectionUri)
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         if (settings == null) return;
 
         var pref = settings.Settings.HomeSettings.Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
@@ -467,7 +473,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [RelayCommand]
     private void MoveSectionUp(string sectionUri)
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         if (settings == null) return;
 
         var list = settings.Settings.HomeSettings.Sections;
@@ -483,7 +489,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [RelayCommand]
     private void MoveSectionDown(string sectionUri)
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         if (settings == null) return;
 
         var list = settings.Settings.HomeSettings.Sections;
@@ -499,7 +505,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [RelayCommand]
     private async Task ResetSectionPreferencesAsync()
     {
-        var settings = Ioc.Default.GetService<ISettingsService>();
+        var settings = _settingsService;
         if (settings == null) return;
 
         settings.Settings.HomeSettings = new HomeSectionSettings();
@@ -511,7 +517,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private async Task RefreshAsync()
     {
         // Force cache to be stale so LoadAsync fetches fresh data
-        var cache = Ioc.Default.GetService<Services.HomeFeedCache>();
+        var cache = _homeFeedCache;
         cache?.Invalidate();
         await LoadAsync();
     }

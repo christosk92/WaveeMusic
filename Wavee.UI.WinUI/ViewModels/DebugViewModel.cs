@@ -101,7 +101,7 @@ public sealed partial class DebugViewModel : ObservableObject
             var doc = JsonDocument.Parse(RequestBody);
             RequestBody = PrettyPrintJson(doc);
         }
-        catch { /* not valid JSON, leave as-is */ }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Request body is not valid JSON, leaving as-is"); }
     }
 
     [RelayCommand]
@@ -167,7 +167,7 @@ public sealed partial class DebugViewModel : ObservableObject
                     var doc = JsonDocument.Parse(raw);
                     ResponseBody = PrettyPrintJson(doc);
                 }
-                catch { ResponseBody = raw; }
+                catch (Exception ex) { _logger?.LogDebug(ex, "Failed to pretty-print JSON response"); ResponseBody = raw; }
             }
             else if (ct.Contains("text") || ct.Contains("html") || ct.Contains("xml"))
             {
@@ -289,7 +289,7 @@ public sealed partial class DebugViewModel : ObservableObject
                 return sb.ToString();
             }
         }
-        catch { /* not a PageResponse */ }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Protobuf bytes are not a PageResponse"); }
 
         // Try DeltaResponse
         try
@@ -306,7 +306,7 @@ public sealed partial class DebugViewModel : ObservableObject
                 return sb.ToString();
             }
         }
-        catch { /* not a DeltaResponse */ }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Protobuf bytes are not a DeltaResponse"); }
 
         // Fallback: hex dump
         sb.AppendLine($"Binary protobuf ({bytes.Length} bytes):");

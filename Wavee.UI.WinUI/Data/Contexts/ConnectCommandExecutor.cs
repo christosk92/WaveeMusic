@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Connect.Playback;
 using Wavee.Core.Session;
+using Wavee.Core.Audio;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
@@ -16,7 +18,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// Implements <see cref="IPlaybackCommandExecutor"/> by building playback-specific
 /// command dictionaries and delegating to <see cref="ConnectCommandClient"/>.
 /// </summary>
-internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
+internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioPipelineControl
 {
     private readonly ConnectCommandClient _client;
     private readonly Session _session;
@@ -24,20 +26,35 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
     private IPlaybackEngine? _localEngine;
 
     /// <summary>
-    /// The local playback engine (if available). Set after session connects.
-    /// Used by PlaybackStateService for direct fast-path calls that bypass the retry engine.
+    /// Enables local playback routing through the given engine.
+    /// Called once after AudioPipeline is created in InitializePlaybackEngine.
     /// </summary>
-    public IPlaybackEngine? LocalEngine
-    {
-        get => _localEngine;
-        set => _localEngine = value;
-    }
+    internal void EnableLocalPlayback(IPlaybackEngine engine) => _localEngine = engine;
+
+    /// <summary>
+    /// Disables local playback routing (e.g. on logout).
+    /// </summary>
+    internal void DisableLocalPlayback() => _localEngine = null;
 
     public ConnectCommandExecutor(ConnectCommandClient client, Session session, ILogger? logger = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _logger = logger;
+    }
+
+    // ── IAudioPipelineControl ──
+
+    public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default)
+    {
+        if (_localEngine is AudioPipeline pipeline)
+            await pipeline.SwitchQualityAsync(quality, ct);
+    }
+
+    public void SetNormalizationEnabled(bool enabled)
+    {
+        if (_localEngine is AudioPipeline pipeline)
+            pipeline.SetNormalizationEnabled(enabled);
     }
 
     private string? GetTargetDeviceId() =>
@@ -271,6 +288,13 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor
                 case "set_repeating_track":
                     if (data?.TryGetValue("value", out var repeatTrkVal) == true)
                         await engine.SetRepeatTrackAsync(Convert.ToBoolean(repeatTrkVal), ct);
+                    break;
+                case "set_volume":
+                    if (data?.TryGetValue("value", out var volVal) == true)
+                    {
+                        var vol65535 = Convert.ToInt32(volVal);
+                        await engine.SetVolumeAsync((float)(vol65535 / 65535.0));
+                    }
                     break;
                 case "play":
                     var playCmd = BuildPlayCommand(data);

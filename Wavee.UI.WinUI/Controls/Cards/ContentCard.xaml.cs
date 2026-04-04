@@ -169,8 +169,13 @@ public sealed partial class ContentCard : UserControl
     private PointerEventHandler? _passivePointerPressed;
     private PointerEventHandler? _passivePointerReleased;
 
+    private readonly ImageCacheService? _imageCache;
+    private readonly ThemeColorService? _themeColorService;
+
     public ContentCard()
     {
+        _imageCache = Ioc.Default.GetService<ImageCacheService>();
+        _themeColorService = Ioc.Default.GetService<ThemeColorService>();
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -298,8 +303,7 @@ public sealed partial class ContentCard : UserControl
         if (string.IsNullOrEmpty(httpsUrl)) return;
 
         // Use the shared LRU bitmap cache via DI
-        var imageCache = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Services.ImageCacheService>();
-        var bitmap = imageCache?.GetOrCreate(httpsUrl) ?? new BitmapImage(new Uri(httpsUrl));
+        var bitmap = _imageCache?.GetOrCreate(httpsUrl) ?? new BitmapImage(new Uri(httpsUrl));
 
         if (IsCircularImage)
         {
@@ -490,7 +494,7 @@ public sealed partial class ContentCard : UserControl
 
         // Accent color on title when playing
         if (isPlaying)
-            TitleText.Foreground = Ioc.Default.GetService<ThemeColorService>()?.AccentText
+            TitleText.Foreground = _themeColorService?.AccentText
                 ?? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
         else
             TitleText.ClearValue(TextBlock.ForegroundProperty);

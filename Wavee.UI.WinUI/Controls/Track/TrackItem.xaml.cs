@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -194,6 +195,8 @@ public sealed partial class TrackItem : UserControl
     private readonly ThemeColorService? _themeColors = Ioc.Default.GetService<ThemeColorService>();
     private readonly Data.Contracts.ITrackLikeService? _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
     private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
+    private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+    private static ISettingsService? _cachedSettingsService;
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
@@ -208,7 +211,7 @@ public sealed partial class TrackItem : UserControl
         PointerEntered += OnPointerEntered;
         PointerExited += OnPointerExited;
 
-        // Playback state: TrackListView handles broadcast via UpdateAllVisibleRowPlaybackState
+        // Ensure playback bridge is initialized (idempotent)
         TrackStateBehavior.EnsurePlaybackSubscription();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -296,7 +299,7 @@ public sealed partial class TrackItem : UserControl
             CompactVideoSeparator.Visibility = hasVideo && !string.IsNullOrEmpty(track.ArtistName) ? Visibility.Visible : Visibility.Collapsed;
             CompactVideoIcon.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
             CompactVideoLabel.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
-            CompactHeartButton.IsLiked = track.IsLiked;
+            CompactHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
             CompactHeartButton.Visibility = Visibility.Visible;
 
             var imageUrl = track.ImageUrl;
@@ -335,7 +338,7 @@ public sealed partial class TrackItem : UserControl
             RowExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
             RowDuration.Text = track.DurationFormatted ?? "";
 
-            RowHeartButton.IsLiked = track.IsLiked;
+            RowHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
             RowHeartButton.Visibility = Visibility.Visible;
             RowArtistLink.Content = track.ArtistName ?? "";
             RowArtistLink.Tag = track.ArtistId;
@@ -582,15 +585,23 @@ public sealed partial class TrackItem : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // TrackListView handles playback state broadcasts via UpdateAllVisibleRowPlaybackState
-        // — no individual subscription needed here. Just refresh on load (recycling).
         RefreshPlaybackState();
         UpdateOverlayState();
         RefreshLikedState();
 
-        // Subscribe to save state changes for reactive heart updates
+        // Subscribe to global state changes for reactive updates
+        TrackStateBehavior.PlaybackStateChanged += OnPlaybackStateChanged;
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+    }
+
+    private void OnPlaybackStateChanged()
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            RefreshPlaybackState();
+            UpdateOverlayState();
+        });
     }
 
     private void OnSaveStateChanged()
@@ -781,8 +792,7 @@ public sealed partial class TrackItem : UserControl
 
         if (track.Id == TrackStateBehavior.CurrentTrackId)
         {
-            var playbackService = Ioc.Default.GetService<IPlaybackStateService>();
-            playbackService?.PlayPause();
+            _playbackStateService?.PlayPause();
         }
         else
         {
@@ -817,6 +827,7 @@ public sealed partial class TrackItem : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChanged;
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
     }
@@ -950,8 +961,9 @@ public sealed partial class TrackItem : UserControl
 
     private static ISettingsService? TryGetSettings()
     {
-        try { return Ioc.Default.GetService<ISettingsService>(); }
-        catch { return null; }
+        if (_cachedSettingsService != null) return _cachedSettingsService;
+        try { return _cachedSettingsService = Ioc.Default.GetService<ISettingsService>(); }
+        catch (Exception ex) { Debug.WriteLine($"Failed to resolve ISettingsService: {ex.Message}"); return null; }
     }
 
     #endregion

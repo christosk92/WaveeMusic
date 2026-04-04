@@ -28,6 +28,10 @@ public enum ConnectStep
 
 public sealed partial class SpotifyConnectViewModel : ObservableObject
 {
+    private const int ConnectingDwellDelayMs = 1500;
+    private const int FinishingUpDelayMs = 400;
+    private const int CompleteStepDelayMs = 800;
+
     private readonly IAuthState _authState;
     private readonly DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _deviceCodeCts;
@@ -94,7 +98,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
 
             // Show "Connecting..." step with artificial dwell
             _dispatcherQueue.TryEnqueue(() => CurrentStep = ConnectStep.Connecting);
-            await Task.Delay(1500, CancellationToken.None);
+            await Task.Delay(ConnectingDwellDelayMs, CancellationToken.None);
 
             await RunSyncAsync(CancellationToken.None);
         }
@@ -143,7 +147,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
 
             // Show "Connecting..." step with artificial dwell
             CurrentStep = ConnectStep.Connecting;
-            await Task.Delay(1500);
+            await Task.Delay(ConnectingDwellDelayMs);
 
             await RunSyncAsync(CancellationToken.None);
         }
@@ -188,7 +192,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
             {
                 Process.Start(new ProcessStartInfo(VerificationUri) { UseShellExecute = true });
             }
-            catch { /* URI is already displayed for manual copy */ }
+            catch (Exception ex) { Debug.WriteLine($"Failed to open verification URI: {ex.Message}"); }
         }
     }
 
@@ -235,10 +239,10 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
             SyncStatus = "Finishing up...";
             SyncProgress = 0.95;
         });
-        await Task.Delay(400, CancellationToken.None);
+        await Task.Delay(FinishingUpDelayMs, CancellationToken.None);
 
         _dispatcherQueue.TryEnqueue(() => CurrentStep = ConnectStep.Complete);
-        await Task.Delay(800, CancellationToken.None);
+        await Task.Delay(CompleteStepDelayMs, CancellationToken.None);
         _dispatcherQueue.TryEnqueue(() => RequestClose?.Invoke());
     }
 

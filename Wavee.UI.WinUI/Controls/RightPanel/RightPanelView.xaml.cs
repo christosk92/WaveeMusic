@@ -35,6 +35,7 @@ public sealed partial class RightPanelView : UserControl
     private bool _lyricsInitialized;
     private bool _showingLoadingDots;
     private readonly ThemeColorService? _themeColors;
+    private readonly ILyricsService? _lyricsService;
     private bool _themeColorsSubscribed;
 
     private static readonly LyricsData LoadingDotsData = CreateLoadingDotsData();
@@ -62,6 +63,8 @@ public sealed partial class RightPanelView : UserControl
     {
         InitializeComponent();
         _themeColors = Ioc.Default.GetService<ThemeColorService>();
+        _lyricsService = Ioc.Default.GetService<ILyricsService>();
+        _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         Visibility = Visibility.Collapsed;
         Width = PanelWidth;
     }
@@ -138,7 +141,6 @@ public sealed partial class RightPanelView : UserControl
     {
         if (_lyricsInitialized) return;
 
-        _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         if (_lyricsVm == null) return;
 
         _lyricsInitialized = true;
@@ -191,6 +193,8 @@ public sealed partial class RightPanelView : UserControl
 
         NowPlayingCanvas.SeekRequested -= OnSeekRequested;
         NowPlayingCanvas.SetIsPlaying(false);
+
+        _lyricsInitialized = false;
     }
 
     // ── Playback state → Timer sync ──
@@ -557,10 +561,10 @@ public sealed partial class RightPanelView : UserControl
             sb.AppendLine();
         }
 
-        await ShowDebugDialog(sb.ToString());
+        await ShowDebugDialog(sb.ToString(), showClearCache: true);
     }
 
-    private async Task ShowDebugDialog(string content)
+    private async Task ShowDebugDialog(string content, bool showClearCache = false)
     {
         var dialog = new ContentDialog
         {
@@ -580,6 +584,21 @@ public sealed partial class RightPanelView : UserControl
             CloseButtonText = "Close",
             XamlRoot = this.XamlRoot,
         };
+
+        if (showClearCache && _lyricsVm != null)
+        {
+            dialog.PrimaryButtonText = "Clear Cache & Reload";
+            dialog.PrimaryButtonClick += async (_, _) =>
+            {
+                var trackId = _lyricsVm.PlaybackState.CurrentTrackId;
+                if (!string.IsNullOrEmpty(trackId))
+                {
+                    if (_lyricsService != null) await _lyricsService.ClearCacheForTrackAsync(trackId);
+                    _lyricsVm.InvalidateTrack();
+                }
+            };
+        }
+
         await dialog.ShowAsync();
     }
 }

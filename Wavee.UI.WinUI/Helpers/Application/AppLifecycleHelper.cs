@@ -25,11 +25,14 @@ using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Data;
 using Wavee.UI.WinUI.ViewModels;
 using System.Collections.Generic;
+using Serilog;
+using Serilog.Extensions.Logging;
 namespace Wavee.UI.WinUI.Helpers.Application;
 
 public static class AppLifecycleHelper
 {
     private static readonly List<IDisposable> _appSubscriptions = [];
+    private static Services.TrackMetadataEnricher? _trackMetadataEnricher;
     // Captured on UI thread during ConfigureHost, used by background init
     private static Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
 
@@ -42,10 +45,20 @@ public static class AppLifecycleHelper
             .WithViewsFromAssembly(typeof(App).Assembly) // Register views and view models
             .BuildApp();
 
+        // Create the InMemorySink early so Serilog can write to it from the start
+        var inMemorySink = new Services.InMemorySink(_uiDispatcher);
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Debug()
+            .WriteTo.Sink(inMemorySink)
+            .Enrich.FromLogContext()
+            .CreateLogger();
+
         return Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging
                 .ClearProviders()
-                .AddDebug()
+                .AddSerilog(Log.Logger, dispose: false)
                 .SetMinimumLevel(LogLevel.Debug))
             .ConfigureServices(services => services
                 // Wavee Core services
@@ -68,6 +81,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Connect.ConnectCommandClient>(),
                         sp.GetRequiredService<Session>(),
                         sp.GetService<ILogger<ConnectCommandExecutor>>()))
+                .AddSingleton<IAudioPipelineControl>(sp =>
+                    (IAudioPipelineControl)sp.GetRequiredService<IPlaybackCommandExecutor>())
                 .AddSingleton<IPlaybackPromptService>(sp =>
                     new Data.Contexts.PlaybackPromptService(
                         sp.GetRequiredService<ISettingsService>()))
@@ -91,16 +106,29 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<PlaybackStateService>>(),
                         sp.GetService<Services.IHomeFeedCache>()))
                 .AddSingleton<IAuthState, AuthStateService>()
-                .AddSingleton<IConnectivityService, ConnectivityService>()
+                .AddSingleton<IConnectivityService>(sp =>
+                    new ConnectivityService(
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetRequiredService<Session>()))
                 .AddSingleton<IAppState, AppState>()
 
                 // App initialization
                 .AddSingleton<AppInitializationService>()
-                .AddSingleton<Data.Contexts.LibrarySyncOrchestrator>()
+                .AddSingleton(sp =>
+                    new Data.Contexts.LibrarySyncOrchestrator(
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
+                        sp.GetService<ITrackLikeService>(),
+                        sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>()))
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
 
                 // Audio processors (shared with UI for real-time control)
                 .AddSingleton<EqualizerProcessor>()
+
+                // Dispatcher abstraction
+                .AddSingleton<IDispatcherService>(sp =>
+                    new Services.DispatcherService(
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
 
                 // App services
                 .AddSingleton<Wavee.Controls.Lyrics.Services.LocalizationService.ILocalizationService, Wavee.Controls.Lyrics.Services.LocalizationService.LocalizationService>()
@@ -112,9 +140,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton<Services.ImageCacheService>()
-                .AddSingleton<Services.InMemorySink>(sp =>
-                    new Services.InMemorySink(
-                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
+                .AddSingleton(inMemorySink)
                 .AddSingleton<Wavee.Core.Http.IColorService>(sp =>
                     new Wavee.Core.Http.ExtractedColorService(
                         sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
@@ -152,6 +178,11 @@ public static class AppLifecycleHelper
 
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
+                .AddSingleton<ITrackLikeService>(sp =>
+                    new Data.Contexts.TrackLikeService(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
+                        sp.GetService<ILogger<Data.Contexts.TrackLikeService>>()))
                 .AddSingleton<ILibraryDataService, MockLibraryDataService>()
                 .AddSingleton<ILocationService>(sp =>
                     new Data.Contexts.LocationService(
@@ -163,14 +194,11 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<Data.Contexts.ConcertService>>()))
                 .AddTransient<ConcertViewModel>()
                 .AddSingleton<IArtistService>(sp =>
-                {
-                    var session = sp.GetRequiredService<ISession>();
-                    return new Data.Contexts.ArtistService(
-                        session.Pathfinder,
+                    new Data.Contexts.ArtistService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<ILocationService>(),
-                        sp.GetService<ILogger<Data.Contexts.ArtistService>>(),
-                        spClient: session.SpClient);
-                })
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
                 .AddSingleton<IAlbumService>(sp =>
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,
@@ -184,6 +212,8 @@ public static class AppLifecycleHelper
                 .AddSingleton<ILyricsService>(sp =>
                     new Services.LyricsService(
                         sp.GetRequiredService<ISession>(),
+                        sp.GetService<IMetadataDatabase>(),
+                        sp.GetService<ISettingsService>(),
                         sp.GetService<ILogger<Services.LyricsService>>()))
                 .AddSingleton<LyricsViewModel>(sp =>
                     new LyricsViewModel(
@@ -195,7 +225,12 @@ public static class AppLifecycleHelper
                 .AddSingleton<MainWindowViewModel>()
                 .AddSingleton<ShellViewModel>()
                 .AddSingleton<PlayerBarViewModel>()
-                .AddTransient<HomeViewModel>()
+                .AddTransient<HomeViewModel>(sp =>
+                    new HomeViewModel(
+                        sp.GetService<ISession>(),
+                        sp.GetService<ISettingsService>(),
+                        sp.GetService<Services.HomeFeedCache>(),
+                        sp.GetService<ILogger<HomeViewModel>>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
                 .AddTransient<AlbumsLibraryViewModel>()
@@ -203,7 +238,12 @@ public static class AppLifecycleHelper
                 .AddTransient<LikedSongsViewModel>()
                 .AddTransient<PlaylistViewModel>()
                 .AddTransient<CreatePlaylistViewModel>()
-                .AddTransient<ProfileViewModel>()
+                .AddTransient<ProfileViewModel>(sp =>
+                    new ProfileViewModel(
+                        sp.GetService<Services.ProfileCache>(),
+                        sp.GetService<Session>(),
+                        sp.GetService<IAuthState>(),
+                        sp.GetService<ILogger<ProfileViewModel>>()))
                 .AddTransient<SpotifyConnectViewModel>()
                 .AddTransient<SearchViewModel>(sp =>
                     new SearchViewModel(
@@ -211,7 +251,13 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>()))
                 .AddTransient<DebugViewModel>()
-                .AddTransient<SettingsViewModel>()
+                .AddTransient<SettingsViewModel>(sp =>
+                    new SettingsViewModel(
+                        sp.GetRequiredService<ISettingsService>(),
+                        sp.GetRequiredService<IThemeService>(),
+                        sp.GetRequiredService<Services.InMemorySink>(),
+                        sp.GetService<IAudioPipelineControl>(),
+                        sp.GetService<ILogger<SettingsViewModel>>()))
 
                 // Drag & drop
                 .AddSingleton<DragStateService>()
@@ -229,14 +275,14 @@ public static class AppLifecycleHelper
     /// Initializes the AudioPipeline for local playback after session connects.
     /// Call once after Session.ConnectAsync succeeds.
     /// </summary>
-    public static void InitializePlaybackEngine(Session session, System.Net.Http.HttpClient httpClient, System.Net.Http.HttpClient audioHttpClient, ILogger? logger)
+    public static void InitializePlaybackEngine(Session session, System.Net.Http.HttpClient httpClient, System.Net.Http.HttpClient audioHttpClient, Microsoft.Extensions.Logging.ILogger? logger)
     {
         try
         {
             var metadataDb = Ioc.Default.GetService<IMetadataDatabase>();
             var cacheService = Ioc.Default.GetService<Wavee.Core.Storage.ICacheService>();
 
-            // Create extended metadata client for track enrichment (shared with ArtistService)
+            // Create extended metadata client for track enrichment
             Wavee.Core.Http.IExtendedMetadataClient? extMetadataClient = null;
             if (metadataDb != null)
             {
@@ -246,28 +292,37 @@ public static class AppLifecycleHelper
                     session, httpClient, spClientBase, metadataDb, logger);
             }
 
-            // Wire late-bound metadata services into ArtistService
-            if (cacheService != null && extMetadataClient != null)
-            {
-                var artistService = Ioc.Default.GetService<IArtistService>();
-                if (artistService is Data.Contexts.ArtistService svc)
-                    svc.SetMetadataServices(cacheService, extMetadataClient);
-            }
-
             // Wire metadata client into PlaybackStateManager for enriching incomplete cluster metadata
             if (extMetadataClient != null)
-            {
                 session.PlaybackState?.SetMetadataClient(extMetadataClient);
 
-                // Also wire into PlaybackStateService for fetching full track metadata on track change
-                var playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
-                if (playbackStateService is Data.Contexts.PlaybackStateService pss)
-                    pss.SetMetadataClient(extMetadataClient);
+            // Create TrackMetadataEnricher — communicates via IMessenger,
+            // handles both track enrichment and ArtistService extended top tracks
+            if (cacheService != null && extMetadataClient != null)
+            {
+                _trackMetadataEnricher = new Services.TrackMetadataEnricher(
+                    extMetadataClient,
+                    cacheService,
+                    (Wavee.Core.Http.SpClient)session.SpClient,
+                    Ioc.Default.GetRequiredService<IMessenger>(),
+                    logger);
             }
 
             // Create a shared EqualizerProcessor — registered in DI during ConfigureHost,
             // resolved here to pass into the audio pipeline
             var sharedEqualizer = Ioc.Default.GetRequiredService<EqualizerProcessor>();
+
+            // Apply persisted EQ settings so they take effect immediately (not only when Settings page opens)
+            var settingsService = Ioc.Default.GetService<ISettingsService>();
+            if (settingsService?.Settings is { } eqSettings)
+            {
+                sharedEqualizer.IsEnabled = eqSettings.EqualizerEnabled;
+                sharedEqualizer.ClearBands();
+                sharedEqualizer.CreateGraphicEq10Band();
+                for (var i = 0; i < sharedEqualizer.Bands.Count && i < eqSettings.EqualizerBandGains.Length; i++)
+                    sharedEqualizer.Bands[i].GainDb = eqSettings.EqualizerBandGains[i];
+                sharedEqualizer.RefreshFilters();
+            }
 
             var audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
                 session,
@@ -289,15 +344,15 @@ public static class AppLifecycleHelper
                 (SpClient)session.SpClient,
                 session);
 
-            // Wire up the local engine on the executor
+            // Wire up the local engine on the executor (legitimate late dep — it's the routing layer)
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
-            if (executor != null)
-                executor.LocalEngine = audioPipeline;
+            executor?.EnableLocalPlayback(audioPipeline);
 
-            // Sync initial volume: set local engine + UI (without triggering remote commands)
+            // Sync initial volume on the local engine
             var volumePercent = session.GetVolumePercentage() ?? 50;
             audioPipeline.SetVolumeAsync((float)(volumePercent / 100.0));
 
+            // Sync UI volume slider (without triggering a remote command)
             var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
             if (playbackState is Data.Contexts.PlaybackStateService pssVolume)
             {
@@ -339,11 +394,6 @@ public static class AppLifecycleHelper
 
             // Subscribe AudioPipeline to session connection state for buffering indicator
             audioPipeline.SubscribeToConnectionState(session.ConnectionState);
-
-            // Wire ConnectivityService to session connection state
-            var connectivity = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-                .GetService<Data.Contracts.IConnectivityService>() as Data.Contexts.ConnectivityService;
-            connectivity?.SubscribeToSession(session.ConnectionState);
 
             // Show persistent notification during AP reconnection/disconnection
             if (notificationService != null)
@@ -399,6 +449,25 @@ public static class AppLifecycleHelper
         {
             logger?.LogError(ex, "Failed to initialize AudioPipeline — local playback unavailable");
         }
+    }
+
+    /// <summary>
+    /// Tears down the playback engine and associated resources.
+    /// Call on logout to avoid leaking AudioPipeline and subscriptions on re-login.
+    /// </summary>
+    public static void TeardownPlaybackEngine()
+    {
+        // Dispose app-level subscriptions (error stream, connection state notifications)
+        foreach (var sub in _appSubscriptions) sub.Dispose();
+        _appSubscriptions.Clear();
+
+        // Clear engine from executor
+        var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
+        executor?.DisableLocalPlayback();
+
+        // Dispose the enricher (unregisters from messenger)
+        _trackMetadataEnricher?.Dispose();
+        _trackMetadataEnricher = null;
     }
 
     public static void HandleAppUnhandledException(Exception? ex, bool showNotification)

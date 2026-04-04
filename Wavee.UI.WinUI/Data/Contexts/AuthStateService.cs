@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Authentication;
@@ -36,6 +35,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
     private readonly Session? _session;
     private readonly ICredentialsCache? _credentialsCache;
     private readonly SessionConfig? _sessionConfig;
+    private readonly IPlaybackStateService? _playbackStateService;
+    private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAuthenticated))]
@@ -70,6 +71,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         Session? session = null,
         ICredentialsCache? credentialsCache = null,
         SessionConfig? sessionConfig = null,
+        IPlaybackStateService? playbackStateService = null,
+        System.Net.Http.IHttpClientFactory? httpClientFactory = null,
         ILogger<AuthStateService>? logger = null)
     {
         _messenger = messenger;
@@ -77,6 +80,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         _session = session;
         _credentialsCache = credentialsCache;
         _sessionConfig = sessionConfig;
+        _playbackStateService = playbackStateService;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -218,14 +223,16 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         }
 
         // Stop Spotify playback and remove Spotify tracks from queue
-        var playback = Ioc.Default.GetService<IPlaybackStateService>();
-        if (playback != null)
+        if (_playbackStateService != null)
         {
-            if (playback.CurrentTrackId?.StartsWith("spotify:") == true)
+            if (_playbackStateService.CurrentTrackId?.StartsWith("spotify:") == true)
             {
-                playback.PlayPause(); // stop current Spotify track
+                _playbackStateService.PlayPause(); // stop current Spotify track
             }
         }
+
+        // Tear down playback engine resources to avoid leaks on re-login
+        Helpers.Application.AppLifecycleHelper.TeardownPlaybackEngine();
 
         SetStatus(AuthStatus.LoggedOut);
     }
@@ -256,9 +263,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         AccountType = await _session.GetAccountTypeAsync(ct);
 
         // Initialize local playback engine (AudioPipeline) after session is fully connected
-        var httpFactory = Ioc.Default.GetRequiredService<System.Net.Http.IHttpClientFactory>();
-        var httpClient = httpFactory.CreateClient("Wavee");
-        var audioHttpClient = httpFactory.CreateClient("WaveeAudio");
+        var httpClient = _httpClientFactory!.CreateClient("Wavee");
+        var audioHttpClient = _httpClientFactory.CreateClient("WaveeAudio");
         Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, audioHttpClient, _logger);
 
         // SetStatus fires AuthStatusChangedMessage → LibrarySyncOrchestrator handles sync

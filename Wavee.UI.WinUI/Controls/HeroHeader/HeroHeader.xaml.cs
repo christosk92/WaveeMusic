@@ -163,6 +163,26 @@ public sealed partial class HeroHeader : UserControl
         imageVisual.RelativeSizeAdjustment = Vector2.One;
         _containerVisual.Children.InsertAtBottom(imageVisual);
 
+        // 2. Dark gradient scrim for text readability (transparent top → semi-opaque black → transparent bottom)
+        //    The scrim must fade back to transparent at the same point the image mask does,
+        //    otherwise it creates a hard edge instead of blending into the page background.
+        var scrimGradient = _compositor.CreateLinearGradientBrush();
+        scrimGradient.StartPoint = new Vector2(0.5f, 0f);
+        scrimGradient.EndPoint = new Vector2(0.5f, 1f);
+        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0)));
+        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0.4f,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0)));
+        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeStart,
+            Windows.UI.Color.FromArgb(180, 0, 0, 0)));
+        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeEnd,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0)));
+
+        var scrimVisual = _compositor.CreateSpriteVisual();
+        scrimVisual.Brush = scrimGradient;
+        scrimVisual.RelativeSizeAdjustment = Vector2.One;
+        _containerVisual.Children.InsertAtTop(scrimVisual);
+
         // Start hidden, pop-in animation reveals it
         _containerVisual.Scale = new Vector3((float)InitialScale);
         _containerVisual.CenterPoint = new Vector3(

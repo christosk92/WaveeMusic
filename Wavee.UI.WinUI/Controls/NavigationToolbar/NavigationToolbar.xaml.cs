@@ -1,15 +1,22 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.Controls.Omnibar;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.Controls.NavigationToolbar;
 
 public sealed partial class NavigationToolbar : UserControl
 {
+    private readonly IThemeService? _themeService;
+    private readonly IAuthState _authState;
+
     public NavigationToolbar()
     {
+        _themeService = Ioc.Default.GetService<IThemeService>();
+        _authState = Ioc.Default.GetRequiredService<IAuthState>();
         InitializeComponent();
         ActualThemeChanged += OnActualThemeChanged;
         Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
@@ -201,9 +208,7 @@ public sealed partial class NavigationToolbar : UserControl
 
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        var themeService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Data.Contracts.IThemeService>();
-        themeService?.ToggleTheme();
+        _themeService?.ToggleTheme();
     }
 
     private void ViewProfileMenuItem_Click(object sender, RoutedEventArgs e)
@@ -222,9 +227,7 @@ public sealed partial class NavigationToolbar : UserControl
     {
         try
         {
-            var authState = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-                .GetRequiredService<Data.Contracts.IAuthState>();
-            await authState.LogoutAsync();
+            await _authState.LogoutAsync();
         }
         catch { /* best effort */ }
     }

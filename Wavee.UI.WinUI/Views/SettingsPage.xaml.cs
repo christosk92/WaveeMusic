@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -60,7 +61,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
             {
                 LogListView.ScrollIntoView(ViewModel.FilteredLogEntries[0]);
             }
-            catch { }
+            catch (Exception ex) { Debug.WriteLine($"Failed to scroll log list into view: {ex.Message}"); }
         }
     }
 

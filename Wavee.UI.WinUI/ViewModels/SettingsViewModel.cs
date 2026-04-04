@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Serilog.Events;
 using Wavee.Connect.Playback.Processors;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
@@ -26,6 +27,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly InMemorySink _inMemorySink;
+    private readonly IAudioPipelineControl? _pipelineControl;
     private readonly ILogger? _logger;
 
     private static readonly string LogDirectory = Path.Combine(
@@ -61,11 +63,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string AppVersion { get; } = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
     public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, InMemorySink inMemorySink,
+        IAudioPipelineControl? pipelineControl = null,
         ILogger<SettingsViewModel>? logger = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
         _inMemorySink = inMemorySink;
+        _pipelineControl = pipelineControl;
         _logger = logger;
         LogEntries = inMemorySink.Entries;
 
@@ -105,6 +109,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         };
 
         _normalizationEnabled = s.NormalizationEnabled;
+
+        // Initialize lyrics sources from persisted prefs or defaults
+        InitializeLyricsSources(s);
 
         _cacheEnabled = s.CacheEnabled;
         _cacheSizeLimitIndex = s.CacheSizeLimitBytes switch
@@ -233,11 +240,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             1 => Wavee.Core.Audio.AudioQuality.High,
             _ => Wavee.Core.Audio.AudioQuality.VeryHigh
         };
-        var pipeline = (CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Data.Contexts.IPlaybackCommandExecutor>() as Data.Contexts.ConnectCommandExecutor)?.LocalEngine
-            as Wavee.Connect.Playback.AudioPipeline;
-        if (pipeline != null)
-            _ = pipeline.SwitchQualityAsync(coreQuality, System.Threading.CancellationToken.None);
+        if (_pipelineControl != null)
+            _ = _pipelineControl.SwitchQualityAsync(coreQuality, CancellationToken.None);
     }
 
     [ObservableProperty]
@@ -248,11 +252,89 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settingsService.Update(s => s.NormalizationEnabled = value);
 
         // Toggle normalization processor live
-        var pipeline = (CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Data.Contexts.IPlaybackCommandExecutor>() as Data.Contexts.ConnectCommandExecutor)?.LocalEngine
-            as Wavee.Connect.Playback.AudioPipeline;
-        if (pipeline != null)
-            pipeline.SetNormalizationEnabled(value);
+        _pipelineControl?.SetNormalizationEnabled(value);
+    }
+
+    // ── Lyrics sources ──
+
+    private static readonly (string Name, string Description)[] DefaultLyricsSources =
+    [
+        ("AMLL-TTML-DB", "Syllable-synced TTML lyrics (GitHub)"),
+        ("LRCLIB", "Open-source LRC lyrics database"),
+        ("QQMusic", "QQ Music lyrics (Chinese service)"),
+        ("Kugou", "Kugou lyrics database"),
+        ("Netease", "NetEase Cloud Music lyrics"),
+        ("Musixmatch", "Large Western lyrics database"),
+    ];
+
+    public ObservableCollection<LyricsSourceItem> LyricsSources { get; } = [];
+
+    private void InitializeLyricsSources(AppSettings s)
+    {
+        LyricsSources.Clear();
+
+        if (s.LyricsSourcePreferences is { Count: > 0 })
+        {
+            // Restore persisted order + enabled state
+            foreach (var pref in s.LyricsSourcePreferences)
+            {
+                var desc = DefaultLyricsSources.FirstOrDefault(d =>
+                    d.Name.Equals(pref.Name, StringComparison.OrdinalIgnoreCase)).Description ?? "";
+                var item = new LyricsSourceItem { Name = pref.Name, Description = desc, IsEnabled = pref.IsEnabled };
+                item.PropertyChanged += (_, _) => PersistLyricsSources();
+                LyricsSources.Add(item);
+            }
+
+            // Add any new providers not yet in saved prefs
+            foreach (var (name, desc) in DefaultLyricsSources)
+            {
+                if (LyricsSources.Any(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var item = new LyricsSourceItem { Name = name, Description = desc, IsEnabled = true };
+                item.PropertyChanged += (_, _) => PersistLyricsSources();
+                LyricsSources.Add(item);
+            }
+        }
+        else
+        {
+            // First run — populate defaults
+            foreach (var (name, desc) in DefaultLyricsSources)
+            {
+                var item = new LyricsSourceItem { Name = name, Description = desc, IsEnabled = true };
+                item.PropertyChanged += (_, _) => PersistLyricsSources();
+                LyricsSources.Add(item);
+            }
+        }
+
+        LyricsSources.CollectionChanged += (_, _) => PersistLyricsSources();
+    }
+
+    private void PersistLyricsSources()
+    {
+        _settingsService.Update(s =>
+        {
+            s.LyricsSourcePreferences = LyricsSources.Select(x => new LyricsSourcePref
+            {
+                Name = x.Name,
+                IsEnabled = x.IsEnabled,
+            }).ToList();
+        });
+    }
+
+    [RelayCommand]
+    private void MoveLyricsSourceUp(LyricsSourceItem item)
+    {
+        var idx = LyricsSources.IndexOf(item);
+        if (idx > 0)
+            LyricsSources.Move(idx, idx - 1);
+    }
+
+    [RelayCommand]
+    private void MoveLyricsSourceDown(LyricsSourceItem item)
+    {
+        var idx = LyricsSources.IndexOf(item);
+        if (idx >= 0 && idx < LyricsSources.Count - 1)
+            LyricsSources.Move(idx, idx + 1);
     }
 
     // ── Cache (requires restart) ──
@@ -300,7 +382,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                     _ => $"{size / (1024.0 * 1024 * 1024):F2} GB"
                 };
             }
-            catch { return "Unknown"; }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Failed to calculate cache size"); return "Unknown"; }
         }
     }
 
@@ -313,12 +395,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 foreach (var file in Directory.EnumerateFiles(CacheDirectory, "*", SearchOption.AllDirectories))
                 {
-                    try { File.Delete(file); } catch { }
+                    try { File.Delete(file); } catch (Exception ex) { _logger?.LogDebug(ex, "Failed to delete cache file {File}", file); }
                 }
             }
             OnPropertyChanged(nameof(CacheSizeDisplay));
         }
-        catch { }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Failed to clear cache"); }
     }
 
     // ── Connection (requires restart) ──
@@ -439,7 +521,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 });
             }
         }
-        catch { }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Failed to enumerate log files"); }
     }
 
     [RelayCommand]
@@ -449,7 +531,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
-        catch { }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Failed to open log file {Path}", path); }
     }
 
     [RelayCommand]
@@ -460,7 +542,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             if (Directory.Exists(LogDirectory))
                 Process.Start(new ProcessStartInfo(LogDirectory) { UseShellExecute = true });
         }
-        catch { }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Failed to open logs folder"); }
     }
 
     // ── Equalizer ──
@@ -644,6 +726,15 @@ public sealed class EqualizerBandViewModel : ObservableObject
     public double NormalizedGain => (GainDb + 12.0) / 24.0;
 
     public event Action<int, double>? GainChanged;
+}
+
+public sealed partial class LyricsSourceItem : ObservableObject
+{
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+
+    [ObservableProperty]
+    private bool _isEnabled;
 }
 
 public sealed class PastLogFile

@@ -1,3 +1,5 @@
+using System;
+using System.Diagnostics;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -13,6 +15,8 @@ namespace Wavee.UI.WinUI.Controls.Track.Behaviors;
 /// </summary>
 public static class TrackBehavior
 {
+    private static ISettingsService? _cachedSettingsService;
+
     #region Track Property
 
     public static readonly DependencyProperty TrackProperty =
@@ -232,8 +236,9 @@ public static class TrackBehavior
 
     private static ISettingsService? TryGetSettings()
     {
-        try { return Ioc.Default.GetService<ISettingsService>(); }
-        catch { return null; }
+        if (_cachedSettingsService != null) return _cachedSettingsService;
+        try { return _cachedSettingsService = Ioc.Default.GetService<ISettingsService>(); }
+        catch (Exception ex) { Debug.WriteLine($"Failed to resolve ISettingsService: {ex.Message}"); return null; }
     }
 
     #endregion

@@ -26,7 +26,7 @@ using Microsoft.UI.Xaml;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed partial class ShellViewModel : ObservableObject
+public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IThemeService _themeService;
@@ -35,7 +35,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IPlaybackStateService _playbackStateService;
     private readonly AppModel _appModel;
     private readonly ILogger? _logger;
-    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
+    private readonly IDispatcherService? _dispatcher;
     private readonly Helpers.Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
 
     // UI element references for cleanup
@@ -49,13 +49,12 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>
     /// Select a tab by index - updates both SelectedTabIndex and SelectedTabItem
     /// </summary>
-    public static void SelectTab(int index)
+    public void SelectTab(int index)
     {
         if (index >= 0 && index < TabInstances.Count)
         {
-            var viewModel = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetRequiredService<ShellViewModel>();
-            viewModel.SelectedTabIndex = index;
-            viewModel.SelectedTabItem = TabInstances[index];
+            SelectedTabIndex = index;
+            SelectedTabItem = TabInstances[index];
         }
     }
 
@@ -135,6 +134,7 @@ public sealed partial class ShellViewModel : ObservableObject
         ISearchService searchService,
         IPlaybackStateService playbackStateService,
         AppModel appModel,
+        IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
@@ -143,6 +143,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _searchService = searchService;
         _playbackStateService = playbackStateService;
         _appModel = appModel;
+        _dispatcher = dispatcher;
         _logger = logger;
 
         // Initialize from AppModel (one-time read)
@@ -166,10 +167,10 @@ public sealed partial class ShellViewModel : ObservableObject
         _libraryDataService.DataChanged += OnLibraryDataChanged;
 
         // Capture UI thread dispatcher for background → UI marshalling
-        _uiDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        // Dispatcher captured via DI
         WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncStartedMessage>(this, (_, _) =>
         {
-            _uiDispatcher?.TryEnqueue(() =>
+            _dispatcher?.TryEnqueue(() =>
             {
                 _logger?.LogDebug("Sidebar: sync started — clearing badges");
                 ClearLibraryBadges();
@@ -177,7 +178,7 @@ public sealed partial class ShellViewModel : ObservableObject
         });
         WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncFailedMessage>(this, (_, msg) =>
         {
-            _uiDispatcher?.TryEnqueue(() =>
+            _dispatcher?.TryEnqueue(() =>
             {
                 _logger?.LogWarning("Sidebar: sync failed — {Error}", msg.Value);
                 ShowNotification($"Library sync failed: {msg.Value}");
@@ -229,7 +230,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void OnLibraryDataChanged(object? sender, EventArgs e)
     {
-        _uiDispatcher?.TryEnqueue(async () =>
+        _dispatcher?.TryEnqueue(async () =>
         {
             try
             {
@@ -245,7 +246,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void OnPlaylistsChanged(object? sender, EventArgs e)
     {
-        _uiDispatcher?.TryEnqueue(async () =>
+        _dispatcher?.TryEnqueue(async () =>
         {
             try
             {
@@ -764,4 +765,7 @@ public sealed partial class ShellViewModel : ObservableObject
             _newFolderMenuItem = null;
         }
     }
+
+    /// <inheritdoc />
+    public void Dispose() => Cleanup();
 }

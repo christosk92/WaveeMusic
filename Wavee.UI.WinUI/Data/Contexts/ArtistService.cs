@@ -1,14 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
-using Wavee.Core.Storage;
-using Wavee.Protocol.ExtendedMetadata;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -20,31 +21,19 @@ public sealed class ArtistService : IArtistService
 {
     private readonly IPathfinderClient _pathfinder;
     private readonly ILocationService _locationService;
-    private readonly ISpClient? _spClient;
-    private ICacheService? _cacheService;
-    private IExtendedMetadataClient? _metadataClient;
+    private readonly IMessenger _messenger;
     private readonly ILogger? _logger;
 
     public ArtistService(
         IPathfinderClient pathfinder,
         ILocationService locationService,
-        ILogger? logger = null,
-        ISpClient? spClient = null)
+        IMessenger messenger,
+        ILogger? logger = null)
     {
         _pathfinder = pathfinder;
         _locationService = locationService;
-        _spClient = spClient;
+        _messenger = messenger;
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Sets late-bound dependencies that are only available after session connects.
-    /// Called from InitializePlaybackEngine.
-    /// </summary>
-    public void SetMetadataServices(ICacheService cacheService, IExtendedMetadataClient metadataClient)
-    {
-        _cacheService = cacheService;
-        _metadataClient = metadataClient;
     }
 
     public async Task<ArtistOverviewResult> GetOverviewAsync(string artistUri, CancellationToken ct = default)
@@ -200,77 +189,16 @@ public sealed class ArtistService : IArtistService
     public async Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(
         string artistUri, CancellationToken ct = default)
     {
-        if (_spClient == null || _cacheService == null || _metadataClient == null)
-        {
-            _logger?.LogWarning("Extended top tracks not available: missing SpClient/CacheService/MetadataClient");
-            return [];
-        }
-
         try
         {
-            // 1. Get track URIs from artistplaycontext endpoint
-            var uris = await _spClient.GetArtistTopTrackExtensionsAsync(artistUri, ct);
-            if (uris.Count == 0) return [];
-
-            _logger?.LogDebug("Got {Count} extended top track URIs for {Artist}", uris.Count, artistUri);
-
-            // 2. Check cache first
-            var cached = await _cacheService.GetTracksAsync(uris, ct);
-            var uncached = uris.Where(u => !cached.ContainsKey(u)).ToList();
-
-            // 3. Fetch uncached via extended-metadata (batches of 500)
-            if (uncached.Count > 0)
+            var request = _messenger.Send(new ExtendedTopTracksRequest
             {
-                _logger?.LogDebug("Fetching metadata for {Count} uncached tracks", uncached.Count);
-                const int batchSize = 500;
-                for (int i = 0; i < uncached.Count; i += batchSize)
-                {
-                    var batch = uncached.Skip(i).Take(batchSize)
-                        .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
-                    try
-                    {
-                        await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogWarning(ex, "Failed to fetch metadata batch at offset {Offset}", i);
-                    }
-                }
+                ArtistUri = artistUri,
+                CancellationToken = ct
+            });
 
-                // Re-read from cache (now populated by the metadata client)
-                var newCached = await _cacheService.GetTracksAsync(uncached, ct);
-                foreach (var (uri, entry) in newCached)
-                    cached[uri] = entry;
-            }
-
-            // 4. Map to ArtistTopTrackResult (preserving order)
-            var results = new List<ArtistTopTrackResult>();
-            foreach (var uri in uris)
-            {
-                if (cached.TryGetValue(uri, out var track))
-                {
-                    var id = uri.Replace("spotify:track:", "");
-                    results.Add(new ArtistTopTrackResult
-                    {
-                        Id = id,
-                        Title = track.Title,
-                        Uri = uri,
-                        AlbumImageUrl = track.ImageUrl,
-                        AlbumUri = track.AlbumUri,
-                        AlbumName = track.Album,
-                        Duration = TimeSpan.FromMilliseconds(track.DurationMs ?? 0),
-                        PlayCount = 0, // Not available from extended-metadata
-                        ArtistNames = track.Artist,
-                        IsExplicit = track.IsExplicit,
-                        IsPlayable = track.IsPlayable,
-                        HasVideo = false
-                    });
-                }
-            }
-
-            _logger?.LogDebug("Enriched {Count}/{Total} extended top tracks for {Artist}",
-                results.Count, uris.Count, artistUri);
-            return results;
+            if (!request.HasReceivedResponse) return [];
+            return await request.Response;
         }
         catch (Exception ex)
         {
@@ -322,7 +250,7 @@ public sealed class ArtistService : IArtistService
     {
         if (date == null) return DateTimeOffset.MinValue;
         try { return new DateTimeOffset(date.Year, date.Month ?? 1, date.Day ?? 1, 0, 0, 0, TimeSpan.Zero); }
-        catch { return DateTimeOffset.MinValue; }
+        catch (Exception ex) { Debug.WriteLine($"Failed to parse release date: {ex.Message}"); return DateTimeOffset.MinValue; }
     }
 
     private static string FormatReleaseDate(ArtistReleaseDate? date)

@@ -2,7 +2,6 @@ using System;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Library.Spotify;
@@ -21,13 +20,21 @@ public sealed class LibrarySyncOrchestrator : IDisposable
 {
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly IMessenger _messenger;
+    private readonly ISpotifyLibraryService? _libraryService;
+    private readonly ITrackLikeService? _likeService;
     private readonly ILogger? _logger;
     private IDisposable? _dealerSubscription;
     private bool _dealerWired;
 
-    public LibrarySyncOrchestrator(IMessenger messenger, ILogger<LibrarySyncOrchestrator>? logger = null)
+    public LibrarySyncOrchestrator(
+        IMessenger messenger,
+        ISpotifyLibraryService? libraryService = null,
+        ITrackLikeService? likeService = null,
+        ILogger<LibrarySyncOrchestrator>? logger = null)
     {
         _messenger = messenger;
+        _libraryService = libraryService;
+        _likeService = likeService;
         _logger = logger;
 
         // React to auth status — trigger sync when Authenticated
@@ -57,9 +64,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             // Signal UI: clear stale data, show loading state
             _messenger.Send(new LibrarySyncStartedMessage());
 
-            // Lazy resolve: ISpotifyLibraryService requires connected session, not available at construction
-            var libraryService = Ioc.Default.GetService<ISpotifyLibraryService>();
-            if (libraryService == null)
+            if (_libraryService == null)
             {
                 _logger?.LogWarning("ISpotifyLibraryService not available — cannot sync");
                 _messenger.Send(new LibrarySyncFailedMessage("Library service not available"));
@@ -67,18 +72,16 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             }
 
             // Capture before-counts for delta calculation
-            // Lazy resolve: ITrackLikeService requires DB data
-            var likeService = Ioc.Default.GetService<ITrackLikeService>();
-            var beforeTracks = likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
-            var beforeAlbums = likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
-            var beforeArtists = likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
+            var beforeTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
+            var beforeAlbums = _likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
+            var beforeArtists = _likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
 
             _logger?.LogInformation("Starting library sync...");
             bool hadPartialFailure = false;
             string? partialReason = null;
             try
             {
-                await libraryService.SyncAllAsync();
+                await _libraryService.SyncAllAsync();
                 _logger?.LogInformation("Library sync completed");
             }
             catch (Exception syncEx)
@@ -89,20 +92,20 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             }
 
             // Reload in-memory cache from freshly synced DB
-            if (likeService != null)
+            if (_likeService != null)
             {
-                await likeService.InitializeAsync();
+                await _likeService.InitializeAsync();
                 _logger?.LogInformation("TrackLikeService cache initialized");
             }
 
             // Drain any pending outbox operations
-            await libraryService.ProcessOutboxAsync();
+            await _libraryService.ProcessOutboxAsync();
             _logger?.LogDebug("Outbox processed");
 
             // Calculate delta (after - before)
-            var afterTracks = likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
-            var afterAlbums = likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
-            var afterArtists = likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
+            var afterTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
+            var afterAlbums = _likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
+            var afterArtists = _likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
 
             var summary = new LibrarySyncSummary(
                 TracksAdded: Math.Max(0, afterTracks - beforeTracks),
@@ -120,7 +123,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             _logger?.LogInformation("Library sync complete — UI notified");
 
             // Wire Dealer real-time changes → IMessenger (once)
-            WireDealerChanges(libraryService);
+            WireDealerChanges(_libraryService);
         }
         catch (Exception ex)
         {

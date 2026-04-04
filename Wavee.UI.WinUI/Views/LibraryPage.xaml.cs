@@ -10,9 +10,11 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class LibraryPage : Page
 {
     private int _currentTabIndex = 0;
+    private readonly ShellViewModel _shellViewModel;
 
     public LibraryPage()
     {
+        _shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
         InitializeComponent();
     }
 
@@ -128,7 +130,7 @@ public sealed partial class LibraryPage : Page
     {
         selectedItem ??= LibrarySelectorBar.SelectedItem;
 
-        var shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
+        var shellViewModel = _shellViewModel;
 
         string? tag = selectedItem switch
         {

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +14,9 @@ using Lyricify.Lyrics.Searchers.Helpers;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Session;
+using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Lyrics;
 using ControlsLyricsData = Wavee.Controls.Lyrics.Models.Lyrics.LyricsData;
 
@@ -25,18 +29,23 @@ namespace Wavee.UI.WinUI.Services;
 public sealed class LyricsService : ILyricsService
 {
     private readonly ISession _session;
+    private readonly IMetadataDatabase? _db;
+    private readonly ISettingsService? _settingsService;
     private readonly LrcLibClient _lrcLibClient = new();
     private readonly AmllTtmlDbClient _amllClient = new();
     private readonly Lyricify.Lyrics.Providers.Web.Musixmatch.Api _musixmatchApi = new();
     private readonly ILogger? _logger;
+    private readonly ConcurrentDictionary<string, (ControlsLyricsData Data, string Provider)> _memoryCache = new();
 
     private static readonly TimeSpan ProviderTimeout = TimeSpan.FromSeconds(10);
     private static readonly Regex CollapseWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex PunctuationRegex = new(@"[\p{P}\p{S}]", RegexOptions.Compiled);
 
-    public LyricsService(ISession session, ILogger<LyricsService>? logger = null)
+    public LyricsService(ISession session, IMetadataDatabase? db = null, ISettingsService? settingsService = null, ILogger<LyricsService>? logger = null)
     {
         _session = session;
+        _db = db;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
@@ -44,6 +53,52 @@ public sealed class LyricsService : ILyricsService
         string trackId, string? title, string? artist,
         double durationMs, string? imageUrl, CancellationToken ct = default)
     {
+        // 1. Check in-memory cache
+        if (_memoryCache.TryGetValue(trackId, out var cached))
+        {
+            if (!IsInstrumentalOnlyResult(cached.Data))
+            {
+                _logger?.LogDebug("Lyrics cache hit (memory) for {TrackId}", trackId);
+                return (cached.Data, BuildCachedDiagnostics(trackId, title, artist, durationMs, cached.Provider));
+            }
+
+            // Evict stale instrumental-only cache entry
+            _memoryCache.TryRemove(trackId, out _);
+            _logger?.LogDebug("Evicted instrumental-only lyrics from memory cache for {TrackId}", trackId);
+        }
+
+        // 2. Check SQLite cache
+        if (_db != null)
+        {
+            try
+            {
+                var dbResult = await _db.GetLyricsCacheAsync($"spotify:track:{trackId}", ct);
+                if (dbResult != null)
+                {
+                    var dto = JsonSerializer.Deserialize(dbResult.Value.JsonData, LyricsCacheJsonContext.Default.CachedLyricsDto);
+                    if (dto != null)
+                    {
+                        var data = LyricsCacheConverter.FromDto(dto);
+                        if (!IsInstrumentalOnlyResult(data))
+                        {
+                            var provider = dbResult.Value.Provider ?? "cached";
+                            _memoryCache[trackId] = (data, provider);
+                            _logger?.LogDebug("Lyrics cache hit (SQLite) for {TrackId}", trackId);
+                            return (data, BuildCachedDiagnostics(trackId, title, artist, durationMs, provider));
+                        }
+
+                        // Evict stale instrumental-only entry from SQLite
+                        _logger?.LogDebug("Evicted instrumental-only lyrics from SQLite cache for {TrackId}", trackId);
+                        _ = _db.DeleteLyricsCacheAsync($"spotify:track:{trackId}", CancellationToken.None);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to read lyrics from SQLite cache");
+            }
+        }
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var providerDiags = new List<ProviderDiagnostic>();
 
@@ -57,23 +112,55 @@ public sealed class LyricsService : ILyricsService
             DurationMs = (int)durationMs,
         };
 
-        // Search all providers in parallel (including Spotify for reference/fallback)
-        var tasks = new List<Task<ProviderResult?>>
+        // Build priority/disabled maps from user preferences
+        var prefs = _settingsService?.Settings.LyricsSourcePreferences;
+        var disabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var priorityMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (prefs is { Count: > 0 })
         {
-            SearchProviderAsync("QQMusic", () => SearchQQMusicAsync(trackMeta, ct), ct),
-            SearchProviderAsync("Kugou", () => SearchKugouAsync(trackMeta, ct), ct),
-            SearchProviderAsync("Netease", () => SearchNeteaseAsync(trackMeta, ct), ct),
-            SearchProviderAsync("LRCLIB", () => SearchLrcLibAsync(title, artist, durationMs, ct), ct),
-            //SearchProviderAsync("Musixmatch", () => SearchMusixmatchAsync(title, artist, durationMs, ct), ct),
-            SearchProviderAsync("AMLL-TTML-DB", () => SearchAmllTtmlDbAsync(title, artist, ct), ct),
-            SearchProviderAsync("Spotify", () => SearchSpotifyAsync(trackId, imageUrl, ct), ct),
-        };
+            for (int i = 0; i < prefs.Count; i++)
+            {
+                if (!prefs[i].IsEnabled) disabled.Add(prefs[i].Name);
+                priorityMap[prefs[i].Name] = prefs.Count - i; // higher position = higher value
+            }
+        }
+
+        // Search enabled providers in parallel (Spotify always on — ground truth)
+        var tasks = new List<Task<ProviderResult?>>();
+        var providerNames = new List<string>();
+
+        void AddIfEnabled(string name, Func<Task<ProviderResult?>> search)
+        {
+            if (!disabled.Contains(name))
+            {
+                tasks.Add(SearchProviderAsync(name, search, ct));
+                providerNames.Add(name);
+            }
+        }
+
+        AddIfEnabled("QQMusic", () => SearchQQMusicAsync(trackMeta, ct));
+        AddIfEnabled("Kugou", () => SearchKugouAsync(trackMeta, ct));
+        AddIfEnabled("Netease", () => SearchNeteaseAsync(trackMeta, ct));
+        AddIfEnabled("LRCLIB", () => SearchLrcLibAsync(title, artist, durationMs, ct));
+        AddIfEnabled("Musixmatch", () => SearchMusixmatchAsync(title, artist, durationMs, ct));
+        AddIfEnabled("AMLL-TTML-DB", () => SearchAmllTtmlDbAsync(title, artist, ct));
+
+        // Musixmatch: always searched as syllable-sync fallback, even when user-disabled
+        bool musixmatchDisabled = disabled.Contains("Musixmatch");
+        if (musixmatchDisabled)
+        {
+            tasks.Add(SearchProviderAsync("Musixmatch", () => SearchMusixmatchAsync(title, artist, durationMs, ct), ct));
+            providerNames.Add("Musixmatch");
+        }
+
+        // Spotify is always searched (ground truth for scoring)
+        tasks.Add(SearchProviderAsync("Spotify", () => SearchSpotifyAsync(trackId, imageUrl, ct), ct));
+        providerNames.Add("Spotify");
 
         var results = await Task.WhenAll(tasks);
         ct.ThrowIfCancellationRequested();
 
         // Build diagnostics for each provider
-        var providerNames = new[] { "QQMusic", "Kugou", "Netease", "LRCLIB", "Musixmatch", "AMLL-TTML-DB", "Spotify" };
         for (int i = 0; i < results.Length; i++)
         {
             var r = results[i];
@@ -108,10 +195,20 @@ public sealed class LyricsService : ILyricsService
         ProviderResult? best = null;
         double bestScore = -1;
         string? bestReason = null;
+        ProviderResult? musixmatchFallback = null;
+        double musixmatchContentScore = 0;
 
         foreach (var ext in external)
         {
             var data = ext!.Data!;
+
+            // Skip results that are just instrumental markers (e.g., Chinese "pure music" placeholders)
+            if (IsInstrumentalOnlyResult(data))
+            {
+                _logger?.LogDebug("{Provider} rejected: instrumental-only marker", ext.Provider);
+                continue;
+            }
+
             double contentScore = spotifyLines is { Count: > 0 }
                 ? ScoreAgainstSpotify(data, spotifyLines)
                 : 1.0; // No Spotify to compare — accept all
@@ -123,14 +220,30 @@ public sealed class LyricsService : ILyricsService
                 continue;
             }
 
+            // Musixmatch when disabled: stash as syllable-sync fallback, don't enter main scoring
+            if (musixmatchDisabled && ext.Provider == "Musixmatch")
+            {
+                bool mxHasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
+                if (mxHasSyllable)
+                {
+                    musixmatchFallback = ext;
+                    musixmatchContentScore = contentScore;
+                }
+                continue;
+            }
+
             bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
 
-            // Composite score: content match (0-1) * 100, + syllable bonus, + line count tiebreak
+            // Preference bonus: user's top-ranked source gets highest bonus (tiebreaker)
+            int prefBonus = priorityMap.TryGetValue(ext.Provider!, out var p) ? p * 5 : 0;
+
+            // Composite score: content match (0-1) * 100, + syllable bonus, + preference, + line count tiebreak
             double composite = contentScore * 100
                 + (hasSyllable ? 50 : 0)
+                + prefBonus
                 + Math.Min(data.LyricsLines.Count, 20) * 0.1;
 
-            var reason = $"Content match: {contentScore:P0}, syllable: {hasSyllable}, lines: {data.LyricsLines.Count}";
+            var reason = $"Content match: {contentScore:P0}, syllable: {hasSyllable}, pref: +{prefBonus}, lines: {data.LyricsLines.Count}";
 
             if (composite > bestScore)
             {
@@ -140,11 +253,24 @@ public sealed class LyricsService : ILyricsService
             }
         }
 
+        // Fallback: if best result has no syllable sync, promote Musixmatch (even if user-disabled)
+        if (best != null && musixmatchFallback != null)
+        {
+            bool bestHasSyllable = best.Data!.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
+            if (!bestHasSyllable)
+            {
+                best = musixmatchFallback;
+                bestReason = $"Syllable fallback — content match: {musixmatchContentScore:P0}, lines: {musixmatchFallback.Data!.LyricsLines.Count}";
+                _logger?.LogDebug("Promoted Musixmatch as syllable-sync fallback");
+            }
+        }
+
         if (best?.Data != null)
         {
             _logger?.LogDebug("Lyrics from {Provider} for \"{Title}\" ({Reason})",
                 best.Provider, title, bestReason);
             sw.Stop();
+            CacheLyrics(trackId, best.Data, best.Provider!);
             return (best.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, best.Provider, bestReason, sw.Elapsed));
         }
 
@@ -152,6 +278,8 @@ public sealed class LyricsService : ILyricsService
         sw.Stop();
         var selectedProvider = spotifyResult?.Data != null ? "Spotify" : null;
         var selectionReason = spotifyResult?.Data != null ? "Fallback (no external provider matched Spotify)" : "No lyrics found";
+        if (spotifyResult?.Data != null)
+            CacheLyrics(trackId, spotifyResult.Data, "Spotify");
         return (spotifyResult?.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, selectedProvider, selectionReason, sw.Elapsed));
     }
 
@@ -223,6 +351,53 @@ public sealed class LyricsService : ILyricsService
             SelectionReason = reason,
             TotalSearchTime = elapsed,
         };
+    }
+
+    private static LyricsSearchDiagnostics BuildCachedDiagnostics(
+        string? trackId, string? title, string? artist, double durationMs, string provider)
+    {
+        return new LyricsSearchDiagnostics
+        {
+            TrackId = trackId,
+            QueryTitle = title,
+            QueryArtist = artist,
+            QueryDurationMs = durationMs,
+            Providers = [],
+            SelectedProvider = $"cached ({provider})",
+            SelectionReason = "From cache",
+            TotalSearchTime = TimeSpan.Zero,
+        };
+    }
+
+    public async Task ClearCacheForTrackAsync(string trackId, CancellationToken ct = default)
+    {
+        _memoryCache.TryRemove(trackId, out _);
+
+        if (_db != null)
+            await _db.DeleteLyricsCacheAsync($"spotify:track:{trackId}", ct);
+    }
+
+    private void CacheLyrics(string trackId, ControlsLyricsData data, string provider)
+    {
+        _memoryCache[trackId] = (data, provider);
+
+        if (_db != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var dto = LyricsCacheConverter.ToDto(data);
+                    var json = JsonSerializer.Serialize(dto, LyricsCacheJsonContext.Default.CachedLyricsDto);
+                    bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
+                    await _db.SetLyricsCacheAsync($"spotify:track:{trackId}", provider, json, hasSyllable);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to persist lyrics to SQLite");
+                }
+            });
+        }
     }
 
     // ── Provider wrappers ──
@@ -313,6 +488,10 @@ public sealed class LyricsService : ILyricsService
 
         var response = await ProviderHelper.NeteaseApi.GetLyric(neteaseResult.Id);
         ct.ThrowIfCancellationRequested();
+
+        // API-level instrumental flag — track has no lyrics
+        if (response?.Nolyric == true)
+            return null;
 
         var raw = response?.Lrc?.Lyric;
         var parsed = LyricsContentParser.Parse(raw);
@@ -668,6 +847,46 @@ public sealed class LyricsService : ILyricsService
 
         const string decorativeChars = "♪♫♬♩♭♯·•・";
         return trimmed.All(ch => char.IsWhiteSpace(ch) || decorativeChars.Contains(ch));
+    }
+
+    /// <summary>
+    /// Known instrumental-only markers returned by Chinese lyrics databases
+    /// when a track has no actual lyrics (pure instrumental).
+    /// </summary>
+    private static readonly string[] InstrumentalMarkers =
+    [
+        "纯音乐，请欣赏",                         // Netease: "Pure music, please enjoy"
+        "此歌曲为没有填词的纯音乐，请您欣赏",       // QQ Music: "This song has no lyrics, pure music"
+        "纯音乐,请欣赏",                           // Comma variant
+    ];
+
+    /// <summary>
+    /// Returns true if the lyrics result contains only instrumental markers
+    /// (e.g., Chinese "pure music" placeholders) and no real lyric content.
+    /// </summary>
+    private static bool IsInstrumentalOnlyResult(ControlsLyricsData data)
+    {
+        if (data.LyricsLines.Count == 0) return false;
+
+        foreach (var line in data.LyricsLines)
+        {
+            var text = line.PrimaryText?.Trim();
+            if (string.IsNullOrEmpty(text)) continue;
+
+            bool isMarker = false;
+            foreach (var marker in InstrumentalMarkers)
+            {
+                if (text.Contains(marker, StringComparison.Ordinal))
+                {
+                    isMarker = true;
+                    break;
+                }
+            }
+
+            if (!isMarker) return false; // Found a real lyric line
+        }
+
+        return true; // All non-empty lines were instrumental markers
     }
 
     // ── Helpers ──

@@ -4,7 +4,6 @@ using System.Reactive.Disposables;
 using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using DynamicData;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
@@ -36,15 +35,20 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     };
 
     private readonly IMetadataDatabase _database;
+    private readonly ISpotifyLibraryService? _libraryService;
     private readonly ILogger? _logger;
     private readonly CompositeDisposable _disposables = new();
     private bool _initialized;
 
     public event Action? SaveStateChanged;
 
-    public TrackLikeService(IMetadataDatabase database, ILogger<TrackLikeService>? logger = null)
+    public TrackLikeService(
+        IMetadataDatabase database,
+        ISpotifyLibraryService? libraryService = null,
+        ILogger<TrackLikeService>? logger = null)
     {
         _database = database;
+        _libraryService = libraryService;
         _logger = logger;
     }
 
@@ -113,18 +117,17 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         {
             try
             {
-                var libraryService = Ioc.Default.GetService<ISpotifyLibraryService>();
-                if (libraryService != null)
+                if (_libraryService != null)
                 {
                     _logger?.LogInformation("ToggleSave: using ISpotifyLibraryService (outbox path)");
                     var success = (type, currentlySaved) switch
                     {
-                        (SavedItemType.Track, true) => await libraryService.RemoveTrackAsync(itemUri),
-                        (SavedItemType.Track, false) => await libraryService.SaveTrackAsync(itemUri),
-                        (SavedItemType.Album, true) => await libraryService.RemoveAlbumAsync(itemUri),
-                        (SavedItemType.Album, false) => await libraryService.SaveAlbumAsync(itemUri),
-                        (SavedItemType.Artist, true) => await libraryService.UnfollowArtistAsync(itemUri),
-                        (SavedItemType.Artist, false) => await libraryService.FollowArtistAsync(itemUri),
+                        (SavedItemType.Track, true) => await _libraryService.RemoveTrackAsync(itemUri),
+                        (SavedItemType.Track, false) => await _libraryService.SaveTrackAsync(itemUri),
+                        (SavedItemType.Album, true) => await _libraryService.RemoveAlbumAsync(itemUri),
+                        (SavedItemType.Album, false) => await _libraryService.SaveAlbumAsync(itemUri),
+                        (SavedItemType.Artist, true) => await _libraryService.UnfollowArtistAsync(itemUri),
+                        (SavedItemType.Artist, false) => await _libraryService.FollowArtistAsync(itemUri),
                         _ => false
                     };
                     _logger?.LogInformation("ToggleSave: library service returned success={Success}", success);
@@ -200,10 +203,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     {
         try
         {
-            // Lazy resolve: ISpotifyLibraryService requires connected session, not available at construction
-            // Cast to concrete type only for LibraryChanged observable (not on the interface)
-            var libraryService = Ioc.Default.GetService<ISpotifyLibraryService>() as SpotifyLibraryService;
-            if (libraryService == null)
+            if (_libraryService is not SpotifyLibraryService libraryService)
             {
                 _logger?.LogDebug("SpotifyLibraryService not available — no real-time updates");
                 return;

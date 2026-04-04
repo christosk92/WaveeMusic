@@ -13,7 +13,6 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Wavee.UI.WinUI.Controls.Track;
-using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using System.Windows.Input;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
@@ -21,8 +20,6 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 using Windows.Foundation;
-using Microsoft.Extensions.Logging;
-
 namespace Wavee.UI.WinUI.Controls.TrackList;
 
 /// <summary>
@@ -39,7 +36,7 @@ public sealed partial class TrackListView : UserControl
     private readonly Dictionary<(Type, string), PropertyInfo?> _propertyCache = [];
 
     private readonly ThemeColorService? _themeColors;
-    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
+    private readonly DragStateService? _dragStateService;
 
     // Fallback command when no ViewModel is set (e.g., AlbumDetailPanel).
     // Raises the TrackClicked event so the parent can handle playback.
@@ -54,6 +51,7 @@ public sealed partial class TrackListView : UserControl
             if (t != null) TrackClicked?.Invoke(this, t);
         });
         _themeColors = Ioc.Default.GetService<ThemeColorService>();
+        _dragStateService = Ioc.Default.GetService<DragStateService>();
         if (_themeColors != null)
             _themeColors.ThemeChanged += OnThemeColorsChanged;
         Loaded += OnLoaded;
@@ -81,9 +79,6 @@ public sealed partial class TrackListView : UserControl
         {
             vm.PropertyChanged -= OnViewModelPropertyChanged;
         }
-
-        // Clean up playback state subscription
-        TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChangedFromBehavior;
 
         // Clean up theme change subscription
         if (_themeColors != null)
@@ -510,12 +505,6 @@ public sealed partial class TrackListView : UserControl
         ApplyCustomColumns();
         UpdateColumnVisibility();
 
-        // Subscribe to playback state changes via centralized TrackStateBehavior
-        TrackStateBehavior.EnsurePlaybackSubscription();
-        TrackStateBehavior.PlaybackStateChanged += OnPlaybackStateChangedFromBehavior;
-
-        // Initial refresh of all visible rows
-        UpdateAllVisibleRowPlaybackState();
     }
 
     private void UpdateColumnVisibility()
@@ -800,12 +789,12 @@ public sealed partial class TrackListView : UserControl
         e.Data.SetData(payload.DataFormat, payload.SerializedData);
         e.Data.RequestedOperation = DataPackageOperation.Copy;
 
-        Ioc.Default.GetService<DragStateService>()?.StartDrag(payload);
+        _dragStateService?.StartDrag(payload);
     }
 
     private void InternalListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
-        Ioc.Default.GetService<DragStateService>()?.EndDrag();
+        _dragStateService?.EndDrag();
     }
 
     #endregion
@@ -813,45 +802,22 @@ public sealed partial class TrackListView : UserControl
     // Click handlers, context menu, and navigation links are now handled
     // internally by TrackItem. TrackListView no longer needs them.
 
-    #region Now-Playing State
-
-    private void OnPlaybackStateChangedFromBehavior()
-    {
-        DispatcherQueue.TryEnqueue(UpdateAllVisibleRowPlaybackState);
-    }
+    #region Theme Changes
 
     private void OnThemeColorsChanged()
     {
-        // TrackItem uses theme resources directly — just refresh playback state
-        DispatcherQueue.TryEnqueue(UpdateAllVisibleRowPlaybackState);
-    }
-
-    private string? _lastPlayingTrackId;
-
-    private void UpdateAllVisibleRowPlaybackState()
-    {
-        var newTrackId = TrackStateBehavior.CurrentTrackId;
-        var oldTrackId = _lastPlayingTrackId;
-        _lastPlayingTrackId = newTrackId;
-
-        _logger?.LogDebug("UpdateAllVisibleRowPlaybackState: currentTrackId={CurrentTrackId}, isPlaying={IsPlaying}, itemCount={Count}",
-            newTrackId, TrackStateBehavior.IsCurrentlyPlaying, InternalListView.Items.Count);
-
-        // Optimization: only update the rows that actually changed
-        var bufferingId = TrackStateBehavior.BufferingTrackId;
-        for (int i = 0; i < InternalListView.Items.Count; i++)
+        // Theme colors changed — refresh all visible TrackItems so playing indicator uses new colors
+        DispatcherQueue.TryEnqueue(() =>
         {
-            if (InternalListView.ContainerFromIndex(i) is not ListViewItem container) continue;
-            if (container.Content is not ITrackItem trackItem) continue;
-
-            var id = trackItem.Id;
-            if (id != oldTrackId && id != newTrackId && id != bufferingId)
-                continue;
-
-            // Delegate to TrackItem's internal playback state management
-            if (container.ContentTemplateRoot is TrackItem ti)
-                ti.RefreshPlaybackState();
-        }
+            for (int i = 0; i < InternalListView.Items.Count; i++)
+            {
+                if (InternalListView.ContainerFromIndex(i) is ListViewItem container &&
+                    container.ContentTemplateRoot is TrackItem ti)
+                {
+                    ti.RefreshPlaybackState();
+                }
+            }
+        });
     }
 
     #endregion

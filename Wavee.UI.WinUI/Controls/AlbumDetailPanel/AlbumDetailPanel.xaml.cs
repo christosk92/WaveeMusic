@@ -26,6 +26,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     private SpriteVisual? _spriteVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
+    private readonly IPlaybackService? _playbackService;
 
     public static readonly DependencyProperty AlbumProperty =
         DependencyProperty.Register(nameof(Album), typeof(ArtistReleaseVm), typeof(AlbumDetailPanel),
@@ -85,6 +86,7 @@ public sealed partial class AlbumDetailPanel : UserControl
 
     public AlbumDetailPanel()
     {
+        _playbackService = Ioc.Default.GetService<IPlaybackService>();
         InitializeComponent();
         OuterGrid.SizeChanged += OuterGrid_SizeChanged;
         ImageArea.Loaded += ImageArea_Loaded;
@@ -297,10 +299,9 @@ public sealed partial class AlbumDetailPanel : UserControl
         // Play the clicked track within this album's context
         var albumUri = Album?.Uri ?? (Album?.Id != null ? $"spotify:album:{Album.Id}" : null);
 
-        var playbackService = Ioc.Default.GetService<IPlaybackService>();
-        if (playbackService != null && albumUri != null)
+        if (_playbackService != null && albumUri != null)
         {
-            _ = playbackService.PlayTrackInContextAsync(track.Uri, albumUri);
+            _ = _playbackService.PlayTrackInContextAsync(track.Uri, albumUri);
         }
     }
 

@@ -15,6 +15,8 @@ namespace Wavee.UI.WinUI.Controls.Omnibar;
 /// </summary>
 public sealed partial class Omnibar : Control
 {
+    private const int LostFocusDelayMs = 250;
+
     private AutoSuggestBox? _searchBox;
     private TextBox? _searchTextBox;
     private Popup? _popup;
@@ -160,7 +162,7 @@ public sealed partial class Omnibar : Control
         // Small delay to allow click on popup items to register before closing.
         // If the user clicked a flyout item, FlyoutPanel_ItemClicked will fire
         // within this window and close the popup itself.
-        await System.Threading.Tasks.Task.Delay(250);
+        await System.Threading.Tasks.Task.Delay(LostFocusDelayMs);
 
         // Only close if focus didn't return to the search box (e.g., user clicked
         // a flyout item which programmatically refocuses, or tabbed back)

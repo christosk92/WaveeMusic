@@ -27,20 +27,11 @@ internal sealed partial class ConnectivityService : ObservableObject, IConnectiv
     [ObservableProperty]
     private DateTimeOffset? _lastConnectedAt = DateTimeOffset.UtcNow;
 
-    public ConnectivityService(IMessenger messenger)
+    public ConnectivityService(IMessenger messenger, Session session)
     {
         _messenger = messenger;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
-    }
-
-    /// <summary>
-    /// Subscribes to the session's connection state observable.
-    /// Call once after the session is created.
-    /// </summary>
-    public void SubscribeToSession(IObservable<SessionConnectionState> connectionState)
-    {
-        _subscription?.Dispose();
-        _subscription = connectionState.Subscribe(OnConnectionStateChanged);
+        _subscription = session.ConnectionState.Subscribe(OnConnectionStateChanged);
     }
 
     private void OnConnectionStateChanged(SessionConnectionState state)

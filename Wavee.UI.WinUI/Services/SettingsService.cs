@@ -98,8 +98,17 @@ public sealed class SettingsService : ISettingsService, IDisposable
     {
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
-        // Force final save
-        try { SaveAsync().GetAwaiter().GetResult(); }
-        catch { /* Best effort on dispose */ }
+        // Force final synchronous save
+        try
+        {
+            var dir = Path.GetDirectoryName(SettingsPath)!;
+            Directory.CreateDirectory(dir);
+            var json = JsonSerializer.Serialize(_settings, AppSettingsJsonContext.Default.AppSettings);
+            File.WriteAllText(SettingsPath, json);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to save settings on dispose");
+        }
     }
 }

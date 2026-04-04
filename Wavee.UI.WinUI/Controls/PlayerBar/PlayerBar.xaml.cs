@@ -17,11 +17,13 @@ public sealed partial class PlayerBar : UserControl
     public PlayerBarViewModel ViewModel { get; }
 
     private readonly Data.Contracts.ITrackLikeService? _likeService;
+    private readonly IPlaybackStateService? _playbackStateService;
 
     public PlayerBar()
     {
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
+        _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         InitializeComponent();
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -60,8 +62,7 @@ public sealed partial class PlayerBar : UserControl
 
     private string? GetCurrentTrackId()
     {
-        var service = Ioc.Default.GetService<IPlaybackStateService>();
-        return service?.CurrentTrackId;
+        return _playbackStateService?.CurrentTrackId;
     }
 
     private void UpdatePlayerHeartState()

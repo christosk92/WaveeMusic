@@ -306,7 +306,11 @@ internal sealed class SessionData : IDisposable
         _lock.EnterWriteLock();
         try
         {
-            _transport?.DisposeAsync().AsTask().Wait();
+            if (_transport != null)
+            {
+                try { _transport.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+                catch { /* Best effort — transport disposal on sync Dispose path */ }
+            }
             _transport = null;
         }
         finally

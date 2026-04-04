@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,6 +14,13 @@ namespace Wavee.UI.WinUI.Helpers.Navigation;
 
 public static class NavigationHelpers
 {
+    private static ShellViewModel? _shellViewModel;
+
+    /// <summary>
+    /// Initialize with the ShellViewModel instance to avoid service locator calls.
+    /// </summary>
+    public static void Initialize(ShellViewModel vm) => _shellViewModel = vm;
+
     /// <summary>
     /// Check if Ctrl key is pressed (open in new tab modifier)
     /// </summary>
@@ -166,15 +172,14 @@ public static class NavigationHelpers
         // Update navigation state after frame has navigated (deferred to next UI tick)
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
         {
-            var shellViewModel = Ioc.Default.GetService<ShellViewModel>();
-            if (shellViewModel != null)
+            if (_shellViewModel != null)
             {
-                shellViewModel.UpdateNavigationState();
+                _shellViewModel.UpdateNavigationState();
 
                 // Clear sidebar selection for non-library pages
                 if (pageType != typeof(LibraryPage))
                 {
-                    shellViewModel.SelectedSidebarItem = null;
+                    _shellViewModel.SelectedSidebarItem = null;
                 }
             }
         });
@@ -211,7 +216,7 @@ public static class NavigationHelpers
 
         tab.Navigate(pageType, parameter);
         ShellViewModel.TabInstances.Add(tab);
-        ShellViewModel.SelectTab(ShellViewModel.TabInstances.Count - 1);
+        _shellViewModel!.SelectTab(ShellViewModel.TabInstances.Count - 1);
     }
 
     private static bool IsContentPage(Type pageType)
