@@ -220,12 +220,47 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void Initialize(string artistId)
     {
+        // Clear stale data from a previous artist on this cached page
+        if (ArtistId != null && ArtistId != artistId)
+            ResetForNewArtist();
+
         ArtistId = artistId;
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Artist, artistId)
         {
             Title = "Artist"
         };
         RefreshFollowState();
+    }
+
+    private void ResetForNewArtist()
+    {
+        // Clear scalar properties so bindings don't flash old data
+        ArtistName = null;
+        ArtistImageUrl = null;
+        HeaderImageUrl = null;
+        MonthlyListeners = null;
+        Followers = 0;
+        Biography = null;
+        IsVerified = false;
+        IsFollowing = false;
+        LatestReleaseName = null;
+        LatestReleaseImageUrl = null;
+        LatestReleaseUri = null;
+        LatestReleaseDate = null;
+        LatestReleaseTrackCount = 0;
+        LatestReleaseType = null;
+        PinnedItem = null;
+        WatchFeed = null;
+        HasData = false;
+        CurrentPage = 0;
+        ExpandedAlbum = null;
+        ExpandedAlbumTracks.Clear();
+
+        // Clear reactive collections
+        _topTracksSource.Clear();
+        _releasesSource.Clear();
+        RelatedArtists.Clear();
+        Concerts.Clear();
     }
 
     public void PrefillFrom(ContentNavigationParameter nav)
@@ -680,8 +715,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private void ToggleFollow()
     {
         if (string.IsNullOrEmpty(ArtistId) || _likeService == null) return;
-        _likeService.ToggleSave(SavedItemType.Artist, $"spotify:artist:{ArtistId}", IsFollowing);
-        // IsFollowing will be updated reactively via OnSaveStateChanged
+        var wasSaved = IsFollowing;
+        IsFollowing = !wasSaved; // Optimistic UI update
+        _likeService.ToggleSave(SavedItemType.Artist, ArtistId, wasSaved);
     }
 
     private void RefreshFollowState()

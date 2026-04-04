@@ -92,7 +92,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         ContentFrame = new Frame
         {
-            CacheSize = 0,
+            CacheSize = 5,
             IsNavigationStackEnabled = true
         };
         ContentFrame.Navigated += ContentFrame_Navigated;

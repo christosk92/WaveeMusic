@@ -52,8 +52,12 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         _logger = logger;
     }
 
-    public bool IsSaved(SavedItemType type, string bareId) =>
-        _caches[type].Lookup(bareId).HasValue;
+    public bool IsSaved(SavedItemType type, string idOrUri)
+    {
+        var (prefix, _, _) = TypeMap[type];
+        var bareId = ExtractBareId(idOrUri, prefix);
+        return bareId != null && _caches[type].Lookup(bareId).HasValue;
+    }
 
     public int GetCount(SavedItemType type) =>
         _caches[type].Count;

@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Controls.ActivityBell;
 
@@ -60,5 +62,25 @@ public sealed partial class ActivityBell : UserControl
     private void ClearAll_Click(object sender, RoutedEventArgs e)
     {
         _service?.ClearAll();
+    }
+
+    private async void ActivityAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not ActivityAction action)
+            return;
+
+        try
+        {
+            btn.IsEnabled = false;
+            await action.Callback();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Activity action failed: {ex.Message}");
+        }
+        finally
+        {
+            btn.IsEnabled = true;
+        }
     }
 }

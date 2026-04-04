@@ -209,19 +209,30 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     BufferingTrackId = null;
                 }
 
-                var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state);
+                // Use Spotify server clock only for remote (Cluster) state —
+                // local engine timestamps are already in local time.
+                var clock = _session.Clock;
+                long correctedNow;
+                if (state.Source == StateSource.Cluster)
+                    correctedNow = clock.NowMs;
+                else
+                    correctedNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+                var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
 
                 _logger?.LogInformation(
                     "UI bridge: position → {CalculatedMs}ms " +
                     "(raw={RawMs}ms, timestamp={Timestamp}, now={Now}, " +
-                    "elapsed={Elapsed}ms, status={Status}, duration={Duration}ms)",
+                    "elapsed={Elapsed}ms, status={Status}, duration={Duration}ms, source={Source}, clockOffset={ClockOffset}ms)",
                     calculatedPos,
                     state.PositionMs,
                     state.Timestamp,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - state.Timestamp,
+                    correctedNow,
+                    correctedNow - state.Timestamp,
                     state.Status,
-                    state.DurationMs);
+                    state.DurationMs,
+                    state.Source,
+                    clock.OffsetMs);
 
                 Position = calculatedPos;
 

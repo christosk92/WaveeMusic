@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Wavee.UI.WinUI.Data.Models;
@@ -11,7 +12,7 @@ public enum ActivityStatus { Info, InProgress, Completed, Failed }
 
 // ── Action model ──
 
-public sealed record ActivityAction(string Label, string? IconGlyph, Action Callback);
+public sealed record ActivityAction(string Label, string? IconGlyph, Func<Task> Callback);
 
 // ── Category styling ──
 

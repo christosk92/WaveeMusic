@@ -182,11 +182,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        ViewModel.ContentChanged -= ViewModel_ContentChanged;
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        SizeChanged -= OnSizeChanged;
+        // Only tear down ephemeral resources. ViewModel subscriptions stay alive
+        // because the page may be re-attached from navigation cache.
         TeardownWatchFeed();
-        (ViewModel as IDisposable)?.Dispose();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -310,10 +308,32 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
 
-        if (e.Parameter is ContentNavigationParameter nav)
+        // Extract the incoming artist URI
+        var incomingUri = e.Parameter is ContentNavigationParameter nav ? nav.Uri
+                        : e.Parameter as string;
+
+        // Back navigation or re-entering the same artist: skip re-fetch, restore watch feed
+        if (e.NavigationMode == Microsoft.UI.Xaml.Navigation.NavigationMode.Back
+            || (incomingUri != null && incomingUri == ViewModel.ArtistId))
         {
-            ViewModel.PrefillFrom(nav);
-            ViewModel.Initialize(nav.Uri);
+            SetupWatchFeedVideo();
+            return;
+        }
+
+        // Different artist on a cached page — reset visual state for fresh load
+        PageScrollView.ScrollTo(0, 0);
+        if (_showingContent)
+        {
+            _showingContent = false;
+            ContentContainer.Opacity = 0;
+            ShimmerContainer.Visibility = Visibility.Visible;
+            ShimmerContainer.Opacity = 1;
+        }
+
+        if (e.Parameter is ContentNavigationParameter navParam)
+        {
+            ViewModel.PrefillFrom(navParam);
+            ViewModel.Initialize(navParam.Uri);
         }
         else if (e.Parameter is string artistId)
         {
@@ -547,6 +567,17 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         if (ViewModel.PinnedItem?.Uri == null) return;
 
+        var type = ViewModel.PinnedItem.Type?.ToUpperInvariant();
+
+        // TRACK type: play the track in the artist context
+        if (type == "TRACK")
+        {
+            var playback = Ioc.Default.GetService<IPlaybackService>();
+            if (playback != null && !string.IsNullOrEmpty(ViewModel.ArtistId))
+                _ = playback.PlayTrackInContextAsync(ViewModel.PinnedItem.Uri, ViewModel.ArtistId);
+            return;
+        }
+
         ConnectedAnimationHelper.CancelPending();
 
         var param = new ContentNavigationParameter
@@ -556,10 +587,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             ImageUrl = ViewModel.PinnedItem.ImageUrl
         };
 
-        if (ViewModel.PinnedItem.Type == "ALBUM" || ViewModel.PinnedItem.Type == "SINGLE" || ViewModel.PinnedItem.Type == "EP")
+        if (type is "ALBUM" or "SINGLE" or "EP")
             NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
         else
             NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Release", NavigationHelpers.IsCtrlPressed());
+    }
+
+    private void PinnedItem_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(ViewModel.PinnedItem?.BackgroundImageUrl))
+            PinnedItemTeachingTip.IsOpen = true;
     }
 
     private async Task FetchAlbumColorAsync(ArtistReleaseVm album, AlbumDetailPanel panel)

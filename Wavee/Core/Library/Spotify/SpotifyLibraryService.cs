@@ -663,18 +663,28 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     /// Processes pending outbox operations, syncing local changes to Spotify API.
     /// Safe to call multiple times — operations are idempotent.
     /// </summary>
-    public async Task ProcessOutboxAsync()
+    public async Task<int> ProcessOutboxAsync()
     {
+        var failedCount = 0;
         try
         {
             var username = GetUsername();
             var ops = await _database.DequeueLibraryOpsAsync(50);
-            if (ops.Count == 0) return;
+            if (ops.Count == 0) return 0;
 
             foreach (var op in ops)
             {
                 try
                 {
+                    // Drop permanently failed entries (bad data, invalid URIs, etc.)
+                    if (op.RetryCount >= 10)
+                    {
+                        _logger?.LogWarning("Outbox op exceeded max retries, dropping: {Uri}", op.ItemUri);
+                        await _database.CompleteLibraryOpAsync(op.Id);
+                        failedCount++;
+                        continue;
+                    }
+
                     var set = GetSetForItemType(op.ItemType);
                     var item = new CollectionItem
                     {
@@ -690,6 +700,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
                 }
                 catch (Exception ex)
                 {
+                    failedCount++;
                     _logger?.LogWarning(ex, "Outbox op failed (retry {Count}): {Uri}", op.RetryCount + 1, op.ItemUri);
                     await _database.FailLibraryOpAsync(op.Id, ex.Message);
                 }
@@ -698,7 +709,10 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Outbox processing failed");
+            failedCount++;
         }
+
+        return failedCount;
     }
 
     private static string GetSetForItemType(SpotifyLibraryItemType itemType) => itemType switch

@@ -554,13 +554,18 @@ public static class PlaybackStateHelpers
     /// Only valid when status is Playing.
     /// </summary>
     /// <param name="state">Current playback state.</param>
+    /// <param name="nowMs">
+    /// Optional corrected "now" timestamp in Unix milliseconds.
+    /// When provided (e.g. from <see cref="Core.Time.SpotifyClockService.NowMs"/>),
+    /// compensates for local-vs-server clock skew. Falls back to local clock if null.
+    /// </param>
     /// <returns>Estimated current position in milliseconds.</returns>
-    public static long CalculateCurrentPosition(PlaybackState state)
+    public static long CalculateCurrentPosition(PlaybackState state, long? nowMs = null)
     {
         if (state.Status != PlaybackStatus.Playing)
             return state.PositionMs;
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var now = nowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var elapsed = now - state.Timestamp;
         var estimatedPosition = state.PositionMs + elapsed;
 

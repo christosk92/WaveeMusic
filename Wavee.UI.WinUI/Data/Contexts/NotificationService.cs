@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.UI.Dispatching;
@@ -17,8 +18,9 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 internal sealed partial class NotificationService : ObservableObject, INotificationService
 {
     private readonly IMessenger _messenger;
+    private readonly IActivityService? _activityService;
     private DispatcherTimer? _autoDismissTimer;
-    private Action? _currentAction;
+    private Func<Task>? _currentAction;
 
     [ObservableProperty]
     private bool _isOpen;
@@ -32,9 +34,13 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
     [ObservableProperty]
     private string? _actionLabel;
 
-    public NotificationService(IMessenger messenger)
+    [ObservableProperty]
+    private bool _isActionBusy;
+
+    public NotificationService(IMessenger messenger, IActivityService? activityService = null)
     {
         _messenger = messenger;
+        _activityService = activityService;
     }
 
     public void Show(string message, NotificationSeverity severity = NotificationSeverity.Error,
@@ -66,9 +72,13 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         Severity = notification.Severity;
         ActionLabel = notification.ActionLabel;
         _currentAction = notification.Action;
+        IsActionBusy = false;
         IsOpen = true;
 
         _messenger.Send(new NotificationRequestedMessage(notification));
+
+        // Also post to the activity bell so it persists in history
+        PostToActivityBell(notification);
 
         // Set up auto-dismiss if requested
         if (notification.AutoDismissAfter.HasValue)
@@ -82,6 +92,39 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         }
     }
 
+    private void PostToActivityBell(NotificationInfo notification)
+    {
+        if (_activityService == null) return;
+
+        var status = notification.Severity switch
+        {
+            NotificationSeverity.Error => ActivityStatus.Failed,
+            NotificationSeverity.Warning => ActivityStatus.Info,
+            NotificationSeverity.Success => ActivityStatus.Completed,
+            _ => ActivityStatus.Info
+        };
+
+        var iconGlyph = notification.Severity switch
+        {
+            NotificationSeverity.Error => "\uEA39",
+            NotificationSeverity.Warning => "\uE7BA",
+            NotificationSeverity.Success => "\uE73E",
+            _ => "\uE946"
+        };
+
+        if (notification.Action != null && notification.ActionLabel != null)
+        {
+            var actions = new[] { new ActivityAction(notification.ActionLabel, null, notification.Action) };
+            _activityService.Post("app", notification.Message, actions,
+                iconGlyph: iconGlyph, status: status);
+        }
+        else
+        {
+            _activityService.Post("app", notification.Message,
+                iconGlyph: iconGlyph, status: status);
+        }
+    }
+
     public void Dismiss()
     {
         StopAutoDismissTimer();
@@ -90,16 +133,28 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         Message = null;
         ActionLabel = null;
         _currentAction = null;
+        IsActionBusy = false;
 
         _messenger.Send(new NotificationDismissedMessage());
     }
 
     /// <summary>
-    /// Invokes the current notification's action callback, if any.
+    /// Invokes the current notification's async action callback, if any.
+    /// Disables the action button while the task is running.
     /// </summary>
-    public void InvokeAction()
+    public async Task InvokeActionAsync()
     {
-        _currentAction?.Invoke();
+        if (_currentAction == null || IsActionBusy) return;
+
+        try
+        {
+            IsActionBusy = true;
+            await _currentAction();
+        }
+        finally
+        {
+            IsActionBusy = false;
+        }
     }
 
     private void OnAutoDismissTimerTick(object? sender, object e)

@@ -50,6 +50,11 @@ public sealed partial class ShellPage : Page
         // Apply saved zoom level
         InitializeZoom();
 
+        // Listen for zoom changes from Settings UI
+        var settingsVm = Ioc.Default.GetService<SettingsViewModel>();
+        if (settingsVm != null)
+            settingsVm.ZoomChanged += OnSettingsZoomChanged;
+
         // Set up titlebar drag region
         SetupTitleBar();
 
@@ -104,6 +109,8 @@ public sealed partial class ShellPage : Page
         UpdateUserButton();
     }
 
+    private void OnSettingsZoomChanged(object? sender, double zoom) => ApplyZoom(zoom);
+
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
         // Clean up ShellPage-specific event subscriptions only.
@@ -116,6 +123,9 @@ public sealed partial class ShellPage : Page
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        var settingsVm = Ioc.Default.GetService<SettingsViewModel>();
+        if (settingsVm != null)
+            settingsVm.ZoomChanged -= OnSettingsZoomChanged;
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<Data.Messages.ConnectivityChangedMessage>(this);
@@ -163,6 +173,14 @@ public sealed partial class ShellPage : Page
     {
         if (_authState != null)
             await _authState.RetryConnectionAsync();
+    }
+
+    private async void NotificationAction_Click(object sender, RoutedEventArgs e)
+    {
+        var notificationService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<INotificationService>();
+        if (notificationService != null)
+            await notificationService.InvokeActionAsync();
     }
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)

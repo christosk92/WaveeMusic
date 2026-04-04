@@ -62,6 +62,10 @@
             <Grid Padding="12,10" ColumnSpacing="12"
                   Background="Transparent"
                   CornerRadius="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="32"/>
                     <ColumnDefinition Width="*"/>
@@ -89,6 +93,24 @@
                          Fill="{ThemeResource AccentFillColorDefaultBrush}"
                          VerticalAlignment="Center"
                          Visibility="{x:Bind IsRead, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+
+                <!-- Action buttons -->
+                <ItemsRepeater Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                               ItemsSource="{x:Bind Actions}"
+                               Visibility="{x:Bind Actions, Converter={StaticResource NullToVisibilityConverter}}"
+                               Margin="0,6,0,0">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Horizontal" Spacing="6"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:ActivityAction">
+                            <Button Content="{x:Bind Label}"
+                                    Click="ActivityAction_Click"
+                                    FontSize="12" Padding="10,4"
+                                    CornerRadius="4"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
             </Grid>
         </DataTemplate>
 

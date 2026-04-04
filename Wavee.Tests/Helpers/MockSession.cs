@@ -1,6 +1,7 @@
 using System.Reactive.Linq;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
+using Wavee.Core.Time;
 
 namespace Wavee.Tests.Helpers;
 
@@ -94,6 +95,8 @@ internal class MockSession : ISession
     public IPathfinderClient Pathfinder => throw new NotImplementedException("Mock does not support Pathfinder");
 
     public ISpClient SpClient => throw new NotImplementedException("Mock does not support SpClient");
+
+    public SpotifyClockService Clock => throw new NotImplementedException("Mock does not support Clock");
 
     public IObservable<SessionConnectionState> ConnectionState =>
         Observable.Return(SessionConnectionState.Connected);

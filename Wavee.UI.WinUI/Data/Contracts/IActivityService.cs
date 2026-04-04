@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Wavee.UI.WinUI.Data.Models;
 
@@ -15,6 +16,11 @@ public interface IActivityService
     /// <summary>Post a one-shot info/error notification.</summary>
     Guid Post(string category, string title, string? iconGlyph = null,
               ActivityStatus status = ActivityStatus.Info, string? message = null);
+
+    /// <summary>Post a notification with action buttons.</summary>
+    Guid Post(string category, string title, IReadOnlyList<ActivityAction> actions,
+              string? iconGlyph = null, ActivityStatus status = ActivityStatus.Info,
+              string? message = null);
 
     /// <summary>Start a progress activity (returns ID for updates).</summary>
     Guid Start(string category, string title, string? iconGlyph = null);

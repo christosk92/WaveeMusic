@@ -155,9 +155,9 @@ public interface ISpotifyLibraryService : IAsyncDisposable
 
     /// <summary>
     /// Processes pending outbox operations, syncing local changes to Spotify API.
-    /// Call periodically or after reconnect.
+    /// Call periodically or after reconnect. Returns the number of failed operations.
     /// </summary>
-    Task ProcessOutboxAsync();
+    Task<int> ProcessOutboxAsync();
 
     #endregion
 

@@ -77,7 +77,14 @@
                 IsOpen="{x:Bind ViewModel.IsNotificationOpen, Mode=TwoWay}"
                 Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
                 Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
-                IsClosable="True"/>
+                IsClosable="True">
+                <InfoBar.ActionButton>
+                    <Button Content="{x:Bind ViewModel.NotificationActionLabel, Mode=OneWay}"
+                            Click="NotificationAction_Click"
+                            IsEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.HasNotificationAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
             <InfoBar
                 x:Name="ConnectionErrorBar"
                 Title="Connection failed"

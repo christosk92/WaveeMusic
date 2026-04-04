@@ -76,16 +76,7 @@ public sealed class ArtistService : IArtistService
             SinglesTotalCount = artist.Discography?.Singles?.TotalCount ?? 0,
             CompilationsTotalCount = artist.Discography?.Compilations?.TotalCount ?? 0,
 
-            PinnedItem = artist.Profile?.PinnedItem != null ? new ArtistPinnedItemResult
-            {
-                Title = artist.Profile.PinnedItem.Title,
-                Subtitle = artist.Profile.PinnedItem.Subtitle,
-                Comment = artist.Profile.PinnedItem.Comment,
-                Type = artist.Profile.PinnedItem.Type,
-                Uri = artist.Profile.PinnedItem.Uri,
-                ImageUrl = artist.Profile.PinnedItem.ItemV2?.Data?.CoverArt?.Sources?.LastOrDefault()?.Url,
-                BackgroundImageUrl = artist.Profile.PinnedItem.BackgroundImageV2?.Data?.Sources?.FirstOrDefault()?.Url
-            } : null,
+            PinnedItem = artist.Profile?.PinnedItem != null ? MapPinnedItem(artist.Profile.PinnedItem) : null,
 
             WatchFeed = artist.WatchFeedEntrypoint?.Video?.FileId != null ? new ArtistWatchFeedResult
             {
@@ -258,6 +249,28 @@ public sealed class ArtistService : IArtistService
         if (date == null) return "";
         var dt = new DateTime(date.Year, date.Month ?? 1, date.Day ?? 1);
         return dt.ToString("MMM d, yyyy").ToUpperInvariant();
+    }
+
+    private static ArtistPinnedItemResult MapPinnedItem(ArtistPinnedItem pin)
+    {
+        // Image resolution priority:
+        // 1. ItemV2.Data.CoverArt (albums)
+        // 2. ThumbnailImage (tracks, episodes, etc.)
+        // 3. BackgroundImageV2 (final fallback)
+        var imageUrl = pin.ItemV2?.Data?.CoverArt?.Sources?.LastOrDefault()?.Url
+                    ?? pin.ThumbnailImage?.Data?.Sources?.FirstOrDefault()?.Url
+                    ?? pin.BackgroundImageV2?.Data?.Sources?.FirstOrDefault()?.Url;
+
+        return new ArtistPinnedItemResult
+        {
+            Title = pin.Title,
+            Subtitle = pin.Subtitle,
+            Comment = pin.Comment,
+            Type = pin.Type,
+            Uri = pin.Uri,
+            ImageUrl = imageUrl,
+            BackgroundImageUrl = pin.BackgroundImageV2?.Data?.Sources?.FirstOrDefault()?.Url
+        };
     }
 
 }

@@ -96,6 +96,7 @@ public static class AppLifecycleHelper
 
                 // App state services
                 .AddSingleton<INotificationService, NotificationService>()
+                .AddSingleton<IUpdateService, UpdateService>()
                 .AddSingleton<IPlaybackStateService>(sp =>
                     new PlaybackStateService(
                         sp.GetRequiredService<Session>(),
@@ -119,6 +120,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ITrackLikeService>(),
+                        sp.GetService<INotificationService>(),
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>()))
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
 
@@ -257,6 +260,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IThemeService>(),
                         sp.GetRequiredService<Services.InMemorySink>(),
                         sp.GetService<IAudioPipelineControl>(),
+                        sp.GetService<ISession>(),
+                        sp.GetRequiredService<IUpdateService>(),
                         sp.GetService<ILogger<SettingsViewModel>>()))
 
                 // Drag & drop
@@ -419,7 +424,7 @@ public static class AppLifecycleHelper
                                 Message = "Unable to reach Spotify. Check your network connection.",
                                 Severity = Data.Models.NotificationSeverity.Error,
                                 ActionLabel = "Retry",
-                                Action = () => _ = Task.Run(async () =>
+                                Action = async () =>
                                 {
                                     try
                                     {
@@ -430,7 +435,7 @@ public static class AppLifecycleHelper
                                     {
                                         logger?.LogWarning(ex, "Manual reconnection attempt failed");
                                     }
-                                })
+                                }
                             });
                         }
                         else

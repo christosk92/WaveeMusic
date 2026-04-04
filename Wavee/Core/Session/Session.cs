@@ -14,6 +14,7 @@ using Wavee.Core.Http;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Wavee.Core.Mercury;
+using Wavee.Core.Time;
 
 namespace Wavee.Core.Session;
 
@@ -79,6 +80,9 @@ public sealed class Session : ISession, IAsyncDisposable
     // Proactive AP health check: timestamp of last packet received from AP
     private DateTime _lastApPacketUtc = DateTime.UtcNow;
     private IDisposable? _dealerReconnectSubscription;
+
+    // Clock synchronization
+    private SpotifyClockService? _clockService;
 
     // Event subsystem
     private EventService? _eventService;
@@ -436,6 +440,12 @@ public sealed class Session : ISession, IAsyncDisposable
     /// Gets the Keymaster token provider for scoped Web API access tokens.
     /// </summary>
     public KeymasterTokenProvider? Keymaster => _keymasterTokenProvider;
+
+    /// <summary>
+    /// Gets the clock synchronization service for correcting local-vs-server time skew.
+    /// Lazily initialized on first access after SpClient is available.
+    /// </summary>
+    public SpotifyClockService Clock => _clockService ??= new SpotifyClockService(SpClient, _logger);
 
     /// <summary>
     /// Gets the Pathfinder client for GraphQL API requests (search, browse, etc).
@@ -1313,6 +1323,9 @@ public sealed class Session : ISession, IAsyncDisposable
             await _eventService.DisposeAsync();
             _eventService = null;
         }
+
+        _clockService?.Dispose();
+        _clockService = null;
 
         await DisconnectInternalAsync();
 

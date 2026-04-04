@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
@@ -14,6 +15,7 @@ public interface INotificationService : INotifyPropertyChanged
     string? Message { get; }
     NotificationSeverity Severity { get; }
     string? ActionLabel { get; }
+    bool IsActionBusy { get; }
 
     /// <summary>
     /// Shows a notification with the given message and severity.
@@ -30,4 +32,9 @@ public interface INotificationService : INotifyPropertyChanged
     /// Dismisses the currently visible notification.
     /// </summary>
     void Dismiss();
+
+    /// <summary>
+    /// Invokes the action callback asynchronously. The button is disabled while busy.
+    /// </summary>
+    Task InvokeActionAsync();
 }

@@ -56,7 +56,18 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
                 var text = summary.HasChanges
                     ? string.Join(", ", summary.Entries.Select(e => $"{e.CountText} {e.Label.ToLower()}"))
                     : "Everything up to date";
-                Complete(_activeSyncId.Value, text);
+
+                if (summary.HadPartialFailure)
+                {
+                    // Show as warning with failure reason appended
+                    var warningText = string.IsNullOrEmpty(text) ? "" : $"{text} — ";
+                    warningText += summary.PartialFailureReason ?? "some operations failed";
+                    Fail(_activeSyncId.Value, warningText);
+                }
+                else
+                {
+                    Complete(_activeSyncId.Value, text);
+                }
             }
             _activeSyncId = null;
         });
@@ -83,6 +94,24 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
             IconGlyph = iconGlyph ?? GetCategoryStyle(category)?.DefaultIconGlyph,
             Status = status,
             Message = message
+        };
+
+        AddItem(item);
+        return item.Id;
+    }
+
+    public Guid Post(string category, string title, IReadOnlyList<ActivityAction> actions,
+                     string? iconGlyph = null, ActivityStatus status = ActivityStatus.Info,
+                     string? message = null)
+    {
+        var item = new NotificationActivityItem
+        {
+            Category = category,
+            Title = title,
+            IconGlyph = iconGlyph ?? GetCategoryStyle(category)?.DefaultIconGlyph,
+            Status = status,
+            Message = message,
+            Actions = actions
         };
 
         AddItem(item);

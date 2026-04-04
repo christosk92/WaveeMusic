@@ -10,7 +10,7 @@
   <Identity
     Name="4f5ca249-aa41-4d46-84ce-62b6098fdb06"
     Publisher="CN=ckara"
-    Version="1.0.0.0" />
+    Version="0.1.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="4f5ca249-aa41-4d46-84ce-62b6098fdb06" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

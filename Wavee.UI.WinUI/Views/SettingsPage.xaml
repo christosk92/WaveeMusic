@@ -71,6 +71,100 @@
                                 <ComboBoxItem Content="System"/>
                             </ComboBox>
                         </controls:SettingsCard>
+
+                        <!-- ── Display scaling ── -->
+                        <TextBlock Text="Display" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+
+                        <!-- Layout density previews -->
+                        <Grid ColumnSpacing="12" Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Compact preview -->
+                            <Border Grid.Column="0" CornerRadius="8" Padding="16,12" Height="88"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel VerticalAlignment="Center" Spacing="4">
+                                    <StackPanel Spacing="2">
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1" Height="2" HorizontalAlignment="Left" Width="56"/>
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1" Height="2" HorizontalAlignment="Left" Width="44"/>
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1" Height="2" HorizontalAlignment="Left" Width="52"/>
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1" Height="2" HorizontalAlignment="Left" Width="36"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Compact" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Default preview -->
+                            <Border Grid.Column="1" CornerRadius="8" Padding="16,12" Height="88"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel VerticalAlignment="Center" Spacing="4">
+                                    <StackPanel Spacing="4">
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1.5" Height="3" HorizontalAlignment="Left" Width="56"/>
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1.5" Height="3" HorizontalAlignment="Left" Width="44"/>
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1.5" Height="3" HorizontalAlignment="Left" Width="52"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Default" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Spacious preview -->
+                            <Border Grid.Column="2" CornerRadius="8" Padding="16,12" Height="88"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel VerticalAlignment="Center" Spacing="4">
+                                    <StackPanel Spacing="6">
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="2" Height="4" HorizontalAlignment="Left" Width="56"/>
+                                        <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="2" Height="4" HorizontalAlignment="Left" Width="44"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Spacious" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Zoom level card -->
+                        <controls:SettingsCard Header="Zoom level"
+                                               Description="{x:Bind ViewModel.ZoomPreviewLabel, Mode=OneWay}">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8A3;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.ZoomLevelDisplay, Mode=OneWay}"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" MinWidth="36"/>
+                                <Button Content="Reset" Command="{x:Bind ViewModel.ResetZoomCommand}"/>
+                            </StackPanel>
+                        </controls:SettingsCard>
+
+                        <!-- Zoom slider -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="16,4,16,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="A" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <Slider Grid.Column="1"
+                                        Value="{x:Bind ViewModel.ZoomLevelIndex, Mode=TwoWay}"
+                                        Minimum="0" Maximum="6" StepFrequency="1" SnapsTo="StepValues"
+                                        Margin="12,0"/>
+                                <TextBlock Grid.Column="2" Text="A" FontSize="18" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -234,7 +328,7 @@
                                           OnContent="" OffContent=""/>
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="Cache size limit"
-                                               Description="Maximum disk space used for cached audio">
+                                               Description="Oldest tracks are automatically removed when the limit is reached">
                             <controls:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xEDA2;"/>
                             </controls:SettingsCard.HeaderIcon>
@@ -290,12 +384,74 @@
                 <Grid x:Name="DiagnosticsContent" Visibility="Collapsed" Padding="0,16,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
+                    <!-- Clock Synchronization -->
+                    <controls:SettingsExpander Grid.Row="0" Margin="0,0,0,12"
+                                               Header="Clock Synchronization"
+                                               Description="NTP-style sync with Spotify's server clock">
+                        <controls:SettingsExpander.HeaderIcon>
+                            <FontIcon Glyph="&#xE121;"/>
+                        </controls:SettingsExpander.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                <Run Text="{x:Bind ViewModel.ClockOffsetMs, Mode=OneWay}"/>
+                                <Run Text="ms offset"/>
+                            </TextBlock>
+                            <FontIcon Glyph="&#xE73E;" FontSize="12"
+                                      Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                      Visibility="{x:Bind ViewModel.ClockIsSynced, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+                        <controls:SettingsExpander.Items>
+                            <controls:SettingsCard Header="Network round-trip"
+                                                   Description="Latency of the best sync sample">
+                                <controls:SettingsCard.HeaderIcon>
+                                    <FontIcon Glyph="&#xE968;"/>
+                                </controls:SettingsCard.HeaderIcon>
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                    <Run Text="{x:Bind ViewModel.ClockLastRttMs, Mode=OneWay}"/>
+                                    <Run Text="ms"/>
+                                </TextBlock>
+                            </controls:SettingsCard>
+                            <controls:SettingsCard Header="Sync interval"
+                                                   Description="How often to re-synchronize">
+                                <controls:SettingsCard.HeaderIcon>
+                                    <FontIcon Glyph="&#xE916;"/>
+                                </controls:SettingsCard.HeaderIcon>
+                                <ComboBox SelectedIndex="{x:Bind ViewModel.ClockSyncIntervalIndex, Mode=TwoWay}"
+                                          MinWidth="140">
+                                    <ComboBoxItem Content="5 minutes"/>
+                                    <ComboBoxItem Content="10 minutes"/>
+                                    <ComboBoxItem Content="15 minutes"/>
+                                    <ComboBoxItem Content="30 minutes"/>
+                                </ComboBox>
+                            </controls:SettingsCard>
+                            <controls:SettingsCard Header="Last sync"
+                                                   Description="{x:Bind ViewModel.ClockLastSyncDisplay, Mode=OneWay}">
+                                <controls:SettingsCard.HeaderIcon>
+                                    <FontIcon Glyph="&#xE895;"/>
+                                </controls:SettingsCard.HeaderIcon>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <StackPanel VerticalAlignment="Center" Spacing="0">
+                                        <TextBlock Text="Next sync in"
+                                                   FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                        <TextBlock Text="{x:Bind ViewModel.ClockNextSyncCountdown, Mode=OneWay}"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <Button Content="Sync now" Command="{x:Bind ViewModel.RefreshClockCommand}"/>
+                                </StackPanel>
+                            </controls:SettingsCard>
+                        </controls:SettingsExpander.Items>
+                    </controls:SettingsExpander>
+
                     <!-- Toolbar -->
-                    <Border Grid.Row="0"
+                    <Border Grid.Row="1"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1" CornerRadius="8,8,0,0" Padding="12,8">
@@ -370,7 +526,7 @@
                     </Border>
 
                     <!-- Log list -->
-                    <ListView Grid.Row="1" x:Name="LogListView"
+                    <ListView Grid.Row="2" x:Name="LogListView"
                               ItemsSource="{x:Bind ViewModel.FilteredLogEntries, Mode=OneWay}"
                               SelectionMode="None" IsItemClickEnabled="False"
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -431,7 +587,7 @@
                     </ListView>
 
                     <!-- Resume auto-scroll floating button -->
-                    <Button x:Name="ResumeScrollButton" Grid.Row="1"
+                    <Button x:Name="ResumeScrollButton" Grid.Row="2"
                             HorizontalAlignment="Center" VerticalAlignment="Top"
                             Margin="0,12,0,0" Visibility="Collapsed"
                             Click="ResumeScroll_Click"
@@ -445,7 +601,7 @@
                     </Button>
 
                     <!-- Past logs bar -->
-                    <Grid Grid.Row="2" Margin="0,12,0,8">
+                    <Grid Grid.Row="3" Margin="0,12,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -485,29 +641,91 @@
                 </Grid>
 
                 <!-- ═══════════════════ About ═══════════════════ -->
-                <ScrollViewer x:Name="AboutContent" Visibility="Collapsed">
-                    <StackPanel Spacing="4" Padding="0,16,0,24">
-                        <controls:SettingsCard Header="Wavee"
-                                               Description="An unofficial Spotify client for Windows.">
-                            <controls:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE8D6;"/>
-                            </controls:SettingsCard.HeaderIcon>
-                            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                                <Run Text="Version"/>
-                                <Run Text="{x:Bind ViewModel.AppVersion}"/>
-                            </TextBlock>
-                        </controls:SettingsCard>
-                        <controls:SettingsCard Header="Source code"
-                                               Description="View the project on GitHub"
-                                               IsClickEnabled="True"
-                                               Click="GitHub_Click">
-                            <controls:SettingsCard.HeaderIcon>
-                                <FontIcon Glyph="&#xE943;"/>
-                            </controls:SettingsCard.HeaderIcon>
-                            <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
-                        </controls:SettingsCard>
-                    </StackPanel>
-                </ScrollViewer>
+                <Grid x:Name="AboutContent" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0">
+                        <StackPanel Spacing="4" Padding="0,16,0,24">
+
+                            <!-- App identity -->
+                            <StackPanel Spacing="4" Margin="0,0,0,20">
+                                <TextBlock Text="Wavee" FontSize="32" FontWeight="SemiBold"/>
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13">
+                                    <Run Text="v"/>
+                                    <Run Text="{x:Bind ViewModel.AppVersion}"/>
+                                    <Run Text=" · "/>
+                                    <Run Text="{x:Bind ViewModel.DistributionModeDisplay}"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- Updates -->
+                            <TextBlock Text="Updates" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+                            <controls:SettingsExpander Header="Check for updates"
+                                                       Description="{x:Bind ViewModel.UpdateService.Status, Mode=OneWay}">
+                                <controls:SettingsExpander.HeaderIcon>
+                                    <FontIcon Glyph="&#xE895;"/>
+                                </controls:SettingsExpander.HeaderIcon>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="{x:Bind ViewModel.UpdateService.LatestVersion, Mode=OneWay}"/>
+                                    <Button Content="Check now" Command="{x:Bind ViewModel.CheckForUpdateCommand}"/>
+                                </StackPanel>
+                                <controls:SettingsExpander.Items>
+                                    <controls:SettingsCard Header="Current version">
+                                        <controls:SettingsCard.HeaderIcon>
+                                            <FontIcon Glyph="&#xE7C3;"/>
+                                        </controls:SettingsCard.HeaderIcon>
+                                        <TextBlock Text="{x:Bind ViewModel.AppVersion}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </controls:SettingsCard>
+                                    <controls:SettingsCard Header="Distribution">
+                                        <controls:SettingsCard.HeaderIcon>
+                                            <FontIcon Glyph="&#xE71B;"/>
+                                        </controls:SettingsCard.HeaderIcon>
+                                        <TextBlock Text="{x:Bind ViewModel.DistributionModeDisplay}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </controls:SettingsCard>
+                                    <controls:SettingsCard Header="Changelog"
+                                                           Description="{x:Bind ViewModel.UpdateService.Changelog, Mode=OneWay}">
+                                        <controls:SettingsCard.HeaderIcon>
+                                            <FontIcon Glyph="&#xE8FD;"/>
+                                        </controls:SettingsCard.HeaderIcon>
+                                    </controls:SettingsCard>
+                                    <controls:SettingsCard Header="Error"
+                                                           Description="{x:Bind ViewModel.UpdateService.ErrorMessage, Mode=OneWay}"
+                                                           Visibility="{x:Bind ViewModel.HasUpdateError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <controls:SettingsCard.HeaderIcon>
+                                            <FontIcon Glyph="&#xEA39;" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                                        </controls:SettingsCard.HeaderIcon>
+                                        <Button Content="Retry" Command="{x:Bind ViewModel.CheckForUpdateCommand}"/>
+                                    </controls:SettingsCard>
+                                </controls:SettingsExpander.Items>
+                            </controls:SettingsExpander>
+
+                            <!-- Links -->
+                            <TextBlock Text="Links" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+                            <controls:SettingsCard Header="Source code"
+                                                   Description="View the project on GitHub"
+                                                   IsClickEnabled="True"
+                                                   Click="GitHub_Click">
+                                <controls:SettingsCard.HeaderIcon>
+                                    <FontIcon Glyph="&#xE943;"/>
+                                </controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                            </controls:SettingsCard>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Footer -->
+                    <TextBlock Grid.Row="1" HorizontalAlignment="Center"
+                               Margin="0,8,0,12" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                               Text="Built with WinUI 3 and .NET"/>
+                </Grid>
             </Grid>
         </NavigationView>
     </Grid>

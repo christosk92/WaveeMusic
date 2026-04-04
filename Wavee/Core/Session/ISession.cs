@@ -1,4 +1,5 @@
 using Wavee.Core.Http;
+using Wavee.Core.Time;
 
 namespace Wavee.Core.Session;
 
@@ -76,6 +77,11 @@ public interface ISession
     /// Gets the SpClient for spclient HTTP API requests (metadata, lyrics, context, playlists, etc).
     /// </summary>
     ISpClient SpClient { get; }
+
+    /// <summary>
+    /// Gets the clock synchronization service for correcting local-vs-server time skew.
+    /// </summary>
+    SpotifyClockService Clock { get; }
 
     /// <summary>
     /// Observable that emits when the session connection state changes

@@ -274,4 +274,12 @@ public interface ISpClient
     Task<List<string>> GetArtistTopTrackExtensionsAsync(
         string artistUri,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the current server timestamp from Spotify's melody time-sync endpoint.
+    /// Used for clock offset estimation to improve playback position extrapolation.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Server timestamp in Unix milliseconds.</returns>
+    Task<long> GetMelodyTimeAsync(CancellationToken cancellationToken = default);
 }

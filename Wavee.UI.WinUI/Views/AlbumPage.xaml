@@ -266,6 +266,7 @@
                                         ImageUrl="{x:Bind ImageUrl}"
                                         Title="{x:Bind Name}"
                                         Subtitle="{x:Bind Year}"
+                                        NavigationUri="{x:Bind Uri}"
                                         CardClick="RelatedAlbum_Click"/>
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>

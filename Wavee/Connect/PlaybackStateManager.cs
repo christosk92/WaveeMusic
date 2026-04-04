@@ -488,6 +488,14 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 return;
             }
 
+            // Don't let the engine's idle state override remote cluster state.
+            // Until we're actively playing locally, the engine's "Stopped" is meaningless.
+            if (!_isLocalPlaybackActive && newState.Status != PlaybackStatus.Playing)
+            {
+                _logger?.LogTrace("Ignoring local idle state — not the active local device");
+                return;
+            }
+
             _logger?.LogDebug("Playback state changed (local): changes={Changes}, track={Track}, status={Status}",
                 newState.Changes,
                 newState.Track?.Title ?? "<none>",
@@ -606,7 +614,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
         try
         {
-            var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var now = (ulong)(_session?.Clock.NowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
             // Track when playback started (reset on track change or when becoming active)
             if (_playbackStartedAt == 0 && state.Status == PlaybackStatus.Playing)

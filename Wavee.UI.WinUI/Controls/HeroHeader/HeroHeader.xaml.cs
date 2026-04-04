@@ -20,6 +20,7 @@ public sealed partial class HeroHeader : UserControl
     private ContainerVisual? _containerVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
+    private bool _hasAnimated;
 
     // ── Dependency Properties ──
 
@@ -102,7 +103,7 @@ public sealed partial class HeroHeader : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        Unloaded -= OnUnloaded;
+        ImageBorder.SizeChanged -= OnImageBorderSizeChanged;
 
         _imageSurface?.Dispose();
         _imageSurface = null;
@@ -126,7 +127,6 @@ public sealed partial class HeroHeader : UserControl
 
     private void OnImageBorderLoaded(object sender, RoutedEventArgs e)
     {
-        ImageBorder.Loaded -= OnImageBorderLoaded;
         SetupComposition();
         LoadImage(ImageUrl);
     }
@@ -183,22 +183,26 @@ public sealed partial class HeroHeader : UserControl
         scrimVisual.RelativeSizeAdjustment = Vector2.One;
         _containerVisual.Children.InsertAtTop(scrimVisual);
 
-        // Start hidden, pop-in animation reveals it
-        _containerVisual.Scale = new Vector3((float)InitialScale);
+        // On first load: start hidden for pop-in. On re-attach: show immediately.
+        if (_hasAnimated)
+        {
+            _containerVisual.Scale = new Vector3((float)FinalScale);
+            _containerVisual.Opacity = 1f;
+        }
+        else
+        {
+            _containerVisual.Scale = new Vector3((float)InitialScale);
+            _containerVisual.Opacity = 0f;
+        }
+
         _containerVisual.CenterPoint = new Vector3(
             (float)(ImageBorder.ActualWidth / 2),
             (float)(ImageBorder.ActualHeight / 2), 0);
-        _containerVisual.Opacity = 0f;
 
         ElementCompositionPreview.SetElementChildVisual(ImageBorder, _containerVisual);
 
-        ImageBorder.SizeChanged += (_, args) =>
-        {
-            if (_containerVisual != null)
-                _containerVisual.CenterPoint = new Vector3(
-                    (float)(args.NewSize.Width / 2),
-                    (float)(args.NewSize.Height / 2), 0);
-        };
+        ImageBorder.SizeChanged -= OnImageBorderSizeChanged;
+        ImageBorder.SizeChanged += OnImageBorderSizeChanged;
     }
 
     private void LoadImage(string? url)
@@ -225,9 +229,26 @@ public sealed partial class HeroHeader : UserControl
         };
     }
 
+    private void OnImageBorderSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (_containerVisual != null)
+            _containerVisual.CenterPoint = new Vector3(
+                (float)(args.NewSize.Width / 2),
+                (float)(args.NewSize.Height / 2), 0);
+    }
+
     private void PlayPopInAnimation()
     {
         if (_containerVisual == null || _compositor == null) return;
+
+        // Skip animation on re-attach — image already visible
+        if (_hasAnimated)
+        {
+            _containerVisual.Opacity = 1f;
+            _containerVisual.Scale = new Vector3((float)FinalScale);
+            return;
+        }
+        _hasAnimated = true;
 
         var duration = AnimationDuration;
 

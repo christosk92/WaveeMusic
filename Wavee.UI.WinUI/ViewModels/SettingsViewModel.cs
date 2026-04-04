@@ -16,6 +16,8 @@ using Wavee.Connect.Playback.Processors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.Core.Session;
+using Wavee.Core.Time;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Services;
@@ -28,6 +30,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IThemeService _themeService;
     private readonly InMemorySink _inMemorySink;
     private readonly IAudioPipelineControl? _pipelineControl;
+    private readonly ISession? _session;
+    private readonly IUpdateService? _updateService;
     private readonly ILogger? _logger;
 
     private static readonly string LogDirectory = Path.Combine(
@@ -60,16 +64,42 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public string AppVersion { get; } = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    public string AppVersion => _updateService?.CurrentVersion
+        ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)
+        ?? "0.0.0";
+
+    // ── Update Service ──
+
+    public IUpdateService? UpdateService => _updateService;
+
+    public bool HasUpdateError => _updateService?.Status == UpdateStatus.Error;
+
+    public string DistributionModeDisplay => _updateService?.Distribution switch
+    {
+        DistributionMode.Store => "Microsoft Store",
+        DistributionMode.Sideloaded => "Sideloaded",
+        _ => "Portable"
+    };
+
+    [RelayCommand]
+    private async Task CheckForUpdateAsync()
+    {
+        if (_updateService == null) return;
+        await _updateService.CheckForUpdateAsync();
+    }
 
     public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, InMemorySink inMemorySink,
         IAudioPipelineControl? pipelineControl = null,
+        ISession? session = null,
+        IUpdateService? updateService = null,
         ILogger<SettingsViewModel>? logger = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
         _inMemorySink = inMemorySink;
         _pipelineControl = pipelineControl;
+        _session = session;
+        _updateService = updateService;
         _logger = logger;
         LogEntries = inMemorySink.Entries;
 
@@ -123,6 +153,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             _ => 1 // default 1GB
         };
 
+        // Initialize zoom level from persisted settings
+        _zoomLevelIndex = Array.IndexOf(ZoomStops, Math.Round(s.ZoomLevel, 1));
+        if (_zoomLevelIndex < 0) _zoomLevelIndex = 3; // default 100%
+
         _autoReconnect = s.AutoReconnect;
         _connectionTimeoutIndex = s.ConnectionTimeoutSeconds switch
         {
@@ -131,6 +165,20 @@ public sealed partial class SettingsViewModel : ObservableObject
             60 => 2,
             _ => 1
         };
+
+        // Listen to update service status changes for HasUpdateError
+        if (_updateService != null)
+        {
+            _updateService.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(Services.UpdateStatus) || e.PropertyName == "Status")
+                    OnPropertyChanged(nameof(HasUpdateError));
+            };
+        }
+
+        // Initialize clock sync display + start live countdown timer
+        UpdateClockDisplay();
+        StartClockTimer();
 
         // Subscribe to log entry changes to maintain filtered view
         LogEntries.CollectionChanged += (_, e) =>
@@ -169,6 +217,40 @@ public sealed partial class SettingsViewModel : ObservableObject
         };
         _themeService.SetTheme(theme);
         _settingsService.Update(s => s.Theme = theme.ToString());
+    }
+
+    // ── Zoom / Display scaling ──
+
+    private static readonly double[] ZoomStops = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3];
+
+    public event EventHandler<double>? ZoomChanged;
+
+    [ObservableProperty]
+    private int _zoomLevelIndex = 3; // default 100%
+
+    public string ZoomLevelDisplay => $"{(int)(ZoomStops[ZoomLevelIndex] * 100)}%";
+
+    public string ZoomPreviewLabel => ZoomStops[ZoomLevelIndex] switch
+    {
+        <= 0.8 => "Compact",
+        <= 1.1 => "Default",
+        _ => "Spacious"
+    };
+
+    partial void OnZoomLevelIndexChanged(int value)
+    {
+        if (value < 0 || value >= ZoomStops.Length) return;
+        var zoom = ZoomStops[value];
+        _settingsService.Update(s => s.ZoomLevel = zoom);
+        OnPropertyChanged(nameof(ZoomLevelDisplay));
+        OnPropertyChanged(nameof(ZoomPreviewLabel));
+        ZoomChanged?.Invoke(this, zoom);
+    }
+
+    [RelayCommand]
+    private void ResetZoom()
+    {
+        ZoomLevelIndex = 3; // 100%
     }
 
     // ── Playback ──
@@ -426,6 +508,88 @@ public sealed partial class SettingsViewModel : ObservableObject
             _ => 30
         };
         _settingsService.Update(s => s.ConnectionTimeoutSeconds = seconds);
+    }
+
+    // ── Clock Sync ──
+
+    [ObservableProperty]
+    private long _clockOffsetMs;
+
+    [ObservableProperty]
+    private long _clockLastRttMs;
+
+    [ObservableProperty]
+    private bool _clockIsSynced;
+
+    [ObservableProperty]
+    private string _clockLastSyncDisplay = "Never";
+
+    [ObservableProperty]
+    private string _clockNextSyncCountdown = "—";
+
+    [ObservableProperty]
+    private int _clockSyncIntervalIndex = 1; // default 10 min
+
+    private DispatcherTimer? _clockTimer;
+
+    partial void OnClockSyncIntervalIndexChanged(int value)
+    {
+        var minutes = value switch
+        {
+            0 => 5,
+            1 => 10,
+            2 => 15,
+            3 => 30,
+            _ => 10
+        };
+        if (_session?.Clock is { } clock)
+            clock.SyncIntervalMinutes = minutes;
+    }
+
+    [RelayCommand]
+    private async Task RefreshClockAsync()
+    {
+        if (_session?.Clock is not { } clock) return;
+        await clock.SyncAsync();
+        UpdateClockDisplay();
+    }
+
+    private void StartClockTimer()
+    {
+        if (_session?.Clock is null) return;
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clockTimer.Tick += (_, _) => UpdateClockCountdown();
+        _clockTimer.Start();
+    }
+
+    private void UpdateClockCountdown()
+    {
+        if (_session?.Clock is not { } clock || !clock.IsSynced)
+        {
+            ClockNextSyncCountdown = "—";
+            return;
+        }
+
+        var nextSync = clock.LastSyncUtc + TimeSpan.FromMinutes(clock.SyncIntervalMinutes);
+        var remaining = nextSync - DateTimeOffset.UtcNow;
+        if (remaining.TotalSeconds <= 0)
+            ClockNextSyncCountdown = "syncing...";
+        else if (remaining.TotalMinutes >= 1)
+            ClockNextSyncCountdown = $"{(int)remaining.TotalMinutes}m {remaining.Seconds:D2}s";
+        else
+            ClockNextSyncCountdown = $"{remaining.Seconds}s";
+    }
+
+    private void UpdateClockDisplay()
+    {
+        if (_session?.Clock is not { } clock) return;
+        ClockOffsetMs = clock.OffsetMs;
+        ClockLastRttMs = clock.LastRttMs;
+        ClockIsSynced = clock.IsSynced;
+        ClockLastSyncDisplay = clock.IsSynced
+            ? $"Synced at {clock.LastSyncUtc.ToLocalTime():HH:mm:ss}"
+            : "Never";
+        UpdateClockCountdown();
     }
 
     // ── Log filters ──

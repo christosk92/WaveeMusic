@@ -149,7 +149,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     {
         if (SelectedArtist == null) return;
         await _playbackService.PlayContextAsync(
-            $"spotify:artist:{SelectedArtist.Id}",
+            SelectedArtist.Id,
             new PlayContextOptions { PlayOriginFeature = "artist_library" });
     }
 
@@ -158,7 +158,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     {
         if (SelectedArtist == null) return;
         await _playbackService.PlayContextAsync(
-            $"spotify:artist:{SelectedArtist.Id}",
+            SelectedArtist.Id,
             new PlayContextOptions { Shuffle = true, PlayOriginFeature = "artist_library" });
     }
 

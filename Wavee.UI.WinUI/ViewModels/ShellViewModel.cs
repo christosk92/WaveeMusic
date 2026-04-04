@@ -114,6 +114,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
     }
     public string? NotificationMessage => _notificationService.Message;
+    public string? NotificationActionLabel => _notificationService.ActionLabel;
+    public bool HasNotificationAction => _notificationService.ActionLabel != null;
+    public bool IsNotificationActionEnabled => !_notificationService.IsActionBusy;
 
     /// <summary>
     /// Maps notification severity to WinUI's <see cref="InfoBarSeverity"/> for XAML binding.
@@ -201,6 +204,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 break;
             case nameof(INotificationService.Severity):
                 OnPropertyChanged(nameof(NotificationSeverity));
+                break;
+            case nameof(INotificationService.ActionLabel):
+                OnPropertyChanged(nameof(NotificationActionLabel));
+                OnPropertyChanged(nameof(HasNotificationAction));
+                break;
+            case nameof(INotificationService.IsActionBusy):
+                OnPropertyChanged(nameof(IsNotificationActionEnabled));
                 break;
         }
     }

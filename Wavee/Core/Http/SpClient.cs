@@ -1098,6 +1098,28 @@ public sealed class SpClient : ISpClient
     }
 
     /// <summary>
+    /// Gets the current server timestamp from Spotify's melody time-sync endpoint.
+    /// Used for clock offset estimation to improve playback position extrapolation.
+    /// </summary>
+    public async Task<long> GetMelodyTimeAsync(CancellationToken cancellationToken = default)
+    {
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/melody/v1/time";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty("timestamp").GetInt64();
+    }
+
+    /// <summary>
     /// Gets the effective locale for API requests.
     /// </summary>
     /// <returns>Locale string (e.g., "en", "es", "fr") or null if not available.</returns>

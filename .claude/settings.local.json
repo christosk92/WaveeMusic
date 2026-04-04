@@ -6,7 +6,8 @@
       "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__detect_antipatterns",
       "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__detect_circular_dependencies",
       "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__find_dead_code",
-      "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__get_diagnostics"
+      "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__get_diagnostics",
+      "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__find_symbol"
     ]
   }
 }

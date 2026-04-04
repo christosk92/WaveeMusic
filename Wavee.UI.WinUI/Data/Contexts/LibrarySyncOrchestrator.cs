@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Wavee.Core.Library.Spotify;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
@@ -22,6 +23,8 @@ public sealed class LibrarySyncOrchestrator : IDisposable
     private readonly IMessenger _messenger;
     private readonly ISpotifyLibraryService? _libraryService;
     private readonly ITrackLikeService? _likeService;
+    private readonly INotificationService? _notificationService;
+    private readonly DispatcherQueue? _dispatcher;
     private readonly ILogger? _logger;
     private IDisposable? _dealerSubscription;
     private bool _dealerWired;
@@ -30,11 +33,15 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         IMessenger messenger,
         ISpotifyLibraryService? libraryService = null,
         ITrackLikeService? likeService = null,
+        INotificationService? notificationService = null,
+        DispatcherQueue? dispatcher = null,
         ILogger<LibrarySyncOrchestrator>? logger = null)
     {
         _messenger = messenger;
         _libraryService = libraryService;
         _likeService = likeService;
+        _notificationService = notificationService;
+        _dispatcher = dispatcher;
         _logger = logger;
 
         // React to auth status — trigger sync when Authenticated
@@ -99,8 +106,17 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             }
 
             // Drain any pending outbox operations
-            await _libraryService.ProcessOutboxAsync();
-            _logger?.LogDebug("Outbox processed");
+            var outboxFailures = await _libraryService.ProcessOutboxAsync();
+            if (outboxFailures > 0)
+            {
+                hadPartialFailure = true;
+                partialReason ??= $"{outboxFailures} outbox operation(s) failed to sync";
+                _logger?.LogWarning("Outbox had {Count} failure(s)", outboxFailures);
+            }
+            else
+            {
+                _logger?.LogDebug("Outbox processed");
+            }
 
             // Calculate delta (after - before)
             var afterTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;

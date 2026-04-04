@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Wavee.UI.WinUI.Data.Models;
@@ -113,6 +114,13 @@ public sealed class AppSettings
     /// Each entry has a name and enabled flag. If empty, defaults are used.
     /// </summary>
     public List<LyricsSourcePref> LyricsSourcePreferences { get; set; } = [];
+
+    // ── Updates ──
+
+    /// <summary>
+    /// When the last update check was performed.
+    /// </summary>
+    public DateTimeOffset? LastUpdateCheck { get; set; }
 }
 
 public sealed class HomeSectionSettings

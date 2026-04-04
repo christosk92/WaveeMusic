@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 
 namespace Wavee.UI.WinUI.Data.Models;
 
@@ -21,9 +22,10 @@ public sealed record NotificationInfo
     public string? ActionLabel { get; init; }
 
     /// <summary>
-    /// Optional callback invoked when the action button is clicked.
+    /// Optional async callback invoked when the action button is clicked.
+    /// Use for fire-and-forget sync actions or awaitable async operations.
     /// </summary>
-    public Action? Action { get; init; }
+    public Func<Task>? Action { get; init; }
 }
 
 /// <summary>

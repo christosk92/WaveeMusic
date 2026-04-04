@@ -18,7 +18,7 @@
     xmlns:albumDetail="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel" 
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
     <Page.Transitions>
         <TransitionCollection>
@@ -145,9 +145,11 @@
                             </Button>
 
                             <!-- Pinned item compact pill -->
-                            <Button Padding="0" Background="Transparent" BorderThickness="0"
+                            <Button x:Name="PinnedItemButton"
+                                    Padding="0" Background="Transparent" BorderThickness="0"
                                     CornerRadius="20" Margin="8,0,0,0" VerticalAlignment="Center"
                                     Click="PinnedItem_Click"
+                                    PointerEntered="PinnedItem_PointerEntered"
                                     Visibility="{x:Bind ViewModel.HasPinnedItem, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <Border CornerRadius="20" Padding="4,4,12,4"
                                         Background="{ThemeResource AccentAcrylicBackgroundFillColorBaseBrush}">
@@ -160,13 +162,29 @@
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Title, Mode=OneWay}"
                                                        FontSize="11" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                            <TextBlock Text="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
+                                                       FontSize="10" Opacity="0.7"
+                                                       TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                       Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Comment, Mode=OneWay}"
                                                        FontSize="10" Opacity="0.7"
-                                                       TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                                       TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                       Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
                             </Button>
+                            <TeachingTip x:Name="PinnedItemTeachingTip"
+                                         Target="{x:Bind PinnedItemButton}"
+                                         PreferredPlacement="Bottom"
+                                         Title="{x:Bind ViewModel.PinnedItem.Title, Mode=OneWay}"
+                                         Subtitle="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
+                                         IsLightDismissEnabled="True">
+                                <TeachingTip.HeroContent>
+                                    <Image Source="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                           Stretch="UniformToFill" MaxHeight="200"/>
+                                </TeachingTip.HeroContent>
+                            </TeachingTip>
 
                         </StackPanel>
                     </StackPanel>

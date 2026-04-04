@@ -13,6 +13,7 @@
     xmlns:local="using:Wavee.UI.WinUI.Views" 
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>

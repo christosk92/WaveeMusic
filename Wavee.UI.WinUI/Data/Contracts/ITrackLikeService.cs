@@ -18,8 +18,9 @@ public interface ITrackLikeService
 {
     /// <summary>
     /// Synchronous O(1) check — purely in-memory, no API/DB call.
+    /// Accepts both bare IDs and full Spotify URIs.
     /// </summary>
-    bool IsSaved(SavedItemType type, string bareId);
+    bool IsSaved(SavedItemType type, string idOrUri);
 
     /// <summary>
     /// Get the count of saved items of a specific type from in-memory cache.
