@@ -1046,10 +1046,18 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         var tcs = new TaskCompletionSource();
         _playbackThread = new Thread(() =>
         {
+            // Install a single-threaded SynchronizationContext so that all await
+            // continuations in PlaybackLoopAsync resume on THIS thread, not the
+            // thread pool. Without this, the dedicated thread just blocks on
+            // GetResult() while continuations run on thread pool threads —
+            // which get starved when the UI is busy, causing audio underflows.
+            var syncCtx = new SingleThreadedSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(syncCtx);
+
             try
             {
-                PlaybackLoopAsync(trackUri, startPositionMs, cancellationToken)
-                    .GetAwaiter().GetResult();
+                var task = PlaybackLoopAsync(trackUri, startPositionMs, cancellationToken);
+                syncCtx.RunUntilComplete(task);
                 tcs.TrySetResult();
             }
             catch (OperationCanceledException)
