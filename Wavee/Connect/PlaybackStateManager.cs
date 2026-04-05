@@ -86,6 +86,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     private readonly object _debounceLock = new();
     private const int DebounceMs = 750;
 
+    // Publish diagnostics (runtime counters)
+    private const long PublisherHealthLogIntervalMs = 30000;
+    private long _publishSubmittedCount;
+    private long _publishDroppedCount;
+    private long _publishSentCount;
+    private long _lastPublisherHealthLogAtMs;
+    private long _lastPublisherHealthSubmittedCount;
+    private long _lastPublisherHealthDroppedCount;
+    private long _lastPublisherHealthSentCount;
+
     private bool _disposed;
 
     /// <summary>
@@ -668,10 +678,17 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             // For playback state, freshest update is more important than every intermediate tick.
             if (_statePublisher != null && !_statePublisher.TrySubmit(request))
             {
+                Interlocked.Increment(ref _publishDroppedCount);
                 _logger?.LogTrace(
                     "Dropping PutState update because publisher queue is full (messageId={MessageId})",
                     request.MessageId);
             }
+            else if (_statePublisher != null)
+            {
+                Interlocked.Increment(ref _publishSubmittedCount);
+            }
+
+            MaybeLogPublisherHealth();
         }
         catch (Exception ex)
         {
@@ -708,12 +725,57 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 request,
                 CancellationToken.None);
 
+            Interlocked.Increment(ref _publishSentCount);
+            MaybeLogPublisherHealth();
+
             _logger?.LogTrace("State published successfully");
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to publish playback state");
         }
+    }
+
+    /// <summary>
+    /// Emits periodic health counters for PutState publishing.
+    /// Includes queue depth and submitted/sent/dropped rates.
+    /// </summary>
+    private void MaybeLogPublisherHealth()
+    {
+        if (_logger?.IsEnabled(LogLevel.Information) != true)
+            return;
+
+        var nowMs = Environment.TickCount64;
+        var previousLogAtMs = Volatile.Read(ref _lastPublisherHealthLogAtMs);
+        if (previousLogAtMs != 0 && nowMs - previousLogAtMs < PublisherHealthLogIntervalMs)
+            return;
+
+        if (Interlocked.CompareExchange(ref _lastPublisherHealthLogAtMs, nowMs, previousLogAtMs) != previousLogAtMs)
+            return;
+
+        var submitted = Interlocked.Read(ref _publishSubmittedCount);
+        var dropped = Interlocked.Read(ref _publishDroppedCount);
+        var sent = Interlocked.Read(ref _publishSentCount);
+
+        var submittedDelta = submitted - Interlocked.Exchange(ref _lastPublisherHealthSubmittedCount, submitted);
+        var droppedDelta = dropped - Interlocked.Exchange(ref _lastPublisherHealthDroppedCount, dropped);
+        var sentDelta = sent - Interlocked.Exchange(ref _lastPublisherHealthSentCount, sent);
+
+        var elapsedMs = previousLogAtMs == 0 ? 0 : nowMs - previousLogAtMs;
+        var submittedPerMin = elapsedMs > 0 ? submittedDelta * 60000.0 / elapsedMs : 0.0;
+        var sentPerMin = elapsedMs > 0 ? sentDelta * 60000.0 / elapsedMs : 0.0;
+        var droppedPerMin = elapsedMs > 0 ? droppedDelta * 60000.0 / elapsedMs : 0.0;
+        var queueDepth = _statePublisher?.PendingCount ?? 0;
+
+        _logger.LogInformation(
+            "PutState health: queueDepth={QueueDepth}, submitted={Submitted} ({SubmittedRate:F1}/min), sent={Sent} ({SentRate:F1}/min), dropped={Dropped} ({DroppedRate:F1}/min)",
+            queueDepth,
+            submitted,
+            submittedPerMin,
+            sent,
+            sentPerMin,
+            dropped,
+            droppedPerMin);
     }
 
     /// <summary>

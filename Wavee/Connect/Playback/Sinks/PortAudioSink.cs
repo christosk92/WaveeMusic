@@ -79,6 +79,11 @@ public sealed class PortAudioSink : IAudioSink
     }
 
     /// <summary>
+    /// Total number of callback underflow events seen by PortAudio.
+    /// </summary>
+    public long UnderrunCount => Volatile.Read(ref _underrunCount);
+
+    /// <summary>
     /// Creates a new PortAudioSink.
     /// </summary>
     /// <param name="logger">Optional logger.</param>

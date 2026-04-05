@@ -112,6 +112,14 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // Progress publish cadence for periodic playback position updates.
     private const long PositionPublishIntervalMs = 1000;
 
+    // Runtime health telemetry cadence.
+    private const long RuntimeHealthLogIntervalMs = 30000;
+    private long _lastRuntimeHealthLogAtMs;
+    private long _lastRuntimeHealthUnderflowCount = -1;
+    private int _lastRuntimeHealthGcGen0 = -1;
+    private int _lastRuntimeHealthGcGen1 = -1;
+    private int _lastRuntimeHealthGcGen2 = -1;
+
     /// <summary>
     /// Creates an AudioPipeline without command handler integration (manual control only).
     /// </summary>
@@ -1240,6 +1248,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                         {
                             lastPeriodicPublishPositionMs = _currentPositionMs;
                             PublishStateUpdate(positionOnly: true);
+                            MaybeLogRuntimeHealth();
                         }
                     }
 
@@ -1363,6 +1372,59 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Emits periodic runtime health counters for long-session diagnostics.
+    /// Includes underflow rate and GC collection deltas.
+    /// </summary>
+    private void MaybeLogRuntimeHealth()
+    {
+        if (_logger?.IsEnabled(LogLevel.Information) != true)
+            return;
+
+        var nowMs = Environment.TickCount64;
+        var previousLogAtMs = Volatile.Read(ref _lastRuntimeHealthLogAtMs);
+        if (previousLogAtMs != 0 && nowMs - previousLogAtMs < RuntimeHealthLogIntervalMs)
+            return;
+
+        if (Interlocked.CompareExchange(ref _lastRuntimeHealthLogAtMs, nowMs, previousLogAtMs) != previousLogAtMs)
+            return;
+
+        var gc0 = GC.CollectionCount(0);
+        var gc1 = GC.CollectionCount(1);
+        var gc2 = GC.CollectionCount(2);
+
+        var gc0Delta = _lastRuntimeHealthGcGen0 >= 0 ? gc0 - _lastRuntimeHealthGcGen0 : 0;
+        var gc1Delta = _lastRuntimeHealthGcGen1 >= 0 ? gc1 - _lastRuntimeHealthGcGen1 : 0;
+        var gc2Delta = _lastRuntimeHealthGcGen2 >= 0 ? gc2 - _lastRuntimeHealthGcGen2 : 0;
+
+        _lastRuntimeHealthGcGen0 = gc0;
+        _lastRuntimeHealthGcGen1 = gc1;
+        _lastRuntimeHealthGcGen2 = gc2;
+
+        long underflowCount = 0;
+        if (_audioSink is Sinks.PortAudioSink portAudioSink)
+        {
+            underflowCount = portAudioSink.UnderrunCount;
+        }
+
+        var previousUnderflowCount = Interlocked.Exchange(ref _lastRuntimeHealthUnderflowCount, underflowCount);
+        var elapsedMs = previousLogAtMs == 0 ? 0 : nowMs - previousLogAtMs;
+        var underflowRatePerMinute = elapsedMs > 0 && previousUnderflowCount >= 0
+            ? (underflowCount - previousUnderflowCount) * 60000.0 / elapsedMs
+            : 0.0;
+
+        var managedMb = GC.GetTotalMemory(forceFullCollection: false) / (1024.0 * 1024.0);
+        _logger.LogInformation(
+            "Playback health: position={PositionMs}ms, underflows={Underflows} ({UnderflowRate:F2}/min), gcDelta={Gen0}/{Gen1}/{Gen2}, managed={ManagedMb:F1}MB",
+            _currentPositionMs,
+            underflowCount,
+            underflowRatePerMinute,
+            gc0Delta,
+            gc1Delta,
+            gc2Delta,
+            managedMb);
     }
 
     // ================================================================
