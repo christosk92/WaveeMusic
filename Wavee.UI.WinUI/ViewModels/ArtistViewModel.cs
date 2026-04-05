@@ -32,6 +32,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private readonly CompositeDisposable _disposables = new();
     private CancellationTokenSource? _discoCts;
+    private bool _disposed;
 
     // ── Reactive data sources ──
     private readonly SourceCache<LazyTrackItem, string> _topTracksSource = new(t => t.Id);
@@ -263,6 +264,31 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         Concerts.Clear();
     }
 
+    private CancellationToken CreateFreshDiscographyToken()
+    {
+        CancelAndDisposeDiscographyCts();
+        _discoCts = new CancellationTokenSource();
+        return _discoCts.Token;
+    }
+
+    private void CancelAndDisposeDiscographyCts()
+    {
+        var cts = Interlocked.Exchange(ref _discoCts, null);
+        if (cts == null)
+            return;
+
+        try
+        {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Can happen during rapid navigation/disposal races.
+        }
+
+        cts.Dispose();
+    }
+
     public void PrefillFrom(ContentNavigationParameter nav)
     {
         if (!string.IsNullOrEmpty(nav.Title)) ArtistName = nav.Title;
@@ -372,9 +398,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             CompilationsTotalCount = overview.CompilationsTotalCount;
 
             // ── Background discography pagination ──
-            _discoCts?.Cancel();
-            _discoCts = new CancellationTokenSource();
-            var discoToken = _discoCts.Token;
+            var discoToken = CreateFreshDiscographyToken();
 
             // Run API fetches on thread pool, dispatch Populate() to UI thread
             _ = Task.Run(() => FetchRemainingDiscographyAsync(
@@ -700,9 +724,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         HasSinglesError = false;
         HasCompilationsError = false;
 
-        _discoCts?.Cancel();
-        _discoCts = new CancellationTokenSource();
-        var ct = _discoCts.Token;
+        var ct = CreateFreshDiscographyToken();
 
         await Task.Run(() => FetchRemainingDiscographyAsync(
             albumsLoaded, AlbumsTotalCount,
@@ -886,15 +908,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
+
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
 
-        if (_discoCts is not null)
-        {
-            _discoCts?.Cancel();
-            _discoCts?.Dispose();
-            _discoCts = null;
-        }
+        CancelAndDisposeDiscographyCts();
 
         _disposables.Dispose();
         _topTracksSource.Dispose();

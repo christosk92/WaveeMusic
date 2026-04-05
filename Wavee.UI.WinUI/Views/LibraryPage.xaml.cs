@@ -11,6 +11,7 @@ public sealed partial class LibraryPage : Page
 {
     private int _currentTabIndex = 0;
     private readonly ShellViewModel _shellViewModel;
+    private bool _suppressSelectionChanged;
 
     public LibraryPage()
     {
@@ -30,11 +31,26 @@ public sealed partial class LibraryPage : Page
             _ => AlbumsItem
         };
 
+        var pageType = GetPageType(itemToSelect);
+        if (ContentFrame.Content?.GetType() == pageType)
+        {
+            UpdateSidebarSelection(itemToSelect);
+            return;
+        }
+
         // Clear all and set the correct one
-        AlbumsItem.IsSelected = false;
-        ArtistsItem.IsSelected = false;
-        LikedSongsItem.IsSelected = false;
-        itemToSelect.IsSelected = true;
+        _suppressSelectionChanged = true;
+        try
+        {
+            AlbumsItem.IsSelected = false;
+            ArtistsItem.IsSelected = false;
+            LikedSongsItem.IsSelected = false;
+            itemToSelect.IsSelected = true;
+        }
+        finally
+        {
+            _suppressSelectionChanged = false;
+        }
 
         // Update content and sidebar
         NavigateToContent(itemToSelect);
@@ -71,10 +87,18 @@ public sealed partial class LibraryPage : Page
             return;
 
         // Clear all selections and set the correct one
-        AlbumsItem.IsSelected = false;
-        ArtistsItem.IsSelected = false;
-        LikedSongsItem.IsSelected = false;
-        itemToSelect.IsSelected = true;
+        _suppressSelectionChanged = true;
+        try
+        {
+            AlbumsItem.IsSelected = false;
+            ArtistsItem.IsSelected = false;
+            LikedSongsItem.IsSelected = false;
+            itemToSelect.IsSelected = true;
+        }
+        finally
+        {
+            _suppressSelectionChanged = false;
+        }
 
         // Set initial tab index
         _currentTabIndex = GetTabIndex(itemToSelect);
@@ -85,6 +109,9 @@ public sealed partial class LibraryPage : Page
 
     private void SelectorBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
+        if (_suppressSelectionChanged)
+            return;
+
         var selectedItem = sender.SelectedItem;
         NavigateToContent(selectedItem);
         UpdateSidebarSelection(selectedItem);

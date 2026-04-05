@@ -30,6 +30,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private readonly ILogger? _logger;
     private bool _showingContent;
+    private bool _isNavigatingAway;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -75,6 +76,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void SetupWatchFeedVideo()
     {
+        if (_isNavigatingAway || !IsLoaded)
+            return;
+
         if (ViewModel.WatchFeed?.VideoUrl == null) return;
 
         // Clean up previous
@@ -127,14 +131,24 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            // Fade video in over the static image
-            AnimationBuilder.Create()
-                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(600),
-                         easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
-                .Start(WatchFeedGrid);
+            if (_isNavigatingAway || _watchFeedMediaPlayer != sender || _watchFeedElement == null || WatchFeedGrid.XamlRoot == null)
+                return;
 
-            // Show hover overlay
-            WatchFeedHoverOverlay.Visibility = Visibility.Visible;
+            // Fade video in over the static image
+            try
+            {
+                AnimationBuilder.Create()
+                    .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(600),
+                             easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+                    .Start(WatchFeedGrid);
+
+                // Show hover overlay
+                WatchFeedHoverOverlay.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Watch feed first-frame transition skipped during navigation teardown");
+            }
         });
     }
 
@@ -148,8 +162,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
         if (_watchFeedMediaPlayer != null)
         {
-            _watchFeedMediaPlayer.Pause();
-            _watchFeedMediaPlayer.Dispose();
+            _watchFeedMediaPlayer.VideoFrameAvailable -= OnFirstVideoFrame;
+            try { _watchFeedMediaPlayer.Pause(); } catch { }
+            try { _watchFeedMediaPlayer.Dispose(); } catch { }
             _watchFeedMediaPlayer = null;
         }
     }
@@ -184,7 +199,20 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         // Only tear down ephemeral resources. ViewModel subscriptions stay alive
         // because the page may be re-attached from navigation cache.
+        _isNavigatingAway = true;
+        CancelResizeDebounce();
+        CollapseExpandedAlbum();
         TeardownWatchFeed();
+    }
+
+    private void CancelResizeDebounce()
+    {
+        if (_resizeDebounceCts == null)
+            return;
+
+        try { _resizeDebounceCts.Cancel(); } catch (ObjectDisposedException) { }
+        _resizeDebounceCts.Dispose();
+        _resizeDebounceCts = null;
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -196,7 +224,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Debounced recompute of expanded panel position
         if (_activeDetailPanel != null && _expandedItem != null)
         {
-            _resizeDebounceCts?.Cancel();
+            CancelResizeDebounce();
             _resizeDebounceCts = new CancellationTokenSource();
             var token = _resizeDebounceCts.Token;
             _ = RecomputeExpandedPanelAsync(token);
@@ -305,6 +333,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _isNavigatingAway = false;
 
         ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
 
@@ -538,6 +567,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
     {
         base.OnNavigatingFrom(e);
+        _isNavigatingAway = true;
+        CancelResizeDebounce();
+        CollapseExpandedAlbum();
         TeardownWatchFeed();
     }
 

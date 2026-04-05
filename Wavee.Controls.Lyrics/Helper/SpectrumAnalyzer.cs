@@ -15,7 +15,7 @@ namespace Wavee.Controls.Lyrics.Helper
         private readonly ILogger<SpectrumAnalyzer> _logger;
         private readonly object _lock = new();
         private WasapiLoopbackCapture? _capture;
-        private readonly MMDeviceEnumerator _deviceEnumerator;
+        private MMDeviceEnumerator? _deviceEnumerator;
         private readonly LatestOnlyTaskRunner _deviceChangedTaskRunner;
 
         private int _sampleRate = 48000;
@@ -75,10 +75,17 @@ namespace Wavee.Controls.Lyrics.Helper
         {
             _logger = Ioc.Default.GetRequiredService<ILogger<SpectrumAnalyzer>>();
 
-            _deviceEnumerator = new MMDeviceEnumerator();
-            _deviceEnumerator.RegisterEndpointNotificationCallback(this);
-
             _deviceChangedTaskRunner = new();
+
+            try
+            {
+                _deviceEnumerator = new MMDeviceEnumerator();
+                _deviceEnumerator.RegisterEndpointNotificationCallback(this);
+            }
+            catch (Exception)
+            {
+                // COM interop may fail in trimmed/AOT builds — spectrum will be unavailable
+            }
 
             _m = (int)Math.Log(_fftLength, 2);
             _fftLeftBuffer = new float[_fftLength];
@@ -220,8 +227,8 @@ namespace Wavee.Controls.Lyrics.Helper
         {
             if (!_disposed)
             {
-                _deviceEnumerator.UnregisterEndpointNotificationCallback(this);
-                _deviceEnumerator.Dispose();
+                _deviceEnumerator?.UnregisterEndpointNotificationCallback(this);
+                _deviceEnumerator?.Dispose();
 
                 StopCapture();
                 _disposed = true;

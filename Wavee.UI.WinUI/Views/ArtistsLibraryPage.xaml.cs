@@ -29,6 +29,7 @@ public sealed partial class ArtistsLibraryPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        (ViewModel as IDisposable)?.Dispose();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

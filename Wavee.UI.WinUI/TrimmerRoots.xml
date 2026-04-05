@@ -2,5 +2,8 @@
   <assembly fullname="Wavee.UI.WinUI">
     <type fullname="Wavee.UI.WinUI.Controls.Layouts.ColumnsFirstGridLayout" />
     <type fullname="Wavee.UI.WinUI.Controls.Layouts.SingleRowLayout" />
+    <type fullname="Wavee.UI.WinUI.Controls.FollowButton" />
   </assembly>
+  <!-- XAML-instantiated controls in referenced assemblies — invisible to the IL trimmer -->
+  <assembly fullname="Wavee.Controls.Lyrics" preserve="all" />
 </linker>

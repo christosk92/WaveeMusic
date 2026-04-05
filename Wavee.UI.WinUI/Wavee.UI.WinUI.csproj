@@ -123,6 +123,7 @@
        See: https://github.com/microsoft/microsoft-ui-xaml/issues/9675 -->
   <ItemGroup>
     <TrimmerRootAssembly Include="Microsoft.WinUI" />
+    <TrimmerRootAssembly Include="Wavee.Controls.Lyrics" />
     <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
   </ItemGroup>
 </Project>

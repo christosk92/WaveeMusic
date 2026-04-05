@@ -14,7 +14,7 @@ using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackListViewModel
+public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IArtistService _artistService;
@@ -22,6 +22,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     private readonly IPlaybackService _playbackService;
     private readonly ITrackLikeService? _likeService;
     private readonly DispatcherQueue _dispatcherQueue;
+    private bool _disposed;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -343,8 +344,14 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     private void OnSaveStateChanged()
     {
+        if (_disposed)
+            return;
+
         _dispatcherQueue.TryEnqueue(() =>
         {
+            if (_disposed)
+                return;
+
             if (_likeService == null || Artists.Count == 0) return;
 
             // Remove artists that are no longer followed
@@ -488,5 +495,15 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
         AddToPlaylistCommand.NotifyCanExecuteChanged();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
     }
 }

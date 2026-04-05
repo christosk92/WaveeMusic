@@ -50,7 +50,17 @@ namespace Wavee.Controls.Lyrics.Core
         // --- Helpers ---
         private readonly LyricsSynchronizer _synchronizer = new();
         private readonly LyricsAnimator _animator = new();
-        private readonly SpectrumAnalyzer _spectrumAnalyzer = new();
+        private readonly SpectrumAnalyzer? _spectrumAnalyzer = CreateSpectrumAnalyzerSafe();
+
+        /// <summary>
+        /// Factory that absorbs type-load / COM-activation failures in trimmed Release builds.
+        /// NAudio's IMMNotificationClient COM metadata may be stripped by the IL trimmer.
+        /// </summary>
+        private static SpectrumAnalyzer? CreateSpectrumAnalyzerSafe()
+        {
+            try { return new SpectrumAnalyzer(); }
+            catch { return null; }
+        }
 
         // --- Transitions ---
         private readonly ValueTransition<Color> _immersiveBgColorTransition = new(
@@ -303,8 +313,11 @@ namespace Wavee.Controls.Lyrics.Core
             var lyricsEffect = _lyricsWindowStatus.LyricsEffectSettings;
             TimeSpan elapsedTime = args.Timing.ElapsedTime;
 
-            _spectrumAnalyzer.BarCount = lyricsBg.SpectrumCount;
-            _spectrumAnalyzer.Sensitivity = lyricsBg.SpectrumSensitivity;
+            if (_spectrumAnalyzer != null)
+            {
+                _spectrumAnalyzer.BarCount = lyricsBg.SpectrumCount;
+                _spectrumAnalyzer.Sensitivity = lyricsBg.SpectrumSensitivity;
+            }
             UpdateSpectrumCaptureState();
 
             _accentColor1Transition.Update(elapsedTime);
@@ -410,7 +423,7 @@ namespace Wavee.Controls.Lyrics.Core
                 );
             }
 
-            if (_spectrumAnalyzer.IsCapturing)
+            if (_spectrumAnalyzer is { IsCapturing: true })
             {
                 _spectrumAnalyzer.UpdateSmoothSpectrum();
             }
@@ -467,9 +480,9 @@ namespace Wavee.Controls.Lyrics.Core
                 IsMouseScrolling = _isMouseScrolling,
                 Settings = _lyricsWindowStatus,
                 Palette = _lyricsWindowStatus.WindowPalette,
-                SpectrumData = _spectrumAnalyzer.SmoothSpectrum,
-                SpectrumBarCount = _spectrumAnalyzer.BarCount,
-                BassEnergy = _spectrumAnalyzer.CurrentBassEnergy,
+                SpectrumData = _spectrumAnalyzer?.SmoothSpectrum,
+                SpectrumBarCount = _spectrumAnalyzer?.BarCount ?? 0,
+                BassEnergy = _spectrumAnalyzer?.CurrentBassEnergy ?? 0f,
                 AccentColor1 = _accentColor1Transition.Value,
                 AccentColor2 = _accentColor2Transition.Value,
                 AccentColor3 = _accentColor3Transition.Value,
@@ -488,7 +501,7 @@ namespace Wavee.Controls.Lyrics.Core
 
             if (!_lyricsWindowStatus.ShowLyricsCard)
             {
-                _lyricsRenderer.Update(_spectrumAnalyzer.CurrentBassEnergy, lyricsEffect.LyricsBreathingIntensity);
+                _lyricsRenderer.Update(_spectrumAnalyzer?.CurrentBassEnergy ?? 0f, lyricsEffect.LyricsBreathingIntensity);
             }
 
             RecordUpdateFrameCost(updateStart);
@@ -601,7 +614,7 @@ namespace Wavee.Controls.Lyrics.Core
                 $"Update/Draw  : {_perfUpdateHz:00.0} / {_perfDrawHz:00.0} Hz\n" +
                 $"CPU ms       : U {_perfAvgUpdateMs:0.00} / D {_perfAvgDrawMs:0.00}\n" +
                 $"Relayout     : {_perfRelayoutHz:0.0}/s (Total {_relayoutCountTotal})\n" +
-                $"Spectrum Cap : {_spectrumAnalyzer.IsCapturing}\n" +
+                $"Spectrum Cap : {_spectrumAnalyzer?.IsCapturing ?? false}\n" +
                 $"----------------------------------------\n" +
                 $"Render Pos   : [{(int)_renderLyricsStartX}, {(int)_renderLyricsStartY}]\n" +
                 $"Render Size  : [{(int)_renderLyricsWidth} x {(int)_renderLyricsHeight}]\n" +
@@ -691,14 +704,17 @@ namespace Wavee.Controls.Lyrics.Core
             if (_lyricsWindowStatus == null) return;
             var lyricsBg = _lyricsWindowStatus.LyricsBackgroundSettings;
 
-            _spectrumAnalyzer.BarCount = lyricsBg.SpectrumCount;
-            _spectrumAnalyzer.Sensitivity = lyricsBg.SpectrumSensitivity;
+            if (_spectrumAnalyzer != null)
+            {
+                _spectrumAnalyzer.BarCount = lyricsBg.SpectrumCount;
+                _spectrumAnalyzer.Sensitivity = lyricsBg.SpectrumSensitivity;
+            }
             UpdateSpectrumCaptureState();
         }
 
         private void UpdateSpectrumCaptureState()
         {
-            if (_lyricsWindowStatus == null) return;
+            if (_lyricsWindowStatus == null || _spectrumAnalyzer == null) return;
 
             bool shouldCapture = _isRenderingActive && _lyricsWindowStatus.LyricsBackgroundSettings.IsSpectrumOverlayEnabled;
             if (shouldCapture)
@@ -714,11 +730,11 @@ namespace Wavee.Controls.Lyrics.Core
 
         private void DisposeSpectrumAnalyzer()
         {
-            if (_spectrumAnalyzer.IsCapturing)
+            if (_spectrumAnalyzer is { IsCapturing: true })
             {
                 _spectrumAnalyzer.StopCapture();
             }
-            _spectrumAnalyzer.Dispose();
+            _spectrumAnalyzer?.Dispose();
         }
 
         private void TriggerRelayout()
