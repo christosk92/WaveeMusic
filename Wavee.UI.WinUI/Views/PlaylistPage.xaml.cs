@@ -33,7 +33,7 @@ public sealed partial class PlaylistPage : Page
         };
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
@@ -41,21 +41,14 @@ public sealed partial class PlaylistPage : Page
         Helpers.ConnectedAnimationHelper.TryStartAnimation(
             Helpers.ConnectedAnimationHelper.PlaylistArt, PlaylistArtContainer);
 
-        try
+        if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
         {
-            if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
-            {
-                ViewModel.PrefillFrom(nav);
-                await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
-            }
-            else if (e.Parameter is string playlistId && !string.IsNullOrWhiteSpace(playlistId))
-            {
-                await ViewModel.LoadCommand.ExecuteAsync(playlistId);
-            }
+            ViewModel.PrefillFrom(nav);
+            _ = ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
         }
-        catch (Exception ex)
+        else if (e.Parameter is string playlistId && !string.IsNullOrWhiteSpace(playlistId))
         {
-            _logger?.LogError(ex, "Unhandled error in PlaylistPage OnNavigatedTo");
+            _ = ViewModel.LoadCommand.ExecuteAsync(playlistId);
         }
     }
 

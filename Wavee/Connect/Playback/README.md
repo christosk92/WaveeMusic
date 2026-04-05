@@ -33,6 +33,27 @@ The complete audio pipeline architecture is implemented with all abstractions an
 - `TrackMetadata` - Rich metadata for any source
 - `AudioSinkStatus` - Playback status information
 
+## Threading: Playback Thread Rules
+
+The playback loop runs on a **dedicated thread** with a `SingleThreadedSynchronizationContext` (see `AudioPipeline.LaunchPlaybackLoop`). This keeps all `await` continuations off the thread pool, preventing UI thread pool starvation from causing PortAudio underflows.
+
+**Critical rule: never start bare async calls on the playback thread if those tasks will be awaited later while the thread is blocked.**
+
+Bare async calls (e.g. `var task = SomeMethodAsync()`) capture the current `SynchronizationContext`. Their internal `await` continuations will try to post back to the playback thread. If the playback thread is later blocked waiting for that task (directly or indirectly), the continuations can never run — **deadlock**.
+
+```csharp
+// BAD — captures playback thread's SynchronizationContext:
+var keyTask = _session.AudioKeys.RequestAudioKeyAsync(...);
+var cdnTask = _spClient.ResolveAudioStorageAsync(...);
+// If anything later blocks the playback thread waiting on these → deadlock
+
+// GOOD — runs on thread pool, no SynchronizationContext captured:
+var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(...));
+var cdnTask = Task.Run(() => _spClient.ResolveAudioStorageAsync(...));
+```
+
+This applies to any async work started from code running on the playback thread (inside `PlaybackLoopAsync` or anything it calls) that might be awaited from a blocking context later (e.g. `LazyProgressiveDownloader.EnsureCdnInitialized()` which uses `.GetAwaiter().GetResult()`).
+
 ## Architecture Overview
 
 ```

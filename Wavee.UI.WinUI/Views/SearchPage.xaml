@@ -12,6 +12,7 @@
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     mc:Ignorable="d"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <ScrollView VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical">

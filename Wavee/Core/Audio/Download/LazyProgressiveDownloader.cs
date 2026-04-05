@@ -111,25 +111,7 @@ public sealed class LazyProgressiveDownloader : Stream
             if (_fileSizeKnown)
                 return _fileSize;
 
-            // Try to resolve file size without blocking
-            if (_fileSizeResolver != null && !_cdnInitialized)
-            {
-                try
-                {
-                    _fileSize = _fileSizeResolver();
-                    _fileSizeKnown = true;
-                }
-                catch
-                {
-                    // Fall back to head size
-                }
-            }
-            else if (_cdnDownloader != null)
-            {
-                _fileSize = _cdnDownloader.Length;
-                _fileSizeKnown = true;
-            }
-
+            EnsureCdnInitialized();
             return _fileSize;
         }
     }
@@ -231,6 +213,7 @@ public sealed class LazyProgressiveDownloader : Stream
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        var oldPosition = _position;
         var newPosition = origin switch
         {
             SeekOrigin.Begin => offset,

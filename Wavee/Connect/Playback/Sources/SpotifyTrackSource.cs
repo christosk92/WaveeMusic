@@ -176,8 +176,11 @@ public sealed class SpotifyTrackSource : ITrackSource
         // 4. Start all fetches in parallel (but don't wait for all)
         // IMPORTANT: Use effectiveTrackId for audio key - must match the track that owns the file
         var headTask = _headFileClient.TryFetchHeadAsync(fileId, cancellationToken);
-        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, cancellationToken);
-        var cdnTask = _spClient.ResolveAudioStorageAsync(fileId, cancellationToken);
+        // Task.Run: these must NOT capture the playback thread's SingleThreadedSynchronizationContext.
+        // Without Task.Run, their await continuations post back to the playback thread, which deadlocks
+        // when LazyProgressiveDownloader.Length blocks that thread during NVorbis initialization.
+        var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, cancellationToken));
+        var cdnTask = Task.Run(() => _spClient.ResolveAudioStorageAsync(fileId, cancellationToken));
 
         // 5. Wait ONLY for head file - this enables instant start!
         var headData = await headTask;
@@ -591,8 +594,9 @@ public sealed class SpotifyTrackSource : ITrackSource
 
         // 6. Start all fetches in parallel
         var headTask = _headFileClient.TryFetchHeadAsync(fileId, cancellationToken);
-        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, cancellationToken);
-        var cdnTask = _spClient.ResolveAudioStorageAsync(fileId, cancellationToken);
+        // Task.Run: avoid capturing playback thread's SynchronizationContext (see track path comment)
+        var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, cancellationToken));
+        var cdnTask = Task.Run(() => _spClient.ResolveAudioStorageAsync(fileId, cancellationToken));
 
         // 7. Wait for head file first (for instant start)
         var headData = await headTask;

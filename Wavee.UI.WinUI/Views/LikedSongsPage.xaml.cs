@@ -22,7 +22,6 @@ public sealed partial class LikedSongsPage : Page
         ViewModel = Ioc.Default.GetRequiredService<LikedSongsViewModel>();
         _logger = Ioc.Default.GetService<ILogger<LikedSongsPage>>();
         InitializeComponent();
-        Unloaded += (_, _) => (ViewModel as IDisposable)?.Dispose();
 
         // Set up the date formatter for the track list
         TrackList.DateAddedFormatter = item =>
@@ -33,18 +32,10 @@ public sealed partial class LikedSongsPage : Page
         };
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-
-        try
-        {
-            await ViewModel.LoadCommand.ExecuteAsync(null);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Unhandled error in LikedSongsPage OnNavigatedTo");
-        }
+        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void TrackList_ArtistClicked(object? sender, string artistId)

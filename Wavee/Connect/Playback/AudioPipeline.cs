@@ -1090,15 +1090,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             trackStream = await _sourceRegistry.LoadAsync(trackUri, cancellationToken);
             _logger?.LogDebug("Track loaded: {Title} by {Artist}", trackStream.Metadata.Title, trackStream.Metadata.Artist);
 
-            // Pre-warm the stream: trigger CDN init + first data fetch BEFORE entering decode loop.
-            // This avoids the sync-over-async block in LazyProgressiveDownloader.EnsureCdnInitialized()
-            // that otherwise stalls the playback thread on the first Read() call.
-            if (trackStream.AudioStream.CanRead)
+            // Ensure CDN is initialized before the decoder starts reading.
+            // NVorbis reads pages sequentially on demand — the background download
+            // provides data progressively, so no full-file download is needed.
+            if (trackStream.AudioStream is LazyProgressiveDownloader lazyStream)
             {
-                var warmBuf = new byte[1];
-                _ = trackStream.AudioStream.Read(warmBuf, 0, 1);
-                if (trackStream.AudioStream.CanSeek)
-                    trackStream.AudioStream.Seek(0, SeekOrigin.Begin);
+                await lazyStream.PrefetchRangeAsync(0, 1, cancellationToken);
             }
 
             // Store track metadata
@@ -1170,6 +1167,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             {
                 bool seekRequested = false;
 
+                long buffersDecoded = 0;
                 await foreach (var buffer in decoder.DecodeAsync(
                     decodingStream,
                     currentStartPosition,
@@ -1197,14 +1195,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                     if (seekRequested)
                     {
-                        var seekSw = System.Diagnostics.Stopwatch.StartNew();
-
                         // Prefetch data at seek position for streaming tracks
                         await trackStream.PrefetchForSeekAsync(
                             TimeSpan.FromMilliseconds(currentStartPosition),
                             cancellationToken);
-                        _logger?.LogInformation("[PERF] Seek prefetch completed in {Elapsed}ms for position {Position}ms",
-                            seekSw.ElapsedMilliseconds, currentStartPosition);
 
                         // Reset stream position if seekable
                         if (decodingStream.CanSeek)
@@ -1236,6 +1230,7 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                     {
                         PublishStateUpdate();
                     }
+                    buffersDecoded++;
                 }
 
                 // If no seek was requested, we're done with the track

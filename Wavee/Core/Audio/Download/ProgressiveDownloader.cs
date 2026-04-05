@@ -38,11 +38,15 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
     private long _position;
     private bool _disposed;
-    private bool _streamingMode = true;
     private DateTime _lastReadTime = DateTime.UtcNow;
     private long _bytesDownloadedTotal;
     private readonly object _throughputLock = new();
     private int _currentThroughput;
+
+    // Signaled by FetchChunkAsync whenever new data is written to the temp file.
+    // EnsureDataAvailable waits on this instead of doing its own HTTP request,
+    // which avoids _fetchLock contention with the background download loop.
+    private readonly ManualResetEventSlim _newDataAvailable = new(false);
 
     // Background download state
     private Task? _backgroundDownloadTask;
@@ -178,14 +182,6 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     /// </summary>
     public bool IsFullyDownloaded => _downloadedRanges.TotalBytes >= _fileSize;
 
-    /// <summary>
-    /// Sets streaming mode for prefetch optimization.
-    /// </summary>
-    /// <param name="streaming">True for sequential prefetch, false for random access.</param>
-    public void SetStreamingMode(bool streaming)
-    {
-        _streamingMode = streaming;
-    }
 
     #endregion
 
@@ -207,19 +203,13 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         if (bytesToRead == 0)
             return 0;
 
-        // Ensure data is available (blocking)
+        // Wait for data — blocks until the background download delivers it
         EnsureDataAvailable(_position, bytesToRead);
 
         // Read from temp file
         var bytesRead = ReadFromTempFile(_position, buffer[..bytesToRead]);
         _position += bytesRead;
         _lastReadTime = DateTime.UtcNow;
-
-        // Trigger background prefetch if in streaming mode
-        if (_streamingMode)
-        {
-            _ = PrefetchAheadAsync(_position, _disposeCts.Token);
-        }
 
         return bytesRead;
     }
@@ -247,12 +237,6 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         var bytesRead = ReadFromTempFile(_position, buffer.Span[..bytesToRead]);
         _position += bytesRead;
         _lastReadTime = DateTime.UtcNow;
-
-        // Trigger background prefetch if in streaming mode
-        if (_streamingMode)
-        {
-            _ = PrefetchAheadAsync(_position, cancellationToken);
-        }
 
         return bytesRead;
     }
@@ -287,21 +271,40 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     {
         var end = start + length;
 
-        // Check if we already have this data
+        // Fast path — data already downloaded
         if (_downloadedRanges.ContainsRange(start, end))
             return;
 
-        // Run the async fetch on a thread pool thread so the HTTP completion
-        // doesn't need to marshal back to our dedicated playback thread.
-        // This prevents deadlocks when the thread pool is saturated by UI work.
-        Task.Run(() => FetchRangeAsync(start, end, _disposeCts.Token)).GetAwaiter().GetResult();
+        // Passive wait: instead of launching a competing HTTP request that fights
+        // the background download for _fetchLock, we wait for the background
+        // download to deliver the data. It signals _newDataAvailable after every chunk.
+        while (!_downloadedRanges.ContainsRange(start, end))
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            // Reset before re-checking to close the race window: any Set() that
+            // fires after our ContainsRange check will be visible to the next Wait().
+            _newDataAvailable.Reset();
+
+            if (_downloadedRanges.ContainsRange(start, end))
+                return;
+
+            if (!_newDataAvailable.Wait(TimeSpan.FromSeconds(30), _disposeCts.Token))
+            {
+                // Timeout — background download may have stalled. Fall back to
+                // a direct on-demand fetch so playback doesn't hang forever.
+                _logger?.LogWarning(
+                    "Waited 30s for data at pos={Position}, falling back to on-demand fetch", start);
+                Task.Run(() => FetchRangeAsync(start, end, _disposeCts.Token)).GetAwaiter().GetResult();
+                return;
+            }
+        }
     }
 
     private async Task EnsureDataAvailableAsync(long start, int length, CancellationToken cancellationToken)
     {
         var end = start + length;
 
-        // Check if we already have this data
         if (_downloadedRanges.ContainsRange(start, end))
             return;
 
@@ -402,6 +405,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                     var chunkStart = (long)startChunk * chunkSize;
                     WriteToTempFile(chunkStart, cached);
                     _downloadedRanges.AddRange(chunkStart, chunkStart + cached.Length);
+                    _newDataAvailable.Set();
                     _logger?.LogDebug("Cache hit: chunk {Chunk} for file {FileId}", startChunk, _fileId.ToBase16());
                     BufferStateChanged?.Invoke(GetBufferStatus());
                     return;
@@ -461,6 +465,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             _downloadedRanges.AddRange(start, start + totalRead);
             Interlocked.Add(ref _bytesDownloadedTotal, totalRead);
 
+            // Wake any reader blocked in EnsureDataAvailable
+            _newDataAvailable.Set();
+
             // Update throughput
             stopwatch.Stop();
             if (stopwatch.ElapsedMilliseconds > 0)
@@ -483,70 +490,6 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         {
             _bufferPool.Return(buffer);
         }
-    }
-
-    private async Task PrefetchAheadAsync(long currentPosition, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // Calculate read-ahead based on current throughput and settings
-            var readAheadBytes = CalculateReadAheadBytes();
-            var prefetchEnd = Math.Min(currentPosition + readAheadBytes, _fileSize);
-
-            // Check what we need to fetch
-            var gaps = _downloadedRanges.GetGaps(currentPosition, prefetchEnd);
-            if (gaps.Count == 0)
-                return;
-
-            // Fetch ALL gaps in parallel (not just the first) to prevent future blocking reads
-            var tasks = new List<Task>(gaps.Count);
-            foreach (var gap in gaps)
-            {
-                tasks.Add(FetchRangeAsync(gap.Start, gap.End, cancellationToken));
-            }
-            await Task.WhenAll(tasks);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogDebug(ex, "Background prefetch failed (non-critical)");
-        }
-    }
-
-    private long CalculateReadAheadBytes()
-    {
-        // Base read-ahead on current throughput
-        // At 320kbps, 5 seconds = 200KB
-        // At lower throughput, increase buffer
-        var baseReadAhead = _params.ReadAheadDuration.TotalSeconds * 320 * 1000 / 8;
-
-        if (_currentThroughput > 0 && _currentThroughput < 320 * 1000 / 8)
-        {
-            // Increase buffer when throughput is low
-            var factor = (double)(320 * 1000 / 8) / _currentThroughput;
-            baseReadAhead *= Math.Min(factor, 3); // Cap at 3x
-        }
-
-        return (long)Math.Max(baseReadAhead, _params.MinimumChunkSize);
-    }
-
-    private long CalculateTargetBufferBytes()
-    {
-        // Throughput thresholds for buffer sizing
-        const int FastThreshold = 500 * 1024;  // 500 KB/s - fast connection
-        const int SlowThreshold = 100 * 1024;  // 100 KB/s - slow connection
-        const int BitrateBytes = 320 * 1000 / 8; // 320kbps in bytes/sec
-
-        var minBytes = (long)(_params.MinBufferAhead.TotalSeconds * BitrateBytes);
-        var maxBytes = (long)(_params.MaxBufferAhead.TotalSeconds * BitrateBytes);
-
-        if (_currentThroughput >= FastThreshold)
-            return minBytes;  // Fast connection, minimal buffer needed
-        if (_currentThroughput <= SlowThreshold || _currentThroughput == 0)
-            return maxBytes;  // Slow/unknown connection, max buffer
-
-        // Linear interpolation between thresholds
-        var ratio = (double)(_currentThroughput - SlowThreshold) / (FastThreshold - SlowThreshold);
-        return (long)(maxBytes - ratio * (maxBytes - minBytes));
     }
 
     #endregion
@@ -608,17 +551,6 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested && !IsFullyDownloaded)
             {
-                // Check how much we have buffered ahead of playback position
-                var bufferedAhead = _downloadedRanges.ContainedLengthFrom(_position);
-                var targetBuffer = CalculateTargetBufferBytes();
-
-                if (bufferedAhead >= targetBuffer)
-                {
-                    // Buffer is full - wait before checking again
-                    await Task.Delay(1000, cancellationToken);
-                    continue;
-                }
-
                 // Get all gaps in the file
                 var gaps = _downloadedRanges.GetGaps(0, _fileSize);
                 if (gaps.Count == 0)
@@ -635,8 +567,8 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                 var chunkEnd = Math.Min(gap.Start + _params.MaximumChunkSize, gap.End);
                 await FetchRangeAsync(gap.Start, chunkEnd, cancellationToken);
 
-                // Small delay to avoid overwhelming the server and to yield to playback
-                await Task.Delay(50, cancellationToken);
+                // Yield to playback between chunks
+                await Task.Yield();
             }
         }
         catch (OperationCanceledException)
@@ -687,6 +619,8 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
             _disposeCts.Cancel();
             _disposeCts.Dispose();
+            _newDataAvailable.Set(); // Unblock any waiting reader
+            _newDataAvailable.Dispose();
             _fetchLock.Dispose();
             _tempFile.Dispose();
 
@@ -720,6 +654,8 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
         await _disposeCts.CancelAsync();
         _disposeCts.Dispose();
+        _newDataAvailable.Set(); // Unblock any waiting reader
+        _newDataAvailable.Dispose();
         _fetchLock.Dispose();
         await _tempFile.DisposeAsync();
 

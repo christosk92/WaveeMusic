@@ -115,60 +115,64 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
             ElementCompositionPreview.SetElementChildVisual(BlurredBackground, null);
             _blurSprite.Brush?.Dispose();
             _blurSprite.Dispose();
+            _blurSprite = null;
         }
 
         var visual = ElementCompositionPreview.GetElementVisual(BlurredBackground);
         var compositor = visual.Compositor;
 
-        // Load album art
+        // Start loading image immediately (async, non-blocking)
         _blurSurface = LoadedImageSurface.StartLoadFromUri(new Uri(imageUrl));
-        var surfaceBrush = compositor.CreateSurfaceBrush();
-        surfaceBrush.Surface = _blurSurface;
-        surfaceBrush.Stretch = CompositionStretch.UniformToFill;
 
-        // Gaussian blur effect
-        var blurEffect = new GaussianBlurEffect
-        {
-            Name = "Blur",
-            BlurAmount = 60f,
-            Source = new CompositionEffectSourceParameter("image"),
-            BorderMode = EffectBorderMode.Hard
-        };
-
-        var effectFactory = compositor.CreateEffectFactory(blurEffect);
-        var effectBrush = effectFactory.CreateBrush();
-        effectBrush.SetSourceParameter("image", surfaceBrush);
-
-        // Diagonal gradient mask: top-left opaque → center-right transparent
-        var gradientMask = compositor.CreateLinearGradientBrush();
-        gradientMask.StartPoint = new Vector2(0f, 0f);
-        gradientMask.EndPoint = new Vector2(0.7f, 0.6f);
-        gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0f,
-            Windows.UI.Color.FromArgb(160, 255, 255, 255)));
-        gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0.4f,
-            Windows.UI.Color.FromArgb(60, 255, 255, 255)));
-        gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(1f,
-            Windows.UI.Color.FromArgb(0, 255, 255, 255)));
-
-        // Mask: blurred image × gradient
-        var maskBrush = compositor.CreateMaskBrush();
-        maskBrush.Source = effectBrush;
-        maskBrush.Mask = gradientMask;
-
-        // Sprite visual fills the border
-        _blurSprite = compositor.CreateSpriteVisual();
-        _blurSprite.Brush = maskBrush;
-        _blurSprite.RelativeSizeAdjustment = Vector2.One;
-
-        // Start invisible, fade in after image loads to avoid flash
-        _blurSprite.Opacity = 0f;
-        ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
-
+        // Defer all GPU-heavy composition work (blur effect, gradient mask) until
+        // the image has actually loaded — avoids stalling the navigation transition.
         _blurSurface.LoadCompleted += (_, _) =>
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (_blurSprite == null || compositor == null) return;
+                if (_blurSurface == null) return;
+
+                var surfaceBrush = compositor.CreateSurfaceBrush();
+                surfaceBrush.Surface = _blurSurface;
+                surfaceBrush.Stretch = CompositionStretch.UniformToFill;
+
+                // Gaussian blur effect
+                var blurEffect = new GaussianBlurEffect
+                {
+                    Name = "Blur",
+                    BlurAmount = 60f,
+                    Source = new CompositionEffectSourceParameter("image"),
+                    BorderMode = EffectBorderMode.Hard
+                };
+
+                var effectFactory = compositor.CreateEffectFactory(blurEffect);
+                var effectBrush = effectFactory.CreateBrush();
+                effectBrush.SetSourceParameter("image", surfaceBrush);
+
+                // Diagonal gradient mask: top-left opaque → center-right transparent
+                var gradientMask = compositor.CreateLinearGradientBrush();
+                gradientMask.StartPoint = new Vector2(0f, 0f);
+                gradientMask.EndPoint = new Vector2(0.7f, 0.6f);
+                gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0f,
+                    Windows.UI.Color.FromArgb(160, 255, 255, 255)));
+                gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0.4f,
+                    Windows.UI.Color.FromArgb(60, 255, 255, 255)));
+                gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(1f,
+                    Windows.UI.Color.FromArgb(0, 255, 255, 255)));
+
+                // Mask: blurred image × gradient
+                var maskBrush = compositor.CreateMaskBrush();
+                maskBrush.Source = effectBrush;
+                maskBrush.Mask = gradientMask;
+
+                // Sprite visual fills the border
+                _blurSprite = compositor.CreateSpriteVisual();
+                _blurSprite.Brush = maskBrush;
+                _blurSprite.RelativeSizeAdjustment = Vector2.One;
+                _blurSprite.Opacity = 0f;
+                ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
+
+                // Fade in
                 var fadeAnim = compositor.CreateScalarKeyFrameAnimation();
                 fadeAnim.InsertKeyFrame(0f, 0f);
                 fadeAnim.InsertKeyFrame(1f, 1f,
@@ -179,28 +183,21 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         };
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
         Helpers.ConnectedAnimationHelper.TryStartAnimation(
             Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
 
-        try
+        if (e.Parameter is ContentNavigationParameter nav)
         {
-            if (e.Parameter is ContentNavigationParameter nav)
-            {
-                ViewModel.PrefillFrom(nav);
-                await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
-            }
-            else if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
-            {
-                await ViewModel.LoadCommand.ExecuteAsync(albumId);
-            }
+            ViewModel.PrefillFrom(nav);
+            _ = ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
         }
-        catch (Exception ex)
+        else if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
         {
-            _logger?.LogError(ex, "Unhandled error in AlbumPage OnNavigatedTo");
+            _ = ViewModel.LoadCommand.ExecuteAsync(albumId);
         }
     }
 

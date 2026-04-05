@@ -19,18 +19,10 @@ public sealed partial class AlbumsLibraryPage : Page
         InitializeComponent();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-
-        try
-        {
-            await ViewModel.LoadCommand.ExecuteAsync(null);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Navigation error: {ex}");
-        }
+        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void LibraryGrid_ItemDoubleTapped(object? sender, object? e)

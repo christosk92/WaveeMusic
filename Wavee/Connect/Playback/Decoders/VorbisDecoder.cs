@@ -34,6 +34,12 @@ public sealed class VorbisDecoder : IAudioDecoder
 
     private readonly ILogger? _logger;
 
+    // Cached VorbisReader from GetFormatAsync — reused in DecodeAsync to avoid
+    // creating two readers (each reads 3 header pages through the stream chain).
+    private VorbisReader? _cachedReader;
+    private SkipStream? _cachedSkipStream;
+    private Stream? _cachedForStream;
+
     public string FormatName => "Vorbis";
 
     /// <summary>
@@ -107,23 +113,29 @@ public sealed class VorbisDecoder : IAudioDecoder
 
     /// <summary>
     /// Gets the PCM audio format this decoder will output.
+    /// Caches the VorbisReader for reuse in <see cref="DecodeAsync"/>.
     /// </summary>
-    public async Task<AudioFormat> GetFormatAsync(Stream stream, CancellationToken cancellationToken = default)
+    public Task<AudioFormat> GetFormatAsync(Stream stream, CancellationToken cancellationToken = default)
     {
         // Wrap stream to skip Spotify header
-        await using var skipStream = new SkipStream(stream, SpotifyHeaderSize, leaveOpen: true);
+        var skipStream = new SkipStream(stream, SpotifyHeaderSize, leaveOpen: true);
+        var reader = new VorbisReader(skipStream, closeOnDispose: false);
 
-        using var reader = new VorbisReader(skipStream, closeOnDispose: false);
+        // Cache for reuse in DecodeAsync — avoids creating a second VorbisReader
+        _cachedReader = reader;
+        _cachedSkipStream = skipStream;
+        _cachedForStream = stream;
 
-        return new AudioFormat(
+        return Task.FromResult(new AudioFormat(
             SampleRate: reader.SampleRate,
             Channels: reader.Channels,
             BitsPerSample: 16 // We output 16-bit PCM
-        );
+        ));
     }
 
     /// <summary>
     /// Decodes the audio stream into PCM audio buffers.
+    /// Reuses the cached VorbisReader from <see cref="GetFormatAsync"/> when available.
     /// </summary>
     public async IAsyncEnumerable<AudioBuffer> DecodeAsync(
         Stream stream,
@@ -131,23 +143,30 @@ public sealed class VorbisDecoder : IAudioDecoder
         Action<string>? onMetadataReceived = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Create a stream that skips the Spotify header
-        // Note: We don't dispose this because the caller owns the stream
-        var skipStream = new SkipStream(stream, SpotifyHeaderSize, leaveOpen: true);
+        SkipStream skipStream;
+        VorbisReader? reader;
 
-        VorbisReader? reader = null;
+        // Reuse cached VorbisReader from GetFormatAsync if available
+        if (_cachedReader != null && _cachedForStream == stream)
+        {
+            reader = _cachedReader;
+            skipStream = _cachedSkipStream!;
+            _cachedReader = null;
+            _cachedSkipStream = null;
+            _cachedForStream = null;
+        }
+        else
+        {
+            skipStream = new SkipStream(stream, SpotifyHeaderSize, leaveOpen: true);
+            reader = new VorbisReader(skipStream, closeOnDispose: false);
+        }
+
         try
         {
-            reader = new VorbisReader(skipStream, closeOnDispose: false);
-
             // Seek to start position if specified
             if (startPositionMs > 0)
-            {
                 reader.TimePosition = TimeSpan.FromMilliseconds(startPositionMs);
-                _logger?.LogDebug("Seeked to position: {PositionMs}ms", startPositionMs);
-            }
 
-            var format = new AudioFormat(reader.SampleRate, reader.Channels, 16);
             var floatBuffer = ArrayPool<float>.Shared.Rent(SamplesPerBuffer * reader.Channels);
             var pcmBuffer = ArrayPool<byte>.Shared.Rent(SamplesPerBuffer * reader.Channels * 2);
 
@@ -186,7 +205,7 @@ public sealed class VorbisDecoder : IAudioDecoder
         }
         finally
         {
-            reader?.Dispose();
+            reader.Dispose();
             await skipStream.DisposeAsync();
         }
     }

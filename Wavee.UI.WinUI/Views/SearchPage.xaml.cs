@@ -26,16 +26,15 @@ public sealed partial class SearchPage : Page
         ViewModel = Ioc.Default.GetRequiredService<SearchViewModel>();
         _themeColors = Ioc.Default.GetService<Services.ThemeColorService>();
         InitializeComponent();
-        Unloaded += (_, _) => (ViewModel as IDisposable)?.Dispose();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
         if (e.Parameter is string query && !string.IsNullOrWhiteSpace(query))
         {
-            await ViewModel.LoadAsync(query);
+            _ = ViewModel.LoadAsync(query);
         }
     }
 
