@@ -18,7 +18,7 @@ public sealed class ImageCacheService
     private readonly object _lock = new();
     private readonly int _maxSize;
 
-    public ImageCacheService(int maxSize = 200)
+    public ImageCacheService(int maxSize = 100)
     {
         _maxSize = maxSize;
     }

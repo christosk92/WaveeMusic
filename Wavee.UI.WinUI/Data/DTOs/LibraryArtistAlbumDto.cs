@@ -10,4 +10,5 @@ public sealed record LibraryArtistAlbumDto
     public string? ImageUrl { get; init; }
     public int Year { get; init; }
     public string? AlbumType { get; init; } // Album, Single, EP, Compilation
+    public bool IsSaved { get; init; }
 }

@@ -22,6 +22,12 @@ public interface ISpotifyLibraryService : IAsyncDisposable
     Task SyncAllAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches metadata for library items in spotify_library that are missing
+    /// from the entities table (fixes INNER JOIN gaps after incremental sync).
+    /// </summary>
+    Task BackfillMissingMetadataAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Syncs liked songs (saved tracks).
     /// </summary>
     Task SyncTracksAsync(CancellationToken ct = default);

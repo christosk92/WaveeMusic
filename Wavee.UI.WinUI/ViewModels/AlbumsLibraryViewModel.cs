@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Dispatching;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.ViewModels.Contracts;
@@ -16,6 +17,8 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IAlbumService _albumService;
+    private readonly ITrackLikeService? _likeService;
+    private readonly DispatcherQueue _dispatcherQueue;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -60,10 +63,18 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     [ObservableProperty]
     private string _selectedAlbumMetadata = "";
 
-    public AlbumsLibraryViewModel(ILibraryDataService libraryDataService, IAlbumService albumService)
+    public AlbumsLibraryViewModel(
+        ILibraryDataService libraryDataService,
+        IAlbumService albumService,
+        ITrackLikeService? likeService = null)
     {
         _libraryDataService = libraryDataService;
         _albumService = albumService;
+        _likeService = likeService;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
     }
 
     [RelayCommand]
@@ -207,6 +218,34 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         {
             IsLoadingTracks = false;
         }
+    }
+
+    private void OnSaveStateChanged()
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_likeService == null || Albums.Count == 0) return;
+
+            var removed = Albums.Where(a => !_likeService.IsSaved(SavedItemType.Album, a.Id)).ToList();
+            if (removed.Count == 0) return;
+
+            foreach (var album in removed)
+            {
+                Albums.Remove(album);
+            }
+
+            if (SelectedAlbum != null && removed.Any(a => a.Id == SelectedAlbum.Id))
+            {
+                SelectedAlbum = null;
+            }
+
+            ApplyFilter();
+
+            if (SelectedAlbum == null && FilteredAlbums.Count > 0)
+            {
+                SelectedAlbum = FilteredAlbums[0];
+            }
+        });
     }
 
     private void ApplyFilter()

@@ -14,6 +14,9 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
         public AlphaMaskEffect? FinalStrokeEffect { get; }
         public CompositeEffect? CombinedEffect { get; }
 
+        private CanvasCommandList? _fillGradientLayer;
+        private CanvasCommandList? _strokeGradientLayer;
+
         public RenderLyricsRegion(ICanvasImage cachedFill, ICanvasImage? cachedStroke)
         {
             FinalFillEffect = new AlphaMaskEffect { AlphaMask = cachedFill };
@@ -29,8 +32,30 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
             }
         }
 
+        public CanvasCommandList GetFillGradientLayer(ICanvasResourceCreator creator)
+        {
+            // CanvasCommandList cannot be reused after being consumed as an image source,
+            // so we must create a fresh one each frame.
+            _fillGradientLayer?.Dispose();
+            _fillGradientLayer = new CanvasCommandList(creator);
+            return _fillGradientLayer;
+        }
+
+        public CanvasCommandList? GetStrokeGradientLayer(ICanvasResourceCreator creator)
+        {
+            if (FinalStrokeEffect == null) return null;
+            _strokeGradientLayer?.Dispose();
+            _strokeGradientLayer = new CanvasCommandList(creator);
+            return _strokeGradientLayer;
+        }
+
         public void Dispose()
         {
+            _fillGradientLayer?.Dispose();
+            _strokeGradientLayer?.Dispose();
+            _fillGradientLayer = null;
+            _strokeGradientLayer = null;
+
             FinalFillEffect?.Dispose();
             FinalStrokeEffect?.Dispose();
             CombinedEffect?.Dispose();

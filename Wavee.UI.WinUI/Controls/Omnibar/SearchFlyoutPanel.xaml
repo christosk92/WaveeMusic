@@ -41,7 +41,7 @@
                         CornerRadius="{x:Bind local:SearchFlyoutPanel.GetImageCornerRadius(Type)}"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Image Stretch="UniformToFill"
-                           Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}}"/>
+                           Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"/>
                 </Border>
 
                 <!-- Title + Subtitle -->

@@ -41,7 +41,10 @@ public sealed partial class RightPanelView
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is RightPanelView view)
+        {
             view.Visibility = (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed;
+            view.UpdateTimerState();
+        }
     }
 
     private static void OnSelectedModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

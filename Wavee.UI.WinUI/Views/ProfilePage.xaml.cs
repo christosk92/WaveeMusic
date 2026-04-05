@@ -130,7 +130,8 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
 
         if (imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            ProfileAvatar.ProfilePicture = new BitmapImage(new Uri(imageUrl));
+            var cache = Ioc.Default.GetService<ImageCacheService>();
+            ProfileAvatar.ProfilePicture = cache?.GetOrCreate(imageUrl, 100);
         }
     }
 

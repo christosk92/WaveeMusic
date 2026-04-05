@@ -2,14 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Reactive.Disposables;
-using System.Reactive.Disposables.Fluent;
-using System.Reactive.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
-using DynamicData;
-using DynamicData.Binding;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -28,7 +23,8 @@ namespace Wavee.UI.WinUI.ViewModels;
 public enum AlbumSortColumn { Title, Artist, TrackNumber }
 
 /// <summary>
-/// ViewModel for the Album detail page with reactive filtering and sorting using DynamicData.
+/// ViewModel for the Album detail page.
+/// Album tracks are static after load — no reactive pipeline needed.
 /// </summary>
 public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel, ITabBarItemContent, IDisposable
 {
@@ -36,9 +32,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
-    private readonly SourceCache<LazyTrackItem, string> _tracksSource = new(t => t.Id);
-    private readonly ReadOnlyObservableCollection<LazyTrackItem> _filteredTracks;
-    private readonly CompositeDisposable _disposables = new();
+
+    /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
+    private List<LazyTrackItem> _allTracks = [];
 
     private const int RenderFrameSettleDelayMs = 50;
 
@@ -206,7 +202,13 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public string SearchQuery
     {
         get => _searchQuery;
-        set => this.RaiseAndSetIfChanged(ref _searchQuery, value);
+        set
+        {
+            var old = _searchQuery;
+            this.RaiseAndSetIfChanged(ref _searchQuery, value);
+            if (old != value && _allTracks.Count > 0)
+                ApplyFilterAndSort();
+        }
     }
 
     /// <summary>
@@ -319,16 +321,20 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool HasMoreByArtist => MoreByArtist.Count > 0;
 
     /// <summary>
-    /// Filtered and sorted tracks collection for UI binding.
+    /// Filtered and sorted tracks for UI binding. Replaced wholesale on load/filter/sort.
     /// </summary>
-    public ReadOnlyObservableCollection<LazyTrackItem> FilteredTracks => _filteredTracks;
+    private IReadOnlyList<LazyTrackItem> _filteredTracks = Array.Empty<LazyTrackItem>();
+    public IReadOnlyList<LazyTrackItem> FilteredTracks
+    {
+        get => _filteredTracks;
+        private set => this.RaiseAndSetIfChanged(ref _filteredTracks, value);
+    }
 
     // Sort indicator properties for column headers
-    // Albums typically sort by track number, so Title and Artist are the only sortable columns
     public bool IsSortingByTitle => CurrentSortColumn == AlbumSortColumn.Title;
     public bool IsSortingByArtist => CurrentSortColumn == AlbumSortColumn.Artist;
-    public bool IsSortingByAlbum => false; // Not applicable for album view
-    public bool IsSortingByAddedAt => false; // Not applicable for album view
+    public bool IsSortingByAlbum => false;
+    public bool IsSortingByAddedAt => false;
 
     /// <summary>
     /// Sort chevron glyph: up for ascending, down for descending.
@@ -341,53 +347,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _logger = logger;
-
-        // Create observable filter predicate from SearchQuery (throttled for performance)
-        var filterPredicate = this.WhenAnyValue(x => x.SearchQuery)
-            .Throttle(TimeSpan.FromMilliseconds(200))
-            .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Select(CreateFilterPredicate);
-
-        // Create observable sort comparer from sort properties
-        var sortComparer = this.WhenAnyValue(
-                x => x.CurrentSortColumn,
-                x => x.IsSortDescending)
-            .Select(tuple => CreateSortComparer(tuple.Item1, tuple.Item2));
-
-        // Build reactive pipeline: Filter -> SortAndBind
-        _tracksSource.Connect()
-            .Filter(filterPredicate)
-            .SortAndBind(out _filteredTracks, sortComparer)
-            .DisposeMany()
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        // Compute total tracks count from source
-        _tracksSource.CountChanged
-            .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(count => TotalTracks = count)
-            .DisposeWith(_disposables);
-
-        // Stop loading when tracks are added to the source
-        _tracksSource.Connect()
-            .WhereReasonsAre(ChangeReason.Add, ChangeReason.Refresh)
-            .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(_ =>
-            {
-                if (IsLoadingTracks)
-                {
-                    IsLoadingTracks = false;
-                }
-            })
-            .DisposeWith(_disposables);
-
-        // Compute total duration from source
-        _tracksSource.Connect()
-            .ToCollection()
-            .Select(tracks => FormatDuration(tracks.Sum(t => t.Duration.TotalSeconds)))
-            .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(duration => TotalDuration = duration)
-            .DisposeWith(_disposables);
     }
 
     public void Initialize(string albumId)
@@ -408,33 +367,31 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         }
     }
 
-    private static Func<LazyTrackItem, bool> CreateFilterPredicate(string? query)
+    private void ApplyFilterAndSort()
     {
-        if (string.IsNullOrWhiteSpace(query))
-            return _ => true;
+        IEnumerable<LazyTrackItem> result = _allTracks;
 
-        var q = query.Trim();
-        return t =>
-            t.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-            t.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static IComparer<LazyTrackItem> CreateSortComparer(AlbumSortColumn column, bool descending)
-    {
-        return (column, descending) switch
+        // Filter
+        var query = SearchQuery?.Trim();
+        if (!string.IsNullOrEmpty(query))
         {
-            (AlbumSortColumn.Title, false) => SortExpressionComparer<LazyTrackItem>.Ascending(t => t.Title),
-            (AlbumSortColumn.Title, true) => SortExpressionComparer<LazyTrackItem>.Descending(t => t.Title),
-            (AlbumSortColumn.Artist, false) => SortExpressionComparer<LazyTrackItem>.Ascending(t => t.ArtistName),
-            (AlbumSortColumn.Artist, true) => SortExpressionComparer<LazyTrackItem>.Descending(t => t.ArtistName),
-            // Default: sort by disc number, then track number
-            (AlbumSortColumn.TrackNumber, false) => SortExpressionComparer<LazyTrackItem>
-                .Ascending(t => t.OriginalIndex),
-            (AlbumSortColumn.TrackNumber, true) => SortExpressionComparer<LazyTrackItem>
-                .Descending(t => t.OriginalIndex),
-            _ => SortExpressionComparer<LazyTrackItem>
-                .Ascending(t => t.OriginalIndex)
+            result = result.Where(t =>
+                t.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                t.ArtistName.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Sort
+        result = (CurrentSortColumn, IsSortDescending) switch
+        {
+            (AlbumSortColumn.Title, false) => result.OrderBy(t => t.Title, StringComparer.OrdinalIgnoreCase),
+            (AlbumSortColumn.Title, true) => result.OrderByDescending(t => t.Title, StringComparer.OrdinalIgnoreCase),
+            (AlbumSortColumn.Artist, false) => result.OrderBy(t => t.ArtistName, StringComparer.OrdinalIgnoreCase),
+            (AlbumSortColumn.Artist, true) => result.OrderByDescending(t => t.ArtistName, StringComparer.OrdinalIgnoreCase),
+            (AlbumSortColumn.TrackNumber, true) => result.OrderByDescending(t => t.OriginalIndex),
+            _ => result // already in track order
         };
+
+        FilteredTracks = result.ToList();
     }
 
     private static string FormatDuration(double totalSeconds)
@@ -456,9 +413,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private async Task LoadAsync(string? albumId)
     {
         if (string.IsNullOrEmpty(albumId) || IsLoading) return;
-        // Only show shimmer skeleton if we don't have prefilled album art
-        // (e.g., from connected animation). Otherwise the panel swap causes
-        // the image to flash/disappear during the API call.
         IsLoading = string.IsNullOrEmpty(AlbumImageUrl);
         IsLoadingTracks = true;
         HasError = false;
@@ -467,20 +421,19 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         try
         {
-            // Add shimmer placeholders for tracks (estimated count)
-            _tracksSource.Edit(cache =>
-            {
-                cache.Clear();
-                for (int i = 0; i < 10; i++)
-                    cache.AddOrUpdate(LazyTrackItem.Placeholder($"ph-{i}", i + 1));
-            });
+            // Show shimmer placeholders immediately
+            FilteredTracks = Enumerable.Range(0, 10)
+                .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
+                .ToList();
 
-            // Load album details and user playlists in parallel
+            // Start network I/O before yielding
             var detailTask = _albumService.GetDetailAsync(albumId);
             var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
 
-            await Task.WhenAll(detailTask, playlistsTask);
+            // Yield so shimmer placeholders render at least one frame
+            await Task.Delay(RenderFrameSettleDelayMs);
 
+            await Task.WhenAll(detailTask, playlistsTask);
             var detail = await detailTask;
 
             // Map metadata (respect prefilled values from navigation)
@@ -507,36 +460,27 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 {
                     var prefix = c.Type == "P" ? "\u2117" : "\u00A9";
                     var text = c.Text?.TrimStart() ?? "";
-                    // Don't double-prefix if text already starts with © or ℗
                     if (text.StartsWith("\u00A9") || text.StartsWith("\u2117"))
                         return text;
                     return $"{prefix} {text}";
                 }));
 
             Playlists = await playlistsTask;
-
-            // Header is ready
             IsLoading = false;
 
-            // Clear shimmer placeholders first — let the ListView process removals.
-            // Task.Delay ensures at least one full render frame passes so the ListView
-            // treats the subsequent adds as fresh entries → staggered entrance animation.
-            _tracksSource.Clear();
+            // Build real track list
+            _allTracks = detail.Tracks
+                .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
+                .ToList();
+
+            TotalTracks = _allTracks.Count;
+            TotalDuration = FormatDuration(_allTracks.Sum(t => t.Duration.TotalSeconds));
+            IsLoadingTracks = false;
+
+            // Clear shimmers, yield a frame, then show real tracks for staggered entrance
+            FilteredTracks = Array.Empty<LazyTrackItem>();
             await Task.Delay(RenderFrameSettleDelayMs);
-
-            // Add real tracks in a fresh batch — ListView sees these as new entries → staggered entrance animation
-            _tracksSource.Edit(cache =>
-            {
-                int idx = 1;
-                foreach (var t in detail.Tracks)
-                {
-                    cache.AddOrUpdate(LazyTrackItem.Loaded(t.Id, idx, t));
-                    idx++;
-                }
-            });
-
-            if (detail.Tracks.Count == 0)
-                IsLoadingTracks = false;
+            ApplyFilterAndSort();
 
             // Related albums
             MoreByArtist.Clear();
@@ -579,6 +523,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             CurrentSortColumn = column;
             IsSortDescending = false;
         }
+
+        ApplyFilterAndSort();
     }
 
     [RelayCommand]
@@ -704,7 +650,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void Dispose()
     {
-        _disposables.Dispose();
-        _tracksSource.Dispose();
+        _allTracks.Clear();
     }
 }

@@ -98,11 +98,23 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                 _logger?.LogWarning(syncEx, "Library sync partially failed — continuing with available data");
             }
 
+            // Backfill metadata for any items in spotify_library missing from entities table
+            try
+            {
+                await _libraryService.BackfillMissingMetadataAsync();
+                _logger?.LogInformation("Metadata backfill completed");
+            }
+            catch (Exception bfEx)
+            {
+                _logger?.LogWarning(bfEx, "Metadata backfill failed — some items may be missing");
+            }
+
             // Reload in-memory cache from freshly synced DB
             if (_likeService != null)
             {
                 await _likeService.InitializeAsync();
-                _logger?.LogInformation("TrackLikeService cache initialized");
+                await _likeService.ReloadCacheAsync();
+                _logger?.LogInformation("TrackLikeService cache reloaded after sync");
             }
 
             // Drain any pending outbox operations
@@ -122,6 +134,36 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             var afterTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
             var afterAlbums = _likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
             var afterArtists = _likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
+
+            // Diagnostic: compare synced counts (what Spotify has) vs loaded counts (what we can display)
+            try
+            {
+                var syncState = await _libraryService.GetSyncStateAsync();
+                var syncedTracks = syncState.Tracks?.ItemCount ?? 0;
+                var syncedAlbums = syncState.Albums?.ItemCount ?? 0;
+                var syncedArtists = syncState.Artists?.ItemCount ?? 0;
+
+                _logger?.LogInformation(
+                    "Sync integrity check — Synced: {ST} tracks, {SA} albums, {SAr} artists | " +
+                    "Loaded: {LT} tracks, {LA} albums, {LAr} artists",
+                    syncedTracks, syncedAlbums, syncedArtists,
+                    afterTracks, afterAlbums, afterArtists);
+
+                if (afterTracks < syncedTracks || afterAlbums < syncedAlbums || afterArtists < syncedArtists)
+                {
+                    _logger?.LogWarning(
+                        "DATA LOSS: {MissingTracks} tracks, {MissingAlbums} albums, {MissingArtists} artists " +
+                        "are in spotify_library but missing metadata in entities table",
+                        syncedTracks - afterTracks, syncedAlbums - afterAlbums, syncedArtists - afterArtists);
+                    hadPartialFailure = true;
+                    partialReason ??= $"Missing metadata: {syncedTracks - afterTracks} tracks, " +
+                        $"{syncedAlbums - afterAlbums} albums, {syncedArtists - afterArtists} artists";
+                }
+            }
+            catch (Exception diagEx)
+            {
+                _logger?.LogDebug(diagEx, "Sync integrity check failed");
+            }
 
             var summary = new LibrarySyncSummary(
                 TracksAdded: Math.Max(0, afterTracks - beforeTracks),

@@ -264,6 +264,14 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public Task<ArtistDiscographyResponse> GetArtistDiscographyAllAsync(
+        string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default)
+        => GetArtistDiscographyInternalAsync(artistUri,
+            PathfinderOperations.QueryArtistDiscographyAll,
+            PathfinderOperations.QueryArtistDiscographyAllHash,
+            offset, limit, ct);
+
+    /// <inheritdoc />
     public Task<ArtistDiscographyResponse> GetArtistDiscographyAlbumsAsync(
         string artistUri, int offset = 0, int limit = 20, CancellationToken ct = default)
         => GetArtistDiscographyInternalAsync(artistUri,
@@ -404,6 +412,23 @@ public sealed class PathfinderClient : IPathfinderClient
             ct);
     }
 
+    /// <inheritdoc />
+    public async Task<RecentlyPlayedEntitiesResponse> FetchEntitiesForRecentlyPlayedAsync(
+        IReadOnlyList<string> uris, CancellationToken ct = default)
+    {
+        var variables = new RecentlyPlayedEntitiesVariables
+        {
+            Uris = new List<string>(uris)
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.FetchEntitiesForRecentlyPlayed,
+            PathfinderOperations.FetchEntitiesForRecentlyPlayedHash,
+            RecentlyPlayedEntitiesJsonContext.Default.RecentlyPlayedEntitiesResponse,
+            ct);
+    }
+
     private async Task<ArtistDiscographyResponse> GetArtistDiscographyInternalAsync(
         string artistUri, string operationName, string sha256Hash,
         int offset, int limit, CancellationToken ct)
@@ -522,6 +547,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is SearchSuggestionsVariables ssv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(ssv, SearchSuggestionsVariablesJsonContext.Default.SearchSuggestionsVariables);
+        }
+        else if (variables is RecentlyPlayedEntitiesVariables rpev)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(rpev, RecentlyPlayedEntitiesVariablesJsonContext.Default.RecentlyPlayedEntitiesVariables);
         }
         else
         {

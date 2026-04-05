@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.FollowButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Button x:Name="InternalButton"
+            Click="OnClick"
+            Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+            Padding="12,6" CornerRadius="20">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <FontIcon x:Name="FollowIcon" Glyph="&#xEB51;" FontSize="14"/>
+            <TextBlock x:Name="FollowText" Text="Follow"/>
+        </StackPanel>
+    </Button>
+</UserControl>

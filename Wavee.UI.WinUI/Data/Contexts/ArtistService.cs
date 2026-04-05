@@ -123,6 +123,35 @@ public sealed class ArtistService : IArtistService
             .ToList();
     }
 
+    public async Task<List<ArtistReleaseResult>> GetDiscographyAllAsync(
+        string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default)
+    {
+        var response = await _pathfinder.GetArtistDiscographyAllAsync(artistUri, offset, limit, ct);
+        var allGroup = response.Data?.ArtistUnion?.Discography?.All;
+        if (allGroup?.Items == null) return [];
+
+        var results = new List<ArtistReleaseResult>();
+        foreach (var item in allGroup.Items)
+        {
+            var release = item.Releases?.Items?.FirstOrDefault();
+            if (release?.Id == null) continue;
+
+            results.Add(new ArtistReleaseResult
+            {
+                Id = release.Id,
+                Uri = release.Uri,
+                Name = release.Name,
+                Type = release.Type ?? "ALBUM",
+                ImageUrl = release.CoverArt?.Sources?.LastOrDefault()?.Url,
+                ReleaseDate = ParseReleaseDate(release.Date),
+                TrackCount = release.Tracks?.TotalCount ?? 0,
+                Label = release.Label,
+                Year = release.Date?.Year ?? 0
+            });
+        }
+        return results;
+    }
+
     public async Task<List<ArtistReleaseResult>> GetDiscographyPageAsync(
         string artistUri, string type, int offset, int limit = 20, CancellationToken ct = default)
     {

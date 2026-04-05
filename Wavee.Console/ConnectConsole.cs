@@ -85,7 +85,6 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                 return new ExtendedMetadataClient(
                     _session,
                     _httpClient,
-                    _session.SpClient.BaseUrl,
                     metadataDb,
                     _logger);
             });

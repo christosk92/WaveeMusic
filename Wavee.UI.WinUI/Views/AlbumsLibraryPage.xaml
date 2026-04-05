@@ -35,6 +35,7 @@
                         ImageUrl="{x:Bind ImageUrl}"
                         Title="{x:Bind Name}"
                         Subtitle="{x:Bind ArtistName}"
+                        NavigationUri="{x:Bind Id}"
                         PlaceholderGlyph="&#xE93C;"
                         IsCircularImage="False"
                         IsPassive="True"/>

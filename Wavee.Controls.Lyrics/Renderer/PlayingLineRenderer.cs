@@ -8,6 +8,7 @@ using Microsoft.Graphics.Canvas.Text;
 using System;
 using System.Numerics;
 using Windows.Foundation;
+using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Renderer
 {
@@ -48,9 +49,11 @@ namespace Wavee.Controls.Lyrics.Renderer
                 bounds.Height
             );
 
-            using var cropEffect = new CropEffect { Source = source, BorderMode = EffectBorderMode.Hard, SourceRectangle = destRect };
-            using var blurEffect = new GaussianBlurEffect { BlurAmount = (float)blur, Source = cropEffect, BorderMode = EffectBorderMode.Soft };
-            using var opacityEffect = new OpacityEffect { Source = blurEffect, Opacity = (float)opacity };
+            var opacityEffect = line.GetTertiaryOverlayEffect(source);
+            if (opacityEffect.Source is not GaussianBlurEffect blurEffect || blurEffect.Source is not CropEffect cropEffect) return;
+            cropEffect.SourceRectangle = destRect;
+            blurEffect.BlurAmount = (float)blur;
+            opacityEffect.Opacity = (float)opacity;
             ds.DrawImage(opacityEffect);
         }
 
@@ -71,9 +74,11 @@ namespace Wavee.Controls.Lyrics.Renderer
                 bounds.Height
             );
 
-            using var cropEffect = new CropEffect { Source = source, BorderMode = EffectBorderMode.Hard, SourceRectangle = destRect };
-            using var blurEffect = new GaussianBlurEffect { BlurAmount = (float)blur, Source = cropEffect, BorderMode = EffectBorderMode.Soft };
-            using var opacityEffect = new OpacityEffect { Source = blurEffect, Opacity = (float)opacity };
+            var opacityEffect = line.GetSecondaryOverlayEffect(source);
+            if (opacityEffect.Source is not GaussianBlurEffect blurEffect || blurEffect.Source is not CropEffect cropEffect) return;
+            cropEffect.SourceRectangle = destRect;
+            blurEffect.BlurAmount = (float)blur;
+            opacityEffect.Opacity = (float)opacity;
             ds.DrawImage(opacityEffect);
 
             //ds.FillRectangle(destRect, Microsoft.UI.Colors.Red.WithAlpha(128));
@@ -178,9 +183,10 @@ namespace Wavee.Controls.Lyrics.Renderer
                 StartPoint = new Vector2((float)subLineRect.X, (float)subLineRect.Y),
                 EndPoint = new Vector2((float)(subLineRect.X + subLineRect.Width), (float)subLineRect.Y)
             };
-            using var fillGradientLayer = new CanvasCommandList(resourceCreator);
+            var fillGradientLayer = region.GetFillGradientLayer(resourceCreator);
             using (var gds = fillGradientLayer.CreateDrawingSession())
             {
+                gds.Clear(Microsoft.UI.Colors.Transparent);
                 gds.FillRectangle(subLineRect, fillGradientBrush);
             }
 
@@ -195,12 +201,13 @@ namespace Wavee.Controls.Lyrics.Renderer
                 EndPoint = new Vector2((float)(subLineRect.X + subLineRect.Width), (float)subLineRect.Y)
             } : null;
 
-            using var strokeGradientLayer = hasStroke ? new CanvasCommandList(resourceCreator) : null;
+            var strokeGradientLayer = hasStroke ? region.GetStrokeGradientLayer(resourceCreator) : null;
 
             if (hasStroke)
             {
                 using (var gds = strokeGradientLayer!.CreateDrawingSession())
                 {
+                    gds.Clear(Microsoft.UI.Colors.Transparent);
                     gds.FillRectangle(subLineRect, strokeGradientBrush);
                 }
 

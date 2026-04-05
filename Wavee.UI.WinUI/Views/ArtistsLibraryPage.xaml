@@ -104,7 +104,7 @@
                                         TextTrimming="CharacterEllipsis"
                                         MaxLines="1"/>
                                     <TextBlock
-                                        Text="{x:Bind FollowerCountFormatted}"
+                                        Text="{x:Bind AddedAtFormatted}"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         TextTrimming="CharacterEllipsis"
@@ -221,6 +221,7 @@
 
                         <!-- Artist Image -->
                         <Grid
+                        x:Name="DetailArtistImageContainer"
                         Grid.Column="0"
                         Width="80"
                         Height="80"
@@ -250,7 +251,7 @@
                             TextTrimming="CharacterEllipsis"
                             MaxLines="2"/>
                             <TextBlock
-                            Text="{x:Bind ViewModel.SelectedArtistFollowers, Mode=OneWay}"
+                            Text="{x:Bind ViewModel.SelectedArtistAddedAt, Mode=OneWay}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
@@ -274,19 +275,31 @@
                                     </StackPanel>
                                 </Button>
                                 <Button
-                                Command="{x:Bind ViewModel.OpenArtistDetailsCommand}"
+                                Click="ViewArtistButton_Click"
                                 Padding="12,6">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
                                         <TextBlock Text="View artist"/>
                                     </StackPanel>
                                 </Button>
+                                <controls1:FollowButton ItemUri="{x:Bind ViewModel.SelectedArtist.Id, Mode=OneWay}"/>
                             </primitives:WrapPanel>
                         </StackPanel>
                     </Grid>
 
                     <!-- Scrollable content: Grouped Albums -->
                     <ScrollView Grid.Row="1">
+                        <StackPanel Spacing="12">
+                        <!-- Saved only filter -->
+                        <ToggleButton
+                            IsChecked="{x:Bind ViewModel.ShowSavedOnly, Mode=TwoWay}"
+                            Padding="12,6"
+                            HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE728;" FontSize="14"/>
+                                <TextBlock Text="Saved only"/>
+                            </StackPanel>
+                        </ToggleButton>
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.AlbumGroups, Mode=OneWay}">
                             <ItemsRepeater.Layout>
                                 <StackLayout Orientation="Vertical" Spacing="24"/>
@@ -332,7 +345,9 @@
                                         SelectionMode="Single"
                                         Visibility="{x:Bind IsListView, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                             <ItemsView.Layout>
-                                                <StackLayout Orientation="Horizontal" Spacing="12"/>
+                                                <UniformGridLayout MinItemWidth="120" MinItemHeight="180"
+                                                                   MinColumnSpacing="12" MinRowSpacing="12"
+                                                                   ItemsStretch="None"/>
                                             </ItemsView.Layout>
                                             <ItemsView.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:ArtistAlbumItemViewModel">
@@ -538,6 +553,7 @@
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
+                        </StackPanel>
                     </ScrollView>
 
                     <!-- Loading Shimmer for Details -->
@@ -616,6 +632,7 @@
 
                     <!-- Album Image -->
                     <Border
+                    x:Name="DetailAlbumImageContainer"
                     Grid.Column="0"
                     Width="64"
                     Height="64"
@@ -651,7 +668,7 @@
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <Button
-                        Command="{x:Bind ViewModel.OpenSelectedAlbumCommand}"
+                        Click="ViewAlbumButton_Click"
                         Padding="8,4"
                         Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal" Spacing="6">

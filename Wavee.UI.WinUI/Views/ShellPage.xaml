@@ -198,7 +198,7 @@
                         </animations:Implicit.HideAnimations>
                         <Image
                             Stretch="UniformToFill"
-                            Source="{x:Bind PlayerBarControl.ViewModel.AlbumArtLarge, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            Source="{x:Bind PlayerBarControl.ViewModel.AlbumArtLarge, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=300}"
                             behaviors:ImageFallbackBehavior.HideOnError="True"
                             behaviors:ImageFallbackBehavior.FadeInOnLoad="True" />
                     </Border>

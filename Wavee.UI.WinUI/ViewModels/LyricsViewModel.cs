@@ -130,6 +130,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         _loadedTrackId = trackId;
 
         _fetchCts?.Cancel();
+        _fetchCts?.Dispose();
         _fetchCts = new CancellationTokenSource();
         var ct = _fetchCts.Token;
 

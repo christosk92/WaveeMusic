@@ -63,6 +63,10 @@ public interface IPathfinderClient
         string artistUri,
         CancellationToken ct = default);
 
+    /// <summary>Fetches a paginated page of an artist's full discography (all types).</summary>
+    Task<ArtistDiscographyResponse> GetArtistDiscographyAllAsync(
+        string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default);
+
     /// <summary>Fetches a paginated page of an artist's albums.</summary>
     Task<ArtistDiscographyResponse> GetArtistDiscographyAlbumsAsync(
         string artistUri, int offset = 0, int limit = 20, CancellationToken ct = default);
@@ -104,4 +108,11 @@ public interface IPathfinderClient
 
     /// <summary>Fetches search autocomplete suggestions for a query prefix.</summary>
     Task<SearchSuggestionsResponse> GetSearchSuggestionsAsync(string query, int limit = 30, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves URIs to entity metadata (names, images, types) for recently played items.
+    /// </summary>
+    Task<RecentlyPlayedEntitiesResponse> FetchEntitiesForRecentlyPlayedAsync(
+        IReadOnlyList<string> uris,
+        CancellationToken ct = default);
 }

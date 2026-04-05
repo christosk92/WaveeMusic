@@ -63,7 +63,7 @@
                                         <Ellipse x:Name="ArtistImageEllipse" Width="120" Height="120">
                                             <Ellipse.Fill>
                                                 <ImageBrush
-                                                    ImageSource="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                                    ImageSource="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=120}"
                                                     Stretch="UniformToFill"/>
                                             </Ellipse.Fill>
                                         </Ellipse>
@@ -155,7 +155,7 @@
                                         Background="{ThemeResource AccentAcrylicBackgroundFillColorBaseBrush}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Width="32" Height="32" CornerRadius="16">
-                                            <Image Source="{x:Bind ViewModel.PinnedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                            <Image Source="{x:Bind ViewModel.PinnedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=32}"
                                                    Stretch="UniformToFill"/>
                                         </Border>
                                         <StackPanel VerticalAlignment="Center" MaxWidth="120">
@@ -181,7 +181,7 @@
                                          Subtitle="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
                                          IsLightDismissEnabled="True">
                                 <TeachingTip.HeroContent>
-                                    <Image Source="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                    <Image Source="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=200}"
                                            Stretch="UniformToFill" MaxHeight="200"/>
                                 </TeachingTip.HeroContent>
                             </TeachingTip>
@@ -370,7 +370,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.Column="0" Width="48" Height="48" CornerRadius="4"
                                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                        <Image Source="{x:Bind Data.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                        <Image Source="{x:Bind Data.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
                                                Stretch="UniformToFill"
                                                behaviors:ImageFallbackBehavior.HideOnError="True"/>
                                     </Border>
@@ -462,7 +462,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.Column="0" Width="48" Height="48" CornerRadius="4"
                                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                        <Image Source="{x:Bind Data.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                        <Image Source="{x:Bind Data.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
                                                Stretch="UniformToFill"
                                                behaviors:ImageFallbackBehavior.HideOnError="True"/>
                                     </Border>

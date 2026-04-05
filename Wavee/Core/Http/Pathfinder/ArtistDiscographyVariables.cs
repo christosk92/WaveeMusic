@@ -44,6 +44,9 @@ public sealed class ArtistDiscographyUnion
 
 public sealed class ArtistDiscographyPayload
 {
+    [JsonPropertyName("all")]
+    public ArtistReleaseGroup? All { get; init; }
+
     [JsonPropertyName("albums")]
     public ArtistReleaseGroup? Albums { get; init; }
 

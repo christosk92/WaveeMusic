@@ -22,7 +22,7 @@ public sealed class SpotifyImageConverter : IValueConverter
 
         var decodeSize = parameter is string s && int.TryParse(s, out var d) ? d : 200;
         var cache = Ioc.Default.GetService<ImageCacheService>();
-        return cache?.GetOrCreate(url, decodeSize) ?? new BitmapImage(new Uri(url));
+        return cache?.GetOrCreate(url, decodeSize) ?? new BitmapImage(new Uri(url)) { DecodePixelWidth = decodeSize, DecodePixelType = DecodePixelType.Logical };
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

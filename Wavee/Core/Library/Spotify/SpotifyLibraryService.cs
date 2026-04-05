@@ -96,6 +96,53 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     #region Sync Operations
 
     /// <inheritdoc/>
+    public async Task BackfillMissingMetadataAsync(CancellationToken ct = default)
+    {
+        if (_metadataClient == null)
+        {
+            _logger?.LogWarning("Skipping metadata backfill: no metadata client available");
+            return;
+        }
+
+        var typesToBackfill = new[]
+        {
+            (SpotifyLibraryItemType.Track, ExtensionKind.TrackV4, "tracks"),
+            (SpotifyLibraryItemType.Album, ExtensionKind.AlbumV4, "albums"),
+            (SpotifyLibraryItemType.Artist, ExtensionKind.ArtistV4, "artists"),
+        };
+
+        var totalBackfilled = 0;
+        foreach (var (itemType, extensionKind, displayName) in typesToBackfill)
+        {
+            var missingUris = await _database.GetLibraryUrisMissingMetadataAsync(itemType, ct);
+            if (missingUris.Count == 0)
+            {
+                _logger?.LogDebug("Backfill: all {Type} items have metadata", displayName);
+                continue;
+            }
+
+            _logger?.LogWarning("Backfill: {Count} {Type} in spotify_library are missing from entities table — fetching metadata",
+                missingUris.Count, displayName);
+
+            try
+            {
+                await FetchAndStoreMetadataAsync(missingUris, extensionKind, displayName, ct);
+                totalBackfilled += missingUris.Count;
+                _logger?.LogInformation("Backfill: fetched metadata for {Count} {Type}", missingUris.Count, displayName);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Backfill: FAILED to fetch metadata for {Count} {Type}", missingUris.Count, displayName);
+            }
+        }
+
+        if (totalBackfilled > 0)
+            _logger?.LogInformation("Metadata backfill complete: {Total} items repaired", totalBackfilled);
+        else
+            _logger?.LogDebug("Metadata backfill: no missing items found");
+    }
+
+    /// <inheritdoc/>
     public async Task SyncAllAsync(CancellationToken ct = default)
     {
         await SyncTracksAsync(ct);
@@ -364,6 +411,25 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
                 {
                     await _database.AddToSpotifyLibraryAsync(item.Uri, itemType, item.AddedAt, ct);
                     addCount++;
+                }
+            }
+
+            // Fetch metadata for newly added items so they appear in INNER JOIN queries
+            if (addCount > 0 && _metadataClient != null)
+            {
+                var addedUris = items.Where(i => !i.IsRemoved).Select(i => i.Uri).ToList();
+                var extensionKind = itemType switch
+                {
+                    SpotifyLibraryItemType.Track => ExtensionKind.TrackV4,
+                    SpotifyLibraryItemType.Album => ExtensionKind.AlbumV4,
+                    SpotifyLibraryItemType.Artist => ExtensionKind.ArtistV4,
+                    SpotifyLibraryItemType.Show => ExtensionKind.ShowV4,
+                    _ => (ExtensionKind?)null
+                };
+                if (extensionKind.HasValue)
+                {
+                    _logger?.LogDebug("Fetching metadata for {Count} new {Type} items", addedUris.Count, displayName);
+                    await FetchAndStoreMetadataAsync(addedUris, extensionKind.Value, displayName, ct);
                 }
             }
 

@@ -20,6 +20,9 @@ internal static class PathfinderOperations
     public const string QueryArtistOverview = "queryArtistOverview";
     public const string QueryArtistOverviewHash = "5b9e64f43843fa3a9b6a98543600299b0a2cbbbccfdcdcef2402eb9c1017ca4c";
 
+    public const string QueryArtistDiscographyAll = "queryArtistDiscographyAll";
+    public const string QueryArtistDiscographyAllHash = "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599";
+
     public const string QueryArtistDiscographyAlbums = "queryArtistDiscographyAlbums";
     public const string QueryArtistDiscographyAlbumsHash = "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599";
 
@@ -55,4 +58,7 @@ internal static class PathfinderOperations
 
     public const string SearchSuggestions = "searchSuggestions";
     public const string SearchSuggestionsHash = "dea90d34a7ee20d54354f1bf3171a65c36b9f242401494d56451d468d516125e";
+
+    public const string FetchEntitiesForRecentlyPlayed = "fetchEntitiesForRecentlyPlayed";
+    public const string FetchEntitiesForRecentlyPlayedHash = "5bb408450626d595cb24363104b612e14f9b966430f599121696e8996ea03794";
 }

@@ -109,6 +109,9 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // Event reporting configuration
     private EventReportingOptions _eventReportingOptions = EventReportingOptions.Default;
 
+    // Progress publish cadence for periodic playback position updates.
+    private const long PositionPublishIntervalMs = 1000;
+
     /// <summary>
     /// Creates an AudioPipeline without command handler integration (manual control only).
     /// </summary>
@@ -1080,271 +1083,284 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
     private async Task PlaybackLoopAsync(string trackUri, long startPositionMs, CancellationToken cancellationToken)
     {
-        ITrackStream? trackStream = null;
+        var currentTrackUri = trackUri;
+        var currentStartPositionMs = startPositionMs;
 
-        try
+        while (!cancellationToken.IsCancellationRequested)
         {
-            _logger?.LogDebug("Starting playback loop for track: {TrackUri} at {PositionMs}ms", trackUri, startPositionMs);
+            ITrackStream? trackStream = null;
 
-            // Load track from source registry
-            trackStream = await _sourceRegistry.LoadAsync(trackUri, cancellationToken);
-            _logger?.LogDebug("Track loaded: {Title} by {Artist}", trackStream.Metadata.Title, trackStream.Metadata.Artist);
-
-            // Ensure CDN is initialized before the decoder starts reading.
-            // NVorbis reads pages sequentially on demand — the background download
-            // provides data progressively, so no full-file download is needed.
-            if (trackStream.AudioStream is LazyProgressiveDownloader lazyStream)
+            try
             {
-                await lazyStream.PrefetchRangeAsync(0, 1, cancellationToken);
-            }
+                _logger?.LogDebug("Starting playback loop for track: {TrackUri} at {PositionMs}ms", currentTrackUri, currentStartPositionMs);
 
-            // Store track metadata
-            _currentTrackTitle = trackStream.Metadata.Title;
-            _currentTrackArtist = trackStream.Metadata.Artist;
-            _currentTrackAlbum = trackStream.Metadata.Album;
-            _currentDurationMs = trackStream.Metadata.DurationMs ?? 0;
-            _currentCanSeek = trackStream.CanSeek;
+                // Load track from source registry
+                trackStream = await _sourceRegistry.LoadAsync(currentTrackUri, cancellationToken);
+                _logger?.LogDebug("Track loaded: {Title} by {Artist}", trackStream.Metadata.Title, trackStream.Metadata.Artist);
 
-            // Store image URLs and URIs for Connect state
-            _currentAlbumUri = trackStream.Metadata.AlbumUri;
-            _currentArtistUri = trackStream.Metadata.ArtistUri;
-            _currentImageSmallUrl = trackStream.Metadata.ImageSmallUrl;
-            _currentImageUrl = trackStream.Metadata.ImageUrl;
-            _currentImageLargeUrl = trackStream.Metadata.ImageLargeUrl;
-            _currentImageXLargeUrl = trackStream.Metadata.ImageXLargeUrl;
-
-            // Find appropriate decoder using registry
-            // For non-seekable streams (HTTP radio), this returns a wrapped stream with buffered header
-            var decoder = _decoderRegistry.FindDecoder(trackStream.AudioStream, out var decodingStream);
-            if (decoder == null)
-            {
-                throw new NotSupportedException($"No decoder found for audio format of track: {trackUri}");
-            }
-
-            _logger?.LogDebug("Using decoder: {DecoderName}", decoder.FormatName);
-
-            // Get audio format from decoder
-            var audioFormat = await decoder.GetFormatAsync(decodingStream, cancellationToken);
-            _logger?.LogDebug("Audio format: {SampleRate}Hz {Channels}ch {Bits}bit",
-                audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
-
-            // Initialize audio sink and processing chain
-            await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 2000, cancellationToken);
-            _audioSink.SetBasePosition(startPositionMs);
-            await _processingChain.InitializeAsync(audioFormat, cancellationToken);
-
-            // Set track gain for normalization processor (if exists)
-            foreach (var processor in _processingChain.Processors.OfType<NormalizationProcessor>())
-            {
-                processor.SetTrackGain(trackStream.Metadata);
-                _logger?.LogInformation(
-                    "Normalization: trackGain={TrackGain:F2}dB, albumGain={AlbumGain:F2}dB, peak={Peak:F4}, appliedFactor={Factor:F4} ({FactorDb:F2}dB), enabled={Enabled}",
-                    trackStream.Metadata.ReplayGainTrackGain,
-                    trackStream.Metadata.ReplayGainAlbumGain,
-                    trackStream.Metadata.ReplayGainTrackPeak,
-                    processor.CurrentGain,
-                    20.0 * Math.Log10(Math.Max(processor.CurrentGain, 0.0001)),
-                    processor.IsEnabled);
-            }
-
-            // Update state to playing
-            _isPlaying = true;
-            _isPaused = false;
-            _playbackStartedTcs?.TrySetResult();
-            PublishStateUpdate();
-
-            // Start playback event tracking
-            StartPlaybackSession(trackUri, _currentContextUri ?? trackUri, PlaybackReason.PlayBtn);
-
-            // Clear any seek that was queued for a previous track — it must not bleed into this one
-            lock (_seekLock)
-                _pendingSeekMs = null;
-
-            // Decode and play using the decoder's async enumerable
-            long currentStartPosition = startPositionMs;
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                bool seekRequested = false;
-
-                long buffersDecoded = 0;
-                await foreach (var buffer in decoder.DecodeAsync(
-                    decodingStream,
-                    currentStartPosition,
-                    title =>
-                    {
-                        // ICY metadata callback - update track title
-                        _currentTrackTitle = title;
-                        _logger?.LogInformation("Stream title changed: {Title}", title);
-                        PublishStateUpdate();
-                    },
-                    cancellationToken))
+                // Ensure CDN is initialized before the decoder starts reading.
+                // NVorbis reads pages sequentially on demand — the background download
+                // provides data progressively, so no full-file download is needed.
+                if (trackStream.AudioStream is LazyProgressiveDownloader lazyStream)
                 {
-                    // Check for pending seek
-                    lock (_seekLock)
-                    {
-                        if (_pendingSeekMs.HasValue)
-                        {
-                            currentStartPosition = _pendingSeekMs.Value;
-                            _pendingSeekMs = null;
-                            seekRequested = true;
-
-                            _logger?.LogDebug("Seek requested to {PositionMs}ms", currentStartPosition);
-                        }
-                    }
-
-                    if (seekRequested)
-                    {
-                        // Prefetch data at seek position for streaming tracks
-                        await trackStream.PrefetchForSeekAsync(
-                            TimeSpan.FromMilliseconds(currentStartPosition),
-                            cancellationToken);
-
-                        // Reset stream position if seekable
-                        if (decodingStream.CanSeek)
-                        {
-                            decodingStream.Position = 0;
-                        }
-
-                        // Reset sink position tracking to the new seek target
-                        _audioSink.SetBasePosition(currentStartPosition);
-
-                        break; // Exit decode loop to restart from new position
-                    }
-
-                    // Process audio through chain (zero-copy: single pooled buffer, in-place transforms)
-                    var processed = _processingChain.Process(buffer);
-
-                    // Write to sink (copies into circular buffer)
-                    await _audioSink.WriteAsync(processed.Data, cancellationToken);
-
-                    // Return the pooled pipeline buffer to ArrayPool
-                    processed.Return();
-
-                    // Update position from the sink (tracks what's actually been played
-                    // through the speakers, not the decode-ahead position)
-                    _currentPositionMs = _audioSink.PlaybackPositionMs;
-
-                    // Publish state update periodically (every ~500ms)
-                    if (_currentPositionMs % 500 < 100)
-                    {
-                        PublishStateUpdate();
-                    }
-                    buffersDecoded++;
+                    await lazyStream.PrefetchRangeAsync(0, 1, cancellationToken);
                 }
 
-                // If no seek was requested, we're done with the track
-                if (!seekRequested)
-                    break;
-            }
+                // Store track metadata
+                _currentTrackTitle = trackStream.Metadata.Title;
+                _currentTrackArtist = trackStream.Metadata.Artist;
+                _currentTrackAlbum = trackStream.Metadata.Album;
+                _currentDurationMs = trackStream.Metadata.DurationMs ?? 0;
+                _currentCanSeek = trackStream.CanSeek;
 
-            // Drain the audio sink buffer so the last seconds of audio are actually
-            // heard through the speakers before we advance to the next track.
-            // Without this, the circular buffer (up to 8s of audio) gets discarded.
-            await _audioSink.DrainAsync(cancellationToken);
+                // Store image URLs and URIs for Connect state
+                _currentAlbumUri = trackStream.Metadata.AlbumUri;
+                _currentArtistUri = trackStream.Metadata.ArtistUri;
+                _currentImageSmallUrl = trackStream.Metadata.ImageSmallUrl;
+                _currentImageUrl = trackStream.Metadata.ImageUrl;
+                _currentImageLargeUrl = trackStream.Metadata.ImageLargeUrl;
+                _currentImageXLargeUrl = trackStream.Metadata.ImageXLargeUrl;
 
-            // Update position one final time after drain completes
-            _currentPositionMs = _audioSink.PlaybackPositionMs;
-            PublishStateUpdate();
+                // Find appropriate decoder using registry
+                // For non-seekable streams (HTTP radio), this returns a wrapped stream with buffered header
+                var decoder = _decoderRegistry.FindDecoder(trackStream.AudioStream, out var decodingStream);
+                if (decoder == null)
+                {
+                    throw new NotSupportedException($"No decoder found for audio format of track: {currentTrackUri}");
+                }
 
-            // Playback completed
-            _logger?.LogInformation("Playback completed for track: {TrackUri}", trackUri);
+                _logger?.LogDebug("Using decoder: {DecoderName}", decoder.FormatName);
 
-            // Send track transition event
-            EndPlaybackSession((int)_currentPositionMs, PlaybackReason.TrackDone);
+                // Get audio format from decoder
+                var audioFormat = await decoder.GetFormatAsync(decodingStream, cancellationToken);
+                _logger?.LogDebug("Audio format: {SampleRate}Hz {Channels}ch {Bits}bit",
+                    audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
 
-            // Handle repeat track first
-            if (_repeatingTrack)
-            {
-                _logger?.LogDebug("Repeat track enabled, restarting");
-                await PlaybackLoopAsync(trackUri, 0, cancellationToken);
+                // Initialize audio sink and processing chain
+                await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 2000, cancellationToken);
+                _audioSink.SetBasePosition(currentStartPositionMs);
+                await _processingChain.InitializeAsync(audioFormat, cancellationToken);
+
+                // Set track gain for normalization processor (if exists)
+                foreach (var processor in _processingChain.Processors.OfType<NormalizationProcessor>())
+                {
+                    processor.SetTrackGain(trackStream.Metadata);
+                    _logger?.LogInformation(
+                        "Normalization: trackGain={TrackGain:F2}dB, albumGain={AlbumGain:F2}dB, peak={Peak:F4}, appliedFactor={Factor:F4} ({FactorDb:F2}dB), enabled={Enabled}",
+                        trackStream.Metadata.ReplayGainTrackGain,
+                        trackStream.Metadata.ReplayGainAlbumGain,
+                        trackStream.Metadata.ReplayGainTrackPeak,
+                        processor.CurrentGain,
+                        20.0 * Math.Log10(Math.Max(processor.CurrentGain, 0.0001)),
+                        processor.IsEnabled);
+                }
+
+                // Update state to playing
+                _isPlaying = true;
+                _isPaused = false;
+                _playbackStartedTcs?.TrySetResult();
+                PublishStateUpdate();
+
+                // Start playback event tracking
+                StartPlaybackSession(currentTrackUri, _currentContextUri ?? currentTrackUri, PlaybackReason.PlayBtn);
+
+                // Clear any seek that was queued for a previous track — it must not bleed into this one
+                lock (_seekLock)
+                    _pendingSeekMs = null;
+
+                // Decode and play using the decoder's async enumerable
+                long decodeStartPosition = currentStartPositionMs;
+                long lastPeriodicPublishPositionMs = currentStartPositionMs;
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    bool seekRequested = false;
+
+                    await foreach (var buffer in decoder.DecodeAsync(
+                        decodingStream,
+                        decodeStartPosition,
+                        title =>
+                        {
+                            // ICY metadata callback - update track title
+                            _currentTrackTitle = title;
+                            _logger?.LogInformation("Stream title changed: {Title}", title);
+                            PublishStateUpdate();
+                        },
+                        cancellationToken))
+                    {
+                        // Check for pending seek
+                        lock (_seekLock)
+                        {
+                            if (_pendingSeekMs.HasValue)
+                            {
+                                decodeStartPosition = _pendingSeekMs.Value;
+                                _pendingSeekMs = null;
+                                seekRequested = true;
+
+                                _logger?.LogDebug("Seek requested to {PositionMs}ms", decodeStartPosition);
+                            }
+                        }
+
+                        if (seekRequested)
+                        {
+                            // Prefetch data at seek position for streaming tracks
+                            await trackStream.PrefetchForSeekAsync(
+                                TimeSpan.FromMilliseconds(decodeStartPosition),
+                                cancellationToken);
+
+                            // Reset stream position if seekable
+                            if (decodingStream.CanSeek)
+                            {
+                                decodingStream.Position = 0;
+                            }
+
+                            // Reset sink position tracking to the new seek target
+                            _audioSink.SetBasePosition(decodeStartPosition);
+                            lastPeriodicPublishPositionMs = decodeStartPosition;
+
+                            break; // Exit decode loop to restart from new position
+                        }
+
+                        // Process audio through chain (zero-copy: single pooled buffer, in-place transforms)
+                        var processed = _processingChain.Process(buffer);
+
+                        // Write to sink (copies into circular buffer)
+                        await _audioSink.WriteAsync(processed.Data, cancellationToken);
+
+                        // Return the pooled pipeline buffer to ArrayPool
+                        processed.Return();
+
+                        // Update position from the sink (tracks what's actually been played
+                        // through the speakers, not the decode-ahead position)
+                        _currentPositionMs = _audioSink.PlaybackPositionMs;
+
+                        // Publish progress at a fixed interval without modulo windows,
+                        // which can emit multiple updates around each boundary.
+                        if (_currentPositionMs - lastPeriodicPublishPositionMs >= PositionPublishIntervalMs)
+                        {
+                            lastPeriodicPublishPositionMs = _currentPositionMs;
+                            PublishStateUpdate(positionOnly: true);
+                        }
+                    }
+
+                    // If no seek was requested, we're done with the track
+                    if (!seekRequested)
+                        break;
+                }
+
+                // Drain the audio sink buffer so the last seconds of audio are actually
+                // heard through the speakers before we advance to the next track.
+                // Without this, the circular buffer (up to 8s of audio) gets discarded.
+                await _audioSink.DrainAsync(cancellationToken);
+
+                // Update position one final time after drain completes
+                _currentPositionMs = _audioSink.PlaybackPositionMs;
+                PublishStateUpdate();
+
+                // Playback completed
+                _logger?.LogInformation("Playback completed for track: {TrackUri}", currentTrackUri);
+
+                // Send track transition event
+                EndPlaybackSession((int)_currentPositionMs, PlaybackReason.TrackDone);
+
+                // Handle repeat track first
+                if (_repeatingTrack)
+                {
+                    _logger?.LogDebug("Repeat track enabled, restarting");
+                    _currentPositionMs = 0;
+                    currentStartPositionMs = 0;
+                    continue;
+                }
+
+                // Try to advance to next track in queue
+                var nextTrack = _queue.MoveNext();
+                if (nextTrack != null)
+                {
+                    _logger?.LogDebug("Auto-advancing to next track: {TrackUri}", nextTrack.Uri);
+
+                    // Update state for next track
+                    _currentTrackUri = NormalizeToUri(nextTrack.Uri);
+                    _currentTrackUid = nextTrack.Uid ?? string.Empty;
+                    _currentPositionMs = 0;
+
+                    currentTrackUri = _currentTrackUri;
+                    currentStartPositionMs = 0;
+                    continue;
+                }
+
+                // No next track - handle end of context
+                _logger?.LogDebug("End of queue reached, handling end of context");
+                await HandleEndOfContextInternalAsync(cancellationToken);
+                _isPlaying = false;
+                PublishStateUpdate();
                 return;
             }
-
-            // Try to advance to next track in queue
-            var nextTrack = _queue.MoveNext();
-            if (nextTrack != null)
+            catch (OperationCanceledException)
             {
-                _logger?.LogDebug("Auto-advancing to next track: {TrackUri}", nextTrack.Uri);
-
-                // Update state for next track
-                _currentTrackUri = NormalizeToUri(nextTrack.Uri);
-                _currentTrackUid = nextTrack.Uid ?? string.Empty;
-                _currentPositionMs = 0;
-
-                // Continue playing next track (recursive call)
-                await PlaybackLoopAsync(_currentTrackUri, 0, cancellationToken);
+                _logger?.LogDebug("Playback loop cancelled");
+                // Send transition event when cancelled (e.g., skip, stop)
+                EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
                 return;
             }
-
-            // No next track - handle end of context
-            _logger?.LogDebug("End of queue reached, handling end of context");
-            await HandleEndOfContextInternalAsync(cancellationToken);
-            _isPlaying = false;
-            PublishStateUpdate();
-        }
-        catch (OperationCanceledException)
-        {
-            _logger?.LogDebug("Playback loop cancelled");
-            // Send transition event when cancelled (e.g., skip, stop)
-            EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No suitable audio file"))
-        {
-            // Track is unavailable (region-restricted, no audio files, etc.)
-            _logger?.LogWarning("Track unavailable: {TrackUri}, skipping to next", trackUri);
-
-            // Publish error for UI notification
-            _errorSubject.OnNext(new PlaybackError(
-                PlaybackErrorType.TrackUnavailable,
-                $"Track unavailable: {trackUri}",
-                ex));
-
-            // Auto-skip to next track
-            var nextTrack = _queue.MoveNext();
-            if (nextTrack != null)
+            catch (InvalidOperationException ex) when (ex.Message.Contains("No suitable audio file"))
             {
-                _logger?.LogInformation("Auto-skipping to: {NextTrack}", nextTrack.Uri);
-                _currentTrackUri = NormalizeToUri(nextTrack.Uri);
-                _currentTrackUid = nextTrack.Uid ?? string.Empty;
-                _currentPositionMs = 0;
+                // Track is unavailable (region-restricted, no audio files, etc.)
+                _logger?.LogWarning("Track unavailable: {TrackUri}, skipping to next", currentTrackUri);
 
-                // Continue with next track (recursive call)
-                await PlaybackLoopAsync(_currentTrackUri, 0, cancellationToken);
+                // Publish error for UI notification
+                _errorSubject.OnNext(new PlaybackError(
+                    PlaybackErrorType.TrackUnavailable,
+                    $"Track unavailable: {currentTrackUri}",
+                    ex));
+
+                // Auto-skip to next track
+                var nextTrack = _queue.MoveNext();
+                if (nextTrack != null)
+                {
+                    _logger?.LogInformation("Auto-skipping to: {NextTrack}", nextTrack.Uri);
+                    _currentTrackUri = NormalizeToUri(nextTrack.Uri);
+                    _currentTrackUid = nextTrack.Uid ?? string.Empty;
+                    _currentPositionMs = 0;
+
+                    currentTrackUri = _currentTrackUri;
+                    currentStartPositionMs = 0;
+                    continue;
+                }
+
+                // No next track - handle end of context
+                _logger?.LogInformation("No more tracks in queue after unavailable track");
+                await HandleEndOfContextInternalAsync(cancellationToken);
+                _isPlaying = false;
+                PublishStateUpdate();
                 return;
             }
-
-            // No next track - handle end of context
-            _logger?.LogInformation("No more tracks in queue after unavailable track");
-            await HandleEndOfContextInternalAsync(cancellationToken);
-            _isPlaying = false;
-            PublishStateUpdate();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogError(ex, "Error in playback loop");
-
-            // Emit error to subscribers (UI notification, etc.)
-            var errorType = ex switch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                Core.Audio.AudioKeyException => PlaybackErrorType.TrackUnavailable,
-                NotSupportedException => PlaybackErrorType.DecodeError,
-                System.Net.Http.HttpRequestException => PlaybackErrorType.NetworkError,
-                System.IO.IOException => PlaybackErrorType.NetworkError,
-                _ => PlaybackErrorType.Unknown
-            };
-            _errorSubject.OnNext(new PlaybackError(errorType, ex.Message, ex));
+                _logger?.LogError(ex, "Error in playback loop");
 
-            // Send transition event on error
-            EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
-            _isPlaying = false;
-            PublishStateUpdate();
-        }
-        finally
-        {
-            if (trackStream != null)
+                // Emit error to subscribers (UI notification, etc.)
+                var errorType = ex switch
+                {
+                    Core.Audio.AudioKeyException => PlaybackErrorType.TrackUnavailable,
+                    NotSupportedException => PlaybackErrorType.DecodeError,
+                    System.Net.Http.HttpRequestException => PlaybackErrorType.NetworkError,
+                    System.IO.IOException => PlaybackErrorType.NetworkError,
+                    _ => PlaybackErrorType.Unknown
+                };
+                _errorSubject.OnNext(new PlaybackError(errorType, ex.Message, ex));
+
+                // Send transition event on error
+                EndPlaybackSession((int)_currentPositionMs, PlaybackReason.EndPlay);
+                _isPlaying = false;
+                PublishStateUpdate();
+                return;
+            }
+            finally
             {
-                await trackStream.DisposeAsync();
+                if (trackStream != null)
+                {
+                    await trackStream.DisposeAsync();
+                }
             }
         }
     }
@@ -1353,8 +1369,31 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
     // STATE MANAGEMENT
     // ================================================================
 
-    private void PublishStateUpdate()
+    private void PublishStateUpdate(bool positionOnly = false)
     {
+        if (positionOnly)
+        {
+            LocalPlaybackState positionState;
+            lock (_stateLock)
+            {
+                // Fast path for high-frequency progress ticks: reuse existing state shape
+                // and only update volatile playback fields.
+                positionState = _currentState with
+                {
+                    PositionMs = _currentPositionMs,
+                    DurationMs = _currentDurationMs,
+                    IsPlaying = _isPlaying,
+                    IsPaused = _isPaused,
+                    IsBuffering = _isReconnecting,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+                _currentState = positionState;
+            }
+
+            _stateChannel.Writer.TryWrite(positionState);
+            return;
+        }
+
         // Snapshot volatile data under lock (fast — no LINQ projections)
         QueueTrack? currentTrack;
         IReadOnlyList<QueueTrack> prevRaw, nextRaw;

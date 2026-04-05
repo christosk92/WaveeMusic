@@ -23,4 +23,11 @@ public sealed record LibraryArtistDto
         >= 1_000 => $"{FollowerCount / 1_000.0:0.#}K followers",
         _ => $"{FollowerCount:N0} followers"
     };
+
+    /// <summary>
+    /// Formatted date added to library (e.g., "Added Mar 15, 2025")
+    /// </summary>
+    public string AddedAtFormatted => AddedAt == DateTimeOffset.MinValue
+        ? ""
+        : $"Added {AddedAt.LocalDateTime:MMM d, yyyy}";
 }

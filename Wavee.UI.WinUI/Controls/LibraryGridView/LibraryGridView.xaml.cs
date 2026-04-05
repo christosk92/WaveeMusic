@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -39,7 +40,7 @@ public sealed partial class LibraryGridView : UserControl
 
     public static readonly DependencyProperty IsLoadingProperty =
         DependencyProperty.Register(nameof(IsLoading), typeof(bool), typeof(LibraryGridView),
-            new PropertyMetadata(false));
+            new PropertyMetadata(false, OnIsLoadingChanged));
 
     public static readonly DependencyProperty EmptyStateTextProperty =
         DependencyProperty.Register(nameof(EmptyStateText), typeof(string), typeof(LibraryGridView),
@@ -194,17 +195,40 @@ public sealed partial class LibraryGridView : UserControl
 
     #endregion
 
+    // Placeholder items to drive the shimmer ItemsRepeater DataTemplate
+    private static readonly object[] ShimmerPlaceholders = Enumerable.Range(0, 8).Cast<object>().ToArray();
+
     public LibraryGridView()
     {
         InitializeComponent();
+        ShimmerOverlay.ItemsSource = ShimmerPlaceholders;
         Loaded += OnLoaded;
         ItemsGridView.DoubleTapped += ItemsGridView_DoubleTapped;
     }
 
     private void ItemsGridView_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
     {
-        if (SelectedItem != null)
-            ItemDoubleTapped?.Invoke(this, SelectedItem);
+        if (SelectedItem == null) return;
+
+        // Prepare connected animation from the tapped card's image
+        if (e.OriginalSource is DependencyObject source)
+        {
+            var card = FindParent<Cards.ContentCard>(source);
+            card?.PrepareConnectedAnimation();
+        }
+
+        ItemDoubleTapped?.Invoke(this, SelectedItem);
+    }
+
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(child);
+        while (parent != null)
+        {
+            if (parent is T match) return match;
+            parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent);
+        }
+        return null;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -236,6 +260,15 @@ public sealed partial class LibraryGridView : UserControl
         if (sender.SelectedItem != SelectedItem)
         {
             SelectedItem = sender.SelectedItem;
+        }
+    }
+
+    private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is LibraryGridView control && e.NewValue is bool loading)
+        {
+            control.ShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            control.ItemsGridView.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 

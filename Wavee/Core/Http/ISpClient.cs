@@ -282,4 +282,16 @@ public interface ISpClient
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Server timestamp in Unix milliseconds.</returns>
     Task<long> GetMelodyTimeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches the user's recently played contexts (albums, playlists, artists).
+    /// </summary>
+    /// <param name="userId">Spotify username.</param>
+    /// <param name="limit">Maximum number of items to return (default 50).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Recently played contexts with URIs and timestamps.</returns>
+    Task<RecentlyPlayedResponse> GetRecentlyPlayedAsync(
+        string userId,
+        int limit = 50,
+        CancellationToken cancellationToken = default);
 }

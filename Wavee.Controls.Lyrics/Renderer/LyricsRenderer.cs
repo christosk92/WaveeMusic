@@ -13,9 +13,12 @@ using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Renderer
 {
-    public class LyricsRenderer : BreathingRendererBase
+    public class LyricsRenderer : BreathingRendererBase, IDisposable
     {
         private Matrix4x4 _threeDimMatrix = Matrix4x4.Identity;
+        private readonly Transform3DEffect _threeDimTransform = new();
+        private CanvasCommandList? _threeDimLayer;
+        private ICanvasResourceCreator? _threeDimLayerOwner;
 
         public void Draw(
             ICanvasAnimatedControl control,
@@ -39,34 +42,31 @@ namespace Wavee.Controls.Lyrics.Renderer
 
             if (windowStatus.LyricsEffectSettings.Is3DLyricsEnabled)
             {
-                using (var layer = new CanvasCommandList(control))
+                var layer = EnsureThreeDimLayer(control);
+                using (var layerDs = layer.CreateDrawingSession())
                 {
-                    using (var layerDs = layer.CreateDrawingSession())
-                    {
-                        DrawLyrics(
-                            control,
-                            layerDs,
-                            lines,
-                            mouseHoverLineIndex,
-                            isMousePressing,
-                            startVisibleIndex,
-                            endVisibleIndex,
-                            lyricsX,
-                            lyricsY,
-                            lyricsWidth,
-                            lyricsHeight,
-                            userScrollOffset,
-                            playingLineTopOffsetFactor,
-                            windowStatus,
-                            currentProgressMs);
-                    }
-
-                    ds.DrawImage(new Transform3DEffect
-                    {
-                        Source = layer,
-                        TransformMatrix = _threeDimMatrix
-                    });
+                    layerDs.Clear(Colors.Transparent);
+                    DrawLyrics(
+                        control,
+                        layerDs,
+                        lines,
+                        mouseHoverLineIndex,
+                        isMousePressing,
+                        startVisibleIndex,
+                        endVisibleIndex,
+                        lyricsX,
+                        lyricsY,
+                        lyricsWidth,
+                        lyricsHeight,
+                        userScrollOffset,
+                        playingLineTopOffsetFactor,
+                        windowStatus,
+                        currentProgressMs);
                 }
+
+                _threeDimTransform.Source = layer;
+                _threeDimTransform.TransformMatrix = _threeDimMatrix;
+                ds.DrawImage(_threeDimTransform);
             }
             else
             {
@@ -231,6 +231,25 @@ namespace Wavee.Controls.Lyrics.Renderer
         public void Update(float bassEnergy, int breathingIntensity)
         {
             base.UpdateBreathing(bassEnergy, breathingIntensity);
+        }
+
+        public void Dispose()
+        {
+            _threeDimLayer?.Dispose();
+            _threeDimLayer = null;
+            _threeDimLayerOwner = null;
+        }
+
+        private CanvasCommandList EnsureThreeDimLayer(ICanvasResourceCreator creator)
+        {
+            if (_threeDimLayer == null || !ReferenceEquals(_threeDimLayerOwner, creator))
+            {
+                _threeDimLayer?.Dispose();
+                _threeDimLayer = new CanvasCommandList(creator);
+                _threeDimLayerOwner = creator;
+            }
+
+            return _threeDimLayer;
         }
 
         /// <summary>

@@ -17,7 +17,7 @@ namespace Wavee.Core.Http;
 /// </summary>
 public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 {
-    private readonly string _baseUrl;
+    private string? _baseUrl; // resolved lazily from session
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
     private readonly IMetadataDatabase _database;
@@ -29,42 +29,39 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
     /// <summary>
     /// Creates a new ExtendedMetadataClient.
     /// </summary>
-    /// <param name="session">Active Spotify session.</param>
+    /// <param name="session">Spotify session (base URL resolved lazily from SpClient).</param>
     /// <param name="httpClient">HTTP client for requests.</param>
-    /// <param name="baseUrl">Resolved spclient base URL.</param>
     /// <param name="database">Metadata database for caching.</param>
     /// <param name="logger">Optional logger.</param>
     public ExtendedMetadataClient(
         ISession session,
         HttpClient httpClient,
-        string baseUrl,
         IMetadataDatabase database,
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(httpClient);
-        ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl);
         ArgumentNullException.ThrowIfNull(database);
 
         _session = session;
         _httpClient = httpClient;
         _database = database;
         _logger = logger;
+    }
 
-        // Normalize base URL - handle both raw hostnames and full URLs
-        if (baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            _baseUrl = baseUrl.TrimEnd('/');
-        }
-        else if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-        {
-            _baseUrl = "https" + baseUrl.Substring(4).TrimEnd('/');
-        }
+    private string GetBaseUrl()
+    {
+        if (_baseUrl != null) return _baseUrl;
+
+        var raw = _session.SpClient.BaseUrl;
+        if (raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            _baseUrl = raw.TrimEnd('/');
+        else if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            _baseUrl = "https" + raw.Substring(4).TrimEnd('/');
         else
-        {
-            var hostOnly = baseUrl.Split(':')[0];
-            _baseUrl = $"https://{hostOnly}";
-        }
+            _baseUrl = $"https://{raw.Split(':')[0]}";
+
+        return _baseUrl;
     }
 
     /// <summary>
@@ -279,7 +276,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         // Get access token
         var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
 
-        var url = $"{_baseUrl}/extended-metadata/v0/extended-metadata";
+        var url = $"{GetBaseUrl()}/extended-metadata/v0/extended-metadata";
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);

@@ -15,6 +15,25 @@ namespace Wavee.Controls.Lyrics.Renderer
     {
         public bool IsEnabled { get; set; }
         private CanvasGeometry? _spectrumGeometry;
+        private SpectrumGeometryCacheKey? _geometryCacheKey;
+        private CanvasCommandList? _glowCommandList;
+        private GaussianBlurEffect? _glowBlurEffect;
+        private readonly CanvasGradientStop[] _linearStops = new CanvasGradientStop[2];
+        private readonly CanvasGradientStop[] _roundStops = new CanvasGradientStop[3];
+
+        private readonly struct SpectrumGeometryCacheKey
+        {
+            public int BarCount { get; init; }
+            public SpectrumPlacement Placement { get; init; }
+            public SpectrumStyle Style { get; init; }
+            public int CanvasWidthPx { get; init; }
+            public int CanvasHeightPx { get; init; }
+            public int AlbumX { get; init; }
+            public int AlbumY { get; init; }
+            public int AlbumW { get; init; }
+            public int AlbumH { get; init; }
+            public int CornerRadiusPermille { get; init; }
+        }
 
         public void Draw(
             ICanvasResourceCreator resourceCreator,
@@ -34,12 +53,28 @@ namespace Wavee.Controls.Lyrics.Renderer
             float cornerRadiusPercentage
             )
         {
-            _spectrumGeometry?.Dispose();
-            _spectrumGeometry = null;
-
             if (!isEnabled || spectrumData == null || spectrumData.Length == 0) return;
 
-            _spectrumGeometry = CreateGeometry(resourceCreator, spectrumData, barCount, placement, style, canvasWidth, canvasHeight, albumRect, cornerRadiusPercentage);
+            var cacheKey = new SpectrumGeometryCacheKey
+            {
+                BarCount = barCount,
+                Placement = placement,
+                Style = style,
+                CanvasWidthPx = (int)Math.Round(canvasWidth),
+                CanvasHeightPx = (int)Math.Round(canvasHeight),
+                AlbumX = (int)Math.Round(albumRect.X),
+                AlbumY = (int)Math.Round(albumRect.Y),
+                AlbumW = (int)Math.Round(albumRect.Width),
+                AlbumH = (int)Math.Round(albumRect.Height),
+                CornerRadiusPermille = (int)Math.Round(cornerRadiusPercentage * 1000f),
+            };
+
+            if (_spectrumGeometry == null || !_geometryCacheKey.HasValue || !cacheKey.Equals(_geometryCacheKey.Value))
+            {
+                _spectrumGeometry?.Dispose();
+                _spectrumGeometry = CreateGeometry(resourceCreator, spectrumData, barCount, placement, style, canvasWidth, canvasHeight, albumRect, cornerRadiusPercentage);
+                _geometryCacheKey = cacheKey;
+            }
 
             if (_spectrumGeometry != null)
             {
@@ -49,7 +84,7 @@ namespace Wavee.Controls.Lyrics.Renderer
 
                 ApplyBreathingTransform(ds, center, isBreathingEffectEnabled);
 
-                DrawGeometry(ds, _spectrumGeometry, fillColor, isGlowEffectEnabled, opacity, placement, style, canvasHeight, albumRect);
+                DrawGeometry(resourceCreator, ds, _spectrumGeometry, fillColor, isGlowEffectEnabled, opacity, placement, style, canvasHeight, albumRect);
 
                 ResetTransform(ds, isBreathingEffectEnabled);
             }
@@ -288,7 +323,25 @@ namespace Wavee.Controls.Lyrics.Renderer
             return (new Vector2(x + r, y + r) + finalN * r, finalN);
         }
 
-        private static void DrawGeometry(
+        private void EnsureGlowResources(ICanvasResourceCreator creator)
+        {
+            if (_glowCommandList != null && _glowCommandList.Device == creator.Device && _glowBlurEffect != null)
+                return;
+
+            _glowBlurEffect?.Dispose();
+            _glowCommandList?.Dispose();
+
+            _glowCommandList = new CanvasCommandList(creator);
+            _glowBlurEffect = new GaussianBlurEffect
+            {
+                Source = _glowCommandList,
+                BlurAmount = 16.0f,
+                BorderMode = EffectBorderMode.Soft
+            };
+        }
+
+        private void DrawGeometry(
+            ICanvasResourceCreator resourceCreator,
             CanvasDrawingSession ds,
             CanvasGeometry geometry,
             Color color,
@@ -299,11 +352,10 @@ namespace Wavee.Controls.Lyrics.Renderer
             double height,
             Rect albumRect)
         {
-            var stops = new CanvasGradientStop[]
-            {
-                new() { Position = 0.0f, Color = Colors.Transparent },
-                new() { Position = 1.0f, Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B) }
-            };
+            _linearStops[0].Position = 0.0f;
+            _linearStops[0].Color = Colors.Transparent;
+            _linearStops[1].Position = 1.0f;
+            _linearStops[1].Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B);
 
             ICanvasBrush brush;
 
@@ -317,15 +369,14 @@ namespace Wavee.Controls.Lyrics.Renderer
                 float edgeRatio = (float)(Math.Min(albumRect.Width, albumRect.Height) / 2.0) / maxRadius;
                 edgeRatio = Math.Clamp(edgeRatio, 0.1f, 0.8f);
 
-                var roundStops = new CanvasGradientStop[]
-                {
-                    new() { Position = 0.0f, Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B) },
-                    new() { Position = edgeRatio, Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B) },
+                _roundStops[0].Position = 0.0f;
+                _roundStops[0].Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B);
+                _roundStops[1].Position = edgeRatio;
+                _roundStops[1].Color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B);
+                _roundStops[2].Position = 1.0f;
+                _roundStops[2].Color = Colors.Transparent;
 
-                    new() { Position = 1.0f, Color = Colors.Transparent }
-                };
-
-                brush = new CanvasRadialGradientBrush(ds, roundStops)
+                brush = new CanvasRadialGradientBrush(ds, _roundStops)
                 {
                     Center = new Vector2(centerX, centerY),
                     RadiusX = maxRadius,
@@ -334,7 +385,7 @@ namespace Wavee.Controls.Lyrics.Renderer
             }
             else
             {
-                var linearBrush = new CanvasLinearGradientBrush(ds, stops);
+                var linearBrush = new CanvasLinearGradientBrush(ds, _linearStops);
                 if (placement == SpectrumPlacement.Top)
                 {
                     linearBrush.StartPoint = new Vector2(0, (float)height);
@@ -350,19 +401,14 @@ namespace Wavee.Controls.Lyrics.Renderer
 
             if (isGlowEffectEnabled)
             {
+                EnsureGlowResources(resourceCreator);
+
                 // 辉光层
-                using var commandList = new CanvasCommandList(ds);
-                using (var clds = commandList.CreateDrawingSession())
+                using (var clds = _glowCommandList!.CreateDrawingSession())
                 {
+                    clds.Clear(Colors.Transparent);
                     clds.FillGeometry(geometry, brush);
                 }
-
-                using var blurEffect = new GaussianBlurEffect
-                {
-                    Source = commandList,
-                    BlurAmount = 16.0f,
-                    BorderMode = EffectBorderMode.Soft
-                };
 
                 // 向外发射辉光
                 float glowOffsetY = placement == SpectrumPlacement.AroundAlbumArt ? 0 : (placement == SpectrumPlacement.Bottom ? -4.0f : 4.0f);
@@ -371,7 +417,7 @@ namespace Wavee.Controls.Lyrics.Renderer
                 {
                     // 让颜色叠加变亮
                     ds.Blend = CanvasBlend.Add;
-                    ds.DrawImage(blurEffect, 0, glowOffsetY);
+                    ds.DrawImage(_glowBlurEffect!, 0, glowOffsetY);
                     ds.Blend = CanvasBlend.SourceOver; // 还原混合模式
                 }
             }
@@ -419,8 +465,13 @@ namespace Wavee.Controls.Lyrics.Renderer
 
         public void Dispose()
         {
+            _glowBlurEffect?.Dispose();
+            _glowBlurEffect = null;
+            _glowCommandList?.Dispose();
+            _glowCommandList = null;
             _spectrumGeometry?.Dispose();
             _spectrumGeometry = null;
+            _geometryCacheKey = null;
         }
     }
 }

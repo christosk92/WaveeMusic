@@ -6,6 +6,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:shimmer="using:CommunityToolkit.Labs.WinUI"
+    xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
     <Grid>
@@ -49,6 +51,39 @@
                 </ItemsView.Layout>
             </ItemsView>
 
+            <!-- Loading shimmer skeleton cards (shown while loading) -->
+            <ItemsRepeater
+                x:Name="ShimmerOverlay"
+                Grid.Column="0"
+                Margin="0,0,8,0"
+                Visibility="Collapsed">
+                <ItemsRepeater.Layout>
+                    <UniformGridLayout
+                        MinItemWidth="{x:Bind MinItemWidth, Mode=OneWay}"
+                        MinItemHeight="{x:Bind MinItemHeight, Mode=OneWay}"
+                        MinRowSpacing="12"
+                        MinColumnSpacing="12"
+                        ItemsStretch="Uniform"/>
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                        <Border
+                            CornerRadius="{ThemeResource ControlCornerRadius}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Padding="8,8,8,12">
+                            <StackPanel Spacing="8">
+                                <controls1:Shimmer Height="100" CornerRadius="4"/>
+                                <controls1:Shimmer Width="90" Height="14" HorizontalAlignment="Left"/>
+                                <controls1:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+
+
             <!-- GridSplitter -->
             <controls:GridSplitter
                 Grid.Column="1"
@@ -88,11 +123,5 @@
             </Grid>
         </Grid>
 
-        <!-- Loading overlay -->
-        <ProgressRing
-            Grid.RowSpan="2"
-            IsActive="{x:Bind IsLoading, Mode=OneWay}"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"/>
     </Grid>
 </UserControl>

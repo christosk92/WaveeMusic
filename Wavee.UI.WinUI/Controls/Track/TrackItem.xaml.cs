@@ -307,9 +307,14 @@ public sealed partial class TrackItem : UserControl
             {
                 var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
                 if (!string.IsNullOrEmpty(httpsUrl))
-                    CompactAlbumArt.Source = new BitmapImage(new Uri(httpsUrl));
+                {
+                    var cache = Ioc.Default.GetService<ImageCacheService>();
+                    CompactAlbumArt.Source = cache?.GetOrCreate(httpsUrl, 48);
+                }
                 else
+                {
                     CompactAlbumArt.Source = null;
+                }
             }
             else
             {
@@ -352,7 +357,8 @@ public sealed partial class TrackItem : UserControl
                 var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
                 if (!string.IsNullOrEmpty(httpsUrl))
                 {
-                    RowAlbumArt.Source = new BitmapImage(new Uri(httpsUrl));
+                    var cache = Ioc.Default.GetService<ImageCacheService>();
+                    RowAlbumArt.Source = cache?.GetOrCreate(httpsUrl, 48);
                     RowAlbumArt.Visibility = Visibility.Visible;
                     RowArtPlaceholder.Visibility = Visibility.Collapsed;
                 }
@@ -456,7 +462,7 @@ public sealed partial class TrackItem : UserControl
         }
     }
 
-    private const int RowDurationColumnIndex = 6;
+    private const int RowDurationColumnIndex = 7;
     private readonly List<ColumnDefinition> _customColDefs = [];
     private readonly List<UIElement> _customColElements = [];
 

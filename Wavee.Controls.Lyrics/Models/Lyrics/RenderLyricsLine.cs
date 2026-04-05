@@ -83,6 +83,18 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
         public TintEffect? UnplayedStrokeTint { get; private set; }
         public CompositeEffect? UnplayedComposite { get; private set; }
 
+        private CropEffect? _primaryCropEffect;
+        private GaussianBlurEffect? _primaryBlurEffect;
+        private OpacityEffect? _primaryOpacityEffect;
+
+        private CropEffect? _secondaryCropEffect;
+        private GaussianBlurEffect? _secondaryBlurEffect;
+        private OpacityEffect? _secondaryOpacityEffect;
+
+        private CropEffect? _tertiaryCropEffect;
+        private GaussianBlurEffect? _tertiaryBlurEffect;
+        private OpacityEffect? _tertiaryOpacityEffect;
+
         public CanvasTextLayoutRegion[]? PrimaryTextRegions { get; private set; }
 
         public RenderLyricsRegion[]? RenderLyricsRegions { get; private set; }
@@ -301,6 +313,39 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
             }
         }
 
+        public OpacityEffect GetPrimaryOverlayEffect(ICanvasImage source)
+        {
+            return EnsureOverlayEffect(ref _primaryCropEffect, ref _primaryBlurEffect, ref _primaryOpacityEffect, source);
+        }
+
+        public OpacityEffect GetSecondaryOverlayEffect(ICanvasImage source)
+        {
+            return EnsureOverlayEffect(ref _secondaryCropEffect, ref _secondaryBlurEffect, ref _secondaryOpacityEffect, source);
+        }
+
+        public OpacityEffect GetTertiaryOverlayEffect(ICanvasImage source)
+        {
+            return EnsureOverlayEffect(ref _tertiaryCropEffect, ref _tertiaryBlurEffect, ref _tertiaryOpacityEffect, source);
+        }
+
+        private static OpacityEffect EnsureOverlayEffect(
+            ref CropEffect? cropEffect,
+            ref GaussianBlurEffect? blurEffect,
+            ref OpacityEffect? opacityEffect,
+            ICanvasImage source)
+        {
+            cropEffect ??= new CropEffect { BorderMode = EffectBorderMode.Hard };
+            blurEffect ??= new GaussianBlurEffect { Source = cropEffect, BorderMode = EffectBorderMode.Soft };
+            opacityEffect ??= new OpacityEffect { Source = blurEffect };
+
+            if (!ReferenceEquals(cropEffect.Source, source))
+            {
+                cropEffect.Source = source;
+            }
+
+            return opacityEffect;
+        }
+
         private void DisposePrimaryRenderCharsEffects()
         {
             foreach (var cache in PrimaryRenderChars)
@@ -321,6 +366,33 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
             }
         }
 
+        private void DisposeOverlayEffects()
+        {
+            _primaryOpacityEffect?.Dispose();
+            _primaryBlurEffect?.Dispose();
+            _primaryCropEffect?.Dispose();
+
+            _secondaryOpacityEffect?.Dispose();
+            _secondaryBlurEffect?.Dispose();
+            _secondaryCropEffect?.Dispose();
+
+            _tertiaryOpacityEffect?.Dispose();
+            _tertiaryBlurEffect?.Dispose();
+            _tertiaryCropEffect?.Dispose();
+
+            _primaryOpacityEffect = null;
+            _primaryBlurEffect = null;
+            _primaryCropEffect = null;
+
+            _secondaryOpacityEffect = null;
+            _secondaryBlurEffect = null;
+            _secondaryCropEffect = null;
+
+            _tertiaryOpacityEffect = null;
+            _tertiaryBlurEffect = null;
+            _tertiaryCropEffect = null;
+        }
+
         public void DisposeCaches()
         {
             UnplayedComposite?.Dispose();
@@ -337,6 +409,7 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
 
             DisposeRenderLyricsRegions();
             DisposePrimaryRenderCharsEffects();
+            DisposeOverlayEffects();
         }
 
         public void Update(TimeSpan elapsedTime)

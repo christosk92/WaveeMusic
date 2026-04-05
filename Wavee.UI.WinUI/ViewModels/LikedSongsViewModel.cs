@@ -212,9 +212,11 @@ public sealed partial class LikedSongsViewModel : ReactiveObject, ITrackListView
         _playbackStateService = playbackStateService;
         _logger = logger;
 
-        // Create observable filter predicate from SearchQuery (throttled for performance)
+        // Create observable filter predicate from SearchQuery (throttled for performance).
+        // StartWith emits immediately so shimmer placeholders pass the filter without waiting 200ms.
         var filterPredicate = this.WhenAnyValue(x => x.SearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(200))
+            .StartWith(SearchQuery ?? "")
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Select(CreateFilterPredicate);
 

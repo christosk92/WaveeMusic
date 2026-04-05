@@ -1119,6 +1119,45 @@ public sealed class SpClient : ISpClient
         return doc.RootElement.GetProperty("timestamp").GetInt64();
     }
 
+    /// <inheritdoc />
+    public async Task<RecentlyPlayedResponse> GetRecentlyPlayedAsync(
+        string userId, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var url = $"{_baseUrl}/recently-played/v3/user/{Uri.EscapeDataString(userId)}/recently-played?format=json&offset=0&limit={limit}&filter=default,collection-new-episodes&market=from_token";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch { /* Continue without client-token */ }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Failed to get recently played: {response.StatusCode} - {body}");
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await JsonSerializer.DeserializeAsync(stream, RecentlyPlayedJsonContext.Default.RecentlyPlayedResponse, cancellationToken)
+            ?? throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty recently-played response");
+    }
+
     /// <summary>
     /// Gets the effective locale for API requests.
     /// </summary>

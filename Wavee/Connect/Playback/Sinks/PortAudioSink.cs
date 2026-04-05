@@ -51,6 +51,10 @@ public sealed class PortAudioSink : IAudioSink
     private volatile bool _bufferUnderrunFlag;
     private volatile int _lastUnderrunBytesRead;
     private volatile int _lastUnderrunBytesNeeded;
+    private long _lastUnderflowLogAtMs;
+    private long _lastBufferUnderrunLogAtMs;
+
+    private const long UnderflowLogIntervalMs = 2000;
 
     public string SinkName => "PortAudio";
 
@@ -263,10 +267,10 @@ public sealed class PortAudioSink : IAudioSink
         if (_buffer == null || !_isInitialized)
             throw new InvalidOperationException("Sink not initialized");
 
-        // Auto-start playback if not playing and we have enough data
+        // Auto-start playback once we've buffered ~1s of audio
         lock (_lock)
         {
-            if (!_isPlaying && _buffer.Available > _format!.BytesPerSecond / 2)
+            if (!_isPlaying && _buffer.Available > _format!.BytesPerSecond)
             {
                 StartPlayback();
             }
@@ -275,16 +279,26 @@ public sealed class PortAudioSink : IAudioSink
         // Deferred logging from callback flags (zero-alloc in callback thread)
         if (_callbackUnderflowFlag)
         {
-            _callbackUnderflowFlag = false;
-            _logger?.LogWarning("PortAudio output underflow detected (total: {Count})",
-                Volatile.Read(ref _underrunCount));
+            var nowMs = Environment.TickCount64;
+            if (nowMs - Volatile.Read(ref _lastUnderflowLogAtMs) >= UnderflowLogIntervalMs)
+            {
+                _callbackUnderflowFlag = false;
+                Volatile.Write(ref _lastUnderflowLogAtMs, nowMs);
+                _logger?.LogWarning("PortAudio output underflow detected (total: {Count})",
+                    Volatile.Read(ref _underrunCount));
+            }
         }
         if (_bufferUnderrunFlag)
         {
-            _bufferUnderrunFlag = false;
-            _logger?.LogWarning(
-                "PortAudio buffer underrun: got {BytesRead}/{BytesNeeded} bytes",
-                _lastUnderrunBytesRead, _lastUnderrunBytesNeeded);
+            var nowMs = Environment.TickCount64;
+            if (nowMs - Volatile.Read(ref _lastBufferUnderrunLogAtMs) >= UnderflowLogIntervalMs)
+            {
+                _bufferUnderrunFlag = false;
+                Volatile.Write(ref _lastBufferUnderrunLogAtMs, nowMs);
+                _logger?.LogWarning(
+                    "PortAudio buffer underrun: got {BytesRead}/{BytesNeeded} bytes",
+                    _lastUnderrunBytesRead, _lastUnderrunBytesNeeded);
+            }
         }
 
         // Write to circular buffer (blocks if buffer is full - provides backpressure)
@@ -309,8 +323,13 @@ public sealed class PortAudioSink : IAudioSink
 
         try
         {
-            _stream.Start();
+            // Set flag BEFORE Start() so the priming callback (triggered by
+            // PrimeOutputBuffersUsingStreamCallback) reads real audio from the
+            // circular buffer instead of outputting silence.  Without this, the
+            // first real callback after Start() returns sees an empty PortAudio
+            // internal buffer and reports OutputUnderflow.
             _isPlaying = true;
+            _stream.Start();
             _logger?.LogDebug("PortAudio playback started");
             return true;
         }

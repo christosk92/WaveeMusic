@@ -40,6 +40,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private CancellationTokenSource? _colorCts;
     private bool _isFirstStateUpdate = true;
     private double? _pendingSeekPositionMs;
+    private long _lastPositionLogAtMs;
 
     // ── State properties ──
 
@@ -220,19 +221,27 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
                 var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
 
-                _logger?.LogInformation(
-                    "UI bridge: position → {CalculatedMs}ms " +
-                    "(raw={RawMs}ms, timestamp={Timestamp}, now={Now}, " +
-                    "elapsed={Elapsed}ms, status={Status}, duration={Duration}ms, source={Source}, clockOffset={ClockOffset}ms)",
-                    calculatedPos,
-                    state.PositionMs,
-                    state.Timestamp,
-                    correctedNow,
-                    correctedNow - state.Timestamp,
-                    state.Status,
-                    state.DurationMs,
-                    state.Source,
-                    clock.OffsetMs);
+                if (_logger?.IsEnabled(LogLevel.Debug) == true)
+                {
+                    var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (nowMs - _lastPositionLogAtMs >= 1000 || !state.Changes.HasFlag(StateChanges.Position))
+                    {
+                        _lastPositionLogAtMs = nowMs;
+                        _logger.LogDebug(
+                            "UI bridge: position → {CalculatedMs}ms " +
+                            "(raw={RawMs}ms, timestamp={Timestamp}, now={Now}, " +
+                            "elapsed={Elapsed}ms, status={Status}, duration={Duration}ms, source={Source}, clockOffset={ClockOffset}ms)",
+                            calculatedPos,
+                            state.PositionMs,
+                            state.Timestamp,
+                            correctedNow,
+                            correctedNow - state.Timestamp,
+                            state.Status,
+                            state.DurationMs,
+                            state.Source,
+                            clock.OffsetMs);
+                    }
+                }
 
                 Position = calculatedPos;
 

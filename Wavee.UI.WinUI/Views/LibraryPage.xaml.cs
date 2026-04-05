@@ -45,6 +45,13 @@ public sealed partial class LibraryPage : Page
     {
         base.OnNavigatedTo(e);
 
+        // On back/forward navigation, restore the cached page as-is
+        if (e.NavigationMode is NavigationMode.Back or NavigationMode.Forward
+            && ContentFrame.Content != null)
+        {
+            return;
+        }
+
         // Determine which item to select based on parameter
         SelectorBarItem itemToSelect = AlbumsItem; // default
 
@@ -58,6 +65,11 @@ public sealed partial class LibraryPage : Page
             };
         }
 
+        // If already showing the requested sub-page, skip re-navigation
+        var pageType = GetPageType(itemToSelect);
+        if (ContentFrame.Content?.GetType() == pageType)
+            return;
+
         // Clear all selections and set the correct one
         AlbumsItem.IsSelected = false;
         ArtistsItem.IsSelected = false;
@@ -68,7 +80,6 @@ public sealed partial class LibraryPage : Page
         _currentTabIndex = GetTabIndex(itemToSelect);
 
         // Navigate without animation on initial load
-        var pageType = GetPageType(itemToSelect);
         ContentFrame.Navigate(pageType, null, new SuppressNavigationTransitionInfo());
     }
 

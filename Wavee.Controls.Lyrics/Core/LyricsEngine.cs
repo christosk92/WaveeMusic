@@ -13,6 +13,7 @@ using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -112,6 +113,7 @@ namespace Wavee.Controls.Lyrics.Core
         private SongInfo _songInfo = new() { Album = "", Artist = "", Title = "", DurationMs = 0 };
         private byte[]? _albumArtBytes;
         private bool _isPlaying;
+        private bool _isRenderingActive = true;
         private int _positionOffsetMs;
 
         private Point _mousePosition;
@@ -129,6 +131,20 @@ namespace Wavee.Controls.Lyrics.Core
         private int _primaryPlayingLineIndex = -1;
         private (int Start, int End) _visibleRange;
         private double _canvasTargetScrollOffset;
+
+        // Perf sampling (debug overlay)
+        private DateTime _perfSampleStartUtc = DateTime.UtcNow;
+        private int _perfUpdateCount;
+        private int _perfDrawCount;
+        private int _perfRelayoutCount;
+        private double _perfUpdateMsSum;
+        private double _perfDrawMsSum;
+        private double _perfUpdateHz;
+        private double _perfDrawHz;
+        private double _perfRelayoutHz;
+        private double _perfAvgUpdateMs;
+        private double _perfAvgDrawMs;
+        private long _relayoutCountTotal;
 
         // --- Read-only accessors (consumed by NowPlayingCanvas computed properties) ---
         public TimeSpan SongPosition => _songPosition;
@@ -170,7 +186,7 @@ namespace Wavee.Controls.Lyrics.Core
         public void SetLyricsStartY(double y) { _renderLyricsStartY = y; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
         public void SetLyricsWidth(double w) { _renderLyricsWidth = w; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
         public void SetLyricsHeight(double h) { _renderLyricsHeight = h; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
-        public void SetLyricsOpacity(double o) { _renderLyricsOpacity = o; Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout); }
+        public void SetLyricsOpacity(double o) => _renderLyricsOpacity = o;
 
         public void SetMouseScrollOffset(double offset) => _mouseYScrollTransition.Start(offset);
         public void SetMousePosition(Point p) => _mousePosition = p;
@@ -219,6 +235,13 @@ namespace Wavee.Controls.Lyrics.Core
 
         public void SetIsPlaying(bool isPlaying) => _isPlaying = isPlaying;
 
+        public void SetIsActive(bool isActive)
+        {
+            if (_isRenderingActive == isActive) return;
+            _isRenderingActive = isActive;
+            UpdateSpectrumCaptureState();
+        }
+
         public void SetClearColor(Color color) => _clearColor = color;
 
         public void SetAlbumArtBytes(byte[]? imageBytes)
@@ -262,7 +285,6 @@ namespace Wavee.Controls.Lyrics.Core
             InitSpectrumAnalyzer();
             InitSpoutHook(sender);
 
-            Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
             TriggerRelayout();
         }
 
@@ -271,6 +293,8 @@ namespace Wavee.Controls.Lyrics.Core
             _control = sender;
             if (_lyricsWindowStatus == null) return;
 
+            long updateStart = Stopwatch.GetTimestamp();
+
             // Atomically snapshot and clear dirty flags — prevents race with UI thread setters
             var frameDirty = (DirtyFlags)Interlocked.Exchange(ref _dirtyFlags, 0);
 
@@ -278,6 +302,10 @@ namespace Wavee.Controls.Lyrics.Core
             var lyricsStyle = _lyricsWindowStatus.LyricsStyleSettings;
             var lyricsEffect = _lyricsWindowStatus.LyricsEffectSettings;
             TimeSpan elapsedTime = args.Timing.ElapsedTime;
+
+            _spectrumAnalyzer.BarCount = lyricsBg.SpectrumCount;
+            _spectrumAnalyzer.Sensitivity = lyricsBg.SpectrumSensitivity;
+            UpdateSpectrumCaptureState();
 
             _accentColor1Transition.Update(elapsedTime);
             _accentColor2Transition.Update(elapsedTime);
@@ -462,11 +490,15 @@ namespace Wavee.Controls.Lyrics.Core
             {
                 _lyricsRenderer.Update(_spectrumAnalyzer.CurrentBassEnergy, lyricsEffect.LyricsBreathingIntensity);
             }
+
+            RecordUpdateFrameCost(updateStart);
         }
 
         public void Draw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
         {
             if (_lyricsWindowStatus == null || _renderContext == null) return;
+
+            long drawStart = Stopwatch.GetTimestamp();
 
             var ctx = _renderContext;
             var ds = args.DrawingSession;
@@ -502,6 +534,8 @@ namespace Wavee.Controls.Lyrics.Core
             {
                 DrawDebugOverlay(sender, args, ds);
             }
+
+            RecordDrawFrameCost(drawStart);
         }
 
         // ================================================================
@@ -564,6 +598,10 @@ namespace Wavee.Controls.Lyrics.Core
             string debugText =
                 $"Spout Sender : {_spoutHook?.SenderName ?? "Disabled"}\n" +
                 $"FPS          : {(1.0 / args.Timing.ElapsedTime.TotalSeconds):00.0} (Avg: {args.Timing.UpdateCount / args.Timing.TotalTime.TotalSeconds:00.0})\n" +
+                $"Update/Draw  : {_perfUpdateHz:00.0} / {_perfDrawHz:00.0} Hz\n" +
+                $"CPU ms       : U {_perfAvgUpdateMs:0.00} / D {_perfAvgDrawMs:0.00}\n" +
+                $"Relayout     : {_perfRelayoutHz:0.0}/s (Total {_relayoutCountTotal})\n" +
+                $"Spectrum Cap : {_spectrumAnalyzer.IsCapturing}\n" +
                 $"----------------------------------------\n" +
                 $"Render Pos   : [{(int)_renderLyricsStartX}, {(int)_renderLyricsStartY}]\n" +
                 $"Render Size  : [{(int)_renderLyricsWidth} x {(int)_renderLyricsHeight}]\n" +
@@ -606,6 +644,41 @@ namespace Wavee.Controls.Lyrics.Core
             }
         }
 
+        private void RecordUpdateFrameCost(long startTimestamp)
+        {
+            _perfUpdateCount++;
+            _perfUpdateMsSum += (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
+            FinalizePerfSampleIfDue();
+        }
+
+        private void RecordDrawFrameCost(long startTimestamp)
+        {
+            _perfDrawCount++;
+            _perfDrawMsSum += (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
+            FinalizePerfSampleIfDue();
+        }
+
+        private void FinalizePerfSampleIfDue()
+        {
+            var now = DateTime.UtcNow;
+            var elapsedSec = (now - _perfSampleStartUtc).TotalSeconds;
+            if (elapsedSec < 1.0)
+                return;
+
+            _perfUpdateHz = _perfUpdateCount / elapsedSec;
+            _perfDrawHz = _perfDrawCount / elapsedSec;
+            _perfRelayoutHz = _perfRelayoutCount / elapsedSec;
+            _perfAvgUpdateMs = _perfUpdateCount > 0 ? _perfUpdateMsSum / _perfUpdateCount : 0;
+            _perfAvgDrawMs = _perfDrawCount > 0 ? _perfDrawMsSum / _perfDrawCount : 0;
+
+            _perfSampleStartUtc = now;
+            _perfUpdateCount = 0;
+            _perfDrawCount = 0;
+            _perfRelayoutCount = 0;
+            _perfUpdateMsSum = 0;
+            _perfDrawMsSum = 0;
+        }
+
         private void InitSpoutHook(CanvasAnimatedControl sender)
         {
             _spoutHook?.Dispose();
@@ -620,8 +693,23 @@ namespace Wavee.Controls.Lyrics.Core
 
             _spectrumAnalyzer.BarCount = lyricsBg.SpectrumCount;
             _spectrumAnalyzer.Sensitivity = lyricsBg.SpectrumSensitivity;
+            UpdateSpectrumCaptureState();
+        }
 
-            _spectrumAnalyzer.StartCapture();
+        private void UpdateSpectrumCaptureState()
+        {
+            if (_lyricsWindowStatus == null) return;
+
+            bool shouldCapture = _isRenderingActive && _lyricsWindowStatus.LyricsBackgroundSettings.IsSpectrumOverlayEnabled;
+            if (shouldCapture)
+            {
+                if (!_spectrumAnalyzer.IsCapturing)
+                    _spectrumAnalyzer.StartCapture();
+            }
+            else if (_spectrumAnalyzer.IsCapturing)
+            {
+                _spectrumAnalyzer.StopCapture();
+            }
         }
 
         private void DisposeSpectrumAnalyzer()
@@ -636,6 +724,9 @@ namespace Wavee.Controls.Lyrics.Core
         private void TriggerRelayout()
         {
             if (_lyricsWindowStatus == null || _control == null) return;
+
+            _perfRelayoutCount++;
+            _relayoutCountTotal++;
 
             DisposeRenderLyricsLines();
             _renderLyricsLines = _lyricsData?.LyricsLines.Select(x => new RenderLyricsLine(x)).ToList();
@@ -736,6 +827,8 @@ namespace Wavee.Controls.Lyrics.Core
         {
             foreach (var renderer in _backgroundRenderers)
                 renderer.Dispose();
+
+            _lyricsRenderer.Dispose();
 
             DisposeRenderLyricsLines();
             DisposeSpectrumAnalyzer();

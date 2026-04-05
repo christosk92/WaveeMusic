@@ -30,6 +30,7 @@
                 Subtitle="{x:Bind Subtitle}"
                 PlaceholderColorHex="{x:Bind ColorHex}"
                 IsCircularImage="False"
+                IsPlaying="{x:Bind IsPlaying, Mode=OneWay}"
                 NavigationUri="{x:Bind Uri}"
                 NavigationTitle="{x:Bind Title}"/>
         </DataTemplate>
@@ -44,6 +45,7 @@
                 PlaceholderGlyph="&#xE77B;"
                 IsCircularImage="True"
                 CenterText="True"
+                IsPlaying="{x:Bind IsPlaying, Mode=OneWay}"
                 NavigationUri="{x:Bind Uri}"
                 NavigationTitle="{x:Bind Title}"/>
         </DataTemplate>

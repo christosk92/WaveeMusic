@@ -166,7 +166,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
         try
         {
-            var result = await _pathfinderClient.SearchAsync(query);
+            var result = await Task.Run(() => _pathfinderClient.SearchAsync(query));
 
             // Batch update: AddOrUpdate preserves existing items, new ones animate in
             _resultsSource.Edit(cache =>
@@ -202,7 +202,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
-        _playbackStateService.PlayTrack(trackItem.Id);
+        _playbackStateService.PlayTrack(trackItem.Uri);
     }
 
     public void Dispose()

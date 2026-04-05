@@ -1,9 +1,10 @@
 using System;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -51,7 +52,8 @@ public sealed partial class MediaCard : UserControl
             var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
             if (!string.IsNullOrEmpty(httpsUrl))
             {
-                card.CardImage.Source = new BitmapImage(new Uri(httpsUrl));
+                var cache = Ioc.Default.GetService<ImageCacheService>();
+                card.CardImage.Source = cache?.GetOrCreate(httpsUrl, 200);
                 card.PlaceholderIcon.Visibility = Visibility.Collapsed;
             }
             else

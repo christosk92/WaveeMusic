@@ -140,6 +140,13 @@ public static class AppLifecycleHelper
                 .AddSingleton<ThemeColorService>()
                 .AddSingleton<Services.HomeFeedCache>()
                 .AddSingleton<Services.IHomeFeedCache>(sp => sp.GetRequiredService<Services.HomeFeedCache>())
+                .AddSingleton<Services.RecentlyPlayedService>(sp =>
+                    new Services.RecentlyPlayedService(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<IPlaybackStateService>(),
+                        sp.GetRequiredService<IMessenger>(),
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
+                        sp.GetService<ILogger<Services.RecentlyPlayedService>>()))
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton<Services.ImageCacheService>()
@@ -169,6 +176,12 @@ public static class AppLifecycleHelper
                     sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(),
                     sp.GetService<ILogger<Session>>()))
                 .AddSingleton<ISession>(sp => sp.GetRequiredService<Session>())
+                .AddSingleton<Wavee.Core.Http.IExtendedMetadataClient>(sp =>
+                    new Wavee.Core.Http.ExtendedMetadataClient(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("Wavee"),
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetService<ILogger<Wavee.Core.Http.ExtendedMetadataClient>>()))
                 .AddSingleton<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(sp =>
                 {
                     var session = sp.GetRequiredService<ISession>();
@@ -176,6 +189,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMetadataDatabase>(),
                         (Wavee.Core.Http.SpClient)session.SpClient,
                         session,
+                        metadataClient: sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         logger: sp.GetService<ILogger<Wavee.Core.Library.Spotify.SpotifyLibraryService>>());
                 })
 
@@ -186,7 +200,12 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.TrackLikeService>>()))
-                .AddSingleton<ILibraryDataService, MockLibraryDataService>()
+                .AddSingleton<ILibraryDataService>(sp =>
+                    new Data.Contexts.LibraryDataService(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetRequiredService<ITrackLikeService>(),
+                        sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
                 .AddSingleton<ILocationService>(sp =>
                     new Data.Contexts.LocationService(
                         sp.GetRequiredService<ISession>().Pathfinder,
@@ -233,6 +252,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ISession>(),
                         sp.GetService<ISettingsService>(),
                         sp.GetService<Services.HomeFeedCache>(),
+                        sp.GetService<Services.RecentlyPlayedService>(),
                         sp.GetService<ILogger<HomeViewModel>>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
@@ -287,15 +307,11 @@ public static class AppLifecycleHelper
             var metadataDb = Ioc.Default.GetService<IMetadataDatabase>();
             var cacheService = Ioc.Default.GetService<Wavee.Core.Storage.ICacheService>();
 
-            // Create extended metadata client for track enrichment
-            Wavee.Core.Http.IExtendedMetadataClient? extMetadataClient = null;
+            // Resolve from DI — registered in ConfigureHost, base URL resolves lazily from session
+            var extMetadataClient = Ioc.Default.GetService<Wavee.Core.Http.IExtendedMetadataClient>();
+
             if (metadataDb != null)
-            {
                 cacheService ??= new Wavee.Core.Storage.CacheService(metadataDb, logger: logger);
-                var spClientBase = ((Wavee.Core.Http.SpClient)session.SpClient).BaseUrl;
-                extMetadataClient = new Wavee.Core.Http.ExtendedMetadataClient(
-                    session, httpClient, spClientBase, metadataDb, logger);
-            }
 
             // Wire metadata client into PlaybackStateManager for enriching incomplete cluster metadata
             if (extMetadataClient != null)

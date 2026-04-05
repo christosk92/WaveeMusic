@@ -50,6 +50,13 @@ public sealed class LibraryDataService : ILibraryDataService
             PlaylistsChanged?.Invoke(this, EventArgs.Empty);
             DataChanged?.Invoke(this, EventArgs.Empty);
         });
+
+        // Forward like/unlike cache changes to DataChanged so sidebar badges refresh immediately
+        _likeService.SaveStateChanged += () =>
+        {
+            _logger?.LogDebug("LibraryDataService: SaveStateChanged — forwarding as DataChanged");
+            DataChanged?.Invoke(this, EventArgs.Empty);
+        };
     }
 
     public Task<LibraryStatsDto> GetStatsAsync(CancellationToken ct = default)

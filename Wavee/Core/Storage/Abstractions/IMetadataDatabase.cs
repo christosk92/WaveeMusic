@@ -185,6 +185,14 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// </summary>
     Task ClearSpotifyLibraryAsync(SpotifyLibraryItemType? itemType = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets URIs in spotify_library that have no corresponding row in the entities table.
+    /// Used by the metadata backfill step after sync.
+    /// </summary>
+    Task<List<string>> GetLibraryUrisMissingMetadataAsync(
+        SpotifyLibraryItemType itemType,
+        CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Sync State Operations

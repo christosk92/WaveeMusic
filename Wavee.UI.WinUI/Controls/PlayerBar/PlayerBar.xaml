@@ -105,7 +105,7 @@
                     <Image
                         Width="48"
                         Height="48"
-                        Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                        Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
                         Stretch="UniformToFill"
                         behaviors:ImageFallbackBehavior.HideOnError="True"
                         behaviors:ImageFallbackBehavior.FadeInOnLoad="True"

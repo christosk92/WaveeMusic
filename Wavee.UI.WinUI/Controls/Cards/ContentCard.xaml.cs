@@ -303,7 +303,7 @@ public sealed partial class ContentCard : UserControl
         if (string.IsNullOrEmpty(httpsUrl)) return;
 
         // Use the shared LRU bitmap cache via DI
-        var bitmap = _imageCache?.GetOrCreate(httpsUrl) ?? new BitmapImage(new Uri(httpsUrl));
+        var bitmap = _imageCache?.GetOrCreate(httpsUrl, 200) ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = 200, DecodePixelType = DecodePixelType.Logical };
 
         if (IsCircularImage)
         {
@@ -584,7 +584,7 @@ public sealed partial class ContentCard : UserControl
         }
     }
 
-    private void PrepareConnectedAnimation()
+    internal void PrepareConnectedAnimation()
     {
         var uri = NavigationUri;
         if (string.IsNullOrEmpty(uri)) return;

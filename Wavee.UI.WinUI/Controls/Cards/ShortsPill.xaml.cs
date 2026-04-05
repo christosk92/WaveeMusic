@@ -2,8 +2,8 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -56,7 +56,8 @@ public sealed partial class ShortsPill : UserControl
         if (!string.IsNullOrEmpty(url))
         {
             var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
-            pill.PillImage.Source = new BitmapImage(new Uri(httpsUrl));
+            var cache = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
+            pill.PillImage.Source = cache?.GetOrCreate(httpsUrl, 100);
             pill.PlaceholderIcon.Visibility = Visibility.Collapsed;
         }
         else

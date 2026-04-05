@@ -663,7 +663,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             {
                 // Empty → show recent searches immediately (no debounce)
                 _searchDebouncer.Cancel();
-                var recents = await _searchService.GetRecentSearchesAsync();
+                var recents = await Task.Run(() => _searchService.GetRecentSearchesAsync());
                 SearchSuggestions = recents;
             }
             else
@@ -671,7 +671,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 // Debounce 300ms before calling API
                 await _searchDebouncer.DebounceAsync(async ct =>
                 {
-                    var suggestions = await _searchService.GetSuggestionsAsync(text, ct);
+                    var suggestions = await Task.Run(() => _searchService.GetSuggestionsAsync(text, ct));
                     SearchSuggestions = suggestions;
                 });
             }

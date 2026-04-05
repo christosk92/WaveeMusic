@@ -1117,7 +1117,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT e.* FROM entities e
+            SELECT e.*, sl.added_at AS added_at FROM entities e
             INNER JOIN spotify_library sl ON e.uri = sl.item_uri
             WHERE sl.item_type = $item_type
             ORDER BY sl.added_at DESC
@@ -1151,6 +1151,35 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         var result = await cmd.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(result);
+    }
+
+    /// <summary>
+    /// Gets URIs in spotify_library that have no corresponding row in the entities table.
+    /// </summary>
+    public async Task<List<string>> GetLibraryUrisMissingMetadataAsync(
+        SpotifyLibraryItemType itemType,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<string>();
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT sl.item_uri FROM spotify_library sl
+            LEFT JOIN entities e ON e.uri = sl.item_uri
+            WHERE sl.item_type = $item_type AND e.uri IS NULL;
+            """;
+        cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(reader.GetString(0));
+        }
+
+        return results;
     }
 
     /// <summary>

@@ -54,7 +54,7 @@ public sealed partial class PlayerBar : UserControl
         {
             ApplyTintColor(ViewModel.AlbumArtColor);
         }
-        else if (e.PropertyName == nameof(PlayerBarViewModel.HasTrack))
+        else if (e.PropertyName is nameof(PlayerBarViewModel.HasTrack) or nameof(PlayerBarViewModel.TrackTitle))
         {
             UpdatePlayerHeartState();
         }

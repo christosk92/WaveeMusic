@@ -19,6 +19,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Wavee.Core.Session.ISession? _session;
     private readonly ISettingsService? _settingsService;
     private readonly Services.HomeFeedCache? _homeFeedCache;
+    private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
     private readonly ILogger? _logger;
 
     [ObservableProperty]
@@ -53,12 +54,17 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         Wavee.Core.Session.ISession? session = null,
         ISettingsService? settingsService = null,
         Services.HomeFeedCache? homeFeedCache = null,
+        Services.RecentlyPlayedService? recentlyPlayedService = null,
         ILogger<HomeViewModel>? logger = null)
     {
         _session = session;
         _settingsService = settingsService;
         _homeFeedCache = homeFeedCache;
+        _recentlyPlayedService = recentlyPlayedService;
         _logger = logger;
+
+        if (_recentlyPlayedService != null)
+            _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Home, null)
         {
@@ -126,6 +132,10 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
             if (string.IsNullOrEmpty(Greeting))
                 UpdateGreeting();
+
+            // Fire-and-forget: load real recently played data (replaces stale Home API section)
+            if (_recentlyPlayedService != null)
+                _ = _recentlyPlayedService.LoadAsync();
         }
         catch (Exception ex)
         {
@@ -146,6 +156,38 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         var ordered = ApplyPreferences(snapshot.Sections);
         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+    }
+
+    private void OnRecentlyPlayedItemsChanged()
+    {
+        if (_recentlyPlayedService == null) return;
+
+        var items = _recentlyPlayedService.Items;
+        if (items.Count == 0) return;
+
+        // Find existing "Recently played" section or create one
+        var existing = Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
+        if (existing != null)
+        {
+            existing.Items.Clear();
+            foreach (var item in items)
+                existing.Items.Add(item);
+        }
+        else
+        {
+            var section = new HomeSection
+            {
+                Title = "Recently played",
+                SectionType = HomeSectionType.RecentlyPlayed,
+                SectionUri = "recently-played"
+            };
+            foreach (var item in items)
+                section.Items.Add(item);
+
+            // Insert after Shorts if present, otherwise at index 0
+            var insertIdx = Sections.Count > 0 && Sections[0].SectionType == HomeSectionType.Shorts ? 1 : 0;
+            Sections.Insert(insertIdx, section);
+        }
     }
 
     [RelayCommand]
@@ -569,7 +611,7 @@ public sealed class HomeSection
     public ObservableCollection<HomeSectionItem> Items { get; set; } = [];
 }
 
-public sealed class HomeSectionItem
+public sealed partial class HomeSectionItem : ObservableObject
 {
     public string? Uri { get; set; }
     public string? Title { get; set; }
@@ -577,4 +619,7 @@ public sealed class HomeSectionItem
     public string? ImageUrl { get; set; }
     public HomeContentType ContentType { get; set; }
     public string? ColorHex { get; set; }
+
+    [ObservableProperty]
+    private bool _isPlaying;
 }

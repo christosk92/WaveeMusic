@@ -33,6 +33,10 @@ public sealed partial class ArtistsLibraryPage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Re-subscribe after Unloaded removed the handler (page cache restore)
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
         // Sync selection when page is loaded (for cache restoration)
         SyncSelectionToItemsView();
 
@@ -106,6 +110,11 @@ public sealed partial class ArtistsLibraryPage : Page
     private void ArtistsView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (ViewModel.SelectedArtist is not { } artist) return;
+
+        // Prepare connected animation from the detail panel artist image
+        Helpers.ConnectedAnimationHelper.PrepareAnimation(
+            Helpers.ConnectedAnimationHelper.ArtistImage, DetailArtistImageContainer);
+
         var param = new ContentNavigationParameter
         {
             Uri = artist.Id,
@@ -113,6 +122,39 @@ public sealed partial class ArtistsLibraryPage : Page
             ImageUrl = artist.ImageUrl
         };
         NavigationHelpers.OpenArtist(param, artist.Name, NavigationHelpers.IsCtrlPressed());
+    }
+
+    private void ViewArtistButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedArtist is not { } artist) return;
+
+        Helpers.ConnectedAnimationHelper.PrepareAnimation(
+            Helpers.ConnectedAnimationHelper.ArtistImage, DetailArtistImageContainer);
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = artist.Id,
+            Title = artist.Name,
+            ImageUrl = artist.ImageUrl
+        };
+        NavigationHelpers.OpenArtist(param, artist.Name, NavigationHelpers.IsCtrlPressed());
+    }
+
+    private void ViewAlbumButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedAlbumForTracks == null) return;
+        var album = ViewModel.SelectedAlbumForTracks.Album;
+
+        Helpers.ConnectedAnimationHelper.PrepareAnimation(
+            Helpers.ConnectedAnimationHelper.AlbumArt, DetailAlbumImageContainer);
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = album.Id,
+            Title = album.Name,
+            ImageUrl = album.ImageUrl
+        };
+        NavigationHelpers.OpenAlbum(param, album.Name, NavigationHelpers.IsCtrlPressed());
     }
 
     private void SyncSelectionToItemsView()

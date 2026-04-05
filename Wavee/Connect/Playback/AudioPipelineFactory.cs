@@ -59,13 +59,11 @@ public static class AudioPipelineFactory
         options ??= AudioPipelineOptions.Default;
 
         // Create or use injected extended metadata client (singleton preferred)
-        var spClientBaseUrl = session.SpClientUrl ?? "spclient.wg.spotify.com";
         if (extendedMetadataClient == null && metadataDatabase != null)
         {
             extendedMetadataClient = new ExtendedMetadataClient(
                 session,
                 httpClient,
-                spClientBaseUrl,
                 metadataDatabase,
                 logger);
         }
@@ -167,11 +165,9 @@ public static class AudioPipelineFactory
         // Create extended metadata client only if not provided and database exists
         if (extendedMetadataClient == null && metadataDatabase != null)
         {
-            var spClientBaseUrl = session.SpClientUrl ?? "spclient.wg.spotify.com";
             extendedMetadataClient = new ExtendedMetadataClient(
                 session,
                 httpClient,
-                spClientBaseUrl,
                 metadataDatabase,
                 logger);
         }

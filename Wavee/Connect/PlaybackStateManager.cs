@@ -80,11 +80,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     // State publisher (bidirectional mode only)
     private AsyncWorker<PutStateRequest>? _statePublisher;
 
-    // PutState debounce — position-only updates are debounced 200ms, critical changes flush immediately
+    // PutState debounce — position-only updates are debounced, critical changes flush immediately
     private CancellationTokenSource? _debounceCts;
     private PlaybackState? _pendingState;
     private readonly object _debounceLock = new();
-    private const int DebounceMs = 200;
+    private const int DebounceMs = 750;
 
     private bool _disposed;
 
@@ -391,9 +391,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                     cluster.ActiveDeviceId, cluster.PlayerState != null);
             }
 
-            // Log incoming PlayerState
+            // Avoid expensive protobuf JSON serialization unless trace logging is enabled.
             if (cluster.PlayerState != null)
-                _logger?.LogDebug("Incoming PlayerState → {Json}", JsonFormatter.Default.Format(cluster.PlayerState));
+            {
+                _logger?.LogDebug(
+                    "Incoming PlayerState: track={TrackUri}, position={Position}, duration={Duration}, isPlaying={IsPlaying}",
+                    cluster.PlayerState.Track?.Uri,
+                    cluster.PlayerState.Position,
+                    cluster.PlayerState.Duration,
+                    cluster.PlayerState.IsPlaying);
+
+                if (_logger?.IsEnabled(LogLevel.Trace) == true)
+                {
+                    _logger.LogTrace("Incoming PlayerState → {Json}", JsonFormatter.Default.Format(cluster.PlayerState));
+                }
+            }
 
             // Ignore cluster updates if we're the active device and in bidirectional mode
             if (IsBidirectional &&
@@ -575,7 +587,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
     /// <summary>
     /// Debounces non-critical state updates (position-only) to reduce PutState flooding.
-    /// Waits 200ms — if no new update arrives, publishes. If a new update arrives, resets the timer.
+    /// Waits DebounceMs — if no new update arrives, publishes. If a new update arrives, resets the timer.
     /// </summary>
     private void DebouncedPublishState(PlaybackState state)
     {
@@ -652,8 +664,14 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             _logger?.LogTrace("Submitting state publish: messageId={MessageId}, connectionId={ConnectionId}, startedAt={StartedAt}",
                 request.MessageId, _connectionId, _playbackStartedAt);
 
-            // Submit to async worker (non-blocking)
-            _statePublisher?.SubmitAsync(request);
+            // Drop stale updates when the publish queue is saturated.
+            // For playback state, freshest update is more important than every intermediate tick.
+            if (_statePublisher != null && !_statePublisher.TrySubmit(request))
+            {
+                _logger?.LogTrace(
+                    "Dropping PutState update because publisher queue is full (messageId={MessageId})",
+                    request.MessageId);
+            }
         }
         catch (Exception ex)
         {
@@ -671,8 +689,18 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             if (_connectionId == null || _spClient == null || _session == null)
                 return;
 
-            var json = Google.Protobuf.JsonFormatter.Default.Format(request);
-            _logger?.LogDebug("PutState → {Json}", json);
+            _logger?.LogDebug(
+                "PutState: messageId={MessageId}, reason={Reason}, active={IsActive}, track={TrackUri}, position={Position}",
+                request.MessageId,
+                request.PutStateReason,
+                request.IsActive,
+                request.Device?.PlayerState?.Track?.Uri,
+                request.Device?.PlayerState?.Position);
+
+            if (_logger?.IsEnabled(LogLevel.Trace) == true)
+            {
+                _logger.LogTrace("PutState → {Json}", Google.Protobuf.JsonFormatter.Default.Format(request));
+            }
 
             await _spClient.PutConnectStateAsync(
                 _session.Config.DeviceId,

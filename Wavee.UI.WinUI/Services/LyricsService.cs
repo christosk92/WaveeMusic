@@ -861,8 +861,10 @@ public sealed class LyricsService : ILyricsService
     ];
 
     /// <summary>
-    /// Returns true if the lyrics result contains only instrumental markers
-    /// (e.g., Chinese "pure music" placeholders) and no real lyric content.
+    /// Returns true if the lyrics result contains an instrumental marker
+    /// (e.g., Chinese "pure music" placeholders). Any line matching a marker
+    /// means the track is instrumental — other lines are just metadata
+    /// (composer credits like "作曲 :") and not real lyrics.
     /// </summary>
     private static bool IsInstrumentalOnlyResult(ControlsLyricsData data)
     {
@@ -873,20 +875,14 @@ public sealed class LyricsService : ILyricsService
             var text = line.PrimaryText?.Trim();
             if (string.IsNullOrEmpty(text)) continue;
 
-            bool isMarker = false;
             foreach (var marker in InstrumentalMarkers)
             {
                 if (text.Contains(marker, StringComparison.Ordinal))
-                {
-                    isMarker = true;
-                    break;
-                }
+                    return true; // Any instrumental marker means the whole result is instrumental
             }
-
-            if (!isMarker) return false; // Found a real lyric line
         }
 
-        return true; // All non-empty lines were instrumental markers
+        return false;
     }
 
     // ── Helpers ──

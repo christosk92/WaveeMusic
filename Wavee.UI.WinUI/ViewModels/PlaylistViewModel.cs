@@ -314,9 +314,11 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
         _playbackStateService = playbackStateService;
         _logger = logger;
 
-        // Create observable filter predicate from SearchQuery (throttled for performance)
+        // Create observable filter predicate from SearchQuery (throttled for performance).
+        // StartWith emits immediately so shimmer placeholders pass the filter without waiting 200ms.
         var filterPredicate = this.WhenAnyValue(x => x.SearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(200))
+            .StartWith(SearchQuery ?? "")
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Select(CreateFilterPredicate);
 
@@ -340,9 +342,10 @@ public sealed partial class PlaylistViewModel : ReactiveObject, ITrackListViewMo
             .Subscribe(count => TotalTracks = count)
             .DisposeWith(_disposables);
 
-        // Stop loading when tracks are added to the source
+        // Stop loading when real (loaded) tracks are added — ignore placeholders
         _tracksSource.Connect()
             .WhereReasonsAre(ChangeReason.Add, ChangeReason.Refresh)
+            .Filter(t => t.IsLoaded)
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(_ =>
             {

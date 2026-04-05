@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Dispatching;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
@@ -16,8 +17,11 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackListViewModel
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
+    private readonly ITrackLikeService? _likeService;
+    private readonly DispatcherQueue _dispatcherQueue;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -48,10 +52,17 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     private string? _selectedArtistImageUrl;
 
     [ObservableProperty]
-    private string _selectedArtistFollowers = "";
+    private string _selectedArtistAddedAt = "";
 
     [ObservableProperty]
     private int _selectedArtistAlbumCount;
+
+    // Discography filter
+    [ObservableProperty]
+    private bool _showSavedOnly;
+
+    private List<LibraryArtistAlbumDto> _allAlbums = [];
+    private HashSet<string> _savedAlbumUris = [];
 
     // Tracks panel (third column) properties
     [ObservableProperty]
@@ -78,11 +89,22 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     public ILibraryDataService LibraryDataService => _libraryDataService;
 
-    public ArtistsLibraryViewModel(ILibraryDataService libraryDataService, IAlbumService albumService, IPlaybackService playbackService)
+    public ArtistsLibraryViewModel(
+        ILibraryDataService libraryDataService,
+        IArtistService artistService,
+        IAlbumService albumService,
+        IPlaybackService playbackService,
+        ITrackLikeService? likeService = null)
     {
         _libraryDataService = libraryDataService;
+        _artistService = artistService;
         _albumService = albumService;
         _playbackService = playbackService;
+        _likeService = likeService;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
     }
 
     [RelayCommand]
@@ -233,7 +255,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         // Update wrapper properties
         SelectedArtistName = value?.Name ?? "";
         SelectedArtistImageUrl = value?.ImageUrl;
-        SelectedArtistFollowers = value?.FollowerCountFormatted ?? "";
+        SelectedArtistAddedAt = value?.AddedAtFormatted ?? "";
         SelectedArtistAlbumCount = value?.AlbumCount ?? 0;
 
         _ = LoadSelectedArtistDetailsAsync();
@@ -248,6 +270,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     {
         if (SelectedArtist == null)
         {
+            _allAlbums.Clear();
             AlbumGroups.Clear();
             return;
         }
@@ -256,36 +279,97 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         {
             IsLoadingDetails = true;
 
-            var albums = await _libraryDataService.GetArtistAlbumsAsync(SelectedArtist.Id);
+            // Fetch full discography (single API call) + saved album URIs in parallel
+            var discographyTask = _artistService.GetDiscographyAllAsync(SelectedArtist.Id, 0, 100);
+            var savedAlbumsTask = _libraryDataService.GetAlbumsAsync();
 
-            // Group albums by type
-            var groups = new[]
-            {
-                ("Albums", "Album", albums.Where(a => a.AlbumType == "Album")),
-                ("Singles & EPs", "Single,EP", albums.Where(a => a.AlbumType is "Single" or "EP")),
-                ("Compilations", "Compilation", albums.Where(a => a.AlbumType == "Compilation"))
-            };
+            await Task.WhenAll(discographyTask, savedAlbumsTask);
 
-            AlbumGroups.Clear();
-            foreach (var (name, type, groupAlbums) in groups)
+            // Build saved URI set for cross-reference
+            _savedAlbumUris = (await savedAlbumsTask).Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Map all results to DTOs with IsSaved, preserving original type from API
+            var allReleases = await discographyTask;
+            _allAlbums = allReleases.Select(r => new LibraryArtistAlbumDto
             {
-                var albumsList = groupAlbums.ToList();
-                if (albumsList.Count > 0)
-                {
-                    AlbumGroups.Add(new ArtistAlbumGroupViewModel(
-                        name,
-                        type,
-                        albumsList,
-                        _albumService,
-                        _playbackService,
-                        onAlbumSelected: album => SelectedAlbumForTracks = album));
-                }
-            }
+                Id = r.Uri ?? $"spotify:album:{r.Id}",
+                Name = r.Name ?? "Unknown",
+                ImageUrl = r.ImageUrl,
+                Year = r.Year,
+                AlbumType = r.Type,
+                IsSaved = _savedAlbumUris.Contains(r.Uri ?? $"spotify:album:{r.Id}")
+            }).ToList();
+
+            ApplyAlbumFilter();
         }
         finally
         {
             IsLoadingDetails = false;
         }
+    }
+
+    partial void OnShowSavedOnlyChanged(bool value)
+    {
+        ApplyAlbumFilter();
+    }
+
+    private void ApplyAlbumFilter()
+    {
+        var source = ShowSavedOnly ? _allAlbums.Where(a => a.IsSaved) : _allAlbums;
+
+        var groups = new[]
+        {
+            ("Albums", "Album", source.Where(a => a.AlbumType is "ALBUM").ToList()),
+            ("Singles & EPs", "Single,EP", source.Where(a => a.AlbumType is "SINGLE" or "EP").ToList()),
+            ("Compilations", "Compilation", source.Where(a => a.AlbumType is "COMPILATION").ToList())
+        };
+
+        AlbumGroups.Clear();
+        foreach (var (name, type, albumsList) in groups)
+        {
+            if (albumsList.Count > 0)
+            {
+                AlbumGroups.Add(new ArtistAlbumGroupViewModel(
+                    name,
+                    type,
+                    albumsList,
+                    _albumService,
+                    _playbackService,
+                    onAlbumSelected: album => SelectedAlbumForTracks = album));
+            }
+        }
+    }
+
+
+    private void OnSaveStateChanged()
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_likeService == null || Artists.Count == 0) return;
+
+            // Remove artists that are no longer followed
+            var removed = Artists.Where(a => !_likeService.IsSaved(SavedItemType.Artist, a.Id)).ToList();
+            if (removed.Count == 0) return;
+
+            foreach (var artist in removed)
+            {
+                Artists.Remove(artist);
+            }
+
+            // Clear selection if the selected artist was removed
+            if (SelectedArtist != null && removed.Any(a => a.Id == SelectedArtist.Id))
+            {
+                SelectedArtist = null;
+            }
+
+            ApplyFilter();
+
+            // Select first if nothing selected
+            if (SelectedArtist == null && FilteredArtists.Count > 0)
+            {
+                SelectedArtist = FilteredArtists[0];
+            }
+        });
     }
 
     private void ApplyFilter()
@@ -339,7 +423,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         if (track is not AlbumTrackDto albumTrack) return;
         var albumId = SelectedAlbumForTracks?.Album?.Id;
         if (albumId != null)
-            await _playbackService.PlayTrackInContextAsync(albumTrack.Uri, $"spotify:album:{albumId}");
+            await _playbackService.PlayTrackInContextAsync(albumTrack.Uri, albumId);
         else
             await _playbackService.PlayTracksAsync([albumTrack.Uri]);
     }

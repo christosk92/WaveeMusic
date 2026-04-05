@@ -265,17 +265,33 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateTimerState()
     {
-        if (_positionTimer == null || _lyricsVm == null) return;
+        if (_lyricsVm == null)
+        {
+            _positionTimer?.Stop();
+            NowPlayingCanvas.SetRenderingActive(false);
+            return;
+        }
 
-        var shouldRun = SelectedMode == RightPanelMode.Lyrics
+        var canRender = SelectedMode == RightPanelMode.Lyrics
                         && Visibility == Visibility.Visible
-                        && ((_lyricsVm.HasLyrics && _lyricsVm.PlaybackState.IsPlaying)
-                            || _showingLoadingDots);
+                        && (_lyricsVm.HasLyrics || _lyricsVm.IsLoading);
 
-        if (shouldRun)
-            _positionTimer.Start();
+        NowPlayingCanvas.SetRenderingActive(canRender);
+
+        var shouldRunTimer = canRender
+                             && ((_lyricsVm.HasLyrics && _lyricsVm.PlaybackState.IsPlaying)
+                                 || _showingLoadingDots);
+
+        if (shouldRunTimer)
+            _positionTimer?.Start();
         else
-            _positionTimer.Stop();
+            _positionTimer?.Stop();
+
+        if (!canRender)
+        {
+            _scrollResetTimer?.Stop();
+            NowPlayingCanvas.SetIsPlaying(false);
+        }
     }
 
     private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
@@ -447,8 +463,8 @@ public sealed partial class RightPanelView : UserControl
         LyricsContent.Visibility = SelectedMode == RightPanelMode.Lyrics ? Visibility.Visible : Visibility.Collapsed;
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
 
-        // Canvas provides the opaque background for the entire panel (all tabs)
-        NowPlayingCanvas.Visibility = Visibility.Visible;
+        if (_lyricsInitialized)
+            ApplyCurrentLyricsState();
 
         QueueTab.IsChecked = SelectedMode == RightPanelMode.Queue;
         LyricsTab.IsChecked = SelectedMode == RightPanelMode.Lyrics;
@@ -457,7 +473,7 @@ public sealed partial class RightPanelView : UserControl
         // When switching to lyrics tab, ensure we have the latest state
         if (SelectedMode == RightPanelMode.Lyrics && _lyricsInitialized)
         {
-            _lyricsVm?.InvalidateTrack();
+            _ = _lyricsVm?.LoadLyricsAsync();
             UpdateCanvasLayout();
         }
 

@@ -27,7 +27,8 @@ namespace Wavee.Controls.Lyrics.Renderer
                     line.TertiaryPosition,
                     strokeWidth,
                     blurAmount,
-                    (float)opacity);
+                    (float)opacity,
+                    line.GetTertiaryOverlayEffect(textOnlyLayer));
             }
 
             if (line.PrimaryTextLayout != null)
@@ -38,7 +39,8 @@ namespace Wavee.Controls.Lyrics.Renderer
                     line.PrimaryPosition,
                     strokeWidth,
                     blurAmount,
-                    (float)opacity);
+                    (float)opacity,
+                    line.GetPrimaryOverlayEffect(textOnlyLayer));
             }
 
             if (line.SecondaryTextLayout != null)
@@ -49,7 +51,8 @@ namespace Wavee.Controls.Lyrics.Renderer
                     line.SecondaryPosition,
                     strokeWidth,
                     blurAmount,
-                    (float)opacity);
+                    (float)opacity,
+                    line.GetSecondaryOverlayEffect(textOnlyLayer));
             }
         }
 
@@ -60,7 +63,8 @@ namespace Wavee.Controls.Lyrics.Renderer
             Vector2 position,
             int strokeWidth,
             float blur,
-            float opacity)
+            float opacity,
+            OpacityEffect opacityEffect)
         {
             if (float.IsNaN(opacity) || opacity <= 0) return;
 
@@ -72,21 +76,17 @@ namespace Wavee.Controls.Lyrics.Renderer
                 bounds.Height
             );
 
-            ds.DrawImage(new OpacityEffect
+            if (opacityEffect.Source is not GaussianBlurEffect blurEffect || blurEffect.Source is not CropEffect cropEffect) return;
+
+            if (!ReferenceEquals(cropEffect.Source, source))
             {
-                Source = new GaussianBlurEffect
-                {
-                    BlurAmount = blur,
-                    Source = new CropEffect
-                    {
-                        Source = source,
-                        SourceRectangle = destRect,
-                        BorderMode = EffectBorderMode.Hard,
-                    },
-                    BorderMode = EffectBorderMode.Soft
-                },
-                Opacity = opacity
-            });
+                cropEffect.Source = source;
+            }
+            cropEffect.SourceRectangle = destRect;
+            blurEffect.BlurAmount = blur;
+            opacityEffect.Opacity = opacity;
+
+            ds.DrawImage(opacityEffect);
 
             //ds.FillRectangle(destRect, Microsoft.UI.Colors.Red.WithAlpha(128));
         }

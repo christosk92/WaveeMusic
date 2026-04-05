@@ -65,6 +65,13 @@ namespace Wavee.Controls.Lyrics.Renderer
         {
             if (_currentBitmap == newBitmap) return;
 
+            // If a prior crossfade is still pending and we switch tracks again,
+            // dispose the stale previous resources before overwriting references.
+            _previousBitmap?.Dispose();
+            _previousBitmap = null;
+            _previousTargetCache?.Dispose();
+            _previousTargetCache = null;
+
             _previousBitmap = _currentBitmap;
             _previousTargetCache = _currentTargetCache;
             _currentTargetCache = null;
@@ -109,6 +116,7 @@ namespace Wavee.Controls.Lyrics.Renderer
 
             if (_crossfadeTransition.Value >= 1.0 && _previousBitmap != null)
             {
+                _previousBitmap.Dispose();
                 _previousBitmap = null;
                 _previousTargetCache?.Dispose();
                 _previousTargetCache = null;

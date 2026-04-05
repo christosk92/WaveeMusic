@@ -45,6 +45,12 @@ public interface ITrackLikeService
     Task InitializeAsync();
 
     /// <summary>
+    /// Clear and reload all caches from SQLite. Call after sync completes
+    /// to pick up newly synced data.
+    /// </summary>
+    Task ReloadCacheAsync();
+
+    /// <summary>
     /// Fired whenever any saved state changes. Subscribe to refresh UI.
     /// Lightweight — just signals that something changed, check IsSaved() for specifics.
     /// </summary>

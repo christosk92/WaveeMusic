@@ -140,16 +140,21 @@ public sealed class SpotifyClockService : IDisposable
 
     private async Task RunPeriodicSyncAsync(CancellationToken cancellationToken)
     {
-        // Initial sync immediately (only on first start, not on interval change)
+        // Initial sync with retry — the service may be created before authentication completes
         if (!_isSynced)
         {
-            try
+            for (int attempt = 1; attempt <= 15; attempt++)
             {
-                await SyncAsync(cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger?.LogWarning(ex, "Initial clock sync failed, will retry on next interval");
+                try
+                {
+                    await SyncAsync(cancellationToken);
+                    break;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogDebug(ex, "Initial clock sync attempt {Attempt} failed, retrying in 2s", attempt);
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                }
             }
         }
 

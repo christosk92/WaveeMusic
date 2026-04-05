@@ -91,6 +91,23 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         SubscribeToLibraryChanges();
     }
 
+    public async Task ReloadCacheAsync()
+    {
+        foreach (var (type, (_, dbType, _)) in TypeMap)
+        {
+            _caches[type].Clear();
+            await LoadItemsAsync(type, dbType);
+        }
+
+        _logger?.LogInformation(
+            "Cache reloaded: {Tracks} tracks, {Albums} albums, {Artists} artists",
+            _caches[SavedItemType.Track].Count,
+            _caches[SavedItemType.Album].Count,
+            _caches[SavedItemType.Artist].Count);
+
+        SaveStateChanged?.Invoke();
+    }
+
     public void ToggleSave(SavedItemType type, string itemUri, bool currentlySaved)
     {
         var (prefix, _, _) = TypeMap[type];

@@ -46,7 +46,7 @@
                             <FontIcon Glyph="&#xE8FD;" FontSize="48" Opacity="0.3"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                            <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=200}"
                                    Stretch="UniformToFill"
                                    Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                    behaviors:ImageFallbackBehavior.HideOnError="True"

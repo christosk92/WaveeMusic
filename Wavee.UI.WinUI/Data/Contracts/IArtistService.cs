@@ -11,6 +11,7 @@ namespace Wavee.UI.WinUI.Data.Contracts;
 public interface IArtistService
 {
     Task<ArtistOverviewResult> GetOverviewAsync(string artistUri, CancellationToken ct = default);
+    Task<List<ArtistReleaseResult>> GetDiscographyAllAsync(string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default);
     Task<List<ArtistReleaseResult>> GetDiscographyPageAsync(string artistUri, string type, int offset, int limit = 20, CancellationToken ct = default);
     Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(string artistUri, CancellationToken ct = default);
 }
