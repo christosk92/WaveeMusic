@@ -150,11 +150,11 @@ public sealed class EqualizerProcessor : IAudioProcessor
         if (input.IsEmpty || _filters == null || _filters.Length == 0)
             return input;
 
-        var inputSpan = input.Data.Span;
-        var output = new byte[inputSpan.Length];
+        var dataLength = input.Data.Length;
+        var output = ArrayPool<byte>.Shared.Rent(dataLength);
         input.Data.CopyTo(output); // Start with input data
 
-        var outputSpan = output.AsSpan();
+        var outputSpan = output.AsSpan(0, dataLength);
 
         if (_format.BitsPerSample == 16)
         {
@@ -173,7 +173,7 @@ public sealed class EqualizerProcessor : IAudioProcessor
             throw new NotSupportedException($"Unsupported bit depth: {_format.BitsPerSample}");
         }
 
-        return new AudioBuffer(output, input.PositionMs);
+        return new AudioBuffer(output, dataLength, input.PositionMs);
     }
 
     public void ProcessInPlace(Span<byte> data)

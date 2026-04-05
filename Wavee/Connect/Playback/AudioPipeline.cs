@@ -1235,8 +1235,12 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
                         // Write to sink (copies into circular buffer)
                         await _audioSink.WriteAsync(processed.Data, cancellationToken);
 
-                        // Return the pooled pipeline buffer to ArrayPool
+                        // Return pooled buffers to ArrayPool.
+                        // When the chain is active it copies decoder data into a new pooled buffer,
+                        // so we must return both the pipeline buffer AND the decoder's original buffer.
                         processed.Return();
+                        if (!ReferenceEquals(processed, buffer))
+                            buffer.Return();
 
                         // Update position from the sink (tracks what's actually been played
                         // through the speakers, not the decode-ahead position)

@@ -57,8 +57,8 @@ public sealed class CompressorProcessor : IAudioProcessor
             return input;
 
         var inputSpan = input.Data.Span;
-        var output = new byte[inputSpan.Length];
-        var outputSpan = output.AsSpan();
+        var output = ArrayPool<byte>.Shared.Rent(inputSpan.Length);
+        var outputSpan = output.AsSpan(0, inputSpan.Length);
 
         if (_format.BitsPerSample == 16)
         {
@@ -77,7 +77,7 @@ public sealed class CompressorProcessor : IAudioProcessor
             throw new NotSupportedException($"Unsupported bit depth: {_format.BitsPerSample}");
         }
 
-        return new AudioBuffer(output, input.PositionMs);
+        return new AudioBuffer(output, inputSpan.Length, input.PositionMs);
     }
 
     public void ProcessInPlace(Span<byte> data)

@@ -155,8 +155,8 @@ public sealed class CrossfadeProcessor : IAudioProcessor
             return input; // No fade needed
 
         var inputSpan = input.Data.Span;
-        var output = new byte[inputSpan.Length];
-        var outputSpan = output.AsSpan();
+        var output = ArrayPool<byte>.Shared.Rent(inputSpan.Length);
+        var outputSpan = output.AsSpan(0, inputSpan.Length);
 
         if (_format!.BitsPerSample == 16)
         {
@@ -171,7 +171,7 @@ public sealed class CrossfadeProcessor : IAudioProcessor
             ApplyGainInt32(inputSpan, outputSpan, outGain);
         }
 
-        return new AudioBuffer(output, input.PositionMs);
+        return new AudioBuffer(output, inputSpan.Length, input.PositionMs);
     }
 
     private AudioBuffer MixBuffers(AudioBuffer current, AudioBuffer next, double progress)
@@ -184,8 +184,8 @@ public sealed class CrossfadeProcessor : IAudioProcessor
 
         // Use the smaller length
         var mixLength = Math.Min(currentSpan.Length, nextSpan.Length);
-        var output = new byte[mixLength];
-        var outputSpan = output.AsSpan();
+        var output = ArrayPool<byte>.Shared.Rent(mixLength);
+        var outputSpan = output.AsSpan(0, mixLength);
 
         if (_format!.BitsPerSample == 16)
         {
@@ -200,7 +200,7 @@ public sealed class CrossfadeProcessor : IAudioProcessor
             MixInt32(currentSpan, nextSpan, outputSpan, outGain, inGain, mixLength);
         }
 
-        return new AudioBuffer(output, current.PositionMs);
+        return new AudioBuffer(output, mixLength, current.PositionMs);
     }
 
     private double CalculateFadeOutGain(double progress)

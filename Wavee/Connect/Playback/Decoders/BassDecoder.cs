@@ -305,11 +305,12 @@ public sealed class BassDecoder : IAudioDecoder
                         posMs = (long)(Bass.ChannelBytes2Seconds(handle, posBytes) * 1000);
                     }
 
-                    // Copy to new buffer for the AudioBuffer (since we reuse the arrays)
-                    var bufferCopy = new byte[pcmBytes];
-                    pcmBuffer.AsSpan(0, pcmBytes).CopyTo(bufferCopy);
+                    // Rent a pooled buffer to avoid per-chunk heap allocations
+                    // (the caller returns it via AudioBuffer.Return after consuming)
+                    var pooled = ArrayPool<byte>.Shared.Rent(pcmBytes);
+                    pcmBuffer.AsSpan(0, pcmBytes).CopyTo(pooled);
 
-                    yield return new AudioBuffer(bufferCopy, posMs);
+                    yield return new AudioBuffer(pooled, pcmBytes, posMs);
                 }
 
                 _logger?.LogDebug("BASS decode complete");
