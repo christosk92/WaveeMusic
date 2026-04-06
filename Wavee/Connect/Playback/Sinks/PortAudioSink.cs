@@ -45,6 +45,7 @@ public sealed class PortAudioSink : IAudioSink
     // Seek muting: output silence between flush and first write to prevent
     // partial-buffer clicks/pops during seek transitions
     private volatile bool _seekMute;
+    private int _seekUnmuteThresholdBytes;
 
     // Deferred logging flags: set in callback (zero-alloc), logged from managed thread
     private volatile bool _callbackUnderflowFlag;
@@ -55,6 +56,9 @@ public sealed class PortAudioSink : IAudioSink
     private long _lastBufferUnderrunLogAtMs;
 
     private const long UnderflowLogIntervalMs = 2000;
+    // Slightly larger callback quantum reduces risk of steady-playback underflows
+    // caused by scheduler jitter / brief GC pauses.
+    private const int CallbackPeriodMs = 80;
 
     public string SinkName => "PortAudio";
 
@@ -149,11 +153,14 @@ public sealed class PortAudioSink : IAudioSink
                 suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
             };
 
-            // Callback period: 50ms balances low-latency pause/resume with driver stability.
-            // Too small (10ms) causes glitches on some WASAPI drivers.
-            // The circular buffer (bufferSizeMs) handles network buffering separately.
-            const int callbackPeriodMs = 50;
-            var framesPerBuffer = (uint)(format.SampleRate * callbackPeriodMs / 1000);
+            // Callback period trades control latency for playback robustness.
+            // Using 80ms reduces sporadic steady-playback underflows on some systems.
+            var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
+            // Require at least ~2 callback chunks before unmuting after a flush/seek.
+            // This reduces partial callback fills (and audible hiccups) right after seeks.
+            _seekUnmuteThresholdBytes = Math.Max(
+                format.BytesPerFrame,
+                (int)(framesPerBuffer * format.BytesPerFrame * 2));
 
             // Create stream with callback
             _stream = new PortAudioSharp.Stream(
@@ -230,12 +237,9 @@ public sealed class PortAudioSink : IAudioSink
             if (bytesRead < bytesNeeded)
             {
                 span.Slice(bytesRead).Clear();
-                if (bytesRead > 0)
-                {
-                    _bufferUnderrunFlag = true;
-                    _lastUnderrunBytesRead = bytesRead;
-                    _lastUnderrunBytesNeeded = bytesNeeded;
-                }
+                _bufferUnderrunFlag = true;
+                _lastUnderrunBytesRead = bytesRead;
+                _lastUnderrunBytesNeeded = bytesNeeded;
             }
 
             // Apply real-time volume scaling directly in the callback.
@@ -308,7 +312,14 @@ public sealed class PortAudioSink : IAudioSink
 
         // Write to circular buffer (blocks if buffer is full - provides backpressure)
         await _buffer.WriteAsync(audioData, cancellationToken);
-        _seekMute = false; // unmute callback now that new audio is available
+
+        // After a seek flush, unmute only after we have enough buffered audio to satisfy
+        // at least one callback comfortably, avoiding immediate partial callback fills.
+        if (_seekMute && _buffer.Available >= _seekUnmuteThresholdBytes)
+        {
+            _seekMute = false;
+        }
+
         Interlocked.Add(ref _samplesWritten, audioData.Length);
     }
 
@@ -519,8 +530,10 @@ public sealed class PortAudioSink : IAudioSink
                     suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
                 };
 
-                const int callbackPeriodMs = 50;
-                var framesPerBuffer = (uint)(format.SampleRate * callbackPeriodMs / 1000);
+                var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
+                _seekUnmuteThresholdBytes = Math.Max(
+                    format.BytesPerFrame,
+                    (int)(framesPerBuffer * format.BytesPerFrame * 2));
 
                 var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
                 _buffer = new CircularAudioBuffer(bufferCapacity);
@@ -630,7 +643,7 @@ internal sealed class CircularAudioBuffer
             int written;
             lock (_writeLock)
             {
-                var freeSpace = _buffer.Length - _available;
+                var freeSpace = _buffer.Length - Volatile.Read(ref _available);
                 if (freeSpace > 0)
                 {
                     var toWrite = Math.Min(remaining.Length, freeSpace);
@@ -701,7 +714,7 @@ internal sealed class CircularAudioBuffer
     /// </summary>
     public int Read(Span<byte> destination)
     {
-        var avail = _available;
+        var avail = Volatile.Read(ref _available);
         var toRead = Math.Min(destination.Length, avail);
         if (toRead == 0) return 0;
 
@@ -729,7 +742,7 @@ internal sealed class CircularAudioBuffer
         {
             _readPos = 0;
             _writePos = 0;
-            _available = 0;
+            Volatile.Write(ref _available, 0);
             _spaceAvailable.Set();
         }
     }
