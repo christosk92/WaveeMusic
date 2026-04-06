@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Wavee.Connect;
 using Wavee.Core.Session;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -28,6 +29,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     private readonly ILogger? _logger;
     private readonly Subject<PlaybackErrorEvent> _errorSubject = new();
     private readonly SemaphoreSlim _commandLock = new(1, 1);
+    private readonly DispatcherQueue? _dispatcherQueue;
     private IDisposable? _stateSubscription;
     private IDisposable? _errorNotificationSubscription;
 
@@ -52,6 +54,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _promptService = promptService ?? throw new ArgumentNullException(nameof(promptService));
         _logger = logger;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         SubscribeToRemoteState();
         SubscribeToErrorNotifications();
@@ -88,10 +91,13 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
             .Subscribe(
                 state =>
                 {
-                    ActiveDeviceId = state.ActiveDeviceId;
-                    IsPlayingRemotely = state.Source == StateSource.Cluster
-                                        && state.ActiveDeviceId != null
-                                        && state.ActiveDeviceId != _session.Config.DeviceId;
+                    ApplyOnUiThread(() =>
+                    {
+                        ActiveDeviceId = state.ActiveDeviceId;
+                        IsPlayingRemotely = state.Source == StateSource.Cluster
+                                            && state.ActiveDeviceId != null
+                                            && state.ActiveDeviceId != _session.Config.DeviceId;
+                    });
                 },
                 ex => _logger?.LogError(ex, "Error in playback state subscription"));
     }
@@ -104,9 +110,9 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         return action switch
         {
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
-            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(contextUri, c), nameof(PlayContextAsync), ct),
-            Controls.PlayAction.PlayLater => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(contextUri, c), nameof(PlayContextAsync), ct),
-            _ => await ExecuteWithRetryAsync(c => _executor.PlayContextAsync(contextUri, options, c), nameof(PlayContextAsync), ct, isPlayCommand: true)
+            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(contextUri, c), nameof(PlayContextAsync), ct, maxRetries: 0),
+            Controls.PlayAction.PlayLater => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(contextUri, c), nameof(PlayContextAsync), ct, maxRetries: 0),
+            _ => await ExecuteWithRetryAsync(c => _executor.PlayContextAsync(contextUri, options, c), nameof(PlayContextAsync), ct, maxRetries: 0, isPlayCommand: true)
         };
     }
 
@@ -117,13 +123,13 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         return action switch
         {
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
-            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct),
-            Controls.PlayAction.PlayLater => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct),
+            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct, maxRetries: 0),
+            Controls.PlayAction.PlayLater => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct, maxRetries: 0),
             _ => await ExecuteWithRetryAsync(c =>
             {
                 var merged = (options ?? new PlayContextOptions()) with { StartTrackUri = trackUri };
                 return _executor.PlayContextAsync(contextUri, merged, c);
-            }, nameof(PlayTrackInContextAsync), ct, isPlayCommand: true)
+            }, nameof(PlayTrackInContextAsync), ct, maxRetries: 0, isPlayCommand: true)
         };
     }
 
@@ -137,7 +143,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
             Controls.PlayAction.PlayNext or Controls.PlayAction.PlayLater =>
                 await ExecuteQueueMultipleAsync(trackUris, ct),
-            _ => await ExecuteWithRetryAsync(c => _executor.PlayTracksAsync(trackUris, startIndex, c), nameof(PlayTracksAsync), ct, isPlayCommand: true)
+            _ => await ExecuteWithRetryAsync(c => _executor.PlayTracksAsync(trackUris, startIndex, c), nameof(PlayTracksAsync), ct, maxRetries: 0, isPlayCommand: true)
         };
     }
 
@@ -145,17 +151,17 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     {
         foreach (var uri in trackUris)
         {
-            var result = await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(uri, c), "AddToQueue", ct);
+            var result = await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(uri, c), "AddToQueue", ct, maxRetries: 0);
             if (!result.IsSuccess) return result;
         }
         return PlaybackResult.Success();
     }
 
     public Task<PlaybackResult> ResumeAsync(CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.ResumeAsync(c), nameof(ResumeAsync), ct, isPlayCommand: true);
+        => ExecuteWithRetryAsync(c => _executor.ResumeAsync(c), nameof(ResumeAsync), ct, maxRetries: 0, isPlayCommand: true);
 
     public Task<PlaybackResult> PauseAsync(CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.PauseAsync(c), nameof(PauseAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.PauseAsync(c), nameof(PauseAsync), ct, maxRetries: 0);
 
     public async Task<PlaybackResult> TogglePlayPauseAsync(CancellationToken ct)
     {
@@ -175,16 +181,16 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     }
 
     public Task<PlaybackResult> SkipNextAsync(CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.SkipNextAsync(c), nameof(SkipNextAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.SkipNextAsync(c), nameof(SkipNextAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> SkipPreviousAsync(CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.SkipPreviousAsync(c), nameof(SkipPreviousAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.SkipPreviousAsync(c), nameof(SkipPreviousAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> SeekAsync(long positionMs, CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.SeekAsync(positionMs, c), nameof(SeekAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.SeekAsync(positionMs, c), nameof(SeekAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> SetShuffleAsync(bool enabled, CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.SetShuffleAsync(enabled, c), nameof(SetShuffleAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.SetShuffleAsync(enabled, c), nameof(SetShuffleAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> SetRepeatModeAsync(RepeatMode mode, CancellationToken ct)
     {
@@ -195,17 +201,17 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
             RepeatMode.Track => "track",
             _ => "off"
         };
-        return ExecuteWithRetryAsync(c => _executor.SetRepeatAsync(state, c), nameof(SetRepeatModeAsync), ct);
+        return ExecuteWithRetryAsync(c => _executor.SetRepeatAsync(state, c), nameof(SetRepeatModeAsync), ct, maxRetries: 0);
     }
 
     public Task<PlaybackResult> SetVolumeAsync(int volumePercent, CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.SetVolumeAsync(volumePercent, c), nameof(SetVolumeAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.SetVolumeAsync(volumePercent, c), nameof(SetVolumeAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> AddToQueueAsync(string trackUri, CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(AddToQueueAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(AddToQueueAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct)
-        => ExecuteWithRetryAsync(c => _executor.TransferPlaybackAsync(deviceId, startPlaying, c), nameof(TransferPlaybackAsync), ct);
+        => ExecuteWithRetryAsync(c => _executor.TransferPlaybackAsync(deviceId, startPlaying, c), nameof(TransferPlaybackAsync), ct, maxRetries: 1);
 
     // ── Retry engine ──
 
@@ -213,14 +219,17 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         Func<CancellationToken, Task<PlaybackResult>> action,
         string commandName,
         CancellationToken ct,
-        int maxRetries = 3,
+        int maxRetries = 1,
         bool isPlayCommand = false)
     {
         await _commandLock.WaitAsync(ct);
         try
         {
-            IsExecutingCommand = true;
-            if (isPlayCommand) IsBuffering = true;
+            ApplyOnUiThread(() =>
+            {
+                IsExecutingCommand = true;
+                if (isPlayCommand) IsBuffering = true;
+            });
 
             PlaybackResult? lastResult = null;
 
@@ -244,8 +253,8 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
 
                 if (attempt < maxRetries)
                 {
-                    var baseDelay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                    var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500));
+                    var baseDelay = TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt));
+                    var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 150));
                     var delay = baseDelay + jitter;
 
                     _logger?.LogDebug("{Command} failed (attempt {Attempt}/{Max}), retrying in {Delay}ms: {Error}",
@@ -282,10 +291,21 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         }
         finally
         {
-            IsExecutingCommand = false;
-            IsBuffering = false;
+            ApplyOnUiThread(() =>
+            {
+                IsExecutingCommand = false;
+                IsBuffering = false;
+            });
             _commandLock.Release();
         }
+    }
+
+    private void ApplyOnUiThread(Action action)
+    {
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
+            _dispatcherQueue.TryEnqueue(() => action());
+        else
+            action();
     }
 
     private static bool IsRetryable(PlaybackErrorKind? kind) => kind is

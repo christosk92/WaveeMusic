@@ -81,6 +81,8 @@ public sealed class PathfinderClient : IPathfinderClient
         httpRequest.Headers.AcceptLanguage.ParseAdd("en");
         // Artist overview needs WebPlayer platform to get watchFeedEntrypoint data
         var useWebPlayer = operationName is PathfinderOperations.QueryArtistOverview
+            or PathfinderOperations.Home
+            or PathfinderOperations.FetchEntitiesForRecentlyPlayed
             or PathfinderOperations.UserLocation
             or PathfinderOperations.ConcertLocationsByLatLon
             or PathfinderOperations.SaveLocation
@@ -232,17 +234,20 @@ public sealed class PathfinderClient : IPathfinderClient
     /// Fetches the user's personalized home feed.
     /// </summary>
     public async Task<HomeResponse> GetHomeAsync(
-        int sectionItemsLimit = 10, CancellationToken ct = default)
+        int sectionItemsLimit = 10, string? facet = null, CancellationToken ct = default)
     {
         var variables = new HomeVariables
         {
-            SectionItemsLimit = sectionItemsLimit
+            SectionItemsLimit = sectionItemsLimit,
+            Facet = facet ?? ""
         };
+
+        var hash = PathfinderOperations.HomeWithFacetHash;
 
         return await QueryAsync(
             variables,
             PathfinderOperations.Home,
-            PathfinderOperations.HomeHash,
+            hash,
             HomeJsonContext.Default.HomeResponse,
             ct);
     }

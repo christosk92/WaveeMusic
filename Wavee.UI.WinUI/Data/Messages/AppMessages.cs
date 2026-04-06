@@ -26,6 +26,13 @@ public sealed class PlaybackStateChangedMessage(bool isPlaying)
 public sealed class PlaybackContextChangedMessage(PlaybackContextInfo? context)
     : ValueChangedMessage<PlaybackContextInfo?>(context);
 
+/// <summary>
+/// Unified now-playing message carrying both context URI and play/pause state.
+/// Cards subscribe to this directly to self-manage their playing indicator.
+/// </summary>
+public sealed class NowPlayingChangedMessage(string? contextUri, bool isPlaying)
+    : ValueChangedMessage<(string? ContextUri, bool IsPlaying)>((contextUri, isPlaying));
+
 // --- Auth Messages ---
 
 /// <summary>

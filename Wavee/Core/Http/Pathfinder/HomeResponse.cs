@@ -24,6 +24,9 @@ public sealed class HomePayload
 
     [JsonPropertyName("sectionContainer")]
     public HomeSectionContainer? SectionContainer { get; set; }
+
+    [JsonPropertyName("homeChips")]
+    public List<HomeChip>? HomeChips { get; set; }
 }
 
 public sealed class HomeGreeting
@@ -129,25 +132,25 @@ public static class HomeItemContentExtensions
     public static HomeArtistData? GetArtistData(this HomeItemContent content)
     {
         if (content.Data is not { } el || el.ValueKind == JsonValueKind.Null) return null;
-        return JsonSerializer.Deserialize(el.GetRawText(), HomeJsonContext.Default.HomeArtistData);
+        return JsonSerializer.Deserialize(el, HomeJsonContext.Default.HomeArtistData);
     }
 
     public static HomePlaylistData? GetPlaylistData(this HomeItemContent content)
     {
         if (content.Data is not { } el || el.ValueKind == JsonValueKind.Null) return null;
-        return JsonSerializer.Deserialize(el.GetRawText(), HomeJsonContext.Default.HomePlaylistData);
+        return JsonSerializer.Deserialize(el, HomeJsonContext.Default.HomePlaylistData);
     }
 
     public static HomeAlbumData? GetAlbumData(this HomeItemContent content)
     {
         if (content.Data is not { } el || el.ValueKind == JsonValueKind.Null) return null;
-        return JsonSerializer.Deserialize(el.GetRawText(), HomeJsonContext.Default.HomeAlbumData);
+        return JsonSerializer.Deserialize(el, HomeJsonContext.Default.HomeAlbumData);
     }
 
     public static HomePodcastData? GetPodcastData(this HomeItemContent content)
     {
         if (content.Data is not { } el || el.ValueKind == JsonValueKind.Null) return null;
-        return JsonSerializer.Deserialize(el.GetRawText(), HomeJsonContext.Default.HomePodcastData);
+        return JsonSerializer.Deserialize(el, HomeJsonContext.Default.HomePodcastData);
     }
 }
 
@@ -276,6 +279,20 @@ public sealed class HomePodcastPublisher
     public string? Name { get; set; }
 }
 
+// ── Home Chips ──
+
+public sealed class HomeChip
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("label")]
+    public HomeLabel? Label { get; set; }
+
+    [JsonPropertyName("subChips")]
+    public List<HomeChip>? SubChips { get; set; }
+}
+
 // ── Shared image types ──
 
 public sealed class HomeImagesContainer
@@ -336,7 +353,22 @@ public sealed class HomeImageSource
 [JsonSerializable(typeof(HomePlaylistData))]
 [JsonSerializable(typeof(HomeAlbumData))]
 [JsonSerializable(typeof(HomePodcastData))]
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(HomeImagesContainer))]
+[JsonSerializable(typeof(HomeImageItem))]
+[JsonSerializable(typeof(HomeImageContainer))]
+[JsonSerializable(typeof(HomeImageSource))]
+[JsonSerializable(typeof(HomeExtractedColors))]
+[JsonSerializable(typeof(HomeColorValue))]
+[JsonSerializable(typeof(HomeOwnerV2))]
+[JsonSerializable(typeof(HomeOwnerData))]
+[JsonSerializable(typeof(HomeArtistProfile))]
+[JsonSerializable(typeof(HomeArtistVisuals))]
+[JsonSerializable(typeof(HomeAlbumArtists))]
+[JsonSerializable(typeof(HomeAlbumArtistItem))]
+[JsonSerializable(typeof(HomePodcastPublisher))]
+[JsonSerializable(typeof(HomeChip))]
+[JsonSerializable(typeof(HomeLabel))]
+[JsonSourceGenerationOptions]
 public partial class HomeJsonContext : JsonSerializerContext;
 
 [JsonSerializable(typeof(HomeVariables))]

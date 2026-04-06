@@ -97,6 +97,8 @@
             <!-- Converters -->
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />
+            <converters:ChipBackgroundConverter x:Key="ChipBackgroundConverter" />
+            <converters:ChipForegroundConverter x:Key="ChipForegroundConverter" />
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
             <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter" />

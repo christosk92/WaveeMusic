@@ -48,4 +48,17 @@
 	  <Folder Include="ColorThief\" />
 	  <Folder Include="NewFolder\" />
 	</ItemGroup>
+
+	<Target Name="EnsureIntermediateControlXaml" BeforeTargets="CopyFilesToOutputDirectory">
+		<MakeDir Directories="$(IntermediateOutputPath)Controls" />
+		<Copy SourceFiles="Controls\ImageSwitcher.xaml"
+		      DestinationFiles="$(IntermediateOutputPath)Controls\ImageSwitcher.xaml"
+		      SkipUnchangedFiles="true" />
+		<Copy SourceFiles="Controls\NowPlayingCanvas.xaml"
+		      DestinationFiles="$(IntermediateOutputPath)Controls\NowPlayingCanvas.xaml"
+		      SkipUnchangedFiles="true" />
+		<Copy SourceFiles="Controls\ShadowImage.xaml"
+		      DestinationFiles="$(IntermediateOutputPath)Controls\ShadowImage.xaml"
+		      SkipUnchangedFiles="true" />
+	</Target>
 </Project>

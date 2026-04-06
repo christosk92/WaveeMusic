@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
@@ -277,6 +278,16 @@ public sealed partial class HomePage : Page, ITabBarItemContent
     {
         if (sender is Button { Tag: string uri })
             ViewModel.MoveSectionDownCommand.Execute(uri);
+    }
+
+    // ── Chip click handler ──
+
+    private void Chip_Click(object sender, RoutedEventArgs e)
+    {
+        var chip = (sender as FrameworkElement)?.Tag as HomeChipViewModel;
+        System.Diagnostics.Debug.WriteLine($"[Chip_Click] sender={sender?.GetType().Name}, chip={chip?.Label ?? "null"}");
+        if (chip != null)
+            _ = ViewModel.SelectChipCommand.ExecuteAsync(chip);
     }
 }
 

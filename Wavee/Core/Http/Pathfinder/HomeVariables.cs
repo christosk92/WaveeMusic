@@ -21,4 +21,7 @@ public sealed class HomeVariables
 
     [JsonPropertyName("sectionItemsLimit")]
     public int SectionItemsLimit { get; set; } = 10;
+
+    [JsonPropertyName("includeEpisodeContentRatingsV2")]
+    public bool IncludeEpisodeContentRatingsV2 { get; set; } = false;
 }

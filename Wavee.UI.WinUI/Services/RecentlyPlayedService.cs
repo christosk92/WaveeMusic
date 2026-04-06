@@ -79,13 +79,23 @@ public sealed class RecentlyPlayedService : IDisposable
             }
 
             // 4. Build lookup from entities
+            // The Pathfinder wrapper puts __typename at the top level but uri inside the nested data object.
+            // Fall back to extracting uri from the inner JSON when the wrapper-level uri is null.
             var entityLookup = new Dictionary<string, RecentlyPlayedEntityEntry>(StringComparer.OrdinalIgnoreCase);
             if (entities?.Data?.Lookup != null)
             {
                 foreach (var entry in entities.Data.Lookup)
                 {
-                    if (!string.IsNullOrEmpty(entry.Uri))
-                        entityLookup[entry.Uri] = entry;
+                    var uri = entry.Uri;
+                    if (string.IsNullOrEmpty(uri)
+                        && entry.Data is { ValueKind: System.Text.Json.JsonValueKind.Object } el
+                        && el.TryGetProperty("uri", out var uriProp))
+                    {
+                        uri = uriProp.GetString();
+                    }
+
+                    if (!string.IsNullOrEmpty(uri))
+                        entityLookup[uri] = entry;
                 }
             }
 
@@ -107,7 +117,6 @@ public sealed class RecentlyPlayedService : IDisposable
                 if (playingItem != null)
                 {
                     items.Remove(playingItem);
-                    playingItem.IsPlaying = true;
                     items.Insert(0, playingItem);
                 }
             }
@@ -129,25 +138,17 @@ public sealed class RecentlyPlayedService : IDisposable
             var context = message.Value;
             if (context == null || string.IsNullOrEmpty(context.ContextUri))
             {
-                // Playback stopped — clear playing state
-                foreach (var item in _items)
-                    item.IsPlaying = false;
                 ItemsChanged?.Invoke();
                 return;
             }
 
-            // Clear previous playing state
-            foreach (var item in _items)
-                item.IsPlaying = false;
-
-            // Find or create the item
+            // Find or create the item and move to top
             var existing = _items.FirstOrDefault(i =>
                 string.Equals(i.Uri, context.ContextUri, StringComparison.OrdinalIgnoreCase));
 
             if (existing != null)
             {
                 _items.Remove(existing);
-                existing.IsPlaying = true;
                 _items.Insert(0, existing);
             }
             else
@@ -158,8 +159,7 @@ public sealed class RecentlyPlayedService : IDisposable
                     Uri = context.ContextUri,
                     Title = context.Name ?? GetFallbackTitle(context.ContextUri),
                     ImageUrl = context.ImageUrl,
-                    ContentType = MapContextType(context.Type),
-                    IsPlaying = true
+                    ContentType = MapContextType(context.Type)
                 };
                 _items.Insert(0, newItem);
             }
@@ -190,7 +190,7 @@ public sealed class RecentlyPlayedService : IDisposable
                 "ArtistResponseWrapper" => MapArtistEntity(uri, entity),
                 "PlaylistResponseWrapper" => MapPlaylistEntity(uri, entity),
                 "AlbumResponseWrapper" => MapAlbumEntity(uri, entity),
-                _ => new HomeSectionItem { Uri = uri, ContentType = HomeContentType.Unknown }
+                _ => new HomeSectionItem { Uri = uri, Title = GetFallbackTitle(uri), ContentType = InferContentType(uri) }
             };
         }
 
@@ -206,7 +206,7 @@ public sealed class RecentlyPlayedService : IDisposable
     private static HomeSectionItem? MapArtistEntity(string uri, RecentlyPlayedEntityEntry entity)
     {
         var data = entity.GetArtistData();
-        if (data == null) return new HomeSectionItem { Uri = uri, ContentType = HomeContentType.Artist };
+        if (data == null) return new HomeSectionItem { Uri = uri, Title = GetFallbackTitle(uri), ContentType = HomeContentType.Artist };
 
         var imageUrl = data.Visuals?.AvatarImage?.Sources?
             .OrderByDescending(s => s.Width ?? 0)
@@ -226,7 +226,7 @@ public sealed class RecentlyPlayedService : IDisposable
     private static HomeSectionItem? MapPlaylistEntity(string uri, RecentlyPlayedEntityEntry entity)
     {
         var data = entity.GetPlaylistData();
-        if (data == null) return new HomeSectionItem { Uri = uri, ContentType = HomeContentType.Playlist };
+        if (data == null) return new HomeSectionItem { Uri = uri, Title = GetFallbackTitle(uri), ContentType = HomeContentType.Playlist };
 
         var imageUrl = data.Images?.Items?.FirstOrDefault()?.Sources?
             .OrderByDescending(s => s.Width ?? 0)
@@ -246,7 +246,7 @@ public sealed class RecentlyPlayedService : IDisposable
     private static HomeSectionItem? MapAlbumEntity(string uri, RecentlyPlayedEntityEntry entity)
     {
         var data = entity.GetAlbumData();
-        if (data == null) return new HomeSectionItem { Uri = uri, ContentType = HomeContentType.Album };
+        if (data == null) return new HomeSectionItem { Uri = uri, Title = GetFallbackTitle(uri), ContentType = HomeContentType.Album };
 
         var imageUrl = data.CoverArt?.Sources?
             .OrderByDescending(s => s.Width ?? 0)

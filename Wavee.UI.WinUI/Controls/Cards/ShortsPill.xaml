@@ -19,6 +19,8 @@
 
         Click="PillButton_Click"
         PointerPressed="PillButton_PointerPressed"
+        PointerEntered="PillButton_PointerEntered"
+        PointerExited="PillButton_PointerExited"
         RightTapped="PillButton_RightTapped">
         <Border
             CornerRadius="{ThemeResource ControlCornerRadius}"
@@ -33,7 +35,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Image -->
-                <Grid Grid.Column="0"
+                <Grid x:Name="ImageContainer" Grid.Column="0"
                       Width="56" Height="54"
                       CornerRadius="3,0,0,3"
                       Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
@@ -47,16 +49,47 @@
                               Visibility="Collapsed"/>
                 </Grid>
 
-                <!-- Title -->
-                <TextBlock Grid.Column="1"
-                           x:Name="TitleText"
-                           VerticalAlignment="Center"
-                           Margin="12,0,12,0"
-                           MaxLines="2"
-                           TextTrimming="CharacterEllipsis"
-                           TextWrapping="WrapWholeWords"
-                           Style="{StaticResource BodyStrongTextBlockStyle}"
-                           FontSize="13"/>
+                <!-- Title + playing indicator + play button -->
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="12,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               x:Name="TitleText"
+                               VerticalAlignment="Center"
+                               MaxLines="2"
+                               TextTrimming="CharacterEllipsis"
+                               TextWrapping="WrapWholeWords"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               FontSize="13"/>
+
+                    <FontIcon x:Name="PlayingIndicator"
+                              Grid.Column="1"
+                              Glyph="&#xE995;"
+                              FontSize="12"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                              Visibility="Collapsed"
+                              Margin="6,0,0,0"
+                              VerticalAlignment="Center"/>
+
+                    <!-- Play/Pause button on hover -->
+                    <Button x:Name="PlayButton"
+                            Grid.Column="1"
+                            Width="32" Height="32"
+                            CornerRadius="16"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            Foreground="White"
+                            Visibility="Collapsed"
+                            Click="PlayButton_Click">
+                        <FontIcon x:Name="PlayButtonIcon"
+                                  Glyph="&#xE768;"
+                                  FontSize="14"/>
+                    </Button>
+                </Grid>
             </Grid>
         </Border>
     </Button>

@@ -46,6 +46,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [ObservableProperty]
     private bool _isCustomizeFlyoutOpen;
 
+    /// <summary>The chips currently displayed in the single row.</summary>
+    [ObservableProperty]
+    private ObservableCollection<HomeChipViewModel> _displayedChips = [];
+
+    /// <summary>The original main chips (preserved for reverting from sub-chips).</summary>
+    private List<HomeChipViewModel>? _mainChips;
+
+    /// <summary>Currently active parent chip when showing sub-chips (null = showing main chips).</summary>
+    private HomeChipViewModel? _activeParentChip;
+
     public TabItemParameter? TabItemParameter { get; private set; }
 
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -100,6 +110,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                         Sections = new ObservableCollection<HomeSection>(ordered);
                     else
                         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+                    ApplyChips(snapshot.Chips);
                     return;
                 }
             }
@@ -115,6 +126,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     Sections = new ObservableCollection<HomeSection>(ordered);
                 else
                     Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+
+                ApplyChips(snapshot.Chips);
 
                 // Start background refresh
                 _homeFeedCache.StartBackgroundRefresh(_session);
@@ -156,6 +169,20 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         var ordered = ApplyPreferences(snapshot.Sections);
         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+        ApplyChips(snapshot.Chips);
+    }
+
+    private void ApplyChips(List<HomeChipViewModel>? chips)
+    {
+        // Only update chips when we receive them (unfaceted responses)
+        if (chips == null || chips.Count == 0 || DisplayedChips.Count > 0) return;
+
+        _mainChips = chips;
+        _activeParentChip = null;
+
+        // "All" chip starts selected
+        foreach (var c in chips) c.IsSelected = string.IsNullOrEmpty(c.Id);
+        DisplayedChips = new ObservableCollection<HomeChipViewModel>(chips);
     }
 
     private void OnRecentlyPlayedItemsChanged()
@@ -267,16 +294,196 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         var content = entry.Content;
         if (content == null) return null;
 
-        return content.TypeName switch
+        var result = content.TypeName switch
         {
             "ArtistResponseWrapper" => MapArtist(entry.Uri, content),
             "PlaylistResponseWrapper" => MapPlaylist(entry.Uri, content),
             "AlbumResponseWrapper" => MapAlbum(entry.Uri, content),
             "PodcastOrAudiobookResponseWrapper" => MapPodcast(entry.Uri, content),
-            _ => new HomeSectionItem
+            _ => (HomeSectionItem?)null
+        };
+
+        // If typed deserialization failed or returned incomplete data, try raw JsonElement extraction
+        if (result == null || result.Title == null)
+        {
+            var hasData = content.Data.HasValue;
+            var kind = hasData ? content.Data!.Value.ValueKind : (System.Text.Json.JsonValueKind?)null;
+            System.Diagnostics.Debug.WriteLine(
+                $"[MapSectionItem] Fallback for {entry.Uri}: result={result != null}, title={result?.Title}, hasData={hasData}, kind={kind}");
+
+            if (hasData && content.Data!.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
-                Uri = entry.Uri,
-                ContentType = HomeContentType.Unknown
+                // Skip items the API marks as "NotFound" — not available for this platform
+                if (content.Data!.Value.TryGetProperty("__typename", out var tn)
+                    && tn.GetString() == "NotFound")
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MapSectionItem] Skipping NotFound item: {entry.Uri}");
+                    return null;
+                }
+
+                result ??= new HomeSectionItem { Uri = entry.Uri, ContentType = InferContentType(entry.Uri) };
+                EnrichFromRawJson(result, content.Data!.Value);
+            }
+        }
+
+        return result ?? MapUnknownType(entry.Uri);
+    }
+
+    /// <summary>
+    /// Extracts common fields directly from the raw JsonElement when typed deserialization fails.
+    /// </summary>
+    private static void EnrichFromRawJson(HomeSectionItem item, System.Text.Json.JsonElement raw)
+    {
+        // Diagnostic: log the actual properties in the JsonElement
+        System.Diagnostics.Debug.WriteLine(
+            $"[EnrichFromRawJson] uri={item.Uri}, rawText={raw.GetRawText()[..Math.Min(200, raw.GetRawText().Length)]}");
+
+        if (item.Title == null && raw.TryGetProperty("name", out var name))
+            item.Title = name.GetString();
+
+        if (item.Uri == null && raw.TryGetProperty("uri", out var uri))
+            item.Uri = uri.GetString();
+
+        if (item.ImageUrl == null)
+            item.ImageUrl = ExtractImageUrlFromJson(raw);
+
+        if (item.Subtitle == null && raw.TryGetProperty("description", out var desc))
+        {
+            var descStr = Helpers.SpotifyHtmlHelper.StripHtml(desc.GetString());
+            if (!string.IsNullOrEmpty(descStr))
+                item.Subtitle = descStr;
+        }
+
+        if (item.ColorHex == null)
+            item.ColorHex = ExtractColorFromJson(raw);
+
+        // If top-level extraction found nothing, try nested "data" wrapper (double-wrapped items)
+        if (item.Title == null && raw.TryGetProperty("data", out var nested)
+            && nested.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            EnrichFromRawJson(item, nested);
+        }
+    }
+
+    private static string? ExtractImageUrlFromJson(System.Text.Json.JsonElement raw)
+    {
+        // Playlist: images.items[0].sources
+        if (raw.TryGetProperty("images", out var images)
+            && images.TryGetProperty("items", out var items)
+            && items.ValueKind == System.Text.Json.JsonValueKind.Array
+            && items.GetArrayLength() > 0)
+        {
+            var url = GetLargestSourceUrl(items[0]);
+            if (url != null) return url;
+        }
+
+        // Album/Podcast: coverArt.sources
+        if (raw.TryGetProperty("coverArt", out var coverArt))
+        {
+            var url = GetLargestSourceUrl(coverArt);
+            if (url != null) return url;
+        }
+
+        // Artist: visuals.avatarImage.sources
+        if (raw.TryGetProperty("visuals", out var visuals)
+            && visuals.TryGetProperty("avatarImage", out var avatar))
+        {
+            var url = GetLargestSourceUrl(avatar);
+            if (url != null) return url;
+        }
+
+        return null;
+    }
+
+    private static string? GetLargestSourceUrl(System.Text.Json.JsonElement container)
+    {
+        if (!container.TryGetProperty("sources", out var sources)
+            || sources.ValueKind != System.Text.Json.JsonValueKind.Array
+            || sources.GetArrayLength() == 0)
+            return null;
+
+        string? bestUrl = null;
+        int maxWidth = -1;
+        foreach (var source in sources.EnumerateArray())
+        {
+            var width = source.TryGetProperty("width", out var w) && w.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? w.GetInt32() : 0;
+            if (width > maxWidth || bestUrl == null)
+            {
+                maxWidth = width;
+                bestUrl = source.TryGetProperty("url", out var url) ? url.GetString() : null;
+            }
+        }
+        return bestUrl;
+    }
+
+    private static string? ExtractColorFromJson(System.Text.Json.JsonElement raw)
+    {
+        // Try images.items[0].extractedColors.colorDark.hex
+        if (raw.TryGetProperty("images", out var images)
+            && images.TryGetProperty("items", out var items)
+            && items.ValueKind == System.Text.Json.JsonValueKind.Array
+            && items.GetArrayLength() > 0
+            && items[0].TryGetProperty("extractedColors", out var ec)
+            && ec.TryGetProperty("colorDark", out var cd)
+            && cd.TryGetProperty("hex", out var hex))
+            return hex.GetString();
+
+        // Try coverArt.extractedColors.colorDark.hex
+        if (raw.TryGetProperty("coverArt", out var coverArt)
+            && coverArt.TryGetProperty("extractedColors", out var ec2)
+            && ec2.TryGetProperty("colorDark", out var cd2)
+            && cd2.TryGetProperty("hex", out var hex2))
+            return hex2.GetString();
+
+        return null;
+    }
+
+    private static HomeContentType InferContentType(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return HomeContentType.Unknown;
+        if (uri.Contains(":playlist:", StringComparison.Ordinal)) return HomeContentType.Playlist;
+        if (uri.Contains(":album:", StringComparison.Ordinal)) return HomeContentType.Album;
+        if (uri.Contains(":artist:", StringComparison.Ordinal)) return HomeContentType.Artist;
+        if (uri.Contains(":show:", StringComparison.Ordinal)) return HomeContentType.Podcast;
+        if (uri.Contains(":episode:", StringComparison.Ordinal)) return HomeContentType.Episode;
+        return HomeContentType.Unknown;
+    }
+
+    private static HomeSectionItem? MapUnknownType(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+
+        if (uri.Contains(":collection", StringComparison.OrdinalIgnoreCase))
+        {
+            return new HomeSectionItem
+            {
+                Uri = uri,
+                Title = "Liked Songs",
+                ContentType = HomeContentType.Playlist
+            };
+        }
+
+        var parts = uri.Split(':');
+        if (parts.Length < 2) return null;
+
+        var type = parts[1];
+        return new HomeSectionItem
+        {
+            Uri = uri,
+            Title = type switch
+            {
+                "artist" => "Artist",
+                "album" => "Album",
+                "playlist" => "Playlist",
+                _ => null
+            },
+            ContentType = type switch
+            {
+                "artist" => HomeContentType.Artist,
+                "album" => HomeContentType.Album,
+                "playlist" => HomeContentType.Playlist,
+                _ => HomeContentType.Unknown
             }
         };
     }
@@ -564,6 +771,118 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         await LoadAsync();
     }
 
+    // ── Chip selection ──
+
+    [RelayCommand]
+    private async Task SelectChipAsync(HomeChipViewModel? chip)
+    {
+        if (chip == null) return;
+
+        System.Diagnostics.Debug.WriteLine($"[SelectChipAsync] chip={chip.Label}, id={chip.Id}, isBack={chip.IsBackChip}");
+
+        // Back chip → revert to main chips, refetch with no facet
+        if (chip.IsBackChip)
+        {
+            _activeParentChip = null;
+            if (_mainChips != null)
+            {
+                // Select "All" chip
+                foreach (var c in _mainChips) c.IsSelected = string.IsNullOrEmpty(c.Id);
+                DisplayedChips = new ObservableCollection<HomeChipViewModel>(_mainChips);
+            }
+            await RefetchWithFacet(null);
+            return;
+        }
+
+        // "All" chip → refetch with no facet, stay on main chips
+        if (string.IsNullOrEmpty(chip.Id))
+        {
+            _activeParentChip = null;
+            foreach (var c in DisplayedChips) c.IsSelected = c == chip;
+            await RefetchWithFacet(null);
+            return;
+        }
+
+        // Parent chip with sub-chips → morph into sub-chips row
+        if (chip.SubChips is { Count: > 0 })
+        {
+            _activeParentChip = chip;
+
+            // Build morphed row: [✕ Parent] [Sub1] [Sub2] ...
+            var backChip = new HomeChipViewModel
+            {
+                Id = chip.Id,
+                Label = chip.Label,
+                IsBackChip = true,
+                IsSelected = true
+            };
+
+            var morphed = new ObservableCollection<HomeChipViewModel> { backChip };
+            foreach (var sc in chip.SubChips)
+            {
+                sc.IsSelected = false;
+                morphed.Add(sc);
+            }
+
+            DisplayedChips = morphed;
+            await RefetchWithFacet(chip.Id);
+            return;
+        }
+
+        // Regular chip (no sub-chips) → select it, refetch
+        foreach (var c in DisplayedChips) c.IsSelected = c == chip;
+        await RefetchWithFacet(chip.Id);
+    }
+
+    private async Task RefetchWithFacet(string? facet)
+    {
+        if (_homeFeedCache == null || _session == null || !_session.IsConnected()) return;
+
+        _homeFeedCache.CurrentFacet = string.IsNullOrEmpty(facet) ? null : facet;
+        _homeFeedCache.Invalidate();
+
+        System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] facet={facet ?? "(null)"}, cache invalidated, about to fetch");
+        _logger?.LogDebug("Refetching home with facet: {Facet}", facet ?? "(none)");
+
+        // Manage IsLoading directly — bypasses LoadAsync's guard to ensure the refetch always runs
+        IsLoading = true;
+        HasError = false;
+        ErrorMessage = null;
+
+        try
+        {
+            var snapshot = await _homeFeedCache.FetchFreshAsync(_session);
+            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] Got {snapshot.Sections.Count} sections, greeting={snapshot.Greeting}");
+            Greeting = snapshot.Greeting ?? Greeting;
+            var ordered = ApplyPreferences(snapshot.Sections);
+
+            if (Sections.Count == 0)
+                Sections = new ObservableCollection<HomeSection>(ordered);
+            else
+                Services.HomeFeedCache.ApplyDiff(Sections, ordered,
+                    g => Greeting = g ?? Greeting, snapshot.Greeting);
+
+            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] After diff: {Sections.Count} sections displayed");
+
+            if (string.IsNullOrEmpty(Greeting))
+                UpdateGreeting();
+
+            if (_recentlyPlayedService != null)
+                _ = _recentlyPlayedService.LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] ERROR: {ex.Message}");
+            HasError = true;
+            ErrorMessage = ex.Message;
+            _logger?.LogError(ex, "Failed to refetch with facet {Facet}", facet);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
     // ── Navigation helpers (called from code-behind) ──
 
     public static void NavigateToItem(HomeSectionItem item, bool openInNewTab = false)
@@ -595,6 +914,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             case "playlist":
                 Helpers.Navigation.NavigationHelpers.OpenPlaylist(param, item.Title ?? "Playlist", openInNewTab);
                 break;
+            case "user" when item.Uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
+                Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
+                break;
         }
     }
 }
@@ -611,7 +933,7 @@ public sealed class HomeSection
     public ObservableCollection<HomeSectionItem> Items { get; set; } = [];
 }
 
-public sealed partial class HomeSectionItem : ObservableObject
+public sealed class HomeSectionItem
 {
     public string? Uri { get; set; }
     public string? Title { get; set; }
@@ -619,7 +941,17 @@ public sealed partial class HomeSectionItem : ObservableObject
     public string? ImageUrl { get; set; }
     public HomeContentType ContentType { get; set; }
     public string? ColorHex { get; set; }
+}
+
+public sealed partial class HomeChipViewModel : ObservableObject
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";
+    public List<HomeChipViewModel> SubChips { get; set; } = [];
+
+    /// <summary>True for the "✕ Parent" chip that reverts to main chips.</summary>
+    public bool IsBackChip { get; set; }
 
     [ObservableProperty]
-    private bool _isPlaying;
+    private bool _isSelected;
 }

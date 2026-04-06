@@ -51,6 +51,7 @@ public interface IPathfinderClient
     /// <returns>The home feed response with sections and items.</returns>
     Task<HomeResponse> GetHomeAsync(
         int sectionItemsLimit = 10,
+        string? facet = null,
         CancellationToken ct = default);
 
     /// <summary>

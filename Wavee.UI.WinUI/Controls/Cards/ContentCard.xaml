@@ -65,7 +65,7 @@
                             Padding="0"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="PlayButton_Click">
-                        <FontIcon Glyph="&#xE768;" FontSize="16"/>
+                        <FontIcon x:Name="SquarePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
                     </Button>
 
                     <!-- Playing indicator (shown when IsPlaying) -->
@@ -120,7 +120,7 @@
                             Padding="0"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="PlayButton_Click">
-                        <FontIcon Glyph="&#xE768;" FontSize="16"/>
+                        <FontIcon x:Name="CirclePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
                     </Button>
 
                     <!-- Playing indicator for circle cards -->

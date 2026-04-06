@@ -340,6 +340,8 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
+                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                                        NavigationTitle="{x:Bind Data.Name, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"
                                         CardHover="AlbumCard_Hover"/>
                                     <StackPanel Spacing="8" Padding="8"
@@ -434,6 +436,8 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
+                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                                        NavigationTitle="{x:Bind Data.Name, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"
                                         CardHover="AlbumCard_Hover"/>
                                     <StackPanel Spacing="8" Padding="8"
@@ -529,6 +533,8 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
+                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                                        NavigationTitle="{x:Bind Data.Name, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"
                                         CardHover="AlbumCard_Hover"/>
                                     <!-- Loading: shimmer card -->

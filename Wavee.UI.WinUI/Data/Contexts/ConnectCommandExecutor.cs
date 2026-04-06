@@ -116,9 +116,40 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         }
 
         // Remote: always use dict for JSON serialization
-        var result = await _client.SendCommandAsync(target, endpoint, data, ct: ct);
+        var ackTimeout = GetAckTimeout(endpoint);
+        var result = await _client.SendCommandAsync(target, endpoint, data, ackTimeout: ackTimeout, ct: ct);
+
+        // The server already accepted the command (HTTP 2xx). Missing dealer ack is often
+        // transient and should not stall interactive playback with retries.
+        if (result.IsTimeout && AcceptTimeoutAsSuccess(endpoint))
+        {
+            _logger?.LogWarning("Treating ack timeout as success for endpoint {Endpoint} (timeout={TimeoutMs}ms)", endpoint, ackTimeout.TotalMilliseconds);
+            return PlaybackResult.Success();
+        }
+
         return ToPlaybackResult(result);
     }
+
+    private static TimeSpan GetAckTimeout(string endpoint) => endpoint switch
+    {
+        // Keep play/start slightly higher than transport toggles.
+        "play" or "add_to_queue" or "transfer" => TimeSpan.FromMilliseconds(2500),
+
+        // Interactive transport commands should fail fast if no confirmation arrives.
+        "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to" => TimeSpan.FromMilliseconds(1500),
+
+        // Option toggles are non-critical; short timeout keeps UI snappy.
+        "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume" => TimeSpan.FromMilliseconds(1200),
+
+        _ => TimeSpan.FromMilliseconds(2000)
+    };
+
+    private static bool AcceptTimeoutAsSuccess(string endpoint) => endpoint switch
+    {
+        "play" or "add_to_queue" or "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to"
+            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume" => true,
+        _ => false
+    };
 
     // ── Playback commands ──
 
@@ -373,12 +404,16 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         };
     }
 
-    public Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct)
-        => _client.SendCommandAsync(deviceId, "transfer", new Dictionary<string, object>
+    public async Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct)
+    {
+        var result = await _client.SendCommandAsync(deviceId, "transfer", new Dictionary<string, object>
         {
             ["options"] = new Dictionary<string, object>
             {
                 ["restore_paused"] = startPlaying ? "restore" : "pause"
             }
-        }, ct: ct).ContinueWith(t => ToPlaybackResult(t.Result), ct);
+        }, ackTimeout: GetAckTimeout("transfer"), ct: ct);
+
+        return ToPlaybackResult(result);
+    }
 }

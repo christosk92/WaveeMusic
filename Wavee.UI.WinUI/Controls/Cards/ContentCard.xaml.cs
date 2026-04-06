@@ -1,12 +1,15 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Windows.Foundation;
 using Windows.UI;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
@@ -145,10 +148,20 @@ public sealed partial class ContentCard : UserControl
         DependencyProperty.Register(nameof(IsPlaying), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(false, OnIsPlayingChanged));
 
+    public static readonly DependencyProperty IsContextPausedProperty =
+        DependencyProperty.Register(nameof(IsContextPaused), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false, OnIsContextPausedChanged));
+
     public bool IsPlaying
     {
         get => (bool)GetValue(IsPlayingProperty);
         set => SetValue(IsPlayingProperty, value);
+    }
+
+    public bool IsContextPaused
+    {
+        get => (bool)GetValue(IsContextPausedProperty);
+        set => SetValue(IsContextPausedProperty, value);
     }
 
     // ── Events ──
@@ -183,8 +196,6 @@ public sealed partial class ContentCard : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        Loaded -= OnLoaded;
-
         if (IsPassive && !_passiveHandlersAdded)
         {
             _passiveHandlersAdded = true;
@@ -206,10 +217,18 @@ public sealed partial class ContentCard : UserControl
             AddHandler(PointerPressedEvent, _passivePointerPressed, true);
             AddHandler(PointerReleasedEvent, _passivePointerReleased, true);
         }
+
+        // Self-manage now-playing state via messenger
+        if (!WeakReferenceMessenger.Default.IsRegistered<NowPlayingChangedMessage>(this))
+            WeakReferenceMessenger.Default.Register<NowPlayingChangedMessage>(this, OnNowPlayingChanged);
+        SyncInitialPlaybackState();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // Unsubscribe from now-playing messages
+        WeakReferenceMessenger.Default.UnregisterAll(this);
+
         // Clean up SizeChanged subscription to prevent memory leaks
         if (CircleImageContainer != null)
             CircleImageContainer.SizeChanged -= OnCircleContainerSizeChanged;
@@ -232,6 +251,34 @@ public sealed partial class ContentCard : UserControl
             _passivePointerReleased = null;
             _passiveHandlersAdded = false;
         }
+    }
+
+    // ── Now-playing self-management ──
+
+    private void OnNowPlayingChanged(object recipient, NowPlayingChangedMessage msg)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var (contextUri, playing) = msg.Value;
+            var isMatch = !string.IsNullOrEmpty(contextUri)
+                && !string.IsNullOrEmpty(NavigationUri)
+                && string.Equals(NavigationUri, contextUri, StringComparison.OrdinalIgnoreCase);
+            IsPlaying = isMatch && playing;
+            IsContextPaused = isMatch && !playing;
+        });
+    }
+
+    private void SyncInitialPlaybackState()
+    {
+        var ps = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
+        if (ps == null) return;
+        var contextUri = ps.CurrentContext?.ContextUri;
+        var playing = ps.IsPlaying;
+        var isMatch = !string.IsNullOrEmpty(contextUri)
+            && !string.IsNullOrEmpty(NavigationUri)
+            && string.Equals(NavigationUri, contextUri, StringComparison.OrdinalIgnoreCase);
+        IsPlaying = isMatch && playing;
+        IsContextPaused = isMatch && !playing;
     }
 
     // ── Property changed callbacks ──
@@ -390,13 +437,22 @@ public sealed partial class ContentCard : UserControl
         CardHover?.Invoke(this, EventArgs.Empty);
 
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        if (playBtn != null)
+        var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
+        var indicator = IsCircularImage ? CirclePlayingIndicator : SquarePlayingIndicator;
+
+        if (playBtn != null && playIcon != null)
         {
+            // Show pause glyph when this context is playing, play glyph otherwise
+            playIcon.Glyph = IsPlaying ? "\uE769" : "\uE768";
             playBtn.Visibility = Visibility.Visible;
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
                 .Start(playBtn);
         }
+
+        // Hide the playing indicator while hovering (the play/pause button replaces it)
+        if (IsPlaying && indicator != null)
+            indicator.Visibility = Visibility.Collapsed;
 
         // Scale up via composition with proper CenterPoint
         if (CardBorder != null)
@@ -426,6 +482,10 @@ public sealed partial class ContentCard : UserControl
             await System.Threading.Tasks.Task.Delay(120);
             playBtn.Visibility = Visibility.Collapsed;
         }
+
+        // Restore playing indicator after hover ends
+        if (IsPlaying)
+            UpdatePlayingState();
 
         if (CardBorder != null)
         {
@@ -484,16 +544,40 @@ public sealed partial class ContentCard : UserControl
         card.UpdatePlayingState();
     }
 
+    private static void OnIsContextPausedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        card.UpdatePlayingState();
+    }
+
     private void UpdatePlayingState()
     {
         if (SquarePlayingIndicator == null) return;
 
         var isPlaying = IsPlaying;
+        var isPaused = IsContextPaused;
+        var isActiveContext = isPlaying || isPaused;
+
         SquarePlayingIndicator.Visibility = isPlaying && !IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
         CirclePlayingIndicator.Visibility = isPlaying && IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
 
-        // Accent color on title when playing
-        if (isPlaying)
+        // When paused, show the play (resume) button permanently
+        var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
+        var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
+        if (isPaused && playBtn != null && playIcon != null)
+        {
+            playIcon.Glyph = "\uE768"; // Play
+            playBtn.Visibility = Visibility.Visible;
+            playBtn.Opacity = 1;
+        }
+        else if (!isPlaying && playBtn != null)
+        {
+            // Not active context — hide play button (hover will show it)
+            playBtn.Visibility = Visibility.Collapsed;
+        }
+
+        // Accent color on title when this is the active context
+        if (isActiveContext)
             TitleText.Foreground = _themeColorService?.AccentText
                 ?? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
         else
@@ -504,6 +588,9 @@ public sealed partial class ContentCard : UserControl
 
     private void CardButton_Click(object sender, RoutedEventArgs e)
     {
+        if (IsPlayButtonSource(e.OriginalSource))
+            return;
+
         // Self-navigation: if NavigationUri is set, navigate directly
         if (!string.IsNullOrEmpty(NavigationUri))
         {
@@ -515,9 +602,40 @@ public sealed partial class ContentCard : UserControl
         CardClick?.Invoke(this, EventArgs.Empty);
     }
 
-    private void PlayButton_Click(object sender, RoutedEventArgs e)
+    private async void PlayButton_Click(object sender, RoutedEventArgs e)
     {
         PlayRequested?.Invoke(this, EventArgs.Empty);
+
+        var playback = Ioc.Default.GetService<Data.Contracts.IPlaybackService>();
+        if (playback == null) return;
+
+        try
+        {
+            if (IsPlaying)
+                await playback.PauseAsync();
+            else if (IsContextPaused)
+                await playback.ResumeAsync();
+            else if (!string.IsNullOrEmpty(NavigationUri))
+                await playback.PlayContextAsync(NavigationUri);
+        }
+        catch
+        {
+            // Playback errors surface via IPlaybackService.Errors observable
+        }
+    }
+
+    private bool IsPlayButtonSource(object? source)
+    {
+        var current = source as DependencyObject;
+        while (current != null)
+        {
+            if (ReferenceEquals(current, SquarePlayButton) || ReferenceEquals(current, CirclePlayButton))
+                return true;
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void CardButton_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -580,6 +698,9 @@ public sealed partial class ContentCard : UserControl
                 break;
             case "playlist":
                 Helpers.Navigation.NavigationHelpers.OpenPlaylist(param, title, openInNewTab);
+                break;
+            case "user" when uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
+                Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
                 break;
         }
     }

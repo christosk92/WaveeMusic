@@ -485,9 +485,19 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     // ── Messenger broadcasts ──
 
-    partial void OnIsPlayingChanged(bool value) => _messenger.Send(new PlaybackStateChangedMessage(value));
+    partial void OnIsPlayingChanged(bool value)
+    {
+        _messenger.Send(new PlaybackStateChangedMessage(value));
+        _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, value));
+    }
+
     partial void OnCurrentTrackIdChanged(string? value) => _messenger.Send(new TrackChangedMessage(value));
-    partial void OnCurrentContextChanged(PlaybackContextInfo? value) => _messenger.Send(new PlaybackContextChangedMessage(value));
+
+    partial void OnCurrentContextChanged(PlaybackContextInfo? value)
+    {
+        _messenger.Send(new PlaybackContextChangedMessage(value));
+        _messenger.Send(new NowPlayingChangedMessage(value?.ContextUri, IsPlaying));
+    }
 
     // ── Commands ──
     // All commands delegate to IPlaybackService, which routes through ConnectCommandExecutor

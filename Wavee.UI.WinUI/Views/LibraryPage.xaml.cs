@@ -11,12 +11,31 @@ public sealed partial class LibraryPage : Page
 {
     private int _currentTabIndex = 0;
     private readonly ShellViewModel _shellViewModel;
-    private bool _suppressSelectionChanged;
 
     public LibraryPage()
     {
         _shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// Sets the SelectorBar visual selection without firing SelectionChanged.
+    /// Detaches the event handler to avoid re-entrancy deadlocks.
+    /// </summary>
+    private void SetSelectedItemSilently(SelectorBarItem itemToSelect)
+    {
+        LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
+        try
+        {
+            AlbumsItem.IsSelected = false;
+            ArtistsItem.IsSelected = false;
+            LikedSongsItem.IsSelected = false;
+            itemToSelect.IsSelected = true;
+        }
+        finally
+        {
+            LibrarySelectorBar.SelectionChanged += SelectorBar_SelectionChanged;
+        }
     }
 
     /// <summary>
@@ -38,19 +57,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Clear all and set the correct one
-        _suppressSelectionChanged = true;
-        try
-        {
-            AlbumsItem.IsSelected = false;
-            ArtistsItem.IsSelected = false;
-            LikedSongsItem.IsSelected = false;
-            itemToSelect.IsSelected = true;
-        }
-        finally
-        {
-            _suppressSelectionChanged = false;
-        }
+        SetSelectedItemSilently(itemToSelect);
 
         // Update content and sidebar
         NavigateToContent(itemToSelect);
@@ -86,19 +93,7 @@ public sealed partial class LibraryPage : Page
         if (ContentFrame.Content?.GetType() == pageType)
             return;
 
-        // Clear all selections and set the correct one
-        _suppressSelectionChanged = true;
-        try
-        {
-            AlbumsItem.IsSelected = false;
-            ArtistsItem.IsSelected = false;
-            LikedSongsItem.IsSelected = false;
-            itemToSelect.IsSelected = true;
-        }
-        finally
-        {
-            _suppressSelectionChanged = false;
-        }
+        SetSelectedItemSilently(itemToSelect);
 
         // Set initial tab index
         _currentTabIndex = GetTabIndex(itemToSelect);
@@ -109,9 +104,6 @@ public sealed partial class LibraryPage : Page
 
     private void SelectorBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (_suppressSelectionChanged)
-            return;
-
         var selectedItem = sender.SelectedItem;
         NavigateToContent(selectedItem);
         UpdateSidebarSelection(selectedItem);

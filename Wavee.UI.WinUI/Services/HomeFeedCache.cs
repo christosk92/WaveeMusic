@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Session;
+using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
@@ -13,7 +14,7 @@ namespace Wavee.UI.WinUI.Services;
 /// <summary>
 /// Snapshot of the home feed data.
 /// </summary>
-public sealed record HomeFeedSnapshot(string? Greeting, List<HomeSection> Sections);
+public sealed record HomeFeedSnapshot(string? Greeting, List<HomeSection> Sections, List<HomeChipViewModel>? Chips = null);
 
 /// <summary>
 /// Singleton cache for the home feed. Extends <see cref="PageCache{TSnapshot}"/> with
@@ -21,19 +22,51 @@ public sealed record HomeFeedSnapshot(string? Greeting, List<HomeSection> Sectio
 /// </summary>
 public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 {
+    /// <summary>Current facet filter (chip id). Null or empty = no filter.</summary>
+    public string? CurrentFacet { get; set; }
+
     public HomeFeedCache(ILogger<HomeFeedCache>? logger = null) : base(logger)
     {
     }
 
     protected override async Task<HomeFeedSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
     {
-        var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10, ct);
+        var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct);
 
         var greeting = response.Data?.Home?.Greeting?.TransformedLabel;
         var sections = HomeViewModel.MapSectionsFromResponse(response);
 
-        Logger?.LogDebug("Home feed cached: {Count} sections", sections.Count);
-        return new HomeFeedSnapshot(greeting, sections);
+        // Only parse chips from unfaceted (default) responses
+        List<HomeChipViewModel>? chips = null;
+        if (string.IsNullOrEmpty(CurrentFacet))
+            chips = MapChips(response.Data?.Home?.HomeChips);
+
+        Logger?.LogDebug("Home feed cached: {Count} sections, facet={Facet}", sections.Count, CurrentFacet ?? "(none)");
+        return new HomeFeedSnapshot(greeting, sections, chips);
+    }
+
+    private static List<HomeChipViewModel>? MapChips(List<HomeChip>? apiChips)
+    {
+        if (apiChips == null || apiChips.Count == 0) return null;
+
+        var chips = new List<HomeChipViewModel>
+        {
+            // "All" chip — represents no filter (default state), always first
+            new() { Id = "", Label = "All", IsSelected = true }
+        };
+
+        chips.AddRange(apiChips.Select(c => new HomeChipViewModel
+        {
+            Id = c.Id ?? "",
+            Label = c.Label?.TransformedLabel ?? c.Id ?? "",
+            SubChips = c.SubChips?.Select(sc => new HomeChipViewModel
+            {
+                Id = sc.Id ?? "",
+                Label = sc.Label?.TransformedLabel ?? sc.Id ?? ""
+            }).ToList() ?? []
+        }));
+
+        return chips;
     }
 
     // ── Incremental diff engine ──
