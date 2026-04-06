@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Wavee.Core.Storage;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Application;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI;
 
@@ -31,13 +32,17 @@ public partial class App : Application
         // Write to a crash log file for Release builds
         try
         {
-            var crashLog = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "Wavee", "crash.log");
+            var crashLog = AppPaths.CrashLogPath;
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(crashLog)!);
+            var redactedMessage = PiiRedactor.Redact(ex.Message);
+            var redactedStack = PiiRedactor.Redact(ex.StackTrace ?? string.Empty);
+            var redactedInner = ex.InnerException != null
+                ? PiiRedactor.Redact(ex.InnerException.ToString())
+                : string.Empty;
+
             System.IO.File.AppendAllText(crashLog,
-                $"\n[{System.DateTime.UtcNow:O}] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n" +
-                (ex.InnerException != null ? $"Inner: {ex.InnerException}\n" : ""));
+                $"\n[{System.DateTime.UtcNow:O}] {ex.GetType().Name}: {redactedMessage}\n{redactedStack}\n" +
+                (string.IsNullOrWhiteSpace(redactedInner) ? "" : $"Inner: {redactedInner}\n"));
         }
         catch { /* best effort */ }
 

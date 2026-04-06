@@ -115,6 +115,23 @@ public sealed class AppSettings
     /// </summary>
     public List<LyricsSourcePref> LyricsSourcePreferences { get; set; } = [];
 
+    // ── Feedback ──
+
+    /// <summary>
+    /// Whether to include diagnostics (logs/crash info) in feedback reports by default.
+    /// </summary>
+    public bool FeedbackIncludeDiagnostics { get; set; } = true;
+
+    /// <summary>
+    /// Whether to include device metadata (OS version, app version) in feedback reports by default.
+    /// </summary>
+    public bool FeedbackIncludeDeviceMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Whether to submit feedback anonymously by default.
+    /// </summary>
+    public bool FeedbackAnonymous { get; set; } = true;
+
     // ── Updates ──
 
     /// <summary>

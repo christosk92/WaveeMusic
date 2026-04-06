@@ -100,6 +100,11 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
             ViewModel.OpenLogFileCommand.Execute(path);
     }
 
+    private void Feedback_Click(object sender, RoutedEventArgs e)
+    {
+        Helpers.Navigation.NavigationHelpers.OpenFeedback();
+    }
+
     private async void GitHub_Click(object sender, RoutedEventArgs e)
     {
         await Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/christosk92/WaveeMusic"));

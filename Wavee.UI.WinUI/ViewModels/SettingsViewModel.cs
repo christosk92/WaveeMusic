@@ -20,6 +20,7 @@ using Wavee.Core.Session;
 using Wavee.Core.Time;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers.Application;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -34,9 +35,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IUpdateService? _updateService;
     private readonly ILogger? _logger;
 
-    private static readonly string LogDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Wavee", "logs");
+    private static readonly string LogDirectory = AppPaths.LogsDirectory;
 
     private static readonly string CacheDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

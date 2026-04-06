@@ -1,0 +1,16 @@
+name = "wavee-feedback-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[vars]
+GITHUB_REPO = "christosk92/WaveeMusic"
+IMAGE_PUBLIC_URL = "https://feedback-images.christosk92.workers.dev"
+
+# R2 bucket for storing feedback screenshots
+[[r2_buckets]]
+binding = "FEEDBACK_IMAGES"
+bucket_name = "wavee-feedback-images"
+
+# Secrets (set via `wrangler secret put`):
+# GITHUB_TOKEN  — fine-grained PAT with issues:write on christosk92/WaveeMusic
+# FEEDBACK_API_KEY — shared secret the client sends in X-Api-Key header

@@ -11,5 +11,6 @@ public enum NavigationPageType
     Settings,
     CreatePlaylist,
     Profile,
-    Debug
+    Debug,
+    Feedback
 }

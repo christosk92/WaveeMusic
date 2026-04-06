@@ -706,6 +706,18 @@
                                 </controls:SettingsExpander.Items>
                             </controls:SettingsExpander>
 
+                            <!-- Feedback -->
+                            <TextBlock Text="Help" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+                            <controls:SettingsCard Header="Send feedback"
+                                                   Description="Report bugs, request features, or share your thoughts"
+                                                   IsClickEnabled="True"
+                                                   Click="Feedback_Click">
+                                <controls:SettingsCard.HeaderIcon>
+                                    <FontIcon Glyph="&#xED15;"/>
+                                </controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                            </controls:SettingsCard>
+
                             <!-- Links -->
                             <TextBlock Text="Links" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
                             <controls:SettingsCard Header="Source code"

@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.FeedbackPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid Padding="40,28,40,28" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ═══════════════════ HEADER ═══════════════════ -->
+        <TextBlock Grid.Row="0" Text="Send Feedback"
+                   Style="{StaticResource TitleTextBlockStyle}"
+                   Margin="0,0,0,24"/>
+
+        <!-- ═══════════════════ RESULT BARS ═══════════════════ -->
+        <StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,12">
+            <InfoBar IsOpen="{x:Bind ViewModel.IsSuccess, Mode=OneWay}"
+                     Severity="Success" Title="Feedback submitted"
+                     Message="Thank you! Your feedback has been received."
+                     IsClosable="False"/>
+            <InfoBar IsOpen="{x:Bind ViewModel.IsError, Mode=OneWay}"
+                     Severity="Error" Title="Submission failed"
+                     Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                     IsClosable="False"/>
+        </StackPanel>
+
+        <!-- ═══════════════════ TWO-COLUMN LAYOUT ═══════════════════ -->
+        <Grid Grid.Row="2" ColumnSpacing="32">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="320" MaxWidth="420"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ─── LEFT COLUMN: Category ─── -->
+            <StackPanel Grid.Column="0" Spacing="16">
+                <TextBlock Text="What would you like to tell us?"
+                           Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,4"/>
+
+                <!-- Category cards — 2×2 grid -->
+                <Grid RowSpacing="10" ColumnSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Bug Report -->
+                    <Border x:Name="CardBug" Grid.Row="0" Grid.Column="0"
+                            CornerRadius="8" Padding="14,12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" PointerPressed="Card_PointerPressed" Tag="0">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xEBE8;" FontSize="24"
+                                      Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="Bug Report" FontWeight="SemiBold" FontSize="13"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Something isn't working"
+                                       FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Feature Request -->
+                    <Border x:Name="CardFeature" Grid.Row="0" Grid.Column="1"
+                            CornerRadius="8" Padding="14,12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" PointerPressed="Card_PointerPressed" Tag="2">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xEA80;" FontSize="24"
+                                      Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="Feature Request" FontWeight="SemiBold" FontSize="13"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Suggest an improvement"
+                                       FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Support Ticket -->
+                    <Border x:Name="CardTicket" Grid.Row="1" Grid.Column="0"
+                            CornerRadius="8" Padding="14,12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" PointerPressed="Card_PointerPressed" Tag="1">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xE8F2;" FontSize="24"
+                                      Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="Support Ticket" FontWeight="SemiBold" FontSize="13"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Get help with an issue"
+                                       FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- General Feedback -->
+                    <Border x:Name="CardGeneral" Grid.Row="1" Grid.Column="1"
+                            CornerRadius="8" Padding="14,12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" PointerPressed="Card_PointerPressed" Tag="3">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xE8BD;" FontSize="24"
+                                      Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="General Feedback" FontWeight="SemiBold" FontSize="13"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Share your thoughts"
+                                       FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+            </StackPanel>
+
+            <!-- ─── RIGHT COLUMN: Details ─── -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Details"
+                               Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,4"/>
+
+                    <!-- Title -->
+                    <StackPanel Spacing="0">
+                        <TextBox x:Name="TitleBox" MaxLength="200"
+                                 PlaceholderText="Brief summary of your feedback"
+                                 Text="{x:Bind ViewModel.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                            <TextBox.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Title"/>
+                                    <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                               FontWeight="Bold"/>
+                                </StackPanel>
+                            </TextBox.Header>
+                        </TextBox>
+                        <TextBlock Text="{x:Bind ViewModel.TitleError, Mode=OneWay}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   FontSize="12" Margin="0,4,0,0"
+                                   Visibility="{x:Bind ViewModel.HasTitleError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </StackPanel>
+
+                    <!-- Description with markdown toolbar -->
+                    <StackPanel Spacing="0">
+                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
+                            <TextBlock Text="Description"/>
+                            <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       FontWeight="Bold"/>
+                            <TextBlock Text="(Markdown supported)" FontSize="11"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                       VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        </StackPanel>
+
+                        <!-- Formatting toolbar -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4,4,0,0" Padding="2" BorderThickness="1,1,1,0"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                            <StackPanel Orientation="Horizontal" Spacing="1">
+                                <Button Click="FormatBold_Click" Padding="8,4"
+                                        Background="Transparent" BorderBrush="Transparent"
+                                        ToolTipService.ToolTip="Bold (**text**)">
+                                    <FontIcon Glyph="&#xE8DD;" FontSize="14"/>
+                                </Button>
+                                <Button Click="FormatItalic_Click" Padding="8,4"
+                                        Background="Transparent" BorderBrush="Transparent"
+                                        ToolTipService.ToolTip="Italic (_text_)">
+                                    <FontIcon Glyph="&#xE8DB;" FontSize="14"/>
+                                </Button>
+                                <Button Click="FormatCode_Click" Padding="8,4"
+                                        Background="Transparent" BorderBrush="Transparent"
+                                        ToolTipService.ToolTip="Code (`text`)">
+                                    <FontIcon Glyph="&#xE943;" FontSize="14"/>
+                                </Button>
+                                <Border Width="1" Margin="4,4" Background="{ThemeResource ControlStrokeColorDefaultBrush}"/>
+                                <Button Click="FormatBulletList_Click" Padding="8,4"
+                                        Background="Transparent" BorderBrush="Transparent"
+                                        ToolTipService.ToolTip="Bullet list (- item)">
+                                    <FontIcon Glyph="&#xE8FD;" FontSize="14"/>
+                                </Button>
+                                <Button Click="FormatNumberedList_Click" Padding="8,4"
+                                        Background="Transparent" BorderBrush="Transparent"
+                                        ToolTipService.ToolTip="Numbered list (1. item)">
+                                    <FontIcon Glyph="&#xEA37;" FontSize="14"/>
+                                </Button>
+                                <Border Width="1" Margin="4,4" Background="{ThemeResource ControlStrokeColorDefaultBrush}"/>
+                                <Button Click="FormatLink_Click" Padding="8,4"
+                                        Background="Transparent" BorderBrush="Transparent"
+                                        ToolTipService.ToolTip="Link ([text](url))">
+                                    <FontIcon Glyph="&#xE71B;" FontSize="14"/>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBox x:Name="BodyBox" MaxLength="5000"
+                                 PlaceholderText="Provide as much detail as possible — steps to reproduce, expected behavior, etc.&#x0a;&#x0a;Supports Markdown: **bold**, _italic_, `code`, - lists"
+                                 Text="{x:Bind ViewModel.Body, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 TextWrapping="Wrap" AcceptsReturn="True" MinHeight="140"
+                                 CornerRadius="0,0,4,4"/>
+                        <TextBlock Text="{x:Bind ViewModel.BodyError, Mode=OneWay}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   FontSize="12" Margin="0,4,0,0"
+                                   Visibility="{x:Bind ViewModel.HasBodyError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </StackPanel>
+
+                    <!-- Image attachments -->
+                    <StackPanel Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Screenshots" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="(optional, max 5)" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Thumbnails grid -->
+                        <ItemsRepeater x:Name="ImageRepeater"
+                                       ItemsSource="{x:Bind ViewModel.AttachedImages, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <UniformGridLayout MinItemWidth="100" MinItemHeight="100"
+                                                   MinRowSpacing="8" MinColumnSpacing="8"
+                                                   MaximumRowsOrColumns="5"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="6" BorderThickness="1"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            Width="100" Height="100">
+                                        <Grid>
+                                            <Image Stretch="UniformToFill" Loaded="ImageThumbnail_Loaded"/>
+                                            <Button Click="RemoveImage_Click"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                    Padding="4" Margin="2"
+                                                    Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                                                    CornerRadius="12" Width="24" Height="24"
+                                                    ToolTipService.ToolTip="Remove">
+                                                <FontIcon Glyph="&#xE711;" FontSize="10"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+
+                        <!-- Drop zone / Add button -->
+                        <Border x:Name="DropZone" CornerRadius="8" Padding="16,12"
+                                BorderThickness="2" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                Background="Transparent"
+                                AllowDrop="True" DragOver="DropZone_DragOver" Drop="DropZone_Drop"
+                                Visibility="{x:Bind ViewModel.CanAddMoreImages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel HorizontalAlignment="Center" Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                    <FontIcon Glyph="&#xE8B9;" FontSize="16"
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <HyperlinkButton Content="Browse files" Click="BrowseImages_Click" Padding="0"/>
+                                    <TextBlock Text="or drag and drop" VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13"/>
+                                </StackPanel>
+                                <TextBlock Text="PNG, JPG, GIF, WebP, BMP — max 5 MB each"
+                                           FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="{x:Bind ViewModel.ImageError, Mode=OneWay}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   FontSize="12"
+                                   Visibility="{x:Bind ViewModel.HasImageError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </StackPanel>
+
+                    <!-- Bug-specific fields (visible when Bug selected) -->
+                    <StackPanel Spacing="16"
+                                Visibility="{x:Bind ViewModel.ShowSeverity, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <!-- Severity -->
+                        <StackPanel Spacing="0">
+                            <ComboBox x:Name="SeverityBox"
+                                      PlaceholderText="Select..."
+                                      SelectedIndex="{x:Bind ViewModel.SeverityIndex, Mode=TwoWay}"
+                                      MinWidth="200" HorizontalAlignment="Left">
+                                <ComboBox.Header>
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="Severity"/>
+                                        <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                   FontWeight="Bold"/>
+                                    </StackPanel>
+                                </ComboBox.Header>
+                                <ComboBoxItem Content="Low"/>
+                                <ComboBoxItem Content="Medium"/>
+                                <ComboBoxItem Content="High"/>
+                                <ComboBoxItem Content="Critical"/>
+                            </ComboBox>
+                            <TextBlock Text="{x:Bind ViewModel.SeverityError, Mode=OneWay}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       FontSize="12" Margin="0,4,0,0"
+                                       Visibility="{x:Bind ViewModel.HasSeverityError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+
+                        <!-- Reproducibility -->
+                        <StackPanel Spacing="0">
+                            <ComboBox x:Name="ReproducibilityBox"
+                                      PlaceholderText="Select..."
+                                      SelectedIndex="{x:Bind ViewModel.ReproducibilityIndex, Mode=TwoWay}"
+                                      MinWidth="240" HorizontalAlignment="Left">
+                                <ComboBox.Header>
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="Reproducibility"/>
+                                        <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                   FontWeight="Bold"/>
+                                    </StackPanel>
+                                </ComboBox.Header>
+                                <ComboBoxItem Content="Always"/>
+                                <ComboBoxItem Content="Sometimes"/>
+                                <ComboBoxItem Content="Rarely"/>
+                                <ComboBoxItem Content="Unable to reproduce"/>
+                                <ComboBoxItem Content="Not applicable"/>
+                            </ComboBox>
+                            <TextBlock Text="{x:Bind ViewModel.ReproducibilityError, Mode=OneWay}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       FontSize="12" Margin="0,4,0,0"
+                                       Visibility="{x:Bind ViewModel.HasReproducibilityError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Privacy toggles -->
+                    <StackPanel Spacing="4">
+                        <controls:SettingsCard Header="Include diagnostics"
+                                               Description="Attach recent app logs (auto-scrubbed of personal info)">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE9D9;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.IncludeDiagnostics, Mode=TwoWay}"
+                                          OnContent="" OffContent=""/>
+                        </controls:SettingsCard>
+
+                        <controls:SettingsCard Header="Include device metadata"
+                                               Description="Share OS version, architecture, and app version">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7F7;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.IncludeDeviceMetadata, Mode=TwoWay}"
+                                          OnContent="" OffContent=""/>
+                        </controls:SettingsCard>
+
+                        <controls:SettingsCard Header="Submit anonymously"
+                                               Description="No personal information will be attached">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE77B;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.IsAnonymous, Mode=TwoWay}"
+                                          OnContent="" OffContent=""/>
+                        </controls:SettingsCard>
+                    </StackPanel>
+
+                    <TextBox Header="Contact email (optional)"
+                             PlaceholderText="your@email.com"
+                             Text="{x:Bind ViewModel.ContactEmail, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MaxLength="254" MaxWidth="400" HorizontalAlignment="Left"
+                             Visibility="{x:Bind ViewModel.ShowContactEmail, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                    <TextBlock Text="Diagnostics logs are automatically scrubbed of emails, tokens, and file paths before transmission."
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                               FontSize="11" TextWrapping="Wrap"/>
+
+                    <!-- Submit -->
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right"
+                                Margin="0,8,0,16">
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsSubmitting, Mode=OneWay}"
+                                      Width="20" Height="20" VerticalAlignment="Center"/>
+                        <Button Content="Submit Feedback" MinWidth="150"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Command="{x:Bind ViewModel.SubmitCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Page>

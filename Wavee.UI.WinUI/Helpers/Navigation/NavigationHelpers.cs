@@ -157,6 +157,11 @@ public static class NavigationHelpers
         Navigate(typeof(SettingsPage), null, "Settings", new SymbolIconSource { Symbol = Symbol.Setting }, openInNewTab);
     }
 
+    public static void OpenFeedback(bool openInNewTab = false)
+    {
+        Navigate(typeof(FeedbackPage), null, "Feedback", new SymbolIconSource { Symbol = Symbol.Comment }, openInNewTab);
+    }
+
     private static void Navigate(Type pageType, object? parameter, string header, IconSource icon, bool openInNewTab)
     {
         // Always open in new tab if no tabs exist

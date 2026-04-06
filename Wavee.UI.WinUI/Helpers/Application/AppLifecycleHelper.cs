@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,10 +48,22 @@ public static class AppLifecycleHelper
 
         // Create the InMemorySink early so Serilog can write to it from the start
         var inMemorySink = new Services.InMemorySink(_uiDispatcher);
+        Directory.CreateDirectory(AppPaths.LogsDirectory);
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
+            .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Information)
+            .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Information)
             .WriteTo.Debug()
+            .WriteTo.File(
+                path: AppPaths.RollingLogFilePath,
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 14,
+                rollOnFileSizeLimit: true,
+                fileSizeLimitBytes: 10 * 1024 * 1024,
+                shared: true,
+                flushToDiskInterval: TimeSpan.FromSeconds(1),
+                restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug)
             .WriteTo.Sink(inMemorySink)
             .Enrich.FromLogContext()
             .CreateLogger();
@@ -274,6 +287,19 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>()))
                 .AddTransient<DebugViewModel>()
+                .AddTransient<FeedbackViewModel>(sp =>
+                    new FeedbackViewModel(
+                        sp.GetRequiredService<IFeedbackService>(),
+                        sp.GetRequiredService<ISettingsService>(),
+                        sp.GetRequiredService<Services.InMemorySink>(),
+                        sp.GetService<ILogger<FeedbackViewModel>>()))
+                .AddHttpClient<IFeedbackService, FeedbackService>(client =>
+                {
+                    // Cloudflare Worker proxy → creates GitHub Issues
+                    client.BaseAddress = new Uri("https://wavee-feedback-proxy.christosk92.workers.dev");
+                    client.DefaultRequestHeaders.Add("X-Api-Key", "CHANGE_ME_AFTER_DEPLOY");
+                })
+                    .Services
                 .AddTransient<SettingsViewModel>(sp =>
                     new SettingsViewModel(
                         sp.GetRequiredService<ISettingsService>(),
