@@ -1,133 +1,136 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <RootNamespace>Wavee.UI.WinUI</RootNamespace>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x86;x64;ARM64</Platforms>
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
-    <UseWinUI>true</UseWinUI>
-    <WinUISDKReferences>false</WinUISDKReferences>
-    <EnableMsixTooling>true</EnableMsixTooling>
-    <Nullable>enable</Nullable>
-    <Version>0.1.0-beta</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
-    <!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
-    <LangVersion>preview</LangVersion>
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+		<TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+		<RootNamespace>Wavee.UI.WinUI</RootNamespace>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<Platforms>x86;x64;ARM64</Platforms>
+		<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+		<PublishProfile>win-$(Platform).pubxml</PublishProfile>
+		<UseWinUI>true</UseWinUI>
+		<WinUISDKReferences>false</WinUISDKReferences>
+		<EnableMsixTooling>true</EnableMsixTooling>
+		<Nullable>enable</Nullable>
+		<Version>0.1.0-beta</Version>
+		<AssemblyVersion>0.1.0.0</AssemblyVersion>
+		<FileVersion>0.1.0.0</FileVersion>
+		<!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
+		<LangVersion>preview</LangVersion>
+		<!-- Server GC: uses background threads for Gen2 collection instead of stopping the world.
+         Critical for audio playback — workstation GC pauses ALL threads for 50-200ms+ on Gen2. -->
+		<ServerGarbageCollection>true</ServerGarbageCollection>
+		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+	</PropertyGroup>
+	<ItemGroup>
+		<Content Remove="Assets\MediaPlayerIcons.ttf" />
+	</ItemGroup>
 
-  </PropertyGroup>
-  <ItemGroup>
-    <Content Remove="Assets\MediaPlayerIcons.ttf" />
-  </ItemGroup>
+	<ItemGroup>
+		<Content Include="Assets\SplashScreen.scale-200.png" />
+		<Content Include="Assets\LockScreenLogo.scale-200.png" />
+		<Content Include="Assets\Square150x150Logo.scale-200.png" />
+		<Content Include="Assets\Square44x44Logo.scale-200.png" />
+		<Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+		<Content Include="Assets\StoreLogo.png" />
+		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Content Include="Assets\SplashScreen.scale-200.png" />
-    <Content Include="Assets\LockScreenLogo.scale-200.png" />
-    <Content Include="Assets\Square150x150Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-    <Content Include="Assets\StoreLogo.png" />
-    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-  </ItemGroup>
+	<ItemGroup>
+		<Manifest Include="$(ApplicationManifest)" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Manifest Include="$(ApplicationManifest)" />
-  </ItemGroup>
-
-  <!--
+	<!--
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
     Tools extension to be activated for this project even if the Windows App SDK Nuget
     package has not yet been restored.
   -->
-  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <ProjectCapability Include="Msix" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.Shimmer" Version="0.1.251217-build.2433" />
-    <PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.MetadataControl" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.TabbedCommandBar" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Media" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.3.260402-preview2" />
-    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
-    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1-RTM" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.0-preview2" />
-    <PackageReference Include="QRCoder" Version="1.6.0" />
-    <PackageReference Include="Serilog" Version="4.3.0" />
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
-    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
-    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <!-- Window management -->
-    <PackageReference Include="WinUIEx" Version="2.9.0" />
-    <!-- MVVM and DI -->
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
-    <!-- UI Extensions -->
-    <PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
-    <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
-    <!-- Reactive Extensions (System.Reactive used by Connect/Core layer) -->
-    <PackageReference Include="ReactiveUI" Version="23.2.1" />
-    <PackageReference Include="ReactiveUI.WinUI" Version="23.2.1" />
-  </ItemGroup>
+	<ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+		<ProjectCapability Include="Msix" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.Shimmer" Version="0.1.251217-build.2433" />
+		<PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.MetadataControl" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.TabbedCommandBar" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Media" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.3.260402-preview2" />
+		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
+		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1-RTM" />
+		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.0-preview2" />
+		<PackageReference Include="QRCoder" Version="1.6.0" />
+		<PackageReference Include="Serilog" Version="4.3.0" />
+		<PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+		<PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+		<PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+		<PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+		<!-- Window management -->
+		<PackageReference Include="WinUIEx" Version="2.9.0" />
+		<!-- MVVM and DI -->
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
+		<!-- UI Extensions -->
+		<PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
+		<!-- Reactive Extensions (System.Reactive used by Connect/Core layer) -->
+		<PackageReference Include="ReactiveUI" Version="23.2.1" />
+		<PackageReference Include="ReactiveUI.WinUI" Version="23.2.1" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <!-- Wavee core integration -->
-    <ProjectReference Include="..\Wavee\Wavee.csproj" />
-    <!-- Lyrics rendering control -->
-    <ProjectReference Include="..\Wavee.Controls.Lyrics\Wavee.Controls.Lyrics.csproj" />
-    <!-- Multi-provider lyrics search & parsing (QQ, Kugou, Netease) -->
-    <ProjectReference Include="..\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<!-- Wavee core integration -->
+		<ProjectReference Include="..\Wavee\Wavee.csproj" />
+		<!-- Lyrics rendering control -->
+		<ProjectReference Include="..\Wavee.Controls.Lyrics\Wavee.Controls.Lyrics.csproj" />
+		<!-- Multi-provider lyrics search & parsing (QQ, Kugou, Netease) -->
+		<ProjectReference Include="..\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Content Update="Assets\Fonts\MediaPlayerIcons.ttf">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+	<ItemGroup>
+		<Content Update="Assets\Fonts\MediaPlayerIcons.ttf">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
 
 
-  <!--
+	<!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
     Explorer "Package and Publish" context menu entry to be enabled for this project even if
     the Windows App SDK Nuget package has not yet been restored.
   -->
-  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
-  </PropertyGroup>
+	<PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+	</PropertyGroup>
 
-  <!-- Publish Properties -->
-  <PropertyGroup>
-    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
-  </PropertyGroup>
+	<!-- Publish Properties -->
+	<PropertyGroup>
+		<PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+		<PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+		<PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
+		<PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+		<TrimMode>partial</TrimMode>
+	</PropertyGroup>
 
-  <!-- Auto-build Wavee.AudioHost and copy the exe to our output (for out-of-process audio) -->
-  <Target Name="BuildAudioHost" BeforeTargets="Build">
-    <MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj"
-             Targets="Build"
-             Properties="Configuration=$(Configuration)" />
-  </Target>
+	<!-- Auto-build Wavee.AudioHost and copy the exe to our output (for out-of-process audio) -->
+	<Target Name="BuildAudioHost" BeforeTargets="Build">
+		<MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj"
+				 Targets="Build"
+				 Properties="Configuration=$(Configuration)" />
+	</Target>
 
-  <!-- Preserve assemblies whose types are resolved via XAML reflection (invisible to the IL trimmer).
+	<!-- Preserve assemblies whose types are resolved via XAML reflection (invisible to the IL trimmer).
        Microsoft.WinUI is marked IsTrimmable, so even TrimMode=partial trims it —
        stripping StackLayout, UniformGridLayout, etc. that ItemsRepeater.Layout needs.
        See: https://github.com/microsoft/microsoft-ui-xaml/issues/9675 -->
-  <ItemGroup>
-    <TrimmerRootAssembly Include="Microsoft.WinUI" />
-    <TrimmerRootAssembly Include="Wavee.Controls.Lyrics" />
-    <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
-  </ItemGroup>
+	<ItemGroup>
+		<TrimmerRootAssembly Include="Microsoft.WinUI" />
+		<TrimmerRootAssembly Include="Wavee.Controls.Lyrics" />
+		<TrimmerRootDescriptor Include="TrimmerRoots.xml" />
+	</ItemGroup>
 </Project>

@@ -270,6 +270,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.CurrentArtistId):
                 CurrentArtistId = _playbackStateService.CurrentArtistId;
+                _artistMetadataDirty = true;
+                OnPropertyChanged(nameof(ArtistMetadataItems));
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumId):
                 CurrentAlbumId = _playbackStateService.CurrentAlbumId;

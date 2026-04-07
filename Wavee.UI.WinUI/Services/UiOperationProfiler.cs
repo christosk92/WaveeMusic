@@ -21,6 +21,11 @@ internal sealed class UiOperationProfiler
 
     private readonly ILogger? _logger;
     private readonly Dictionary<string, OperationStats> _stats = new();
+    private double _totalRecordedMs;
+
+    // Keep operation stats bounded for long-lived sessions by evicting low-contribution entries.
+    private const int MaxTrackedOperations = 256;
+    private const double MinContributionToKeep = 0.001; // 0.1% of total recorded UI time
 
     // Top-N slowest operations (rolling, newest replaces oldest when full)
     private const int TopSlowestSize = 10;
@@ -177,6 +182,7 @@ internal sealed class UiOperationProfiler
     public void Reset()
     {
         _stats.Clear();
+        _totalRecordedMs = 0;
         _topSlowestCount = 0;
         _topSlowestMinMs = 0;
         _gen0Total = 0;
@@ -200,6 +206,9 @@ internal sealed class UiOperationProfiler
         stats.TotalMs += durationMs;
         if (durationMs > stats.MaxMs)
             stats.MaxMs = durationMs;
+        _totalRecordedMs += durationMs;
+
+        TrimOperationStatsIfNeeded();
 
         // Update top-N slowest
         if (durationMs > _topSlowestMinMs || _topSlowestCount < TopSlowestSize)
@@ -211,6 +220,31 @@ internal sealed class UiOperationProfiler
         if (durationMs >= LogThresholdMs)
         {
             _logger?.LogWarning("UI op [{Operation}] took {DurationMs:F1}ms", name, durationMs);
+        }
+    }
+
+    private void TrimOperationStatsIfNeeded()
+    {
+        if (_stats.Count <= MaxTrackedOperations)
+        {
+            return;
+        }
+
+        var rankedByContribution = new List<KeyValuePair<string, OperationStats>>(_stats);
+        rankedByContribution.Sort((a, b) => a.Value.TotalMs.CompareTo(b.Value.TotalMs));
+
+        foreach (var (opName, opStats) in rankedByContribution)
+        {
+            if (_stats.Count <= MaxTrackedOperations)
+            {
+                break;
+            }
+
+            var contribution = _totalRecordedMs <= 0 ? 0 : opStats.TotalMs / _totalRecordedMs;
+            if (contribution <= MinContributionToKeep || _stats.Count > MaxTrackedOperations)
+            {
+                _stats.Remove(opName);
+            }
         }
     }
 
