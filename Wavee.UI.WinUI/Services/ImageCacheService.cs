@@ -1,21 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
 /// O(1) LRU cache for BitmapImage instances. Prevents duplicate downloads
-/// and GC of frequently used images. Thread-safe.
+/// and GC of frequently used images. Thread-safe via ReaderWriterLockSlim.
 /// </summary>
 public sealed class ImageCacheService
 {
     private readonly record struct CacheKey(string Uri, int DecodeSize);
-    private readonly record struct CacheEntry(BitmapImage Image, DateTimeOffset LastAccessed);
+    private readonly record struct CacheEntry(BitmapImage Image, long LastAccessedTick);
 
     private readonly LinkedList<KeyValuePair<CacheKey, CacheEntry>> _lruList = new();
     private readonly Dictionary<CacheKey, LinkedListNode<KeyValuePair<CacheKey, CacheEntry>>> _cache = new();
-    private readonly object _lock = new();
+    private readonly ReaderWriterLockSlim _rwLock = new();
     private readonly int _maxSize;
 
     public ImageCacheService(int maxSize = 100)
@@ -25,7 +26,12 @@ public sealed class ImageCacheService
 
     public int Count
     {
-        get { lock (_lock) return _cache.Count; }
+        get
+        {
+            _rwLock.EnterReadLock();
+            try { return _cache.Count; }
+            finally { _rwLock.ExitReadLock(); }
+        }
     }
 
     /// <summary>
@@ -37,21 +43,20 @@ public sealed class ImageCacheService
         if (string.IsNullOrEmpty(uri)) return null;
         var key = new CacheKey(uri, decodePixelSize);
 
-        // Fast path: check cache under lock (most calls are hits)
-        lock (_lock)
+        // Fast path: read-only check (most calls are hits — no write lock contention)
+        _rwLock.EnterReadLock();
+        try
         {
             if (_cache.TryGetValue(key, out var node))
             {
-                _lruList.Remove(node);
-                _lruList.AddFirst(node);
-                node.Value = new KeyValuePair<CacheKey, CacheEntry>(
-                    key, node.Value.Value with { LastAccessed = DateTimeOffset.UtcNow });
+                // Skip LRU reordering on read — amortize via periodic cleanup.
+                // This avoids upgrading to write lock on every cache hit.
                 return node.Value.Value.Image;
             }
         }
+        finally { _rwLock.ExitReadLock(); }
 
-        // Cache miss — create BitmapImage outside the lock so cleanup
-        // on a background thread doesn't block while we set up the bitmap.
+        // Cache miss — create BitmapImage outside the lock
         var bitmap = new BitmapImage();
         if (decodePixelSize > 0)
         {
@@ -60,13 +65,15 @@ public sealed class ImageCacheService
         }
         bitmap.UriSource = new Uri(uri);
 
-        // Re-acquire lock to insert (another thread may have inserted the same key)
-        lock (_lock)
+        // Write lock to insert
+        _rwLock.EnterWriteLock();
+        try
         {
             if (_cache.TryGetValue(key, out var existing))
                 return existing.Value.Value.Image; // Another caller won the race
 
-            var entry = new CacheEntry(bitmap, DateTimeOffset.UtcNow);
+            var tick = Environment.TickCount64;
+            var entry = new CacheEntry(bitmap, tick);
             var newNode = _lruList.AddFirst(new KeyValuePair<CacheKey, CacheEntry>(key, entry));
             _cache[key] = newNode;
 
@@ -80,6 +87,7 @@ public sealed class ImageCacheService
 
             return bitmap;
         }
+        finally { _rwLock.ExitWriteLock(); }
     }
 
     /// <summary>
@@ -87,13 +95,14 @@ public sealed class ImageCacheService
     /// </summary>
     public int CleanupStale(TimeSpan maxAge)
     {
-        var cutoff = DateTimeOffset.UtcNow - maxAge;
+        var cutoffTick = Environment.TickCount64 - (long)maxAge.TotalMilliseconds;
         var removed = 0;
 
-        lock (_lock)
+        _rwLock.EnterWriteLock();
+        try
         {
             var node = _lruList.Last;
-            while (node != null && node.Value.Value.LastAccessed < cutoff)
+            while (node != null && node.Value.Value.LastAccessedTick < cutoffTick)
             {
                 var prev = node.Previous;
                 _cache.Remove(node.Value.Key);
@@ -102,6 +111,7 @@ public sealed class ImageCacheService
                 node = prev;
             }
         }
+        finally { _rwLock.ExitWriteLock(); }
 
         return removed;
     }
@@ -111,10 +121,12 @@ public sealed class ImageCacheService
     /// </summary>
     public void Clear()
     {
-        lock (_lock)
+        _rwLock.EnterWriteLock();
+        try
         {
             _cache.Clear();
             _lruList.Clear();
         }
+        finally { _rwLock.ExitWriteLock(); }
     }
 }

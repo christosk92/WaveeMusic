@@ -124,6 +124,7 @@ public sealed partial class RightPanelView : UserControl
             _detailsSubscribed = false;
         }
         TeardownCanvasBackground();
+        TeardownBlurredAlbumArt();
         TeardownDetailsLyricsSnippet();
     }
 
@@ -227,6 +228,17 @@ public sealed partial class RightPanelView : UserControl
     {
         if (e.PropertyName is nameof(IPlaybackStateService.IsPlaying))
             UpdateTimerState();
+
+        // Update blurred album art when album art changes
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentAlbumArtLarge)
+                           or nameof(IPlaybackStateService.CurrentAlbumArt))
+        {
+            if (SelectedMode == RightPanelMode.Details
+                && _activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt)
+            {
+                SetupBlurredAlbumArt();
+            }
+        }
     }
 
     // ── ViewModel → Canvas binding ──
@@ -515,16 +527,22 @@ public sealed partial class RightPanelView : UserControl
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
         DetailsContent.Visibility = SelectedMode == RightPanelMode.Details ? Visibility.Visible : Visibility.Collapsed;
 
-        // Canvas video background — only visible on Details tab
+        // Background — only visible on Details tab
         if (SelectedMode != RightPanelMode.Details)
         {
             DetailsCanvasImage.Visibility = Visibility.Collapsed;
             _canvasMediaPlayer?.Pause();
         }
-        else if (_currentCanvasUrl != null && _canvasMediaPlayer != null)
+        else if (_activeBackgroundMode == DetailsBackgroundMode.Canvas
+                 && _currentCanvasUrl != null && _canvasMediaPlayer != null)
         {
             DetailsCanvasImage.Visibility = Visibility.Visible;
             _canvasMediaPlayer.Play();
+        }
+        else if (_activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt
+                 && _currentAlbumArtUrl != null)
+        {
+            DetailsCanvasImage.Visibility = Visibility.Visible;
         }
 
         // Details lyrics snippet timer — stop when not on Details tab
@@ -615,11 +633,11 @@ public sealed partial class RightPanelView : UserControl
 
         var hasData = _detailsVm.HasData;
 
-        // Canvas (composition background) — update immediately, no delay
-        if (hasData && _detailsVm.HasCanvas)
-            SetupCanvasBackground(_detailsVm.CanvasUrl);
+        // Background (none / blurred album art / canvas) — update immediately, no delay
+        if (hasData)
+            ApplyDetailsBackground(_detailsVm.CanvasUrl, _detailsVm.HasCanvas);
         else
-            SetupCanvasBackground(null);
+            ApplyDetailsBackground(null, false);
 
         if (hasData)
         {
@@ -923,25 +941,24 @@ public sealed partial class RightPanelView : UserControl
                     DetailsContent.ChangeView(null, position.Y, null, false);
                 }
             },
-            ToggleCanvasAction = () =>
+            SetBackgroundModeAction = (mode) =>
             {
-                var wasVisible = DetailsCanvasImage.Visibility == Visibility.Visible;
-                if (wasVisible)
+                var modeStr = mode switch
                 {
-                    TeardownCanvasBackground();
-                    DetailsCanvasImage.Visibility = Visibility.Collapsed;
-                }
-                else if (_detailsVm?.HasCanvas == true)
-                {
-                    SetupCanvasBackground(_detailsVm.CanvasUrl);
-                }
-
-                // Persist preference
-                _settingsService?.Update(s => s.ShowDetailsCanvas = !wasVisible);
+                    DetailsBackgroundMode.None => "None",
+                    DetailsBackgroundMode.BlurredAlbumArt => "BlurredAlbumArt",
+                    DetailsBackgroundMode.Canvas => "Canvas",
+                    _ => "Canvas"
+                };
+                _settingsService?.Update(s => s.DetailsBackgroundMode = modeStr);
                 _ = _settingsService?.SaveAsync();
+
+                // Re-apply background with the new mode
+                if (_detailsVm != null)
+                    ApplyDetailsBackground(_detailsVm.CanvasUrl, _detailsVm.HasCanvas);
             },
-            ShowCanvasToggle = _detailsVm?.HasCanvas ?? false,
-            IsCanvasVisible = DetailsCanvasImage.Visibility == Visibility.Visible,
+            HasCanvas = _detailsVm?.HasCanvas ?? false,
+            CurrentBackgroundMode = _activeBackgroundMode,
         };
 
         var menu = Track.TrackContextMenu.Create(adapter, options);
@@ -969,26 +986,153 @@ public sealed partial class RightPanelView : UserControl
         }
     }
 
-    // ── Canvas video (frame server mode + Win2D blur → standard Image) ──
-    // MediaPlayer renders frames to a CanvasRenderTarget, we apply GaussianBlur,
-    // then draw to a CanvasImageSource backing a regular XAML Image.
+    // ── Details background (None / Blurred Album Art / Canvas video) ──
+    // Canvas: MediaPlayer in frame server mode → Win2D blur → CanvasImageSource → Image.
+    // Blurred Album Art: Load album art bitmap → heavy Win2D blur → CanvasImageSource → Image.
     // No SwapChainPanel = acrylic works on top.
 
     private Windows.Media.Playback.MediaPlayer? _canvasMediaPlayer;
     private string? _currentCanvasUrl;
+    private string? _currentAlbumArtUrl;
     private Microsoft.Graphics.Canvas.CanvasDevice? _canvasDevice;
     private Microsoft.Graphics.Canvas.CanvasRenderTarget? _canvasFrameTarget;
     private float _canvasBlurAmount = 1.3f;
+    private const float AlbumArtBlurAmount = 40f;
     private Microsoft.Graphics.Canvas.UI.Xaml.CanvasImageSource? _canvasImageSource;
     private long _lastCanvasFrameTicks;
     private const long CanvasFrameIntervalTicks = TimeSpan.TicksPerSecond / 10; // ~10fps throttle
+    private DetailsBackgroundMode _activeBackgroundMode;
+
+    private DetailsBackgroundMode GetSettingsBackgroundMode()
+    {
+        var raw = _settingsService?.Settings.DetailsBackgroundMode ?? "Canvas";
+        return raw switch
+        {
+            "None" => DetailsBackgroundMode.None,
+            "BlurredAlbumArt" => DetailsBackgroundMode.BlurredAlbumArt,
+            "Canvas" => DetailsBackgroundMode.Canvas,
+            _ => DetailsBackgroundMode.Canvas
+        };
+    }
+
+    private void ApplyDetailsBackground(string? canvasUrl, bool hasCanvas)
+    {
+        var mode = GetSettingsBackgroundMode();
+
+        // Fall back to blurred album art when Canvas is selected but track has no canvas
+        if (mode == DetailsBackgroundMode.Canvas && !hasCanvas)
+            mode = DetailsBackgroundMode.BlurredAlbumArt;
+
+        _activeBackgroundMode = mode;
+
+        switch (mode)
+        {
+            case DetailsBackgroundMode.None:
+                TeardownCanvasBackground();
+                TeardownBlurredAlbumArt();
+                DetailsCanvasImage.Visibility = Visibility.Collapsed;
+                break;
+
+            case DetailsBackgroundMode.BlurredAlbumArt:
+                TeardownCanvasBackground();
+                SetupBlurredAlbumArt();
+                break;
+
+            case DetailsBackgroundMode.Canvas:
+                TeardownBlurredAlbumArt();
+                SetupCanvasBackground(canvasUrl);
+                break;
+        }
+    }
+
+    // ── Blurred album art ──
+
+    private async void SetupBlurredAlbumArt()
+    {
+        var albumArt = _lyricsVm?.PlaybackState.CurrentAlbumArtLarge
+                       ?? _lyricsVm?.PlaybackState.CurrentAlbumArt;
+
+        if (string.IsNullOrEmpty(albumArt))
+        {
+            DetailsCanvasImage.Visibility = Visibility.Collapsed;
+            _currentAlbumArtUrl = null;
+            return;
+        }
+
+        if (albumArt == _currentAlbumArtUrl && DetailsCanvasImage.Visibility == Visibility.Visible)
+            return;
+
+        _currentAlbumArtUrl = albumArt;
+        _canvasDevice ??= new Microsoft.Graphics.Canvas.CanvasDevice();
+
+        try
+        {
+            var bitmap = await Microsoft.Graphics.Canvas.CanvasBitmap.LoadAsync(
+                _canvasDevice, new Uri(albumArt));
+
+            // Render at panel size (half res for perf)
+            var w = Math.Max(1, (int)RootGrid.ActualWidth / 2);
+            var h = Math.Max(1, (int)RootGrid.ActualHeight / 2);
+
+            var imageSource = new Microsoft.Graphics.Canvas.UI.Xaml.CanvasImageSource(_canvasDevice, w, h, 96);
+            using (var ds = imageSource.CreateDrawingSession(Colors.Transparent))
+            {
+                // Scale bitmap to fill the target rect
+                var scaleX = (float)w / bitmap.SizeInPixels.Width;
+                var scaleY = (float)h / bitmap.SizeInPixels.Height;
+                var scale = Math.Max(scaleX, scaleY);
+
+                var scaledW = bitmap.SizeInPixels.Width * scale;
+                var scaledH = bitmap.SizeInPixels.Height * scale;
+                var offsetX = (w - scaledW) / 2f;
+                var offsetY = (h - scaledH) / 2f;
+
+                var scaled = new Microsoft.Graphics.Canvas.Effects.ScaleEffect
+                {
+                    Source = bitmap,
+                    Scale = new System.Numerics.Vector2(scale, scale),
+                    CenterPoint = System.Numerics.Vector2.Zero
+                };
+
+                var blur = new Microsoft.Graphics.Canvas.Effects.GaussianBlurEffect
+                {
+                    Source = scaled,
+                    BlurAmount = AlbumArtBlurAmount,
+                    BorderMode = Microsoft.Graphics.Canvas.Effects.EffectBorderMode.Hard
+                };
+
+                ds.DrawImage(blur, new System.Numerics.Vector2(offsetX, offsetY));
+                blur.Dispose();
+                scaled.Dispose();
+            }
+
+            bitmap.Dispose();
+
+            // Verify we're still in blurred album art mode and same URL
+            if (_activeBackgroundMode != DetailsBackgroundMode.BlurredAlbumArt
+                || _currentAlbumArtUrl != albumArt)
+                return;
+
+            DetailsCanvasImage.Source = imageSource;
+            DetailsCanvasImage.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+            // Loading can fail if URL is invalid or network issue
+            DetailsCanvasImage.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void TeardownBlurredAlbumArt()
+    {
+        _currentAlbumArtUrl = null;
+    }
+
+    // ── Canvas video ──
 
     private void SetupCanvasBackground(string? url)
     {
-        // Respect user setting
-        var canvasEnabled = _settingsService?.Settings.ShowDetailsCanvas ?? true;
-
-        if (string.IsNullOrEmpty(url) || !canvasEnabled)
+        if (string.IsNullOrEmpty(url))
         {
             TeardownCanvasBackground();
             DetailsCanvasImage.Visibility = Visibility.Collapsed;

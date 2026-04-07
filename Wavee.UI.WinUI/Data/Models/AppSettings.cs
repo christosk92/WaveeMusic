@@ -110,9 +110,9 @@ public sealed class AppSettings
     // ── Details panel ──
 
     /// <summary>
-    /// Whether to show the canvas video background in the Details panel.
+    /// Background mode for the Details panel: "None", "BlurredAlbumArt", or "Canvas".
     /// </summary>
-    public bool ShowDetailsCanvas { get; set; } = true;
+    public string DetailsBackgroundMode { get; set; } = "Canvas";
 
     // ── Lyrics ──
 

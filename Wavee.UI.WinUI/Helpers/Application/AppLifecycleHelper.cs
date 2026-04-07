@@ -37,6 +37,21 @@ public static class AppLifecycleHelper
     // Captured on UI thread during ConfigureHost, used by background init
     private static Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
 
+    // Out-of-process audio mode
+    private static Wavee.AudioIpc.AudioProcessManager? _audioProcessManager;
+
+    /// <summary>
+    /// The active audio process manager (null if using in-process audio).
+    /// Exposed for diagnostics UI.
+    /// </summary>
+    public static Wavee.AudioIpc.AudioProcessManager? AudioProcessManager => _audioProcessManager;
+
+    /// <summary>
+    /// Set to true to use a separate audio process for GC isolation.
+    /// When false (default), the AudioPipeline runs in-process as before.
+    /// </summary>
+    public static bool UseOutOfProcessAudio { get; set; } = true;
+
     public static IHost ConfigureHost()
     {
         _uiDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
@@ -163,6 +178,13 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton<Services.ImageCacheService>()
+                .AddSingleton(sp =>
+                {
+                    var profiler = new Services.UiOperationProfiler(
+                        sp.GetService<ILogger<Services.UiOperationProfiler>>());
+                    Services.UiOperationProfiler.Instance = profiler;
+                    return profiler;
+                })
                 .AddSingleton(inMemorySink)
                 .AddSingleton<Wavee.Core.Http.IColorService>(sp =>
                     new Wavee.Core.Http.ExtractedColorService(
@@ -510,6 +532,182 @@ public static class AppLifecycleHelper
     }
 
     /// <summary>
+    /// Initializes playback using a separate audio host process for GC isolation.
+    /// The audio process owns the AudioPipeline, PortAudioSink, and its own Session.
+    /// UI communicates via Named Pipes IPC.
+    /// </summary>
+    public static async Task InitializeOutOfProcessAudioAsync(
+        Session session,
+        Microsoft.Extensions.Logging.ILogger? logger)
+    {
+        try
+        {
+            _audioProcessManager = new Wavee.AudioIpc.AudioProcessManager(logger);
+
+            // Load stored credentials to pass to the audio process
+            var username = session.GetUserData()?.Username;
+            var credCache = Ioc.Default.GetService<ICredentialsCache>();
+            var creds = credCache != null && username != null
+                ? await credCache.LoadCredentialsAsync(username, CancellationToken.None)
+                : null;
+            if (creds == null || creds.AuthData.Length == 0 || username == null)
+            {
+                logger?.LogError("No cached credentials for user {User} — cannot start audio process", username);
+                return;
+            }
+
+            // Wire up state change notifications BEFORE starting (so failures are visible)
+            var profiler = Services.UiOperationProfiler.Instance;
+            var notifDispatcher = _uiDispatcher;
+            Guid? audioActivityId = null;
+
+            _audioProcessManager.StateChanged += (state, message) =>
+            {
+                logger?.LogInformation("Audio process: {State} — {Message}", state, message);
+                notifDispatcher?.TryEnqueue(() =>
+                {
+                    var notifService = Ioc.Default.GetService<INotificationService>();
+                    var actSvc = Ioc.Default.GetService<Data.Contracts.IActivityService>();
+
+                    switch (state)
+                    {
+                        case Wavee.AudioIpc.AudioProcessState.Connected:
+                            notifService?.Dismiss();
+                            if (audioActivityId != null)
+                                actSvc?.Complete(audioActivityId.Value, "Audio engine connected (out-of-process)");
+                            else
+                                actSvc?.Post("playback", "Audio engine connected (out-of-process)",
+                                    "\uE768", Data.Models.ActivityStatus.Completed,
+                                    $"PID {_audioProcessManager?.ProcessId}", silent: true);
+                            audioActivityId = null;
+                            break;
+
+                        case Wavee.AudioIpc.AudioProcessState.Reconnecting:
+                            notifService?.Show(new Data.Models.NotificationInfo
+                            {
+                                Message = message,
+                                Severity = Data.Models.NotificationSeverity.Warning,
+                            });
+                            audioActivityId ??= actSvc?.Start("playback", "Audio engine reconnecting", "\uE9CE");
+                            actSvc?.Update(audioActivityId ?? Guid.Empty, message);
+                            break;
+
+                        case Wavee.AudioIpc.AudioProcessState.Failed:
+                            notifService?.Show(new Data.Models.NotificationInfo
+                            {
+                                Message = message,
+                                Severity = Data.Models.NotificationSeverity.Error,
+                                ActionLabel = "Retry",
+                                Action = async () =>
+                                {
+                                    if (_audioProcessManager != null)
+                                    {
+                                        await _audioProcessManager.StopAsync();
+                                        await InitializeOutOfProcessAudioAsync(session, logger);
+                                    }
+                                }
+                            });
+                            if (audioActivityId != null)
+                                actSvc?.Fail(audioActivityId.Value, message);
+                            else
+                                actSvc?.Post("playback", "Audio engine failed", "\uE783",
+                                    Data.Models.ActivityStatus.Failed, message);
+                            audioActivityId = null;
+                            break;
+                    }
+                });
+            };
+
+            // Re-wire proxy on auto-restart
+            _audioProcessManager.ProxyRestarted += newProxy =>
+            {
+                notifDispatcher?.TryEnqueue(() =>
+                {
+                    var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
+                    exec?.EnableLocalPlayback(newProxy);
+                    session.PlaybackState?.EnableBidirectionalMode(
+                        newProxy, (SpClient)session.SpClient, session);
+                    profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
+                });
+            };
+
+            // Now start the audio process (events are already wired)
+            logger?.LogInformation("Starting audio process for user {User}", username);
+            var proxy = await _audioProcessManager.StartAsync(
+                username,
+                creds.AuthData,
+                session.Config.DeviceId,
+                CancellationToken.None);
+
+            // Wire up the proxy as the local engine on the executor
+            var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
+            executor?.EnableLocalPlayback(proxy);
+
+            // Enable bidirectional mode with the proxy's state stream
+            session.PlaybackState?.EnableBidirectionalMode(
+                proxy,
+                (SpClient)session.SpClient,
+                session);
+
+            profiler?.SetAudioUnderrunProvider(() => proxy.UnderrunCount);
+
+            // Surface errors via notifications
+            var notificationService = Ioc.Default.GetService<INotificationService>();
+            if (notificationService != null)
+            {
+                var dispatcher = _uiDispatcher;
+                var errorSub = proxy.Errors.Subscribe(error =>
+                {
+                    var message = error.ErrorType switch
+                    {
+                        PlaybackErrorType.AudioDeviceUnavailable => "Audio device unavailable.",
+                        PlaybackErrorType.TrackUnavailable => "Track unavailable (Premium required?).",
+                        PlaybackErrorType.NetworkError => "Network error during playback.",
+                        _ => error.Message
+                    };
+                    dispatcher?.TryEnqueue(() =>
+                        notificationService.Show(new Data.Models.NotificationInfo
+                        {
+                            Message = message,
+                            Severity = Data.Models.NotificationSeverity.Error,
+                            AutoDismissAfter = TimeSpan.FromSeconds(5)
+                        }));
+                });
+                _appSubscriptions.Add(errorSub);
+            }
+
+            logger?.LogInformation("Out-of-process audio initialized — PID isolation active");
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Failed to initialize out-of-process audio — falling back to in-process");
+            // Clean up
+            if (_audioProcessManager != null)
+            {
+                await _audioProcessManager.DisposeAsync();
+                _audioProcessManager = null;
+            }
+
+            // Fall back to in-process audio
+            logger?.LogWarning("Falling back to in-process audio pipeline");
+            try
+            {
+                var httpFactory = Ioc.Default.GetService<System.Net.Http.IHttpClientFactory>();
+                if (httpFactory != null)
+                {
+                    var httpClient = httpFactory.CreateClient("Wavee");
+                    var audioHttpClient = httpFactory.CreateClient("WaveeAudio");
+                    InitializePlaybackEngine(session, httpClient, audioHttpClient, logger);
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                logger?.LogError(fallbackEx, "In-process audio fallback also failed");
+            }
+        }
+    }
+
+    /// <summary>
     /// Tears down the playback engine and associated resources.
     /// Call on logout to avoid leaking AudioPipeline and subscriptions on re-login.
     /// </summary>
@@ -526,6 +724,13 @@ public static class AppLifecycleHelper
         // Dispose the enricher (unregisters from messenger)
         _trackMetadataEnricher?.Dispose();
         _trackMetadataEnricher = null;
+
+        // Stop audio host process if running
+        if (_audioProcessManager != null)
+        {
+            _ = _audioProcessManager.DisposeAsync();
+            _audioProcessManager = null;
+        }
     }
 
     public static void HandleAppUnhandledException(Exception? ex, bool showNotification)

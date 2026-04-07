@@ -14,13 +14,15 @@ public interface IActivityService
     // ── Producers: publish activities ──
 
     /// <summary>Post a one-shot info/error notification.</summary>
+    /// <param name="silent">If true, the item is pre-read and won't bump the bell badge count.</param>
     Guid Post(string category, string title, string? iconGlyph = null,
-              ActivityStatus status = ActivityStatus.Info, string? message = null);
+              ActivityStatus status = ActivityStatus.Info, string? message = null,
+              bool silent = false);
 
     /// <summary>Post a notification with action buttons.</summary>
     Guid Post(string category, string title, IReadOnlyList<ActivityAction> actions,
               string? iconGlyph = null, ActivityStatus status = ActivityStatus.Info,
-              string? message = null);
+              string? message = null, bool silent = false);
 
     /// <summary>Start a progress activity (returns ID for updates).</summary>
     Guid Start(string category, string title, string? iconGlyph = null);

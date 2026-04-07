@@ -50,6 +50,28 @@ public sealed partial class UiHealthOverlay : UserControl
         FpsText.Text = $"FPS(render): {s.Fps:F0}  avg: {s.AvgFrameMs:F1}ms";
         FrameText.Text = $"tick: {s.UiTickAvgMs:F1}ms  worst: {s.WorstRecentFrameMs:F0}ms  all-time: {s.WorstFrameMs:F0}ms";
         StallText.Text = $"stalls: {s.StallCount}  crits: {s.CriticalCount}  frames: {s.TotalFrames}";
+        GcText.Text = $"GC: g0={s.GcGen0} g1={s.GcGen1} g2={s.GcGen2} g2-stall={s.Gen2DuringStalls}";
+
+        // Profiler top operations
+        var profiler = Services.UiOperationProfiler.Instance;
+        if (profiler != null)
+        {
+            var topOps = profiler.GetTopOperations(3);
+            if (topOps.Count > 0)
+            {
+                var sb = new System.Text.StringBuilder();
+                foreach (var op in topOps)
+                    sb.AppendLine($"{op.Name}: max={op.MaxMs:F0}ms avg={op.AvgMs:F0}ms n={op.Count}");
+                var underruns = profiler.AudioUnderrunCount;
+                if (underruns > 0)
+                    sb.AppendLine($"audio underruns: {underruns}");
+                ProfilerText.Text = sb.ToString().TrimEnd();
+            }
+            else
+            {
+                ProfilerText.Text = "";
+            }
+        }
 
         if (_isExpanded)
             DrawGraph();

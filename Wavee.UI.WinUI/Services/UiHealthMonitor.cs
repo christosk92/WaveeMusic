@@ -49,10 +49,18 @@ internal sealed class UiHealthMonitor : IDisposable
     private int _criticalCount;
     private int _totalFrames;
 
+    // GC tracking (sampled every tick)
+    private int _lastGen0, _lastGen1, _lastGen2;
+    private int _gcGen0Total, _gcGen1Total, _gcGen2Total;
+    private int _gen2DuringStallCount; // Gen2 collections that coincided with stalls
+
     public UiHealthMonitor(DispatcherQueue dispatcherQueue, ILogger? logger = null)
     {
         _dispatcherQueue = dispatcherQueue ?? throw new ArgumentNullException(nameof(dispatcherQueue));
         _logger = logger;
+        _lastGen0 = GC.CollectionCount(0);
+        _lastGen1 = GC.CollectionCount(1);
+        _lastGen2 = GC.CollectionCount(2);
     }
 
     public void Start()
@@ -126,16 +134,50 @@ internal sealed class UiHealthMonitor : IDisposable
             if (elapsedMs > _worstFrameMs)
                 _worstFrameMs = elapsedMs;
 
+            // Sample GC
+            var g0 = GC.CollectionCount(0);
+            var g1 = GC.CollectionCount(1);
+            var g2 = GC.CollectionCount(2);
+            var gen0Delta = g0 - _lastGen0;
+            var gen1Delta = g1 - _lastGen1;
+            var gen2Delta = g2 - _lastGen2;
+            _gcGen0Total += gen0Delta;
+            _gcGen1Total += gen1Delta;
+            _gcGen2Total += gen2Delta;
+            _lastGen0 = g0;
+            _lastGen1 = g1;
+            _lastGen2 = g2;
+
             if (elapsedMs > CriticalThresholdMs)
             {
                 _criticalCount++;
                 _stallCount++;
-                _logger?.LogError("UI CRITICAL STALL: {ElapsedMs:F0}ms (frame #{Frame})", elapsedMs, _totalFrames);
+                if (gen2Delta > 0)
+                {
+                    _gen2DuringStallCount += gen2Delta;
+                    _logger?.LogError("UI CRITICAL STALL: {ElapsedMs:F0}ms (frame #{Frame}) — Gen2 GC detected!", elapsedMs, _totalFrames);
+                }
+                else
+                {
+                    _logger?.LogError("UI CRITICAL STALL: {ElapsedMs:F0}ms (frame #{Frame})", elapsedMs, _totalFrames);
+                }
             }
             else if (elapsedMs > WarnThresholdMs)
             {
                 _stallCount++;
-                _logger?.LogWarning("UI stall: {ElapsedMs:F0}ms (frame #{Frame})", elapsedMs, _totalFrames);
+                if (gen2Delta > 0)
+                {
+                    _gen2DuringStallCount += gen2Delta;
+                    _logger?.LogWarning("UI stall: {ElapsedMs:F0}ms (frame #{Frame}) — Gen2 GC detected", elapsedMs, _totalFrames);
+                }
+                else
+                {
+                    _logger?.LogWarning("UI stall: {ElapsedMs:F0}ms (frame #{Frame})", elapsedMs, _totalFrames);
+                }
+            }
+            else if (gen2Delta > 0)
+            {
+                _logger?.LogDebug("Gen2 GC detected (frame #{Frame}, tick={ElapsedMs:F1}ms)", _totalFrames, elapsedMs);
             }
         }
     }
@@ -184,6 +226,10 @@ internal sealed class UiHealthMonitor : IDisposable
                     CriticalCount = _criticalCount,
                     TotalFrames = _totalFrames,
                     UiTickAvgMs = uiAvgMs,
+                    GcGen0 = _gcGen0Total,
+                    GcGen1 = _gcGen1Total,
+                    GcGen2 = _gcGen2Total,
+                    Gen2DuringStalls = _gen2DuringStallCount,
                 };
             }
         }
@@ -222,6 +268,12 @@ internal sealed class UiHealthMonitor : IDisposable
         sb.AppendLine($"Critical (>150ms):{s.CriticalCount}");
         sb.AppendLine($"Total frames:     {s.TotalFrames}");
         sb.AppendLine();
+        sb.AppendLine($"--- GC Collections ---");
+        sb.AppendLine($"Gen0: {s.GcGen0}  Gen1: {s.GcGen1}  Gen2: {s.GcGen2}  Gen2-during-stalls: {s.Gen2DuringStalls}");
+
+        // Append profiler stats if available
+        UiOperationProfiler.Instance?.AppendReport(sb);
+        sb.AppendLine();
 
         // Append last 60 frame durations
         sb.AppendLine("--- Recent frame durations (ms) ---");
@@ -251,7 +303,15 @@ internal sealed class UiHealthMonitor : IDisposable
             _historyHead = 0;
             _lastRenderTimestamp = Stopwatch.GetTimestamp();
             _lastTickTimestamp = _lastRenderTimestamp;
+            _gcGen0Total = 0;
+            _gcGen1Total = 0;
+            _gcGen2Total = 0;
+            _gen2DuringStallCount = 0;
+            _lastGen0 = GC.CollectionCount(0);
+            _lastGen1 = GC.CollectionCount(1);
+            _lastGen2 = GC.CollectionCount(2);
         }
+        UiOperationProfiler.Instance?.Reset();
     }
 
     public void Dispose() => Stop();
@@ -267,4 +327,8 @@ internal record struct UiHealthStats
     public int StallCount { get; init; }
     public int CriticalCount { get; init; }
     public int TotalFrames { get; init; }
+    public int GcGen0 { get; init; }
+    public int GcGen1 { get; init; }
+    public int GcGen2 { get; init; }
+    public int Gen2DuringStalls { get; init; }
 }

@@ -65,6 +65,9 @@ public partial class App : Application
         Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
         Ioc.Default.GetRequiredService<Data.Contracts.IActivityService>();
 
+        // Eagerly create profiler — sets static Instance for hot-path access
+        Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
+
         // Launch main window
         MainWindow.Instance.Activate();
         _ = MainWindow.Instance.InitializeApplicationAsync();

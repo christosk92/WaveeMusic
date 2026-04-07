@@ -262,10 +262,17 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         CurrentUser = userData;
         AccountType = await _session.GetAccountTypeAsync(ct);
 
-        // Initialize local playback engine (AudioPipeline) after session is fully connected
-        var httpClient = _httpClientFactory!.CreateClient("Wavee");
-        var audioHttpClient = _httpClientFactory.CreateClient("WaveeAudio");
-        Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, audioHttpClient, _logger);
+        // Initialize local playback engine — either in-process or out-of-process
+        if (Helpers.Application.AppLifecycleHelper.UseOutOfProcessAudio)
+        {
+            await Helpers.Application.AppLifecycleHelper.InitializeOutOfProcessAudioAsync(_session, _logger);
+        }
+        else
+        {
+            var httpClient = _httpClientFactory!.CreateClient("Wavee");
+            var audioHttpClient = _httpClientFactory.CreateClient("WaveeAudio");
+            Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, audioHttpClient, _logger);
+        }
 
         // SetStatus fires AuthStatusChangedMessage → LibrarySyncOrchestrator handles sync
         SetStatus(AuthStatus.Authenticated);

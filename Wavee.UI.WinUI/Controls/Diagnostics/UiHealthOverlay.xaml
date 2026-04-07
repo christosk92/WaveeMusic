@@ -32,6 +32,18 @@
                 FontFamily="Consolas"
                 FontSize="11"
                 Foreground="{ThemeResource SystemControlForegroundBaseHighBrush}" />
+            <TextBlock
+                x:Name="GcText"
+                FontFamily="Consolas"
+                FontSize="11"
+                Foreground="{ThemeResource SystemControlForegroundBaseHighBrush}" />
+            <TextBlock
+                x:Name="ProfilerText"
+                FontFamily="Consolas"
+                FontSize="10"
+                MaxWidth="320"
+                TextWrapping="Wrap"
+                Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
 
             <!-- Buttons row -->
             <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">

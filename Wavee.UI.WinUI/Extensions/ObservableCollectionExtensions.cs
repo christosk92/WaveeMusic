@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Extensions;
 
@@ -20,15 +21,12 @@ public static class ObservableCollectionExtensions
 
     public static void Sort<T>(this ObservableCollection<T> collection, Comparison<T> comparison)
     {
+        using var _ = Services.UiOperationProfiler.Instance?.Profile("CollectionSort");
         var sorted = collection.ToList();
         sorted.Sort(comparison);
-
-        for (int i = 0; i < sorted.Count; i++)
-        {
-            var oldIndex = collection.IndexOf(sorted[i]);
-            if (oldIndex != i)
-                collection.Move(oldIndex, i);
-        }
+        // Bulk replace instead of O(n^2) individual Move() calls.
+        // Fires 1 Reset + N Add events instead of up to N^2 Move events.
+        collection.ReplaceWith(sorted);
     }
 
     public static void Sort<T, TKey>(this ObservableCollection<T> collection, Func<T, TKey> keySelector, bool descending = false)

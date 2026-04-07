@@ -7,3 +7,10 @@ public enum RightPanelMode
     FriendsActivity,
     Details
 }
+
+public enum DetailsBackgroundMode
+{
+    None,
+    BlurredAlbumArt,
+    Canvas
+}

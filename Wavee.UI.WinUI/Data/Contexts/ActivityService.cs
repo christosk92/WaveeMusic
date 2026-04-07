@@ -85,24 +85,8 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
     private Guid? _activeSyncId;
 
     public Guid Post(string category, string title, string? iconGlyph = null,
-                     ActivityStatus status = ActivityStatus.Info, string? message = null)
-    {
-        var item = new NotificationActivityItem
-        {
-            Category = category,
-            Title = title,
-            IconGlyph = iconGlyph ?? GetCategoryStyle(category)?.DefaultIconGlyph,
-            Status = status,
-            Message = message
-        };
-
-        AddItem(item);
-        return item.Id;
-    }
-
-    public Guid Post(string category, string title, IReadOnlyList<ActivityAction> actions,
-                     string? iconGlyph = null, ActivityStatus status = ActivityStatus.Info,
-                     string? message = null)
+                     ActivityStatus status = ActivityStatus.Info, string? message = null,
+                     bool silent = false)
     {
         var item = new NotificationActivityItem
         {
@@ -111,7 +95,26 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
             IconGlyph = iconGlyph ?? GetCategoryStyle(category)?.DefaultIconGlyph,
             Status = status,
             Message = message,
-            Actions = actions
+            IsRead = silent
+        };
+
+        AddItem(item);
+        return item.Id;
+    }
+
+    public Guid Post(string category, string title, IReadOnlyList<ActivityAction> actions,
+                     string? iconGlyph = null, ActivityStatus status = ActivityStatus.Info,
+                     string? message = null, bool silent = false)
+    {
+        var item = new NotificationActivityItem
+        {
+            Category = category,
+            Title = title,
+            IconGlyph = iconGlyph ?? GetCategoryStyle(category)?.DefaultIconGlyph,
+            Status = status,
+            Message = message,
+            Actions = actions,
+            IsRead = silent
         };
 
         AddItem(item);

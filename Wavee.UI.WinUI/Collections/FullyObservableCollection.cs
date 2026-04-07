@@ -56,6 +56,9 @@ public class FullyObservableCollection<T> : ObservableCollection<T>
 
     private void ChildPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Skip the O(n) IndexOf lookup if nobody is listening
+        if (ItemPropertyChanged == null) return;
+
         if (sender is T typedSender)
         {
             var i = Items.IndexOf(typedSender);

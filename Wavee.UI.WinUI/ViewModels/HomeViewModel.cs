@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -21,6 +22,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Services.HomeFeedCache? _homeFeedCache;
     private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
     private readonly ILogger? _logger;
+    private readonly DispatcherQueue _dispatcherQueue;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -72,6 +74,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         _homeFeedCache = homeFeedCache;
         _recentlyPlayedService = recentlyPlayedService;
         _logger = logger;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         if (_recentlyPlayedService != null)
             _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
@@ -189,32 +192,37 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         if (_recentlyPlayedService == null) return;
 
-        var items = _recentlyPlayedService.Items;
-        if (items.Count == 0) return;
+        // Must dispatch to UI thread — this event can fire from background threads
+        // and ObservableCollection mutations must happen on the UI thread.
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            var items = _recentlyPlayedService.Items;
+            if (items.Count == 0) return;
 
-        // Find existing "Recently played" section or create one
-        var existing = Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
-        if (existing != null)
-        {
-            existing.Items.Clear();
-            foreach (var item in items)
-                existing.Items.Add(item);
-        }
-        else
-        {
-            var section = new HomeSection
+            // Find existing "Recently played" section or create one
+            var existing = Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
+            if (existing != null)
             {
-                Title = "Recently played",
-                SectionType = HomeSectionType.RecentlyPlayed,
-                SectionUri = "recently-played"
-            };
-            foreach (var item in items)
-                section.Items.Add(item);
+                existing.Items.Clear();
+                foreach (var item in items)
+                    existing.Items.Add(item);
+            }
+            else
+            {
+                var section = new HomeSection
+                {
+                    Title = "Recently played",
+                    SectionType = HomeSectionType.RecentlyPlayed,
+                    SectionUri = "recently-played"
+                };
+                foreach (var item in items)
+                    section.Items.Add(item);
 
-            // Insert after Shorts if present, otherwise at index 0
-            var insertIdx = Sections.Count > 0 && Sections[0].SectionType == HomeSectionType.Shorts ? 1 : 0;
-            Sections.Insert(insertIdx, section);
-        }
+                // Insert after Shorts if present, otherwise at index 0
+                var insertIdx = Sections.Count > 0 && Sections[0].SectionType == HomeSectionType.Shorts ? 1 : 0;
+                Sections.Insert(insertIdx, section);
+            }
+        });
     }
 
     [RelayCommand]

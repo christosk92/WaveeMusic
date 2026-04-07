@@ -95,7 +95,7 @@ public sealed class ArtistService : IArtistService
         // Fetch user city via ILocationService (cached internally)
         await _locationService.GetUserCityAsync(ct).ConfigureAwait(false);
 
-        var results = new List<ArtistConcertResult>();
+        var results =   new List<ArtistConcertResult>();
         foreach (var item in concerts.Items)
         {
             var data = item.Data;

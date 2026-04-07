@@ -224,6 +224,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     {
         _dispatcherQueue.TryEnqueue(async () =>
         {
+            using var _p = Services.UiOperationProfiler.Instance?.Profile("AlbumLibrarySyncUI");
             if (_likeService == null) return;
 
             var removed = Albums.Where(a => !_likeService.IsSaved(SavedItemType.Album, a.Id)).ToList();

@@ -7,7 +7,16 @@
       "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__detect_circular_dependencies",
       "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__find_dead_code",
       "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__get_diagnostics",
-      "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__find_symbol"
+      "mcp__plugin_dotnet-claude-kit_cwm-roslyn-navigator__find_symbol",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:nicelydone.club)",
+      "WebFetch(domain:muz.li)",
+      "WebFetch(domain:www.eleken.co)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.nuget.org)",
+      "WebFetch(domain:gist.github.com)"
     ]
   }
 }

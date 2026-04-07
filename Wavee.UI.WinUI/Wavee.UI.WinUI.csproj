@@ -114,6 +114,13 @@
     <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
+  <!-- Auto-build Wavee.AudioHost and copy the exe to our output (for out-of-process audio) -->
+  <Target Name="BuildAudioHost" BeforeTargets="Build">
+    <MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+  </Target>
+
   <!-- Preserve assemblies whose types are resolved via XAML reflection (invisible to the IL trimmer).
        Microsoft.WinUI is marked IsTrimmable, so even TrimMode=partial trims it —
        stripping StackLayout, UniformGridLayout, etc. that ItemsRepeater.Layout needs.

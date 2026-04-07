@@ -381,6 +381,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     private void ApplyFilterAndSort()
     {
+        using var _p = Services.UiOperationProfiler.Instance?.Profile("AlbumFilterSort");
         IEnumerable<LazyTrackItem> result = _allTracks;
 
         // Filter

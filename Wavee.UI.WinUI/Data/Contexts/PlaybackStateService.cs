@@ -171,15 +171,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 // Playback status
                 if (state.Changes.HasFlag(StateChanges.Status))
                 {
+                    var isLocalSource = state.Source == StateSource.Local;
                     var hasLocalEngine = _session.PlaybackState?.IsBidirectional == true;
                     var activeDeviceId = state.ActiveDeviceId;
 
                     // We are the active device with a local engine = real playback, never suppress
                     var isSelfWithEngine = activeDeviceId == _session.Config.DeviceId && hasLocalEngine;
 
+                    // Local source = our own audio engine is producing audio, always trust it
                     // No active device = nothing is actually playing anywhere
                     // OR we are the active device but have no local engine = we can't produce audio
-                    var noRealPlayback = !isSelfWithEngine
+                    var noRealPlayback = !isLocalSource && !isSelfWithEngine
                         && (string.IsNullOrEmpty(activeDeviceId)
                             || string.IsNullOrEmpty(state.ActiveDeviceName)
                             || (activeDeviceId == _session.Config.DeviceId && !hasLocalEngine));
@@ -299,9 +301,14 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     _logger?.LogDebug("UI bridge: remote={IsRemote}, device={DeviceName} ({DeviceId})",
                         isRemote, state.ActiveDeviceName, state.ActiveDeviceId);
 
-                    // Re-evaluate IsPlaying when device changes
-                    // (Status section only runs on StateChanges.Status, misses device-triggered changes)
-                    if (state.Status == PlaybackStatus.Playing)
+                    // Re-evaluate IsPlaying when device/source changes
+                    if (state.Source == StateSource.Local && state.Status == PlaybackStatus.Playing)
+                    {
+                        // Local source = our own audio engine, always trust it
+                        IsPlaying = true;
+                        if (IsBuffering) { IsBuffering = false; BufferingTrackId = null; }
+                    }
+                    else if (state.Status == PlaybackStatus.Playing)
                     {
                         var hasLocal = _session.PlaybackState?.IsBidirectional == true;
                         var deviceId = state.ActiveDeviceId;
@@ -339,7 +346,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             {
                 _isSuppressingPropertyChanged = false;
                 _isBatchingStateUpdate = false;
-                FlushPropertyChanges();
+                {
+                    using var _p = UiOperationProfiler.Instance?.Profile("PlaybackStateFlush");
+                    FlushPropertyChanges();
+                }
 
                 // Send consolidated now-playing notification (deduplicated across IsPlaying + Context changes)
                 FlushNowPlayingMessage();

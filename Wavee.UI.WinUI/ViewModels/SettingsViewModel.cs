@@ -591,6 +591,124 @@ public sealed partial class SettingsViewModel : ObservableObject
         UpdateClockCountdown();
     }
 
+    // ── Audio Pipeline Health ──
+
+    [ObservableProperty]
+    private string _audioPipelineMode = "In-Process";
+
+    [ObservableProperty]
+    private string _audioPipelineStatus = "Unknown";
+
+    [ObservableProperty]
+    private int _audioPipelinePid;
+
+    [ObservableProperty]
+    private int _audioRestartCount;
+
+    [ObservableProperty]
+    private long _audioUnderrunCount;
+
+    [ObservableProperty]
+    private string _audioGcStats = "—";
+
+    [ObservableProperty]
+    private string _audioProfilerTop = "—";
+
+    [ObservableProperty]
+    private string _audioUiStalls = "—";
+
+    [ObservableProperty]
+    private string _audioThroughput = "—";
+
+    [ObservableProperty]
+    private string _audioStateFreshness = "—";
+
+    [ObservableProperty]
+    private double _audioLastRttMs;
+
+    // Chart reference — set by the page after InitializeComponent
+    public Action<double[], int, string>? UpdateRttChart { get; set; }
+
+    private DispatcherTimer? _audioDiagTimer;
+
+    public void StartAudioDiagnostics()
+    {
+        if (_audioDiagTimer != null) return;
+        _audioDiagTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _audioDiagTimer.Tick += (_, _) => RefreshAudioDiagnostics();
+        _audioDiagTimer.Start();
+        RefreshAudioDiagnostics();
+    }
+
+    public void StopAudioDiagnostics()
+    {
+        _audioDiagTimer?.Stop();
+        _audioDiagTimer = null;
+    }
+
+    private void RefreshAudioDiagnostics()
+    {
+        // Pipeline mode + process manager state
+        var mgr = AppLifecycleHelper.AudioProcessManager;
+        if (mgr != null)
+        {
+            AudioPipelineMode = "Out-of-Process";
+            AudioPipelineStatus = mgr.State.ToString();
+            AudioPipelinePid = mgr.ProcessId;
+            AudioRestartCount = mgr.RestartCount;
+        }
+        else if (AppLifecycleHelper.UseOutOfProcessAudio)
+        {
+            AudioPipelineMode = "Out-of-Process";
+            AudioPipelineStatus = "Not started";
+        }
+        else
+        {
+            AudioPipelineMode = "In-Process";
+            AudioPipelineStatus = "Active";
+        }
+
+        // Profiler stats
+        var profiler = UiOperationProfiler.Instance;
+        if (profiler != null)
+        {
+            AudioUnderrunCount = profiler.AudioUnderrunCount;
+            var gc = profiler.CumulativeGc;
+            AudioGcStats = $"Gen0: {gc.Gen0}  Gen1: {gc.Gen1}  Gen2: {gc.Gen2}";
+
+            var topOps = profiler.GetTopOperations(3);
+            if (topOps.Count > 0)
+            {
+                AudioProfilerTop = string.Join("\n", topOps.Select(
+                    op => $"{op.Name}: max={op.MaxMs:F0}ms avg={op.AvgMs:F0}ms (n={op.Count})"));
+            }
+            else
+            {
+                AudioProfilerTop = "No operations recorded";
+            }
+
+            AudioUiStalls = $"Underruns: {profiler.AudioUnderrunCount}";
+        }
+
+        // IPC metrics from proxy
+        var proxy = mgr?.Proxy;
+        if (proxy != null)
+        {
+            AudioThroughput = $"sent: {proxy.MessagesSent}  recv: {proxy.MessagesReceived}";
+            var freshness = proxy.StateFreshnessMs;
+            AudioStateFreshness = freshness < 1 ? "—" : $"{freshness:F0}ms ago";
+            AudioLastRttMs = proxy.LastRttMs;
+
+            // Update chart
+            UpdateRttChart?.Invoke(proxy.RttHistory, proxy.RttHistoryCount, "ms");
+        }
+        else
+        {
+            AudioThroughput = "—";
+            AudioStateFreshness = "—";
+        }
+    }
+
     // ── Log filters ──
 
     [ObservableProperty]

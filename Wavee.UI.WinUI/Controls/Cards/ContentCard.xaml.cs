@@ -271,14 +271,25 @@ public sealed partial class ContentCard : UserControl
 
     private void OnNowPlayingChanged(object recipient, NowPlayingChangedMessage msg)
     {
+        // Do the cheap string comparison BEFORE scheduling a dispatcher callback.
+        // This avoids queuing 20-50 TryEnqueue calls when only 0-1 cards actually match.
+        var (contextUri, playing) = msg.Value;
+        var navUri = NavigationUri; // read once — safe, DependencyProperty reads are thread-safe for strings
+        var isMatch = !string.IsNullOrEmpty(contextUri)
+            && !string.IsNullOrEmpty(navUri)
+            && string.Equals(navUri, contextUri, StringComparison.OrdinalIgnoreCase);
+
+        // Only dispatch if state actually changed
+        var wasPlaying = IsPlaying;
+        var wasPaused = IsContextPaused;
+        var newPlaying = isMatch && playing;
+        var newPaused = isMatch && !playing;
+        if (newPlaying == wasPlaying && newPaused == wasPaused) return;
+
         DispatcherQueue.TryEnqueue(() =>
         {
-            var (contextUri, playing) = msg.Value;
-            var isMatch = !string.IsNullOrEmpty(contextUri)
-                && !string.IsNullOrEmpty(NavigationUri)
-                && string.Equals(NavigationUri, contextUri, StringComparison.OrdinalIgnoreCase);
-            IsPlaying = isMatch && playing;
-            IsContextPaused = isMatch && !playing;
+            IsPlaying = newPlaying;
+            IsContextPaused = newPaused;
         });
     }
 

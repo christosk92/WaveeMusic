@@ -32,6 +32,9 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
         if (eqProcessor != null)
             ViewModel.InitializeEqualizer(eqProcessor);
 
+        // Wire RTT chart callback
+        ViewModel.UpdateRttChart = (data, count, unit) => RttChart.Update(data, count, unit);
+
         // Auto-scroll log list to bottom on new entries
         ViewModel.FilteredLogEntries.CollectionChanged += OnLogEntriesChanged;
         LogListView.PointerWheelChanged += (_, _) => _userScrolledLogs = true;
@@ -81,6 +84,9 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
         foreach (var c in _contents)
             c.Visibility = Visibility.Collapsed;
 
+        // Stop diagnostics timer when leaving the tab
+        ViewModel.StopAudioDiagnostics();
+
         var target = tag switch
         {
             "general" => GeneralContent,
@@ -92,6 +98,10 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
             _ => GeneralContent
         };
         target.Visibility = Visibility.Visible;
+
+        // Start diagnostics timer when entering the tab
+        if (tag == "diagnostics")
+            ViewModel.StartAudioDiagnostics();
     }
 
     private void OpenLogFile_Click(object sender, RoutedEventArgs e)

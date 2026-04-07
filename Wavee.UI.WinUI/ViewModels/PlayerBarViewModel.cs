@@ -66,33 +66,45 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// <summary>
     /// MetadataItems for the artist credits — each artist is a separate clickable item.
     /// Falls back to a single item from ArtistName/CurrentArtistId when enriched data isn't available.
+    /// Cached to avoid allocating a new array on every property access.
     /// </summary>
+    private MetadataItem[]? _cachedArtistMetadata;
+    private bool _artistMetadataDirty = true;
+
     public MetadataItem[]? ArtistMetadataItems
     {
         get
         {
-            if (CurrentArtists is { Count: > 0 } artists)
-            {
-                return artists.Select(a => new MetadataItem
-                {
-                    Label = a.Name,
-                    Command = _navigateToArtistCommand,
-                    CommandParameter = a.Uri
-                }).ToArray();
-            }
-
-            if (!string.IsNullOrEmpty(ArtistName))
-            {
-                return [new MetadataItem
-                {
-                    Label = ArtistName,
-                    Command = _navigateToArtistCommand,
-                    CommandParameter = CurrentArtistId
-                }];
-            }
-
-            return null;
+            if (!_artistMetadataDirty) return _cachedArtistMetadata;
+            _artistMetadataDirty = false;
+            _cachedArtistMetadata = BuildArtistMetadata();
+            return _cachedArtistMetadata;
         }
+    }
+
+    private MetadataItem[]? BuildArtistMetadata()
+    {
+        if (CurrentArtists is { Count: > 0 } artists)
+        {
+            return artists.Select(a => new MetadataItem
+            {
+                Label = a.Name,
+                Command = _navigateToArtistCommand,
+                CommandParameter = a.Uri
+            }).ToArray();
+        }
+
+        if (!string.IsNullOrEmpty(ArtistName))
+        {
+            return [new MetadataItem
+            {
+                Label = ArtistName,
+                Command = _navigateToArtistCommand,
+                CommandParameter = CurrentArtistId
+            }];
+        }
+
+        return null;
     }
 
     private readonly RelayCommand<string?> _navigateToArtistCommand;
@@ -242,10 +254,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.CurrentArtistName):
                 ArtistName = _playbackStateService.CurrentArtistName;
+                _artistMetadataDirty = true;
                 OnPropertyChanged(nameof(ArtistMetadataItems));
                 break;
             case nameof(IPlaybackStateService.CurrentArtists):
                 CurrentArtists = _playbackStateService.CurrentArtists;
+                _artistMetadataDirty = true;
                 OnPropertyChanged(nameof(ArtistMetadataItems));
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArt):

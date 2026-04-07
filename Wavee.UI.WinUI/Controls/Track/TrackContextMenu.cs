@@ -2,6 +2,7 @@ using System;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.Controls.Track;
@@ -19,9 +20,9 @@ public sealed class TrackContextMenuOptions
     public ICommand? StartRadioCommand { get; init; }
     public ICommand? ShareCommand { get; init; }
     public Action? ShowCreditsAction { get; init; }
-    public Action? ToggleCanvasAction { get; init; }
-    public bool ShowCanvasToggle { get; init; }
-    public bool IsCanvasVisible { get; init; }
+    public Action<DetailsBackgroundMode>? SetBackgroundModeAction { get; init; }
+    public bool HasCanvas { get; init; }
+    public DetailsBackgroundMode CurrentBackgroundMode { get; init; }
 }
 
 /// <summary>
@@ -131,7 +132,7 @@ public static class TrackContextMenu
         }
 
         // Details-panel-specific items
-        if (options.ShowCreditsAction != null || (options.ShowCanvasToggle && options.ToggleCanvasAction != null))
+        if (options.ShowCreditsAction != null || options.SetBackgroundModeAction != null)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
 
@@ -147,16 +148,43 @@ public static class TrackContextMenu
                 menu.Items.Add(creditsItem);
             }
 
-            if (options.ShowCanvasToggle && options.ToggleCanvasAction != null)
+            if (options.SetBackgroundModeAction != null)
             {
-                var canvasItem = new MenuFlyoutItem
+                var bgSubMenu = new MenuFlyoutSubItem
                 {
-                    Text = options.IsCanvasVisible ? "Hide canvas" : "Show canvas",
-                    Icon = new FontIcon { Glyph = options.IsCanvasVisible ? "\uED1A" : "\uE714" }
+                    Text = "Background",
+                    Icon = new FontIcon { Glyph = "\uE91B" }
                 };
-                var canvasAction = options.ToggleCanvasAction;
-                canvasItem.Click += (_, _) => canvasAction();
-                menu.Items.Add(canvasItem);
+
+                var noneItem = new ToggleMenuFlyoutItem
+                {
+                    Text = "None",
+                    IsChecked = options.CurrentBackgroundMode == DetailsBackgroundMode.None
+                };
+                var setAction = options.SetBackgroundModeAction;
+                noneItem.Click += (_, _) => setAction(DetailsBackgroundMode.None);
+                bgSubMenu.Items.Add(noneItem);
+
+                var blurItem = new ToggleMenuFlyoutItem
+                {
+                    Text = "Album art",
+                    IsChecked = options.CurrentBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt
+                };
+                blurItem.Click += (_, _) => setAction(DetailsBackgroundMode.BlurredAlbumArt);
+                bgSubMenu.Items.Add(blurItem);
+
+                if (options.HasCanvas)
+                {
+                    var canvasItem = new ToggleMenuFlyoutItem
+                    {
+                        Text = "Canvas",
+                        IsChecked = options.CurrentBackgroundMode == DetailsBackgroundMode.Canvas
+                    };
+                    canvasItem.Click += (_, _) => setAction(DetailsBackgroundMode.Canvas);
+                    bgSubMenu.Items.Add(canvasItem);
+                }
+
+                menu.Items.Add(bgSubMenu);
             }
         }
 
