@@ -15,4 +15,9 @@ public sealed record LibraryAlbumDto
     public int Year { get; init; }
     public int TrackCount { get; init; }
     public DateTimeOffset AddedAt { get; init; }
+
+    /// <summary>
+    /// True when this is a ghost/placeholder entry awaiting metadata.
+    /// </summary>
+    public bool IsLoading { get; init; }
 }

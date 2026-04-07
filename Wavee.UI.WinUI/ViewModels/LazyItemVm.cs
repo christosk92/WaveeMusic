@@ -12,7 +12,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// <typeparam name="T">The data model type (e.g. ArtistTopTrackVm, AlbumTrackDto).</typeparam>
 public partial class LazyItemVm<T> : ObservableObject where T : class
 {
-    /// <summary>Unique key for the item (used by SourceCache keying).</summary>
+    /// <summary>Unique key for the item.</summary>
     public required string Id { get; init; }
 
     /// <summary>Position index (1-based) for display numbering.</summary>

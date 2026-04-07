@@ -677,12 +677,33 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             var addedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             await _database.AddToSpotifyLibraryAsync(uri, itemType, addedAt, ct);
 
-            // 2. Enqueue for background API sync (no rollback — local state is source of truth)
+            // 2. Ensure entity metadata exists so INNER JOIN queries find this item
+            var extensionKind = itemType switch
+            {
+                SpotifyLibraryItemType.Track => ExtensionKind.TrackV4,
+                SpotifyLibraryItemType.Album => ExtensionKind.AlbumV4,
+                SpotifyLibraryItemType.Artist => ExtensionKind.ArtistV4,
+                SpotifyLibraryItemType.Show => ExtensionKind.ShowV4,
+                _ => (ExtensionKind?)null
+            };
+            if (extensionKind.HasValue)
+            {
+                try
+                {
+                    await FetchAndStoreMetadataAsync([uri], extensionKind.Value, displayName, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to fetch metadata for {Uri}, library entry still saved", uri);
+                }
+            }
+
+            // 3. Enqueue for background API sync (no rollback — local state is source of truth)
             await _database.EnqueueLibraryOpAsync(uri, itemType, LibraryOutboxOperation.Save, ct);
 
             _logger?.LogInformation("{ItemType} saved locally + enqueued: {Uri}", displayName, uri);
 
-            // 3. Try immediate sync (fire-and-forget, don't block the caller)
+            // 4. Try immediate sync (fire-and-forget, don't block the caller)
             _ = ProcessOutboxAsync();
 
             return true;

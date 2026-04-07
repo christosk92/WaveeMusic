@@ -255,6 +255,17 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetRequiredService<ILyricsService>(),
                         sp.GetService<ILogger<LyricsViewModel>>()))
+                .AddSingleton<ITrackCreditsService>(sp =>
+                    new Data.Contexts.TrackCreditsService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<IExtendedMetadataClient>(),
+                        sp.GetService<ILogger<Data.Contexts.TrackCreditsService>>()))
+                .AddSingleton<TrackDetailsViewModel>(sp =>
+                    new TrackDetailsViewModel(
+                        sp.GetRequiredService<IPlaybackStateService>(),
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<ITrackCreditsService>(),
+                        sp.GetService<ILogger<TrackDetailsViewModel>>()))
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()

@@ -16,6 +16,10 @@
     Unloaded="RightPanelView_Unloaded"
 >
 
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="DetailsCardBrush" Color="#66000000"/>
+    </UserControl.Resources>
+
     <animations:Implicit.ShowAnimations>
         <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1" />
         <animations:TranslationAnimation Duration="0:0:0.25" From="40,0,0" To="0" />
@@ -35,6 +39,12 @@
         <lyrics:NowPlayingCanvas x:Name="NowPlayingCanvas"
                                  Grid.ColumnSpan="2"
                                  Visibility="Collapsed"/>
+
+        <!-- Canvas video background (frame server mode + Win2D blur → standard Image, acrylic works on top) -->
+        <Image x:Name="DetailsCanvasImage"
+               Grid.ColumnSpan="2"
+               Stretch="UniformToFill"
+               Visibility="Collapsed"/>
 
         <!-- Resize gripper -->
         <Border
@@ -100,6 +110,16 @@
                     Padding="12,4"
                     FontSize="12"
                     CornerRadius="14"/>
+
+                <ToggleButton
+                    x:Name="DetailsTab"
+                    Content="Details"
+                    Click="DetailsTab_Click"
+                    Style="{StaticResource DefaultToggleButtonStyle}"
+                    MinHeight="28"
+                    Padding="12,4"
+                    FontSize="12"
+                    CornerRadius="14"/>
             </StackPanel>
 
             <!-- Content area -->
@@ -107,6 +127,13 @@
 
                 <!-- Queue placeholder -->
                 <StackPanel x:Name="QueueContent" Spacing="8">
+                    <animations:Implicit.ShowAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
+                        <animations:TranslationAnimation Duration="0:0:0.2" From="0,8,0" To="0"/>
+                    </animations:Implicit.ShowAnimations>
+                    <animations:Implicit.HideAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
+                    </animations:Implicit.HideAnimations>
                     <TextBlock
                         Text="Queue"
                         Style="{StaticResource SubtitleTextBlockStyle}"
@@ -186,6 +213,13 @@
 
                 <!-- Friends Activity placeholder -->
                 <StackPanel x:Name="FriendsContent" Spacing="8" Visibility="Collapsed">
+                    <animations:Implicit.ShowAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
+                        <animations:TranslationAnimation Duration="0:0:0.2" From="0,8,0" To="0"/>
+                    </animations:Implicit.ShowAnimations>
+                    <animations:Implicit.HideAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
+                    </animations:Implicit.HideAnimations>
                     <TextBlock
                         Text="Friends Activity"
                         Style="{StaticResource SubtitleTextBlockStyle}"
@@ -196,6 +230,402 @@
                         TextWrapping="WrapWholeWords"
                         FontSize="13"/>
                 </StackPanel>
+
+                <!-- Details panel -->
+                <ScrollViewer VerticalScrollBarVisibility="Hidden"
+                              Margin="-8,0,-8,-12"
+                              x:Name="DetailsContent" Visibility="Collapsed">
+                    <animations:Implicit.ShowAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1"/>
+                        <animations:TranslationAnimation Duration="0:0:0.25" From="0,12,0" To="0"/>
+                    </animations:Implicit.ShowAnimations>
+                    <animations:Implicit.HideAnimations>
+                        <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
+                    </animations:Implicit.HideAnimations>
+                    <StackPanel Spacing="16" Padding="0,4,0,8">
+
+                        <!-- Loading shimmer skeleton -->
+                        <StackPanel x:Name="DetailsLoadingShimmer" Spacing="16" Visibility="Collapsed">
+                            <!-- Artist header skeleton -->
+                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <controls:Shimmer Width="56" Height="56" CornerRadius="28"/>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                        <controls:Shimmer Width="120" Height="16"/>
+                                        <controls:Shimmer Width="180" Height="12"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <!-- Lyrics snippet skeleton -->
+                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="60" Height="12"/>
+                                    <controls:Shimmer Height="14" HorizontalAlignment="Stretch"/>
+                                    <controls:Shimmer Width="180" Height="18"/>
+                                    <controls:Shimmer Height="14" HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                            </Border>
+                            <!-- Bio skeleton -->
+                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="6">
+                                    <controls:Shimmer Width="60" Height="14"/>
+                                    <controls:Shimmer Height="12" HorizontalAlignment="Stretch"/>
+                                    <controls:Shimmer Height="12" HorizontalAlignment="Stretch"/>
+                                    <controls:Shimmer Width="200" Height="12"/>
+                                </StackPanel>
+                            </Border>
+                            <!-- Credits skeleton -->
+                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="60" Height="14"/>
+                                    <controls:Shimmer Width="40" Height="10"/>
+                                    <controls:Shimmer Height="32" HorizontalAlignment="Stretch" CornerRadius="6"/>
+                                    <controls:Shimmer Height="32" HorizontalAlignment="Stretch" CornerRadius="6"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Error -->
+                        <TextBlock
+                            x:Name="DetailsErrorText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="WrapWholeWords"
+                            FontSize="13"
+                            HorizontalAlignment="Center"
+                            Visibility="Collapsed"/>
+
+                        <!-- Artist header -->
+                        <Border x:Name="DetailsArtistHeaderCard"
+                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                        <Grid x:Name="DetailsArtistHeader" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <PersonPicture
+                                x:Name="DetailsArtistAvatar"
+                                Width="56" Height="56"
+                                Grid.Column="0"/>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock
+                                        x:Name="DetailsArtistName"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                        TextTrimming="CharacterEllipsis"
+                                        MaxLines="1"/>
+                                    <FontIcon
+                                        x:Name="DetailsVerifiedIcon"
+                                        Glyph="&#xE73E;"
+                                        FontSize="14"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"/>
+                                </StackPanel>
+                                <TextBlock
+                                    x:Name="DetailsArtistStats"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    FontSize="12"
+                                    TextWrapping="WrapWholeWords"/>
+                            </StackPanel>
+
+                            <!-- More options button -->
+                            <Button
+                                x:Name="DetailsMoreButton"
+                                Grid.Column="2"
+                                Click="DetailsMoreButton_Click"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                Width="32" Height="32"
+                                VerticalAlignment="Top"
+                                ToolTipService.ToolTip="More options">
+                                <FontIcon Glyph="&#xE712;" FontSize="14"/>
+                            </Button>
+                        </Grid>
+                        </Border>
+
+                        <!-- Lyrics snippet (tap to open Lyrics tab) -->
+                        <Border x:Name="DetailsLyricsSnippet"
+                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                PointerEntered="DetailsLyricsSnippet_PointerEntered"
+                                PointerExited="DetailsLyricsSnippet_PointerExited"
+                                Tapped="DetailsLyricsSnippet_Tapped"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xED1E;" FontSize="12"
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="Lyrics" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <!-- Previous line (faded) -->
+                                <TextBlock x:Name="DetailsLyricsPrev"
+                                           FontSize="13"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           TextWrapping="WrapWholeWords" MaxLines="1"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <!-- Current line (highlighted) -->
+                                <TextBlock x:Name="DetailsLyricsCurrent"
+                                           FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                           TextWrapping="WrapWholeWords" MaxLines="2"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <!-- Next line (faded) -->
+                                <TextBlock x:Name="DetailsLyricsNext"
+                                           FontSize="13"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           TextWrapping="WrapWholeWords" MaxLines="1"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Biography -->
+                        <Border x:Name="DetailsBio"
+                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="4">
+                                <TextBlock
+                                    Text="About"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    Margin="0,0,0,4"/>
+                                <TextBlock
+                                    x:Name="DetailsBioText"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    FontSize="12"
+                                    TextWrapping="WrapWholeWords"
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxLines="3"
+                                    IsTextTrimmedChanged="DetailsBioText_IsTextTrimmedChanged"/>
+                                <HyperlinkButton
+                                    x:Name="DetailsBioToggle"
+                                    Content="Show more"
+                                    Click="DetailsBioToggle_Click"
+                                    Padding="0"
+                                    FontSize="12"
+                                    Visibility="Collapsed"/>
+                                <!-- Record label -->
+                                <TextBlock
+                                    x:Name="DetailsRecordLabel"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    FontSize="11"
+                                    Margin="0,4,0,0"
+                                    Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Credits -->
+                        <Border x:Name="DetailsCreditsSection"
+                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="14">
+                                <TextBlock
+                                    Text="Credits"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <ItemsRepeater x:Name="DetailsCreditGroups">
+                                    <ItemsRepeater.Layout>
+                                        <StackLayout Spacing="14"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock
+                                                    Text="{Binding RoleName}"
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                    CharacterSpacing="60"/>
+                                                <ItemsRepeater ItemsSource="{Binding Contributors}">
+                                                    <ItemsRepeater.Layout>
+                                                        <StackLayout Spacing="4"/>
+                                                    </ItemsRepeater.Layout>
+                                                    <ItemsRepeater.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid ColumnSpacing="10" Padding="2,4"
+                                                                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                                  CornerRadius="6">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <!-- Artist avatar -->
+                                                                <PersonPicture Width="24" Height="24"
+                                                                               ProfilePicture="{Binding ImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=48}"
+                                                                               Margin="2,0,0,0"/>
+                                                                <TextBlock
+                                                                    Grid.Column="1"
+                                                                    Text="{Binding Name}"
+                                                                    FontSize="12"
+                                                                    VerticalAlignment="Center"
+                                                                    TextTrimming="CharacterEllipsis"/>
+                                                                <!-- Role tag -->
+                                                                <Border Grid.Column="2"
+                                                                        Background="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                                                        CornerRadius="4"
+                                                                        Padding="6,2"
+                                                                        Margin="0,0,2,0"
+                                                                        MaxWidth="150"
+                                                                        VerticalAlignment="Center">
+                                                                    <TextBlock
+                                                                        Text="{Binding RolesText}"
+                                                                        FontSize="10"
+                                                                        TextTrimming="CharacterEllipsis"
+                                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                                                </Border>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsRepeater.ItemTemplate>
+                                                </ItemsRepeater>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                                <HyperlinkButton
+                                    x:Name="DetailsCreditsToggle"
+                                    Content="View all credits"
+                                    Click="DetailsCreditsToggle_Click"
+                                    Padding="0"
+                                    FontSize="12"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Concerts -->
+                        <Border x:Name="DetailsConcertsSection"
+                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Text="Concerts"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <ItemsRepeater x:Name="DetailsConcertsList">
+                                    <ItemsRepeater.Layout>
+                                        <StackLayout Spacing="6"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="0,4" ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock
+                                                    Text="{Binding DateFormatted}"
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    VerticalAlignment="Top"
+                                                    MinWidth="70"/>
+                                                <StackPanel Grid.Column="1" Spacing="1">
+                                                    <TextBlock
+                                                        Text="{Binding Title}"
+                                                        FontSize="13"
+                                                        TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock
+                                                        FontSize="11"
+                                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                        TextTrimming="CharacterEllipsis">
+                                                        <Run Text="{Binding Venue}"/>
+                                                        <Run Text=" · "/>
+                                                        <Run Text="{Binding City}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Related Videos -->
+                        <Border x:Name="DetailsRelatedVideosSection"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Text="Related Videos"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <ItemsRepeater x:Name="DetailsRelatedVideosList">
+                                    <ItemsRepeater.Layout>
+                                        <UniformGridLayout MinItemWidth="140" MinItemHeight="110"
+                                                           MinColumnSpacing="6" MinRowSpacing="6"
+                                                           ItemsStretch="Fill"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- Thumbnail card with gradient overlay text -->
+                                            <Border CornerRadius="8">
+                                                <Grid>
+                                                    <Image
+                                                        Source="{Binding ThumbnailUrl}"
+                                                        Stretch="UniformToFill"/>
+                                                    <!-- Gradient scrim for text readability -->
+                                                    <Border>
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                                <GradientStop Color="#00000000" Offset="0.3"/>
+                                                                <GradientStop Color="#CC000000" Offset="1.0"/>
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                    <!-- Play icon -->
+                                                    <FontIcon Glyph="&#xE768;"
+                                                              FontSize="20"
+                                                              Foreground="White"
+                                                              Opacity="0.7"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                                    <!-- Title + artist at bottom -->
+                                                    <StackPanel VerticalAlignment="Bottom"
+                                                                Padding="10,0,10,8"
+                                                                Spacing="1">
+                                                        <TextBlock
+                                                            Text="{Binding Title}"
+                                                            FontSize="13"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="White"
+                                                            MaxLines="1"
+                                                            TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock
+                                                            Text="{Binding ArtistName}"
+                                                            FontSize="11"
+                                                            Foreground="#CCFFFFFF"
+                                                            MaxLines="1"
+                                                            TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </Grid>
 

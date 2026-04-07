@@ -38,7 +38,7 @@ public sealed class ArtistService : IArtistService
 
     public async Task<ArtistOverviewResult> GetOverviewAsync(string artistUri, CancellationToken ct = default)
     {
-        var response = await _pathfinder.GetArtistOverviewAsync(artistUri, ct);
+        var response = await _pathfinder.GetArtistOverviewAsync(artistUri, ct).ConfigureAwait(false);
         var artist = response.Data?.ArtistUnion
             ?? throw new InvalidOperationException("Artist not found");
 
@@ -84,7 +84,7 @@ public sealed class ArtistService : IArtistService
                 ThumbnailUrl = artist.WatchFeedEntrypoint.ThumbnailImage?.Data?.Sources?.FirstOrDefault()?.Url
             } : null,
 
-            Concerts = await MapConcertsAsync(artist.Goods?.Concerts, ct)
+            Concerts = await MapConcertsAsync(artist.Goods?.Concerts, ct).ConfigureAwait(false)
         };
     }
 
@@ -93,7 +93,7 @@ public sealed class ArtistService : IArtistService
         if (concerts?.Items == null || concerts.Items.Count == 0) return [];
 
         // Fetch user city via ILocationService (cached internally)
-        await _locationService.GetUserCityAsync(ct);
+        await _locationService.GetUserCityAsync(ct).ConfigureAwait(false);
 
         var results = new List<ArtistConcertResult>();
         foreach (var item in concerts.Items)
@@ -126,7 +126,7 @@ public sealed class ArtistService : IArtistService
     public async Task<List<ArtistReleaseResult>> GetDiscographyAllAsync(
         string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default)
     {
-        var response = await _pathfinder.GetArtistDiscographyAllAsync(artistUri, offset, limit, ct);
+        var response = await _pathfinder.GetArtistDiscographyAllAsync(artistUri, offset, limit, ct).ConfigureAwait(false);
         var allGroup = response.Data?.ArtistUnion?.Discography?.All;
         if (allGroup?.Items == null) return [];
 
@@ -157,9 +157,9 @@ public sealed class ArtistService : IArtistService
     {
         var response = type switch
         {
-            "ALBUM" => await _pathfinder.GetArtistDiscographyAlbumsAsync(artistUri, offset, limit, ct),
-            "SINGLE" => await _pathfinder.GetArtistDiscographySinglesAsync(artistUri, offset, limit, ct),
-            "COMPILATION" => await _pathfinder.GetArtistDiscographyCompilationsAsync(artistUri, offset, limit, ct),
+            "ALBUM" => await _pathfinder.GetArtistDiscographyAlbumsAsync(artistUri, offset, limit, ct).ConfigureAwait(false),
+            "SINGLE" => await _pathfinder.GetArtistDiscographySinglesAsync(artistUri, offset, limit, ct).ConfigureAwait(false),
+            "COMPILATION" => await _pathfinder.GetArtistDiscographyCompilationsAsync(artistUri, offset, limit, ct).ConfigureAwait(false),
             _ => throw new ArgumentException($"Unknown discography type: {type}")
         };
 
@@ -218,7 +218,7 @@ public sealed class ArtistService : IArtistService
             });
 
             if (!request.HasReceivedResponse) return [];
-            return await request.Response;
+            return await request.Response.ConfigureAwait(false);
         }
         catch (Exception ex)
         {

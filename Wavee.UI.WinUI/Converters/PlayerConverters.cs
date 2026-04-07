@@ -147,6 +147,8 @@ public sealed class RepeatModeToSymbolConverter : IValueConverter
 /// </summary>
 public sealed class StringToImageSourceConverter : IValueConverter
 {
+    private static ImageCacheService? _cache;
+
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string rawUri || string.IsNullOrWhiteSpace(rawUri))
@@ -155,8 +157,8 @@ public sealed class StringToImageSourceConverter : IValueConverter
         var uri = Helpers.SpotifyImageHelper.ToHttpsUrl(rawUri) ?? rawUri;
         var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 200;
 
-        var cache = Ioc.Default.GetService<ImageCacheService>();
-        return cache?.GetOrCreate(uri, decodeSize);
+        _cache ??= Ioc.Default.GetService<ImageCacheService>();
+        return _cache?.GetOrCreate(uri, decodeSize);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

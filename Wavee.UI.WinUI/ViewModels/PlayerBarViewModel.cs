@@ -1,12 +1,17 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -47,6 +52,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private string? _currentAlbumId;
 
     [ObservableProperty]
+    private IReadOnlyList<ArtistCredit>? _currentArtists;
+
+    [ObservableProperty]
     private bool _hasTrack;
 
     [ObservableProperty]
@@ -54,6 +62,40 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void ToggleAlbumArtExpanded() => IsAlbumArtExpanded = !IsAlbumArtExpanded;
+
+    /// <summary>
+    /// MetadataItems for the artist credits — each artist is a separate clickable item.
+    /// Falls back to a single item from ArtistName/CurrentArtistId when enriched data isn't available.
+    /// </summary>
+    public MetadataItem[]? ArtistMetadataItems
+    {
+        get
+        {
+            if (CurrentArtists is { Count: > 0 } artists)
+            {
+                return artists.Select(a => new MetadataItem
+                {
+                    Label = a.Name,
+                    Command = _navigateToArtistCommand,
+                    CommandParameter = a.Uri
+                }).ToArray();
+            }
+
+            if (!string.IsNullOrEmpty(ArtistName))
+            {
+                return [new MetadataItem
+                {
+                    Label = ArtistName,
+                    Command = _navigateToArtistCommand,
+                    CommandParameter = CurrentArtistId
+                }];
+            }
+
+            return null;
+        }
+    }
+
+    private readonly RelayCommand<string?> _navigateToArtistCommand;
 
     // Remote device indicator
     [ObservableProperty]
@@ -115,6 +157,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _playbackStateService = playbackStateService;
         _connectivityService = connectivityService;
 
+        _navigateToArtistCommand = new RelayCommand<string?>(NavigateToArtist);
+
         // Sync initial state
         SyncFromService();
 
@@ -140,6 +184,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             vm.IsQueuePanelActive = isOpen && mode == RightPanelMode.Queue;
             vm.IsLyricsPanelActive = isOpen && mode == RightPanelMode.Lyrics;
             vm.IsFriendsPanelActive = isOpen && mode == RightPanelMode.FriendsActivity;
+            vm.IsDetailsPanelActive = isOpen && mode == RightPanelMode.Details;
         });
     }
 
@@ -168,6 +213,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _albumArtColor = _playbackStateService.CurrentAlbumArtColor;
         _currentArtistId = _playbackStateService.CurrentArtistId;
         _currentAlbumId = _playbackStateService.CurrentAlbumId;
+        _currentArtists = _playbackStateService.CurrentArtists;
         _hasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
         _isPlaying = _playbackStateService.IsPlaying;
         _isShuffle = _playbackStateService.IsShuffle;
@@ -196,6 +242,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.CurrentArtistName):
                 ArtistName = _playbackStateService.CurrentArtistName;
+                OnPropertyChanged(nameof(ArtistMetadataItems));
+                break;
+            case nameof(IPlaybackStateService.CurrentArtists):
+                CurrentArtists = _playbackStateService.CurrentArtists;
+                OnPropertyChanged(nameof(ArtistMetadataItems));
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArt):
                 AlbumArt = _playbackStateService.CurrentAlbumArt;
@@ -394,6 +445,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isFriendsPanelActive;
 
+    [ObservableProperty]
+    private bool _isDetailsPanelActive;
+
     [RelayCommand]
     private void ToggleQueuePanel()
     {
@@ -410,6 +464,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private void ToggleFriendsPanel()
     {
         WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.FriendsActivity));
+    }
+
+    [RelayCommand]
+    private void ToggleDetailsPanel()
+    {
+        WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.Details));
     }
 
     /// <summary>
@@ -465,6 +525,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         {
             Position = positionMs;
         }
+    }
+
+    private void NavigateToArtist(string? artistUri)
+    {
+        if (string.IsNullOrEmpty(artistUri)) return;
+        NavigationHelpers.OpenArtist(artistUri, "Artist");
     }
 
     /// <summary>

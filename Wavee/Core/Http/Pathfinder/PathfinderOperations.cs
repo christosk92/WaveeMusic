@@ -62,4 +62,13 @@ internal static class PathfinderOperations
 
     public const string FetchEntitiesForRecentlyPlayed = "fetchEntitiesForRecentlyPlayed";
     public const string FetchEntitiesForRecentlyPlayedHash = "5bb408450626d595cb24363104b612e14f9b966430f599121696e8996ea03794";
+
+    public const string QueryAlbumMerch = "queryAlbumMerch";
+    public const string QueryAlbumMerchHash = "3ef44ed6f17be67299538fe77faffab4075aeaf9e1085f10fc835592266711b5";
+
+    public const string QueryNpvArtist = "queryNpvArtist";
+    public const string QueryNpvArtistHash = "047c9c225967d41a763949a4db3f0493e901c9f8689a6537408aabf9beffc177";
+
+    public const string QueryTrackCreditsModal = "queryTrackCreditsModal";
+    public const string QueryTrackCreditsModalHash = "e2ca40d46cf1fde36562261ccec754f23fb31b561877252e9fe0d6834aabb84b";
 }

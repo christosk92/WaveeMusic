@@ -37,9 +37,9 @@ public sealed class ImageCacheService
         if (string.IsNullOrEmpty(uri)) return null;
         var key = new CacheKey(uri, decodePixelSize);
 
+        // Fast path: check cache under lock (most calls are hits)
         lock (_lock)
         {
-            // Cache hit — promote to front
             if (_cache.TryGetValue(key, out var node))
             {
                 _lruList.Remove(node);
@@ -48,15 +48,23 @@ public sealed class ImageCacheService
                     key, node.Value.Value with { LastAccessed = DateTimeOffset.UtcNow });
                 return node.Value.Value.Image;
             }
+        }
 
-            // Cache miss — create new
-            var bitmap = new BitmapImage();
-            if (decodePixelSize > 0)
-            {
-                bitmap.DecodePixelWidth = decodePixelSize;
-                bitmap.DecodePixelHeight = decodePixelSize;
-            }
-            bitmap.UriSource = new Uri(uri);
+        // Cache miss — create BitmapImage outside the lock so cleanup
+        // on a background thread doesn't block while we set up the bitmap.
+        var bitmap = new BitmapImage();
+        if (decodePixelSize > 0)
+        {
+            bitmap.DecodePixelWidth = decodePixelSize;
+            bitmap.DecodePixelHeight = decodePixelSize;
+        }
+        bitmap.UriSource = new Uri(uri);
+
+        // Re-acquire lock to insert (another thread may have inserted the same key)
+        lock (_lock)
+        {
+            if (_cache.TryGetValue(key, out var existing))
+                return existing.Value.Value.Image; // Another caller won the race
 
             var entry = new CacheEntry(bitmap, DateTimeOffset.UtcNow);
             var newNode = _lruList.AddFirst(new KeyValuePair<CacheKey, CacheEntry>(key, entry));

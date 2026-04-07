@@ -197,6 +197,7 @@ public sealed partial class TrackItem : UserControl
     private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
     private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
     private static ISettingsService? _cachedSettingsService;
+    private static ImageCacheService? _cachedImageCache;
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
@@ -308,7 +309,8 @@ public sealed partial class TrackItem : UserControl
                 var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
                 if (!string.IsNullOrEmpty(httpsUrl))
                 {
-                    var cache = Ioc.Default.GetService<ImageCacheService>();
+                    _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
+                    var cache = _cachedImageCache;
                     CompactAlbumArt.Source = cache?.GetOrCreate(httpsUrl, 48);
                 }
                 else
@@ -357,7 +359,8 @@ public sealed partial class TrackItem : UserControl
                 var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
                 if (!string.IsNullOrEmpty(httpsUrl))
                 {
-                    var cache = Ioc.Default.GetService<ImageCacheService>();
+                    _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
+                    var cache = _cachedImageCache;
                     RowAlbumArt.Source = cache?.GetOrCreate(httpsUrl, 48);
                     RowAlbumArt.Visibility = Visibility.Visible;
                     RowArtPlaceholder.Visibility = Visibility.Collapsed;
@@ -826,7 +829,7 @@ public sealed partial class TrackItem : UserControl
 
         _logger?.LogInformation("HeartButton: ToggleSave uri={Uri}, currentlyLiked={IsLiked}", uri, track.IsLiked);
 
-        // Just tell the service — it updates the SourceCache, fires SaveStateChanged,
+        // Just tell the service — it updates the cache, fires SaveStateChanged,
         // and ALL hearts across the app react via OnSaveStateChanged.
         _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, track.IsLiked);
     }

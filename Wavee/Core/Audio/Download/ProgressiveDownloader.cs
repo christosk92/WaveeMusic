@@ -121,7 +121,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             _downloadedRanges.AddRange(0, headData.Length);
             _bytesDownloadedTotal = headData.Length;
 
-            // Cache the head data too
+            // Cache the head data too (use ArrayPool to avoid LOH allocations)
             if (_cache != null)
             {
                 var cacheChunkSize = AudioCacheConfig.Default.ChunkSize;
@@ -129,9 +129,11 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                 {
                     var chunkIdx = offset / cacheChunkSize;
                     var len = Math.Min(cacheChunkSize, headData.Length - offset);
-                    var chunk = new byte[len];
+                    var chunk = ArrayPool<byte>.Shared.Rent(len);
                     Buffer.BlockCopy(headData, offset, chunk, 0, len);
-                    _ = _cache.WriteChunkAsync(fileId, chunkIdx, chunk, CancellationToken.None);
+                    _ = _cache.WriteChunkAsync(fileId, chunkIdx, chunk.AsMemory(0, len), CancellationToken.None)
+                        .ContinueWith(_ => ArrayPool<byte>.Shared.Return(chunk),
+                            TaskContinuationOptions.ExecuteSynchronously);
                 }
             }
 
@@ -452,13 +454,16 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             WriteToTempFile(start, buffer.AsSpan(0, totalRead));
 
             // Write to cache (fire-and-forget, don't block playback)
+            // Use ArrayPool to avoid LOH allocations (chunks are 512KB+ → go to LOH with new byte[])
             if (_cache != null && totalRead > 0)
             {
                 var cacheChunkSize = AudioCacheConfig.Default.ChunkSize;
                 var chunkIdx = (int)(start / cacheChunkSize);
-                var chunkData = new byte[totalRead];
+                var chunkData = ArrayPool<byte>.Shared.Rent(totalRead);
                 Buffer.BlockCopy(buffer, 0, chunkData, 0, totalRead);
-                _ = _cache.WriteChunkAsync(_fileId, chunkIdx, chunkData, _disposeCts.Token);
+                _ = _cache.WriteChunkAsync(_fileId, chunkIdx, chunkData.AsMemory(0, totalRead), _disposeCts.Token)
+                    .ContinueWith(_ => ArrayPool<byte>.Shared.Return(chunkData),
+                        TaskContinuationOptions.ExecuteSynchronously);
             }
 
             // Update tracking
@@ -545,29 +550,65 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _backgroundDownloadTask = null;
     }
 
+    // Approximate bytes-per-second for OGG Vorbis 320 kbps (typical format).
+    // Used to convert ReadAheadDuration to a byte budget.
+    private const int EstimatedBytesPerSecond = 40_000; // ~320 kbps
+
     private async Task BackgroundDownloadLoopAsync(CancellationToken cancellationToken)
     {
         try
         {
             while (!cancellationToken.IsCancellationRequested && !IsFullyDownloaded)
             {
-                // Get all gaps in the file
-                var gaps = _downloadedRanges.GetGaps(0, _fileSize);
-                if (gaps.Count == 0)
+                // Check how much is already buffered ahead of current playback position
+                var bufferedAhead = _downloadedRanges.ContainedLengthFrom(_position);
+                var readAheadBytes = (long)(_params.ReadAheadDuration.TotalSeconds * EstimatedBytesPerSecond);
+
+                if (bufferedAhead >= readAheadBytes)
                 {
-                    _logger?.LogDebug("Background download complete for file {FileId}", _fileId.ToBase16());
-                    break;
+                    // Enough data buffered — wait before checking again.
+                    // Wake up when playback advances (consumes buffer) or after 500ms.
+                    try
+                    {
+                        await Task.Delay(500, cancellationToken);
+                    }
+                    catch (OperationCanceledException) { break; }
+                    continue;
                 }
 
-                // Find the best gap to download next
-                // Prioritize gaps from current position forward, then wrap around
-                var gap = FindNextGapFromPosition(_position, gaps);
+                // Get gaps only between current position and the read-ahead horizon
+                var horizon = Math.Min(_position + readAheadBytes, _fileSize);
+                var gaps = _downloadedRanges.GetGaps(_position, horizon);
 
-                // Download the gap (or a chunk of it if it's large)
-                var chunkEnd = Math.Min(gap.Start + _params.MaximumChunkSize, gap.End);
-                await FetchRangeAsync(gap.Start, chunkEnd, cancellationToken);
+                // If the read-ahead window is fully downloaded, look for any remaining gaps
+                // (allows eventual full download when idle, but read-ahead is prioritized)
+                if (gaps.Count == 0)
+                {
+                    gaps = _downloadedRanges.GetGaps(0, _fileSize);
+                    if (gaps.Count == 0)
+                    {
+                        _logger?.LogDebug("Background download complete for file {FileId}", _fileId.ToBase16());
+                        break;
+                    }
 
-                // Yield to playback between chunks
+                    // We have the read-ahead covered but the file isn't complete.
+                    // Download remaining gaps at a relaxed pace.
+                    var gap = FindNextGapFromPosition(_position, gaps);
+                    var chunkEnd = Math.Min(gap.Start + _params.MaximumChunkSize, gap.End);
+                    await FetchRangeAsync(gap.Start, chunkEnd, cancellationToken);
+
+                    // Throttle: no rush since playback buffer is healthy
+                    try { await Task.Delay(200, cancellationToken); }
+                    catch (OperationCanceledException) { break; }
+                    continue;
+                }
+
+                // Download the next gap in the read-ahead window
+                var nextGap = gaps[0]; // Already ordered by position
+                var end = Math.Min(nextGap.Start + _params.MaximumChunkSize, nextGap.End);
+                await FetchRangeAsync(nextGap.Start, end, cancellationToken);
+
+                // Brief yield to let playback thread process data
                 await Task.Yield();
             }
         }

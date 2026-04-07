@@ -29,27 +29,4 @@ public sealed partial class StartPage : Page
             item.Action?.Invoke();
         }
     }
-
-    private void RecentItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.Tag is RecentItem item)
-        {
-            switch (item.ItemType)
-            {
-                case "artist":
-                    NavigationHelpers.OpenArtist(item.ItemId, item.Title);
-                    break;
-                case "album":
-                    NavigationHelpers.OpenAlbum(item.ItemId, item.Title);
-                    break;
-                case "playlist":
-                    NavigationHelpers.OpenPlaylist(item.ItemId, item.Title);
-                    break;
-                case "track":
-                    // For now, just open search with the track title
-                    NavigationHelpers.OpenSearch(item.Title);
-                    break;
-            }
-        }
-    }
 }

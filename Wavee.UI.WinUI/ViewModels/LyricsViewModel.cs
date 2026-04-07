@@ -86,7 +86,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         switch (e.PropertyName)
         {
             case nameof(IPlaybackStateService.CurrentTrackId):
-                _ = LoadLyricsAsync();
+                _ = DeferredLoadLyricsAsync();
                 break;
             case nameof(IPlaybackStateService.Position):
                 LastServicePosition = _playbackState.Position;
@@ -111,6 +111,12 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             interpolated = duration;
 
         return TimeSpan.FromMilliseconds(interpolated);
+    }
+
+    private async Task DeferredLoadLyricsAsync()
+    {
+        await Task.Yield(); // Let the current dispatch frame render first
+        await LoadLyricsAsync();
     }
 
     public async Task LoadLyricsAsync()
@@ -238,12 +244,12 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         status.LyricsStyleSettings.LyricsCustomPlayedStrokeFontColor = Color.FromArgb(0x00, 0x00, 0x00, 0x00);
         status.LyricsStyleSettings.LyricsCustomUnplayedStrokeFontColor = Color.FromArgb(0x00, 0x00, 0x00, 0x00);
 
-        // Effects matching BetterLyrics defaults
-        status.LyricsEffectSettings.IsLyricsBlurEffectEnabled = true;
+        // Sidebar mode favors responsiveness over heavy visual effects.
+        status.LyricsEffectSettings.IsLyricsBlurEffectEnabled = false;
         status.LyricsEffectSettings.IsLyricsFadeOutEffectEnabled = true;
-        status.LyricsEffectSettings.IsLyricsGlowEffectEnabled = true;
-        status.LyricsEffectSettings.IsLyricsScaleEffectEnabled = true;
-        status.LyricsEffectSettings.IsLyricsFloatAnimationEnabled = true;
+        status.LyricsEffectSettings.IsLyricsGlowEffectEnabled = false;
+        status.LyricsEffectSettings.IsLyricsScaleEffectEnabled = false;
+        status.LyricsEffectSettings.IsLyricsFloatAnimationEnabled = false;
 
         // Neutral palette (will be overridden when album art palette is extracted).
         // All fill colors are white — the opacity transitions in the animator create

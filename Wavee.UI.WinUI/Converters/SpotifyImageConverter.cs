@@ -14,6 +14,8 @@ namespace Wavee.UI.WinUI.Converters;
 /// </summary>
 public sealed class SpotifyImageConverter : IValueConverter
 {
+    private static ImageCacheService? _cache;
+
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string uri) return null;
@@ -21,8 +23,8 @@ public sealed class SpotifyImageConverter : IValueConverter
         if (string.IsNullOrEmpty(url)) return null;
 
         var decodeSize = parameter is string s && int.TryParse(s, out var d) ? d : 200;
-        var cache = Ioc.Default.GetService<ImageCacheService>();
-        return cache?.GetOrCreate(url, decodeSize) ?? new BitmapImage(new Uri(url)) { DecodePixelWidth = decodeSize, DecodePixelType = DecodePixelType.Logical };
+        _cache ??= Ioc.Default.GetService<ImageCacheService>();
+        return _cache?.GetOrCreate(url, decodeSize) ?? new BitmapImage(new Uri(url)) { DecodePixelWidth = decodeSize, DecodePixelType = DecodePixelType.Logical };
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

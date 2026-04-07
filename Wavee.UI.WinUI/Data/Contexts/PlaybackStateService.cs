@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Threading;
@@ -35,10 +34,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
     private readonly IHomeFeedCache? _homeFeedCache;
-    private readonly ObservableCollection<QueueItem> _queue = [];
+    private List<QueueItem> _queue = [];
     private IDisposable? _stateSubscription;
     private CancellationTokenSource? _colorCts;
     private bool _isFirstStateUpdate = true;
+    private bool _isBatchingStateUpdate;
+    private bool _nowPlayingDirty;
+    private bool _isSuppressingPropertyChanged;
+    private HashSet<string>? _pendingPropertyChanges;
+    private string? _lastColorImageUrl;
     private double? _pendingSeekPositionMs;
     private long _lastPositionLogAtMs;
 
@@ -53,6 +57,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private string? _currentArtistId;
     [ObservableProperty] private string? _currentAlbumId;
     [ObservableProperty] private string? _currentAlbumArtColor;
+    [ObservableProperty] private IReadOnlyList<ArtistCredit>? _currentArtists;
     [ObservableProperty] private double _position;
     [ObservableProperty] private double _duration;
     [ObservableProperty] private double _volume = 100.0;
@@ -133,196 +138,211 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         _dispatcherQueue.TryEnqueue(() =>
         {
-            // First state received after subscribing — BehaviorSubject replays with partial
-            // change flags, so force a full sync to populate all UI properties
-            if (_isFirstStateUpdate)
-            {
-                _isFirstStateUpdate = false;
-                state = state with { Changes = StateChanges.All };
-            }
+            _isBatchingStateUpdate = true;
+            _isSuppressingPropertyChanged = true;
 
-            // Track info — apply Connect state immediately, request API enrichment
-            if (state.Changes.HasFlag(StateChanges.Track))
+            try
             {
-                _pendingSeekPositionMs = null;
-                Duration = state.DurationMs;
-
-                var trackUri = state.Track?.Uri;
-                if (!string.IsNullOrEmpty(trackUri))
+                // First state received after subscribing — BehaviorSubject replays with partial
+                // change flags, so force a full sync to populate all UI properties
+                if (_isFirstStateUpdate)
                 {
-                    // Apply connect state immediately (may be incomplete)
-                    ApplyConnectState(trackUri, state);
-
-                    // Request enrichment from TrackMetadataEnricher (if it exists post-connect)
-                    _messenger.Send(new TrackEnrichmentRequestMessage(trackUri));
+                    _isFirstStateUpdate = false;
+                    state = state with { Changes = StateChanges.All };
                 }
-            }
 
-            // Playback status
-            if (state.Changes.HasFlag(StateChanges.Status))
-            {
-                var hasLocalEngine = _session.PlaybackState?.IsBidirectional == true;
-                var activeDeviceId = state.ActiveDeviceId;
-
-                // We are the active device with a local engine = real playback, never suppress
-                var isSelfWithEngine = activeDeviceId == _session.Config.DeviceId && hasLocalEngine;
-
-                // No active device = nothing is actually playing anywhere
-                // OR we are the active device but have no local engine = we can't produce audio
-                var noRealPlayback = !isSelfWithEngine
-                    && (string.IsNullOrEmpty(activeDeviceId)
-                        || string.IsNullOrEmpty(state.ActiveDeviceName)
-                        || (activeDeviceId == _session.Config.DeviceId && !hasLocalEngine));
-
-                if (noRealPlayback && state.Status == PlaybackStatus.Playing)
+                // Track info — apply Connect state immediately, request API enrichment
+                if (state.Changes.HasFlag(StateChanges.Track))
                 {
-                    _logger?.LogDebug("UI bridge: status → suppressed to Paused (no real playback, activeDevice={Device})", activeDeviceId);
-                    IsPlaying = false;
+                    _pendingSeekPositionMs = null;
+                    Duration = state.DurationMs;
+
+                    var trackUri = state.Track?.Uri;
+                    if (!string.IsNullOrEmpty(trackUri))
+                    {
+                        // Apply connect state immediately (may be incomplete)
+                        ApplyConnectState(trackUri, state);
+
+                        // Request enrichment from TrackMetadataEnricher (if it exists post-connect)
+                        _messenger.Send(new TrackEnrichmentRequestMessage(trackUri));
+                    }
                 }
-                else
-                {
-                    IsPlaying = state.Status == PlaybackStatus.Playing;
 
-                    // Clear buffering when playback status confirms playing or stopped
-                    if (IsBuffering && state.Status is PlaybackStatus.Playing or PlaybackStatus.Stopped)
+                // Playback status
+                if (state.Changes.HasFlag(StateChanges.Status))
+                {
+                    var hasLocalEngine = _session.PlaybackState?.IsBidirectional == true;
+                    var activeDeviceId = state.ActiveDeviceId;
+
+                    // We are the active device with a local engine = real playback, never suppress
+                    var isSelfWithEngine = activeDeviceId == _session.Config.DeviceId && hasLocalEngine;
+
+                    // No active device = nothing is actually playing anywhere
+                    // OR we are the active device but have no local engine = we can't produce audio
+                    var noRealPlayback = !isSelfWithEngine
+                        && (string.IsNullOrEmpty(activeDeviceId)
+                            || string.IsNullOrEmpty(state.ActiveDeviceName)
+                            || (activeDeviceId == _session.Config.DeviceId && !hasLocalEngine));
+
+                    if (noRealPlayback && state.Status == PlaybackStatus.Playing)
+                    {
+                        _logger?.LogDebug("UI bridge: status → suppressed to Paused (no real playback, activeDevice={Device})", activeDeviceId);
+                        IsPlaying = false;
+                    }
+                    else
+                    {
+                        IsPlaying = state.Status == PlaybackStatus.Playing;
+
+                        // Clear buffering when playback status confirms playing or stopped
+                        if (IsBuffering && state.Status is PlaybackStatus.Playing or PlaybackStatus.Stopped)
+                        {
+                            IsBuffering = false;
+                            BufferingTrackId = null;
+                        }
+                    }
+
+                    // Suspend background HTTP activity during audio playback to avoid connection pool contention
+                    if (IsPlaying)
+                        _homeFeedCache?.SuspendRefresh();
+                    else
+                        _homeFeedCache?.ResumeRefresh();
+                }
+
+                // Position — must calculate from timestamp when playing
+                if (state.Changes.HasFlag(StateChanges.Position) ||
+                    state.Changes.HasFlag(StateChanges.Status) ||
+                    state.Changes.HasFlag(StateChanges.Track))
+                {
+                    // Clear buffering on position change (seek completed) or track change
+                    if (IsBuffering && (state.Changes.HasFlag(StateChanges.Position) || state.Changes.HasFlag(StateChanges.Track)))
                     {
                         IsBuffering = false;
                         BufferingTrackId = null;
                     }
-                }
 
-                // Suspend background HTTP activity during audio playback to avoid connection pool contention
-                if (IsPlaying)
-                    _homeFeedCache?.SuspendRefresh();
-                else
-                    _homeFeedCache?.ResumeRefresh();
-            }
+                    // Use Spotify server clock only for remote (Cluster) state —
+                    // local engine timestamps are already in local time.
+                    var clock = _session.Clock;
+                    long correctedNow;
+                    if (state.Source == StateSource.Cluster)
+                        correctedNow = clock.NowMs;
+                    else
+                        correctedNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            // Position — must calculate from timestamp when playing
-            if (state.Changes.HasFlag(StateChanges.Position) ||
-                state.Changes.HasFlag(StateChanges.Status) ||
-                state.Changes.HasFlag(StateChanges.Track))
-            {
-                // Clear buffering on position change (seek completed) or track change
-                if (IsBuffering && (state.Changes.HasFlag(StateChanges.Position) || state.Changes.HasFlag(StateChanges.Track)))
-                {
-                    IsBuffering = false;
-                    BufferingTrackId = null;
-                }
+                    var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
 
-                // Use Spotify server clock only for remote (Cluster) state —
-                // local engine timestamps are already in local time.
-                var clock = _session.Clock;
-                long correctedNow;
-                if (state.Source == StateSource.Cluster)
-                    correctedNow = clock.NowMs;
-                else
-                    correctedNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-                var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
-
-                if (_logger?.IsEnabled(LogLevel.Debug) == true)
-                {
-                    var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    if (nowMs - _lastPositionLogAtMs >= 1000 || !state.Changes.HasFlag(StateChanges.Position))
+                    if (_logger?.IsEnabled(LogLevel.Debug) == true)
                     {
-                        _lastPositionLogAtMs = nowMs;
-                        _logger.LogDebug(
-                            "UI bridge: position → {CalculatedMs}ms " +
-                            "(raw={RawMs}ms, timestamp={Timestamp}, now={Now}, " +
-                            "elapsed={Elapsed}ms, status={Status}, duration={Duration}ms, source={Source}, clockOffset={ClockOffset}ms)",
-                            calculatedPos,
-                            state.PositionMs,
-                            state.Timestamp,
-                            correctedNow,
-                            correctedNow - state.Timestamp,
-                            state.Status,
-                            state.DurationMs,
-                            state.Source,
-                            clock.OffsetMs);
+                        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        if (nowMs - _lastPositionLogAtMs >= 1000 || !state.Changes.HasFlag(StateChanges.Position))
+                        {
+                            _lastPositionLogAtMs = nowMs;
+                            _logger.LogDebug(
+                                "UI bridge: position → {CalculatedMs}ms " +
+                                "(raw={RawMs}ms, timestamp={Timestamp}, now={Now}, " +
+                                "elapsed={Elapsed}ms, status={Status}, duration={Duration}ms, source={Source}, clockOffset={ClockOffset}ms)",
+                                calculatedPos,
+                                state.PositionMs,
+                                state.Timestamp,
+                                correctedNow,
+                                correctedNow - state.Timestamp,
+                                state.Status,
+                                state.DurationMs,
+                                state.Source,
+                                clock.OffsetMs);
+                        }
+                    }
+
+                    Position = calculatedPos;
+
+                    // Update duration here too — it may change when local engine
+                    // starts playing a ghost track (cluster had duration=0)
+                    if (state.DurationMs > 0 && Duration != state.DurationMs)
+                        Duration = state.DurationMs;
+                }
+
+                // Options
+                if (state.Changes.HasFlag(StateChanges.Options))
+                {
+                    _logger?.LogDebug("UI bridge: options → shuffle={Shuffle}, repeatCtx={RepeatCtx}, repeatTrack={RepeatTrack}",
+                        state.Options.Shuffling, state.Options.RepeatingContext, state.Options.RepeatingTrack);
+                    IsShuffle = state.Options.Shuffling;
+                    RepeatMode = state.Options.RepeatingTrack
+                        ? RepeatMode.Track
+                        : state.Options.RepeatingContext
+                            ? RepeatMode.Context
+                            : RepeatMode.Off;
+                }
+
+                // Context
+                if (state.Changes.HasFlag(StateChanges.Context))
+                {
+                    _logger?.LogDebug("UI bridge: context → {Context}", state.ContextUri);
+                    CurrentContext = ParseContext(state.ContextUri);
+                }
+
+                // Queue
+                if (state.Changes.HasFlag(StateChanges.Queue))
+                {
+                    SyncQueue(state);
+                }
+
+                // Active device (remote playback indicator)
+                if (state.Changes.HasFlag(StateChanges.ActiveDevice) || state.Changes.HasFlag(StateChanges.Source))
+                {
+                    var isRemote = state.Source == StateSource.Cluster
+                                   && !string.IsNullOrEmpty(state.ActiveDeviceId)
+                                   && state.ActiveDeviceId != _session.Config.DeviceId
+                                   && !string.IsNullOrEmpty(state.ActiveDeviceName);
+                    IsPlayingRemotely = isRemote;
+                    ActiveDeviceName = isRemote ? state.ActiveDeviceName : null;
+                    _logger?.LogDebug("UI bridge: remote={IsRemote}, device={DeviceName} ({DeviceId})",
+                        isRemote, state.ActiveDeviceName, state.ActiveDeviceId);
+
+                    // Re-evaluate IsPlaying when device changes
+                    // (Status section only runs on StateChanges.Status, misses device-triggered changes)
+                    if (state.Status == PlaybackStatus.Playing)
+                    {
+                        var hasLocal = _session.PlaybackState?.IsBidirectional == true;
+                        var deviceId = state.ActiveDeviceId;
+                        var isSelfLocal = deviceId == _session.Config.DeviceId && hasLocal;
+                        var noRealPlayback = !isSelfLocal
+                            && (string.IsNullOrEmpty(deviceId)
+                                || string.IsNullOrEmpty(state.ActiveDeviceName)
+                                || (deviceId == _session.Config.DeviceId && !hasLocal));
+                        if (noRealPlayback)
+                        {
+                            _logger?.LogDebug("UI bridge: IsPlaying suppressed on device change (ghost device)");
+                            IsPlaying = false;
+                        }
                     }
                 }
 
-                Position = calculatedPos;
-
-                // Update duration here too — it may change when local engine
-                // starts playing a ghost track (cluster had duration=0)
-                if (state.DurationMs > 0 && Duration != state.DurationMs)
-                    Duration = state.DurationMs;
-            }
-
-            // Options
-            if (state.Changes.HasFlag(StateChanges.Options))
-            {
-                _logger?.LogDebug("UI bridge: options → shuffle={Shuffle}, repeatCtx={RepeatCtx}, repeatTrack={RepeatTrack}",
-                    state.Options.Shuffling, state.Options.RepeatingContext, state.Options.RepeatingTrack);
-                IsShuffle = state.Options.Shuffling;
-                RepeatMode = state.Options.RepeatingTrack
-                    ? RepeatMode.Track
-                    : state.Options.RepeatingContext
-                        ? RepeatMode.Context
-                        : RepeatMode.Off;
-            }
-
-            // Context
-            if (state.Changes.HasFlag(StateChanges.Context))
-            {
-                _logger?.LogDebug("UI bridge: context → {Context}", state.ContextUri);
-                CurrentContext = ParseContext(state.ContextUri);
-            }
-
-            // Queue
-            if (state.Changes.HasFlag(StateChanges.Queue))
-            {
-                SyncQueue(state);
-            }
-
-            // Active device (remote playback indicator)
-            if (state.Changes.HasFlag(StateChanges.ActiveDevice) || state.Changes.HasFlag(StateChanges.Source))
-            {
-                var isRemote = state.Source == StateSource.Cluster
-                               && !string.IsNullOrEmpty(state.ActiveDeviceId)
-                               && state.ActiveDeviceId != _session.Config.DeviceId
-                               && !string.IsNullOrEmpty(state.ActiveDeviceName);
-                IsPlayingRemotely = isRemote;
-                ActiveDeviceName = isRemote ? state.ActiveDeviceName : null;
-                _logger?.LogDebug("UI bridge: remote={IsRemote}, device={DeviceName} ({DeviceId})",
-                    isRemote, state.ActiveDeviceName, state.ActiveDeviceId);
-
-                // Re-evaluate IsPlaying when device changes
-                // (Status section only runs on StateChanges.Status, misses device-triggered changes)
-                if (state.Status == PlaybackStatus.Playing)
+                // Volume (convert 0-65535 → 0-100 for UI)
+                // Suppress command feedback: remote state sync should NOT trigger set_volume back
+                if (state.Changes.HasFlag(StateChanges.Volume) || state.Changes.HasFlag(StateChanges.ActiveDevice))
                 {
-                    var hasLocal = _session.PlaybackState?.IsBidirectional == true;
-                    var deviceId = state.ActiveDeviceId;
-                    var isSelfLocal = deviceId == _session.Config.DeviceId && hasLocal;
-                    var noRealPlayback = !isSelfLocal
-                        && (string.IsNullOrEmpty(deviceId)
-                            || string.IsNullOrEmpty(state.ActiveDeviceName)
-                            || (deviceId == _session.Config.DeviceId && !hasLocal));
-                    if (noRealPlayback)
+                    var uiVolume = state.Volume / 655.35;
+                    // Don't overwrite to 0 if the remote volume is uninitialized
+                    if (state.Volume > 0 || Volume == 0)
                     {
-                        _logger?.LogDebug("UI bridge: IsPlaying suppressed on device change (ghost device)");
-                        IsPlaying = false;
+                        _suppressVolumeCommand = true;
+                        Volume = Math.Clamp(uiVolume, 0, 100);
+                        _suppressVolumeCommand = false;
                     }
+                    IsVolumeRestricted = state.IsVolumeRestricted;
+                    _logger?.LogDebug("UI bridge: volume → {Volume:F0}% (raw={Raw}/65535, restricted={Restricted})",
+                        Volume, state.Volume, state.IsVolumeRestricted);
                 }
             }
-
-            // Volume (convert 0-65535 → 0-100 for UI)
-            // Suppress command feedback: remote state sync should NOT trigger set_volume back
-            if (state.Changes.HasFlag(StateChanges.Volume) || state.Changes.HasFlag(StateChanges.ActiveDevice))
+            finally
             {
-                var uiVolume = state.Volume / 655.35;
-                // Don't overwrite to 0 if the remote volume is uninitialized
-                if (state.Volume > 0 || Volume == 0)
-                {
-                    _suppressVolumeCommand = true;
-                    Volume = Math.Clamp(uiVolume, 0, 100);
-                    _suppressVolumeCommand = false;
-                }
-                IsVolumeRestricted = state.IsVolumeRestricted;
-                _logger?.LogDebug("UI bridge: volume → {Volume:F0}% (raw={Raw}/65535, restricted={Restricted})",
-                    Volume, state.Volume, state.IsVolumeRestricted);
+                _isSuppressingPropertyChanged = false;
+                _isBatchingStateUpdate = false;
+                FlushPropertyChanges();
+
+                // Send consolidated now-playing notification (deduplicated across IsPlaying + Context changes)
+                FlushNowPlayingMessage();
             }
         });
     }
@@ -342,6 +362,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             if (message.AlbumArtLarge != null) CurrentAlbumArtLarge = message.AlbumArtLarge;
             if (message.ArtistId != null) CurrentArtistId = message.ArtistId;
             if (message.AlbumId != null) CurrentAlbumId = message.AlbumId;
+            if (message.Artists != null) CurrentArtists = message.Artists;
 
             // Re-extract color if album art was enriched
             if (message.AlbumArt != null)
@@ -353,35 +374,45 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     /// Fallback: applies track metadata from the Connect state when the API fetch
     /// is unavailable or fails. Connect state may have incomplete fields.
     /// </summary>
+    /// <summary>
+    /// Applies track metadata from Connect state directly.
+    /// Must be called from within a <c>_dispatcherQueue.TryEnqueue</c> callback (already on UI thread).
+    /// </summary>
     private void ApplyConnectState(string trackUri, PlaybackState connectState)
     {
         var trackId = ExtractTrackId(trackUri);
 
-        _dispatcherQueue.TryEnqueue(() =>
+        CurrentTrackTitle = connectState.Track?.Title;
+        CurrentArtistName = connectState.Track?.Artist;
+        CurrentAlbumArt = connectState.Track?.ImageUrl;
+        CurrentAlbumArtLarge = connectState.Track?.ImageLargeUrl
+            ?? connectState.Track?.ImageXLargeUrl
+            ?? connectState.Track?.ImageUrl;
+        CurrentArtistId = connectState.Track?.ArtistUri;
+        CurrentAlbumId = connectState.Track?.AlbumUri;
+        CurrentArtists = null; // Connect state lacks per-artist data; enricher will populate
+
+        // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
+        CurrentTrackId = trackId;
+
+        // Extract color from album art
+        var imageUrl = connectState.Track?.ImageUrl;
+        if (!string.IsNullOrEmpty(imageUrl))
+            _ = ExtractAlbumColorAsync(imageUrl);
+        else
         {
-            CurrentTrackTitle = connectState.Track?.Title;
-            CurrentArtistName = connectState.Track?.Artist;
-            CurrentAlbumArt = connectState.Track?.ImageUrl;
-            CurrentAlbumArtLarge = connectState.Track?.ImageLargeUrl
-                ?? connectState.Track?.ImageXLargeUrl
-                ?? connectState.Track?.ImageUrl;
-            CurrentArtistId = connectState.Track?.ArtistUri;
-            CurrentAlbumId = connectState.Track?.AlbumUri;
-
-            // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
-            CurrentTrackId = trackId;
-
-            // Extract color from album art
-            var imageUrl = connectState.Track?.ImageUrl;
-            if (!string.IsNullOrEmpty(imageUrl))
-                _ = ExtractAlbumColorAsync(imageUrl);
-            else
-                CurrentAlbumArtColor = null;
-        });
+            _lastColorImageUrl = null;
+            CurrentAlbumArtColor = null;
+        }
     }
 
     private async Task ExtractAlbumColorAsync(string imageUrl)
     {
+        if (string.Equals(_lastColorImageUrl, imageUrl, StringComparison.Ordinal))
+            return;
+
+        _lastColorImageUrl = imageUrl;
+
         // Cancel any previous color extraction
         _colorCts?.Cancel();
         _colorCts = new CancellationTokenSource();
@@ -468,12 +499,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     private void SyncQueue(PlaybackState state)
     {
-        _queue.Clear();
         QueuePosition = state.CurrentIndex;
 
+        var newQueue = new List<QueueItem>(state.NextTracks.Count);
         foreach (var track in state.NextTracks)
         {
-            _queue.Add(new QueueItem
+            newQueue.Add(new QueueItem
             {
                 TrackId = track.Uri,
                 Title = string.Empty,
@@ -481,6 +512,33 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 IsUserQueued = track.IsUserQueued
             });
         }
+
+        _queue = newQueue;
+        OnPropertyChanged(nameof(Queue));
+    }
+
+    // ── PropertyChanged batching ──
+    // During OnRemoteStateChanged, suppress individual PropertyChanged events
+    // and flush them all at once to reduce binding evaluation + layout passes.
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_isSuppressingPropertyChanged)
+        {
+            _pendingPropertyChanges ??= [];
+            if (e.PropertyName != null)
+                _pendingPropertyChanges.Add(e.PropertyName);
+            return;
+        }
+        base.OnPropertyChanged(e);
+    }
+
+    private void FlushPropertyChanges()
+    {
+        if (_pendingPropertyChanges is not { Count: > 0 }) return;
+        foreach (var name in _pendingPropertyChanges)
+            base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(name));
+        _pendingPropertyChanges.Clear();
     }
 
     // ── Messenger broadcasts ──
@@ -488,7 +546,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     partial void OnIsPlayingChanged(bool value)
     {
         _messenger.Send(new PlaybackStateChangedMessage(value));
-        _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, value));
+        if (_isBatchingStateUpdate)
+            _nowPlayingDirty = true;
+        else
+            _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, value));
     }
 
     partial void OnCurrentTrackIdChanged(string? value) => _messenger.Send(new TrackChangedMessage(value));
@@ -496,7 +557,21 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     partial void OnCurrentContextChanged(PlaybackContextInfo? value)
     {
         _messenger.Send(new PlaybackContextChangedMessage(value));
-        _messenger.Send(new NowPlayingChangedMessage(value?.ContextUri, IsPlaying));
+        if (_isBatchingStateUpdate)
+            _nowPlayingDirty = true;
+        else
+            _messenger.Send(new NowPlayingChangedMessage(value?.ContextUri, IsPlaying));
+    }
+
+    /// <summary>
+    /// Sends a single coalesced <see cref="NowPlayingChangedMessage"/> if any
+    /// contributing property changed during the batched state update.
+    /// </summary>
+    private void FlushNowPlayingMessage()
+    {
+        if (!_nowPlayingDirty) return;
+        _nowPlayingDirty = false;
+        _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, IsPlaying));
     }
 
     // ── Commands ──

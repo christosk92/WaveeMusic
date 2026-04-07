@@ -10,6 +10,8 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class ArtistCircleCard : UserControl
 {
+    private static ImageCacheService? _imageCache;
+
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RightTappedRoutedEventArgs>? CardRightTapped;
 
@@ -47,8 +49,8 @@ public sealed partial class ArtistCircleCard : UserControl
             var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
             if (!string.IsNullOrEmpty(httpsUrl))
             {
-                var cache = Ioc.Default.GetService<ImageCacheService>();
-                card.CardImage.Source = cache?.GetOrCreate(httpsUrl, 100);
+                _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
+                card.CardImage.Source = _imageCache?.GetOrCreate(httpsUrl, 100);
                 card.PlaceholderIcon.Visibility = Visibility.Collapsed;
             }
             else

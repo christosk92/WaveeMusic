@@ -1,5 +1,6 @@
 using System.Reactive.Disposables;
 using System.Reactive.Subjects;
+using System.Runtime;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Commands;
@@ -1065,6 +1066,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             var syncCtx = new SingleThreadedSynchronizationContext();
             SynchronizationContext.SetSynchronizationContext(syncCtx);
 
+            // Suppress foreground Gen2 compacting collections during playback.
+            // Background Gen2 still runs (concurrent GC is enabled). This prevents
+            // long GC pauses that starve the PortAudio callback and cause underflows.
+            var previousLatency = GCSettings.LatencyMode;
+            GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
             try
             {
                 var task = PlaybackLoopAsync(trackUri, startPositionMs, cancellationToken);
@@ -1078,6 +1084,10 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             catch (Exception ex)
             {
                 tcs.TrySetException(ex);
+            }
+            finally
+            {
+                GCSettings.LatencyMode = previousLatency;
             }
         })
         {
@@ -1171,6 +1181,11 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
 
                 // Start playback event tracking
                 StartPlaybackSession(currentTrackUri, _currentContextUri ?? currentTrackUri, PlaybackReason.PlayBtn);
+
+                // Nudge background GC to clean up download burst allocations now (non-blocking).
+                // Track loading creates many short-lived large buffers; collecting them here
+                // prevents pressure from building up and triggering a longer pause mid-playback.
+                GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
 
                 // Clear any seek that was queued for a previous track — it must not bleed into this one
                 lock (_seekLock)

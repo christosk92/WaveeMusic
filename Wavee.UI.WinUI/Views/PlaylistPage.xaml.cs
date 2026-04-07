@@ -22,7 +22,7 @@ public sealed partial class PlaylistPage : Page
         ViewModel = Ioc.Default.GetRequiredService<PlaylistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<PlaylistPage>>();
         InitializeComponent();
-        Unloaded += (_, _) => (ViewModel as IDisposable)?.Dispose();
+        //Unloaded += (_, _) => (ViewModel)?.Dispose();
 
         // Set up the date formatter for the track list
         TrackList.DateAddedFormatter = item =>

@@ -62,6 +62,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
     private ObservableCollection<AlbumRelatedResult> _moreByArtist = [];
+    private ObservableCollection<AlbumMerchItemResult> _merchItems = [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -321,6 +322,17 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool HasMoreByArtist => MoreByArtist.Count > 0;
 
     /// <summary>
+    /// Merchandise items for this album.
+    /// </summary>
+    public ObservableCollection<AlbumMerchItemResult> MerchItems
+    {
+        get => _merchItems;
+        private set => this.RaiseAndSetIfChanged(ref _merchItems, value);
+    }
+
+    public bool HasMerch => MerchItems.Count > 0;
+
+    /// <summary>
     /// Filtered and sorted tracks for UI binding. Replaced wholesale on load/filter/sort.
     /// </summary>
     private IReadOnlyList<LazyTrackItem> _filteredTracks = Array.Empty<LazyTrackItem>();
@@ -427,8 +439,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 .ToList();
 
             // Start network I/O before yielding
-            var detailTask = _albumService.GetDetailAsync(albumId);
-            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
+            var detailTask = Task.Run(async () => await _albumService.GetDetailAsync(albumId));
+            var playlistsTask = Task.Run(async () => await _libraryDataService.GetUserPlaylistsAsync());
 
             // Yield so shimmer placeholders render at least one frame
             await Task.Delay(RenderFrameSettleDelayMs);
@@ -478,7 +490,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             IsLoadingTracks = false;
 
             // Clear shimmers, yield a frame, then show real tracks for staggered entrance
-            FilteredTracks = Array.Empty<LazyTrackItem>();
+            FilteredTracks = [];
             await Task.Delay(RenderFrameSettleDelayMs);
             ApplyFilterAndSort();
 
@@ -487,6 +499,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             foreach (var r in detail.MoreByArtist)
                 MoreByArtist.Add(r);
             this.RaisePropertyChanged(nameof(HasMoreByArtist));
+
+            // Merch (non-blocking, loaded after main content)
+            _ = LoadMerchAsync(albumId);
         }
         catch (Exception ex)
         {
@@ -618,6 +633,36 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     {
         if (playlist == null || !HasSelection) return;
         // TODO: Implement add selected tracks to playlist
+    }
+
+    [RelayCommand]
+    private async Task OpenMerchItemAsync(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return;
+        try
+        {
+            await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to open merch URL: {Url}", url);
+        }
+    }
+
+    private async Task LoadMerchAsync(string albumUri)
+    {
+        try
+        {
+            var items = await Task.Run(async () => await _albumService.GetMerchAsync(albumUri));
+            MerchItems.Clear();
+            foreach (var item in items)
+                MerchItems.Add(item);
+            this.RaisePropertyChanged(nameof(HasMerch));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to load merch for {AlbumId}", albumUri);
+        }
     }
 
     [RelayCommand]

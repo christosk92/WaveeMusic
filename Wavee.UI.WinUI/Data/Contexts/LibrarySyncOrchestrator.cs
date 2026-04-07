@@ -60,7 +60,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
     private async Task RunSyncAsync()
     {
         // Non-blocking: skip if already syncing (don't queue)
-        if (!await _syncLock.WaitAsync(0))
+        if (!await _syncLock.WaitAsync(0).ConfigureAwait(false))
         {
             _logger?.LogDebug("Library sync already in progress, skipping");
             return;
@@ -88,7 +88,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             string? partialReason = null;
             try
             {
-                await _libraryService.SyncAllAsync();
+                await _libraryService.SyncAllAsync().ConfigureAwait(false);
                 _logger?.LogInformation("Library sync completed");
             }
             catch (Exception syncEx)
@@ -101,7 +101,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             // Backfill metadata for any items in spotify_library missing from entities table
             try
             {
-                await _libraryService.BackfillMissingMetadataAsync();
+                await _libraryService.BackfillMissingMetadataAsync().ConfigureAwait(false);
                 _logger?.LogInformation("Metadata backfill completed");
             }
             catch (Exception bfEx)
@@ -112,13 +112,13 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             // Reload in-memory cache from freshly synced DB
             if (_likeService != null)
             {
-                await _likeService.InitializeAsync();
-                await _likeService.ReloadCacheAsync();
+                await _likeService.InitializeAsync().ConfigureAwait(false);
+                await _likeService.ReloadCacheAsync().ConfigureAwait(false);
                 _logger?.LogInformation("TrackLikeService cache reloaded after sync");
             }
 
             // Drain any pending outbox operations
-            var outboxFailures = await _libraryService.ProcessOutboxAsync();
+            var outboxFailures = await _libraryService.ProcessOutboxAsync().ConfigureAwait(false);
             if (outboxFailures > 0)
             {
                 hadPartialFailure = true;
@@ -138,7 +138,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             // Diagnostic: compare synced counts (what Spotify has) vs loaded counts (what we can display)
             try
             {
-                var syncState = await _libraryService.GetSyncStateAsync();
+                var syncState = await _libraryService.GetSyncStateAsync().ConfigureAwait(false);
                 var syncedTracks = syncState.Tracks?.ItemCount ?? 0;
                 var syncedAlbums = syncState.Albums?.ItemCount ?? 0;
                 var syncedArtists = syncState.Artists?.ItemCount ?? 0;

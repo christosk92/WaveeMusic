@@ -155,7 +155,7 @@ public sealed class AudioCacheManager : IAsyncDisposable
     /// <summary>
     /// Writes a chunk to cache.
     /// </summary>
-    public async Task WriteChunkAsync(FileId fileId, int chunkIndex, byte[] data, CancellationToken cancellationToken = default)
+    public async Task WriteChunkAsync(FileId fileId, int chunkIndex, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         if (!_config.EnableCaching || data.Length == 0)
             return;
@@ -183,7 +183,8 @@ public sealed class AudioCacheManager : IAsyncDisposable
             if (!Directory.Exists(directory))
                 Directory.CreateDirectory(directory);
 
-            await File.WriteAllBytesAsync(chunkPath, data, cancellationToken);
+            await using var fs = new FileStream(chunkPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+            await fs.WriteAsync(data, cancellationToken);
 
             entry.CachedChunks.Add(chunkIndex);
             entry.LastAccessed = DateTime.UtcNow;

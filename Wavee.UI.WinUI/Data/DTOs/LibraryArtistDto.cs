@@ -15,6 +15,11 @@ public sealed record LibraryArtistDto
     public DateTimeOffset AddedAt { get; init; }
 
     /// <summary>
+    /// True when this is a ghost/placeholder entry awaiting metadata.
+    /// </summary>
+    public bool IsLoading { get; init; }
+
+    /// <summary>
     /// Formatted follower count (e.g., "1.2M followers")
     /// </summary>
     public string FollowerCountFormatted => FollowerCount switch

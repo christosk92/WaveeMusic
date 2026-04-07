@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
-using DynamicData;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Core.Library.Spotify;
@@ -14,7 +14,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 namespace Wavee.UI.WinUI.Data.Contexts;
 
 /// <summary>
-/// In-memory reactive cache of saved/liked item IDs (tracks, albums, artists).
+/// In-memory cache of saved/liked item IDs (tracks, albums, artists).
 /// Populated from SQLite on startup, kept in sync via Dealer WebSocket deltas.
 /// All lookups are synchronous O(1).
 /// </summary>
@@ -27,11 +27,11 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         [SavedItemType.Artist] = ("spotify:artist:", SpotifyLibraryItemType.Artist, "artists"),
     };
 
-    private readonly Dictionary<SavedItemType, SourceCache<string, string>> _caches = new()
+    private readonly Dictionary<SavedItemType, HashSet<string>> _caches = new()
     {
-        [SavedItemType.Track] = new(id => id),
-        [SavedItemType.Album] = new(id => id),
-        [SavedItemType.Artist] = new(id => id),
+        [SavedItemType.Track] = new(StringComparer.Ordinal),
+        [SavedItemType.Album] = new(StringComparer.Ordinal),
+        [SavedItemType.Artist] = new(StringComparer.Ordinal),
     };
 
     private readonly IMetadataDatabase _database;
@@ -56,14 +56,14 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     {
         var (prefix, _, _) = TypeMap[type];
         var bareId = ExtractBareId(idOrUri, prefix);
-        return bareId != null && _caches[type].Lookup(bareId).HasValue;
+        return bareId != null && _caches[type].Contains(bareId);
     }
 
     public int GetCount(SavedItemType type) =>
         _caches[type].Count;
 
-    public IObservable<IChangeSet<string, string>> Connect(SavedItemType type) =>
-        _caches[type].Connect();
+    public IReadOnlyCollection<string> GetSavedIds(SavedItemType type) =>
+        _caches[type].ToList();
 
     public async Task InitializeAsync()
     {
@@ -74,7 +74,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         {
             try
             {
-                await LoadItemsAsync(type, dbType);
+                await LoadItemsAsync(type, dbType).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -96,7 +96,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         foreach (var (type, (_, dbType, _)) in TypeMap)
         {
             _caches[type].Clear();
-            await LoadItemsAsync(type, dbType);
+            await LoadItemsAsync(type, dbType).ConfigureAwait(false);
         }
 
         _logger?.LogInformation(
@@ -125,11 +125,11 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
 
         // 1. Update in-memory cache immediately (instant UI feedback)
         if (currentlySaved)
-            cache.RemoveKey(bareId);
+            cache.Remove(bareId);
         else
-            cache.AddOrUpdate(bareId);
+            cache.Add(bareId);
 
-        _logger?.LogDebug("ToggleSave: cache updated, new IsSaved={IsSaved}", cache.Lookup(bareId).HasValue);
+        _logger?.LogDebug("ToggleSave: cache updated, new IsSaved={IsSaved}", cache.Contains(bareId));
 
         SaveStateChanged?.Invoke();
 
@@ -143,23 +143,28 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
                     _logger?.LogInformation("ToggleSave: using ISpotifyLibraryService (outbox path)");
                     var success = (type, currentlySaved) switch
                     {
-                        (SavedItemType.Track, true) => await _libraryService.RemoveTrackAsync(itemUri),
-                        (SavedItemType.Track, false) => await _libraryService.SaveTrackAsync(itemUri),
-                        (SavedItemType.Album, true) => await _libraryService.RemoveAlbumAsync(itemUri),
-                        (SavedItemType.Album, false) => await _libraryService.SaveAlbumAsync(itemUri),
-                        (SavedItemType.Artist, true) => await _libraryService.UnfollowArtistAsync(itemUri),
-                        (SavedItemType.Artist, false) => await _libraryService.FollowArtistAsync(itemUri),
+                        (SavedItemType.Track, true) => await _libraryService.RemoveTrackAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Track, false) => await _libraryService.SaveTrackAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Album, true) => await _libraryService.RemoveAlbumAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Album, false) => await _libraryService.SaveAlbumAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Artist, true) => await _libraryService.UnfollowArtistAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Artist, false) => await _libraryService.FollowArtistAsync(itemUri).ConfigureAwait(false),
                         _ => false
                     };
                     _logger?.LogInformation("ToggleSave: library service returned success={Success}", success);
 
-                    if (!success)
+                    if (success)
+                    {
+                        // DB write complete — notify again so list views can reload with data available
+                        SaveStateChanged?.Invoke();
+                    }
+                    else
                     {
                         _logger?.LogWarning("ToggleSave: API call failed, reverting cache for {Uri}", itemUri);
                         if (currentlySaved)
-                            cache.AddOrUpdate(bareId);
+                            cache.Add(bareId);
                         else
-                            cache.RemoveKey(bareId);
+                            cache.Remove(bareId);
                         SaveStateChanged?.Invoke();
                     }
                 }
@@ -169,15 +174,18 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
                     var (_, dbType, _) = TypeMap[type];
                     if (currentlySaved)
                     {
-                        await _database.RemoveFromSpotifyLibraryAsync(itemUri);
+                        await _database.RemoveFromSpotifyLibraryAsync(itemUri).ConfigureAwait(false);
                         _logger?.LogInformation("ToggleSave: removed {Uri} from DB", itemUri);
                     }
                     else
                     {
                         await _database.AddToSpotifyLibraryAsync(itemUri, dbType,
-                            DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                            DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ConfigureAwait(false);
                         _logger?.LogInformation("ToggleSave: added {Uri} to DB", itemUri);
                     }
+
+                    // DB write complete — notify again so list views can reload
+                    SaveStateChanged?.Invoke();
                 }
             }
             catch (Exception ex)
@@ -185,9 +193,9 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
                 _logger?.LogError(ex, "Failed to persist save toggle for {Uri}", itemUri);
                 // Rollback in-memory state
                 if (currentlySaved)
-                    cache.AddOrUpdate(bareId);
+                    cache.Add(bareId);
                 else
-                    cache.RemoveKey(bareId);
+                    cache.Remove(bareId);
                 SaveStateChanged?.Invoke();
             }
         });
@@ -202,18 +210,15 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
 
         while (true)
         {
-            var entities = await _database.GetSpotifyLibraryItemsAsync(dbType, pageSize, offset);
+            var entities = await _database.GetSpotifyLibraryItemsAsync(dbType, pageSize, offset).ConfigureAwait(false);
             if (entities.Count == 0) break;
 
-            cache.Edit(c =>
+            foreach (var entity in entities)
             {
-                foreach (var entity in entities)
-                {
-                    var bareId = ExtractBareId(entity.Uri, prefix);
-                    if (bareId != null)
-                        c.AddOrUpdate(bareId);
-                }
-            });
+                var bareId = ExtractBareId(entity.Uri, prefix);
+                if (bareId != null)
+                    cache.Add(bareId);
+            }
 
             offset += entities.Count;
             if (entities.Count < pageSize) break;
@@ -251,23 +256,20 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
                 continue;
 
             var cache = _caches[type];
-            cache.Edit(c =>
+            foreach (var item in changeEvent.Items)
             {
-                foreach (var item in changeEvent.Items)
-                {
-                    if (!item.ItemUri.StartsWith(prefix, StringComparison.Ordinal))
-                        continue;
+                if (!item.ItemUri.StartsWith(prefix, StringComparison.Ordinal))
+                    continue;
 
-                    var bareId = ExtractBareId(item.ItemUri, prefix);
-                    if (bareId == null) continue;
+                var bareId = ExtractBareId(item.ItemUri, prefix);
+                if (bareId == null) continue;
 
-                    if (item.IsRemoved)
-                        c.Remove(bareId);
-                    else
-                        c.AddOrUpdate(bareId);
-                    changed = true;
-                }
-            });
+                if (item.IsRemoved)
+                    cache.Remove(bareId);
+                else
+                    cache.Add(bareId);
+                changed = true;
+            }
         }
 
         if (changed) SaveStateChanged?.Invoke();
@@ -282,7 +284,5 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     public void Dispose()
     {
         _disposables.Dispose();
-        foreach (var cache in _caches.Values)
-            cache.Dispose();
     }
 }

@@ -1,15 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Reactive.Disposables;
-using System.Reactive.Disposables.Fluent;
-using System.Reactive.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using DynamicData;
-using DynamicData.Binding;
 using Microsoft.Extensions.Logging;
-using ReactiveUI;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -28,20 +23,11 @@ public enum SearchFilterType
     Playlists
 }
 
-public sealed partial class SearchViewModel : ObservableObject, ITabBarItemContent, IDisposable
+public sealed partial class SearchViewModel : ObservableObject, ITabBarItemContent
 {
     private readonly IPathfinderClient _pathfinderClient;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
-    private readonly SourceCache<SearchResultItem, string> _resultsSource = new(r => r.Uri);
-    private readonly CompositeDisposable _disposables = new();
-
-    // Per-section output collections
-    private readonly ReadOnlyObservableCollection<SearchResultItem> _tracks;
-    private readonly ReadOnlyObservableCollection<ITrackItem> _adaptedTracks;
-    private readonly ReadOnlyObservableCollection<SearchResultItem> _artists;
-    private readonly ReadOnlyObservableCollection<SearchResultItem> _albums;
-    private readonly ReadOnlyObservableCollection<SearchResultItem> _playlists;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -76,11 +62,11 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     private bool _showPlaylists = true;
 
-    public ReadOnlyObservableCollection<SearchResultItem> Tracks => _tracks;
-    public ReadOnlyObservableCollection<ITrackItem> AdaptedTracks => _adaptedTracks;
-    public ReadOnlyObservableCollection<SearchResultItem> Artists => _artists;
-    public ReadOnlyObservableCollection<SearchResultItem> Albums => _albums;
-    public ReadOnlyObservableCollection<SearchResultItem> Playlists => _playlists;
+    public ObservableCollection<SearchResultItem> Tracks { get; } = [];
+    public ObservableCollection<ITrackItem> AdaptedTracks { get; } = [];
+    public ObservableCollection<SearchResultItem> Artists { get; } = [];
+    public ObservableCollection<SearchResultItem> Albums { get; } = [];
+    public ObservableCollection<SearchResultItem> Playlists { get; } = [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -98,60 +84,15 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             Title = "Search"
         };
-
-        // ── Reactive pipelines: one SourceCache → four filtered output collections ──
-
-        _resultsSource.Connect()
-            .Filter(r => r.Type == SearchResultType.Track)
-            .Bind(out _tracks)
-            .DisposeMany()
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        _resultsSource.Connect()
-            .Filter(r => r.Type == SearchResultType.Track)
-            .Transform(r => (ITrackItem)new SearchTrackAdapter(r))
-            .Bind(out _adaptedTracks)
-            .DisposeMany()
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        _resultsSource.Connect()
-            .Filter(r => r.Type == SearchResultType.Artist)
-            .Bind(out _artists)
-            .DisposeMany()
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        _resultsSource.Connect()
-            .Filter(r => r.Type == SearchResultType.Album)
-            .Bind(out _albums)
-            .DisposeMany()
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        _resultsSource.Connect()
-            .Filter(r => r.Type == SearchResultType.Playlist)
-            .Bind(out _playlists)
-            .DisposeMany()
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        // ── Filter chip → section visibility ──
-
-        this.WhenAnyValue(x => x.SelectedFilter)
-            .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(UpdateSectionVisibility)
-            .DisposeWith(_disposables);
     }
 
-    private void UpdateSectionVisibility(SearchFilterType filter)
+    partial void OnSelectedFilterChanged(SearchFilterType value)
     {
-        ShowTopResult = filter == SearchFilterType.All;
-        ShowTracks = filter is SearchFilterType.All or SearchFilterType.Songs;
-        ShowArtists = filter is SearchFilterType.All or SearchFilterType.Artists;
-        ShowAlbums = filter is SearchFilterType.All or SearchFilterType.Albums;
-        ShowPlaylists = filter is SearchFilterType.All or SearchFilterType.Playlists;
+        ShowTopResult = value == SearchFilterType.All;
+        ShowTracks = value is SearchFilterType.All or SearchFilterType.Songs;
+        ShowArtists = value is SearchFilterType.All or SearchFilterType.Artists;
+        ShowAlbums = value is SearchFilterType.All or SearchFilterType.Albums;
+        ShowPlaylists = value is SearchFilterType.All or SearchFilterType.Playlists;
     }
 
     public async Task LoadAsync(string query)
@@ -168,16 +109,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             var result = await Task.Run(() => _pathfinderClient.SearchAsync(query));
 
-            // Batch update: AddOrUpdate preserves existing items, new ones animate in
-            _resultsSource.Edit(cache =>
-            {
-                cache.Clear();
-                foreach (var item in result.Items)
-                {
-                    cache.AddOrUpdate(item);
-                }
-            });
-
+            DispatchResults(result.Items);
             TopResult = result.TopResult;
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
@@ -198,16 +130,39 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
+    private void DispatchResults(IReadOnlyList<SearchResultItem> items)
+    {
+        Tracks.Clear();
+        AdaptedTracks.Clear();
+        Artists.Clear();
+        Albums.Clear();
+        Playlists.Clear();
+
+        foreach (var item in items)
+        {
+            switch (item.Type)
+            {
+                case SearchResultType.Track:
+                    Tracks.Add(item);
+                    AdaptedTracks.Add(new SearchTrackAdapter(item));
+                    break;
+                case SearchResultType.Artist:
+                    Artists.Add(item);
+                    break;
+                case SearchResultType.Album:
+                    Albums.Add(item);
+                    break;
+                case SearchResultType.Playlist:
+                    Playlists.Add(item);
+                    break;
+            }
+        }
+    }
+
     [RelayCommand]
     private void PlayTrack(object? track)
     {
         if (track is not ITrackItem trackItem) return;
         _playbackStateService.PlayTrack(trackItem.Uri);
-    }
-
-    public void Dispose()
-    {
-        _disposables.Dispose();
-        _resultsSource.Dispose();
     }
 }

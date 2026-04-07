@@ -17,6 +17,8 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class ShortsPill : UserControl
 {
+    private static ImageCacheService? _imageCache;
+
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(ShortsPill),
             new PropertyMetadata(null, OnImageUrlChanged));
@@ -222,8 +224,8 @@ public sealed partial class ShortsPill : UserControl
         if (!string.IsNullOrEmpty(ImageUrl))
         {
             var httpsUrl = SpotifyImageHelper.ToHttpsUrl(ImageUrl);
-            var cache = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
-            PillImage.Source = cache?.GetOrCreate(httpsUrl, 100);
+            _imageCache ??= CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
+            PillImage.Source = _imageCache?.GetOrCreate(httpsUrl, 100);
             PlaceholderIcon.Visibility = Visibility.Collapsed;
             ImageContainer.Background = null;
         }

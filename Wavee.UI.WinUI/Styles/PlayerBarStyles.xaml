@@ -86,6 +86,16 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <Style x:Key="SubtleButtonStyle" BasedOn="{StaticResource DefaultButtonStyle}" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <!-- Play/Pause AppBarButton style with gradient border on hover (Rise style) -->
     <Style x:Key="PlayPauseAppBarButtonStyle" BasedOn="{StaticResource DefaultAppBarButtonStyle}" TargetType="AppBarButton">
         <Setter Property="LabelPosition" Value="Collapsed" />

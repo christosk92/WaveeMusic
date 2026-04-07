@@ -33,6 +33,7 @@
         <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
         <converters:BoolToGridListGlyphConverter x:Key="BoolToGridListGlyphConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:NullToForegroundConverter x:Key="NullToForegroundConverter"/>
     </Page.Resources>
 
     <ScrollView x:Name="PageScrollView">
@@ -93,7 +94,7 @@
                                       
                                             <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                                        FontSize="48" FontWeight="Black"
-                                                       Foreground="White"/>
+                                                       Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}"/>
                                         </Grid>
                                         <Border Width="28" Height="28" CornerRadius="14"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
@@ -112,7 +113,7 @@
                                     <Grid Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                    FontWeight="SemiBold" FontSize="14"
-                                                   Foreground="White" Opacity=".9">
+                                                   Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}" Opacity=".9">
                                             <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
                                         </TextBlock>
                                     </Grid>

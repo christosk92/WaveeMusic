@@ -40,32 +40,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         _cache = Ioc.Default.GetService<HomeFeedCache>();
         InitializeComponent();
 
-        // Hide content initially via composition visual (not XAML Opacity — they multiply)
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
-
-        // Set up template selector for the sections repeater
-        SectionsRepeater.ItemTemplate = new HomeSectionTemplateSelector
-        {
-            ShortsTemplate = (DataTemplate)Resources["ShortsSectionTemplate"],
-            GenericTemplate = (DataTemplate)Resources["GenericSectionTemplate"],
-            BaselineTemplate = (DataTemplate)Resources["BaselineSectionTemplate"]
-        };
-
-        // Re-trigger load when auth completes (session may not be ready at page load).
-        // Message fires on background thread, so dispatch to UI thread.
-        WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
-        {
-            if (m.Value == AuthStatus.Authenticated)
-                DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadCommand.ExecuteAsync(null));
-        });
-
-        // Subscribe to background cache refreshes — apply diffs on UI thread
-        if (_cache != null)
-            _cache.DataRefreshed += OnCacheDataRefreshed;
-
-        // Crossfade from shimmer to content when loading completes
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-
         Loaded += HomePage_Loaded;
         Unloaded += HomePage_Unloaded;
     }
@@ -100,6 +74,28 @@ public sealed partial class HomePage : Page, ITabBarItemContent
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= HomePage_Loaded;
+
+        // Deferred setup — moved from constructor so InitializeComponent returns faster
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+
+        SectionsRepeater.ItemTemplate = new HomeSectionTemplateSelector
+        {
+            ShortsTemplate = (DataTemplate)Resources["ShortsSectionTemplate"],
+            GenericTemplate = (DataTemplate)Resources["GenericSectionTemplate"],
+            BaselineTemplate = (DataTemplate)Resources["BaselineSectionTemplate"]
+        };
+
+        WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
+        {
+            if (m.Value == AuthStatus.Authenticated)
+                DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadCommand.ExecuteAsync(null));
+        });
+
+        if (_cache != null)
+            _cache.DataRefreshed += OnCacheDataRefreshed;
+
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+
         try
         {
             await ViewModel.LoadCommand.ExecuteAsync(null);
@@ -159,6 +155,13 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         if (_cache != null)
             _cache.DataRefreshed -= OnCacheDataRefreshed;
+    }
+
+    public void RefreshWithParameter(object? parameter)
+    {
+        // HomePage has no parameter — a refresh just reloads the feed if stale
+        if (_cache is { IsStale: true })
+            _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

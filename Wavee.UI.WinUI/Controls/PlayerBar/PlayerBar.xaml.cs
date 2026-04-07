@@ -125,14 +125,6 @@ public sealed partial class PlayerBar : UserControl
         NavigationHelpers.OpenAlbum(param, param.Title);
     }
 
-    private void ArtistName_Click(object sender, RoutedEventArgs e)
-    {
-        var artistId = ViewModel.CurrentArtistId;
-        var artistName = ViewModel.ArtistName;
-        if (!string.IsNullOrEmpty(artistId))
-            NavigationHelpers.OpenArtist(artistId, artistName ?? "Artist");
-    }
-
     private void ProgressSlider_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         ViewModel.StartSeeking();

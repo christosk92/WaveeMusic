@@ -347,17 +347,15 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         if (_disposed)
             return;
 
-        _dispatcherQueue.TryEnqueue(() =>
+        _dispatcherQueue.TryEnqueue(async () =>
         {
             if (_disposed)
                 return;
 
-            if (_likeService == null || Artists.Count == 0) return;
+            if (_likeService == null) return;
 
             // Remove artists that are no longer followed
             var removed = Artists.Where(a => !_likeService.IsSaved(SavedItemType.Artist, a.Id)).ToList();
-            if (removed.Count == 0) return;
-
             foreach (var artist in removed)
             {
                 Artists.Remove(artist);
@@ -367,6 +365,37 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
             if (SelectedArtist != null && removed.Any(a => a.Id == SelectedArtist.Id))
             {
                 SelectedArtist = null;
+            }
+
+            // Check for newly followed artists not yet in our collection
+            var existingIds = Artists.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var savedIds = _likeService.GetSavedIds(SavedItemType.Artist);
+            var hasGhosts = Artists.Any(a => a.IsLoading);
+
+            var newIds = savedIds
+                .Select(bareId => $"spotify:artist:{bareId}")
+                .Where(uri => !existingIds.Contains(uri))
+                .ToList();
+
+            if (newIds.Count > 0)
+            {
+                // Add ghost entries immediately for instant UI feedback
+                foreach (var uri in newIds)
+                {
+                    Artists.Add(new LibraryArtistDto
+                    {
+                        Id = uri,
+                        Name = "",
+                        IsLoading = true,
+                        AddedAt = DateTimeOffset.UtcNow
+                    });
+                }
+            }
+            else if (hasGhosts)
+            {
+                // Ghost entries exist — try to resolve them from DB
+                await LoadDataAsync(preserveSelection: true);
+                return;
             }
 
             ApplyFilter();

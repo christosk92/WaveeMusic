@@ -1,3 +1,4 @@
+using System;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -15,6 +16,12 @@ public sealed class TrackContextMenuOptions
     public ICommand? RemoveCommand { get; init; }
     public string? RemoveLabel { get; init; }
     public ICommand? ToggleLikeCommand { get; init; }
+    public ICommand? StartRadioCommand { get; init; }
+    public ICommand? ShareCommand { get; init; }
+    public Action? ShowCreditsAction { get; init; }
+    public Action? ToggleCanvasAction { get; init; }
+    public bool ShowCanvasToggle { get; init; }
+    public bool IsCanvasVisible { get; init; }
 }
 
 /// <summary>
@@ -109,6 +116,64 @@ public static class TrackContextMenu
         };
         goToAlbumItem.Click += GoToAlbum_Click;
         menu.Items.Add(goToAlbumItem);
+
+        // Start radio
+        if (options.StartRadioCommand != null)
+        {
+            var radioItem = new MenuFlyoutItem
+            {
+                Text = "Start radio",
+                Icon = new FontIcon { Glyph = "\uEC05" },
+                Command = options.StartRadioCommand,
+                CommandParameter = track
+            };
+            menu.Items.Add(radioItem);
+        }
+
+        // Details-panel-specific items
+        if (options.ShowCreditsAction != null || (options.ShowCanvasToggle && options.ToggleCanvasAction != null))
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            if (options.ShowCreditsAction != null)
+            {
+                var creditsItem = new MenuFlyoutItem
+                {
+                    Text = "Show credits",
+                    Icon = new FontIcon { Glyph = "\uE946" }
+                };
+                var creditsAction = options.ShowCreditsAction;
+                creditsItem.Click += (_, _) => creditsAction();
+                menu.Items.Add(creditsItem);
+            }
+
+            if (options.ShowCanvasToggle && options.ToggleCanvasAction != null)
+            {
+                var canvasItem = new MenuFlyoutItem
+                {
+                    Text = options.IsCanvasVisible ? "Hide canvas" : "Show canvas",
+                    Icon = new FontIcon { Glyph = options.IsCanvasVisible ? "\uED1A" : "\uE714" }
+                };
+                var canvasAction = options.ToggleCanvasAction;
+                canvasItem.Click += (_, _) => canvasAction();
+                menu.Items.Add(canvasItem);
+            }
+        }
+
+        // Share
+        if (options.ShareCommand != null)
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            var shareItem = new MenuFlyoutItem
+            {
+                Text = "Share",
+                Icon = new FontIcon { Glyph = "\uE72D" },
+                Command = options.ShareCommand,
+                CommandParameter = track
+            };
+            menu.Items.Add(shareItem);
+        }
 
         // Remove (if command provided)
         if (options.RemoveCommand != null)

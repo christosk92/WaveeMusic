@@ -1,6 +1,6 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using DynamicData;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
 
@@ -10,7 +10,7 @@ namespace Wavee.UI.WinUI.Data.Contracts;
 public enum SavedItemType { Track, Album, Artist }
 
 /// <summary>
-/// In-memory reactive cache of saved/liked item IDs (tracks, albums, artists).
+/// In-memory cache of saved/liked item IDs (tracks, albums, artists).
 /// Populated from SQLite on startup, kept in sync via Dealer WebSocket deltas.
 /// All lookups are synchronous O(1) — no API or database calls.
 /// </summary>
@@ -34,12 +34,6 @@ public interface ITrackLikeService
     void ToggleSave(SavedItemType type, string itemUri, bool currentlySaved);
 
     /// <summary>
-    /// DynamicData observable for a specific item type.
-    /// Connect to drive reactive UI updates across all views.
-    /// </summary>
-    IObservable<IChangeSet<string, string>> Connect(SavedItemType type);
-
-    /// <summary>
     /// Initial population from SQLite. Call once on startup after library sync.
     /// </summary>
     Task InitializeAsync();
@@ -49,6 +43,11 @@ public interface ITrackLikeService
     /// to pick up newly synced data.
     /// </summary>
     Task ReloadCacheAsync();
+
+    /// <summary>
+    /// Returns all saved bare IDs for a given item type from in-memory cache.
+    /// </summary>
+    IReadOnlyCollection<string> GetSavedIds(SavedItemType type);
 
     /// <summary>
     /// Fired whenever any saved state changes. Subscribe to refresh UI.

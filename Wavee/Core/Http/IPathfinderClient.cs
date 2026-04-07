@@ -116,4 +116,18 @@ public interface IPathfinderClient
     Task<RecentlyPlayedEntitiesResponse> FetchEntitiesForRecentlyPlayedAsync(
         IReadOnlyList<string> uris,
         CancellationToken ct = default);
+
+    /// <summary>Fetches merchandise items for an album.</summary>
+    Task<AlbumMerchResponse> GetAlbumMerchAsync(string albumUri, CancellationToken ct = default);
+
+    /// <summary>Fetches full track credits (all contributors, grouped by role).</summary>
+    Task<TrackCreditsResponse> GetTrackCreditsAsync(
+        string trackUri, int contributorsLimit = 100,
+        CancellationToken ct = default);
+
+    /// <summary>Fetches NPV (Now Playing View) artist and track details for the details panel.</summary>
+    Task<NpvArtistResponse> GetNpvArtistAsync(
+        string artistUri, string trackUri,
+        int contributorsLimit = 10, int contributorsOffset = 0,
+        CancellationToken ct = default);
 }

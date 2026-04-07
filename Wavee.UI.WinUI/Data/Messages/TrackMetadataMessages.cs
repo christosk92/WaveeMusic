@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Messages;
 
@@ -26,6 +27,7 @@ public sealed class TrackMetadataEnrichedMessage
     public string? AlbumArtLarge { get; init; }
     public string? ArtistId { get; init; }
     public string? AlbumId { get; init; }
+    public IReadOnlyList<ArtistCredit>? Artists { get; init; }
 }
 
 /// <summary>

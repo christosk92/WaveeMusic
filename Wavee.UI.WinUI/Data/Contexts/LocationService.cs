@@ -30,7 +30,7 @@ public sealed class LocationService : ILocationService
 
         try
         {
-            var loc = await _pathfinder.GetUserLocationAsync(ct);
+            var loc = await _pathfinder.GetUserLocationAsync(ct).ConfigureAwait(false);
             CurrentCity = loc.Data?.Me?.Profile?.Location?.Name;
         }
         catch (Exception ex)
@@ -43,7 +43,7 @@ public sealed class LocationService : ILocationService
 
     public async Task<List<LocationSearchResult>> SearchAsync(string query, CancellationToken ct = default)
     {
-        var response = await _pathfinder.SearchConcertLocationsAsync(query, ct);
+        var response = await _pathfinder.SearchConcertLocationsAsync(query, ct).ConfigureAwait(false);
         return response.Data?.ConcertLocations?.Items?
             .Select(loc => new LocationSearchResult
             {
@@ -56,7 +56,7 @@ public sealed class LocationService : ILocationService
 
     public async Task<string?> SaveByGeonameIdAsync(string geonameId, string? cityName = null, CancellationToken ct = default)
     {
-        await _pathfinder.SaveLocationAsync(geonameId, ct);
+        await _pathfinder.SaveLocationAsync(geonameId, ct).ConfigureAwait(false);
         if (cityName != null)
             CurrentCity = cityName;
         _fetched = false; // invalidate cache so next GetUserCityAsync re-fetches
@@ -65,7 +65,7 @@ public sealed class LocationService : ILocationService
 
     public async Task<LocationSearchResult?> SearchByCoordinatesAsync(double lat, double lon, CancellationToken ct = default)
     {
-        var locResponse = await _pathfinder.GetConcertLocationByLatLonAsync(lat, lon, ct);
+        var locResponse = await _pathfinder.GetConcertLocationByLatLonAsync(lat, lon, ct).ConfigureAwait(false);
         var firstLoc = locResponse.Data?.ConcertLocations?.Items?.FirstOrDefault();
         if (firstLoc?.GeonameId == null) return null;
 

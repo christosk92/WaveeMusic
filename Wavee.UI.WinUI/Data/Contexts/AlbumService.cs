@@ -46,7 +46,7 @@ public sealed class AlbumService : IAlbumService
         // 2. SQLite (stores lean AlbumTrackResult, map to DTO at boundary)
         try
         {
-            var json = await _db.GetAlbumTracksCacheAsync(albumUri, ct);
+            var json = await _db.GetAlbumTracksCacheAsync(albumUri, ct).ConfigureAwait(false);
             if (json != null)
             {
                 var raw = JsonSerializer.Deserialize(json, AlbumTrackResultJsonContext.Default.ListAlbumTrackResult);
@@ -64,7 +64,7 @@ public sealed class AlbumService : IAlbumService
         }
 
         // 3. API
-        var rawResult = await FetchFromApiAsync(albumUri, ct);
+        var rawResult = await FetchFromApiAsync(albumUri, ct).ConfigureAwait(false);
         var result = rawResult.Select(r => ToDto(r, albumUri)).ToList();
         _hot.TryAdd(albumUri, result);
 
@@ -74,7 +74,7 @@ public sealed class AlbumService : IAlbumService
             try
             {
                 var jsonData = JsonSerializer.Serialize(rawResult, AlbumTrackResultJsonContext.Default.ListAlbumTrackResult);
-                await _db.SetAlbumTracksCacheAsync(albumUri, jsonData);
+                await _db.SetAlbumTracksCacheAsync(albumUri, jsonData).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -87,7 +87,7 @@ public sealed class AlbumService : IAlbumService
 
     public async Task<AlbumDetailResult> GetDetailAsync(string albumUri, CancellationToken ct = default)
     {
-        var response = await _pathfinder.GetAlbumAsync(albumUri, ct);
+        var response = await _pathfinder.GetAlbumAsync(albumUri, ct).ConfigureAwait(false);
         var album = response.Data?.AlbumUnion
             ?? throw new InvalidOperationException("Album not found");
 
@@ -133,6 +133,31 @@ public sealed class AlbumService : IAlbumService
                     Year = r.Date?.Year ?? 0
                 }).ToList() ?? []
         };
+    }
+
+    public async Task<List<AlbumMerchItemResult>> GetMerchAsync(string albumUri, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _pathfinder.GetAlbumMerchAsync(albumUri, ct).ConfigureAwait(false);
+            var items = response.Data?.AlbumUnion?.Merch?.Items;
+            if (items == null || items.Count == 0)
+                return [];
+
+            return items.Select(i => new AlbumMerchItemResult
+            {
+                Name = i.NameV2,
+                Description = i.Description,
+                ImageUrl = i.Image?.Sources?.FirstOrDefault()?.Url,
+                Price = i.Price,
+                ShopUrl = i.Url
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch merch for {Uri}", albumUri);
+            return [];
+        }
     }
 
     private static DateTimeOffset ParseAlbumDate(Wavee.Core.Http.Pathfinder.AlbumDate? date)
@@ -192,7 +217,7 @@ public sealed class AlbumService : IAlbumService
 
     private async Task<List<AlbumTrackResult>> FetchFromApiAsync(string albumUri, CancellationToken ct)
     {
-        var response = await _pathfinder.GetAlbumTracksAsync(albumUri, ct: ct);
+        var response = await _pathfinder.GetAlbumTracksAsync(albumUri, ct: ct).ConfigureAwait(false);
         var items = response.Data?.AlbumUnion?.TracksV2?.Items;
 
         if (items == null || items.Count == 0)

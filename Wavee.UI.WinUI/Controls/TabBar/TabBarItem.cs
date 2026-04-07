@@ -92,7 +92,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         ContentFrame = new Frame
         {
-            CacheSize = 15,
+            CacheSize = 5,
             IsNavigationStackEnabled = true
         };
         ContentFrame.Navigated += ContentFrame_Navigated;
@@ -112,16 +112,39 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             NavigationParameter = parameter
         };
 
-        // WinUI Frame suppresses navigation to the same page type.
-        // Force it by clearing the content first.
+        // If the current page is already the target type, reuse it instead of
+        // destroying and recreating the entire visual tree (expensive XAML parsing).
         if (ContentFrame.Content?.GetType() == pageType)
+        {
+            var currentUri = GetParameterUri(_navigationParameter?.NavigationParameter);
+            var newUri = GetParameterUri(parameter);
+
+            if (string.Equals(currentUri, newUri, StringComparison.Ordinal))
+                return; // Same page, same parameter — nothing to do
+
+            // Different parameter — let the page refresh in-place
+            if (ContentFrame.Content is ITabBarItemContent refreshable)
+            {
+                refreshable.RefreshWithParameter(parameter);
+                return;
+            }
+
+            // Fallback: page doesn't support refresh, force re-creation
             ContentFrame.Content = null;
+        }
 
         var transition = suppressTransition
             ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
             : new DrillInNavigationTransitionInfo();
         ContentFrame.Navigate(pageType, parameter, transition);
     }
+
+    private static string? GetParameterUri(object? parameter) => parameter switch
+    {
+        ContentNavigationParameter nav => nav.Uri,
+        string s => s,
+        _ => null
+    };
 
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {

@@ -10,6 +10,8 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class MediaCard : UserControl
 {
+    private static ImageCacheService? _imageCache;
+
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RightTappedRoutedEventArgs>? CardRightTapped;
 
@@ -52,8 +54,8 @@ public sealed partial class MediaCard : UserControl
             var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
             if (!string.IsNullOrEmpty(httpsUrl))
             {
-                var cache = Ioc.Default.GetService<ImageCacheService>();
-                card.CardImage.Source = cache?.GetOrCreate(httpsUrl, 200);
+                _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
+                card.CardImage.Source = _imageCache?.GetOrCreate(httpsUrl, 200);
                 card.PlaceholderIcon.Visibility = Visibility.Collapsed;
             }
             else

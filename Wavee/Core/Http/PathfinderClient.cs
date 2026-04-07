@@ -81,6 +81,8 @@ public sealed class PathfinderClient : IPathfinderClient
         httpRequest.Headers.AcceptLanguage.ParseAdd("en");
         // Artist overview needs WebPlayer platform to get watchFeedEntrypoint data
         var useWebPlayer = operationName is PathfinderOperations.QueryArtistOverview
+            or PathfinderOperations.QueryNpvArtist
+            or PathfinderOperations.QueryTrackCreditsModal
             or PathfinderOperations.Home
             or PathfinderOperations.FetchEntitiesForRecentlyPlayed
             or PathfinderOperations.UserLocation
@@ -338,6 +340,55 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<AlbumMerchResponse> GetAlbumMerchAsync(
+        string albumUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(albumUri);
+
+        return await QueryAsync(
+            new AlbumMerchVariables { Uri = albumUri },
+            PathfinderOperations.QueryAlbumMerch,
+            PathfinderOperations.QueryAlbumMerchHash,
+            AlbumMerchJsonContext.Default.AlbumMerchResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<NpvArtistResponse> GetNpvArtistAsync(
+        string artistUri, string trackUri,
+        int contributorsLimit = 10, int contributorsOffset = 0,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artistUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackUri);
+
+        var variables = new NpvArtistVariables(artistUri, trackUri, contributorsLimit, contributorsOffset);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryNpvArtist,
+            PathfinderOperations.QueryNpvArtistHash,
+            NpvArtistJsonContext.Default.NpvArtistResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<TrackCreditsResponse> GetTrackCreditsAsync(
+        string trackUri, int contributorsLimit = 100, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackUri);
+
+        var variables = new TrackCreditsVariables(trackUri, contributorsLimit);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryTrackCreditsModal,
+            PathfinderOperations.QueryTrackCreditsModalHash,
+            TrackCreditsJsonContext.Default.TrackCreditsResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<UserLocationResponse> GetUserLocationAsync(CancellationToken ct = default)
     {
         return await QueryAsync(
@@ -556,6 +607,18 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is RecentlyPlayedEntitiesVariables rpev)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(rpev, RecentlyPlayedEntitiesVariablesJsonContext.Default.RecentlyPlayedEntitiesVariables);
+        }
+        else if (variables is AlbumMerchVariables amv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(amv, AlbumMerchVariablesJsonContext.Default.AlbumMerchVariables);
+        }
+        else if (variables is NpvArtistVariables npv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(npv, NpvArtistVariablesJsonContext.Default.NpvArtistVariables);
+        }
+        else if (variables is TrackCreditsVariables tcv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(tcv, TrackCreditsVariablesJsonContext.Default.TrackCreditsVariables);
         }
         else
         {

@@ -14,6 +14,7 @@ public interface IAlbumService
 {
     Task<List<AlbumTrackDto>> GetTracksAsync(string albumUri, CancellationToken ct = default);
     Task<AlbumDetailResult> GetDetailAsync(string albumUri, CancellationToken ct = default);
+    Task<List<AlbumMerchItemResult>> GetMerchAsync(string albumUri, CancellationToken ct = default);
 }
 
 public sealed record AlbumDetailResult
@@ -60,6 +61,15 @@ public sealed record AlbumRelatedResult
     public string? Type { get; init; }
     public string? ImageUrl { get; init; }
     public int Year { get; init; }
+}
+
+public sealed record AlbumMerchItemResult
+{
+    public string? Name { get; init; }
+    public string? Description { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? Price { get; init; }
+    public string? ShopUrl { get; init; }
 }
 
 public sealed record AlbumTrackResult

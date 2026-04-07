@@ -38,7 +38,8 @@
                         NavigationUri="{x:Bind Id}"
                         PlaceholderGlyph="&#xE93C;"
                         IsCircularImage="False"
-                        IsPassive="True"/>
+                        IsPassive="True"
+                        IsLoading="{x:Bind IsLoading}"/>
                 </ItemContainer>
             </DataTemplate>
         </controls:LibraryGridView.ItemTemplate>

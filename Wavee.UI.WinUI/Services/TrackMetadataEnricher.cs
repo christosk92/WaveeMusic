@@ -12,6 +12,7 @@ using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -65,7 +66,11 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
     {
         try
         {
-            var track = await _metadataClient.GetTrackAsync(trackUri, ct);
+            // Yield immediately so the calling dispatcher frame (OnRemoteStateChanged)
+            // can finish and render before we do cache lookups + protobuf deserialization.
+            await Task.Yield();
+
+            var track = await _metadataClient.GetTrackAsync(trackUri, ct).ConfigureAwait(false);
             if (ct.IsCancellationRequested || track == null) return;
 
             var trackId = ExtractTrackId(trackUri);
@@ -74,6 +79,16 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
             var artist = track.Artist.Count > 0
                 ? string.Join(", ", track.Artist.Select(a => a.Name))
                 : null;
+
+            // Build per-artist credits (name + URI) for MetadataControl
+            var artistCredits = new List<ArtistCredit>();
+            foreach (var a in track.Artist)
+            {
+                string? uri = null;
+                if (a.Gid is { Length: > 0 } aGid)
+                    uri = $"spotify:artist:{SpotifyId.FromRaw(aGid.Span, SpotifyIdType.Artist).ToBase62()}";
+                artistCredits.Add(new ArtistCredit(a.Name, uri));
+            }
 
             var imageDefault = GetImageUrl(track.Album, Image.Types.Size.Default);
             var imageLarge = GetImageUrl(track.Album, Image.Types.Size.Large);
@@ -100,6 +115,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                 AlbumArtLarge = imageLarge ?? imageXLarge ?? imageDefault,
                 ArtistId = artistUri,
                 AlbumId = albumUri,
+                Artists = artistCredits,
             });
         }
         catch (OperationCanceledException) { }

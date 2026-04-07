@@ -183,6 +183,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         };
     }
 
+    public void RefreshWithParameter(object? parameter)
+    {
+        LoadNewContent(parameter);
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -190,12 +195,17 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         Helpers.ConnectedAnimationHelper.TryStartAnimation(
             Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
 
-        if (e.Parameter is ContentNavigationParameter nav)
+        LoadNewContent(e.Parameter);
+    }
+
+    private void LoadNewContent(object? parameter)
+    {
+        if (parameter is ContentNavigationParameter nav)
         {
             ViewModel.PrefillFrom(nav);
             _ = ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
         }
-        else if (e.Parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
+        else if (parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
         {
             _ = ViewModel.LoadCommand.ExecuteAsync(albumId);
         }
@@ -237,6 +247,15 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private void TrackList_NewPlaylistRequested(object? sender, IReadOnlyList<string> trackIds)
     {
         NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: trackIds.ToList());
+    }
+
+    private void MerchItem_Click(object sender, EventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is AlbumMerchItemResult merch
+            && !string.IsNullOrEmpty(merch.ShopUrl))
+        {
+            _ = ViewModel.OpenMerchItemCommand.ExecuteAsync(merch.ShopUrl);
+        }
     }
 
     private void RelatedAlbum_Click(object sender, EventArgs e)

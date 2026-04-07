@@ -107,6 +107,13 @@ public sealed class AppSettings
     /// </summary>
     public double[] EqualizerBandGains { get; set; } = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
+    // ── Details panel ──
+
+    /// <summary>
+    /// Whether to show the canvas video background in the Details panel.
+    /// </summary>
+    public bool ShowDetailsCanvas { get; set; } = true;
+
     // ── Lyrics ──
 
     /// <summary>

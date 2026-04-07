@@ -69,13 +69,27 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <!-- Circular Artist Image -->
+                                <!-- Shimmer state (ghost entry) -->
+                                <controls:Shimmer
+                                    Grid.Column="0"
+                                    Width="48" Height="48" CornerRadius="24"
+                                    Visibility="{x:Bind IsLoading, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center" Spacing="6"
+                                    Visibility="{x:Bind IsLoading, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <controls:Shimmer Height="16" HorizontalAlignment="Left" Width="120"/>
+                                    <controls:Shimmer Height="12" HorizontalAlignment="Left" Width="80"/>
+                                </StackPanel>
+
+                                <!-- Real content -->
                                 <Grid
                                     Grid.Column="0"
                                     Width="48"
                                     Height="48"
                                     CornerRadius="24"
-                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    Visibility="{x:Bind IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                     <FontIcon
                                         Glyph="&#xE77B;"
                                         FontSize="20"
@@ -97,7 +111,10 @@
                                 </Grid>
 
                                 <!-- Name + Followers -->
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center" Spacing="2"
+                                    Visibility="{x:Bind IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                     <TextBlock
                                         Text="{x:Bind Name}"
                                         Style="{StaticResource BodyStrongTextBlockStyle}"

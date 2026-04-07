@@ -48,7 +48,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default)
     {
         if (_localEngine is AudioPipeline pipeline)
-            await pipeline.SwitchQualityAsync(quality, ct);
+            await pipeline.SwitchQualityAsync(quality, ct).ConfigureAwait(false);
     }
 
     public void SetNormalizationEnabled(bool enabled)
@@ -98,7 +98,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                     try
                     {
                         _logger?.LogInformation("Routing play to local AudioPipeline");
-                        await _localEngine.PlayAsync(typedPlayCommand, ct);
+                        await Task.Run(async () => await _localEngine.PlayAsync(typedPlayCommand, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
                         return PlaybackResult.Success();
                     }
                     catch (Exception ex)
@@ -108,7 +108,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                     }
                 }
 
-                return await RouteToLocalEngineAsync(_localEngine, endpoint, data, ct);
+                return await RouteToLocalEngineAsync(_localEngine, endpoint, data, ct).ConfigureAwait(false);
             }
 
             return PlaybackResult.Failure(PlaybackErrorKind.DeviceUnavailable,
@@ -117,7 +117,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
         // Remote: always use dict for JSON serialization
         var ackTimeout = GetAckTimeout(endpoint);
-        var result = await _client.SendCommandAsync(target, endpoint, data, ackTimeout: ackTimeout, ct: ct);
+        var result = await _client.SendCommandAsync(target, endpoint, data, ackTimeout: ackTimeout, ct: ct).ConfigureAwait(false);
 
         // The server already accepted the command (HTTP 2xx). Missing dealer ack is often
         // transient and should not stall interactive playback with retries.
@@ -187,7 +187,11 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
         var typedCmd = new Wavee.Connect.Commands.PlayCommand
         {
-            Endpoint = "play", Key = "local/0", MessageId = 0, MessageIdent = "local", SenderDeviceId = "",
+            Endpoint = "play",
+            Key = "local/0",
+            MessageId = 0,
+            MessageIdent = "local",
+            SenderDeviceId = "",
             ContextUri = contextUri,
             TrackUri = options?.StartTrackUri,
             SkipToIndex = options?.StartIndex,
@@ -226,7 +230,11 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
         var typedCmd = new Wavee.Connect.Commands.PlayCommand
         {
-            Endpoint = "play", Key = "local/0", MessageId = 0, MessageIdent = "local", SenderDeviceId = "",
+            Endpoint = "play",
+            Key = "local/0",
+            MessageId = 0,
+            MessageIdent = "local",
+            SenderDeviceId = "",
             ContextUri = "spotify:internal:queue",
             SkipToIndex = startIndex > 0 ? startIndex : null,
             PageTracks = trackUris.Select(uri => new Wavee.Connect.Commands.PageTrack(uri, "")).ToList(),
@@ -291,45 +299,45 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             switch (endpoint)
             {
                 case "resume":
-                    await engine.ResumeAsync(ct);
+                    await engine.ResumeAsync(ct).ConfigureAwait(false);
                     break;
                 case "pause":
-                    await engine.PauseAsync(ct);
+                    await engine.PauseAsync(ct).ConfigureAwait(false);
                     break;
                 case "skip_next":
-                    await engine.SkipNextAsync(ct);
+                    await engine.SkipNextAsync(ct).ConfigureAwait(false);
                     break;
                 case "skip_prev":
-                    await engine.SkipPreviousAsync(ct);
+                    await engine.SkipPreviousAsync(ct).ConfigureAwait(false);
                     break;
                 case "seek_to":
                     if (data?.TryGetValue("value", out var seekVal) == true && seekVal is long seekMs)
-                        await engine.SeekAsync(seekMs, ct);
+                        await engine.SeekAsync(seekMs, ct).ConfigureAwait(false);
                     else if (data?.TryGetValue("value", out var seekObj) == true)
-                        await engine.SeekAsync(Convert.ToInt64(seekObj), ct);
+                        await engine.SeekAsync(Convert.ToInt64(seekObj), ct).ConfigureAwait(false);
                     break;
                 case "set_shuffling_context":
                     if (data?.TryGetValue("value", out var shuffleVal) == true)
-                        await engine.SetShuffleAsync(Convert.ToBoolean(shuffleVal), ct);
+                        await engine.SetShuffleAsync(Convert.ToBoolean(shuffleVal), ct).ConfigureAwait(false);
                     break;
                 case "set_repeating_context":
                     if (data?.TryGetValue("value", out var repeatCtxVal) == true)
-                        await engine.SetRepeatContextAsync(Convert.ToBoolean(repeatCtxVal), ct);
+                        await engine.SetRepeatContextAsync(Convert.ToBoolean(repeatCtxVal), ct).ConfigureAwait(false);
                     break;
                 case "set_repeating_track":
                     if (data?.TryGetValue("value", out var repeatTrkVal) == true)
-                        await engine.SetRepeatTrackAsync(Convert.ToBoolean(repeatTrkVal), ct);
+                        await engine.SetRepeatTrackAsync(Convert.ToBoolean(repeatTrkVal), ct).ConfigureAwait(false);
                     break;
                 case "set_volume":
                     if (data?.TryGetValue("value", out var volVal) == true)
                     {
                         var vol65535 = Convert.ToInt32(volVal);
-                        await engine.SetVolumeAsync((float)(vol65535 / 65535.0));
+                        await engine.SetVolumeAsync((float)(vol65535 / 65535.0)).ConfigureAwait(false);
                     }
                     break;
                 case "play":
                     var playCmd = BuildPlayCommand(data);
-                    await engine.PlayAsync(playCmd, ct);
+                    await engine.PlayAsync(playCmd, ct).ConfigureAwait(false);
                     break;
                 default:
                     _logger?.LogDebug("Unhandled local endpoint: {Endpoint}", endpoint);
@@ -412,7 +420,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             {
                 ["restore_paused"] = startPlaying ? "restore" : "pause"
             }
-        }, ackTimeout: GetAckTimeout("transfer"), ct: ct);
+        }, ackTimeout: GetAckTimeout("transfer"), ct: ct).ConfigureAwait(false);
 
         return ToPlaybackResult(result);
     }

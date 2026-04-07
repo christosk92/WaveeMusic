@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.RecentlyPlayedSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <DataTemplate x:Key="DefaultCardTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:ContentCard
+                ImageUrl="{x:Bind ImageUrl}"
+                Title="{x:Bind Title}"
+                Subtitle="{x:Bind Subtitle}"
+                PlaceholderColorHex="{x:Bind ColorHex}"
+                IsCircularImage="False"
+                NavigationUri="{x:Bind Uri}"
+                NavigationTitle="{x:Bind Title}"/>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ArtistCardTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:ContentCard
+                ImageUrl="{x:Bind ImageUrl}"
+                Title="{x:Bind Title}"
+                Subtitle="{x:Bind Subtitle}"
+                PlaceholderColorHex="{x:Bind ColorHex}"
+                PlaceholderGlyph="&#xE77B;"
+                IsCircularImage="True"
+                CenterText="True"
+                NavigationUri="{x:Bind Uri}"
+                NavigationTitle="{x:Bind Title}"/>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <StackPanel x:Name="RootPanel" Visibility="Collapsed">
+        <TextBlock
+            Text="Recently Played"
+            Style="{StaticResource SubtitleTextBlockStyle}"
+            FontWeight="Bold"
+            Margin="0,0,0,16"/>
+
+        <ItemsRepeater x:Name="ItemsHost">
+            <ItemsRepeater.Layout>
+                <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+            </ItemsRepeater.Layout>
+        </ItemsRepeater>
+    </StackPanel>
+</UserControl>

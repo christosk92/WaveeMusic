@@ -53,7 +53,7 @@ public sealed class RecentlyPlayedService : IDisposable
             if (string.IsNullOrEmpty(userId)) return;
 
             // 1. Fetch recently played contexts
-            var recentResponse = await _session.SpClient.GetRecentlyPlayedAsync(userId);
+            var recentResponse = await Task.Run(async () => await _session.SpClient.GetRecentlyPlayedAsync(userId).ConfigureAwait(false)).ConfigureAwait(false);
             var contexts = recentResponse.PlayContexts;
             if (contexts == null || contexts.Count == 0) return;
 
@@ -71,7 +71,8 @@ public sealed class RecentlyPlayedService : IDisposable
             RecentlyPlayedEntitiesResponse? entities = null;
             try
             {
-                entities = await _session.Pathfinder.FetchEntitiesForRecentlyPlayedAsync(uris);
+                entities = await Task.Run(async () =>
+                    await _session.Pathfinder.FetchEntitiesForRecentlyPlayedAsync(uris).ConfigureAwait(false)).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -153,7 +154,7 @@ public sealed class RecentlyPlayedService : IDisposable
             }
             else
             {
-                // Build from context info
+                // Build from context info (placeholder — will be enriched below)
                 var newItem = new HomeSectionItem
                 {
                     Uri = context.ContextUri,
@@ -162,10 +163,62 @@ public sealed class RecentlyPlayedService : IDisposable
                     ContentType = MapContextType(context.Type)
                 };
                 _items.Insert(0, newItem);
+
+                // Resolve full metadata if the placeholder is incomplete
+                if (string.IsNullOrEmpty(context.Name) || string.IsNullOrEmpty(context.ImageUrl))
+                {
+                    _ = ResolveEntityMetadataAsync(newItem);
+                }
             }
 
             ItemsChanged?.Invoke();
         });
+    }
+
+    /// <summary>
+    /// Resolves metadata for a placeholder item via Pathfinder and updates it in-place.
+    /// </summary>
+    private async Task ResolveEntityMetadataAsync(HomeSectionItem placeholder)
+    {
+        try
+        {
+            var entities = await Task.Run(async () =>
+                await _session.Pathfinder.FetchEntitiesForRecentlyPlayedAsync([placeholder.Uri!]).ConfigureAwait(false)).ConfigureAwait(false);
+            if (entities?.Data?.Lookup == null || entities.Data.Lookup.Count == 0)
+                return;
+
+            var entry = entities.Data.Lookup[0];
+            var uri = entry.Uri;
+            if (string.IsNullOrEmpty(uri) && entry.Data is { ValueKind: System.Text.Json.JsonValueKind.Object } el
+                && el.TryGetProperty("uri", out var uriProp))
+            {
+                uri = uriProp.GetString();
+            }
+
+            if (string.IsNullOrEmpty(uri)) return;
+
+            var entityLookup = new Dictionary<string, RecentlyPlayedEntityEntry>(StringComparer.OrdinalIgnoreCase)
+            {
+                [uri] = entry
+            };
+
+            var resolved = MapToHomeSectionItem(uri, entityLookup);
+            if (resolved == null) return;
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                var index = _items.IndexOf(placeholder);
+                if (index >= 0)
+                {
+                    _items[index] = resolved;
+                    ItemsChanged?.Invoke();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve metadata for {Uri}", placeholder.Uri);
+        }
     }
 
     private static HomeSectionItem? MapToHomeSectionItem(
@@ -185,13 +238,29 @@ public sealed class RecentlyPlayedService : IDisposable
 
         if (entityLookup.TryGetValue(uri, out var entity))
         {
-            return entity.TypeName switch
+            // Try type-based dispatch first, then fall back to URI-based inference
+            var result = entity.TypeName switch
             {
                 "ArtistResponseWrapper" => MapArtistEntity(uri, entity),
                 "PlaylistResponseWrapper" => MapPlaylistEntity(uri, entity),
                 "AlbumResponseWrapper" => MapAlbumEntity(uri, entity),
-                _ => new HomeSectionItem { Uri = uri, Title = GetFallbackTitle(uri), ContentType = InferContentType(uri) }
+                _ => null
             };
+
+            // If TypeName didn't match, try URI-based inference with the entity data
+            if (result == null)
+            {
+                var contentType = InferContentType(uri);
+                result = contentType switch
+                {
+                    HomeContentType.Album => MapAlbumEntity(uri, entity),
+                    HomeContentType.Artist => MapArtistEntity(uri, entity),
+                    HomeContentType.Playlist => MapPlaylistEntity(uri, entity),
+                    _ => new HomeSectionItem { Uri = uri, Title = GetFallbackTitle(uri), ContentType = contentType }
+                };
+            }
+
+            return result;
         }
 
         // No metadata — use URI-derived fallback

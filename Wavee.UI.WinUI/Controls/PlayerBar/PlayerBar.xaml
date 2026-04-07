@@ -9,6 +9,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -136,17 +137,19 @@
                             TextWrapping="WrapWholeWords"
                             TextTrimming="CharacterEllipsis" />
                     </HyperlinkButton>
-                    <HyperlinkButton
-                        Padding="0" MinHeight="0" MinWidth="0"
-                        Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
-                        Click="ArtistName_Click">
-                        <TextBlock
-                            Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                            FontSize="12"
-                            Opacity="0.6"
-                            MaxLines="1"
-                            TextTrimming="CharacterEllipsis" />
-                    </HyperlinkButton>
+                    <ctk:MetadataControl
+                        Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
+                        Separator=", ">
+                        <ctk:MetadataControl.TextBlockStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="12" />
+                                <Setter Property="Opacity" Value="0.6" />
+                                <Setter Property="Foreground" Value="{ThemeResource ApplicationForegroundThemeBrush}" />
+                                <Setter Property="MaxLines" Value="1" />
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                            </Style>
+                        </ctk:MetadataControl.TextBlockStyle>
+                    </ctk:MetadataControl>
                     <!-- Remote device indicator -->
                     <StackPanel
                         Orientation="Horizontal"
@@ -299,6 +302,16 @@
                     Command="{x:Bind ViewModel.ToggleQueuePanelCommand}"
                     ToolTipService.ToolTip="Queue">
                     <FontIcon Glyph="&#xE142;" FontSize="14" />
+                </ToggleButton>
+
+                <!-- Details -->
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="32" Height="32" Padding="0"
+                    IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
+                    ToolTipService.ToolTip="Details">
+                    <FontIcon Glyph="&#xE946;" FontSize="14" />
                 </ToggleButton>
 
                 <!-- Lyrics -->

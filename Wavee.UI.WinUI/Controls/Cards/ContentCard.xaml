@@ -5,8 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:ui="using:CommunityToolkit.WinUI.Media" 
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent"
     PointerEntered="Card_PointerEntered"
@@ -36,7 +37,15 @@
             <winUi:Effects.Shadow>
                 <ui:AttachedCardShadow x:Name="CardShadow" Opacity="0" BlurRadius="16" Offset="0,4" CornerRadius="4"/>
             </winUi:Effects.Shadow>
-            <StackPanel Spacing="8">
+            <Grid>
+            <!-- Shimmer overlay (visible when IsLoading=true) -->
+            <StackPanel x:Name="ShimmerOverlay" Spacing="8" Visibility="Collapsed">
+                <controls:Shimmer Height="120" HorizontalAlignment="Stretch" CornerRadius="4"/>
+                <controls:Shimmer Height="16" HorizontalAlignment="Left" Width="100"/>
+                <controls:Shimmer Height="14" HorizontalAlignment="Left" Width="70"/>
+            </StackPanel>
+
+            <StackPanel x:Name="ContentPanel" Spacing="8">
                 <!-- Square image mode -->
                 <Grid x:Name="SquareImageContainer"
                       CornerRadius="4"
@@ -151,6 +160,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            FontSize="12"/>
             </StackPanel>
+            </Grid>
         </Border>
     </Button>
 </UserControl>

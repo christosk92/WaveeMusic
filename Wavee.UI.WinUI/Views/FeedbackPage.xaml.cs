@@ -38,6 +38,7 @@ public sealed partial class FeedbackPage : Page, ITabBarItemContent
         ViewModel = Ioc.Default.GetRequiredService<FeedbackViewModel>();
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -48,6 +49,11 @@ public sealed partial class FeedbackPage : Page, ITabBarItemContent
 
         UpdateCardSelection();
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

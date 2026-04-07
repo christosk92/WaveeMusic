@@ -3,16 +3,11 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using System.Reactive.Disposables;
-using System.Reactive.Disposables.Fluent;
-using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using DynamicData;
-using DynamicData.Binding;
 using Microsoft.Extensions.Logging;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -30,24 +25,18 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly ITrackLikeService? _likeService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
-    private readonly CompositeDisposable _disposables = new();
     private CancellationTokenSource? _discoCts;
     private bool _disposed;
 
-    // ── Reactive data sources ──
-    private readonly SourceCache<LazyTrackItem, string> _topTracksSource = new(t => t.Id);
-    private readonly SourceCache<LazyReleaseItem, string> _releasesSource = new(r => r.Id);
+    // ── Backing data ──
+    private readonly List<LazyReleaseItem> _allReleases = [];
 
-    // ── Reactive output collections (bound to UI) ──
-    private readonly ReadOnlyObservableCollection<LazyTrackItem> _topTracks;
-    private readonly ReadOnlyObservableCollection<LazyReleaseItem> _albums;
-    private readonly ReadOnlyObservableCollection<LazyReleaseItem> _singles;
-    private readonly ReadOnlyObservableCollection<LazyReleaseItem> _compilations;
-
-    public ReadOnlyObservableCollection<LazyTrackItem> TopTracks => _topTracks;
-    public ReadOnlyObservableCollection<LazyReleaseItem> Albums => _albums;
-    public ReadOnlyObservableCollection<LazyReleaseItem> Singles => _singles;
-    public ReadOnlyObservableCollection<LazyReleaseItem> Compilations => _compilations;
+    // ── UI-bound collections ──
+    [ObservableProperty]
+    private ObservableCollection<LazyTrackItem> _topTracks = [];
+    public ObservableCollection<LazyReleaseItem> Albums { get; } = [];
+    public ObservableCollection<LazyReleaseItem> Singles { get; } = [];
+    public ObservableCollection<LazyReleaseItem> Compilations { get; } = [];
 
     // ── Non-reactive collections (simple lists) ──
     [ObservableProperty]
@@ -136,10 +125,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         RefreshNearUserFlags();
     }
 
-    /// <summary>
-    /// Resolves device GPS to a city name but does NOT save yet.
-    /// The UI should confirm with the user before calling SaveLocationAsync.
-    /// </summary>
     public async Task<LocationSearchResult?> ResolveCurrentLocationAsync()
     {
         try
@@ -169,7 +154,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    // ── Constructor (reactive pipelines) ──
+    // ── Constructor ──
 
     public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, IPlaybackService playbackService, ITrackLikeService? likeService = null, ILogger<ArtistViewModel>? logger = null)
     {
@@ -181,47 +166,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
-        // React to follow state changes from other sources (Dealer WebSocket, other pages)
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
-
-        // Top tracks: bind in insertion order (already ordered by popularity from API)
-        _topTracksSource.Connect()
-            .Bind(out _topTracks)
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        // Albums: filter + sort by date desc
-        // Single AutoRefresh on Data (captures both filter and sort changes on Populate)
-        _releasesSource.Connect()
-            .AutoRefresh(r => r.Data)
-            .Filter(r => r.Data?.Type == "ALBUM" || (!r.IsLoaded && r.Id.StartsWith("album-ph")))
-            .SortAndBind(out _albums, SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        // Singles
-        _releasesSource.Connect()
-            .AutoRefresh(r => r.Data)
-            .Filter(r => r.Data?.Type == "SINGLE" || (!r.IsLoaded && r.Id.StartsWith("single-ph")))
-            .SortAndBind(out _singles, SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
-            .Subscribe()
-            .DisposeWith(_disposables);
-
-        // Compilations
-        _releasesSource.Connect()
-            .AutoRefresh(r => r.Data)
-            .Filter(r => r.Data?.Type == "COMPILATION" || (!r.IsLoaded && r.Id.StartsWith("comp-ph")))
-            .SortAndBind(out _compilations, SortExpressionComparer<LazyReleaseItem>.Descending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue))
-            .Subscribe()
-            .DisposeWith(_disposables);
     }
 
     // ── Initialization ──
 
     public void Initialize(string artistId)
     {
-        // Clear stale data from a previous artist on this cached page
         if (ArtistId != null && ArtistId != artistId)
             ResetForNewArtist();
 
@@ -235,7 +187,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     private void ResetForNewArtist()
     {
-        // Clear scalar properties so bindings don't flash old data
         ArtistName = null;
         ArtistImageUrl = null;
         HeaderImageUrl = null;
@@ -257,9 +208,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ExpandedAlbum = null;
         ExpandedAlbumTracks.Clear();
 
-        // Clear reactive collections
-        _topTracksSource.Clear();
-        _releasesSource.Clear();
+        TopTracks.Clear();
+        _allReleases.Clear();
+        Albums.Clear();
+        Singles.Clear();
+        Compilations.Clear();
         RelatedArtists.Clear();
         Concerts.Clear();
     }
@@ -274,18 +227,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private void CancelAndDisposeDiscographyCts()
     {
         var cts = Interlocked.Exchange(ref _discoCts, null);
-        if (cts == null)
-            return;
+        if (cts == null) return;
 
-        try
-        {
-            cts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Can happen during rapid navigation/disposal races.
-        }
-
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
         cts.Dispose();
     }
 
@@ -293,6 +238,42 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (!string.IsNullOrEmpty(nav.Title)) ArtistName = nav.Title;
         if (!string.IsNullOrEmpty(nav.ImageUrl)) ArtistImageUrl = nav.ImageUrl;
+    }
+
+    /// <summary>
+    /// Distributes _allReleases into Albums, Singles, Compilations collections.
+    /// </summary>
+    private void DispatchReleases()
+    {
+        Albums.Clear();
+        Singles.Clear();
+        Compilations.Clear();
+
+        foreach (var group in _allReleases
+            .GroupBy(r => r.Data?.Type ?? InferTypeFromId(r.Id))
+            .OrderBy(g => g.Key))
+        {
+            var sorted = group.OrderByDescending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue);
+            var target = group.Key switch
+            {
+                "ALBUM" => Albums,
+                "SINGLE" => Singles,
+                "COMPILATION" => Compilations,
+                _ => (ObservableCollection<LazyReleaseItem>?)null
+            };
+
+            if (target == null) continue;
+            foreach (var item in sorted)
+                target.Add(item);
+        }
+    }
+
+    private static string InferTypeFromId(string id)
+    {
+        if (id.StartsWith("album-ph")) return "ALBUM";
+        if (id.StartsWith("single-ph")) return "SINGLE";
+        if (id.StartsWith("comp-ph")) return "COMPILATION";
+        return "ALBUM";
     }
 
     // ── Load data from real Pathfinder API ──
@@ -310,11 +291,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         try
         {
-            var overview = await _artistService.GetOverviewAsync(ArtistId);
+            var overview = await Task.Run(async () => await _artistService.GetOverviewAsync(ArtistId));
 
             // ── Map scalar properties ──
             ArtistName = overview.Name ?? ArtistName;
-            // Only update image if not already prefilled (avoids flash during connected animation)
             if (string.IsNullOrEmpty(ArtistImageUrl))
                 ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
             HeaderImageUrl = overview.HeaderImageUrl;
@@ -336,62 +316,52 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 LatestReleaseDate = overview.LatestRelease.FormattedDate;
             }
 
-            // ── Top tracks ──
-            _topTracksSource.Edit(cache =>
+            // ── Top tracks (batch to avoid N+1 CollectionChanged events) ──
+            var newTracks = new ObservableCollection<LazyTrackItem>();
+            int idx = 1;
+            foreach (var track in overview.TopTracks)
             {
-                cache.Clear();
-                int idx = 1;
-
-                foreach (var track in overview.TopTracks)
+                var trackVm = new ArtistTopTrackVm
                 {
-                    var trackVm = new ArtistTopTrackVm
-                    {
-                        Id = track.Id,
-                        Index = idx,
-                        Title = track.Title,
-                        Uri = track.Uri,
-                        AlbumName = track.AlbumName,
-                        AlbumImageUrl = track.AlbumImageUrl,
-                        AlbumUri = track.AlbumUri,
-                        Duration = track.Duration,
-                        PlayCountRaw = track.PlayCount,
-                        ArtistNames = track.ArtistNames,
-                        IsExplicit = track.IsExplicit,
-                        IsPlayable = track.IsPlayable,
-                        HasVideo = track.HasVideo
-                    };
+                    Id = track.Id,
+                    Index = idx,
+                    Title = track.Title,
+                    Uri = track.Uri,
+                    AlbumName = track.AlbumName,
+                    AlbumImageUrl = track.AlbumImageUrl,
+                    AlbumUri = track.AlbumUri,
+                    Duration = track.Duration,
+                    PlayCountRaw = track.PlayCount,
+                    ArtistNames = track.ArtistNames,
+                    IsExplicit = track.IsExplicit,
+                    IsPlayable = track.IsPlayable,
+                    HasVideo = track.HasVideo
+                };
+                newTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
+                idx++;
+            }
 
-                    cache.AddOrUpdate(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
-                    idx++;
-                }
-
-                // Pad + shimmer placeholders
-                var loadedCount = idx - 1;
-                var pageSize = TracksPerPage > 0 ? TracksPerPage : 12;
-                var remainder = loadedCount % pageSize;
-                var padCount = remainder > 0 ? pageSize - remainder : 0;
-                for (int i = 0; i < padCount + pageSize; i++)
-                {
-                    cache.AddOrUpdate(LazyTrackItem.Placeholder($"placeholder-{idx}", idx));
-                    idx++;
-                }
-            });
+            // Pad + shimmer placeholders
+            var loadedCount = idx - 1;
+            var pageSize = TracksPerPage > 0 ? TracksPerPage : 12;
+            var remainder = loadedCount % pageSize;
+            var padCount = remainder > 0 ? pageSize - remainder : 0;
+            for (int i = 0; i < padCount + pageSize; i++)
+            {
+                newTracks.Add(LazyTrackItem.Placeholder($"placeholder-{idx}", idx));
+                idx++;
+            }
+            TopTracks = newTracks;
 
             // ── Extended top tracks (background, parallel) ──
             _ = LoadExtendedTopTracksAsync(ArtistId!);
 
             // ── Releases ──
-            var albumsLoaded = overview.Albums.Count;
-            var singlesLoaded = overview.Singles.Count;
-            var compilationsLoaded = overview.Compilations.Count;
-
-            _releasesSource.Edit(cache =>
-            {
-                cache.Clear();
-                AddReleasesToCache(cache, overview.Albums, "ALBUM", "album-ph", overview.AlbumsTotalCount);
-                AddReleasesToCache(cache, overview.Singles, "SINGLE", "single-ph", overview.SinglesTotalCount);
-                AddReleasesToCache(cache, overview.Compilations, "COMPILATION", "comp-ph", overview.CompilationsTotalCount);
-            });
+            _allReleases.Clear();
+            AddReleasesToList(overview.Albums, "ALBUM", "album-ph", overview.AlbumsTotalCount);
+            AddReleasesToList(overview.Singles, "SINGLE", "single-ph", overview.SinglesTotalCount);
+            AddReleasesToList(overview.Compilations, "COMPILATION", "comp-ph", overview.CompilationsTotalCount);
+            DispatchReleases();
 
             AlbumsTotalCount = overview.AlbumsTotalCount;
             SinglesTotalCount = overview.SinglesTotalCount;
@@ -399,32 +369,25 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             // ── Background discography pagination ──
             var discoToken = CreateFreshDiscographyToken();
-
-            // Run API fetches on thread pool, dispatch Populate() to UI thread
             _ = Task.Run(() => FetchRemainingDiscographyAsync(
-                albumsLoaded, overview.AlbumsTotalCount,
-                singlesLoaded, overview.SinglesTotalCount,
-                compilationsLoaded, overview.CompilationsTotalCount,
+                overview.Albums.Count, overview.AlbumsTotalCount,
+                overview.Singles.Count, overview.SinglesTotalCount,
+                overview.Compilations.Count, overview.CompilationsTotalCount,
                 discoToken), discoToken);
 
-            // ── Related artists ──
-            RelatedArtists.Clear();
-            foreach (var ra in overview.RelatedArtists)
-            {
-                RelatedArtists.Add(new RelatedArtistVm
+            // ── Related artists (batch swap) ──
+            RelatedArtists = new ObservableCollection<RelatedArtistVm>(
+                overview.RelatedArtists.Select(ra => new RelatedArtistVm
                 {
                     Id = ra.Id,
                     Uri = ra.Uri,
                     Name = ra.Name,
                     ImageUrl = ra.ImageUrl
-                });
-            }
+                }));
 
-            // ── Concerts ──
-            Concerts.Clear();
-            foreach (var c in overview.Concerts)
-            {
-                Concerts.Add(new ConcertVm
+            // ── Concerts (batch swap) ──
+            Concerts = new ObservableCollection<ConcertVm>(
+                overview.Concerts.Select(c => new ConcertVm
                 {
                     Title = c.Title,
                     Venue = c.Venue,
@@ -439,20 +402,16 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     IsFestival = c.IsFestival,
                     IsNearUser = c.IsNearUser,
                     Uri = c.Uri
-                });
-            }
+                }));
             OnPropertyChanged(nameof(HasConcerts));
 
-            // ── User location name (for concerts header) ──
             UserLocationName = _locationService.CurrentCity;
 
-            // ── Pinned item + Watch feed ──
             PinnedItem = overview.PinnedItem;
             WatchFeed = overview.WatchFeed;
             OnPropertyChanged(nameof(HasPinnedItem));
             OnPropertyChanged(nameof(HasWatchFeed));
 
-            // ── Pagination ──
             CurrentPage = 0;
             NotifyPaginationChanged();
         }
@@ -470,8 +429,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Mapping helpers ──
 
-    private static void AddReleasesToCache(
-        ISourceUpdater<LazyReleaseItem, string> cache,
+    private void AddReleasesToList(
         List<ArtistReleaseResult> releases,
         string type,
         string phPrefix,
@@ -492,14 +450,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 Label = r.Label,
                 Year = r.Year
             };
-            cache.AddOrUpdate(LazyReleaseItem.Loaded(vm.Id, count, vm));
+            _allReleases.Add(LazyReleaseItem.Loaded(vm.Id, count, vm));
             count++;
         }
 
-        // Add shimmer placeholders for remaining items (capped at 20 to avoid AutoRefresh overhead)
         var maxPlaceholders = Math.Min(totalCount - count, 20);
         for (int i = count; i < count + maxPlaceholders; i++)
-            cache.AddOrUpdate(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
+            _allReleases.Add(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
     }
 
     // ── Background discography pagination ──
@@ -510,7 +467,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         int compilationsLoaded, int compilationsTotal,
         CancellationToken ct)
     {
-        // Each group handles its own errors (removes placeholders + sets error flag)
         var tasks = new List<Task>();
 
         if (albumsLoaded < albumsTotal)
@@ -536,7 +492,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (album == null || !album.IsLoaded || album.Data == null) return;
 
-        // Toggle: clicking same album collapses
         if (ExpandedAlbum?.Id == album.Id)
         {
             CollapseAlbum();
@@ -547,7 +502,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         IsLoadingExpandedTracks = true;
         ExpandedAlbumTracks.Clear();
 
-        // Add shimmer placeholders immediately
         var trackCount = album.Data.TrackCount;
         if (trackCount <= 0)
         {
@@ -562,20 +516,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         for (int i = 0; i < trackCount; i++)
             ExpandedAlbumTracks.Add(LazyTrackItem.Placeholder($"expanded-{i}", i + 1));
 
-        // Fetch real tracks and populate placeholders
         try
         {
             var albumUri = album.Data.Uri ?? $"spotify:album:{album.Data.Id}";
             var tracks = await _albumService.GetTracksAsync(albumUri);
 
             for (int i = 0; i < Math.Min(tracks.Count, ExpandedAlbumTracks.Count); i++)
-            {
-                // Replace placeholder with properly-keyed loaded item so track ID matches
-                // for playback state highlighting (LazyTrackItem.Id is init-only)
                 ExpandedAlbumTracks[i] = LazyTrackItem.Loaded(tracks[i].Id, i + 1, tracks[i]);
-            }
 
-            // Remove excess placeholders
             while (ExpandedAlbumTracks.Count > tracks.Count)
                 ExpandedAlbumTracks.RemoveAt(ExpandedAlbumTracks.Count - 1);
         }
@@ -608,15 +556,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         try
         {
-            const int pageSize = 20;
+            const int pageSz = 20;
             var offset = alreadyLoaded;
 
-            // Collect all pages on background thread first — no UI thread blocking
             var allReleases = new List<(int Offset, List<ArtistReleaseResult> Items)>();
             while (offset < totalCount)
             {
                 ct.ThrowIfCancellationRequested();
-                var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSize, ct);
+                var releases = await _artistService.GetDiscographyPageAsync(artistUri, type, offset, pageSz, ct);
                 if (releases.Count == 0) break;
                 allReleases.Add((offset, releases));
                 offset += releases.Count;
@@ -624,42 +571,39 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             if (allReleases.Count == 0) return;
 
-            // Single UI thread update with all pages batched
             var tcs = new TaskCompletionSource();
             _dispatcherQueue.TryEnqueue(() =>
             {
                 try
                 {
-                    _releasesSource.Edit(cache =>
+                    foreach (var (pageOffset, releases) in allReleases)
                     {
-                        foreach (var (pageOffset, releases) in allReleases)
+                        int i = pageOffset;
+                        foreach (var r in releases)
                         {
-                            int idx = pageOffset;
-                            foreach (var r in releases)
+                            var vm = new ArtistReleaseVm
                             {
-                                var vm = new ArtistReleaseVm
-                                {
-                                    Id = r.Id,
-                                    Uri = r.Uri,
-                                    Name = r.Name,
-                                    Type = type,
-                                    ImageUrl = r.ImageUrl,
-                                    ReleaseDate = r.ReleaseDate,
-                                    TrackCount = r.TrackCount,
-                                    Label = r.Label,
-                                    Year = r.Year
-                                };
+                                Id = r.Id,
+                                Uri = r.Uri,
+                                Name = r.Name,
+                                Type = type,
+                                ImageUrl = r.ImageUrl,
+                                ReleaseDate = r.ReleaseDate,
+                                TrackCount = r.TrackCount,
+                                Label = r.Label,
+                                Year = r.Year
+                            };
 
-                                var phKey = $"{phPrefix}-{idx}";
-                                var existing = cache.Lookup(phKey);
-                                if (existing.HasValue)
-                                    existing.Value.Populate(vm);
-                                else
-                                    cache.AddOrUpdate(LazyReleaseItem.Loaded(r.Id, idx, vm));
-                                idx++;
-                            }
+                            var phKey = $"{phPrefix}-{i}";
+                            var existing = _allReleases.FirstOrDefault(x => x.Id == phKey);
+                            if (existing != null)
+                                existing.Populate(vm);
+                            else
+                                _allReleases.Add(LazyReleaseItem.Loaded(r.Id, i, vm));
+                            i++;
                         }
-                    });
+                    }
+                    DispatchReleases();
                     tcs.SetResult();
                 }
                 catch (Exception ex) { tcs.SetException(ex); }
@@ -671,21 +615,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             _logger?.LogWarning(ex, "Discography {Type} fetch failed for {ArtistId}", type, artistUri);
 
-            // Remove shimmer placeholders for this group so they don't stay forever
             var tcsCleanup = new TaskCompletionSource();
             _dispatcherQueue.TryEnqueue(() =>
             {
                 try
                 {
-                    _releasesSource.Edit(cache =>
-                    {
-                        var placeholders = cache.Items
-                            .Where(i => !i.IsLoaded && i.Id.StartsWith(phPrefix))
-                            .Select(i => i.Id).ToList();
-                        cache.RemoveKeys(placeholders);
-                    });
+                    _allReleases.RemoveAll(i => !i.IsLoaded && i.Id.StartsWith(phPrefix));
+                    DispatchReleases();
 
-                    // Set per-group error flag
                     switch (type)
                     {
                         case "ALBUM": HasAlbumsError = true; break;
@@ -738,7 +675,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (string.IsNullOrEmpty(ArtistId) || _likeService == null) return;
         var wasSaved = IsFollowing;
-        IsFollowing = !wasSaved; // Optimistic UI update
+        IsFollowing = !wasSaved;
         _likeService.ToggleSave(SavedItemType.Artist, ArtistId, wasSaved);
     }
 
@@ -769,7 +706,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (track == null || string.IsNullOrEmpty(ArtistId)) return;
 
-        // Build full track list so extended tracks beyond the Spotify artist context play correctly
         var allTrackUris = TopTracks
             .Where(t => t.IsLoaded && t.Data != null)
             .Select(t => t.Data!.Uri)
@@ -783,7 +719,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
         else
         {
-            // Track not in loaded list — play within artist context as fallback
             await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
                 new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
         }
@@ -837,65 +772,57 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    // ── Cleanup ──
+    // ── Extended top tracks ──
 
-    /// <summary>
-    /// Background-loads extended top tracks and replaces shimmer placeholders.
-    /// </summary>
     private async Task LoadExtendedTopTracksAsync(string artistUri)
     {
         try
         {
-            var extendedTracks = await _artistService.GetExtendedTopTracksAsync(artistUri);
+            var extendedTracks = await Task.Run(async () => await _artistService.GetExtendedTopTracksAsync(artistUri));
             if (extendedTracks.Count == 0) return;
 
-            // Get existing track URIs to avoid duplicates
             var existingUris = new HashSet<string>(
-                _topTracksSource.Items
+                TopTracks
                     .Where(i => i.IsLoaded && i.Data != null)
                     .Select(i => ((ArtistTopTrackVm)i.Data!).Uri ?? ""));
 
-            var startIdx = _topTracksSource.Items.Count(i => i.IsLoaded) + 1;
+            var startIdx = TopTracks.Count(i => i.IsLoaded) + 1;
 
             _dispatcherQueue?.TryEnqueue(() =>
             {
-                _topTracksSource.Edit(cache =>
+                // Remove all placeholder items
+                for (int i = TopTracks.Count - 1; i >= 0; i--)
                 {
-                    // Remove all placeholder items
-                    var placeholders = cache.Items
-                        .Where(i => !i.IsLoaded)
-                        .Select(i => i.Id)
-                        .ToList();
-                    cache.RemoveKeys(placeholders);
+                    if (!TopTracks[i].IsLoaded)
+                        TopTracks.RemoveAt(i);
+                }
 
-                    int idx = startIdx;
-                    foreach (var track in extendedTracks)
+                int idx = startIdx;
+                foreach (var track in extendedTracks)
+                {
+                    if (existingUris.Contains(track.Uri ?? "")) continue;
+
+                    var trackVm = new ArtistTopTrackVm
                     {
-                        if (existingUris.Contains(track.Uri ?? "")) continue;
+                        Id = track.Id,
+                        Index = idx,
+                        Title = track.Title,
+                        Uri = track.Uri,
+                        AlbumName = track.AlbumName,
+                        AlbumImageUrl = track.AlbumImageUrl,
+                        AlbumUri = track.AlbumUri,
+                        Duration = track.Duration,
+                        PlayCountRaw = track.PlayCount,
+                        ArtistNames = track.ArtistNames,
+                        IsExplicit = track.IsExplicit,
+                        IsPlayable = track.IsPlayable,
+                        HasVideo = track.HasVideo
+                    };
 
-                        var trackVm = new ArtistTopTrackVm
-                        {
-                            Id = track.Id,
-                            Index = idx,
-                            Title = track.Title,
-                            Uri = track.Uri,
-                            AlbumName = track.AlbumName,
-                            AlbumImageUrl = track.AlbumImageUrl,
-                            AlbumUri = track.AlbumUri,
-                            Duration = track.Duration,
-                            PlayCountRaw = track.PlayCount,
-                            ArtistNames = track.ArtistNames,
-                            IsExplicit = track.IsExplicit,
-                            IsPlayable = track.IsPlayable,
-                            HasVideo = track.HasVideo
-                        };
+                    TopTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
+                    idx++;
+                }
 
-                        cache.AddOrUpdate(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
-                        idx++;
-                    }
-                });
-
-                // Refresh pagination
                 OnPropertyChanged(nameof(TotalPages));
                 OnPropertyChanged(nameof(PagedTopTracks));
             });
@@ -916,10 +843,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             _likeService.SaveStateChanged -= OnSaveStateChanged;
 
         CancelAndDisposeDiscographyCts();
-
-        _disposables.Dispose();
-        _topTracksSource.Dispose();
-        _releasesSource.Dispose();
     }
 }
 
@@ -1010,13 +933,13 @@ public sealed class RelatedArtistVm
     public string? ImageUrl { get; init; }
 }
 
-public sealed class ConcertVm : System.ComponentModel.INotifyPropertyChanged
+public sealed class ConcertVm : INotifyPropertyChanged
 {
     public string? Title { get; init; }
     public string? Venue { get; init; }
     public string? City { get; init; }
-    public string? DateFormatted { get; init; } // "MAR 26"
-    public string? DayOfWeek { get; init; }     // "WED"
+    public string? DateFormatted { get; init; }
+    public string? DayOfWeek { get; init; }
     public string? Year { get; init; }
     public bool IsFestival { get; init; }
     public string? Uri { get; init; }
@@ -1029,19 +952,17 @@ public sealed class ConcertVm : System.ComponentModel.INotifyPropertyChanged
         {
             if (_isNearUser == value) return;
             _isNearUser = value;
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsNearUser)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsNearUser)));
         }
     }
 
-    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 public sealed class LocationSearchResultVm
 {
-    public string? Name { get; init; }
-    public string? FullName { get; init; }
     public string? GeonameId { get; init; }
-    public string? Country { get; init; }
-
-    public override string ToString() => FullName ?? Name ?? "";
+    public string? CityName { get; init; }
+    public string? CountryName { get; init; }
+    public string DisplayName => $"{CityName}, {CountryName}";
 }

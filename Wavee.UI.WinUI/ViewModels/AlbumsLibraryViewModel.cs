@@ -222,13 +222,11 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     private void OnSaveStateChanged()
     {
-        _dispatcherQueue.TryEnqueue(() =>
+        _dispatcherQueue.TryEnqueue(async () =>
         {
-            if (_likeService == null || Albums.Count == 0) return;
+            if (_likeService == null) return;
 
             var removed = Albums.Where(a => !_likeService.IsSaved(SavedItemType.Album, a.Id)).ToList();
-            if (removed.Count == 0) return;
-
             foreach (var album in removed)
             {
                 Albums.Remove(album);
@@ -237,6 +235,38 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
             if (SelectedAlbum != null && removed.Any(a => a.Id == SelectedAlbum.Id))
             {
                 SelectedAlbum = null;
+            }
+
+            // Check for newly saved albums not yet in our collection
+            var existingIds = Albums.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var savedIds = _likeService.GetSavedIds(SavedItemType.Album);
+            var hasGhosts = Albums.Any(a => a.IsLoading);
+
+            var newIds = savedIds
+                .Select(bareId => $"spotify:album:{bareId}")
+                .Where(uri => !existingIds.Contains(uri))
+                .ToList();
+
+            if (newIds.Count > 0)
+            {
+                // Add ghost entries immediately for instant UI feedback
+                foreach (var uri in newIds)
+                {
+                    Albums.Add(new LibraryAlbumDto
+                    {
+                        Id = uri,
+                        Name = "",
+                        ArtistName = "",
+                        IsLoading = true,
+                        AddedAt = DateTimeOffset.UtcNow
+                    });
+                }
+            }
+            else if (hasGhosts)
+            {
+                // Ghost entries exist — try to resolve them from DB
+                await LoadDataAsync(preserveSelection: true);
+                return;
             }
 
             ApplyFilter();

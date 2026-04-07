@@ -17,6 +17,7 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ProfilePage : Page, ITabBarItemContent
 {
+    private static ImageCacheService? _imageCache;
     private readonly ProfileCache? _cache;
     private bool _showingContent;
 
@@ -130,8 +131,8 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
 
         if (imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            var cache = Ioc.Default.GetService<ImageCacheService>();
-            ProfileAvatar.ProfilePicture = cache?.GetOrCreate(imageUrl, 100);
+            _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
+            ProfileAvatar.ProfilePicture = _imageCache?.GetOrCreate(imageUrl, 100);
         }
     }
 

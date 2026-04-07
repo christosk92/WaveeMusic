@@ -276,10 +276,12 @@ public sealed class PortAudioSink : IAudioSink
         if (_buffer == null || !_isInitialized)
             throw new InvalidOperationException("Sink not initialized");
 
-        // Auto-start playback once we've buffered ~1s of audio
+        // Auto-start playback once we've buffered ~2s of audio.
+        // The extra headroom absorbs GC pauses and I/O contention during the
+        // concurrent track download burst that happens at track start.
         lock (_lock)
         {
-            if (!_isPlaying && _buffer.Available > _format!.BytesPerSecond)
+            if (!_isPlaying && _buffer.Available > _format!.BytesPerSecond * 2)
             {
                 StartPlayback();
             }

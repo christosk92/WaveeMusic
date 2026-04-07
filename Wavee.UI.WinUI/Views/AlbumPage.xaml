@@ -273,6 +273,27 @@
                         </ItemsRepeater>
                     </StackPanel>
 
+                    <!-- Merch -->
+                    <StackPanel x:Name="MerchSection" Margin="16,32,16,24" Spacing="12"
+                                Visibility="{x:Bind ViewModel.HasMerch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="Merch" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="Bold"/>
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.MerchItems, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="12"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="contracts:AlbumMerchItemResult">
+                                    <cards:ContentCard
+                                        Width="160"
+                                        ImageUrl="{x:Bind ImageUrl}"
+                                        Title="{x:Bind Name}"
+                                        Subtitle="{x:Bind Price}"
+                                        CardClick="MerchItem_Click"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </StackPanel>
+
                     <!-- Album info: release date, label, copyrights -->
                     <StackPanel Margin="16,24,16,16" Spacing="6"
                                 Visibility="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">

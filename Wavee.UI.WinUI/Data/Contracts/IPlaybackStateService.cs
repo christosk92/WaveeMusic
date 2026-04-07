@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 
+
 namespace Wavee.UI.WinUI.Data.Contracts;
 
 /// <summary>
@@ -32,6 +33,7 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     string? CurrentAlbumArtLarge { get; }
     string? CurrentArtistId { get; }
     string? CurrentAlbumId { get; }
+    IReadOnlyList<ArtistCredit>? CurrentArtists { get; }
 
     /// <summary>
     /// Theme-appropriate hex color extracted from the current album art.

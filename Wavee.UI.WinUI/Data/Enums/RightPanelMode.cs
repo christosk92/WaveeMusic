@@ -4,5 +4,6 @@ public enum RightPanelMode
 {
     Queue,
     Lyrics,
-    FriendsActivity
+    FriendsActivity,
+    Details
 }

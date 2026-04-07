@@ -44,13 +44,19 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
         InitializeComponent();
 
-        // Hide content initially — shimmer is visible, content is collapsed
-        ContentContainer.Opacity = 0;
-
         ViewModel.ContentChanged += ViewModel_ContentChanged;
+        Unloaded += ArtistPage_Unloaded;
+        Loaded += ArtistPage_Loaded;
+    }
+
+    private void ArtistPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= ArtistPage_Loaded;
+
+        // Deferred setup — moved from constructor so InitializeComponent returns faster
+        ContentContainer.Opacity = 0;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         SizeChanged += OnSizeChanged;
-        Unloaded += ArtistPage_Unloaded;
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -330,6 +336,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
     }
 
+    public void RefreshWithParameter(object? parameter)
+    {
+        _isNavigatingAway = false;
+        LoadNewContent(parameter);
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -349,22 +361,24 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             return;
         }
 
-        // Different artist on a cached page — reset visual state for fresh load
-        PageScrollView.ScrollTo(0, 0);
-        if (_showingContent)
-        {
-            _showingContent = false;
-            ContentContainer.Opacity = 0;
-            ShimmerContainer.Visibility = Visibility.Visible;
-            ShimmerContainer.Opacity = 1;
-        }
+        LoadNewContent(e.Parameter);
+    }
 
-        if (e.Parameter is ContentNavigationParameter navParam)
+    private void LoadNewContent(object? parameter)
+    {
+        // Reset visual state for fresh load
+        PageScrollView.ScrollTo(0, 0);
+        _showingContent = false;
+        ContentContainer.Opacity = 0;
+        ShimmerContainer.Visibility = Visibility.Visible;
+        ShimmerContainer.Opacity = 1;
+
+        if (parameter is ContentNavigationParameter navParam)
         {
-            ViewModel.PrefillFrom(navParam);
             ViewModel.Initialize(navParam.Uri);
+            ViewModel.PrefillFrom(navParam);
         }
-        else if (e.Parameter is string artistId)
+        else if (parameter is string artistId)
         {
             ViewModel.Initialize(artistId);
         }

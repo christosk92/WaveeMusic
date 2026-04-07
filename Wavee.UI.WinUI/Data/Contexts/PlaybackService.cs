@@ -151,7 +151,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     {
         foreach (var uri in trackUris)
         {
-            var result = await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(uri, c), "AddToQueue", ct, maxRetries: 0);
+            var result = await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(uri, c), "AddToQueue", ct, maxRetries: 0).ConfigureAwait(false);
             if (!result.IsSuccess) return result;
         }
         return PlaybackResult.Success();
@@ -222,7 +222,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         int maxRetries = 1,
         bool isPlayCommand = false)
     {
-        await _commandLock.WaitAsync(ct);
+        await _commandLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             ApplyOnUiThread(() =>
@@ -237,7 +237,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
             {
                 ct.ThrowIfCancellationRequested();
 
-                lastResult = await action(ct);
+                lastResult = await action(ct).ConfigureAwait(false);
 
                 if (lastResult.IsSuccess)
                 {
@@ -260,7 +260,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
                     _logger?.LogDebug("{Command} failed (attempt {Attempt}/{Max}), retrying in {Delay}ms: {Error}",
                         commandName, attempt + 1, maxRetries + 1, delay.TotalMilliseconds, lastResult.ErrorMessage);
 
-                    await Task.Delay(delay, ct);
+                    await Task.Delay(delay, ct).ConfigureAwait(false);
                 }
             }
 

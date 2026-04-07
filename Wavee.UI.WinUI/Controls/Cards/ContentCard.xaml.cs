@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -142,6 +143,19 @@ public sealed partial class ContentCard : UserControl
     {
         get => (bool)GetValue(IsPassiveProperty);
         set => SetValue(IsPassiveProperty, value);
+    }
+
+    public static readonly DependencyProperty IsLoadingProperty =
+        DependencyProperty.Register(nameof(IsLoading), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false, OnIsLoadingChanged));
+
+    /// <summary>
+    /// When true, shows shimmer placeholders instead of real content (ghost/loading state).
+    /// </summary>
+    public bool IsLoading
+    {
+        get => (bool)GetValue(IsLoadingProperty);
+        set => SetValue(IsLoadingProperty, value);
     }
 
     public static readonly DependencyProperty IsPlayingProperty =
@@ -528,6 +542,16 @@ public sealed partial class ContentCard : UserControl
 
     // ── Passive mode ──
 
+    private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        var loading = (bool)e.NewValue;
+        if (card.ShimmerOverlay != null)
+            card.ShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        if (card.ContentPanel != null)
+            card.ContentPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private static void OnIsPassiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (ContentCard)d;
@@ -611,15 +635,17 @@ public sealed partial class ContentCard : UserControl
 
         try
         {
+            var navUri = NavigationUri;
             if (IsPlaying)
-                await playback.PauseAsync();
+                await Task.Run(async () => await playback.PauseAsync());
             else if (IsContextPaused)
-                await playback.ResumeAsync();
+                await Task.Run(async () => await playback.ResumeAsync());
             else if (!string.IsNullOrEmpty(NavigationUri))
-                await playback.PlayContextAsync(NavigationUri);
+                await Task.Run(async () => await playback.PlayContextAsync(navUri));
         }
-        catch
+        catch(Exception x)
         {
+            Debug.WriteLine(x.ToString());
             // Playback errors surface via IPlaybackService.Errors observable
         }
     }

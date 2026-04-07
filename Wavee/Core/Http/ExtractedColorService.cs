@@ -11,6 +11,8 @@ namespace Wavee.Core.Http;
 /// </summary>
 public sealed class ExtractedColorService : IColorService
 {
+    private const int MaxHotCacheSize = 500;
+
     private readonly IPathfinderClient _pathfinder;
     private readonly IMetadataDatabase _db;
     private readonly ILogger? _logger;
@@ -37,7 +39,7 @@ public sealed class ExtractedColorService : IColorService
             if (dbResult.HasValue)
             {
                 var color = new ExtractedColor(dbResult.Value.DarkHex, dbResult.Value.LightHex, dbResult.Value.RawHex);
-                _hot.TryAdd(imageUrl, color);
+                TryAddBounded(imageUrl, color);
                 return color;
             }
         }
@@ -72,7 +74,7 @@ public sealed class ExtractedColorService : IColorService
                 if (dbResult.HasValue)
                 {
                     var color = new ExtractedColor(dbResult.Value.DarkHex, dbResult.Value.LightHex, dbResult.Value.RawHex);
-                    _hot.TryAdd(url, color);
+                    TryAddBounded(url, color);
                     result[url] = color;
                     continue;
                 }
@@ -99,7 +101,7 @@ public sealed class ExtractedColorService : IColorService
                             entry.ColorLight?.Hex,
                             entry.ColorRaw?.Hex);
 
-                        _hot.TryAdd(missing[i], color);
+                        TryAddBounded(missing[i], color);
                         result[missing[i]] = color;
 
                         // Persist to SQLite (fire-and-forget, don't block the caller)
@@ -125,5 +127,17 @@ public sealed class ExtractedColorService : IColorService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Adds to hot cache with bounded eviction. When the cache exceeds MaxHotCacheSize,
+    /// it is cleared entirely — colors are cheap to re-fetch from SQLite (tier 2).
+    /// </summary>
+    private void TryAddBounded(string key, ExtractedColor color)
+    {
+        if (_hot.Count >= MaxHotCacheSize)
+            _hot.Clear();
+
+        _hot.TryAdd(key, color);
     }
 }

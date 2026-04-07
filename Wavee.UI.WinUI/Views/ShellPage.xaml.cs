@@ -37,6 +37,9 @@ public sealed partial class ShellPage : Page
     private InputNonClientPointerSource? _nonClientSource;
     private DragStateService? _dragStateService;
 
+    private Services.UiHealthMonitor? _uiHealthMonitor;
+    private Controls.Diagnostics.UiHealthOverlay? _uiHealthOverlay;
+
     public ShellPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
@@ -113,6 +116,11 @@ public sealed partial class ShellPage : Page
 
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
+#if DEBUG
+        _uiHealthOverlay?.Detach();
+        _uiHealthMonitor?.Dispose();
+#endif
+
         // Clean up ShellPage-specific event subscriptions only.
         // Do NOT call ViewModel.Cleanup() here — the ViewModel is a singleton
         // and outlives the page. Its cleanup happens when the app exits.
@@ -192,6 +200,17 @@ public sealed partial class ShellPage : Page
             // Directly set SelectedTabItem since SelectedTabIndex may already be 0
             ViewModel.SelectedTabItem = ShellViewModel.TabInstances[0];
         }
+
+        // FPS overlay — always available, toggled with Ctrl+Shift+F
+        _uiHealthMonitor = new Services.UiHealthMonitor(DispatcherQueue, Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>());
+
+        _uiHealthOverlay = new Controls.Diagnostics.UiHealthOverlay();
+        _uiHealthOverlay.Attach(_uiHealthMonitor);
+        _uiHealthOverlay.Visibility = Visibility.Collapsed;
+
+        Microsoft.UI.Xaml.Controls.Grid.SetRowSpan(_uiHealthOverlay, 4);
+        Microsoft.UI.Xaml.Controls.Canvas.SetZIndex(_uiHealthOverlay, 9999);
+        RootLayoutGrid.Children.Add(_uiHealthOverlay);
 
         // Keep expanded album art square when sidebar is resized
         UpdateExpandedArtSize();
@@ -409,6 +428,23 @@ public sealed partial class ShellPage : Page
     private void DebugAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         NavigationHelpers.OpenDebug(openInNewTab: true);
+        args.Handled = true;
+    }
+
+    private void FpsOverlayAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (_uiHealthOverlay == null) return;
+
+        if (_uiHealthOverlay.Visibility == Visibility.Collapsed)
+        {
+            _uiHealthMonitor?.Start();
+            _uiHealthOverlay.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _uiHealthOverlay.Visibility = Visibility.Collapsed;
+            _uiHealthMonitor?.Stop();
+        }
         args.Handled = true;
     }
 

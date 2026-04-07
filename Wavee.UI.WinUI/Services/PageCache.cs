@@ -88,6 +88,8 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
     public void StopBackgroundRefresh()
     {
         _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
         _refreshTimer?.Dispose();
         _refreshTimer = null;
         _refreshTask = null;

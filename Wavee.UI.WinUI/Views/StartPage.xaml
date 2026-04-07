@@ -6,130 +6,81 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
     <ScrollView VerticalScrollBarVisibility="Auto">
-        <StackPanel
-            MaxWidth="800"
-            Margin="48,80,48,48"
-            HorizontalAlignment="Center"
-            Spacing="48">
+        <StackPanel Spacing="48">
 
-            <!-- Header Section -->
-            <StackPanel Spacing="24" HorizontalAlignment="Center">
-                <TextBlock
-                    Text="What are you looking for?"
-                    Style="{StaticResource TitleLargeTextBlockStyle}"
-                    FontSize="32"
-                    FontWeight="SemiBold"
-                    HorizontalAlignment="Center"/>
+            <StackPanel
+                MaxWidth="800"
+                Margin="48,80,48,0"
+                HorizontalAlignment="Center"
+                Spacing="48">
 
-                <!-- Search Box -->
-                <AutoSuggestBox
-                    x:Name="SearchBox"
-                    Width="400"
-                    PlaceholderText="Search songs, artists, albums..."
-                    QueryIcon="Find"
-                    QuerySubmitted="SearchBox_QuerySubmitted"/>
-            </StackPanel>
+                <!-- Header Section -->
+                <StackPanel Spacing="24" HorizontalAlignment="Center">
+                    <TextBlock
+                        Text="What are you looking for?"
+                        Style="{StaticResource TitleLargeTextBlockStyle}"
+                        FontSize="32"
+                        FontWeight="SemiBold"
+                        HorizontalAlignment="Center"/>
 
-            <!-- Quick Access Section -->
-            <StackPanel Spacing="16">
-                <TextBlock
-                    Text="Quick Access"
-                    Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <!-- Search Box -->
+                    <AutoSuggestBox
+                        x:Name="SearchBox"
+                        Width="400"
+                        PlaceholderText="Search songs, artists, albums..."
+                        QueryIcon="Find"
+                        QuerySubmitted="SearchBox_QuerySubmitted"/>
+                </StackPanel>
 
-                <ItemsRepeater ItemsSource="{x:Bind ViewModel.QuickAccessItems}">
-                    <ItemsRepeater.Layout>
-                        <UniformGridLayout
-                            MinItemWidth="150"
-                            MinItemHeight="100"
-                            MinColumnSpacing="12"
-                            MinRowSpacing="12"
-                            ItemsStretch="Fill"/>
-                    </ItemsRepeater.Layout>
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="vm:QuickAccessItem">
-                            <Button
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center"
-                                Padding="16"
-                                CornerRadius="8"
-                                Click="QuickAccess_Click"
-                                Tag="{x:Bind}">
-                                <StackPanel Spacing="8" HorizontalAlignment="Center">
-                                    <FontIcon
-                                        Glyph="{x:Bind Glyph}"
-                                        FontSize="28"/>
-                                    <TextBlock
-                                        Text="{x:Bind Title}"
-                                        FontSize="14"
-                                        FontWeight="SemiBold"/>
-                                </StackPanel>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
-            </StackPanel>
+                <!-- Quick Access Section -->
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Quick Access"
+                        Style="{StaticResource SubtitleTextBlockStyle}"/>
 
-            <!-- Recently Played Section -->
-            <StackPanel Spacing="16">
-                <TextBlock
-                    Text="Recently Played"
-                    Style="{StaticResource SubtitleTextBlockStyle}"/>
-
-                <ScrollView
-                    HorizontalScrollBarVisibility="Auto"
-                    VerticalScrollBarVisibility="Hidden">
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentItems}">
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.QuickAccessItems}">
                         <ItemsRepeater.Layout>
-                            <StackLayout Orientation="Horizontal" Spacing="16"/>
+                            <UniformGridLayout
+                                MinItemWidth="150"
+                                MinItemHeight="100"
+                                MinColumnSpacing="12"
+                                MinRowSpacing="12"
+                                ItemsStretch="Fill"/>
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="vm:RecentItem">
+                            <DataTemplate x:DataType="vm:QuickAccessItem">
                                 <Button
-                                    Width="150"
-                                    Padding="0"
-                                    Background="Transparent"
-                                    BorderThickness="0"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Padding="16"
                                     CornerRadius="8"
-                                    Click="RecentItem_Click"
+                                    Click="QuickAccess_Click"
                                     Tag="{x:Bind}">
-                                    <StackPanel Spacing="8">
-                                        <!-- Image placeholder -->
-                                        <Grid
-                                            Width="150"
-                                            Height="150"
-                                            CornerRadius="8"
-                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                            <FontIcon
-                                                Glyph="&#xE8D6;"
-                                                FontSize="40"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                        </Grid>
-                                        <!-- Title -->
+                                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                                        <FontIcon
+                                            Glyph="{x:Bind Glyph}"
+                                            FontSize="28"/>
                                         <TextBlock
                                             Text="{x:Bind Title}"
-                                            FontWeight="SemiBold"
-                                            MaxLines="1"
-                                            TextTrimming="CharacterEllipsis"/>
-                                        <!-- Subtitle -->
-                                        <TextBlock
-                                            Text="{x:Bind Subtitle}"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            FontSize="12"
-                                            MaxLines="1"
-                                            TextTrimming="CharacterEllipsis"/>
+                                            FontSize="14"
+                                            FontWeight="SemiBold"/>
                                     </StackPanel>
                                 </Button>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
-                </ScrollView>
+                </StackPanel>
             </StackPanel>
+
+            <!-- Recently Played Section: full width, adaptive like homepage -->
+            <controls:RecentlyPlayedSection Margin="48,0,48,48"/>
 
         </StackPanel>
     </ScrollView>

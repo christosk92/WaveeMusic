@@ -18,10 +18,6 @@
     <!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
     <LangVersion>preview</LangVersion>
 
-    <!-- Server GC: uses background threads for Gen2 collection instead of stopping the world.
-         Critical for audio playback — workstation GC pauses ALL threads for 50-200ms+ on Gen2. -->
-    <ServerGarbageCollection>true</ServerGarbageCollection>
-    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
     <Content Remove="Assets\MediaPlayerIcons.ttf" />
@@ -52,6 +48,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.Shimmer" Version="0.1.251217-build.2433" />
     <PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.3.260402-preview2" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.MetadataControl" Version="8.3.260402-preview2" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.3.260402-preview2" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.TabbedCommandBar" Version="8.3.260402-preview2" />
     <PackageReference Include="CommunityToolkit.WinUI.Media" Version="8.3.260402-preview2" />
@@ -78,8 +75,7 @@
     <!-- UI Extensions -->
     <PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
     <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
-    <!-- Reactive Extensions -->
-    <PackageReference Include="DynamicData" Version="9.4.31" />
+    <!-- Reactive Extensions (System.Reactive used by Connect/Core layer) -->
     <PackageReference Include="ReactiveUI" Version="23.2.1" />
     <PackageReference Include="ReactiveUI.WinUI" Version="23.2.1" />
   </ItemGroup>
