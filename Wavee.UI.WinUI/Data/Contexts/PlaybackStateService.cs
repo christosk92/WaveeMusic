@@ -686,8 +686,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0)
     {
-        // For LoadQueue, play the context starting at the given index
-        _ = _playbackService.PlayContextAsync(context.ContextUri, new PlayContextOptions { StartIndex = startIndex });
+        var trackUris = items.Select(i => i.TrackId).ToList();
+        _ = _playbackService.PlayTracksAsync(trackUris, startIndex);
     }
 
     // ── Buffering state helpers ──

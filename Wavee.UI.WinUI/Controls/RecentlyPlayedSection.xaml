@@ -17,6 +17,7 @@
                 Title="{x:Bind Title}"
                 Subtitle="{x:Bind Subtitle}"
                 PlaceholderColorHex="{x:Bind ColorHex}"
+                PlaceholderGlyph="{x:Bind PlaceholderGlyph}"
                 IsCircularImage="False"
                 NavigationUri="{x:Bind Uri}"
                 NavigationTitle="{x:Bind Title}"/>

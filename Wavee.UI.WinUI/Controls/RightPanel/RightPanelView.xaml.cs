@@ -96,6 +96,7 @@ public sealed partial class RightPanelView : UserControl
         }
 
         InitializeLyrics();
+        RegisterDetailsWheelHandler();
         ActualThemeChanged += OnActualThemeChanged;
         SizeChanged += OnPanelSizeChanged;
         UpdateCanvasClearColor();
@@ -117,6 +118,7 @@ public sealed partial class RightPanelView : UserControl
 
         ActualThemeChanged -= OnActualThemeChanged;
         SizeChanged -= OnPanelSizeChanged;
+        UnregisterDetailsWheelHandler();
         TeardownLyrics();
 
         if (_detailsVm != null && _detailsSubscribed)
@@ -253,12 +255,28 @@ public sealed partial class RightPanelView : UserControl
             case nameof(LyricsViewModel.HasLyrics):
             case nameof(LyricsViewModel.IsLoading):
                 ApplyCurrentLyricsState();
+                // Also refresh Details panel lyrics snippet + canvas overlay
+                // (lyrics load async, so Details may have missed initial state)
+                if (SelectedMode == RightPanelMode.Details && _detailsVm?.HasData == true)
+                    RefreshDetailsLyrics();
                 break;
             case nameof(LyricsViewModel.CurrentPalette):
                 if (_lyricsVm?.CurrentPalette is { } palette)
                     NowPlayingCanvas.SetNowPlayingPalette(palette);
                 break;
         }
+    }
+
+    private void RefreshDetailsLyrics()
+    {
+        var showLyricsSnippet = _lyricsVm?.HasLyrics == true && _lyricsVm.CurrentLyrics != null;
+        DetailsLyricsSnippet.Visibility = showLyricsSnippet ? Visibility.Visible : Visibility.Collapsed;
+        if (showLyricsSnippet)
+            SetupDetailsLyricsSnippet();
+        else
+            TeardownDetailsLyricsSnippet();
+
+        UpdateCanvasLyricsVisibility();
     }
 
     private void ApplyCurrentLyricsState()
@@ -521,7 +539,7 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateContentVisibility()
     {
-        if (QueueContent == null) return;
+        if (QueueContent == null || !IsLoaded) return;
 
         QueueContent.Visibility = SelectedMode == RightPanelMode.Queue ? Visibility.Visible : Visibility.Collapsed;
         LyricsContent.Visibility = SelectedMode == RightPanelMode.Lyrics ? Visibility.Visible : Visibility.Collapsed;
@@ -546,9 +564,16 @@ public sealed partial class RightPanelView : UserControl
             DetailsCanvasImage.Visibility = Visibility.Visible;
         }
 
+        // Canvas mode: push content to bottom so video is visible
+        ApplyCanvasLayout();
+
         // Details lyrics snippet timer — stop when not on Details tab
         if (SelectedMode != RightPanelMode.Details)
+        {
             _detailsLyricsTimer?.Stop();
+            CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
+            _canvasLyricsActive = false;
+        }
 
         if (_lyricsInitialized)
             ApplyCurrentLyricsState();
@@ -685,6 +710,7 @@ public sealed partial class RightPanelView : UserControl
     private async Task AnimateDetailsContentInAsync()
     {
         UpdateDetailsContent();
+        DetailsContent.ChangeView(null, 0, null, true);
 
         // Start hidden
         DetailsContent.Opacity = 0;
@@ -770,8 +796,6 @@ public sealed partial class RightPanelView : UserControl
             ? Visibility.Visible : Visibility.Collapsed;
         DetailsRelatedVideosList.ItemsSource = _detailsVm.RelatedVideos;
 
-        // Scroll to top on content change
-        DetailsContent.ChangeView(null, 0, null, true);
     }
 
     private void DetailsLyricsSnippet_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
@@ -801,14 +825,20 @@ public sealed partial class RightPanelView : UserControl
         if (_lyricsVm == null) return;
 
         // Update immediately
+        UpdateCanvasLyricsVisibility();
         UpdateLyricsSnippetText();
 
-        // Start a timer to keep the snippet in sync (~4 updates/sec)
+        // Use faster tick rate when canvas overlay is visible (50ms for smooth typing)
+        var interval = _canvasLyricsActive ? 50 : 250;
         if (_detailsLyricsTimer == null)
         {
             _detailsLyricsTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(250);
+            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(interval);
             _detailsLyricsTimer.Tick += OnDetailsLyricsTimerTick;
+        }
+        else
+        {
+            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(interval);
         }
         _detailsLyricsTimer.Start();
     }
@@ -817,12 +847,31 @@ public sealed partial class RightPanelView : UserControl
     {
         _detailsLyricsTimer?.Stop();
         _lastSnippetLineIndex = -1;
+        CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
+        _canvasLyricsActive = false;
     }
 
     private void OnDetailsLyricsTimerTick(DispatcherQueueTimer sender, object args)
     {
         if (SelectedMode != RightPanelMode.Details) return;
         UpdateLyricsSnippetText();
+    }
+
+    private bool _canvasLyricsActive;
+    private int _lastRevealedSyllableCount;
+    private double _syllableRevealTimeMs;
+
+    private void UpdateCanvasLyricsVisibility()
+    {
+        var show = SelectedMode == RightPanelMode.Details
+                   && _activeBackgroundMode != DetailsBackgroundMode.None
+                   && _lyricsVm?.HasLyrics == true;
+        _canvasLyricsActive = show;
+        CanvasLyricsOverlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        // Adjust timer speed
+        if (_detailsLyricsTimer != null)
+            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(show ? 50 : 250);
     }
 
     private void UpdateLyricsSnippetText()
@@ -844,24 +893,102 @@ public sealed partial class RightPanelView : UserControl
 
         if (currentIdx < 0) currentIdx = 0;
 
-        // Skip update if same line
-        if (currentIdx == _lastSnippetLineIndex) return;
-        _lastSnippetLineIndex = currentIdx;
-
-        // Previous, current, next — skip empty lines
-        var prev = currentIdx > 0 ? lines[currentIdx - 1].PrimaryText : "";
-        var current = lines[currentIdx].PrimaryText;
+        var currentLine = lines[currentIdx];
         var next = currentIdx < lines.Count - 1 ? lines[currentIdx + 1].PrimaryText : "";
 
-        DetailsLyricsPrev.Text = prev;
-        DetailsLyricsPrev.Visibility = string.IsNullOrWhiteSpace(prev)
-            ? Visibility.Collapsed : Visibility.Visible;
+        // Update card snippet (only on line change)
+        if (currentIdx != _lastSnippetLineIndex)
+        {
+            _lastSnippetLineIndex = currentIdx;
+            _lastRevealedSyllableCount = 0;
 
-        DetailsLyricsCurrent.Text = current;
+            var prev = currentIdx > 0 ? lines[currentIdx - 1].PrimaryText : "";
+            DetailsLyricsPrev.Text = prev;
+            DetailsLyricsPrev.Visibility = string.IsNullOrWhiteSpace(prev)
+                ? Visibility.Collapsed : Visibility.Visible;
+            DetailsLyricsCurrent.Text = currentLine.PrimaryText;
+            DetailsLyricsNext.Text = next;
+            DetailsLyricsNext.Visibility = string.IsNullOrWhiteSpace(next)
+                ? Visibility.Collapsed : Visibility.Visible;
+        }
 
-        DetailsLyricsNext.Text = next;
-        DetailsLyricsNext.Visibility = string.IsNullOrWhiteSpace(next)
-            ? Visibility.Collapsed : Visibility.Visible;
+        // Update canvas overlay with syllable-by-syllable typing + fade
+        if (_canvasLyricsActive)
+            UpdateCanvasOverlaySyllables(currentLine, posMs);
+    }
+
+    private const double SyllableFadeDurationMs = 180;
+
+    private void UpdateCanvasOverlaySyllables(
+        Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine line, double posMs)
+    {
+        var syllables = line.PrimarySyllables;
+
+        // If no syllable data, show full line as plain text
+        if (!line.IsPrimaryHasRealSyllableInfo || syllables.Count == 0)
+        {
+            CanvasLyricLine1.Text = line.PrimaryText.ToUpperInvariant();
+            CanvasLyricLine1.Opacity = 0.4;
+            return;
+        }
+
+        // Count revealed syllables
+        int revealedCount = 0;
+        foreach (var syl in syllables)
+        {
+            if (syl.StartMs <= posMs) revealedCount++;
+            else break;
+        }
+
+        // Track when a new syllable appears to start the ease-in
+        if (revealedCount > _lastRevealedSyllableCount)
+        {
+            _lastRevealedSyllableCount = revealedCount;
+            _syllableRevealTimeMs = posMs;
+        }
+
+        // Ease-in progress for the newest syllable
+        // Cap fade to syllable duration so fast rap sections don't lag
+        var newestSyl = revealedCount > 0 ? syllables[revealedCount - 1] : null;
+        var syllableDurationMs = newestSyl?.DurationMs ?? 300;
+        var fadeDuration = Math.Min(SyllableFadeDurationMs, Math.Max(syllableDurationMs * 0.8, 40));
+        var fadeElapsed = posMs - _syllableRevealTimeMs;
+        var fadeT = Math.Clamp(fadeElapsed / fadeDuration, 0, 1);
+        var eased = 1.0 - (1.0 - fadeT) * (1.0 - fadeT); // quadratic ease-out
+
+        CanvasLyricLine1.Inlines.Clear();
+        CanvasLyricLine1.Opacity = 1.0;
+
+        var dimBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(102, 255, 255, 255));
+        var brightBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(230, 255, 255, 255));
+
+        for (int i = 0; i < revealedCount; i++)
+        {
+            var syl = syllables[i];
+            var isPlaying = syl.StartMs <= posMs && (syl.EndMs == null || posMs < syl.EndMs);
+            var isNewest = i == revealedCount - 1;
+
+            byte alpha;
+            if (isNewest && fadeT < 1.0)
+            {
+                // Ease in from 0 to target (bright if playing, dim if already played)
+                var targetAlpha = isPlaying ? (byte)230 : (byte)102;
+                alpha = (byte)(targetAlpha * eased);
+            }
+            else
+            {
+                alpha = isPlaying ? (byte)230 : (byte)102;
+            }
+
+            CanvasLyricLine1.Inlines.Add(
+                new Microsoft.UI.Xaml.Documents.Run
+                {
+                    Text = syl.Text.ToUpperInvariant(),
+                    Foreground = alpha == 230 ? brightBrush
+                        : alpha == 102 ? dimBrush
+                        : new SolidColorBrush(Windows.UI.Color.FromArgb(alpha, 255, 255, 255))
+                });
+        }
     }
 
     // ── Credits collapse/expand ──
@@ -939,7 +1066,7 @@ public sealed partial class RightPanelView : UserControl
                 {
                     var transform = DetailsCreditsSection.TransformToVisual(DetailsContent);
                     var position = transform.TransformPoint(new Windows.Foundation.Point(0, 0));
-                    DetailsContent.ChangeView(null, position.Y, null, false);
+                    DetailsContent.ChangeView(null, DetailsContent.VerticalOffset + position.Y, null, false);
                 }
             },
             SetBackgroundModeAction = (mode) =>
@@ -997,11 +1124,8 @@ public sealed partial class RightPanelView : UserControl
     private string? _currentAlbumArtUrl;
     private Microsoft.Graphics.Canvas.CanvasDevice? _canvasDevice;
     private Microsoft.Graphics.Canvas.CanvasRenderTarget? _canvasFrameTarget;
-    private float _canvasBlurAmount = 1.3f;
     private const float AlbumArtBlurAmount = 40f;
     private Microsoft.Graphics.Canvas.UI.Xaml.CanvasImageSource? _canvasImageSource;
-    private long _lastCanvasFrameTicks;
-    private const long CanvasFrameIntervalTicks = TimeSpan.TicksPerSecond / 10; // ~10fps throttle
     private DetailsBackgroundMode _activeBackgroundMode;
 
     private DetailsBackgroundMode GetSettingsBackgroundMode()
@@ -1025,6 +1149,7 @@ public sealed partial class RightPanelView : UserControl
             mode = DetailsBackgroundMode.BlurredAlbumArt;
 
         _activeBackgroundMode = mode;
+        UpdateCanvasLyricsVisibility();
 
         switch (mode)
         {
@@ -1044,6 +1169,8 @@ public sealed partial class RightPanelView : UserControl
                 SetupCanvasBackground(canvasUrl);
                 break;
         }
+
+        ApplyCanvasLayout();
     }
 
     // ── Blurred album art ──
@@ -1130,6 +1257,149 @@ public sealed partial class RightPanelView : UserControl
         _currentAlbumArtUrl = null;
     }
 
+    // ── Canvas layout (push content to bottom so video is visible) ──
+
+    private void ApplyCanvasLayout(bool animate = true)
+    {
+        if (DetailsCanvasSpacer == null) return;
+
+        var isCanvas = _activeBackgroundMode == DetailsBackgroundMode.Canvas
+                       && SelectedMode == RightPanelMode.Details;
+
+        var targetHeight = isCanvas
+            ? Math.Max(0, DetailsContent.ActualHeight - 120)
+            : 0d;
+
+        if (!animate || !IsLoaded)
+        {
+            DetailsCanvasSpacer.Height = targetHeight;
+            return;
+        }
+
+        var current = DetailsCanvasSpacer.Height;
+        if (Math.Abs(current - targetHeight) < 1) return;
+
+        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        var da = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = current,
+            To = targetHeight,
+            Duration = TimeSpan.FromMilliseconds(400),
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+                { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseInOut },
+            EnableDependentAnimation = true
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(da, DetailsCanvasSpacer);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(da, "Height");
+        storyboard.Children.Add(da);
+        storyboard.Begin();
+
+        if (isCanvas)
+            DetailsContent.ChangeView(null, 0, null, false);
+    }
+
+    private void DetailsContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_activeBackgroundMode == DetailsBackgroundMode.Canvas
+            && SelectedMode == RightPanelMode.Details
+            && DetailsCanvasSpacer != null)
+        {
+            DetailsCanvasSpacer.Height = Math.Max(0, DetailsContent.ActualHeight - 120);
+        }
+
+    }
+
+    // ── Card-by-card paging for Details ──
+
+    private bool _detailsWheelHandlerRegistered;
+
+    private void RegisterDetailsWheelHandler()
+    {
+        if (_detailsWheelHandlerRegistered) return;
+        DetailsContent.AddHandler(PointerWheelChangedEvent,
+            new PointerEventHandler(DetailsContent_PointerWheelChanged), true);
+        _detailsWheelHandlerRegistered = true;
+    }
+
+    private void UnregisterDetailsWheelHandler()
+    {
+        if (!_detailsWheelHandlerRegistered) return;
+        DetailsContent.RemoveHandler(PointerWheelChangedEvent,
+            new PointerEventHandler(DetailsContent_PointerWheelChanged));
+        _detailsWheelHandlerRegistered = false;
+    }
+
+    private FrameworkElement[] GetVisibleDetailsCards()
+    {
+        var all = new FrameworkElement[]
+        {
+            DetailsArtistHeaderCard, DetailsLyricsSnippet, DetailsBio,
+            DetailsCreditsSection, DetailsConcertsSection, DetailsRelatedVideosSection
+        };
+        return all.Where(c => c.Visibility == Visibility.Visible).ToArray();
+    }
+
+    private void DetailsContent_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (SelectedMode != RightPanelMode.Details) return;
+
+        var props = e.GetCurrentPoint(DetailsContent).Properties;
+        var delta = props.MouseWheelDelta;
+        if (delta == 0) return;
+
+        var cards = GetVisibleDetailsCards();
+        if (cards.Length == 0) return;
+
+        var content = (UIElement)DetailsContent.Content;
+        var currentOffset = DetailsContent.VerticalOffset;
+
+        if (delta < 0) // scroll down
+        {
+            // Find the first card whose bottom edge is below the current viewport top
+            // and scroll past it (to the next card's top)
+            for (int i = 0; i < cards.Length; i++)
+            {
+                var transform = cards[i].TransformToVisual(content);
+                var cardY = transform.TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                var cardBottom = cardY + cards[i].ActualHeight;
+
+                // This card's bottom is still below viewport top — scroll past it
+                if (cardBottom > currentOffset + 1)
+                {
+                    DetailsContent.ChangeView(null, cardBottom, null, false);
+                    break;
+                }
+            }
+        }
+        else // scroll up
+        {
+            // Find the last card whose top edge is above the current viewport top
+            // and scroll to its top
+            for (int i = cards.Length - 1; i >= 0; i--)
+            {
+                var transform = cards[i].TransformToVisual(content);
+                var cardY = transform.TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+
+                if (cardY < currentOffset - 1)
+                {
+                    DetailsContent.ChangeView(null, cardY, null, false);
+                    break;
+                }
+            }
+
+            // If we're above all cards, scroll to top
+            if (cards.Length > 0)
+            {
+                var firstTransform = cards[0].TransformToVisual(content);
+                var firstY = firstTransform.TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                if (currentOffset <= firstY + 1)
+                    DetailsContent.ChangeView(null, 0, null, false);
+            }
+        }
+
+        e.Handled = true;
+    }
+
     // ── Canvas video ──
 
     private void SetupCanvasBackground(string? url)
@@ -1163,18 +1433,12 @@ public sealed partial class RightPanelView : UserControl
 
     private void OnCanvasVideoFrameAvailable(Windows.Media.Playback.MediaPlayer sender, object args)
     {
-        // Throttle: skip frames to stay at ~10fps (ambient background doesn't need 30fps)
-        var now = DateTime.UtcNow.Ticks;
-        if (now - _lastCanvasFrameTicks < CanvasFrameIntervalTicks) return;
-        _lastCanvasFrameTicks = now;
-
         DispatcherQueue.TryEnqueue(() =>
         {
             if (_canvasMediaPlayer == null || _canvasDevice == null) return;
 
-            // Render at half resolution — it's a blurred background, doesn't need full res
-            var w = Math.Max(1, (int)RootGrid.ActualWidth / 2);
-            var h = Math.Max(1, (int)RootGrid.ActualHeight / 2);
+            var w = Math.Max(1, (int)RootGrid.ActualWidth);
+            var h = Math.Max(1, (int)RootGrid.ActualHeight);
             if (w <= 0 || h <= 0) return;
 
             try
@@ -1186,7 +1450,6 @@ public sealed partial class RightPanelView : UserControl
                     _canvasFrameTarget = new Microsoft.Graphics.Canvas.CanvasRenderTarget(_canvasDevice, w, h, 96);
                 }
 
-                // Copy video frame to our render target
                 _canvasMediaPlayer.CopyFrameToVideoSurface(_canvasFrameTarget);
 
                 // Create or resize the image source
@@ -1196,20 +1459,24 @@ public sealed partial class RightPanelView : UserControl
                     DetailsCanvasImage.Source = _canvasImageSource;
                 }
 
-                // Draw blurred frame to image source
+                // Draw frame directly (no blur)
                 using var ds = _canvasImageSource.CreateDrawingSession(Colors.Transparent);
-                var blur = new Microsoft.Graphics.Canvas.Effects.GaussianBlurEffect
-                {
-                    Source = _canvasFrameTarget,
-                    BlurAmount = _canvasBlurAmount,
-                    BorderMode = Microsoft.Graphics.Canvas.Effects.EffectBorderMode.Hard
-                };
-                ds.DrawImage(blur);
-                blur.Dispose();
+                ds.DrawImage(_canvasFrameTarget);
             }
-            catch
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                // Frame rendering can fail transiently during setup/teardown
+                // Device lost or resource failure — recreate everything
+                _canvasDevice?.Dispose();
+                _canvasDevice = null;
+                _canvasFrameTarget?.Dispose();
+                _canvasFrameTarget = null;
+                _canvasImageSource = null;
+
+                // Force re-setup on next call
+                var url = _currentCanvasUrl;
+                _currentCanvasUrl = null;
+                if (!string.IsNullOrEmpty(url))
+                    SetupCanvasBackground(url);
             }
         });
     }

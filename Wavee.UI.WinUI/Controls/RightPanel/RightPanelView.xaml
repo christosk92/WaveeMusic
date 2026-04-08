@@ -40,11 +40,30 @@
                                  Grid.ColumnSpan="2"
                                  Visibility="Collapsed"/>
 
-        <!-- Canvas video background (frame server mode + Win2D blur → standard Image, acrylic works on top) -->
+        <!-- Canvas video background (frame server mode + Win2D → standard Image) -->
         <Image x:Name="DetailsCanvasImage"
                Grid.ColumnSpan="2"
                Stretch="UniformToFill"
                Visibility="Collapsed"/>
+
+        <!-- Lyrics overlay on canvas — large uppercase text at top-left with typing effect -->
+        <StackPanel x:Name="CanvasLyricsOverlay"
+                    Grid.Column="1"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Left"
+                    Margin="20,56,20,0"
+                    Spacing="8"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False">
+            <TextBlock x:Name="CanvasLyricLine1"
+                       FontSize="28"
+                       FontWeight="Black"
+                       CharacterSpacing="80"
+                       Foreground="White"
+                       Opacity="0.4"
+                       TextWrapping="WrapWholeWords"
+                       MaxLines="10"/>
+        </StackPanel>
 
         <!-- Resize gripper -->
         <Border
@@ -234,7 +253,8 @@
                 <!-- Details panel -->
                 <ScrollViewer VerticalScrollBarVisibility="Hidden"
                               Margin="-8,0,-8,-12"
-                              x:Name="DetailsContent" Visibility="Collapsed">
+                              x:Name="DetailsContent" Visibility="Collapsed"
+                              SizeChanged="DetailsContent_SizeChanged">
                     <animations:Implicit.ShowAnimations>
                         <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1"/>
                         <animations:TranslationAnimation Duration="0:0:0.25" From="0,12,0" To="0"/>
@@ -243,6 +263,9 @@
                         <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
                     </animations:Implicit.HideAnimations>
                     <StackPanel Spacing="16" Padding="0,4,0,8">
+
+                        <!-- Canvas mode spacer — pushes cards to bottom so video is visible -->
+                        <Border x:Name="DetailsCanvasSpacer" Height="0"/>
 
                         <!-- Loading shimmer skeleton -->
                         <StackPanel x:Name="DetailsLoadingShimmer" Spacing="16" Visibility="Collapsed">

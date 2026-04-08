@@ -37,7 +37,7 @@ public sealed class ContextResolver
     ];
 
     // Unavailable context tracking (like librespot: 1 hour cooldown)
-    private static readonly TimeSpan UnavailableCooldown = TimeSpan.FromHours(1);
+    private static readonly TimeSpan UnavailableCooldown = TimeSpan.FromSeconds(30);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _unavailableContexts = new();
 
     // TTL values for different context types

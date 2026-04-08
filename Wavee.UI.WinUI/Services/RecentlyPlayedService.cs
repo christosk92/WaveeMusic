@@ -57,12 +57,25 @@ public sealed class RecentlyPlayedService : IDisposable
             var contexts = recentResponse.PlayContexts;
             if (contexts == null || contexts.Count == 0) return;
 
-            // 2. Filter out episodes/shows
-            var filtered = contexts
-                .Where(c => !string.IsNullOrEmpty(c.Uri)
-                    && !c.Uri.StartsWith("spotify:episode:", StringComparison.Ordinal)
-                    && !c.Uri.StartsWith("spotify:show:", StringComparison.Ordinal))
-                .ToList();
+            // 2. Filter out episodes/shows, deduplicate collection URIs
+            var seenCollection = false;
+            var filtered = new List<RecentlyPlayedContext>();
+            foreach (var c in contexts)
+            {
+                if (string.IsNullOrEmpty(c.Uri)) continue;
+                if (c.Uri.StartsWith("spotify:episode:", StringComparison.Ordinal)
+                    || c.Uri.StartsWith("spotify:show:", StringComparison.Ordinal))
+                    continue;
+
+                // Deduplicate Liked Songs (can appear as both user:X:collection and collection:tracks)
+                if (c.Uri.Contains(":collection", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (seenCollection) continue;
+                    seenCollection = true;
+                }
+
+                filtered.Add(c);
+            }
 
             if (filtered.Count == 0) return;
 
@@ -232,7 +245,9 @@ public sealed class RecentlyPlayedService : IDisposable
             {
                 Uri = uri,
                 Title = "Liked Songs",
-                ContentType = HomeContentType.Playlist
+                ContentType = HomeContentType.Playlist,
+                ColorHex = "#4B2A8A",
+                PlaceholderGlyph = "\uEB52" // filled heart
             };
         }
 

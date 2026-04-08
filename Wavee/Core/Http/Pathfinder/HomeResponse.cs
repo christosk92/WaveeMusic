@@ -98,11 +98,183 @@ public sealed class HomeSectionItemsPage
 
 public sealed class HomeSectionItemEntry
 {
+    // V1 format (old API)
     [JsonPropertyName("content")]
     public HomeItemContent? Content { get; set; }
 
+    // V2 format (new entity/trait API)
+    [JsonPropertyName("entity")]
+    public HomeEntityWrapper? Entity { get; set; }
+
+    [JsonPropertyName("data")]
+    public JsonElement? Data { get; set; }
+
+    [JsonPropertyName("formatListAttributes")]
+    public List<HomeFormatListAttribute>? FormatListAttributes { get; set; }
+
+    [JsonPropertyName("uid")]
+    public string? Uid { get; set; }
+
     [JsonPropertyName("uri")]
     public string? Uri { get; set; }
+}
+
+// ── V2 Entity/Trait models ──
+
+public sealed class HomeFormatListAttribute
+{
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    [JsonPropertyName("value")]
+    public string? Value { get; set; }
+}
+
+public sealed class HomeEntityWrapper
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("_uri")]
+    public string? Uri { get; set; }
+
+    [JsonPropertyName("data")]
+    public HomeEntityData? Data { get; set; }
+}
+
+public sealed class HomeEntityData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; set; }
+
+    [JsonPropertyName("identityTrait")]
+    public HomeIdentityTrait? IdentityTrait { get; set; }
+
+    [JsonPropertyName("visualIdentityTrait")]
+    public HomeVisualIdentityTrait? VisualIdentityTrait { get; set; }
+
+    [JsonPropertyName("entityTypeTrait")]
+    public HomeEntityTypeTrait? EntityTypeTrait { get; set; }
+
+    [JsonPropertyName("consumptionExperienceTrait")]
+    public JsonElement? ConsumptionExperienceTrait { get; set; }
+
+    [JsonPropertyName("typedEntity")]
+    public HomeTypedEntity? TypedEntity { get; set; }
+
+    [JsonPropertyName("sharingInfo")]
+    public JsonElement? SharingInfo { get; set; }
+}
+
+public sealed class HomeTypedEntity
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+}
+
+public sealed class HomeIdentityTrait
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("contributors")]
+    public HomeContributors? Contributors { get; set; }
+
+    [JsonPropertyName("contentHierarchyParent")]
+    public JsonElement? ContentHierarchyParent { get; set; }
+}
+
+public sealed class HomeContributors
+{
+    [JsonPropertyName("items")]
+    public List<HomeContributorItem>? Items { get; set; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; set; }
+}
+
+public sealed class HomeContributorItem
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; set; }
+}
+
+public sealed class HomeEntityTypeTrait
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+}
+
+public sealed class HomeVisualIdentityTrait
+{
+    [JsonPropertyName("squareCoverImage")]
+    public HomeSquareCoverImage? SquareCoverImage { get; set; }
+}
+
+public sealed class HomeSquareCoverImage
+{
+    [JsonPropertyName("image")]
+    public HomeImageV2Wrapper? Image { get; set; }
+
+    [JsonPropertyName("originalInstances")]
+    public List<HomeOriginalInstance>? OriginalInstances { get; set; }
+}
+
+public sealed class HomeImageV2Wrapper
+{
+    [JsonPropertyName("data")]
+    public HomeImageV2Data? Data { get; set; }
+}
+
+public sealed class HomeImageV2Data
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("sources")]
+    public List<HomeImageV2Source>? Sources { get; set; }
+}
+
+public sealed class HomeImageV2Source
+{
+    [JsonPropertyName("imageFormat")]
+    public string? ImageFormat { get; set; }
+
+    [JsonPropertyName("maxHeight")]
+    public int? MaxHeight { get; set; }
+
+    [JsonPropertyName("maxWidth")]
+    public int? MaxWidth { get; set; }
+
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+}
+
+public sealed class HomeOriginalInstance
+{
+    [JsonPropertyName("flatFile")]
+    public HomeFlatFile? FlatFile { get; set; }
+
+    [JsonPropertyName("size")]
+    public string? Size { get; set; }
+}
+
+public sealed class HomeFlatFile
+{
+    [JsonPropertyName("cdnUrl")]
+    public string? CdnUrl { get; set; }
 }
 
 /// <summary>
@@ -349,6 +521,7 @@ public sealed class HomeImageSource
 // ── JSON serialization context ──
 
 [JsonSerializable(typeof(HomeResponse))]
+// V1 typed data
 [JsonSerializable(typeof(HomeArtistData))]
 [JsonSerializable(typeof(HomePlaylistData))]
 [JsonSerializable(typeof(HomeAlbumData))]
@@ -368,6 +541,22 @@ public sealed class HomeImageSource
 [JsonSerializable(typeof(HomePodcastPublisher))]
 [JsonSerializable(typeof(HomeChip))]
 [JsonSerializable(typeof(HomeLabel))]
+// V2 entity/trait models
+[JsonSerializable(typeof(HomeEntityWrapper))]
+[JsonSerializable(typeof(HomeEntityData))]
+[JsonSerializable(typeof(HomeIdentityTrait))]
+[JsonSerializable(typeof(HomeVisualIdentityTrait))]
+[JsonSerializable(typeof(HomeEntityTypeTrait))]
+[JsonSerializable(typeof(HomeSquareCoverImage))]
+[JsonSerializable(typeof(HomeImageV2Wrapper))]
+[JsonSerializable(typeof(HomeImageV2Data))]
+[JsonSerializable(typeof(HomeImageV2Source))]
+[JsonSerializable(typeof(HomeOriginalInstance))]
+[JsonSerializable(typeof(HomeFlatFile))]
+[JsonSerializable(typeof(HomeContributors))]
+[JsonSerializable(typeof(HomeContributorItem))]
+[JsonSerializable(typeof(HomeFormatListAttribute))]
+[JsonSerializable(typeof(HomeTypedEntity))]
 [JsonSourceGenerationOptions]
 public partial class HomeJsonContext : JsonSerializerContext;
 

@@ -39,6 +39,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private string _pipeName = "";
     private bool _disposed;
     private int _restartCount;
+    private int _restartInProgress; // 0 = idle, 1 = restarting (guards against double-trigger)
     private Timer? _heartbeatTimer;
 
     // Credentials cached for auto-restart
@@ -285,7 +286,11 @@ public sealed class AudioProcessManager : IAsyncDisposable
         _logger?.LogWarning("Audio host process exited (code={ExitCode}, restarts={Restarts}/{Max})",
             exitCode, _restartCount, MaxRestartAttempts);
 
-        // The proxy disconnected event will trigger restart via OnProxyDisconnected
+        // Directly trigger restart — don't rely solely on proxy disconnect detection,
+        // because the pipe read may not immediately fail on Windows when the server exits.
+        _heartbeatTimer?.Dispose();
+        _heartbeatTimer = null;
+        _ = TryRestartAsync();
     }
 
     private void OnProxyDisconnected(string reason)
@@ -302,14 +307,20 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
     private async Task TryRestartAsync()
     {
+        // Guard against concurrent restart from both OnProcessExited and OnProxyDisconnected
+        if (Interlocked.CompareExchange(ref _restartInProgress, 1, 0) != 0)
+            return;
+
         if (_disposed || _username == null || _storedCredential == null || _deviceId == null)
         {
+            Interlocked.Exchange(ref _restartInProgress, 0);
             SetState(AudioProcessState.Failed, "Cannot restart — no cached credentials");
             return;
         }
 
         if (_restartCount >= MaxRestartAttempts)
         {
+            Interlocked.Exchange(ref _restartInProgress, 0);
             _logger?.LogError("Audio host exceeded max restart attempts ({Max})", MaxRestartAttempts);
             SetState(AudioProcessState.Failed,
                 $"Audio engine failed after {MaxRestartAttempts} restart attempts. Restart the app to try again.");
@@ -334,6 +345,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            Interlocked.Exchange(ref _restartInProgress, 0);
             return;
         }
 
@@ -341,6 +353,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         try
         {
             await LaunchAndConnectAsync(_cts.Token);
+            Interlocked.Exchange(ref _restartInProgress, 0);
             _logger?.LogInformation("Audio host restarted successfully (attempt {N})", _restartCount);
 
             // Re-wire the proxy into the executor (it has a new proxy instance)
@@ -349,15 +362,18 @@ public sealed class AudioProcessManager : IAsyncDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Audio host restart failed (attempt {N})", _restartCount);
-            // Will retry via the next disconnect event or give up if at max
+            // Will retry or give up if at max
             if (_restartCount < MaxRestartAttempts)
             {
                 SetState(AudioProcessState.Reconnecting,
                     $"Restart failed, retrying... ({_restartCount}/{MaxRestartAttempts})");
+                // Reset guard before recursive retry
+                Interlocked.Exchange(ref _restartInProgress, 0);
                 _ = TryRestartAsync();
             }
             else
             {
+                Interlocked.Exchange(ref _restartInProgress, 0);
                 SetState(AudioProcessState.Failed,
                     "Audio engine failed to restart. Restart the app to try again.");
             }

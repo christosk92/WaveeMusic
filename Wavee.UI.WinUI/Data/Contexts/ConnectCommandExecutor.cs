@@ -237,7 +237,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             SenderDeviceId = "",
             ContextUri = "spotify:internal:queue",
             SkipToIndex = startIndex > 0 ? startIndex : null,
-            PageTracks = trackUris.Select(uri => new Wavee.Connect.Commands.PageTrack(uri, "")).ToList(),
+            PageTracks = normalizedUris.Select(uri => new Wavee.Connect.Commands.PageTrack(uri, "")).ToList(),
         };
 
         return SendAsync("play", data, typedCmd, ct);

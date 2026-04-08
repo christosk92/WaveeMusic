@@ -949,6 +949,7 @@ public sealed class HomeSectionItem
     public string? ImageUrl { get; set; }
     public HomeContentType ContentType { get; set; }
     public string? ColorHex { get; set; }
+    public string? PlaceholderGlyph { get; set; }
 }
 
 public sealed partial class HomeChipViewModel : ObservableObject
