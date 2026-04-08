@@ -1022,13 +1022,47 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             }
         }
 
-        // TODO: Phase 3 - Handle autoplay (fetch recommendations from Spotify)
-        // if (_autoplayEnabled)
-        // {
-        //     await LoadAutoplayTracksAsync();
-        //     var nextTrack = _queue.MoveNext();
-        //     if (nextTrack != null) { ... }
-        // }
+        // Autoplay: fetch recommendations when context ends
+        if (!string.IsNullOrEmpty(_currentContextUri))
+        {
+            try
+            {
+                // Collect recent track URIs for recommendation seeding
+                var recentUris = _queue.GetPrevTracks().Select(t => t.Uri).ToList();
+                if (_currentTrackUri != null)
+                    recentUris.Add(_currentTrackUri);
+
+                _logger?.LogDebug("Fetching autoplay for {ContextUri} with {RecentCount} recent tracks",
+                    _currentContextUri, recentUris.Count);
+
+                var autoplayResult = await _contextResolver.LoadAutoplayAsync(
+                    _currentContextUri, recentUris, cancellationToken);
+
+                if (autoplayResult.Tracks.Count > 0)
+                {
+                    // Switch to infinite autoplay context
+                    _queue.SetContext(autoplayResult.Tracks[0].AlbumUri ?? _currentContextUri, isInfinite: true);
+                    _queue.SetTracks(autoplayResult.Tracks, 0);
+                    _nextPageUrl = autoplayResult.NextPageUrl;
+
+                    var nextTrack = _queue.MoveNext();
+                    if (nextTrack != null)
+                    {
+                        _currentTrackUri = NormalizeToUri(nextTrack.Uri);
+                        _currentTrackUid = nextTrack.Uid ?? string.Empty;
+                        _currentPositionMs = 0;
+
+                        _playbackCts = new CancellationTokenSource();
+                        _playbackTask = LaunchPlaybackLoop(_currentTrackUri, 0, _playbackCts.Token);
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogWarning(ex, "Autoplay fetch failed for {ContextUri}", _currentContextUri);
+            }
+        }
 
         _logger?.LogInformation("End of context - stopping playback");
 
@@ -1556,6 +1590,8 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
             CurrentIndex = currentIndex,
             PrevTracks = prevTracks,
             NextTracks = nextTracks,
+            PrevQueueItems = prevRaw.Cast<IQueueItem>().ToList(),
+            NextQueueItems = nextRaw.Cast<IQueueItem>().ToList(),
             QueueRevision = queueRevision,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
@@ -1712,8 +1748,79 @@ public sealed class AudioPipeline : IPlaybackEngine, IAsyncDisposable
         _subscriptions.Add(_commandHandler.TransferCommands.Subscribe(async cmd =>
         {
             _logger?.LogInformation("Transfer command received from {Device}", cmd.SenderDeviceId);
-            // TODO: Implement full transfer logic using cmd.TransferState
-            await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+            try
+            {
+                var ts = cmd.TransferState;
+                var playback = ts.Playback;
+                var session = ts.CurrentSession;
+                var contextUri = session?.Context?.Uri;
+
+                if (string.IsNullOrEmpty(contextUri) || playback?.CurrentTrack == null)
+                {
+                    _logger?.LogWarning("Transfer state missing context or current track");
+                    await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+                    return;
+                }
+
+                // Extract user queue items from transfer state
+                var userQueueTracks = new List<QueueTrack>();
+                if (ts.Queue?.Tracks != null)
+                {
+                    foreach (var qt in ts.Queue.Tracks)
+                    {
+                        if (!string.IsNullOrEmpty(qt.Uri))
+                        {
+                            qt.Metadata.TryGetValue("title", out var title);
+                            qt.Metadata.TryGetValue("artist_name", out var artist);
+                            userQueueTracks.Add(new QueueTrack(
+                                Uri: qt.Uri, Uid: qt.Uid, Title: title, Artist: artist,
+                                IsUserQueued: true, Provider: "queue"));
+                        }
+                    }
+                }
+
+                // Build play command from transfer state
+                var positionMs = playback.PositionAsOfTimestamp;
+                var playCommand = new Commands.PlayCommand
+                {
+                    Endpoint = "transfer",
+                    SenderDeviceId = cmd.SenderDeviceId,
+                    MessageIdent = cmd.MessageIdent,
+                    MessageId = cmd.MessageId,
+                    Key = cmd.Key,
+                    ContextUri = contextUri,
+                    TrackUri = playback.CurrentTrack.Uri,
+                    TrackUid = session.CurrentUid ?? playback.CurrentTrack.Uid,
+                    PositionMs = positionMs > 0 ? positionMs : null,
+                    Options = ts.Options != null ? new Commands.PlayerOptions
+                    {
+                        ShufflingContext = ts.Options.ShufflingContext,
+                        RepeatingContext = ts.Options.RepeatingContext,
+                        RepeatingTrack = ts.Options.RepeatingTrack
+                    } : null,
+                };
+
+                // Load context and start playback
+                await PlayAsync(playCommand, CancellationToken.None);
+
+                // Inject preserved user queue
+                foreach (var queueTrack in userQueueTracks)
+                    _queue.AddToQueue(queueTrack);
+
+                // If transfer was paused, pause locally too
+                if (playback.IsPaused)
+                    await PauseAsync(CancellationToken.None);
+
+                _logger?.LogInformation("Transfer complete: {TrackUri} in {Context}, queue={QueueCount}",
+                    playback.CurrentTrack.Uri, contextUri, userQueueTracks.Count);
+
+                await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogError(ex, "Transfer command failed");
+                await _commandHandler.SendReplyAsync(cmd.Key, RequestResult.Success);
+            }
         }));
 
         // Update context - refresh context metadata

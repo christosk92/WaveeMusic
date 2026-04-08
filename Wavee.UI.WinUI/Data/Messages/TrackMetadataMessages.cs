@@ -31,6 +31,31 @@ public sealed class TrackMetadataEnrichedMessage
 }
 
 /// <summary>
+/// Sent by PlaybackStateService when queue tracks lack metadata.
+/// TrackMetadataEnricher picks this up and fetches in batch.
+/// </summary>
+public sealed class QueueEnrichmentRequestMessage(IReadOnlyList<string> trackUris)
+    : ValueChangedMessage<IReadOnlyList<string>>(trackUris);
+
+/// <summary>
+/// Sent by TrackMetadataEnricher with enriched queue track data.
+/// PlaybackStateService patches queue items with these results.
+/// </summary>
+public sealed class QueueMetadataEnrichedMessage
+{
+    public required IReadOnlyDictionary<string, QueueTrackMetadata> Tracks { get; init; }
+}
+
+/// <summary>
+/// Enriched metadata for a single queue track.
+/// </summary>
+public sealed record QueueTrackMetadata(
+    string Title,
+    string ArtistName,
+    string? AlbumArt,
+    double DurationMs);
+
+/// <summary>
 /// Request from ArtistService for extended top tracks.
 /// TrackMetadataEnricher handles this if it exists (post-connect).
 /// </summary>

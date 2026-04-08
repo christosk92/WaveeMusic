@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.Json;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.ViewModels;
@@ -9,48 +9,65 @@ using Wavee.UI.WinUI.ViewModels;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Parses the V2 (entity/trait-based) home feed response format.
-/// Each section item has an <see cref="HomeSectionItemEntry.Entity"/> with identity, visual identity,
-/// and entity type traits instead of the V1 typed content wrappers.
+/// Parses the V2 home feed response. This is a hybrid format:
+/// - Shorts/quick-access and generic sections use V1-style content wrappers
+/// - Recents section uses ListResponseWrapper with nested entity/trait items
+/// V2 is detected by the presence of ListResponseWrapper or HomeRecentlyPlayedSectionData.
 /// </summary>
 public sealed class HomeResponseParserV2 : IHomeResponseParser
 {
+    // V1 parser for sections that still use the old content format
+    private static readonly HomeResponseParserV1 V1Fallback = new();
+
     public bool CanParse(HomeResponse response)
     {
-        var firstItem = response.Data?.Home?.SectionContainer?.Sections?.Items?
-            .FirstOrDefault()?.SectionItems?.Items?.FirstOrDefault();
+        var sections = response.Data?.Home?.SectionContainer?.Sections?.Items;
+        if (sections == null) return false;
 
-        return firstItem?.Entity != null;
+        // Detect V2 by looking for ListResponseWrapper or HomeRecentlyPlayedSectionData
+        foreach (var section in sections)
+        {
+            if (section.Data?.TypeName == "HomeRecentlyPlayedSectionData")
+                return true;
+
+            if (section.SectionItems?.Items == null) continue;
+            foreach (var item in section.SectionItems.Items)
+            {
+                if (item.Entity != null) return true;
+                if (item.Content?.TypeName == "ListResponseWrapper") return true;
+            }
+        }
+
+        return false;
     }
 
     public HomeParseResult Parse(HomeResponse response)
     {
         var greeting = response.Data?.Home?.Greeting?.TransformedLabel;
         var sections = MapSections(response);
-        var chips = MapChips(response);
+        var chips = V1Fallback.Parse(response).Chips; // chips format is the same
 
         return new HomeParseResult(greeting, sections, chips);
     }
-
-    // ── Section mapping ──
 
     private static List<HomeSection> MapSections(HomeResponse response)
     {
         var sections = new List<HomeSection>();
         var apiSections = response.Data?.Home?.SectionContainer?.Sections?.Items;
+        System.Diagnostics.Debug.WriteLine($"[V2Parser] apiSections={apiSections?.Count ?? -1}");
         if (apiSections == null) return sections;
 
         foreach (var entry in apiSections)
         {
+            System.Diagnostics.Debug.WriteLine($"[V2Parser] Section: type={entry.Data?.TypeName}, items={entry.SectionItems?.Items?.Count ?? -1}");
             var sectionType = GetSectionType(entry.Data?.TypeName);
-
             var rawTitle = entry.Data?.Title?.TransformedLabel;
             var title = !string.IsNullOrWhiteSpace(rawTitle)
                 ? rawTitle
                 : sectionType switch
                 {
                     HomeSectionType.Shorts => "Quick access",
-                    HomeSectionType.RecentlyPlayed => "Recently played",
+                    HomeSectionType.RecentlyPlayed => "Recents",
                     HomeSectionType.Baseline => entry.Data?.TypeName ?? "Recommended",
                     _ => "Untitled section"
                 };
@@ -63,13 +80,45 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                 SectionUri = entry.Uri ?? ""
             };
 
+            // Extract header entity (e.g. artist avatar for "More like X" sections)
+            var headerEntity = entry.Data?.HeaderEntity;
+            if (headerEntity != null && headerEntity.TypeName is "ArtistResponseWrapper")
+            {
+                var artistData = headerEntity.GetArtistData();
+                if (artistData != null)
+                {
+                    section.HeaderEntityName = artistData.Profile?.Name;
+                    section.HeaderEntityUri = artistData.Uri;
+                    section.HeaderEntityImageUrl = artistData.Visuals?.AvatarImage?.Sources?
+                        .OrderByDescending(s => s.Width ?? 0)
+                        .FirstOrDefault()?.Url;
+                }
+            }
+
             if (entry.SectionItems?.Items != null)
             {
                 foreach (var itemEntry in entry.SectionItems.Items)
                 {
-                    var item = MapSectionItem(itemEntry);
-                    if (item != null)
-                        section.Items.Add(item);
+                    System.Diagnostics.Debug.WriteLine($"[V2Parser]   Item: uri={itemEntry.Uri}, content={itemEntry.Content?.TypeName}, entity={itemEntry.Entity != null}, contentData={itemEntry.Content?.Data?.ValueKind}");
+                    // Check if this is a ListResponseWrapper (Recents section)
+                    if (itemEntry.Content?.TypeName == "ListResponseWrapper")
+                    {
+                        var listItems = UnwrapListItems(itemEntry.Content);
+                        foreach (var li in listItems)
+                            section.Items.Add(li);
+                    }
+                    else if (itemEntry.Entity != null)
+                    {
+                        // Direct entity item
+                        var item = MapEntityItem(itemEntry.Entity, itemEntry.Uri, itemEntry.FormatListAttributes);
+                        if (item != null) section.Items.Add(item);
+                    }
+                    else
+                    {
+                        // V1-style content item — delegate to V1 parser logic
+                        var item = MapV1ContentItem(itemEntry);
+                        if (item != null) section.Items.Add(item);
+                    }
                 }
             }
 
@@ -80,26 +129,83 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         return sections;
     }
 
-    private static HomeSectionItem? MapSectionItem(HomeSectionItemEntry entry)
-    {
-        var entity = entry.Entity;
-        if (entity == null) return null;
+    // ── ListResponseWrapper unwrapping ──
 
+    private static List<HomeSectionItem> UnwrapListItems(HomeItemContent listContent)
+    {
+        var results = new List<HomeSectionItem>();
+        if (listContent.Data is not { } rawData || rawData.ValueKind != JsonValueKind.Object)
+        {
+            System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: Data is null or not object (kind={listContent.Data?.ValueKind})");
+            return results;
+        }
+
+        // Navigate: data.items.items[] — each has "entity" + "formatListAttributes"
+        if (!rawData.TryGetProperty("items", out var itemsWrapper))
+        {
+            System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: no 'items' property. Keys: {string.Join(", ", rawData.EnumerateObject().Select(p => p.Name))}");
+            return results;
+        }
+        if (!itemsWrapper.TryGetProperty("items", out var itemsArray))
+        {
+            System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: no 'items.items'. Wrapper kind={itemsWrapper.ValueKind}");
+            return results;
+        }
+        if (itemsArray.ValueKind != JsonValueKind.Array) return results;
+        System.Diagnostics.Debug.WriteLine($"[V2Parser] UnwrapListItems: found {itemsArray.GetArrayLength()} nested items");
+
+        foreach (var listItem in itemsArray.EnumerateArray())
+        {
+            // Parse entity
+            HomeEntityWrapper? entity = null;
+            if (listItem.TryGetProperty("entity", out var entityEl))
+                entity = JsonSerializer.Deserialize(entityEl, HomeJsonContext.Default.HomeEntityWrapper);
+
+            // Parse formatListAttributes
+            List<HomeFormatListAttribute>? attrs = null;
+            if (listItem.TryGetProperty("formatListAttributes", out var attrsEl)
+                && attrsEl.ValueKind == JsonValueKind.Array)
+            {
+                attrs = new List<HomeFormatListAttribute>();
+                foreach (var a in attrsEl.EnumerateArray())
+                {
+                    var key = a.TryGetProperty("key", out var k) ? k.GetString() : null;
+                    var val = a.TryGetProperty("value", out var v) ? v.GetString() : null;
+                    if (key != null)
+                        attrs.Add(new HomeFormatListAttribute { Key = key, Value = val });
+                }
+            }
+
+            if (entity != null)
+            {
+                var item = MapEntityItem(entity, entity.Uri, attrs);
+                if (item != null) results.Add(item);
+            }
+        }
+
+        return results;
+    }
+
+    // ── Entity item mapping ──
+
+    private static HomeSectionItem? MapEntityItem(
+        HomeEntityWrapper entity,
+        string? fallbackUri,
+        List<HomeFormatListAttribute>? formatAttributes)
+    {
         var entityData = entity.Data;
         if (entityData == null) return null;
 
-        var entityUri = entity.Uri ?? entityData.Uri ?? entry.Uri;
+        var entityUri = entity.Uri ?? entityData.Uri ?? fallbackUri;
 
-        // Liked Songs / collection special case
+        // Liked Songs / collection
         if (entityUri != null && entityUri.Contains(":collection", StringComparison.OrdinalIgnoreCase))
-        {
-            return MapLikedSongs(entityUri, entityData, entry);
-        }
+            return MapLikedSongs(entityUri, entityData, formatAttributes);
 
         var contentType = ResolveContentType(entityData);
         var title = entityData.IdentityTrait?.Name;
         var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage);
-        var subtitle = BuildSubtitle(entityData, contentType, entry.FormatListAttributes);
+        var subtitle = BuildSubtitle(entityData, contentType, formatAttributes);
 
         return new HomeSectionItem
         {
@@ -111,20 +217,121 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         };
     }
 
+    // ── V1 content fallback ──
+
+    private static HomeSectionItem? MapV1ContentItem(HomeSectionItemEntry entry)
+    {
+        var content = entry.Content;
+        if (content == null) return null;
+
+        return content.TypeName switch
+        {
+            "AlbumResponseWrapper" => MapV1Album(entry.Uri, content),
+            "ArtistResponseWrapper" => MapV1Artist(entry.Uri, content),
+            "PlaylistResponseWrapper" => MapV1Playlist(entry.Uri, content),
+            "PodcastOrAudiobookResponseWrapper" => MapV1Podcast(entry.Uri, content),
+            "UnknownType" => MapUnknownType(entry.Uri),
+            _ => MapV1FromRawJson(entry.Uri, content)
+        };
+    }
+
+    private static HomeSectionItem? MapV1Album(string? uri, HomeItemContent content)
+    {
+        var data = content.GetAlbumData();
+        if (data == null) return null;
+        return new HomeSectionItem
+        {
+            Uri = data.Uri ?? uri,
+            Title = data.Name,
+            Subtitle = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name ?? "Album",
+            ImageUrl = data.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ContentType = HomeContentType.Album,
+            ColorHex = data.CoverArt?.ExtractedColors?.ColorDark?.Hex
+        };
+    }
+
+    private static HomeSectionItem? MapV1Artist(string? uri, HomeItemContent content)
+    {
+        var data = content.GetArtistData();
+        if (data == null) return null;
+        return new HomeSectionItem
+        {
+            Uri = data.Uri ?? uri,
+            Title = data.Profile?.Name,
+            Subtitle = "Artist",
+            ImageUrl = data.Visuals?.AvatarImage?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ContentType = HomeContentType.Artist,
+            ColorHex = data.Visuals?.AvatarImage?.ExtractedColors?.ColorDark?.Hex
+        };
+    }
+
+    private static HomeSectionItem? MapV1Playlist(string? uri, HomeItemContent content)
+    {
+        var data = content.GetPlaylistData();
+        if (data == null) return null;
+        return new HomeSectionItem
+        {
+            Uri = data.Uri ?? uri,
+            Title = data.Name,
+            Subtitle = Helpers.SpotifyHtmlHelper.StripHtml(data.Description) is { Length: > 0 } desc
+                ? desc : data.OwnerV2?.Data?.Name,
+            ImageUrl = data.Images?.Items?.FirstOrDefault()?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ContentType = HomeContentType.Playlist,
+            ColorHex = data.Images?.Items?.FirstOrDefault()?.ExtractedColors?.ColorDark?.Hex
+        };
+    }
+
+    private static HomeSectionItem? MapV1Podcast(string? uri, HomeItemContent content)
+    {
+        var data = content.GetPodcastData();
+        if (data == null) return null;
+        return new HomeSectionItem
+        {
+            Uri = data.Uri ?? uri,
+            Title = data.Name,
+            Subtitle = data.Publisher?.Name,
+            ImageUrl = data.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ContentType = HomeContentType.Podcast
+        };
+    }
+
+    private static HomeSectionItem? MapV1FromRawJson(string? uri, HomeItemContent content)
+    {
+        if (content.Data is not { } el || el.ValueKind != JsonValueKind.Object) return null;
+        if (el.TryGetProperty("__typename", out var tn) && tn.GetString() == "NotFound") return null;
+
+        var item = new HomeSectionItem { Uri = uri, ContentType = InferContentType(uri) };
+        if (el.TryGetProperty("name", out var name)) item.Title = name.GetString();
+        if (item.Uri == null && el.TryGetProperty("uri", out var u)) item.Uri = u.GetString();
+        return item.Title != null ? item : null;
+    }
+
+    private static HomeSectionItem? MapUnknownType(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+        if (uri.Contains(":collection", StringComparison.OrdinalIgnoreCase))
+        {
+            return new HomeSectionItem
+            {
+                Uri = uri,
+                Title = "Liked Songs",
+                ContentType = HomeContentType.Playlist,
+                PlaceholderGlyph = "\uEB52",
+                ColorHex = "#4B2A8A"
+            };
+        }
+        return null;
+    }
+
     // ── Liked Songs ──
 
-    private static HomeSectionItem MapLikedSongs(string uri, HomeEntityData entityData, HomeSectionItemEntry entry)
+    private static HomeSectionItem MapLikedSongs(string uri, HomeEntityData entityData,
+        List<HomeFormatListAttribute>? formatAttributes)
     {
         var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage);
-
-        // Determine subtitle based on FormatListAttributes
         var subtitle = "Playlist";
-        if (entry.FormatListAttributes != null)
-        {
-            var hasSaved = entry.FormatListAttributes.Any(a => a.Key == "recent_type_saved");
-            if (hasSaved)
-                subtitle = "Songs added";
-        }
+        if (formatAttributes?.Any(a => a.Key == "recent_type_saved") == true)
+            subtitle = "Songs added";
 
         return new HomeSectionItem
         {
@@ -142,47 +349,36 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
 
     private static HomeContentType ResolveContentType(HomeEntityData entityData)
     {
-        // Primary: EntityTypeTrait.Type
         var entityType = entityData.EntityTypeTrait?.Type;
         if (!string.IsNullOrEmpty(entityType))
         {
-            var ct = MapEntityTypeString(entityType);
-            if (ct != HomeContentType.Unknown)
-                return ct;
+            var ct = entityType switch
+            {
+                "ENTITY_TYPE_ALBUM" => HomeContentType.Album,
+                "ENTITY_TYPE_ARTIST" => HomeContentType.Artist,
+                "ENTITY_TYPE_PLAYLIST" => HomeContentType.Playlist,
+                "ENTITY_TYPE_SHOW" => HomeContentType.Podcast,
+                "ENTITY_TYPE_EPISODE" => HomeContentType.Episode,
+                _ => HomeContentType.Unknown
+            };
+            if (ct != HomeContentType.Unknown) return ct;
         }
 
-        // Fallback: TypedEntity.__typename (same wrapper names as V1)
-        var typedEntityName = entityData.TypedEntity?.TypeName;
-        if (!string.IsNullOrEmpty(typedEntityName))
+        var typedName = entityData.TypedEntity?.TypeName;
+        if (!string.IsNullOrEmpty(typedName))
         {
-            var ct = MapTypedEntityName(typedEntityName);
-            if (ct != HomeContentType.Unknown)
-                return ct;
+            var ct = typedName switch
+            {
+                "AlbumResponseWrapper" => HomeContentType.Album,
+                "ArtistResponseWrapper" => HomeContentType.Artist,
+                "PlaylistResponseWrapper" => HomeContentType.Playlist,
+                _ => HomeContentType.Unknown
+            };
+            if (ct != HomeContentType.Unknown) return ct;
         }
 
-        // Last resort: infer from URI
-        var uri = entityData.Uri;
-        return InferContentType(uri);
+        return InferContentType(entityData.Uri);
     }
-
-    private static HomeContentType MapEntityTypeString(string entityType) => entityType switch
-    {
-        "ENTITY_TYPE_ALBUM" => HomeContentType.Album,
-        "ENTITY_TYPE_ARTIST" => HomeContentType.Artist,
-        "ENTITY_TYPE_PLAYLIST" => HomeContentType.Playlist,
-        "ENTITY_TYPE_SHOW" => HomeContentType.Podcast,
-        "ENTITY_TYPE_EPISODE" => HomeContentType.Episode,
-        _ => HomeContentType.Unknown
-    };
-
-    private static HomeContentType MapTypedEntityName(string typeName) => typeName switch
-    {
-        "AlbumResponseWrapper" => HomeContentType.Album,
-        "ArtistResponseWrapper" => HomeContentType.Artist,
-        "PlaylistResponseWrapper" => HomeContentType.Playlist,
-        "PodcastOrAudiobookResponseWrapper" => HomeContentType.Podcast,
-        _ => HomeContentType.Unknown
-    };
 
     // ── Image extraction ──
 
@@ -190,118 +386,53 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     {
         if (coverImage == null) return null;
 
-        // Prefer OriginalInstances with known sizes
         if (coverImage.OriginalInstances is { Count: > 0 } instances)
         {
-            // Prefer IMAGE_SIZE_DEFAULT or IMAGE_SIZE_LARGE
             var preferred = instances.FirstOrDefault(i =>
                 i.Size is "IMAGE_SIZE_DEFAULT" or "IMAGE_SIZE_LARGE");
-
             var cdnUrl = (preferred ?? instances[0]).FlatFile?.CdnUrl;
-            if (!string.IsNullOrEmpty(cdnUrl))
-                return cdnUrl;
+            if (!string.IsNullOrEmpty(cdnUrl)) return cdnUrl;
         }
 
-        // Fall back to Image.Data.Sources sorted by maxWidth desc
         if (coverImage.Image?.Data?.Sources is { Count: > 0 } sources)
-        {
-            return sources
-                .OrderByDescending(s => s.MaxWidth ?? 0)
-                .FirstOrDefault()?.Url;
-        }
+            return sources.OrderByDescending(s => s.MaxWidth ?? 0).FirstOrDefault()?.Url;
 
         return null;
     }
 
     // ── Subtitle building ──
 
-    private static string? BuildSubtitle(
-        HomeEntityData entityData,
-        HomeContentType contentType,
+    private static string? BuildSubtitle(HomeEntityData entityData, HomeContentType contentType,
         List<HomeFormatListAttribute>? formatAttributes)
     {
-        // Check FormatListAttributes for recently-saved items
-        if (formatAttributes != null)
+        if (formatAttributes?.Any(a => a.Key == "recent_type_saved") == true)
         {
-            var hasSaved = formatAttributes.Any(a => a.Key == "recent_type_saved");
-            if (hasSaved)
-            {
-                // For albums that were recently saved, indicate that
-                if (contentType == HomeContentType.Album)
-                    return "Album added";
-
-                // For other saved types, check if we have contributor info to supplement
-                var contributors = GetContributorNames(entityData);
-                return !string.IsNullOrEmpty(contributors) ? contributors : "Added recently";
-            }
+            if (contentType == HomeContentType.Album) return "Album added";
+            var contributors = GetContributorNames(entityData);
+            return !string.IsNullOrEmpty(contributors) ? contributors : "Added recently";
         }
 
-        // Contributors (artists, etc.)
-        var contributorNames = GetContributorNames(entityData);
-        if (!string.IsNullOrEmpty(contributorNames))
-            return contributorNames;
+        var names = GetContributorNames(entityData);
+        if (!string.IsNullOrEmpty(names)) return names;
 
-        // IdentityTrait.Type (e.g. "Album", "Single", "Artist")
         var identityType = entityData.IdentityTrait?.Type;
-        if (!string.IsNullOrEmpty(identityType))
-            return identityType;
+        if (!string.IsNullOrEmpty(identityType)) return identityType;
 
-        // Fallback based on content type
         return contentType switch
         {
             HomeContentType.Artist => "Artist",
             HomeContentType.Album => "Album",
             HomeContentType.Playlist => "Playlist",
-            HomeContentType.Podcast => "Podcast",
             _ => null
         };
     }
 
     private static string? GetContributorNames(HomeEntityData entityData)
     {
-        var contributors = entityData.IdentityTrait?.Contributors?.Items;
-        if (contributors == null || contributors.Count == 0) return null;
-
-        var names = contributors
-            .Where(c => !string.IsNullOrEmpty(c.Name))
-            .Select(c => c.Name!)
-            .ToList();
-
+        var items = entityData.IdentityTrait?.Contributors?.Items;
+        if (items == null || items.Count == 0) return null;
+        var names = items.Where(c => !string.IsNullOrEmpty(c.Name)).Select(c => c.Name!).ToList();
         return names.Count > 0 ? string.Join(", ", names) : null;
-    }
-
-    // ── Chips ──
-
-    private static List<HomeChipViewModel> MapChips(HomeResponse response)
-    {
-        var chips = new List<HomeChipViewModel>();
-        var apiChips = response.Data?.Home?.HomeChips;
-        if (apiChips == null) return chips;
-
-        foreach (var chip in apiChips)
-        {
-            var vm = new HomeChipViewModel
-            {
-                Id = chip.Id ?? "",
-                Label = chip.Label?.TransformedLabel ?? ""
-            };
-
-            if (chip.SubChips != null)
-            {
-                foreach (var sub in chip.SubChips)
-                {
-                    vm.SubChips.Add(new HomeChipViewModel
-                    {
-                        Id = sub.Id ?? "",
-                        Label = sub.Label?.TransformedLabel ?? ""
-                    });
-                }
-            }
-
-            chips.Add(vm);
-        }
-
-        return chips;
     }
 
     // ── Helpers ──
@@ -321,7 +452,6 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         if (uri.Contains(":album:", StringComparison.Ordinal)) return HomeContentType.Album;
         if (uri.Contains(":artist:", StringComparison.Ordinal)) return HomeContentType.Artist;
         if (uri.Contains(":show:", StringComparison.Ordinal)) return HomeContentType.Podcast;
-        if (uri.Contains(":episode:", StringComparison.Ordinal)) return HomeContentType.Episode;
         return HomeContentType.Unknown;
     }
 }

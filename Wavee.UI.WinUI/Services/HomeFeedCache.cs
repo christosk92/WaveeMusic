@@ -22,27 +22,27 @@ public sealed record HomeFeedSnapshot(string? Greeting, List<HomeSection> Sectio
 /// </summary>
 public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 {
+    private readonly HomeResponseParserFactory _parserFactory;
+
     /// <summary>Current facet filter (chip id). Null or empty = no filter.</summary>
     public string? CurrentFacet { get; set; }
 
-    public HomeFeedCache(ILogger<HomeFeedCache>? logger = null) : base(logger)
+    public HomeFeedCache(HomeResponseParserFactory? parserFactory = null, ILogger<HomeFeedCache>? logger = null) : base(logger)
     {
+        _parserFactory = parserFactory ?? new HomeResponseParserFactory();
     }
 
     protected override async Task<HomeFeedSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
     {
         var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct);
 
-        var greeting = response.Data?.Home?.Greeting?.TransformedLabel;
-        var sections = HomeViewModel.MapSectionsFromResponse(response);
+        var result = _parserFactory.Parse(response);
 
-        // Only parse chips from unfaceted (default) responses
-        List<HomeChipViewModel>? chips = null;
-        if (string.IsNullOrEmpty(CurrentFacet))
-            chips = MapChips(response.Data?.Home?.HomeChips);
+        // Only use chips from unfaceted (default) responses
+        List<HomeChipViewModel>? chips = string.IsNullOrEmpty(CurrentFacet) ? result.Chips : null;
 
-        Logger?.LogDebug("Home feed cached: {Count} sections, facet={Facet}", sections.Count, CurrentFacet ?? "(none)");
-        return new HomeFeedSnapshot(greeting, sections, chips);
+        Logger?.LogDebug("Home feed cached: {Count} sections, facet={Facet}", result.Sections.Count, CurrentFacet ?? "(none)");
+        return new HomeFeedSnapshot(result.Greeting, result.Sections, chips);
     }
 
     private static List<HomeChipViewModel>? MapChips(List<HomeChip>? apiChips)

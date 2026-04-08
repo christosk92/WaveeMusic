@@ -65,6 +65,21 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
                 SectionUri = entry.Uri ?? ""
             };
 
+            // Extract header entity (e.g. artist for "More like X" sections)
+            var headerEntity = entry.Data?.HeaderEntity;
+            if (headerEntity is { TypeName: "ArtistResponseWrapper" })
+            {
+                var artistData = headerEntity.GetArtistData();
+                if (artistData != null)
+                {
+                    section.HeaderEntityName = artistData.Profile?.Name;
+                    section.HeaderEntityUri = artistData.Uri;
+                    section.HeaderEntityImageUrl = artistData.Visuals?.AvatarImage?.Sources?
+                        .OrderByDescending(s => s.Width ?? 0)
+                        .FirstOrDefault()?.Url;
+                }
+            }
+
             if (entry.SectionItems?.Items != null)
             {
                 foreach (var itemEntry in entry.SectionItems.Items)

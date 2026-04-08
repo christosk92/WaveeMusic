@@ -93,8 +93,9 @@ public sealed class PathfinderClient : IPathfinderClient
         httpRequest.Headers.TryAddWithoutValidation("app-platform", useWebPlayer ? "WebPlayer" : "Win32_x86_64");
         if (useWebPlayer)
         {
-            httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", "896000000");
+            httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", "1.2.88.95.gb1d21cbd");
             httpRequest.Headers.TryAddWithoutValidation("origin", "https://open.spotify.com");
+            httpRequest.Headers.TryAddWithoutValidation("referer", "https://open.spotify.com/");
         }
         httpRequest.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 

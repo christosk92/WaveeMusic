@@ -166,6 +166,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
+                .AddSingleton<Services.HomeResponseParserFactory>()
                 .AddSingleton<Services.HomeFeedCache>()
                 .AddSingleton<Services.IHomeFeedCache>(sp => sp.GetRequiredService<Services.HomeFeedCache>())
                 .AddSingleton<Services.RecentlyPlayedService>(sp =>
@@ -299,6 +300,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ISettingsService>(),
                         sp.GetService<Services.HomeFeedCache>(),
                         sp.GetService<Services.RecentlyPlayedService>(),
+                        sp.GetService<Services.HomeResponseParserFactory>(),
                         sp.GetService<ILogger<HomeViewModel>>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()

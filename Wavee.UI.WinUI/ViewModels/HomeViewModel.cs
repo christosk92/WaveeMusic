@@ -21,6 +21,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly ISettingsService? _settingsService;
     private readonly Services.HomeFeedCache? _homeFeedCache;
     private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
+    private readonly Services.HomeResponseParserFactory _parserFactory;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
 
@@ -67,12 +68,14 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         ISettingsService? settingsService = null,
         Services.HomeFeedCache? homeFeedCache = null,
         Services.RecentlyPlayedService? recentlyPlayedService = null,
+        Services.HomeResponseParserFactory? parserFactory = null,
         ILogger<HomeViewModel>? logger = null)
     {
         _session = session;
         _settingsService = settingsService;
         _homeFeedCache = homeFeedCache;
         _recentlyPlayedService = recentlyPlayedService;
+        _parserFactory = parserFactory ?? new Services.HomeResponseParserFactory();
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -139,11 +142,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             {
                 // No cache service — direct fetch
                 var response = await _session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10);
-                var apiGreeting = response.Data?.Home?.Greeting?.TransformedLabel;
-                Greeting = apiGreeting ?? Greeting;
-                var apiSections = MapSectionsFromResponse(response);
-                var ordered = ApplyPreferences(apiSections);
+                var result = _parserFactory.Parse(response);
+                Greeting = result.Greeting ?? Greeting;
+                var ordered = ApplyPreferences(result.Sections);
                 Sections = new ObservableCollection<HomeSection>(ordered);
+                ApplyChips(result.Chips);
             }
 
             if (string.IsNullOrEmpty(Greeting))
@@ -939,6 +942,21 @@ public sealed class HomeSection
     public HomeSectionType SectionType { get; set; }
     public string SectionUri { get; set; } = "";
     public ObservableCollection<HomeSectionItem> Items { get; set; } = [];
+
+    /// <summary>
+    /// Header entity name (e.g. artist name for "More like X" sections).
+    /// </summary>
+    public string? HeaderEntityName { get; set; }
+
+    /// <summary>
+    /// Header entity image (e.g. artist avatar for "More like X" sections).
+    /// </summary>
+    public string? HeaderEntityImageUrl { get; set; }
+
+    /// <summary>
+    /// Header entity URI for navigation.
+    /// </summary>
+    public string? HeaderEntityUri { get; set; }
 }
 
 public sealed class HomeSectionItem

@@ -35,6 +35,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly ILogger? _logger;
     private readonly IHomeFeedCache? _homeFeedCache;
     private List<QueueItem> _queue = [];
+    private List<QueueItem> _prevQueue = [];
+    private IReadOnlyList<Wavee.Connect.Playback.IQueueItem> _rawNextQueue = [];
+    private IReadOnlyList<Wavee.Connect.Playback.IQueueItem> _rawPrevQueue = [];
     private IDisposable? _stateSubscription;
     private CancellationTokenSource? _colorCts;
     private bool _isFirstStateUpdate = true;
@@ -72,6 +75,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private string? _bufferingTrackId;
 
     public IReadOnlyList<QueueItem> Queue => _queue;
+    public IReadOnlyList<QueueItem> PreviousTracks => _prevQueue;
+    public IReadOnlyList<QueueItem> UserQueue => _queue.Where(q => q.IsUserQueued).ToList();
+    public IReadOnlyList<Wavee.Connect.Playback.IQueueItem> RawNextQueue => _rawNextQueue;
+    public IReadOnlyList<Wavee.Connect.Playback.IQueueItem> RawPrevQueue => _rawPrevQueue;
 
     public PlaybackStateService(
         Session session,
@@ -168,42 +175,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     }
                 }
 
-                // Playback status
+                // Playback status — trust the state from AudioHost (authoritative after proxy-only mode)
                 if (state.Changes.HasFlag(StateChanges.Status))
                 {
-                    var isLocalSource = state.Source == StateSource.Local;
-                    var hasLocalEngine = _session.PlaybackState?.IsBidirectional == true;
-                    var activeDeviceId = state.ActiveDeviceId;
+                    IsPlaying = state.Status == PlaybackStatus.Playing;
 
-                    // We are the active device with a local engine = real playback, never suppress
-                    var isSelfWithEngine = activeDeviceId == _session.Config.DeviceId && hasLocalEngine;
-
-                    // Local source = our own audio engine is producing audio, always trust it
-                    // No active device = nothing is actually playing anywhere
-                    // OR we are the active device but have no local engine = we can't produce audio
-                    var noRealPlayback = !isLocalSource && !isSelfWithEngine
-                        && (string.IsNullOrEmpty(activeDeviceId)
-                            || string.IsNullOrEmpty(state.ActiveDeviceName)
-                            || (activeDeviceId == _session.Config.DeviceId && !hasLocalEngine));
-
-                    if (noRealPlayback && state.Status == PlaybackStatus.Playing)
+                    if (IsBuffering && state.Status is PlaybackStatus.Playing or PlaybackStatus.Stopped)
                     {
-                        _logger?.LogDebug("UI bridge: status → suppressed to Paused (no real playback, activeDevice={Device})", activeDeviceId);
-                        IsPlaying = false;
-                    }
-                    else
-                    {
-                        IsPlaying = state.Status == PlaybackStatus.Playing;
-
-                        // Clear buffering when playback status confirms playing or stopped
-                        if (IsBuffering && state.Status is PlaybackStatus.Playing or PlaybackStatus.Stopped)
-                        {
-                            IsBuffering = false;
-                            BufferingTrackId = null;
-                        }
+                        IsBuffering = false;
+                        BufferingTrackId = null;
                     }
 
-                    // Suspend background HTTP activity during audio playback to avoid connection pool contention
                     if (IsPlaying)
                         _homeFeedCache?.SuspendRefresh();
                     else
@@ -222,14 +204,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         BufferingTrackId = null;
                     }
 
-                    // Use Spotify server clock only for remote (Cluster) state —
-                    // local engine timestamps are already in local time.
-                    var clock = _session.Clock;
-                    long correctedNow;
-                    if (state.Source == StateSource.Cluster)
-                        correctedNow = clock.NowMs;
-                    else
-                        correctedNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    // Position is already server-clock-corrected by the AudioHost before IPC.
+                    // Use local wall-clock for the small IPC transit delta only.
+                    long correctedNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
                     var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
 
@@ -251,7 +228,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                                 state.Status,
                                 state.DurationMs,
                                 state.Source,
-                                clock.OffsetMs);
+                                _session.IsConnected() ? _session.Clock.OffsetMs : 0);
                         }
                     }
 
@@ -300,29 +277,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     ActiveDeviceName = isRemote ? state.ActiveDeviceName : null;
                     _logger?.LogDebug("UI bridge: remote={IsRemote}, device={DeviceName} ({DeviceId})",
                         isRemote, state.ActiveDeviceName, state.ActiveDeviceId);
-
-                    // Re-evaluate IsPlaying when device/source changes
-                    if (state.Source == StateSource.Local && state.Status == PlaybackStatus.Playing)
-                    {
-                        // Local source = our own audio engine, always trust it
-                        IsPlaying = true;
-                        if (IsBuffering) { IsBuffering = false; BufferingTrackId = null; }
-                    }
-                    else if (state.Status == PlaybackStatus.Playing)
-                    {
-                        var hasLocal = _session.PlaybackState?.IsBidirectional == true;
-                        var deviceId = state.ActiveDeviceId;
-                        var isSelfLocal = deviceId == _session.Config.DeviceId && hasLocal;
-                        var noRealPlayback = !isSelfLocal
-                            && (string.IsNullOrEmpty(deviceId)
-                                || string.IsNullOrEmpty(state.ActiveDeviceName)
-                                || (deviceId == _session.Config.DeviceId && !hasLocal));
-                        if (noRealPlayback)
-                        {
-                            _logger?.LogDebug("UI bridge: IsPlaying suppressed on device change (ghost device)");
-                            IsPlaying = false;
-                        }
-                    }
                 }
 
                 // Volume (convert 0-65535 → 0-100 for UI)
@@ -509,22 +463,63 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     private void SyncQueue(PlaybackState state)
     {
+        _logger?.LogDebug("[QueueDebug] SyncQueue called: NextQueue={NextQueue}, PrevQueue={PrevQueue}, NextTracks={NextTracks}, PrevTracks={PrevTracks}, Changes={Changes}",
+            state.NextQueue.Count, state.PrevQueue.Count, state.NextTracks.Count, state.PrevTracks.Count, state.Changes);
+
         QueuePosition = state.CurrentIndex;
 
-        var newQueue = new List<QueueItem>(state.NextTracks.Count);
-        foreach (var track in state.NextTracks)
+        // Store raw IQueueItem lists for QueueControl
+        _rawNextQueue = state.NextQueue;
+        _rawPrevQueue = state.PrevQueue;
+
+        // Use rich queue data when available
+        if (state.NextQueue.Count > 0)
         {
-            newQueue.Add(new QueueItem
+            var newQueue = new List<QueueItem>();
+            foreach (var item in state.NextQueue.OfType<Wavee.Connect.Playback.QueueTrack>())
+                newQueue.Add(QueueItem.FromQueueTrack(item));
+            _queue = newQueue;
+        }
+        else
+        {
+            // Fallback to thin TrackReference (no metadata)
+            var newQueue = new List<QueueItem>(state.NextTracks.Count);
+            foreach (var track in state.NextTracks)
             {
-                TrackId = track.Uri,
-                Title = string.Empty,
-                ArtistName = string.Empty,
-                IsUserQueued = track.IsUserQueued
-            });
+                newQueue.Add(new QueueItem
+                {
+                    TrackId = track.Uri,
+                    Title = string.Empty,
+                    ArtistName = string.Empty,
+                    IsUserQueued = track.IsUserQueued,
+                    Provider = track.IsUserQueued ? "queue" : "context",
+                });
+            }
+            _queue = newQueue;
         }
 
-        _queue = newQueue;
+        // Build previous tracks list
+        if (state.PrevQueue.Count > 0)
+        {
+            var newPrev = new List<QueueItem>();
+            foreach (var item in state.PrevQueue.OfType<Wavee.Connect.Playback.QueueTrack>())
+                newPrev.Add(QueueItem.FromQueueTrack(item));
+            _prevQueue = newPrev;
+        }
+
         OnPropertyChanged(nameof(Queue));
+        OnPropertyChanged(nameof(PreviousTracks));
+
+        // Request enrichment for tracks with missing metadata
+        var sparseUris = _queue
+            .Where(q => !q.HasMetadata && !string.IsNullOrEmpty(q.TrackId))
+            .Select(q => q.TrackId)
+            .ToList();
+
+        if (sparseUris.Count > 0)
+        {
+            _messenger.Send(new QueueEnrichmentRequestMessage(sparseUris));
+        }
     }
 
     // ── PropertyChanged batching ──

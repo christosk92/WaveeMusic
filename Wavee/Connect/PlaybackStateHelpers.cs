@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using Google.Protobuf.Collections;
+using Microsoft.Extensions.Logging;
+using Wavee.Connect.Playback;
 using Wavee.Connect.Protocol;
 using Wavee.Protocol.Player;
 
@@ -98,12 +101,80 @@ public static class PlaybackStateHelpers
     }
 
     /// <summary>
+    /// Extracts a list of <see cref="QueueTrack"/> from a repeated ProvidedTrack field.
+    /// Filters out control markers (spotify:meta:*, spotify:delimiter).
+    /// </summary>
+    public static IReadOnlyList<IQueueItem> ExtractQueueItems(RepeatedField<ProvidedTrack> providedTracks)
+    {
+        var result = new List<IQueueItem>(providedTracks.Count);
+        foreach (var pt in providedTracks)
+        {
+            if (string.IsNullOrEmpty(pt.Uri))
+                continue;
+
+            var metadata = pt.Metadata;
+            var provider = !string.IsNullOrEmpty(pt.Provider) ? pt.Provider : "context";
+
+            // Page marker: spotify:meta:page:N
+            if (pt.Uri.StartsWith("spotify:meta:page:", StringComparison.Ordinal))
+            {
+                var pageStr = pt.Uri["spotify:meta:page:".Length..];
+                int.TryParse(pageStr, out var pageNum);
+                result.Add(new QueuePageMarker(pageNum, provider));
+                continue;
+            }
+
+            // Delimiter: spotify:delimiter
+            if (pt.Uri.StartsWith("spotify:delimiter", StringComparison.Ordinal))
+            {
+                metadata.TryGetValue("actions.advancing_past_track", out var advanceAction);
+                metadata.TryGetValue("actions.skipping_next_past_track", out var skipAction);
+                result.Add(new QueueDelimiter(advanceAction ?? "pause", skipAction ?? "pause", provider));
+                continue;
+            }
+
+            // Regular track
+            metadata.TryGetValue("title", out var title);
+            metadata.TryGetValue("artist_name", out var artist);
+            metadata.TryGetValue("album_title", out var album);
+
+            metadata.TryGetValue("image_url", out var imageUrl);
+            imageUrl ??= metadata.GetValueOrDefault("image_xlarge_url")
+                      ?? metadata.GetValueOrDefault("image_large_url")
+                      ?? metadata.GetValueOrDefault("image_small_url");
+
+            metadata.TryGetValue("duration", out var durationStr);
+            int.TryParse(durationStr, out var durationMs);
+
+            if (metadata.TryGetValue("is_queued", out var isQueued) && isQueued == "true")
+                provider = "queue";
+            else if (metadata.TryGetValue("autoplay.is_autoplay", out var isAuto) && isAuto == "true")
+                provider = "autoplay";
+
+            result.Add(new QueueTrack(
+                Uri: pt.Uri,
+                Uid: pt.Uid,
+                Title: title,
+                Artist: artist,
+                Album: album,
+                AlbumUri: !string.IsNullOrEmpty(pt.AlbumUri) ? pt.AlbumUri : metadata.GetValueOrDefault("album_uri"),
+                ArtistUri: !string.IsNullOrEmpty(pt.ArtistUri) ? pt.ArtistUri : metadata.GetValueOrDefault("artist_uri"),
+                DurationMs: durationMs > 0 ? durationMs : null,
+                ImageUrl: imageUrl,
+                IsUserQueued: provider == "queue",
+                Provider: provider
+            ));
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Converts a Cluster protobuf to a PlaybackState domain model.
     /// </summary>
     /// <param name="cluster">Cluster from dealer message or PUT state response.</param>
     /// <param name="previousState">Previous state for change detection (null for initial state).</param>
     /// <returns>New PlaybackState with change flags set.</returns>
-    public static PlaybackState ClusterToPlaybackState(Cluster cluster, PlaybackState? previousState)
+    public static PlaybackState ClusterToPlaybackState(Cluster cluster, PlaybackState? previousState, ILogger? logger = null)
     {
         var ps = cluster.PlayerState;
         var prev = previousState ?? PlaybackState.Empty;
@@ -120,6 +191,24 @@ public static class PlaybackStateHelpers
             isVolumeRestricted = activeDeviceInfo.Capabilities?.DisableVolume ?? false;
         }
 
+        // Extract rich queue tracks from cluster state
+        logger?.LogDebug("ClusterToPlaybackState: ps null={PsNull}, ps.PrevTracks={PrevCount}, ps.NextTracks={NextCount}",
+            ps == null, ps?.PrevTracks?.Count ?? -1, ps?.NextTracks?.Count ?? -1);
+
+        var prevQueue = ps?.PrevTracks.Count > 0 ? ExtractQueueItems(ps.PrevTracks) : prev.PrevQueue;
+        var nextQueue = ps?.NextTracks.Count > 0 ? ExtractQueueItems(ps.NextTracks) : prev.NextQueue;
+
+        logger?.LogDebug("Queue extraction: prevQueue={PrevCount}, nextQueue={NextCount}",
+            prevQueue.Count, nextQueue.Count);
+
+        // Derive thin TrackReference lists from tracks only (skip page markers/delimiters)
+        var prevTracks = prevQueue.Count > 0
+            ? prevQueue.OfType<QueueTrack>().Select(q => new TrackReference(q.Uri, q.Uid ?? "", q.AlbumUri, q.ArtistUri, q.IsUserQueued)).ToList()
+            : (IReadOnlyList<TrackReference>)prev.PrevTracks;
+        var nextTracks = nextQueue.Count > 0
+            ? nextQueue.OfType<QueueTrack>().Select(q => new TrackReference(q.Uri, q.Uid ?? "", q.AlbumUri, q.ArtistUri, q.IsUserQueued)).ToList()
+            : (IReadOnlyList<TrackReference>)prev.NextTracks;
+
         // Merge: start from previous state, override only fields with real values
         var newState = prev with
         {
@@ -128,6 +217,12 @@ public static class PlaybackStateHelpers
             PositionMs = ps?.PositionAsOfTimestamp ?? prev.PositionMs,
             DurationMs = ps?.Duration > 0 ? ps.Duration : prev.DurationMs,
             ContextUri = !string.IsNullOrEmpty(ps?.ContextUri) ? ps!.ContextUri : prev.ContextUri,
+            CurrentIndex = (int)(ps?.Index?.Track ?? (uint)prev.CurrentIndex),
+            PrevTracks = prevTracks,
+            NextTracks = nextTracks,
+            PrevQueue = prevQueue,
+            NextQueue = nextQueue,
+            QueueRevision = !string.IsNullOrEmpty(ps?.QueueRevision) ? ps!.QueueRevision : prev.QueueRevision,
             Options = ps?.Options != null
                 ? new PlaybackOptions
                 {
@@ -156,9 +251,9 @@ public static class PlaybackStateHelpers
     /// <param name="clusterUpdate">ClusterUpdate from dealer message.</param>
     /// <param name="previousState">Previous state for change detection (null for initial state).</param>
     /// <returns>New PlaybackState with change flags set.</returns>
-    public static PlaybackState ClusterToPlaybackState(ClusterUpdate clusterUpdate, PlaybackState? previousState)
+    public static PlaybackState ClusterToPlaybackState(ClusterUpdate clusterUpdate, PlaybackState? previousState, ILogger? logger = null)
     {
-        return ClusterToPlaybackState(clusterUpdate.Cluster, previousState);
+        return ClusterToPlaybackState(clusterUpdate.Cluster, previousState, logger);
     }
 
     /// <summary>
@@ -223,23 +318,32 @@ public static class PlaybackStateHelpers
             ContextUri = !string.IsNullOrEmpty(localState.ContextUri) ? localState.ContextUri : prev.ContextUri,
             ContextUrl = !string.IsNullOrEmpty(localState.ContextUrl) ? localState.ContextUrl : prev.ContextUrl,
             CurrentIndex = localState.CurrentIndex,
-            PrevTracks = localState.PrevTracks,
-            NextTracks = localState.NextTracks,
-            QueueRevision = localState.QueueRevision,
+            PrevTracks = localState.PrevTracks.Count > 0 ? localState.PrevTracks : prev.PrevTracks,
+            NextTracks = localState.NextTracks.Count > 0 ? localState.NextTracks : prev.NextTracks,
+            PrevQueue = localState.PrevQueueItems.Count > 0 ? localState.PrevQueueItems : prev.PrevQueue,
+            NextQueue = localState.NextQueueItems.Count > 0 ? localState.NextQueueItems : prev.NextQueue,
+            QueueRevision = !string.IsNullOrEmpty(localState.QueueRevision) ? localState.QueueRevision : prev.QueueRevision,
             Options = new PlaybackOptions
             {
                 Shuffling = localState.Shuffling,
                 RepeatingContext = localState.RepeatingContext,
                 RepeatingTrack = localState.RepeatingTrack
             },
-            ActiveDeviceId = activeDeviceId,
+            ActiveDeviceId = !string.IsNullOrEmpty(localState.ActiveDeviceId)
+                ? localState.ActiveDeviceId
+                : activeDeviceId,
+            ActiveDeviceName = localState.ActiveDeviceName ?? prev.ActiveDeviceName,
+            Volume = localState.Volume != 0 || prev.Volume == 0
+                ? localState.Volume
+                : prev.Volume,
+            IsVolumeRestricted = localState.IsVolumeRestricted,
             Timestamp = localState.Timestamp,
-            Source = StateSource.Local,
+            Source = localState.Source ?? StateSource.Local,
             SessionId = sessionId,
             CanSeek = localState.CanSeek
         };
 
-        var changes = DetectChanges(previousState, newState);
+        var changes = localState.UpstreamChanges ?? DetectChanges(previousState, newState);
         return newState with { Changes = changes };
     }
 
@@ -375,32 +479,44 @@ public static class PlaybackStateHelpers
             meta["actions.skipping_prev_past_track"] = "resume";
         }
 
-        // Add previous tracks (up to 16)
-        foreach (var track in state.PrevTracks.Take(16))
+        // Add previous tracks (up to 16) - prefer rich queue data
+        foreach (var item in state.PrevQueue.Take(16))
         {
-            var pt = new ProvidedTrack
-            {
-                Uri = track.Uri,
-                Uid = track.Uid,
-                Provider = track.IsUserQueued ? "queue" : "context",
-                AlbumUri = track.AlbumUri ?? string.Empty,
-                ArtistUri = track.ArtistUri ?? string.Empty
-            };
-            playerState.PrevTracks.Add(pt);
+            playerState.PrevTracks.Add(QueueItemToProvidedTrack(item));
         }
 
-        // Add next tracks (user queue + up to 48 context)
-        foreach (var track in state.NextTracks.Take(48))
+        // Fallback: use thin TrackReference if PrevQueue is empty
+        if (playerState.PrevTracks.Count == 0)
         {
-            var pt = new ProvidedTrack
+            foreach (var track in state.PrevTracks.Take(16))
             {
-                Uri = track.Uri,
-                Uid = track.Uid,
-                Provider = track.IsUserQueued ? "queue" : "context",
-                AlbumUri = track.AlbumUri ?? string.Empty,
-                ArtistUri = track.ArtistUri ?? string.Empty
-            };
-            playerState.NextTracks.Add(pt);
+                playerState.PrevTracks.Add(new ProvidedTrack
+                {
+                    Uri = track.Uri, Uid = track.Uid,
+                    Provider = track.IsUserQueued ? "queue" : "context",
+                    AlbumUri = track.AlbumUri ?? string.Empty, ArtistUri = track.ArtistUri ?? string.Empty
+                });
+            }
+        }
+
+        // Add next tracks (up to 48) - prefer rich queue data
+        foreach (var item in state.NextQueue.Take(48))
+        {
+            playerState.NextTracks.Add(QueueItemToProvidedTrack(item));
+        }
+
+        // Fallback: use thin TrackReference if NextQueue is empty
+        if (playerState.NextTracks.Count == 0)
+        {
+            foreach (var track in state.NextTracks.Take(48))
+            {
+                playerState.NextTracks.Add(new ProvidedTrack
+                {
+                    Uri = track.Uri, Uid = track.Uid,
+                    Provider = track.IsUserQueued ? "queue" : "context",
+                    AlbumUri = track.AlbumUri ?? string.Empty, ArtistUri = track.ArtistUri ?? string.Empty
+                });
+            }
         }
 
         return playerState;
@@ -451,6 +567,97 @@ public static class PlaybackStateHelpers
             ImageXLargeUrl = imageXLargeUrl,
             Metadata = metadata
         };
+    }
+
+    /// <summary>
+    /// Converts any IQueueItem to a ProvidedTrack protobuf.
+    /// </summary>
+    private static ProvidedTrack QueueItemToProvidedTrack(IQueueItem item) => item switch
+    {
+        QueueTrack track => QueueTrackToProvidedTrack(track),
+        QueuePageMarker marker => new ProvidedTrack
+        {
+            Uri = marker.Uri,
+            Uid = marker.Uid ?? string.Empty,
+            Provider = marker.Provider,
+            Metadata = { ["hidden"] = "true", ["iteration"] = "0", ["autoplay.is_autoplay"] = "true" }
+        },
+        QueueDelimiter delim => new ProvidedTrack
+        {
+            Uri = delim.Uri,
+            Uid = delim.Uid ?? string.Empty,
+            Provider = delim.Provider,
+            Metadata =
+            {
+                ["hidden"] = "true",
+                ["actions.advancing_past_track"] = delim.AdvanceAction,
+                ["actions.skipping_next_past_track"] = delim.SkipAction,
+                ["autoplay.is_autoplay"] = "true"
+            },
+            Removed = { "context/delimiter" }
+        },
+        _ => new ProvidedTrack { Uri = item.Uri, Uid = item.Uid ?? string.Empty, Provider = item.Provider }
+    };
+
+    /// <summary>
+    /// Converts a QueueTrack to a ProvidedTrack protobuf with metadata.
+    /// </summary>
+    private static ProvidedTrack QueueTrackToProvidedTrack(QueueTrack track)
+    {
+        var pt = new ProvidedTrack
+        {
+            Uri = track.Uri,
+            Uid = track.Uid ?? string.Empty,
+            Provider = track.Provider,
+            AlbumUri = track.AlbumUri ?? string.Empty,
+            ArtistUri = track.ArtistUri ?? string.Empty
+        };
+
+        if (track.Title != null) pt.Metadata["title"] = track.Title;
+        if (track.Artist != null) pt.Metadata["artist_name"] = track.Artist;
+        if (track.Album != null) pt.Metadata["album_title"] = track.Album;
+        if (track.ImageUrl != null) pt.Metadata["image_url"] = track.ImageUrl;
+        if (track.IsUserQueued) pt.Metadata["is_queued"] = "true";
+        if (track.IsAutoplay) pt.Metadata["autoplay.is_autoplay"] = "true";
+
+        pt.Metadata["track_player"] = "audio";
+
+        return pt;
+    }
+
+    /// <summary>
+    /// Converts a ProvidedTrack protobuf to a QueueTrack domain model.
+    /// Used for transfer command processing.
+    /// </summary>
+    public static QueueTrack ProvidedTrackToQueueTrack(ProvidedTrack pt)
+    {
+        var metadata = pt.Metadata;
+        metadata.TryGetValue("title", out var title);
+        metadata.TryGetValue("artist_name", out var artist);
+        metadata.TryGetValue("album_title", out var album);
+        metadata.TryGetValue("image_url", out var imageUrl);
+        imageUrl ??= metadata.GetValueOrDefault("image_xlarge_url")
+                  ?? metadata.GetValueOrDefault("image_large_url")
+                  ?? metadata.GetValueOrDefault("image_small_url");
+
+        var provider = !string.IsNullOrEmpty(pt.Provider) ? pt.Provider : "context";
+        if (metadata.TryGetValue("is_queued", out var isQueued) && isQueued == "true")
+            provider = "queue";
+        else if (metadata.TryGetValue("autoplay.is_autoplay", out var isAuto) && isAuto == "true")
+            provider = "autoplay";
+
+        return new QueueTrack(
+            Uri: pt.Uri,
+            Uid: pt.Uid,
+            Title: title,
+            Artist: artist,
+            Album: album,
+            AlbumUri: !string.IsNullOrEmpty(pt.AlbumUri) ? pt.AlbumUri : metadata.GetValueOrDefault("album_uri"),
+            ArtistUri: !string.IsNullOrEmpty(pt.ArtistUri) ? pt.ArtistUri : metadata.GetValueOrDefault("artist_uri"),
+            ImageUrl: imageUrl,
+            IsUserQueued: provider == "queue",
+            Provider: provider
+        );
     }
 
     /// <summary>
@@ -540,6 +747,13 @@ public static class PlaybackStateHelpers
         // Volume changed
         if (previous.Volume != current.Volume || previous.IsVolumeRestricted != current.IsVolumeRestricted)
             changes |= StateChanges.Volume;
+
+        // Queue changed (revision is the primary signal; count is a fallback)
+        if (!string.Equals(previous.QueueRevision, current.QueueRevision, StringComparison.Ordinal))
+            changes |= StateChanges.Queue;
+        else if (previous.NextQueue.Count != current.NextQueue.Count ||
+                 previous.PrevQueue.Count != current.PrevQueue.Count)
+            changes |= StateChanges.Queue;
 
         // PRIORITY: If status changed, suppress position changes (status is more significant)
         // This prevents "Position" spam when pausing/resuming

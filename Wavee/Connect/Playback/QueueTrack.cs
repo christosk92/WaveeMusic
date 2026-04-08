@@ -15,6 +15,8 @@ namespace Wavee.Connect.Playback;
 /// <param name="IsPlayable">Whether the track is playable (false if unavailable).</param>
 /// <param name="IsExplicit">Whether the track has explicit content.</param>
 /// <param name="IsUserQueued">True if the track was added via "Add to Queue" (plays before context continues).</param>
+/// <param name="Provider">Track source: "context", "queue", or "autoplay".</param>
+/// <param name="ImageUrl">Album art image URL for display (format: "spotify:image:{id}").</param>
 public record QueueTrack(
     string Uri,
     string? Uid = null,
@@ -27,5 +29,17 @@ public record QueueTrack(
     long? AddedAt = null,
     bool IsPlayable = true,
     bool IsExplicit = false,
-    bool IsUserQueued = false
-);
+    bool IsUserQueued = false,
+    string Provider = "context",
+    string? ImageUrl = null
+) : IQueueItem
+{
+    /// <summary>Always true for playable tracks.</summary>
+    public bool IsTrack => true;
+
+    /// <summary>Whether metadata is present (title + artist populated).</summary>
+    public bool HasMetadata => Title is not null && Artist is not null;
+
+    /// <summary>Whether this is an autoplay/radio track.</summary>
+    public bool IsAutoplay => Provider is "autoplay";
+}

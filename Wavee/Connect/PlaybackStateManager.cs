@@ -68,6 +68,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     private readonly BehaviorSubject<PlaybackState> _stateSubject;
     private PlaybackState _currentState;
     private bool _isLocalPlaybackActive;
+    private bool _proxyOnlyMode;
     private string? _connectionId;
     private uint _messageId;
     private ulong _playbackStartedAt;  // Timestamp when playback started (for has_been_playing_for_ms)
@@ -323,18 +324,32 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// <param name="playbackEngine">Local playback engine implementing IPlaybackEngine.</param>
     /// <param name="spClient">SpClient for publishing state to Spotify.</param>
     /// <param name="session">Session for device info and connection ID.</param>
-    /// <exception cref="InvalidOperationException">Thrown if bidirectional mode is already enabled.</exception>
+    /// <param name="suppressClusterUpdates">
+    /// When true, cluster updates from the local dealer are ignored.
+    /// Use when the engine is an IPC proxy whose state already includes cluster data from the AudioHost.
+    /// </param>
     public void EnableBidirectionalMode(
         IPlaybackEngine playbackEngine,
         SpClient spClient,
-        ISession session)
+        ISession session,
+        bool suppressClusterUpdates = false)
     {
+        // Engine replacement (e.g., audio process restart) — swap subscription only
         if (_playbackEngine != null)
-            throw new InvalidOperationException("Bidirectional mode already enabled");
+        {
+            _localPlaybackSubscription?.Dispose();
+            _playbackEngine = playbackEngine ?? throw new ArgumentNullException(nameof(playbackEngine));
+            _localPlaybackSubscription = _playbackEngine.StateChanges
+                .Subscribe(OnLocalPlaybackStateChanged);
+            _proxyOnlyMode = suppressClusterUpdates;
+            _logger?.LogInformation("PlaybackStateManager: engine replaced (proxyOnly={ProxyOnly})", _proxyOnlyMode);
+            return;
+        }
 
         _playbackEngine = playbackEngine ?? throw new ArgumentNullException(nameof(playbackEngine));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _proxyOnlyMode = suppressClusterUpdates;
 
         // Create state publisher worker
         _statePublisher = new AsyncWorker<PutStateRequest>(
@@ -352,7 +367,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         _localPlaybackSubscription = _playbackEngine.StateChanges
             .Subscribe(OnLocalPlaybackStateChanged);
 
-        _logger?.LogInformation("PlaybackStateManager: bidirectional mode enabled");
+        _logger?.LogInformation("PlaybackStateManager: bidirectional mode enabled (proxyOnly={ProxyOnly})", _proxyOnlyMode);
     }
 
     /// <summary>
@@ -370,6 +385,12 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     private void OnClusterUpdate(DealerMessage message)
     {
+        if (_proxyOnlyMode)
+        {
+            _logger?.LogTrace("Ignoring cluster update (proxy-only mode, AudioHost is authoritative)");
+            return;
+        }
+
         try
         {
             _logger?.LogTrace("Received cluster message: uri={Uri}, payloadSize={Size}",
@@ -427,7 +448,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             }
 
             // Convert to domain model with change detection
-            var newState = PlaybackStateHelpers.ClusterToPlaybackState(cluster, _currentState);
+            var newState = PlaybackStateHelpers.ClusterToPlaybackState(cluster, _currentState, _logger);
 
             // Only update if something actually changed
             if (newState.Changes == Connect.StateChanges.None)
@@ -510,9 +531,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 return;
             }
 
+            var isLocalSource = newState.Source == StateSource.Local;
+
             // Don't let the engine's idle state override remote cluster state.
             // Until we're actively playing locally, the engine's "Stopped" is meaningless.
-            if (!_isLocalPlaybackActive && newState.Status != PlaybackStatus.Playing)
+            if (isLocalSource && !_isLocalPlaybackActive && newState.Status != PlaybackStatus.Playing)
             {
                 _logger?.LogTrace("Ignoring local idle state — not the active local device");
                 return;
@@ -531,10 +554,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             }
 
             // Mark as active if playing locally
-            if (newState.Status == PlaybackStatus.Playing && !_isLocalPlaybackActive)
+            if (isLocalSource && newState.Status == PlaybackStatus.Playing && !_isLocalPlaybackActive)
             {
                 _logger?.LogInformation("Local playback started, becoming active device");
                 _isLocalPlaybackActive = true;
+            }
+
+            // Cluster-sourced snapshots from proxy should not claim local playback ownership.
+            if (!isLocalSource &&
+                !string.IsNullOrEmpty(newState.ActiveDeviceId) &&
+                newState.ActiveDeviceId != _session?.Config.DeviceId &&
+                _isLocalPlaybackActive)
+            {
+                _logger?.LogDebug("Proxy cluster state indicates another active device ({DeviceId}); clearing local-active flag", newState.ActiveDeviceId);
+                _isLocalPlaybackActive = false;
+                _playbackStartedAt = 0;
             }
 
             // Update state
@@ -542,7 +576,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             _stateSubject.OnNext(newState);
 
             // Publish to Spotify (skip position-only changes for infinite streams)
-            if (_isLocalPlaybackActive)
+            if (_isLocalPlaybackActive && isLocalSource)
             {
                 var isPositionOnlyChange = newState.Changes == Connect.StateChanges.Position;
                 var isInfiniteStream = newState.DurationMs == 0;

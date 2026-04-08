@@ -1,3 +1,5 @@
+using Wavee.Connect.Playback;
+
 namespace Wavee.UI.WinUI.Data.Models;
 
 /// <summary>
@@ -15,4 +17,28 @@ public sealed record QueueItem
     /// True if the user manually added this to the queue (vs. auto-queued from context).
     /// </summary>
     public bool IsUserQueued { get; init; }
+
+    /// <summary>
+    /// Track source: "context", "queue", or "autoplay".
+    /// </summary>
+    public string Provider { get; init; } = "context";
+
+    /// <summary>
+    /// True if metadata is present (title + artist populated).
+    /// </summary>
+    public bool HasMetadata => !string.IsNullOrEmpty(Title) && !string.IsNullOrEmpty(ArtistName);
+
+    /// <summary>
+    /// Creates a QueueItem from a core QueueTrack.
+    /// </summary>
+    public static QueueItem FromQueueTrack(QueueTrack t) => new()
+    {
+        TrackId = t.Uri,
+        Title = t.Title ?? string.Empty,
+        ArtistName = t.Artist ?? string.Empty,
+        AlbumArt = t.ImageUrl,
+        DurationMs = t.DurationMs ?? 0,
+        IsUserQueued = t.IsUserQueued,
+        Provider = t.Provider,
+    };
 }

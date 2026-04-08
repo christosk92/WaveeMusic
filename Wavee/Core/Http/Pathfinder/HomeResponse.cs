@@ -77,6 +77,9 @@ public sealed class HomeSectionData
 
     [JsonPropertyName("subtitle")]
     public HomeLabel? Subtitle { get; set; }
+
+    [JsonPropertyName("headerEntity")]
+    public HomeItemContent? HeaderEntity { get; set; }
 }
 
 public sealed class HomeLabel

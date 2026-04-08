@@ -6,6 +6,7 @@
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
+    xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
@@ -145,7 +146,7 @@
             <Grid Grid.Row="1" Padding="12,0,12,12">
 
                 <!-- Queue placeholder -->
-                <StackPanel x:Name="QueueContent" Spacing="8">
+                <Grid x:Name="QueueContent">
                     <animations:Implicit.ShowAnimations>
                         <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
                         <animations:TranslationAnimation Duration="0:0:0.2" From="0,8,0" To="0"/>
@@ -153,16 +154,8 @@
                     <animations:Implicit.HideAnimations>
                         <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
                     </animations:Implicit.HideAnimations>
-                    <TextBlock
-                        Text="Queue"
-                        Style="{StaticResource SubtitleTextBlockStyle}"
-                        Margin="0,0,0,8"/>
-                    <TextBlock
-                        Text="Your queue is empty. Play something to see it here."
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="WrapWholeWords"
-                        FontSize="13"/>
-                </StackPanel>
+                    <queue:QueueControl/>
+                </Grid>
 
                 <!-- Lyrics panel -->
                 <Grid x:Name="LyricsContent" Visibility="Collapsed"

@@ -181,6 +181,57 @@ public sealed class ContextResolver
     }
 
     /// <summary>
+    /// Loads autoplay recommendations for a context that has finished playing.
+    /// All returned tracks are tagged with Provider = "autoplay".
+    /// </summary>
+    /// <param name="contextUri">Original context URI (e.g., "spotify:album:xxx").</param>
+    /// <param name="recentTrackUris">Recently played track URIs for recommendation seeding.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Autoplay tracks with next_page_url for further pagination.</returns>
+    public async Task<ContextLoadResult> LoadAutoplayAsync(
+        string contextUri,
+        IReadOnlyList<string> recentTrackUris,
+        CancellationToken ct = default)
+    {
+        _logger?.LogDebug("Loading autoplay for context: {ContextUri}", contextUri);
+
+        var context = await _spClient.ResolveAutoplayAsync(contextUri, recentTrackUris, ct);
+
+        var trackInfos = new List<(string Uri, string Uid)>();
+        foreach (var page in context.Pages)
+        {
+            foreach (var track in page.Tracks)
+            {
+                if (!string.IsNullOrEmpty(track.Uri))
+                    trackInfos.Add((track.Uri, track.Uid));
+            }
+        }
+
+        var nextPageUrl = FindNextPageUrl(context);
+
+        // Enrich with metadata and tag all as autoplay
+        var tracks = trackInfos.Count > 0
+            ? await EnrichTracksAsync(trackInfos, ct)
+            : [];
+
+        // Tag all tracks as autoplay provider
+        var autoplayTracks = tracks
+            .Select(t => t with { Provider = "autoplay", IsUserQueued = false })
+            .ToList();
+
+        _logger?.LogDebug("Autoplay loaded: {TrackCount} tracks, nextPage={HasNext}",
+            autoplayTracks.Count, nextPageUrl != null);
+
+        return new ContextLoadResult(
+            Tracks: autoplayTracks,
+            TotalCount: null,
+            NextPageUrl: nextPageUrl,
+            IsInfinite: true,
+            SortingCriteria: null,
+            ContextOwner: null);
+    }
+
+    /// <summary>
     /// Merges page tracks from a play command into existing tracks.
     /// Updates UIDs and metadata for matching URIs without reordering.
     /// Like librespot's merge_context.

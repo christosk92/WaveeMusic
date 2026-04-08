@@ -12,11 +12,13 @@
     xmlns:models="using:Wavee.UI.WinUI.Data.Models"
     xmlns:local="using:Wavee.UI.WinUI.Views" 
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
 
         <!-- ════════════════════════════════════════════════════════════
              ITEM-LEVEL TEMPLATES (used inside generic sections)
@@ -82,11 +84,31 @@
         <DataTemplate x:Key="GenericSectionTemplate" x:DataType="vm:HomeSection">
             <StackPanel Margin="0,0,0,32">
                 <Grid Margin="0,0,0,16">
-                    <TextBlock
-                        Text="{x:Bind Title}"
-                        Style="{StaticResource SubtitleTextBlockStyle}"
-                        FontWeight="Bold"
-                        HorizontalAlignment="Left"/>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Header entity avatar (e.g. "More like X" sections) -->
+                    <PersonPicture
+                        Grid.Column="0"
+                        Width="40" Height="40"
+                        Margin="0,0,10,0"
+                        ProfilePicture="{x:Bind HeaderEntityImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=80}"
+                        Visibility="{x:Bind HeaderEntityImageUrl, Converter={StaticResource NullToCollapsedConverter}}"/>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <!-- Subtitle above title (e.g. "More like") -->
+                        <TextBlock
+                            Text="{x:Bind Subtitle}"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Visibility="{x:Bind Subtitle, Converter={StaticResource NullToCollapsedConverter}}"/>
+                        <TextBlock
+                            Text="{x:Bind Title}"
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            FontWeight="Bold"/>
+                    </StackPanel>
                 </Grid>
 
                 <ItemsRepeater

@@ -1,3 +1,5 @@
+using Wavee.Connect.Playback;
+
 namespace Wavee.Connect;
 
 /// <summary>
@@ -68,6 +70,18 @@ public sealed record PlaybackState
     /// Next tracks in context (user queue + up to 48 context tracks).
     /// </summary>
     public IReadOnlyList<TrackReference> NextTracks { get; init; } = [];
+
+    /// <summary>
+    /// Rich previous tracks with metadata (for UI display).
+    /// Populated from both cluster state and local PlaybackQueue.
+    /// </summary>
+    public IReadOnlyList<IQueueItem> PrevQueue { get; init; } = [];
+
+    /// <summary>
+    /// Rich next tracks with metadata (user queue first, then context/autoplay).
+    /// Contains QueueTrack, QueuePageMarker, and QueueDelimiter items.
+    /// </summary>
+    public IReadOnlyList<IQueueItem> NextQueue { get; init; } = [];
 
     /// <summary>
     /// Playback options (shuffle, repeat).

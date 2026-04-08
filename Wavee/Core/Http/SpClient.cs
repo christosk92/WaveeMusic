@@ -446,6 +446,51 @@ public sealed class SpClient : ISpClient
         return context;
     }
 
+    /// <inheritdoc />
+    public async Task<Protocol.Context.Context> ResolveAutoplayAsync(
+        string contextUri,
+        IReadOnlyList<string> recentTrackUris,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(contextUri);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        // Build $-separated path: /context-resolve/v1/autoplay$contextUri$track1$track2$...
+        var pathParts = new List<string>(recentTrackUris.Count + 1) { contextUri };
+        pathParts.AddRange(recentTrackUris);
+        var pathSuffix = string.Join("$", pathParts);
+        var url = $"{_baseUrl}/context-resolve/v1/autoplay${Uri.EscapeDataString(pathSuffix)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug("Resolving autoplay for context: {ContextUri} with {TrackCount} recent tracks",
+            contextUri, recentTrackUris.Count);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            throw new SpClientException(SpClientFailureReason.NotFound, $"Autoplay not available for: {contextUri}");
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        var context = Google.Protobuf.JsonParser.Default.Parse<Protocol.Context.Context>(jsonContent);
+
+        _logger?.LogDebug("Autoplay resolved: {Uri}, tracks={TrackCount}",
+            context.Uri,
+            context.Pages.Count > 0 ? context.Pages[0].Tracks.Count : 0);
+
+        return context;
+    }
+
     /// <summary>
     /// Fetches time-synced lyrics for a track from Spotify's color-lyrics API.
     /// </summary>

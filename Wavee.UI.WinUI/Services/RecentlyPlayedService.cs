@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
+using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Session;
 using Wavee.UI.WinUI.Data.Contracts;

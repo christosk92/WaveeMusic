@@ -140,6 +140,19 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Resolves autoplay recommendations for a context that has finished playing.
+    /// Uses the context-resolve autoplay API which returns a station context with recommended tracks.
+    /// </summary>
+    /// <param name="contextUri">Original context URI (e.g., "spotify:album:xxx").</param>
+    /// <param name="recentTrackUris">Recently played track URIs for recommendation seeding.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Context containing autoplay track pages with next_page_url for pagination.</returns>
+    Task<Protocol.Context.Context> ResolveAutoplayAsync(
+        string contextUri,
+        IReadOnlyList<string> recentTrackUris,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches time-synced lyrics for a track from Spotify's color-lyrics API.
     /// </summary>
     /// <param name="trackId">Track ID in base62 format (e.g., "4xeugB5MqWh0jwvXZPxahq").</param>

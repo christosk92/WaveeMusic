@@ -152,6 +152,32 @@ public readonly record struct TrackReference(
 public sealed record LocalPlaybackState
 {
     /// <summary>
+    /// Source hint from upstream state publisher.
+    /// Null means local engine state.
+    /// </summary>
+    public StateSource? Source { get; init; }
+
+    /// <summary>
+    /// Active device id from upstream state publisher.
+    /// </summary>
+    public string? ActiveDeviceId { get; init; }
+
+    /// <summary>
+    /// Active device display name from upstream state publisher.
+    /// </summary>
+    public string? ActiveDeviceName { get; init; }
+
+    /// <summary>
+    /// Device volume in Spotify scale (0-65535).
+    /// </summary>
+    public uint Volume { get; init; }
+
+    /// <summary>
+    /// True when active device volume cannot be controlled.
+    /// </summary>
+    public bool IsVolumeRestricted { get; init; }
+
+    /// <summary>
     /// Current track URI (e.g., "spotify:track:xxx").
     /// </summary>
     public string? TrackUri { get; init; }
@@ -283,6 +309,16 @@ public sealed record LocalPlaybackState
     public IReadOnlyList<TrackReference> NextTracks { get; init; } = [];
 
     /// <summary>
+    /// Rich previous queue items (tracks + markers) from PlaybackQueue.
+    /// </summary>
+    public IReadOnlyList<Playback.IQueueItem> PrevQueueItems { get; init; } = [];
+
+    /// <summary>
+    /// Rich next queue items (tracks + markers) from PlaybackQueue.
+    /// </summary>
+    public IReadOnlyList<Playback.IQueueItem> NextQueueItems { get; init; } = [];
+
+    /// <summary>
     /// Queue revision hash for change detection (hash of next track URIs).
     /// </summary>
     public string? QueueRevision { get; init; }
@@ -291,6 +327,12 @@ public sealed record LocalPlaybackState
     /// Timestamp when this state was captured (Unix milliseconds).
     /// </summary>
     public long Timestamp { get; init; }
+
+    /// <summary>
+    /// Change flags from the upstream PlaybackStateManager (only set when
+    /// state arrives via IPC from AudioHost; null for direct engine state).
+    /// </summary>
+    public StateChanges? UpstreamChanges { get; init; }
 
     /// <summary>
     /// Creates an empty/stopped playback state.
