@@ -591,6 +591,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private List<HomeSection> ApplyPreferences(List<HomeSection> apiSections)
     {
+        // Customization removed — pass through directly
+        return apiSections;
+
         var settings = _settingsService;
         if (settings == null) return apiSections;
 

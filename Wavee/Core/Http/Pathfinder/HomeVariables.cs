@@ -11,7 +11,9 @@ public sealed class HomeVariables
     public string HomeEndUserIntegration { get; set; } = "INTEGRATION_WEB_PLAYER";
 
     [JsonPropertyName("timeZone")]
-    public string TimeZone { get; set; } = TimeZoneInfo.Local.Id;
+    public string TimeZone { get; set; } = TimeZoneInfo.Local.HasIanaId
+        ? TimeZoneInfo.Local.Id
+        : TimeZoneInfo.TryConvertWindowsIdToIanaId(TimeZoneInfo.Local.Id, out var iana) ? iana : "UTC";
 
     [JsonPropertyName("sp_t")]
     public string SpT { get; set; } = "";

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -6,13 +5,15 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Connect.Playback;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls.Queue;
 
 /// <summary>
-/// Flat display item for the queue. Rendered by <see cref="QueueItemTemplateSelector"/>.
+/// Display item bound by the shared TrackTemplate in ItemsRepeaters.
 /// </summary>
 public sealed class QueueDisplayItem
 {
@@ -23,34 +24,10 @@ public sealed class QueueDisplayItem
     public string? Subtitle { get; init; }
     public string? ImageUrl { get; init; }
     public string? BadgeGlyph { get; init; }
+    public bool HasMetadata { get; init; } = true;
     public Visibility HasBadge => BadgeGlyph != null ? Visibility.Visible : Visibility.Collapsed;
-}
-
-/// <summary>
-/// Selects DataTemplate based on <see cref="QueueDisplayItem.Kind"/>.
-/// </summary>
-public sealed class QueueItemTemplateSelector : DataTemplateSelector
-{
-    public DataTemplate? NowPlayingTemplate { get; set; }
-    public DataTemplate? TrackTemplate { get; set; }
-    public DataTemplate? HeaderTemplate { get; set; }
-    public DataTemplate? DelimiterTemplate { get; set; }
-
-    protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container)
-    {
-        if (item is QueueDisplayItem di)
-        {
-            return di.Kind switch
-            {
-                QueueDisplayItem.ItemKind.NowPlaying => NowPlayingTemplate,
-                QueueDisplayItem.ItemKind.Header => HeaderTemplate,
-                QueueDisplayItem.ItemKind.Track => TrackTemplate,
-                QueueDisplayItem.ItemKind.Delimiter => DelimiterTemplate,
-                _ => TrackTemplate
-            };
-        }
-        return TrackTemplate;
-    }
+    public Visibility IsLoaded => HasMetadata ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility IsShimmer => HasMetadata ? Visibility.Collapsed : Visibility.Visible;
 }
 
 public sealed partial class QueueControl : UserControl
@@ -95,37 +72,54 @@ public sealed partial class QueueControl : UserControl
         // Access raw IQueueItem list from PlaybackStateService
         var svc = _playbackService as Wavee.UI.WinUI.Data.Contexts.PlaybackStateService;
         var rawNextQueue = svc?.RawNextQueue ?? [];
-        var items = new List<QueueDisplayItem>();
 
         _logger?.LogDebug("QueueControl.Refresh: hasTrack={HasTrack}, rawNext={RawCount}",
             hasTrack, rawNextQueue.Count);
 
-        // Now Playing
+        // ── Now Playing ──
+        NowPlayingSection.Visibility = hasTrack ? Visibility.Visible : Visibility.Collapsed;
         if (hasTrack)
         {
-            items.Add(new QueueDisplayItem
-            {
-                Kind = QueueDisplayItem.ItemKind.NowPlaying,
-                Title = _playbackService.CurrentTrackTitle ?? "Unknown",
-                Subtitle = _playbackService.CurrentArtistName ?? "",
-                ImageUrl = _playbackService.CurrentAlbumArt,
-            });
+            NowPlayingTitle.Text = _playbackService.CurrentTrackTitle ?? "Unknown";
+            NowPlayingArtist.Text = _playbackService.CurrentArtistName ?? "";
+
+            var artUrl = SpotifyImageHelper.ToHttpsUrl(_playbackService.CurrentAlbumArt);
+            NowPlayingArt.Source = artUrl != null
+                ? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 40 }
+                : null;
         }
 
-        // Categorize queue items
-        var userQueued = new List<QueueTrack>();
-        var nextFrom = new List<QueueTrack>();
+        // ── Categorize raw queue items ──
+        var userQueued = new List<QueueDisplayItem>();
+        var nextFrom = new List<QueueDisplayItem>();
         QueueDelimiter? delimiter = null;
+        bool hasAutoplay = false;
 
         foreach (var item in rawNextQueue)
         {
             switch (item)
             {
                 case QueueTrack t when t.IsUserQueued:
-                    userQueued.Add(t);
+                    userQueued.Add(new QueueDisplayItem
+                    {
+                        Kind = QueueDisplayItem.ItemKind.Track,
+                        Title = t.Title ?? t.Uri,
+                        Subtitle = t.Artist ?? "",
+                        ImageUrl = t.ImageUrl,
+                        BadgeGlyph = "\uE8CB",
+                        HasMetadata = t.HasMetadata
+                    });
                     break;
                 case QueueTrack t:
-                    nextFrom.Add(t);
+                    if (t.IsAutoplay) hasAutoplay = true;
+                    nextFrom.Add(new QueueDisplayItem
+                    {
+                        Kind = QueueDisplayItem.ItemKind.Track,
+                        Title = t.Title ?? t.Uri,
+                        Subtitle = t.Artist ?? "",
+                        ImageUrl = t.ImageUrl,
+                        HasMetadata = t.HasMetadata
+                    });
                     break;
                 case QueueDelimiter d:
                     delimiter = d;
@@ -133,60 +127,33 @@ public sealed partial class QueueControl : UserControl
             }
         }
 
-        // User queue section
+        // ── User Queue section ──
+        UserQueueSection.Visibility = userQueued.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (userQueued.Count > 0)
         {
-            items.Add(new QueueDisplayItem
-            {
-                Kind = QueueDisplayItem.ItemKind.Header,
-                Title = $"Next in Queue \u00B7 {userQueued.Count}"
-            });
-            foreach (var t in userQueued)
-            {
-                items.Add(new QueueDisplayItem
-                {
-                    Kind = QueueDisplayItem.ItemKind.Track,
-                    Title = t.Title ?? t.Uri,
-                    Subtitle = t.Artist ?? "",
-                    ImageUrl = t.ImageUrl,
-                    BadgeGlyph = "\uE8CB"
-                });
-            }
+            UserQueueHeader.Text = $"Next in Queue \u00B7 {userQueued.Count}";
+            UserQueueRepeater.ItemsSource = userQueued;
         }
 
-        // Next from context/autoplay
+        // ── Next up / autoplay section ──
+        NextUpSection.Visibility = nextFrom.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (nextFrom.Count > 0)
         {
-            var isAutoplay = nextFrom.Any(t => t.IsAutoplay);
-            var label = isAutoplay ? "Next from radio" : "Next up";
-            items.Add(new QueueDisplayItem
-            {
-                Kind = QueueDisplayItem.ItemKind.Header,
-                Title = $"{label} \u00B7 {nextFrom.Count}"
-            });
-            foreach (var t in nextFrom)
-            {
-                items.Add(new QueueDisplayItem
-                {
-                    Kind = QueueDisplayItem.ItemKind.Track,
-                    Title = t.Title ?? t.Uri,
-                    Subtitle = t.Artist ?? "",
-                    ImageUrl = t.ImageUrl,
-                });
-            }
+            NextUpHeader.Text = hasAutoplay
+                ? $"Next from radio \u00B7 {nextFrom.Count}"
+                : $"Next up \u00B7 {nextFrom.Count}";
+            NextUpRepeater.ItemsSource = nextFrom;
         }
 
-        // Delimiter
+        // ── Delimiter ──
+        DelimiterSection.Visibility = delimiter != null ? Visibility.Visible : Visibility.Collapsed;
         if (delimiter != null)
         {
-            items.Add(new QueueDisplayItem
-            {
-                Kind = QueueDisplayItem.ItemKind.Delimiter,
-                Title = delimiter.AdvanceAction == "pause" ? "End of queue" : "Queue continues..."
-            });
+            DelimiterText.Text = delimiter.AdvanceAction == "pause" ? "End of queue" : "Queue continues...";
         }
 
-        QueueRepeater.ItemsSource = items;
-        EmptyState.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // ── Empty state ──
+        EmptyState.Visibility = !hasTrack && userQueued.Count == 0 && nextFrom.Count == 0
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 }

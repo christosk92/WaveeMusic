@@ -25,7 +25,8 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// </summary>
 internal sealed partial class PlaybackStateService : ObservableObject, IPlaybackStateService, IDisposable,
     IRecipient<AuthStatusChangedMessage>,
-    IRecipient<TrackMetadataEnrichedMessage>
+    IRecipient<TrackMetadataEnrichedMessage>,
+    IRecipient<QueueMetadataEnrichedMessage>
 {
     private readonly Session _session;
     private readonly IPlaybackService _playbackService;
@@ -100,6 +101,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         // Register for auth status changes to subscribe after session connects
         _messenger.Register<AuthStatusChangedMessage>(this);
         _messenger.Register<TrackMetadataEnrichedMessage>(this);
+        _messenger.Register<QueueMetadataEnrichedMessage>(this);
 
         // Try subscribing now in case session is already connected
         TrySubscribeToRemoteState();
@@ -459,6 +461,42 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         };
 
         return new PlaybackContextInfo { ContextUri = contextUri, Type = type };
+    }
+
+    // ── IRecipient<QueueMetadataEnrichedMessage> ──
+
+    public void Receive(QueueMetadataEnrichedMessage message)
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            var tracks = message.Tracks;
+            if (tracks.Count == 0) return;
+
+            _logger?.LogDebug("Queue metadata enriched: {Count} tracks", tracks.Count);
+
+            // Update raw queue items with enriched metadata
+            var updated = new List<Wavee.Connect.Playback.IQueueItem>(_rawNextQueue.Count);
+            foreach (var item in _rawNextQueue)
+            {
+                if (item is Wavee.Connect.Playback.QueueTrack qt && !qt.HasMetadata && tracks.TryGetValue(qt.Uri, out var meta))
+                {
+                    updated.Add(qt with
+                    {
+                        Title = meta.Title,
+                        Artist = meta.ArtistName,
+                        ImageUrl = meta.AlbumArt,
+                        DurationMs = meta.DurationMs > 0 ? (int)meta.DurationMs : qt.DurationMs
+                    });
+                }
+                else
+                {
+                    updated.Add(item);
+                }
+            }
+
+            _rawNextQueue = updated;
+            OnPropertyChanged(nameof(Queue));
+        });
     }
 
     private void SyncQueue(PlaybackState state)

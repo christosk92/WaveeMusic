@@ -119,4 +119,10 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
     {
         await Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/christosk92/WaveeMusic"));
     }
+
+    private async void WhatsNew_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Controls.WhatsNewDialog { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+    }
 }

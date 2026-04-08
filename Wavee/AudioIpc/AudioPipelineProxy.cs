@@ -286,6 +286,11 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
                 var state = new LocalPlaybackState
                 {
+                    Source = ParseStateSource(snapshot.Source),
+                    ActiveDeviceId = snapshot.ActiveDeviceId,
+                    ActiveDeviceName = snapshot.ActiveDeviceName,
+                    Volume = snapshot.Volume,
+                    IsVolumeRestricted = snapshot.IsVolumeRestricted,
                     TrackUri = snapshot.TrackUri,
                     TrackUid = snapshot.TrackUid,
                     TrackTitle = snapshot.TrackTitle,
@@ -306,6 +311,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                     RepeatingTrack = snapshot.RepeatingTrack,
                     CanSeek = snapshot.CanSeek,
                     Timestamp = snapshot.Timestamp,
+                    UpstreamChanges = (StateChanges)snapshot.Changes,
                 };
                 _stateSubject.OnNext(state);
                 break;
@@ -343,6 +349,18 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                 _logger?.LogDebug("Unknown message from audio host: {Type}", msg.Type);
                 break;
         }
+    }
+
+    private static StateSource? ParseStateSource(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return null;
+
+        return source.Equals("cluster", StringComparison.OrdinalIgnoreCase)
+            ? StateSource.Cluster
+            : source.Equals("local", StringComparison.OrdinalIgnoreCase)
+                ? StateSource.Local
+                : null;
     }
 
     private void AppendRttSample(double value, long timestamp)

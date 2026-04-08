@@ -86,6 +86,9 @@ public sealed class HomeLabel
 {
     [JsonPropertyName("transformedLabel")]
     public string? TransformedLabel { get; set; }
+
+    [JsonPropertyName("translatedBaseText")]
+    public string? TranslatedBaseText { get; set; }
 }
 
 // ── Section Items ──

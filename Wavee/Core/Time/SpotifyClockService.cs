@@ -19,7 +19,7 @@ public sealed class SpotifyClockService : IDisposable
     private readonly ISpClient _spClient;
     private readonly ILogger? _logger;
     private CancellationTokenSource _cts = new();
-    private Task _backgroundTask;
+    private Task? _backgroundTask;
 
     private long _offsetMs;  // serverTime - localTime (add to local to get server time)
     private long _lastRttMs;
@@ -31,6 +31,15 @@ public sealed class SpotifyClockService : IDisposable
     {
         _spClient = spClient;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Starts the background sync loop. Must be called after the session is authenticated.
+    /// Safe to call multiple times — subsequent calls are no-ops.
+    /// </summary>
+    public void Start()
+    {
+        if (_backgroundTask is not null) return;
         _backgroundTask = RunPeriodicSyncAsync(_cts.Token);
     }
 
@@ -140,22 +149,14 @@ public sealed class SpotifyClockService : IDisposable
 
     private async Task RunPeriodicSyncAsync(CancellationToken cancellationToken)
     {
-        // Initial sync with retry — the service may be created before authentication completes
-        if (!_isSynced)
+        // Initial sync — auth is guaranteed by caller via Start()
+        try
         {
-            for (int attempt = 1; attempt <= 15; attempt++)
-            {
-                try
-                {
-                    await SyncAsync(cancellationToken);
-                    break;
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger?.LogDebug(ex, "Initial clock sync attempt {Attempt} failed, retrying in 2s", attempt);
-                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-                }
-            }
+            await SyncAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Initial clock sync failed");
         }
 
         // Periodic re-sync

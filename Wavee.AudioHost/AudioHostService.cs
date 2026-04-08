@@ -121,6 +121,11 @@ internal sealed class AudioHostService : IAsyncDisposable
             "Wavee", "metadata.db");
         var metadataDb = new Wavee.Core.Storage.MetadataDatabase(dbPath, maxHotCacheSize: 256, _logger);
         var cacheService = new Wavee.Core.Storage.CacheService(metadataDb, logger: _logger);
+        var extendedMetadataClient = new Wavee.Core.Http.ExtendedMetadataClient(
+            _session,
+            httpClient,
+            metadataDb,
+            _logger);
 
         _pipeline = AudioPipelineFactory.CreateSpotifyPipeline(
             _session,
@@ -129,11 +134,16 @@ internal sealed class AudioHostService : IAsyncDisposable
             options: new AudioPipelineOptions(),
             metadataDatabase: metadataDb,
             cacheService: cacheService,
+            extendedMetadataClient: extendedMetadataClient,
             deviceId: creds.DeviceId,
             eventService: _session.Events,
             commandHandler: _session.CommandHandler,
             deviceStateManager: _session.DeviceState,
             logger: _logger);
+
+        // Enable PlaybackStateManager's on-demand enrichment path for incomplete
+        // cluster track payloads (title/artist/artwork gaps).
+        _session.PlaybackState?.SetMetadataClient(extendedMetadataClient);
 
         // Enable bidirectional mode for Spotify Connect state publishing
         _session.PlaybackState?.EnableBidirectionalMode(
@@ -151,14 +161,45 @@ internal sealed class AudioHostService : IAsyncDisposable
         if (_pipeline == null || _transport == null) return;
 
         // Stream state updates to UI
-        _stateSubscription = _pipeline.StateChanges
-            .Sample(TimeSpan.FromMilliseconds(100)) // throttle to 10 updates/sec max
-            .Subscribe(state =>
-            {
-                if (ct.IsCancellationRequested) return;
-                var snapshot = MapToSnapshot(state);
-                _ = _transport.SendAsync(IpcMessageTypes.StateUpdate, IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
-            });
+        // Stream unified playback state (cluster + local) to UI.
+        // This keeps UI reactive even if the UI process dealer stream is transiently stale.
+        var playbackStateManager = _session?.PlaybackState;
+        if (playbackStateManager != null)
+        {
+            _stateSubscription = playbackStateManager.StateChanges
+                .Publish(shared =>
+                {
+                    // Critical changes (track, status, device, etc.) — send immediately
+                    var critical = shared.Where(s =>
+                        s.Changes != StateChanges.None &&
+                        s.Changes != StateChanges.Position);
+
+                    // Position-only updates — throttle to reduce IPC chatter
+                    var positionOnly = shared
+                        .Where(s => s.Changes == StateChanges.Position)
+                        .Sample(TimeSpan.FromMilliseconds(250));
+
+                    return critical.Merge(positionOnly);
+                })
+                .Subscribe(state =>
+                {
+                    if (ct.IsCancellationRequested) return;
+                    var snapshot = MapToSnapshot(state, 0);
+                    _ = _transport.SendAsync(IpcMessageTypes.StateUpdate, IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
+                });
+        }
+        else
+        {
+            // Fallback: local engine state only (should not normally happen)
+            _stateSubscription = _pipeline.StateChanges
+                .Sample(TimeSpan.FromMilliseconds(100))
+                .Subscribe(state =>
+                {
+                    if (ct.IsCancellationRequested) return;
+                    var snapshot = MapToSnapshot(state);
+                    _ = _transport.SendAsync(IpcMessageTypes.StateUpdate, IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
+                });
+        }
 
         // Stream errors to UI
         _errorSubscription = _pipeline.Errors.Subscribe(error =>
@@ -356,6 +397,7 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         return new PlaybackStateSnapshot
         {
+            Source = "local",
             TrackUri = state.TrackUri,
             TrackUid = state.TrackUid,
             TrackTitle = state.TrackTitle,
@@ -379,6 +421,39 @@ internal sealed class AudioHostService : IAsyncDisposable
         };
     }
 
+    private static PlaybackStateSnapshot MapToSnapshot(PlaybackState state, long underrunCount)
+    {
+        return new PlaybackStateSnapshot
+        {
+            Source = state.Source == StateSource.Cluster ? "cluster" : "local",
+            TrackUri = state.Track?.Uri,
+            TrackUid = state.Track?.Uid,
+            TrackTitle = state.Track?.Title,
+            TrackArtist = state.Track?.Artist,
+            TrackAlbum = state.Track?.Album,
+            AlbumUri = state.Track?.AlbumUri,
+            ArtistUri = state.Track?.ArtistUri,
+            ImageUrl = state.Track?.ImageUrl,
+            ImageLargeUrl = state.Track?.ImageLargeUrl,
+            ContextUri = state.ContextUri,
+            PositionMs = PlaybackStateHelpers.CalculateCurrentPosition(state),
+            DurationMs = state.DurationMs,
+            IsPlaying = state.Status == PlaybackStatus.Playing,
+            IsPaused = state.Status == PlaybackStatus.Paused,
+            IsBuffering = state.Status == PlaybackStatus.Buffering,
+            Shuffling = state.Options.Shuffling,
+            RepeatingContext = state.Options.RepeatingContext,
+            RepeatingTrack = state.Options.RepeatingTrack,
+            Volume = state.Volume,
+            IsVolumeRestricted = state.IsVolumeRestricted,
+            CanSeek = state.CanSeek,
+            ActiveDeviceId = state.ActiveDeviceId,
+            ActiveDeviceName = state.ActiveDeviceName,
+            Changes = (int)state.Changes,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            UnderrunCount = underrunCount,
+        };
+    }
     public async ValueTask DisposeAsync()
     {
         _stateSubscription?.Dispose();

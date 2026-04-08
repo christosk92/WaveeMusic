@@ -218,6 +218,13 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("Wavee"),
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<ILogger<Wavee.Core.Http.ExtendedMetadataClient>>()))
+                .AddTransient<Services.TrackMetadataEnricher>(sp =>
+                    new Services.TrackMetadataEnricher(
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.ICacheService>(),
+                        sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetService<ILogger<Services.TrackMetadataEnricher>>()))
                 .AddSingleton<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(sp =>
                 {
                     var session = sp.GetRequiredService<ISession>();
@@ -374,21 +381,7 @@ public static class AppLifecycleHelper
             if (metadataDb != null)
                 cacheService ??= new Wavee.Core.Storage.CacheService(metadataDb, logger: logger);
 
-            // Wire metadata client into PlaybackStateManager for enriching incomplete cluster metadata
-            if (extMetadataClient != null)
-                session.PlaybackState?.SetMetadataClient(extMetadataClient);
-
-            // Create TrackMetadataEnricher — communicates via IMessenger,
-            // handles both track enrichment and ArtistService extended top tracks
-            if (cacheService != null && extMetadataClient != null)
-            {
-                _trackMetadataEnricher = new Services.TrackMetadataEnricher(
-                    extMetadataClient,
-                    cacheService,
-                    (Wavee.Core.Http.SpClient)session.SpClient,
-                    Ioc.Default.GetRequiredService<IMessenger>(),
-                    logger);
-            }
+            InitializeTrackMetadataEnricher(session, logger);
 
             // Create a shared EqualizerProcessor — registered in DI during ConfigureHost,
             // resolved here to pass into the audio pipeline
@@ -424,7 +417,8 @@ public static class AppLifecycleHelper
             session.PlaybackState?.EnableBidirectionalMode(
                 audioPipeline,
                 (SpClient)session.SpClient,
-                session);
+                session,
+                suppressClusterUpdates: true);
 
             // Wire up the local engine on the executor (legitimate late dep — it's the routing layer)
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
@@ -544,6 +538,8 @@ public static class AppLifecycleHelper
     {
         try
         {
+            InitializeTrackMetadataEnricher(session, logger);
+
             _audioProcessManager = new Wavee.AudioIpc.AudioProcessManager(logger);
 
             // Load stored credentials to pass to the audio process
@@ -628,7 +624,8 @@ public static class AppLifecycleHelper
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
                     exec?.EnableLocalPlayback(newProxy);
                     session.PlaybackState?.EnableBidirectionalMode(
-                        newProxy, (SpClient)session.SpClient, session);
+                        newProxy, (SpClient)session.SpClient, session,
+                        suppressClusterUpdates: true);
                     profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
                 });
             };
@@ -649,7 +646,8 @@ public static class AppLifecycleHelper
             session.PlaybackState?.EnableBidirectionalMode(
                 proxy,
                 (SpClient)session.SpClient,
-                session);
+                session,
+                suppressClusterUpdates: true);
 
             profiler?.SetAudioUnderrunProvider(() => proxy.UnderrunCount);
 
@@ -738,5 +736,24 @@ public static class AppLifecycleHelper
     public static void HandleAppUnhandledException(Exception? ex, bool showNotification)
     {
         System.Diagnostics.Debug.WriteLine($"Unhandled exception: {ex}");
+    }
+
+    private static void InitializeTrackMetadataEnricher(Session session, Microsoft.Extensions.Logging.ILogger? logger)
+    {
+        try
+        {
+            // Wire metadata client into PlaybackStateManager for enriching incomplete cluster metadata.
+            var extMetadataClient = Ioc.Default.GetService<Wavee.Core.Http.IExtendedMetadataClient>();
+            if (extMetadataClient != null)
+                session.PlaybackState?.SetMetadataClient(extMetadataClient);
+
+            // Resolve a fresh enricher instance from DI (transient) and keep it for this session.
+            _trackMetadataEnricher?.Dispose();
+            _trackMetadataEnricher = Ioc.Default.GetService<Services.TrackMetadataEnricher>();
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to initialize track metadata enricher");
+        }
     }
 }

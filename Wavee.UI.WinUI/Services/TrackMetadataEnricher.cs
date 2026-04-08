@@ -22,6 +22,7 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestMessage>,
     IRecipient<ExtendedTopTracksRequest>,
+    IRecipient<QueueEnrichmentRequestMessage>,
     IDisposable
 {
     private readonly IExtendedMetadataClient _metadataClient;
@@ -46,6 +47,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
         messenger.Register<TrackEnrichmentRequestMessage>(this);
         messenger.Register<ExtendedTopTracksRequest>(this);
+        messenger.Register<QueueEnrichmentRequestMessage>(this);
     }
 
     // ── Track enrichment (from PlaybackStateService) ──
@@ -205,6 +207,77 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         {
             _logger?.LogWarning(ex, "Failed to get extended top tracks for {Artist}", artistUri);
             return [];
+        }
+    }
+
+    // ── Queue batch enrichment ──
+
+    public void Receive(QueueEnrichmentRequestMessage message)
+    {
+        var uris = message.Value;
+        if (uris == null || uris.Count == 0) return;
+        _ = EnrichQueueTracksAsync(uris);
+    }
+
+    private async Task EnrichQueueTracksAsync(IReadOnlyList<string> trackUris)
+    {
+        try
+        {
+            await Task.Yield();
+
+            _logger?.LogDebug("Queue enrichment: fetching metadata for {Count} tracks", trackUris.Count);
+
+            // Check cache first
+            var cached = await _cacheService.GetTracksAsync(trackUris, CancellationToken.None);
+            var uncached = trackUris.Where(u => !cached.ContainsKey(u)).ToList();
+
+            // Batch-fetch uncached
+            if (uncached.Count > 0)
+            {
+                _logger?.LogDebug("Queue enrichment: {CachedCount} cached, {UncachedCount} need fetch",
+                    cached.Count, uncached.Count);
+
+                const int batchSize = 500;
+                for (int i = 0; i < uncached.Count; i += batchSize)
+                {
+                    var batch = uncached.Skip(i).Take(batchSize)
+                        .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+                    try
+                    {
+                        await _metadataClient.GetBatchedExtensionsAsync(batch, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Queue enrichment batch failed at offset {Offset}", i);
+                    }
+                }
+
+                // Re-read from cache
+                var newCached = await _cacheService.GetTracksAsync(uncached, CancellationToken.None);
+                foreach (var (uri, entry) in newCached)
+                    cached[uri] = entry;
+            }
+
+            // Build result
+            var result = new Dictionary<string, QueueTrackMetadata>();
+            foreach (var (uri, entry) in cached)
+            {
+                result[uri] = new QueueTrackMetadata(
+                    Title: entry.Title ?? "",
+                    ArtistName: entry.Artist ?? "",
+                    AlbumArt: entry.ImageUrl,
+                    DurationMs: entry.DurationMs ?? 0);
+            }
+
+            _logger?.LogDebug("Queue enrichment complete: {EnrichedCount}/{TotalCount} tracks enriched",
+                result.Count, trackUris.Count);
+
+            if (result.Count > 0)
+                _messenger.Send(new QueueMetadataEnrichedMessage { Tracks = result });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Queue enrichment failed");
         }
     }
 

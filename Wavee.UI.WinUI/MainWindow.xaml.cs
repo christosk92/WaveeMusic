@@ -68,6 +68,9 @@ public sealed partial class MainWindow : WindowEx
         // Always navigate to ShellPage (app works without Spotify login)
         RootFrame.Navigate(typeof(ShellPage));
 
+        // Show "What's New" dialog once the shell has rendered
+        _ = ShowWhatsNewAfterDelayAsync(settingsService);
+
         // Try to restore cached Spotify session in background (non-blocking)
         var authState = Ioc.Default.GetRequiredService<IAuthState>();
         _ = Task.Run(async () =>
@@ -82,5 +85,24 @@ public sealed partial class MainWindow : WindowEx
                 // Not critical -- user can connect manually via sidebar button
             }
         });
+    }
+
+    private async Task ShowWhatsNewAfterDelayAsync(ISettingsService settingsService)
+    {
+        try
+        {
+            // Wait for the visual tree to fully materialize
+            await Task.Delay(1500);
+            if (Content?.XamlRoot is not { } xamlRoot) return;
+
+            await Controls.WhatsNewDialog.ShowIfNeededAsync(
+                xamlRoot,
+                settingsService,
+                Ioc.Default.GetRequiredService<IUpdateService>());
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"What's New dialog failed: {ex}");
+        }
     }
 }

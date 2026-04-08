@@ -219,7 +219,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         if (sender is not Button { Tag: string uri }) return;
 
         // Close the flyout
-        CustomizeFlyout.Hide();
+       // CustomizeFlyout.Hide();
 
         // Find the section index in the displayed Sections collection
         var sectionIndex = -1;

@@ -116,16 +116,18 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         }
 
         // Remote: always use dict for JSON serialization
+        var waitForAck = ShouldWaitForAck(endpoint);
         var ackTimeout = GetAckTimeout(endpoint);
-        var result = await _client.SendCommandAsync(target, endpoint, data, ackTimeout: ackTimeout, ct: ct).ConfigureAwait(false);
+        var result = await _client.SendCommandAsync(
+            target,
+            endpoint,
+            data,
+            waitForAck: waitForAck,
+            ackTimeout: ackTimeout,
+            ct: ct).ConfigureAwait(false);
 
-        // The server already accepted the command (HTTP 2xx). Missing dealer ack is often
-        // transient and should not stall interactive playback with retries.
-        if (result.IsTimeout && AcceptTimeoutAsSuccess(endpoint))
-        {
-            _logger?.LogWarning("Treating ack timeout as success for endpoint {Endpoint} (timeout={TimeoutMs}ms)", endpoint, ackTimeout.TotalMilliseconds);
-            return PlaybackResult.Success();
-        }
+        if (!waitForAck)
+            _logger?.LogDebug("Remote command {Endpoint} accepted via HTTP (ack wait bypassed)", endpoint);
 
         return ToPlaybackResult(result);
     }
@@ -144,11 +146,13 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         _ => TimeSpan.FromMilliseconds(2000)
     };
 
-    private static bool AcceptTimeoutAsSuccess(string endpoint) => endpoint switch
+    private static bool ShouldWaitForAck(string endpoint) => endpoint switch
     {
+        // In out-of-process mode the UI dealer stream may not emit timely ack signals,
+        // so waiting here makes controls feel unresponsive.
         "play" or "add_to_queue" or "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to"
-            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume" => true,
-        _ => false
+            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume" => false,
+        _ => true
     };
 
     // ── Playback commands ──
@@ -420,7 +424,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             {
                 ["restore_paused"] = startPlaying ? "restore" : "pause"
             }
-        }, ackTimeout: GetAckTimeout("transfer"), ct: ct).ConfigureAwait(false);
+        }, waitForAck: ShouldWaitForAck("transfer"), ackTimeout: GetAckTimeout("transfer"), ct: ct).ConfigureAwait(false);
 
         return ToPlaybackResult(result);
     }

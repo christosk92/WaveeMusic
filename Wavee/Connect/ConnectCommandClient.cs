@@ -74,6 +74,7 @@ public sealed class ConnectCommandClient : IAsyncDisposable
         string targetDeviceId,
         string endpoint,
         Dictionary<string, object>? commandData = null,
+        bool waitForAck = true,
         TimeSpan? ackTimeout = null,
         CancellationToken ct = default)
     {
@@ -145,6 +146,12 @@ public sealed class ConnectCommandClient : IAsyncDisposable
             {
                 _logger?.LogDebug("Connect command {Endpoint} accepted (no ack_id)", endpoint);
                 return ConnectCommandResult.Success(null);
+            }
+
+            if (!waitForAck)
+            {
+                _logger?.LogDebug("Connect command {Endpoint} accepted (ack wait bypassed): {AckId}", endpoint, ackId);
+                return ConnectCommandResult.Success(ackId);
             }
 
             // Wait for ack confirmation from dealer

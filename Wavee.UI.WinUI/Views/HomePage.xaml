@@ -151,7 +151,7 @@
                                       BorderThickness="1">
                                     <Image
                                         Stretch="UniformToFill"
-                                        Source="{x:Bind ImageUrl}"
+                                        Source="{x:Bind ImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=400}"
                                         Opacity="0.6"/>
                                     <Border CornerRadius="{ThemeResource ControlCornerRadius}">
                                         <Border.Background>
@@ -213,102 +213,6 @@
                     <FontIcon Glyph="&#xE72C;" FontSize="16"/>
                 </Button>
 
-                <!-- Customize button -->
-                <Button
-                    ToolTipService.ToolTip="Customize home"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="8">
-                    <FontIcon Glyph="&#xE713;" FontSize="16"/>
-                    <Button.Flyout>
-                        <Flyout x:Name="CustomizeFlyout" Placement="BottomEdgeAlignedRight">
-                            <Grid Width="300" MaxHeight="400">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock
-                                    Grid.Row="0"
-                                    Text="Customize Home"
-                                    Style="{StaticResource SubtitleTextBlockStyle}"
-                                    Margin="0,0,0,12"/>
-
-                                <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.SectionPreferences, Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <StackLayout Spacing="2"/>
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="models:HomeSectionPref">
-                                                <Grid Padding="6,4" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Height="36">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <CheckBox
-                                                        Grid.Column="0"
-                                                        IsChecked="{x:Bind IsVisible}"
-                                                        MinWidth="0"
-                                                        Padding="0"
-                                                        Margin="0,0,8,0"
-                                                        VerticalAlignment="Center"
-                                                        Tag="{x:Bind SectionUri}"
-                                                        Checked="VisibilityCheckBox_Changed"
-                                                        Unchecked="VisibilityCheckBox_Changed"/>
-
-                                                    <Button
-                                                        Grid.Column="1"
-                                                        Background="Transparent"
-                                                        BorderThickness="0"
-                                                        Padding="0"
-                                                        HorizontalAlignment="Stretch"
-                                                        HorizontalContentAlignment="Left"
-                                                        VerticalAlignment="Center"
-                                                        Tag="{x:Bind SectionUri}"
-                                                        Click="SectionTitle_Click">
-                                                        <TextBlock
-                                                            Text="{x:Bind Title}"
-                                                            TextTrimming="CharacterEllipsis"
-                                                            MaxLines="1"
-                                                            FontSize="13"/>
-                                                    </Button>
-
-                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
-                                                        <Button Padding="4" Background="Transparent" BorderThickness="0"
-                                                                Tag="{x:Bind SectionUri}"
-                                                                Click="MoveUp_Click"
-                                                                ToolTipService.ToolTip="Move up"
-                                                                Width="28" Height="28">
-                                                            <FontIcon Glyph="&#xE70E;" FontSize="10"/>
-                                                        </Button>
-                                                        <Button Padding="4" Background="Transparent" BorderThickness="0"
-                                                                Tag="{x:Bind SectionUri}"
-                                                                Click="MoveDown_Click"
-                                                                ToolTipService.ToolTip="Move down"
-                                                                Width="28" Height="28">
-                                                            <FontIcon Glyph="&#xE70D;" FontSize="10"/>
-                                                        </Button>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-                                </ScrollView>
-
-                                <Button
-                                    Grid.Row="2"
-                                    Content="Reset to default"
-                                    HorizontalAlignment="Stretch"
-                                    Margin="0,12,0,0"
-                                    Command="{x:Bind ViewModel.ResetSectionPreferencesCommand}"/>
-                            </Grid>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
             </StackPanel>
         </Grid>
 

@@ -115,6 +115,9 @@ public sealed class SetEqualizerCommand
 
 public sealed class PlaybackStateSnapshot
 {
+    [JsonPropertyName("source")]
+    public string? Source { get; init; }
+
     [JsonPropertyName("trackUri")]
     public string? TrackUri { get; init; }
 
@@ -171,6 +174,9 @@ public sealed class PlaybackStateSnapshot
 
     [JsonPropertyName("volume")]
     public uint Volume { get; init; }
+
+    [JsonPropertyName("isVolumeRestricted")]
+    public bool IsVolumeRestricted { get; init; }
 
     [JsonPropertyName("canSeek")]
     public bool CanSeek { get; init; } = true;

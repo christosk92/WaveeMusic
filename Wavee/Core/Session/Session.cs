@@ -227,7 +227,10 @@ public sealed class Session : ISession, IAsyncDisposable
 
             _logger?.LogInformation("Session established for user: {Username}", userData.Username);
 
-            // 7. Initialize client token manager (needed by SpClient for spclient requests)
+            // 7. Start clock sync now that auth is ready
+            Clock.Start();
+
+            // 8. Initialize client token manager (needed by SpClient for spclient requests)
             _clientTokenManager = new ClientTokenManager(_httpClient, _config, _logger);
 
             // 8. Initialize Mercury protocol (for keymaster tokens, subscriptions, etc.)
@@ -887,7 +890,13 @@ public sealed class Session : ISession, IAsyncDisposable
         catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException se && se.ErrorCode == 10054)
         {
             // Expected: Spotify forcibly closed connection (normal during session timeout or server maintenance)
-            _logger?.LogInformation("Connection closed by server");
+            _logger?.LogInformation("Connection closed by server (reset)");
+            await DisconnectInternalAsync();
+            OnDisconnected();
+        }
+        catch (IOException ex)
+        {
+            _logger?.LogWarning("AP connection lost (IOException): {Message}", ex.Message);
             await DisconnectInternalAsync();
             OnDisconnected();
         }
@@ -1228,6 +1237,10 @@ public sealed class Session : ISession, IAsyncDisposable
             _logger?.LogDebug("Restarted packet dispatcher");
 
             _logger?.LogInformation("AP reconnection successful");
+
+            // Restart clock sync after reconnection
+            Clock.Start();
+
             _connectionState.OnNext(SessionConnectionState.Connected);
         }
         catch

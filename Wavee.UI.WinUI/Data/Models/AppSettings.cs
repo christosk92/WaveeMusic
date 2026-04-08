@@ -145,6 +145,11 @@ public sealed class AppSettings
     /// When the last update check was performed.
     /// </summary>
     public DateTimeOffset? LastUpdateCheck { get; set; }
+
+    /// <summary>
+    /// The last app version whose "What's New" dialog was shown/dismissed.
+    /// </summary>
+    public string? LastSeenChangelogVersion { get; set; }
 }
 
 public sealed class HomeSectionSettings

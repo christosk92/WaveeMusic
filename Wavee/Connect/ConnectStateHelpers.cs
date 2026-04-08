@@ -71,7 +71,7 @@ public static class ConnectStateHelpers
             SupportsCommandRequest = true,
             VolumeSteps = volumeSteps,
             SupportsGzipPushes = true,
-            NeedsFullPlayerState = false
+            NeedsFullPlayerState = true
         };
 
         // Add supported content types

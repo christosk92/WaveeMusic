@@ -6,13 +6,14 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Queue"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:shimmer="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
     <UserControl.Resources>
         <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
 
-        <!-- Shared track row template used by all ItemsRepeaters -->
-        <DataTemplate x:Key="TrackTemplate" x:DataType="local:QueueDisplayTrack">
+        <!-- Shared track row template with shimmer loading state -->
+        <DataTemplate x:Key="TrackTemplate" x:DataType="local:QueueDisplayItem">
             <Grid Padding="4,4" ColumnSpacing="10" Height="48">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="36"/>
@@ -20,18 +21,29 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- Album art or shimmer -->
                 <Border Grid.Column="0" Width="36" Height="36" CornerRadius="4"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Image Stretch="UniformToFill"
+                           Visibility="{x:Bind IsLoaded, Mode=OneTime}"
                            Source="{x:Bind ImageUrl, Mode=OneTime, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=36}"/>
                 </Border>
+                <shimmer:Shimmer Grid.Column="0" Width="36" Height="36"
+                                 Visibility="{x:Bind IsShimmer, Mode=OneTime}"/>
 
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                <!-- Title/artist or shimmer -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1"
+                            Visibility="{x:Bind IsLoaded, Mode=OneTime}">
                     <TextBlock Text="{x:Bind Title, Mode=OneTime}" FontSize="13"
                                MaxLines="1" TextTrimming="CharacterEllipsis"/>
                     <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}" FontSize="11"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                MaxLines="1" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"
+                            Visibility="{x:Bind IsShimmer, Mode=OneTime}">
+                    <shimmer:Shimmer Width="160" Height="12" HorizontalAlignment="Left"/>
+                    <shimmer:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
                 </StackPanel>
 
                 <FontIcon Grid.Column="2" Glyph="{x:Bind BadgeGlyph, Mode=OneTime}" FontSize="12"

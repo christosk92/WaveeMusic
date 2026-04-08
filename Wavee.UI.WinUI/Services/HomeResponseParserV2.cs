@@ -92,6 +92,18 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                     section.HeaderEntityImageUrl = artistData.Visuals?.AvatarImage?.Sources?
                         .OrderByDescending(s => s.Width ?? 0)
                         .FirstOrDefault()?.Url;
+
+                    // Split "More like Troye Sivan" → subtitle="More like", title="Troye Sivan"
+                    var translatedBase = entry.Data?.Title?.TranslatedBaseText;
+                    if (translatedBase != null && translatedBase.Contains("{0}") && artistData.Profile?.Name != null)
+                    {
+                        var prefix = translatedBase.Replace("{0}", "").Trim();
+                        if (!string.IsNullOrEmpty(prefix))
+                        {
+                            section.Subtitle = prefix;
+                            section.Title = artistData.Profile.Name;
+                        }
+                    }
                 }
             }
 

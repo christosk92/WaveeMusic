@@ -237,8 +237,19 @@ internal sealed class DealerConnection : IDealerConnection
                 }
                 catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                 {
-                    // Connection closed unexpectedly
                     _logger?.LogDebug("WebSocket connection closed prematurely");
+                    Closed?.Invoke(this, null);
+                    break;
+                }
+                catch (System.IO.IOException ioEx)
+                {
+                    _logger?.LogWarning("WebSocket IOException (network dropped): {Message}", ioEx.Message);
+                    Closed?.Invoke(this, null);
+                    break;
+                }
+                catch (WebSocketException wsEx)
+                {
+                    _logger?.LogWarning("WebSocket error: {Code} — {Message}", wsEx.WebSocketErrorCode, wsEx.Message);
                     Closed?.Invoke(this, null);
                     break;
                 }
