@@ -62,12 +62,12 @@
 		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1-RTM" />
 		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.0-preview2" />
-		<PackageReference Include="QRCoder" Version="1.6.0" />
-		<PackageReference Include="Serilog" Version="4.3.0" />
+		<PackageReference Include="QRCoder" Version="1.8.0" />
+		<PackageReference Include="Serilog" Version="4.3.1" />
 		<PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
 		<PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
 		<PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
-		<PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<!-- Window management -->
 		<PackageReference Include="WinUIEx" Version="2.9.0" />
 		<!-- MVVM and DI -->
@@ -119,9 +119,7 @@
 
 	<!-- Auto-build Wavee.AudioHost and copy the exe to our output (for out-of-process audio) -->
 	<Target Name="BuildAudioHost" BeforeTargets="Build">
-		<MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj"
-				 Targets="Build"
-				 Properties="Configuration=$(Configuration)" />
+		<MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
 	</Target>
 
 	<!-- Preserve assemblies whose types are resolved via XAML reflection (invisible to the IL trimmer).

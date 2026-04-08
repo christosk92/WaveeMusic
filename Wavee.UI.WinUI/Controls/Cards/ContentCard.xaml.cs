@@ -630,8 +630,8 @@ public sealed partial class ContentCard : UserControl
         if (!string.IsNullOrEmpty(NavigationUri))
         {
             PrepareConnectedAnimation();
-            NavigateToUri(Helpers.Navigation.NavigationHelpers.IsCtrlPressed());
-            return;
+            if (NavigateToUri(Helpers.Navigation.NavigationHelpers.IsCtrlPressed()))
+                return;
         }
 
         CardClick?.Invoke(this, EventArgs.Empty);
@@ -679,9 +679,8 @@ public sealed partial class ContentCard : UserControl
     {
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
         {
-            if (!string.IsNullOrEmpty(NavigationUri))
+            if (!string.IsNullOrEmpty(NavigationUri) && NavigateToUri(openInNewTab: true))
             {
-                NavigateToUri(openInNewTab: true);
                 return;
             }
             CardMiddleClick?.Invoke(this, EventArgs.Empty);
@@ -708,11 +707,11 @@ public sealed partial class ContentCard : UserControl
 
     // ── Navigation ──
 
-    private void NavigateToUri(bool openInNewTab)
+    private bool NavigateToUri(bool openInNewTab)
     {
         var uri = NavigationUri!;
         var parts = uri.Split(':');
-        if (parts.Length < 3) return;
+        if (parts.Length < 3) return false;
 
         var type = parts[1];
         var title = NavigationTitle ?? Title ?? type;
@@ -729,17 +728,19 @@ public sealed partial class ContentCard : UserControl
         {
             case "artist":
                 Helpers.Navigation.NavigationHelpers.OpenArtist(param, title, openInNewTab);
-                break;
+                return true;
             case "album":
                 Helpers.Navigation.NavigationHelpers.OpenAlbum(param, title, openInNewTab);
-                break;
+                return true;
             case "playlist":
                 Helpers.Navigation.NavigationHelpers.OpenPlaylist(param, title, openInNewTab);
-                break;
+                return true;
             case "user" when uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
                 Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
-                break;
+                return true;
         }
+
+        return false;
     }
 
     internal void PrepareConnectedAnimation()

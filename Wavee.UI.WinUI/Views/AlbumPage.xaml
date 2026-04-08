@@ -8,6 +8,7 @@
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     mc:Ignorable="d"
@@ -63,10 +64,12 @@
                                 Padding="16,24"
                                 MaxWidth="280"
                                 Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <controls:Shimmer Width="120" Height="16" HorizontalAlignment="Center"/>
                         <controls:Shimmer Width="240" Height="240" CornerRadius="8"/>
                         <controls:Shimmer Width="180" Height="20" HorizontalAlignment="Center"/>
-                        <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Center"/>
-                        <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Center"/>
+                        <controls:Shimmer Width="150" Height="20" HorizontalAlignment="Center"/>
+                        <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Center"/>
+                        <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,8,0,0">
                             <controls:Shimmer Width="48" Height="48" CornerRadius="24"/>
                             <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
@@ -80,22 +83,27 @@
                                 MaxWidth="280" VerticalAlignment="Top"
                                 Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
 
-                        <HyperlinkButton Content="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                         Click="Artist_Click" Padding="0"
-                                         HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+                        <Grid MinHeight="20" HorizontalAlignment="Center">
+                            <HyperlinkButton Content="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                             Click="Artist_Click" Padding="0"
+                                             HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                                             Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                            <controls:Shimmer Width="120" Height="16" HorizontalAlignment="Center"
+                                              Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                        </Grid>
 
                         <Border x:Name="AlbumArtContainer" CornerRadius="8" Width="240" Height="240"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                             <Grid>
+                                <lyrics:ShadowImage
+                                    Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                    Stretch="UniformToFill"
+                                    CornerRadiusAmount="8"
+                                    ShadowAmount="24"
+                                    Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                 <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                           Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                <Image x:Name="AlbumArtImage"
-                                       Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
-                                       Stretch="UniformToFill"
-                                       Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                       behaviors:ImageFallbackBehavior.HideOnError="True"
-                                       behaviors:ImageFallbackBehavior.DecodePixelWidth="560"/>
                             </Grid>
                         </Border>
 
@@ -183,14 +191,15 @@
                                 <Border Grid.Column="0" Width="140" Height="140" CornerRadius="8"
                                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Margin="0,0,24,0">
                                     <Grid>
+                                        <lyrics:ShadowImage
+                                            Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='140'}"
+                                            Stretch="UniformToFill"
+                                            CornerRadiusAmount="8"
+                                            ShadowAmount="18"
+                                            Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                         <FontIcon Glyph="&#xE93C;" FontSize="48" Opacity="0.3"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                                   Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                        <Image Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='140'}"
-                                               Stretch="UniformToFill"
-                                               Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                               behaviors:ImageFallbackBehavior.HideOnError="True"
-                                               behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
                                     </Grid>
                                 </Border>
 
@@ -263,6 +272,7 @@
                                 <DataTemplate x:DataType="contracts:AlbumRelatedResult">
                                     <cards:ContentCard
                                         Width="160"
+                                        Tag="{x:Bind}"
                                         ImageUrl="{x:Bind ImageUrl}"
                                         Title="{x:Bind Name}"
                                         Subtitle="{x:Bind Year}"

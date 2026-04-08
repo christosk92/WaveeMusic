@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
@@ -1049,8 +1050,9 @@ public sealed partial class RightPanelView : UserControl
 
     private async void SetupBlurredAlbumArt()
     {
-        var albumArt = _lyricsVm?.PlaybackState.CurrentAlbumArtLarge
-                       ?? _lyricsVm?.PlaybackState.CurrentAlbumArt;
+        var albumArt = SpotifyImageHelper.ToHttpsUrl(
+            _lyricsVm?.PlaybackState.CurrentAlbumArtLarge
+            ?? _lyricsVm?.PlaybackState.CurrentAlbumArt);
 
         if (string.IsNullOrEmpty(albumArt))
         {
@@ -1116,9 +1118,9 @@ public sealed partial class RightPanelView : UserControl
             DetailsCanvasImage.Source = imageSource;
             DetailsCanvasImage.Visibility = Visibility.Visible;
         }
-        catch
+        catch (Exception ex)
         {
-            // Loading can fail if URL is invalid or network issue
+            System.Diagnostics.Debug.WriteLine($"[RightPanel] SetupBlurredAlbumArt failed: {ex.Message}");
             DetailsCanvasImage.Visibility = Visibility.Collapsed;
         }
     }

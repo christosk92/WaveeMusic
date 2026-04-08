@@ -106,6 +106,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
     {
+        var oldParameter = _navigationParameter;
+
         _navigationParameter = new TabItemParameter
         {
             InitialPageType = pageType,
@@ -116,7 +118,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         // destroying and recreating the entire visual tree (expensive XAML parsing).
         if (ContentFrame.Content?.GetType() == pageType)
         {
-            var currentUri = GetParameterUri(_navigationParameter?.NavigationParameter);
+            var currentUri = GetParameterUri(oldParameter?.NavigationParameter);
             var newUri = GetParameterUri(parameter);
 
             if (string.Equals(currentUri, newUri, StringComparison.Ordinal))

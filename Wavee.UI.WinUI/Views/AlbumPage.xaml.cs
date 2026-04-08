@@ -260,15 +260,35 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     private void RelatedAlbum_Click(object sender, EventArgs e)
     {
-        if (sender is FrameworkElement fe && fe.DataContext is AlbumRelatedResult album)
+        if (sender is not FrameworkElement fe)
+            return;
+
+        var album = fe.Tag as AlbumRelatedResult ?? fe.DataContext as AlbumRelatedResult;
+        if (album != null)
         {
+            var targetUri = album.Uri ?? album.Id;
+            if (string.IsNullOrWhiteSpace(targetUri))
+                return;
+
             var param = new ContentNavigationParameter
             {
-                Uri = album.Uri ?? album.Id ?? "",
+                Uri = targetUri,
                 Title = album.Name,
                 ImageUrl = album.ImageUrl
             };
             NavigationHelpers.OpenAlbum(param, album.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
+            return;
+        }
+
+        if (sender is Controls.Cards.ContentCard card && !string.IsNullOrWhiteSpace(card.NavigationUri))
+        {
+            var param = new ContentNavigationParameter
+            {
+                Uri = card.NavigationUri,
+                Title = card.Title,
+                ImageUrl = card.ImageUrl
+            };
+            NavigationHelpers.OpenAlbum(param, card.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
         }
     }
 

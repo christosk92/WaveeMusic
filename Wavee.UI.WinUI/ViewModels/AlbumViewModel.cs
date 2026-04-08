@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using ReactiveUI;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -31,6 +32,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private readonly IAlbumService _albumService;
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
+    private readonly ITrackLikeService? _likeService;
+    private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
 
     /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
@@ -353,12 +356,22 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// </summary>
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
-    public AlbumViewModel(IAlbumService albumService, ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<AlbumViewModel>? logger = null)
+    public AlbumViewModel(
+        IAlbumService albumService,
+        ILibraryDataService libraryDataService,
+        IPlaybackStateService playbackStateService,
+        ITrackLikeService? likeService = null,
+        ILogger<AlbumViewModel>? logger = null)
     {
         _albumService = albumService;
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
+        _likeService = likeService;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _logger = logger;
+
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
     }
 
     public void Initialize(string albumId)
@@ -368,6 +381,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         {
             Title = "Album"
         };
+
+        RefreshSaveState();
     }
 
     private void UpdateTabTitle()
@@ -478,6 +493,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                     return $"{prefix} {text}";
                 }));
 
+            RefreshSaveState();
+
             Playlists = await playlistsTask;
             IsLoading = false;
 
@@ -559,8 +576,36 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     [RelayCommand]
     private void ToggleSave()
     {
-        IsSaved = !IsSaved;
-        // TODO: Update saved state via Wavee core
+        if (_likeService == null || string.IsNullOrEmpty(AlbumId))
+            return;
+
+        var albumUri = NormalizeAlbumUri(AlbumId);
+        var wasSaved = _likeService.IsSaved(SavedItemType.Album, albumUri);
+
+        IsSaved = !wasSaved;
+        _likeService.ToggleSave(SavedItemType.Album, albumUri, wasSaved);
+    }
+
+    private void RefreshSaveState()
+    {
+        if (_likeService == null || string.IsNullOrEmpty(AlbumId))
+            return;
+
+        IsSaved = _likeService.IsSaved(SavedItemType.Album, NormalizeAlbumUri(AlbumId));
+    }
+
+    private void OnSaveStateChanged()
+    {
+        _dispatcherQueue.TryEnqueue(RefreshSaveState);
+    }
+
+    private static string NormalizeAlbumUri(string albumIdOrUri)
+    {
+        const string prefix = "spotify:album:";
+        if (albumIdOrUri.StartsWith(prefix, StringComparison.Ordinal))
+            return albumIdOrUri;
+
+        return $"{prefix}{albumIdOrUri}";
     }
 
     [RelayCommand]
@@ -696,6 +741,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void Dispose()
     {
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+
         _allTracks.Clear();
     }
 }
