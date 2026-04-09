@@ -598,10 +598,8 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                     {
                         FlushAndPublishState(newState);
                     }
-                    else
-                    {
-                        DebouncedPublishState(newState);
-                    }
+                    // Position-only: don't publish to Spotify at all.
+                    // Spotify calculates position from timestamp + elapsed.
                 }
             }
 

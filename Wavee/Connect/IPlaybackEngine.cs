@@ -1,3 +1,4 @@
+using Wavee.Audio.Queue;
 using Wavee.Connect.Commands;
 
 namespace Wavee.Connect;
@@ -311,12 +312,12 @@ public sealed record LocalPlaybackState
     /// <summary>
     /// Rich previous queue items (tracks + markers) from PlaybackQueue.
     /// </summary>
-    public IReadOnlyList<Playback.IQueueItem> PrevQueueItems { get; init; } = [];
+    public IReadOnlyList<IQueueItem> PrevQueueItems { get; init; } = [];
 
     /// <summary>
     /// Rich next queue items (tracks + markers) from PlaybackQueue.
     /// </summary>
-    public IReadOnlyList<Playback.IQueueItem> NextQueueItems { get; init; } = [];
+    public IReadOnlyList<IQueueItem> NextQueueItems { get; init; } = [];
 
     /// <summary>
     /// Queue revision hash for change detection (hash of next track URIs).

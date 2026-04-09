@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wavee.Controls.Lyrics", "Wa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wavee.AudioHost", "Wavee.AudioHost\Wavee.AudioHost.csproj", "{F7256891-DAA5-4B80-9A43-33E1FD7A17C4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wavee.Playback.Contracts", "Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj", "{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -133,6 +135,18 @@ Global
 		{F7256891-DAA5-4B80-9A43-33E1FD7A17C4}.Release|x64.Build.0 = Release|Any CPU
 		{F7256891-DAA5-4B80-9A43-33E1FD7A17C4}.Release|x86.ActiveCfg = Release|Any CPU
 		{F7256891-DAA5-4B80-9A43-33E1FD7A17C4}.Release|x86.Build.0 = Release|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Debug|x64.Build.0 = Debug|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Debug|x86.Build.0 = Debug|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Release|x64.ActiveCfg = Release|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Release|x64.Build.0 = Release|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Release|x86.ActiveCfg = Release|Any CPU
+		{3E430B63-F5FB-423C-9917-2DA99E0F1F8C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

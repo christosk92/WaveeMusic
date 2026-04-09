@@ -1,4 +1,4 @@
-using Wavee.Connect.Playback;
+using Wavee.Audio.Queue;
 
 namespace Wavee.Connect;
 

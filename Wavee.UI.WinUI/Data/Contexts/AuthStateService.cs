@@ -269,9 +269,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         }
         else
         {
-            var httpClient = _httpClientFactory!.CreateClient("Wavee");
-            var audioHttpClient = _httpClientFactory.CreateClient("WaveeAudio");
-            Helpers.Application.AppLifecycleHelper.InitializePlaybackEngine(_session, httpClient, audioHttpClient, _logger);
+            // In-process fallback removed — all audio goes through AudioHost
+            await Helpers.Application.AppLifecycleHelper.InitializeOutOfProcessAudioAsync(_session, _logger);
         }
 
         // SetStatus fires AuthStatusChangedMessage → LibrarySyncOrchestrator handles sync

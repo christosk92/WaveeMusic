@@ -1,37 +1,37 @@
 using System.IO.Pipes;
 using System.Reactive.Linq;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Wavee.AudioIpc;
-using Wavee.Connect;
-using Wavee.Connect.Playback;
-using Wavee.Connect.Playback.Sinks;
-using Wavee.Core.Session;
+using Wavee.AudioHost.Audio;
+using Wavee.AudioHost.Audio.Abstractions;
+using Wavee.AudioHost.Audio.Decoders;
+using Wavee.AudioHost.Audio.Processors;
+using Wavee.AudioHost.Audio.Sinks;
+using Wavee.AudioHost.Audio.Streaming;
+using Wavee.Playback.Contracts;
 
 namespace Wavee.AudioHost;
 
 /// <summary>
-/// Hosts the AudioPipeline in a separate process and exposes it via Named Pipes IPC.
-/// The audio process owns the Session, AudioPipeline, and PortAudioSink — completely
-/// isolated from the UI process GC.
+/// Hosts the AudioEngine in a separate process and exposes it via Named Pipes IPC.
+/// Pure audio — no Spotify Session, no Connect protocol.
+/// The UI process resolves tracks and sends CDN URLs + audio keys.
 /// </summary>
 internal sealed class AudioHostService : IAsyncDisposable
 {
     private readonly string _pipeName;
-    private readonly string _credentialsPath;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
 
-    private Session? _session;
-    private AudioPipeline? _pipeline;
+    private AudioEngine? _engine;
     private IpcPipeTransport? _transport;
     private IDisposable? _stateSubscription;
     private IDisposable? _errorSubscription;
+    private readonly DeferredResolutionRegistry _deferredRegistry = new();
+    private EngineState? _lastSentState;
 
-    public AudioHostService(string pipeName, string credentialsPath, ILogger logger)
+    public AudioHostService(string pipeName, ILogger logger)
     {
         _pipeName = pipeName;
-        _credentialsPath = credentialsPath;
         _logger = logger;
     }
 
@@ -56,161 +56,123 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         _transport = new IpcPipeTransport(pipeServer, _logger);
 
-        // Wait for credentials message from UI process
-        var credMsg = await _transport.ReceiveAsync(token);
-        if (credMsg?.Type != "credentials")
+        // Wait for config message from UI process
+        var configMsg = await _transport.ReceiveAsync(token);
+        if (configMsg?.Type != IpcMessageTypes.Configure)
         {
-            _logger.LogError("Expected credentials message, got: {Type}", credMsg?.Type);
+            _logger.LogError("Expected configure message, got: {Type}", configMsg?.Type);
             return;
         }
 
-        var creds = IpcPayloadHelper.Deserialize<CredentialsHandshake>(credMsg);
-        if (creds == null)
-        {
-            _logger.LogError("Failed to deserialize credentials");
-            return;
-        }
+        var config = IpcPayloadHelper.Deserialize<AudioHostConfig>(configMsg);
+        _logger.LogInformation("Configured — device={DeviceId}", config?.DeviceId);
 
-        // Create session and connect
-        _logger.LogInformation("Connecting to Spotify as device {DeviceId}...", creds.DeviceId);
-        await InitializeSessionAsync(creds, token);
-
-        // Create audio pipeline
-        InitializePipeline(creds);
+        // Create audio engine
+        InitializeEngine(config);
 
         // Send ready message
         await _transport.SendAsync(IpcMessageTypes.Ready,
-            IpcPayloadHelper.SerializeToUtf8(new AudioHostReady { DeviceId = creds.DeviceId, PipeName = _pipeName }), ct: token);
+            IpcPayloadHelper.SerializeToUtf8(new AudioHostReady
+            {
+                DeviceId = config?.DeviceId ?? "",
+                PipeName = _pipeName
+            }), ct: token);
 
-        // Subscribe to pipeline state and errors
-        SubscribeToPipelineEvents(token);
+        // Subscribe to engine state and errors
+        SubscribeToEngineEvents(token);
 
         // Process commands
         _logger.LogInformation("AudioHost ready — processing commands");
         await ProcessCommandsAsync(token);
     }
 
-    private async Task InitializeSessionAsync(CredentialsHandshake creds, CancellationToken ct)
+    private void InitializeEngine(AudioHostConfig? config)
     {
-        var httpFactory = new SimpleHttpClientFactory();
-        var config = new SessionConfig { DeviceId = creds.DeviceId };
-        _session = Session.Create(config, httpFactory, _logger);
-
-        // Reconstruct credentials from the stored auth data passed by the UI process
-        var credentials = new Wavee.Core.Authentication.Credentials
-        {
-            Username = creds.Username,
-            AuthType = Wavee.Protocol.AuthenticationType.AuthenticationStoredSpotifyCredentials,
-            AuthData = Convert.FromBase64String(creds.StoredCredential)
-        };
-
-        await _session.ConnectAsync(credentials, null, ct);
-        _logger.LogInformation("Session connected");
-    }
-
-    private void InitializePipeline(CredentialsHandshake creds)
-    {
-        if (_session == null) throw new InvalidOperationException("Session not initialized");
-
-        var sink = new PortAudioSink(_logger);
+        var sink = AudioSinkFactory.CreateDefault(_logger);
+        var decoderRegistry = CreateDecoderRegistry();
+        var processingChain = CreateProcessingChain(config);
         var httpClient = new HttpClient();
 
-        // Create metadata database — shares the same DB file as the UI process (read-only safe via SQLite WAL)
-        var dbPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Wavee", "metadata.db");
-        var metadataDb = new Wavee.Core.Storage.MetadataDatabase(dbPath, maxHotCacheSize: 256, _logger);
-        var cacheService = new Wavee.Core.Storage.CacheService(metadataDb, logger: _logger);
-        var extendedMetadataClient = new Wavee.Core.Http.ExtendedMetadataClient(
-            _session,
-            httpClient,
-            metadataDb,
-            _logger);
+        _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, _logger);
 
-        _pipeline = AudioPipelineFactory.CreateSpotifyPipeline(
-            _session,
-            (Wavee.Core.Http.SpClient)_session.SpClient,
-            httpClient,
-            options: new AudioPipelineOptions(),
-            metadataDatabase: metadataDb,
-            cacheService: cacheService,
-            extendedMetadataClient: extendedMetadataClient,
-            deviceId: creds.DeviceId,
-            eventService: _session.Events,
-            commandHandler: _session.CommandHandler,
-            deviceStateManager: _session.DeviceState,
-            logger: _logger);
-
-        // Enable PlaybackStateManager's on-demand enrichment path for incomplete
-        // cluster track payloads (title/artist/artwork gaps).
-        _session.PlaybackState?.SetMetadataClient(extendedMetadataClient);
-
-        // Enable bidirectional mode for Spotify Connect state publishing
-        _session.PlaybackState?.EnableBidirectionalMode(
-            _pipeline,
-            (Wavee.Core.Http.SpClient)_session.SpClient,
-            _session);
-
-        _pipeline.SubscribeToConnectionState(_session.ConnectionState);
-
-        _logger.LogInformation("AudioPipeline created");
+        _logger.LogInformation("AudioEngine created");
     }
 
-    private void SubscribeToPipelineEvents(CancellationToken ct)
+    private AudioDecoderRegistry CreateDecoderRegistry()
     {
-        if (_pipeline == null || _transport == null) return;
+        var registry = new AudioDecoderRegistry();
+        registry.Register(new VorbisDecoder(_logger));
+        registry.Register(new BassDecoder(_logger));
+        return registry;
+    }
 
-        // Stream state updates to UI
-        // Stream unified playback state (cluster + local) to UI.
-        // This keeps UI reactive even if the UI process dealer stream is transiently stale.
-        var playbackStateManager = _session?.PlaybackState;
-        if (playbackStateManager != null)
+    private AudioProcessingChain CreateProcessingChain(AudioHostConfig? config)
+    {
+        var chain = new AudioProcessingChain();
+
+        // Volume
+        chain.AddProcessor(new VolumeProcessor());
+
+        // Normalization
+        var normalization = new NormalizationProcessor();
+        normalization.IsEnabled = config?.NormalizationEnabled ?? true;
+        chain.AddProcessor(normalization);
+
+        // Equalizer
+        var eq = new EqualizerProcessor();
+        eq.IsEnabled = config?.EqualizerEnabled ?? false;
+        eq.CreateGraphicEq10Band();
+        if (config?.EqualizerBandGains != null && eq.Bands.Count >= config.EqualizerBandGains.Length)
         {
-            _stateSubscription = playbackStateManager.StateChanges
-                .Publish(shared =>
-                {
-                    // Critical changes (track, status, device, etc.) — send immediately
-                    var critical = shared.Where(s =>
-                        s.Changes != StateChanges.None &&
-                        s.Changes != StateChanges.Position);
-
-                    // Position-only updates — throttle to reduce IPC chatter
-                    var positionOnly = shared
-                        .Where(s => s.Changes == StateChanges.Position)
-                        .Sample(TimeSpan.FromMilliseconds(250));
-
-                    return critical.Merge(positionOnly);
-                })
-                .Subscribe(state =>
-                {
-                    if (ct.IsCancellationRequested) return;
-                    var snapshot = MapToSnapshot(state, 0);
-                    _ = _transport.SendAsync(IpcMessageTypes.StateUpdate, IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
-                });
+            for (int i = 0; i < config.EqualizerBandGains.Length; i++)
+                eq.Bands[i].GainDb = config.EqualizerBandGains[i];
+            eq.RefreshFilters();
         }
-        else
-        {
-            // Fallback: local engine state only (should not normally happen)
-            _stateSubscription = _pipeline.StateChanges
-                .Sample(TimeSpan.FromMilliseconds(100))
-                .Subscribe(state =>
-                {
-                    if (ct.IsCancellationRequested) return;
-                    var snapshot = MapToSnapshot(state);
-                    _ = _transport.SendAsync(IpcMessageTypes.StateUpdate, IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
-                });
-        }
+        chain.AddProcessor(eq);
+
+        // Compressor + Limiter for safety
+        chain.AddProcessor(new CompressorProcessor());
+        chain.AddProcessor(new LimiterProcessor());
+
+        return chain;
+    }
+
+    private void SubscribeToEngineEvents(CancellationToken ct)
+    {
+        if (_engine == null || _transport == null) return;
+
+        // Stream state to UI directly — engine publishes at PositionPublishIntervalMs cadence
+        _stateSubscription = _engine.StateChanges
+            .Subscribe(state =>
+            {
+                if (ct.IsCancellationRequested) return;
+                var snapshot = MapToSnapshot(state);
+                _ = _transport.SendAsync(IpcMessageTypes.StateUpdate,
+                    IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
+            });
 
         // Stream errors to UI
-        _errorSubscription = _pipeline.Errors.Subscribe(error =>
+        _errorSubscription = _engine.Errors.Subscribe(error =>
         {
             if (ct.IsCancellationRequested) return;
             var msg = new PlaybackErrorMessage
             {
-                ErrorType = error.ErrorType.ToString(),
+                ErrorType = "Unknown",
                 Message = error.Message
             };
-            _ = _transport.SendAsync(IpcMessageTypes.Error, IpcPayloadHelper.SerializeToUtf8(msg), ct: CancellationToken.None);
+            _ = _transport.SendAsync(IpcMessageTypes.Error,
+                IpcPayloadHelper.SerializeToUtf8(msg), ct: CancellationToken.None);
+        });
+
+        // TrackFinished is now emitted by AudioEngine.TrackCompleted observable
+        // (only fires on natural completion, NOT on cancellation from new play command)
+        _engine.TrackCompleted.Subscribe(trackUri =>
+        {
+            if (ct.IsCancellationRequested) return;
+            _logger.LogInformation("Track finished naturally: {TrackUri}", trackUri);
+            var finished = new TrackFinishedMessage { TrackUri = trackUri, Reason = "finished" };
+            _ = _transport!.SendAsync(IpcMessageTypes.TrackFinished,
+                IpcPayloadHelper.SerializeToUtf8(finished), ct: CancellationToken.None);
         });
     }
 
@@ -223,10 +185,7 @@ internal sealed class AudioHostService : IAsyncDisposable
             {
                 msg = await _transport.ReceiveAsync(ct);
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            catch (OperationCanceledException) { break; }
             catch (IOException ex)
             {
                 _logger.LogWarning(ex, "Pipe disconnected");
@@ -259,126 +218,92 @@ internal sealed class AudioHostService : IAsyncDisposable
 
     private async Task HandleCommandAsync(IpcMessage msg, CancellationToken ct)
     {
-        if (_pipeline == null) return;
+        if (_engine == null) return;
 
         switch (msg.Type)
         {
-            case IpcMessageTypes.PlayContext:
+            case IpcMessageTypes.PlayResolved:
             {
-                var cmd = IpcPayloadHelper.Deserialize<PlayContextCommand>(msg);
-                if (cmd == null) break;
-                var playCmd = new Wavee.Connect.Commands.PlayCommand
+                var cmd = IpcPayloadHelper.Deserialize<PlayResolvedTrackCommand>(msg);
+                if (cmd != null)
+                    await _engine.PlayAsync(cmd, ct);
+                await SendOk(msg.Id, ct);
+                break;
+            }
+            case IpcMessageTypes.PlayTrack:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<PlayTrackCommand>(msg);
+                if (cmd != null)
                 {
-                    Endpoint = "play",
-                    Key = "",
-                    MessageId = 0,
-                    MessageIdent = "",
-                    SenderDeviceId = _session?.Config.DeviceId ?? "",
-                    ContextUri = cmd.ContextUri,
-                    TrackUri = cmd.TrackUri,
-                    SkipToIndex = cmd.TrackIndex,
-                    PositionMs = cmd.PositionMs,
-                    PageTracks = cmd.PageTracks?.Select(t =>
-                        new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid ?? "")).ToList(),
-                };
-                await _pipeline.PlayAsync(playCmd, ct);
+                    var deferredTask = _deferredRegistry.CreateDeferred(cmd.DeferredId);
+                    await _engine.PlayAsync(cmd, deferredTask, ct);
+                }
+                await SendOk(msg.Id, ct);
+                break;
+            }
+            case IpcMessageTypes.DeferredResolved:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<DeferredResolvedCommand>(msg);
+                if (cmd != null)
+                {
+                    var audioKey = Convert.FromBase64String(cmd.AudioKey);
+                    _deferredRegistry.Complete(cmd.DeferredId, cmd.CdnUrl, audioKey, cmd.FileSize);
+                    _logger.LogInformation("Deferred resolved: {Id} → CDN ready", cmd.DeferredId);
+                }
                 await SendOk(msg.Id, ct);
                 break;
             }
             case IpcMessageTypes.Resume:
-                await _pipeline.ResumeAsync(ct);
+                await _engine.ResumeAsync(ct);
                 await SendOk(msg.Id, ct);
                 break;
             case IpcMessageTypes.Pause:
-                await _pipeline.PauseAsync(ct);
+                await _engine.PauseAsync(ct);
                 await SendOk(msg.Id, ct);
                 break;
             case IpcMessageTypes.Stop:
-                await _pipeline.StopAsync(ct);
-                await SendOk(msg.Id, ct);
-                break;
-            case IpcMessageTypes.SkipNext:
-                await _pipeline.SkipNextAsync(ct);
-                await SendOk(msg.Id, ct);
-                break;
-            case IpcMessageTypes.SkipPrevious:
-                await _pipeline.SkipPreviousAsync(ct);
+                await _engine.StopAsync(ct);
                 await SendOk(msg.Id, ct);
                 break;
             case IpcMessageTypes.Seek:
             {
                 var cmd = IpcPayloadHelper.Deserialize<SeekCommand>(msg);
-                if (cmd != null) await _pipeline.SeekAsync(cmd.PositionMs, ct);
+                if (cmd != null)
+                    await _engine.SeekAsync(cmd.PositionMs, ct);
                 await SendOk(msg.Id, ct);
                 break;
             }
             case IpcMessageTypes.SetVolume:
             {
                 var cmd = IpcPayloadHelper.Deserialize<SetVolumeCommand>(msg);
-                if (cmd != null) await _pipeline.SetVolumeAsync(cmd.VolumePercent / 100f, ct);
-                await SendOk(msg.Id, ct);
-                break;
-            }
-            case IpcMessageTypes.SetShuffle:
-            {
-                var cmd = IpcPayloadHelper.Deserialize<SetShuffleCommand>(msg);
-                if (cmd != null) await _pipeline.SetShuffleAsync(cmd.Enabled, ct);
-                await SendOk(msg.Id, ct);
-                break;
-            }
-            case IpcMessageTypes.SetRepeat:
-            {
-                var cmd = IpcPayloadHelper.Deserialize<SetRepeatCommand>(msg);
                 if (cmd != null)
-                {
-                    switch (cmd.State)
-                    {
-                        case "context":
-                            await _pipeline.SetRepeatContextAsync(true, ct);
-                            await _pipeline.SetRepeatTrackAsync(false, ct);
-                            break;
-                        case "track":
-                            await _pipeline.SetRepeatContextAsync(false, ct);
-                            await _pipeline.SetRepeatTrackAsync(true, ct);
-                            break;
-                        default: // "off"
-                            await _pipeline.SetRepeatContextAsync(false, ct);
-                            await _pipeline.SetRepeatTrackAsync(false, ct);
-                            break;
-                    }
-                }
-                await SendOk(msg.Id, ct);
-                break;
-            }
-            case IpcMessageTypes.AddToQueue:
-            {
-                // AddToQueue is not on IPlaybackEngine directly — would need a command
-                _logger.LogWarning("AddToQueue via IPC not yet implemented");
+                    await _engine.SetVolumeAsync(cmd.VolumePercent / 100f, ct);
                 await SendOk(msg.Id, ct);
                 break;
             }
             case IpcMessageTypes.SetNormalization:
             {
                 var cmd = IpcPayloadHelper.Deserialize<SetNormalizationCommand>(msg);
-                if (cmd != null) _pipeline.SetNormalizationEnabled(cmd.Enabled);
+                if (cmd != null)
+                    _engine.SetNormalizationEnabled(cmd.Enabled);
                 await SendOk(msg.Id, ct);
                 break;
             }
-            case IpcMessageTypes.SwitchQuality:
+            case IpcMessageTypes.SetEqualizer:
             {
-                var cmd = IpcPayloadHelper.Deserialize<SwitchQualityCommand>(msg);
-                if (cmd != null && Enum.TryParse<Wavee.Core.Audio.AudioQuality>(cmd.Quality, true, out var q))
-                    await _pipeline.SwitchQualityAsync(q, ct);
+                var cmd = IpcPayloadHelper.Deserialize<SetEqualizerCommand>(msg);
+                if (cmd != null)
+                    _engine.SetEqualizerEnabled(cmd.Enabled, cmd.BandGains);
                 await SendOk(msg.Id, ct);
                 break;
             }
             case IpcMessageTypes.Ping:
-                _logger.LogDebug("Ping received, sending Pong");
+                _logger.LogDebug("Ping received");
                 await _transport!.SendAsync(IpcMessageTypes.Pong, msg.Id, ct);
                 break;
             case IpcMessageTypes.Shutdown:
                 _logger.LogInformation("Shutdown requested by UI process");
-                _cts.Cancel();
+                await _cts.CancelAsync();
                 break;
             default:
                 _logger.LogWarning("Unknown command type: {Type}", msg.Type);
@@ -390,86 +315,78 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         if (_transport == null) return;
         await _transport.SendAsync(IpcMessageTypes.CommandResult,
-            IpcPayloadHelper.SerializeToUtf8(new CommandResultMessage { RequestId = requestId, Success = true }), ct: ct);
+            IpcPayloadHelper.SerializeToUtf8(new CommandResultMessage
+            {
+                RequestId = requestId,
+                Success = true
+            }), ct: ct);
     }
 
-    private static PlaybackStateSnapshot MapToSnapshot(LocalPlaybackState state)
+    private PlaybackStateSnapshot MapToSnapshot(EngineState state)
     {
+        // Compute change flags by comparing with last sent state
+        // Only flag Position on discontinuities (seeks), not normal progression
+        int changes = 0;
+        var prev = _lastSentState;
+
+        if (prev == null || prev.TrackUri != state.TrackUri)
+            changes |= 1; // Track
+        if (prev == null || prev.IsPlaying != state.IsPlaying || prev.IsPaused != state.IsPaused || prev.IsBuffering != state.IsBuffering)
+            changes |= 4; // Status
+
+        // Position: only flag on discontinuity (jump > 2s from expected)
+        if (prev != null && prev.PositionMs > 0)
+        {
+            var expectedPos = prev.PositionMs + (state.Timestamp - prev.Timestamp);
+            var drift = Math.Abs(state.PositionMs - expectedPos);
+            if (drift > 2000)
+                changes |= 2; // Position (seek detected)
+        }
+        else if (prev == null)
+        {
+            changes |= 2; // First update
+        }
+
+        // Guarantee non-zero so PlaybackStateManager doesn't skip
+        // Use a "no-op" position flag — PSM checks for None specifically
+        if (changes == 0) changes = 2;
+
+        _lastSentState = state;
+
         return new PlaybackStateSnapshot
         {
             Source = "local",
             TrackUri = state.TrackUri,
             TrackUid = state.TrackUid,
-            TrackTitle = state.TrackTitle,
-            TrackArtist = state.TrackArtist,
-            TrackAlbum = state.TrackAlbum,
+            TrackTitle = state.Title,
+            TrackArtist = state.Artist,
+            TrackAlbum = state.Album,
             AlbumUri = state.AlbumUri,
             ArtistUri = state.ArtistUri,
             ImageUrl = state.ImageUrl,
             ImageLargeUrl = state.ImageLargeUrl,
-            ContextUri = state.ContextUri,
             PositionMs = state.PositionMs,
             DurationMs = state.DurationMs,
             IsPlaying = state.IsPlaying,
             IsPaused = state.IsPaused,
             IsBuffering = state.IsBuffering,
-            Shuffling = state.Shuffling,
-            RepeatingContext = state.RepeatingContext,
-            RepeatingTrack = state.RepeatingTrack,
-            CanSeek = state.CanSeek,
+            CanSeek = true,
+            Changes = changes,
             Timestamp = state.Timestamp,
         };
     }
 
-    private static PlaybackStateSnapshot MapToSnapshot(PlaybackState state, long underrunCount)
-    {
-        return new PlaybackStateSnapshot
-        {
-            Source = state.Source == StateSource.Cluster ? "cluster" : "local",
-            TrackUri = state.Track?.Uri,
-            TrackUid = state.Track?.Uid,
-            TrackTitle = state.Track?.Title,
-            TrackArtist = state.Track?.Artist,
-            TrackAlbum = state.Track?.Album,
-            AlbumUri = state.Track?.AlbumUri,
-            ArtistUri = state.Track?.ArtistUri,
-            ImageUrl = state.Track?.ImageUrl,
-            ImageLargeUrl = state.Track?.ImageLargeUrl,
-            ContextUri = state.ContextUri,
-            PositionMs = PlaybackStateHelpers.CalculateCurrentPosition(state),
-            DurationMs = state.DurationMs,
-            IsPlaying = state.Status == PlaybackStatus.Playing,
-            IsPaused = state.Status == PlaybackStatus.Paused,
-            IsBuffering = state.Status == PlaybackStatus.Buffering,
-            Shuffling = state.Options.Shuffling,
-            RepeatingContext = state.Options.RepeatingContext,
-            RepeatingTrack = state.Options.RepeatingTrack,
-            Volume = state.Volume,
-            IsVolumeRestricted = state.IsVolumeRestricted,
-            CanSeek = state.CanSeek,
-            ActiveDeviceId = state.ActiveDeviceId,
-            ActiveDeviceName = state.ActiveDeviceName,
-            Changes = (int)state.Changes,
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            UnderrunCount = underrunCount,
-        };
-    }
     public async ValueTask DisposeAsync()
     {
         _stateSubscription?.Dispose();
         _errorSubscription?.Dispose();
+
+        if (_engine != null)
+            await _engine.DisposeAsync();
 
         if (_transport != null)
             await _transport.DisposeAsync();
 
         _cts.Dispose();
     }
-}
-
-/// <summary>
-/// Minimal IHttpClientFactory for the audio process (no DI needed).
-/// </summary>
-internal sealed class SimpleHttpClientFactory : System.Net.Http.IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) => new();
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
+using Wavee.Playback.Contracts;
 
 namespace Wavee.AudioIpc;
 
@@ -142,7 +143,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         string username, byte[] storedCredential, string deviceId,
         CancellationToken ct = default)
     {
-        // Cache credentials for auto-restart
+        // Cache config for auto-restart (credentials no longer sent to AudioHost)
         _username = username;
         _storedCredential = storedCredential;
         _deviceId = deviceId;
@@ -229,7 +230,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         _proxy.PongReceived += () => _lastPongTimestamp = Stopwatch.GetTimestamp();
 
         // Handshake
-        var success = await _proxy.HandshakeAsync(_username!, _storedCredential!, _deviceId!, ct);
+        var success = await _proxy.ConfigureAsync(_deviceId!, normalizationEnabled: true, ct: ct);
         if (!success)
         {
             SetState(AudioProcessState.Failed, "Audio engine handshake failed");

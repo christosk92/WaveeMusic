@@ -4,7 +4,7 @@ using System.Diagnostics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Wavee.Connect.Playback.Processors;
+// Processors now live in AudioHost — EQ config goes via IPC
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.ViewModels;
@@ -27,10 +27,8 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent
         InitializeComponent();
         _contents = [GeneralContent, PlaybackContent, AudioContent, StorageContent, DiagnosticsContent, AboutContent];
 
-        // Initialize the equalizer with the shared processor from DI
-        var eqProcessor = Ioc.Default.GetService<EqualizerProcessor>();
-        if (eqProcessor != null)
-            ViewModel.InitializeEqualizer(eqProcessor);
+        // EQ settings are sent to AudioHost via IPC through IAudioPipelineControl
+        ViewModel.InitializeEqualizer(Ioc.Default.GetService<Data.Contracts.IAudioPipelineControl>());
 
         // Wire RTT chart callback
         ViewModel.UpdateRttChart = (data, count, unit) => RttChart.Update(data, count, unit);

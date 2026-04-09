@@ -11,14 +11,14 @@ using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Builder;
 using Wavee.Connect;
-using Wavee.Connect.Playback;
+using Wavee.Audio;
 using Wavee.Core.Authentication;
 using Wavee.Core.DependencyInjection;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contexts;
-using Wavee.Connect.Playback.Processors;
+// Processors now live in AudioHost — EQ config goes via IPC
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.DragDrop;
@@ -153,8 +153,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>()))
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
 
-                // Audio processors (shared with UI for real-time control)
-                .AddSingleton<EqualizerProcessor>()
+                // EQ processor now lives in AudioHost — settings sent via IPC
 
                 // Dispatcher abstraction
                 .AddSingleton<IDispatcherService>(sp =>
@@ -368,164 +367,8 @@ public static class AppLifecycleHelper
     /// Initializes the AudioPipeline for local playback after session connects.
     /// Call once after Session.ConnectAsync succeeds.
     /// </summary>
-    public static void InitializePlaybackEngine(Session session, System.Net.Http.HttpClient httpClient, System.Net.Http.HttpClient audioHttpClient, Microsoft.Extensions.Logging.ILogger? logger)
-    {
-        try
-        {
-            var metadataDb = Ioc.Default.GetService<IMetadataDatabase>();
-            var cacheService = Ioc.Default.GetService<Wavee.Core.Storage.ICacheService>();
-
-            // Resolve from DI — registered in ConfigureHost, base URL resolves lazily from session
-            var extMetadataClient = Ioc.Default.GetService<Wavee.Core.Http.IExtendedMetadataClient>();
-
-            if (metadataDb != null)
-                cacheService ??= new Wavee.Core.Storage.CacheService(metadataDb, logger: logger);
-
-            InitializeTrackMetadataEnricher(session, logger);
-
-            // Create a shared EqualizerProcessor — registered in DI during ConfigureHost,
-            // resolved here to pass into the audio pipeline
-            var sharedEqualizer = Ioc.Default.GetRequiredService<EqualizerProcessor>();
-
-            // Apply persisted EQ settings so they take effect immediately (not only when Settings page opens)
-            var settingsService = Ioc.Default.GetService<ISettingsService>();
-            if (settingsService?.Settings is { } eqSettings)
-            {
-                sharedEqualizer.IsEnabled = eqSettings.EqualizerEnabled;
-                sharedEqualizer.ClearBands();
-                sharedEqualizer.CreateGraphicEq10Band();
-                for (var i = 0; i < sharedEqualizer.Bands.Count && i < eqSettings.EqualizerBandGains.Length; i++)
-                    sharedEqualizer.Bands[i].GainDb = eqSettings.EqualizerBandGains[i];
-                sharedEqualizer.RefreshFilters();
-            }
-
-            var audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
-                session,
-                (SpClient)session.SpClient,
-                httpClient,
-                options: new AudioPipelineOptions { UserEqualizer = sharedEqualizer },
-                metadataDatabase: metadataDb,
-                cacheService: cacheService,
-                deviceId: session.Config.DeviceId,
-                eventService: session.Events,
-                commandHandler: session.CommandHandler,
-                deviceStateManager: session.DeviceState,
-                logger: logger,
-                audioHttpClient: audioHttpClient);
-
-            // Enable bidirectional mode — local state changes publish to Spotify
-            session.PlaybackState?.EnableBidirectionalMode(
-                audioPipeline,
-                (SpClient)session.SpClient,
-                session,
-                suppressClusterUpdates: true);
-
-            // Wire up the local engine on the executor (legitimate late dep — it's the routing layer)
-            var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
-            executor?.EnableLocalPlayback(audioPipeline);
-
-            // Sync initial volume on the local engine
-            var volumePercent = session.GetVolumePercentage() ?? 50;
-            audioPipeline.SetVolumeAsync((float)(volumePercent / 100.0));
-
-            // Sync UI volume slider (without triggering a remote command)
-            var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
-            if (playbackState is Data.Contexts.PlaybackStateService pssVolume)
-            {
-                var dispatcher = _uiDispatcher;
-                if (dispatcher != null)
-                    dispatcher.TryEnqueue(() =>
-                    {
-                        pssVolume.SetVolumeWithoutCommand(volumePercent);
-                    });
-            }
-
-            // Surface playback engine errors to the user via notifications
-            var notificationService = Ioc.Default.GetService<INotificationService>();
-            if (notificationService != null)
-            {
-                var dispatcher = _uiDispatcher;
-                var errorSub = audioPipeline.Errors.Subscribe(error =>
-                {
-                    var message = error.ErrorType switch
-                    {
-                        PlaybackErrorType.AudioDeviceUnavailable => "Audio device unavailable. Check your audio output.",
-                        PlaybackErrorType.TrackUnavailable => "This track is not available. It may require a Premium account.",
-                        PlaybackErrorType.NetworkError => "Network error during playback. Check your connection.",
-                        PlaybackErrorType.DecodeError => "Failed to decode audio stream.",
-                        _ => error.Message
-                    };
-
-                    logger?.LogWarning("Playback engine error: {Type} — {Message}", error.ErrorType, error.Message);
-                    dispatcher?.TryEnqueue(() =>
-                        notificationService.Show(new Data.Models.NotificationInfo
-                        {
-                            Message = message,
-                            Severity = Data.Models.NotificationSeverity.Error,
-                            AutoDismissAfter = TimeSpan.FromSeconds(5)
-                        }));
-                });
-                _appSubscriptions.Add(errorSub);
-            }
-
-            // Subscribe AudioPipeline to session connection state for buffering indicator
-            audioPipeline.SubscribeToConnectionState(session.ConnectionState);
-
-            // Show persistent notification during AP reconnection/disconnection
-            if (notificationService != null)
-            {
-                var dispatcher2 = _uiDispatcher;
-                var sessionRef = session;
-                var connSub = session.ConnectionState.Subscribe(state =>
-                {
-                    dispatcher2?.TryEnqueue(() =>
-                    {
-                        if (state == Wavee.Core.Session.SessionConnectionState.Reconnecting)
-                        {
-                            notificationService.Show(new Data.Models.NotificationInfo
-                            {
-                                Message = "Reconnecting to Spotify...",
-                                Severity = Data.Models.NotificationSeverity.Warning
-                            });
-                        }
-                        else if (state == Wavee.Core.Session.SessionConnectionState.Disconnected)
-                        {
-                            notificationService.Show(new Data.Models.NotificationInfo
-                            {
-                                Message = "Unable to reach Spotify. Check your network connection.",
-                                Severity = Data.Models.NotificationSeverity.Error,
-                                ActionLabel = "Retry",
-                                Action = async () =>
-                                {
-                                    try
-                                    {
-                                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                                        await sessionRef.ReconnectApAsync(cts.Token);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        logger?.LogWarning(ex, "Manual reconnection attempt failed");
-                                    }
-                                }
-                            });
-                        }
-                        else
-                        {
-                            // Connected — dismiss any reconnection notification
-                            notificationService.Dismiss();
-                        }
-                    });
-                });
-                _appSubscriptions.Add(connSub);
-            }
-
-            logger?.LogInformation("AudioPipeline initialized — local playback enabled");
-        }
-        catch (Exception ex)
-        {
-            logger?.LogError(ex, "Failed to initialize AudioPipeline — local playback unavailable");
-        }
-    }
+    // In-process playback was removed — all audio goes through AudioHost process via IPC.
+    // See InitializeOutOfProcessAudioAsync.
 
     /// <summary>
     /// Initializes playback using a separate audio host process for GC isolation.
@@ -616,21 +459,7 @@ public static class AppLifecycleHelper
                 });
             };
 
-            // Re-wire proxy on auto-restart
-            _audioProcessManager.ProxyRestarted += newProxy =>
-            {
-                notifDispatcher?.TryEnqueue(() =>
-                {
-                    var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
-                    exec?.EnableLocalPlayback(newProxy);
-                    session.PlaybackState?.EnableBidirectionalMode(
-                        newProxy, (SpClient)session.SpClient, session,
-                        suppressClusterUpdates: true);
-                    profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
-                });
-            };
-
-            // Now start the audio process (events are already wired)
+            // Now start the audio process (state/error events are already wired above)
             logger?.LogInformation("Starting audio process for user {User}", username);
             var proxy = await _audioProcessManager.StartAsync(
                 username,
@@ -638,18 +467,59 @@ public static class AppLifecycleHelper
                 session.Config.DeviceId,
                 CancellationToken.None);
 
-            // Wire up the proxy as the local engine on the executor
-            var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
-            executor?.EnableLocalPlayback(proxy);
+            // Create PlaybackOrchestrator — owns queue, track resolution, remote commands
+            var spClient = (SpClient)session.SpClient;
+            var httpClient = Ioc.Default.GetService<System.Net.Http.IHttpClientFactory>()?.CreateClient("Wavee")
+                             ?? new System.Net.Http.HttpClient();
+            var extMetadataClient = Ioc.Default.GetService<Wavee.Core.Http.IExtendedMetadataClient>();
+            var metadataDb = Ioc.Default.GetService<IMetadataDatabase>();
+            var cacheService = Ioc.Default.GetService<Wavee.Core.Storage.ICacheService>();
 
-            // Enable bidirectional mode with the proxy's state stream
+            var headFileClient = new Wavee.Core.Audio.HeadFileClient(httpClient, logger);
+            var trackResolver = new Wavee.Audio.TrackResolver(
+                session, spClient, headFileClient, httpClient,
+                Wavee.Core.Audio.AudioQuality.VeryHigh,
+                extMetadataClient, logger);
+
+            Wavee.Audio.ContextResolver? contextResolver = null;
+            if (metadataDb != null && extMetadataClient != null && cacheService != null)
+            {
+                var contextCache = new Wavee.Core.Storage.HotCache<Wavee.Core.Storage.ContextCacheEntry>(256);
+                contextResolver = new Wavee.Audio.ContextResolver(
+                    spClient, extMetadataClient, cacheService, contextCache, logger);
+            }
+
+            var orchestrator = new Wavee.Audio.PlaybackOrchestrator(
+                proxy, trackResolver, contextResolver!, session.CommandHandler, logger);
+
+            // Wire up orchestrator (not raw proxy) as the local engine
+            var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
+            executor?.EnableLocalPlayback(orchestrator);
+
+            // Bidirectional mode uses orchestrator's queue-enriched state stream
             session.PlaybackState?.EnableBidirectionalMode(
-                proxy,
-                (SpClient)session.SpClient,
+                orchestrator,
+                spClient,
                 session,
-                suppressClusterUpdates: true);
+                suppressClusterUpdates: false);
 
             profiler?.SetAudioUnderrunProvider(() => proxy.UnderrunCount);
+
+            // Re-wire on auto-restart (variables are now in scope for the closure)
+            _audioProcessManager.ProxyRestarted += newProxy =>
+            {
+                var notifDisp = _uiDispatcher;
+                notifDisp?.TryEnqueue(() =>
+                {
+                    var newOrch = new Wavee.Audio.PlaybackOrchestrator(
+                        newProxy, trackResolver, contextResolver!, session.CommandHandler, logger);
+                    var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
+                    exec?.EnableLocalPlayback(newOrch);
+                    session.PlaybackState?.EnableBidirectionalMode(
+                        newOrch, spClient, session, suppressClusterUpdates: false);
+                    profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
+                });
+            };
 
             // Surface errors via notifications
             var notificationService = Ioc.Default.GetService<INotificationService>();
@@ -688,22 +558,8 @@ public static class AppLifecycleHelper
                 _audioProcessManager = null;
             }
 
-            // Fall back to in-process audio
-            logger?.LogWarning("Falling back to in-process audio pipeline");
-            try
-            {
-                var httpFactory = Ioc.Default.GetService<System.Net.Http.IHttpClientFactory>();
-                if (httpFactory != null)
-                {
-                    var httpClient = httpFactory.CreateClient("Wavee");
-                    var audioHttpClient = httpFactory.CreateClient("WaveeAudio");
-                    InitializePlaybackEngine(session, httpClient, audioHttpClient, logger);
-                }
-            }
-            catch (Exception fallbackEx)
-            {
-                logger?.LogError(fallbackEx, "In-process audio fallback also failed");
-            }
+            // In-process fallback was removed — all audio goes through AudioHost
+            logger?.LogError("Out-of-process audio failed. No fallback available.");
         }
     }
 

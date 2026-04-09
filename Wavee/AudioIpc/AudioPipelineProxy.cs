@@ -4,8 +4,10 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Wavee.Audio;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
+using Wavee.Playback.Contracts;
 
 namespace Wavee.AudioIpc;
 
@@ -21,6 +23,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject = new(new LocalPlaybackState());
     private readonly Subject<PlaybackError> _errorSubject = new();
+    private readonly Subject<TrackFinishedMessage> _trackFinishedSubject = new();
 
     private long _nextRequestId;
     private Task? _receiveLoop;
@@ -78,6 +81,12 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     public IObservable<LocalPlaybackState> StateChanges => _stateSubject.AsObservable();
     public IObservable<PlaybackError> Errors => _errorSubject.AsObservable();
+
+    /// <summary>
+    /// Fires when AudioHost reports a track has finished playing naturally.
+    /// The layer above (PlaybackService) should resolve and send the next track.
+    /// </summary>
+    public IObservable<TrackFinishedMessage> TrackFinished => _trackFinishedSubject.AsObservable();
     public LocalPlaybackState CurrentState => _stateSubject.Value;
 
     /// <summary>
@@ -95,18 +104,18 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends credentials to the audio process and waits for the Ready message.
+    /// Sends configuration to the audio process and waits for the Ready message.
     /// </summary>
-    public async Task<bool> HandshakeAsync(string username, byte[] storedCredential, string deviceId, CancellationToken ct)
+    public async Task<bool> ConfigureAsync(string deviceId, bool normalizationEnabled = true, CancellationToken ct = default)
     {
-        var credsJson = JsonSerializer.SerializeToUtf8Bytes(
-            new CredentialsHandshake(username, Convert.ToBase64String(storedCredential), deviceId),
-            typeof(CredentialsHandshake),
-            IpcJsonContext.Default);
+        var config = new AudioHostConfig
+        {
+            DeviceId = deviceId,
+            NormalizationEnabled = normalizationEnabled,
+        };
+        var configJson = IpcPayloadHelper.SerializeToUtf8(config);
+        await _transport.SendAsync(IpcMessageTypes.Configure, configJson, ct: ct);
 
-        await _transport.SendAsync("credentials", credsJson, ct: ct);
-
-        // Wait for Ready
         var response = await _transport.ReceiveAsync(ct);
         if (response?.Type == IpcMessageTypes.Ready)
         {
@@ -120,20 +129,36 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     public async Task PlayAsync(PlayCommand command, CancellationToken cancellationToken = default)
     {
-        var cmd = new PlayContextCommand
-        {
-            ContextUri = command.ContextUri ?? "",
-            TrackUri = command.TrackUri,
-            TrackIndex = command.SkipToIndex,
-            PositionMs = command.PositionMs,
-            PageTracks = command.PageTracks?.Select(t => new PageTrackDto
-            {
-                Uri = t.Uri,
-                Uid = t.Uid
-            }).ToList(),
-        };
-        await SendCommandAsync(IpcMessageTypes.PlayContext, cmd, cancellationToken);
+        // Legacy path — callers should prefer PlayResolvedAsync
+        _logger?.LogWarning("PlayAsync(PlayCommand) called without resolution — this is a no-op in the new architecture");
     }
+
+    /// <summary>
+    /// Plays a fully resolved track via IPC to AudioHost.
+    /// </summary>
+    public async Task PlayResolvedAsync(ResolvedTrack resolvedTrack, long positionMs = 0, CancellationToken ct = default)
+    {
+        var cmd = resolvedTrack.ToIpcCommand(positionMs);
+        await SendCommandAsync(IpcMessageTypes.PlayResolved, cmd, ct);
+    }
+
+    /// <summary>
+    /// Sends head data + deferred ID for instant start. CDN resolution follows via SendDeferredResolvedAsync.
+    /// </summary>
+    public Task PlayTrackDeferredAsync(PlayTrackCommand cmd, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.PlayTrack, cmd, ct);
+
+    /// <summary>
+    /// Completes the deferred CDN resolution so AudioHost can continue from CDN after head data.
+    /// </summary>
+    public Task SendDeferredResolvedAsync(string deferredId, string cdnUrl, byte[] audioKey, long fileSize, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.DeferredResolved, new DeferredResolvedCommand
+        {
+            DeferredId = deferredId,
+            CdnUrl = cdnUrl,
+            AudioKey = Convert.ToBase64String(audioKey),
+            FileSize = fileSize
+        }, ct);
 
     public Task PauseAsync(CancellationToken cancellationToken = default)
         => SendSimpleCommandAsync(IpcMessageTypes.Pause, cancellationToken);
@@ -145,7 +170,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         => SendSimpleCommandAsync(IpcMessageTypes.Resume, cancellationToken);
 
     public Task SeekAsync(long positionMs, CancellationToken cancellationToken = default)
-        => SendCommandAsync(IpcMessageTypes.Seek, new SeekCommand { PositionMs = positionMs }, cancellationToken);
+        => SendCommandAsync(IpcMessageTypes.Seek, new Playback.Contracts.SeekCommand { PositionMs = positionMs }, cancellationToken);
 
     public Task SkipNextAsync(CancellationToken cancellationToken = default)
         => SendSimpleCommandAsync(IpcMessageTypes.SkipNext, cancellationToken);
@@ -173,6 +198,10 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     public Task SetNormalizationEnabledAsync(bool enabled, CancellationToken ct = default)
         => SendCommandAsync(IpcMessageTypes.SetNormalization,
             new SetNormalizationCommand { Enabled = enabled }, ct);
+
+    public Task SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.SetEqualizer,
+            new SetEqualizerCommand { Enabled = enabled, BandGains = bandGains }, ct);
 
     public Task SwitchQualityAsync(string quality, CancellationToken ct = default)
         => SendCommandAsync(IpcMessageTypes.SwitchQuality,
@@ -331,6 +360,16 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                 if (result is { Success: false })
                 {
                     _logger?.LogWarning("Command {Id} failed: {Error}", result.RequestId, result.ErrorMessage);
+                }
+                break;
+            }
+            case IpcMessageTypes.TrackFinished:
+            {
+                var finished = IpcPayloadHelper.Deserialize<TrackFinishedMessage>(msg);
+                if (finished != null)
+                {
+                    _logger?.LogInformation("Track finished: {TrackUri} reason={Reason}", finished.TrackUri, finished.Reason);
+                    _trackFinishedSubject.OnNext(finished);
                 }
                 break;
             }

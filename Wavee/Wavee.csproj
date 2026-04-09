@@ -17,19 +17,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Folder Include="Audio\" />
-      <Folder Include="Connect\" />
-      <Folder Include="Core\Authentication\" />
-      <Folder Include="Core\Connection\" />
-      <Folder Include="Core\Http\" />
-      <Folder Include="Core\Session\" />
-      <Folder Include="Core\Utilities\" />
-      <Folder Include="Extensions\" />
-      <Folder Include="Metadata\" />
-      <Folder Include="Playback\" />
-    </ItemGroup>
-
-    <ItemGroup>
       <PackageReference Include="Google.Protobuf" Version="3.34.1" />
       <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
       <PackageReference Include="Grpc.Tools" Version="2.80.0">
@@ -38,22 +25,13 @@
       </PackageReference>
       <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.5" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
-      <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
       <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
-
-      <!-- Local file support (Phase 2) -->
-      <PackageReference Include="ManagedBass" Version="4.0.2" />
-      <PackageReference Include="z440.atl.core" Version="7.12.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <!-- Native BASS libraries for audio decoding -->
-      <None Include="runtimes\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="runtimes" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\NVorbis\NVorbis\NVorbis.csproj" />
       <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj" />
+      <ProjectReference Include="..\NVorbis\NVorbis\NVorbis.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -67,11 +45,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <!-- Allow test project to access internal types -->
       <InternalsVisibleTo Include="Wavee.Tests" />
-      <!-- Allow audio host process to access internal types -->
-      <InternalsVisibleTo Include="Wavee.AudioHost" />
-      <!-- Allow Moq to create proxies for internal types -->
       <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
     </ItemGroup>
 

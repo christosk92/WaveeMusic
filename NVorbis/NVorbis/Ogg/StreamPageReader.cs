@@ -6,11 +6,19 @@ namespace NVorbis.Ogg
 {
     class StreamPageReader : IStreamPageReader
     {
+        private const int SeekCheckpointPageStride = 64;
+        private const double ForwardJumpMinRatio = 1.75;
+        private const long ForwardJumpMinByteAdvance = 128 * 1024;
+        private const int ForwardJumpMaxAttempts = 3;
+
         internal static Func<IStreamPageReader, int, Contracts.IPacketProvider> CreatePacketProvider { get; set; } = (pr, ss) => new PacketProvider(pr, ss);
 
         private readonly IPageData _reader;
         private readonly List<long> _pageOffsets = new List<long>();
         private readonly List<long> _pageGranulePositions = new List<long>();
+        private readonly List<int> _seekCheckpointPageIndices = new List<int>();
+        private readonly List<long> _seekCheckpointGranulePositions = new List<long>();
+        private readonly List<long> _seekCheckpointOffsets = new List<long>();
 
         private int _lastSeqNbr;
         private int? _firstDataPageIndex;
@@ -88,6 +96,11 @@ namespace NVorbis.Ogg
 
                 // Cache granule position for fast seeking
                 _pageGranulePositions.Add(_reader.GranulePosition);
+
+                // Maintain a sparse checkpoint index so forward seek can jump using
+                // verified (already-read) byte/granule anchors.
+                var pageIndex = _pageOffsets.Count - 1;
+                TryAddSeekCheckpoint(pageIndex, _reader.GranulePosition, _reader.PageOffset);
 
                 _lastSeqNbr = _reader.SequenceNumber;
             }
@@ -175,34 +188,27 @@ namespace NVorbis.Ogg
 
         private int FindPageForward(int pageIndex, long pageGranulePos, long granulePos)
         {
-            // If seeking far forward beyond known pages, estimate byte position and jump
-            if (pageIndex == _pageOffsets.Count - 1 && !HasAllPages && pageGranulePos > 0)
-            {
-                var lastOffset = Math.Abs(_pageOffsets[pageIndex]);
+            var jumpAttempts = 0;
 
-                // Only jump if target is significantly ahead (avoid overhead for nearby seeks)
-                var ratio = (double)granulePos / pageGranulePos;
-                if (ratio > 1.5)
-                {
-                    // Estimate: byte offset grows proportionally to granule position
-                    var estimatedOffset = (long)(lastOffset * ratio);
-
-                    _reader.Lock();
-                    try
-                    {
-                        // Position stream for next page scan (slightly before estimate to find page boundary)
-                        _reader.SeekForNextPage(Math.Max(lastOffset, estimatedOffset - 65536));
-                    }
-                    finally
-                    {
-                        _reader.Release();
-                    }
-                }
-            }
-
-            // Sequential search (now starts from estimated position if we jumped)
+            // Always scan forward sequentially from the last known page.
+            // Estimation jumps can skip intermediate pages and create resync gaps,
+            // which breaks packet-level granule continuity checks during seek.
             while (pageGranulePos <= granulePos)
             {
+                if (jumpAttempts < ForwardJumpMaxAttempts &&
+                    TryProbeForwardJump(pageIndex, pageGranulePos, granulePos, out var jumpedPageIndex, out var jumpedGranulePos))
+                {
+                    // Only keep the jump if it moved us forward and did not overshoot target.
+                    // Overshoots near a sparse-resync boundary can reintroduce granule mismatch risk.
+                    if (jumpedPageIndex > pageIndex && jumpedGranulePos > pageGranulePos && jumpedGranulePos <= granulePos)
+                    {
+                        pageIndex = jumpedPageIndex;
+                        pageGranulePos = jumpedGranulePos;
+                        jumpAttempts++;
+                        continue;
+                    }
+                }
+
                 if (++pageIndex == _pageOffsets.Count)
                 {
                     if (!GetNextPageGranulePos(out pageGranulePos))
@@ -225,6 +231,106 @@ namespace NVorbis.Ogg
                 }
             }
             return pageIndex;
+        }
+
+        private void TryAddSeekCheckpoint(int pageIndex, long granulePos, long pageOffset)
+        {
+            if (granulePos < 0 || pageOffset < 0)
+            {
+                return;
+            }
+
+            if (_seekCheckpointPageIndices.Count == 0)
+            {
+                _seekCheckpointPageIndices.Add(pageIndex);
+                _seekCheckpointGranulePositions.Add(granulePos);
+                _seekCheckpointOffsets.Add(pageOffset);
+                return;
+            }
+
+            var lastCheckpointPageIndex = _seekCheckpointPageIndices[_seekCheckpointPageIndices.Count - 1];
+            if (pageIndex - lastCheckpointPageIndex < SeekCheckpointPageStride)
+            {
+                return;
+            }
+
+            _seekCheckpointPageIndices.Add(pageIndex);
+            _seekCheckpointGranulePositions.Add(granulePos);
+            _seekCheckpointOffsets.Add(pageOffset);
+        }
+
+        private bool TryProbeForwardJump(int pageIndex, long pageGranulePos, long targetGranulePos, out int jumpedPageIndex, out long jumpedGranulePos)
+        {
+            jumpedPageIndex = -1;
+            jumpedGranulePos = 0;
+
+            if (pageGranulePos <= 0 || targetGranulePos <= pageGranulePos)
+            {
+                return false;
+            }
+
+            var ratio = targetGranulePos / (double)pageGranulePos;
+            if (ratio < ForwardJumpMinRatio)
+            {
+                return false;
+            }
+
+            // Find the latest checkpoint at or before our current page index.
+            var checkpointListIndex = _seekCheckpointPageIndices.Count - 1;
+            while (checkpointListIndex >= 0 && _seekCheckpointPageIndices[checkpointListIndex] > pageIndex)
+            {
+                checkpointListIndex--;
+            }
+
+            if (checkpointListIndex < 0)
+            {
+                return false;
+            }
+
+            var checkpointGranulePos = _seekCheckpointGranulePositions[checkpointListIndex];
+            var checkpointOffset = _seekCheckpointOffsets[checkpointListIndex];
+            var currentOffset = _pageOffsets[pageIndex];
+            if (currentOffset < 0)
+            {
+                currentOffset = -currentOffset;
+            }
+
+            var granuleDelta = pageGranulePos - checkpointGranulePos;
+            var offsetDelta = currentOffset - checkpointOffset;
+            if (granuleDelta <= 0 || offsetDelta <= 0)
+            {
+                return false;
+            }
+
+            var targetDelta = targetGranulePos - pageGranulePos;
+            var estimatedAdvance = (long)Math.Ceiling(targetDelta * (offsetDelta / (double)granuleDelta));
+
+            // Stay intentionally behind the target to avoid overshooting into a sparse gap.
+            estimatedAdvance = (estimatedAdvance * 3) / 4;
+
+            if (estimatedAdvance < ForwardJumpMinByteAdvance)
+            {
+                return false;
+            }
+
+            var jumpOffset = currentOffset + estimatedAdvance;
+            _reader.SeekForNextPage(jumpOffset);
+
+            var oldPageCount = _pageOffsets.Count;
+            if (!GetNextPageGranulePos(out var probeGranulePos))
+            {
+                return false;
+            }
+
+            // If no new page was added, this probe is unusable.
+            if (_pageOffsets.Count <= oldPageCount)
+            {
+                return false;
+            }
+
+            jumpedPageIndex = oldPageCount;
+            jumpedGranulePos = probeGranulePos;
+            return true;
         }
 
         private bool GetNextPageGranulePos(out long granulePos)

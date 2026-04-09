@@ -95,8 +95,12 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _logger = logger;
         _cache = cache;
 
-        // Create temp file for random access storage
-        _tempFilePath = Path.Combine(Path.GetTempPath(), $"wavee_audio_{fileId.ToBase16()}.tmp");
+        // Create a unique temp file per downloader instance.
+        // Reusing only fileId in the name can collide when old playback is still disposing
+        // while a new playback for the same file starts.
+        _tempFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"wavee_audio_{fileId.ToBase16()}_{Environment.ProcessId}_{Guid.NewGuid():N}.tmp");
         _tempFile = new FileStream(
             _tempFilePath,
             FileMode.Create,

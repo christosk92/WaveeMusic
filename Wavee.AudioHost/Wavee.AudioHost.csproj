@@ -16,7 +16,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Wavee\Wavee.csproj" />
+        <ProjectReference Include="..\Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj" />
         <ProjectReference Include="..\NVorbis\NVorbis\NVorbis.csproj" />
     </ItemGroup>
 
@@ -24,6 +24,10 @@
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.5" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.5" />
+        <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
+        <PackageReference Include="ManagedBass" Version="4.0.2" />
+        <PackageReference Include="z440.atl.core" Version="7.12.0" />
+        <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
         <PackageReference Include="Serilog" Version="4.2.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />

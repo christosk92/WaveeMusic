@@ -12,7 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Serilog.Events;
-using Wavee.Connect.Playback.Processors;
+// Processors now live in AudioHost — EQ config goes via IPC
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -30,7 +30,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly InMemorySink _inMemorySink;
-    private readonly IAudioPipelineControl? _pipelineControl;
     private readonly ISession? _session;
     private readonly IUpdateService? _updateService;
     private readonly ILogger? _logger;
@@ -861,7 +860,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<EqualizerBandViewModel> EqBands { get; } = [];
 
-    private EqualizerProcessor? _equalizerProcessor;
+    // EQ control goes through IPC to AudioHost via IAudioPipelineControl
+    private Data.Contracts.IAudioPipelineControl? _pipelineControl;
 
     [ObservableProperty]
     private bool _isEqualizerEnabled;
@@ -869,18 +869,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private int _selectedEqPresetIndex;
 
-    public void InitializeEqualizer(EqualizerProcessor processor)
+    public void InitializeEqualizer(Data.Contracts.IAudioPipelineControl? control)
     {
-        _equalizerProcessor = processor;
+        _pipelineControl = control;
 
         var s = _settingsService.Settings;
         _isEqualizerEnabled = s.EqualizerEnabled;
 
-        // Find preset index
         _selectedEqPresetIndex = Array.IndexOf(EqPresetNames, s.EqualizerPreset);
         if (_selectedEqPresetIndex < 0) _selectedEqPresetIndex = 0;
 
-        // Initialize bands
         EqBands.Clear();
         for (var i = 0; i < 10; i++)
         {
@@ -890,8 +888,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             EqBands.Add(band);
         }
 
-        // Apply to processor
-        ApplyEqToProcessor();
+        SendEqToAudioHost();
 
         OnPropertyChanged(nameof(IsEqualizerEnabled));
         OnPropertyChanged(nameof(SelectedEqPresetIndex));
@@ -902,9 +899,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnIsEqualizerEnabledChanged(bool value)
     {
-        if (_equalizerProcessor != null)
-            _equalizerProcessor.IsEnabled = value;
         _settingsService.Update(s => s.EqualizerEnabled = value);
+        SendEqToAudioHost();
         _logger?.LogInformation("Equalizer toggled: {State}", value ? "ON" : "OFF");
     }
 
@@ -919,6 +915,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         _settingsService.Update(s => s.EqualizerPreset = presetName);
         OnPropertyChanged(nameof(EqPresetDescription));
+        SendEqToAudioHost();
         _logger?.LogInformation("Equalizer preset changed to: {Preset}", presetName);
     }
 
@@ -926,26 +923,19 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void OnBandGainChanged(int bandIndex, double gainDb)
     {
-        // Update processor band immediately (no filter rebuild yet)
-        if (_equalizerProcessor != null && bandIndex < _equalizerProcessor.Bands.Count)
-            _equalizerProcessor.Bands[bandIndex].GainDb = gainDb;
-
-        // Persist
         _settingsService.Update(s =>
         {
             if (bandIndex < s.EqualizerBandGains.Length)
                 s.EqualizerBandGains[bandIndex] = gainDb;
         });
 
-        // Debounce the filter rebuild + buffer flush — preset changes fire 10 band updates,
-        // so wait 50ms for them all to settle before rebuilding once
+        // Debounce — preset changes fire 10 band updates,
+        // wait 50ms for them all to settle before sending once
         _eqRefreshCts?.Cancel();
         _eqRefreshCts = new CancellationTokenSource();
         var token = _eqRefreshCts.Token;
-        _ = Task.Delay(50, token).ContinueWith(_ =>
-        {
-            _equalizerProcessor?.RefreshFilters();
-        }, TaskContinuationOptions.OnlyOnRanToCompletion);
+        _ = Task.Delay(50, token).ContinueWith(_ => SendEqToAudioHost(),
+            TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
     [RelayCommand]
@@ -954,19 +944,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         SelectedEqPresetIndex = 0; // Flat
     }
 
-    private void ApplyEqToProcessor()
+    private double[] GetBandGains() => EqBands.Select(b => b.GainDb).ToArray();
+
+    private void SendEqToAudioHost()
     {
-        if (_equalizerProcessor == null) return;
-
-        _equalizerProcessor.IsEnabled = IsEqualizerEnabled;
-        _equalizerProcessor.ClearBands();
-        _equalizerProcessor.CreateGraphicEq10Band();
-
-        // Apply persisted gains
-        for (var i = 0; i < EqBands.Count && i < _equalizerProcessor.Bands.Count; i++)
-            _equalizerProcessor.Bands[i].GainDb = EqBands[i].GainDb;
-
-        _equalizerProcessor.RefreshFilters();
+        _ = _pipelineControl?.SetEqualizerAsync(IsEqualizerEnabled, GetBandGains());
     }
 }
 

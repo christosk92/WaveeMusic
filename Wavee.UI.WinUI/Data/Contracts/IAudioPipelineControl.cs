@@ -12,4 +12,5 @@ public interface IAudioPipelineControl
 {
     Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default);
     void SetNormalizationEnabled(bool enabled);
+    Task SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default);
 }

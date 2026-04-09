@@ -2,21 +2,13 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Wavee.AudioHost;
 
-// Parse arguments: --pipe <name> --credentials <path>
+// Parse arguments: --pipe <name>
 var pipeName = "WaveeAudio";
-var credentialsPath = "";
 
 for (int i = 0; i < args.Length - 1; i++)
 {
-    switch (args[i])
-    {
-        case "--pipe":
-            pipeName = args[++i];
-            break;
-        case "--credentials":
-            credentialsPath = args[++i];
-            break;
-    }
+    if (args[i] == "--pipe")
+        pipeName = args[++i];
 }
 
 // Configure Serilog for the audio process
@@ -53,7 +45,7 @@ Console.CancelKeyPress += (_, e) =>
 
 try
 {
-    await using var host = new AudioHostService(pipeName, credentialsPath, logger);
+    await using var host = new AudioHostService(pipeName, logger);
     await host.RunAsync(cts.Token);
 }
 catch (OperationCanceledException)

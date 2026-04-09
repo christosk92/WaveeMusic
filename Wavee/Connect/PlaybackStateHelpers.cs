@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
-using Wavee.Connect.Playback;
+using Wavee.Audio.Queue;
 using Wavee.Connect.Protocol;
 using Wavee.Protocol.Player;
 

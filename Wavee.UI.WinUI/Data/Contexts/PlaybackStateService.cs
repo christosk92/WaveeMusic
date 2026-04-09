@@ -37,8 +37,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly IHomeFeedCache? _homeFeedCache;
     private List<QueueItem> _queue = [];
     private List<QueueItem> _prevQueue = [];
-    private IReadOnlyList<Wavee.Connect.Playback.IQueueItem> _rawNextQueue = [];
-    private IReadOnlyList<Wavee.Connect.Playback.IQueueItem> _rawPrevQueue = [];
+    private IReadOnlyList<Wavee.Audio.Queue.IQueueItem> _rawNextQueue = [];
+    private IReadOnlyList<Wavee.Audio.Queue.IQueueItem> _rawPrevQueue = [];
     private IDisposable? _stateSubscription;
     private CancellationTokenSource? _colorCts;
     private bool _isFirstStateUpdate = true;
@@ -78,8 +78,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     public IReadOnlyList<QueueItem> Queue => _queue;
     public IReadOnlyList<QueueItem> PreviousTracks => _prevQueue;
     public IReadOnlyList<QueueItem> UserQueue => _queue.Where(q => q.IsUserQueued).ToList();
-    public IReadOnlyList<Wavee.Connect.Playback.IQueueItem> RawNextQueue => _rawNextQueue;
-    public IReadOnlyList<Wavee.Connect.Playback.IQueueItem> RawPrevQueue => _rawPrevQueue;
+    public IReadOnlyList<Wavee.Audio.Queue.IQueueItem> RawNextQueue => _rawNextQueue;
+    public IReadOnlyList<Wavee.Audio.Queue.IQueueItem> RawPrevQueue => _rawPrevQueue;
 
     public PlaybackStateService(
         Session session,
@@ -475,10 +475,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _logger?.LogDebug("Queue metadata enriched: {Count} tracks", tracks.Count);
 
             // Update raw queue items with enriched metadata
-            var updated = new List<Wavee.Connect.Playback.IQueueItem>(_rawNextQueue.Count);
+            var updated = new List<Wavee.Audio.Queue.IQueueItem>(_rawNextQueue.Count);
             foreach (var item in _rawNextQueue)
             {
-                if (item is Wavee.Connect.Playback.QueueTrack qt && !qt.HasMetadata && tracks.TryGetValue(qt.Uri, out var meta))
+                if (item is Wavee.Audio.Queue.QueueTrack qt && !qt.HasMetadata && tracks.TryGetValue(qt.Uri, out var meta))
                 {
                     updated.Add(qt with
                     {
@@ -514,7 +514,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         if (state.NextQueue.Count > 0)
         {
             var newQueue = new List<QueueItem>();
-            foreach (var item in state.NextQueue.OfType<Wavee.Connect.Playback.QueueTrack>())
+            foreach (var item in state.NextQueue.OfType<Wavee.Audio.Queue.QueueTrack>())
                 newQueue.Add(QueueItem.FromQueueTrack(item));
             _queue = newQueue;
         }
@@ -540,7 +540,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         if (state.PrevQueue.Count > 0)
         {
             var newPrev = new List<QueueItem>();
-            foreach (var item in state.PrevQueue.OfType<Wavee.Connect.Playback.QueueTrack>())
+            foreach (var item in state.PrevQueue.OfType<Wavee.Audio.Queue.QueueTrack>())
                 newPrev.Add(QueueItem.FromQueueTrack(item));
             _prevQueue = newPrev;
         }

@@ -147,6 +147,21 @@ namespace NVorbis.Ogg
 
         private int FindPacket(int pageIndex, long[] gps, long endGP, long lastPageGranulePos, int lastPagePacketLength, ref long granulePos)
         {
+            var isResyncBoundary = false;
+            if (pageIndex > 0)
+            {
+                if (_reader.GetPage(pageIndex, out _, out var currentIsResync, out _, out _, out _, out _)
+                    && currentIsResync)
+                {
+                    isResyncBoundary = true;
+                }
+                else if (_reader.GetPage(pageIndex - 1, out _, out var previousIsResync, out _, out _, out _, out _)
+                         && previousIsResync)
+                {
+                    isResyncBoundary = true;
+                }
+            }
+
             // next check for a bugged vorbis encoder...
             if (endGP != lastPageGranulePos)
             {
@@ -178,8 +193,13 @@ namespace NVorbis.Ogg
                 // technically there could still be a problem on the first page, but we're ignoring it
                 else if (pageIndex > _reader.FirstDataPageIndex)
                 {
-                    // unknown error...
-                    throw new System.IO.InvalidDataException($"GranulePos mismatch: Page {pageIndex}, expected {lastPageGranulePos}, calculated {endGP}");
+                    // Sparse forward jumps can introduce an intentional resync boundary.
+                    // At that boundary we don't have strict predecessor continuity, so we
+                    // treat this mismatch as non-fatal and continue with local page packet math.
+                    if (!isResyncBoundary)
+                    {
+                        throw new System.IO.InvalidDataException($"GranulePos mismatch: Page {pageIndex}, expected {lastPageGranulePos}, calculated {endGP}");
+                    }
                 }
             }
 

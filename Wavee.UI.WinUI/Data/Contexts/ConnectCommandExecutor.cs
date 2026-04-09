@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
-using Wavee.Connect.Playback;
+using Wavee.Audio.Queue;
 using Wavee.Core.Session;
 using Wavee.Core.Audio;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -47,14 +47,20 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default)
     {
-        if (_localEngine is AudioPipeline pipeline)
-            await pipeline.SwitchQualityAsync(quality, ct).ConfigureAwait(false);
+        if (_localEngine is Wavee.AudioIpc.AudioPipelineProxy proxy)
+            await proxy.SwitchQualityAsync(quality.ToString(), ct).ConfigureAwait(false);
     }
 
     public void SetNormalizationEnabled(bool enabled)
     {
-        if (_localEngine is AudioPipeline pipeline)
-            pipeline.SetNormalizationEnabled(enabled);
+        if (_localEngine is Wavee.AudioIpc.AudioPipelineProxy proxy)
+            _ = proxy.SetNormalizationEnabledAsync(enabled);
+    }
+
+    public async Task SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default)
+    {
+        if (_localEngine is Wavee.AudioIpc.AudioPipelineProxy proxy)
+            await proxy.SetEqualizerAsync(enabled, bandGains, ct).ConfigureAwait(false);
     }
 
     private string? GetTargetDeviceId() =>

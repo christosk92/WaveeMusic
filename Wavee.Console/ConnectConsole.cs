@@ -6,7 +6,7 @@ using Spectre.Console.Rendering;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Connection;
-using Wavee.Connect.Playback;
+using Wavee.Audio;
 using Wavee.Connect.Protocol;
 using Wavee.Core.DependencyInjection;
 using Wavee.Core.Http;
@@ -30,7 +30,9 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
     private readonly SpectreUI _ui;
     private readonly ILogger? _logger;
     private readonly List<IDisposable> _subscriptions = new();
-    private AudioPipeline? _audioPipeline;
+    // AudioPipeline removed — audio now handled by AudioHost process
+    // TODO: Wire console to out-of-process AudioHost if local playback needed
+    private IPlaybackEngine? _audioPipeline;
     private ServiceProvider? _serviceProvider;
     private SpotifyLibraryService? _libraryService;
     private bool _disposed;
@@ -138,36 +140,13 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
             var metadataDatabase = _serviceProvider?.GetService<IMetadataDatabase>();
             var cacheService = _serviceProvider?.GetService<ICacheService>();
 
-            // Create reactive audio settings for dynamic control during playback
-            _audioSettings = new AudioSettings();
+            // TODO: Audio now handled by AudioHost process — wire up out-of-process audio here if needed
+            _ui.AddLog("INF", "Audio pipeline removed — Connect-only mode (no local playback)");
 
-            _audioPipeline = AudioPipelineFactory.CreateSpotifyPipeline(
-                _session,
-                (SpClient)_session.SpClient,
-                _httpClient,
-                options: AudioPipelineOptions.Default,
-                audioSettings: _audioSettings,
-                metadataDatabase: metadataDatabase,
-                cacheService: cacheService,
-                extendedMetadataClient: null,  // Created by factory from metadataDatabase
-                contextCache: null,            // Created by factory (or use DI in production)
-                deviceId: _session.Config.DeviceId,
-                eventService: _session.Events,
-                commandHandler: _session.CommandHandler,
-                deviceStateManager: _session.DeviceState,
-                logger: _logger);
-
-            // Subscribe to local playback state changes
-            _subscriptions.Add(_audioPipeline.StateChanges.Subscribe(OnLocalPlaybackStateChanged));
-
-            // Enable bidirectional mode
+            // Enable bidirectional mode for state tracking (no local engine)
             if (_session.PlaybackState != null)
             {
-                _session.PlaybackState.EnableBidirectionalMode(
-                    _audioPipeline,
-                    (SpClient)_session.SpClient,
-                    _session);
-                _ui.AddLog("INF", "Audio pipeline initialized - bidirectional playback enabled!");
+                _ui.AddLog("INF", "PlaybackStateManager initialized — cluster state tracking enabled");
             }
             else
             {
