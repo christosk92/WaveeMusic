@@ -115,4 +115,9 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// Sets the buffering indicator for a track ID. Call before async play commands.
     /// </summary>
     void NotifyBuffering(string? trackId);
+
+    /// <summary>
+    /// Clears the buffering indicator when an optimistic play command does not produce playback.
+    /// </summary>
+    void ClearBuffering();
 }

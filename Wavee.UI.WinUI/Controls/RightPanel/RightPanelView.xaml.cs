@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -37,6 +38,15 @@ public sealed partial class RightPanelView : UserControl
     private bool _draggingResizer;
     private double _preManipulationWidth;
 
+    // Tracks whether the deferred LyricsContent / DetailsContent subtrees have been
+    // materialized into the visual tree yet. Both use x:Load="False" in XAML and are
+    // loaded on demand when their tab is first selected. Once loaded, they stay loaded.
+    private bool _lyricsTreeLoaded;
+    private bool _detailsTreeLoaded;
+
+    // Re-entrancy guard for Segmented SelectionChanged → SelectedMode sync.
+    private bool _suppressTabSelectionChanged;
+
     // Details integration
     private TrackDetailsViewModel? _detailsVm;
 
@@ -46,32 +56,10 @@ public sealed partial class RightPanelView : UserControl
     private DispatcherQueueTimer? _scrollResetTimer;
     private double _lastCanvasPositionMs = -1;
     private bool _lyricsInitialized;
-    private bool _showingLoadingDots;
     private readonly ThemeColorService? _themeColors;
     private readonly ILyricsService? _lyricsService;
     private readonly ISettingsService? _settingsService;
     private bool _themeColorsSubscribed;
-
-    private static readonly LyricsData LoadingDotsData = CreateLoadingDotsData();
-
-    private static LyricsData CreateLoadingDotsData()
-    {
-        var dot = "●";
-        var line = new LyricsLine
-        {
-            PrimaryText = $"{dot}  {dot}  {dot}",
-            StartMs = 0,
-            EndMs = 1200,
-            IsPrimaryHasRealSyllableInfo = true,
-            PrimarySyllables =
-            [
-                new BaseLyrics { Text = dot, StartMs = 0,   EndMs = 400,  StartIndex = 0 },
-                new BaseLyrics { Text = dot, StartMs = 400,  EndMs = 800,  StartIndex = 3 },
-                new BaseLyrics { Text = dot, StartMs = 800,  EndMs = 1200, StartIndex = 6 },
-            ]
-        };
-        return new LyricsData { LyricsLines = [line] };
-    }
 
     public RightPanelView()
     {
@@ -96,7 +84,9 @@ public sealed partial class RightPanelView : UserControl
         }
 
         InitializeLyrics();
-        RegisterDetailsWheelHandler();
+        // RegisterDetailsWheelHandler is deferred: the DetailsContent subtree is
+        // x:Load="False" and doesn't exist until the Details tab is first opened.
+        // See EnsureDetailsTreeLoaded().
         ActualThemeChanged += OnActualThemeChanged;
         SizeChanged += OnPanelSizeChanged;
         UpdateCanvasClearColor();
@@ -269,6 +259,13 @@ public sealed partial class RightPanelView : UserControl
 
     private void RefreshDetailsLyrics()
     {
+        // Details subtree (containing DetailsLyricsSnippet) is x:Load'd — safe no-op if not materialized.
+        if (DetailsContent == null)
+        {
+            UpdateCanvasLyricsVisibility();
+            return;
+        }
+
         var showLyricsSnippet = _lyricsVm?.HasLyrics == true && _lyricsVm.CurrentLyrics != null;
         DetailsLyricsSnippet.Visibility = showLyricsSnippet ? Visibility.Visible : Visibility.Collapsed;
         if (showLyricsSnippet)
@@ -283,38 +280,72 @@ public sealed partial class RightPanelView : UserControl
     {
         if (_lyricsVm == null) return;
 
-        // Never show the ProgressRing — use canvas dots instead
-        LyricsLoadingRing.Visibility = Visibility.Collapsed;
+        var isLyricsMode = SelectedMode == RightPanelMode.Lyrics;
+        var hasLyrics = _lyricsVm.HasLyrics && _lyricsVm.CurrentLyrics != null;
+        var showLoadingShimmer = isLyricsMode && _lyricsVm.IsLoading && !hasLyrics;
 
-        var showNoLyrics = !_lyricsVm.IsLoading && !_lyricsVm.HasLyrics
+        var showNoLyrics = isLyricsMode
+                           && !_lyricsVm.IsLoading
+                           && !_lyricsVm.HasLyrics
                            && !string.IsNullOrEmpty(_lyricsVm.PlaybackState.CurrentTrackId);
-        NoLyricsText.Visibility = showNoLyrics ? Visibility.Visible : Visibility.Collapsed;
 
-        // Canvas visible for both loading (dots) and lyrics
-        var showCanvas = SelectedMode == RightPanelMode.Lyrics
-                         && (_lyricsVm.HasLyrics || _lyricsVm.IsLoading);
+        // Canvas only shows real lyrics; loading now uses shimmer in XAML.
+        var showCanvas = isLyricsMode && hasLyrics;
+
+        // NowPlayingCanvas is parent-level, always safe.
         NowPlayingCanvas.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
-        LyricsInteractionOverlay.Visibility = _lyricsVm.HasLyrics ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!showCanvas)
+        {
+            NowPlayingCanvas.MouseScrollOffset = 0;
+            NowPlayingCanvas.IsMouseScrolling = false;
+        }
+
+        // The elements below live inside LyricsContent, which is x:Load="False" until
+        // the Lyrics tab is opened for the first time. Skip subtree updates until then.
+        if (LyricsContent != null)
+        {
+            // Prefer shimmer placeholder instead of ProgressRing while loading.
+            LyricsLoadingRing.Visibility = Visibility.Collapsed;
+            LyricsLoadingShimmer.Visibility = showLoadingShimmer ? Visibility.Visible : Visibility.Collapsed;
+            NoLyricsText.Visibility = showNoLyrics ? Visibility.Visible : Visibility.Collapsed;
+            LyricsInteractionOverlay.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
+            if (!showCanvas)
+                LyricsSyncButton.Visibility = Visibility.Collapsed;
+#if DEBUG
+            LyricsDebugButton.Visibility = Visibility.Visible;
+#endif
+        }
 
 #if DEBUG
-        LyricsDebugButton.Visibility = Visibility.Visible;
+        System.Diagnostics.Debug.WriteLine(
+            $"[RightPanel] ApplyCurrentLyricsState mode={SelectedMode} " +
+            $"hasLyrics={_lyricsVm.HasLyrics} isLoading={_lyricsVm.IsLoading} " +
+            $"lineCount={_lyricsVm.CurrentLyrics?.LyricsLines.Count ?? 0} " +
+            $"showCanvas={showCanvas} showNoLyrics={showNoLyrics}");
 #endif
 
-        if (_lyricsVm.CurrentLyrics != null)
+        // Push fresh XAML layout dimensions into the engine *before* handing it data.
+        // Track changes do not fire SizeChanged on LyricsContent, so without this push
+        // the engine can relayout a stale 0×0 cache and render nothing until the user
+        // resizes the panel. See dazzling-foraging-stroustrup.md Fix 1.
+        if (showCanvas) UpdateCanvasLayout();
+
+        if (hasLyrics)
         {
-            _showingLoadingDots = false;
-            NowPlayingCanvas.SetLyricsData(_lyricsVm.CurrentLyrics);
+            NowPlayingCanvas.SetLyricsData(_lyricsVm.CurrentLyrics!);
             NowPlayingCanvas.SetSongInfo(_lyricsVm.CurrentSongInfo);
             NowPlayingCanvas.SetIsPlaying(_lyricsVm.PlaybackState.IsPlaying);
             var position = _lyricsVm.GetInterpolatedPosition();
             _lastCanvasPositionMs = position.TotalMilliseconds;
             NowPlayingCanvas.SetPosition(position);
         }
-        else if (_lyricsVm.IsLoading)
+        else
         {
-            _showingLoadingDots = true;
-            NowPlayingCanvas.SetLyricsData(LoadingDotsData);
-            NowPlayingCanvas.SetIsPlaying(_lyricsVm.PlaybackState.IsPlaying);
+            // No lyrics and not loading — clear stale engine data so a subsequent
+            // successful load doesn't accidentally composite on top of an old frame.
+            NowPlayingCanvas.SetLyricsData(null);
+            NowPlayingCanvas.SetIsPlaying(false);
         }
 
         UpdateTimerState();
@@ -331,7 +362,8 @@ public sealed partial class RightPanelView : UserControl
 
         var canRender = SelectedMode == RightPanelMode.Lyrics
                         && Visibility == Visibility.Visible
-                        && (_lyricsVm.HasLyrics || _lyricsVm.IsLoading);
+                        && _lyricsVm.HasLyrics
+                        && _lyricsVm.CurrentLyrics != null;
 
         // Realtime updates are only needed while playback is progressing.
         var shouldRunTimer = canRender && _lyricsVm.PlaybackState.IsPlaying;
@@ -367,24 +399,15 @@ public sealed partial class RightPanelView : UserControl
     {
         if (_lyricsVm == null) return;
 
-        if (_showingLoadingDots)
-        {
-            // Loop 0→1200ms for dot animation
-            var elapsed = (DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond) % 1200;
-            NowPlayingCanvas.SetPosition(TimeSpan.FromMilliseconds(elapsed));
-        }
-        else
-        {
-            var position = _lyricsVm.GetInterpolatedPosition();
-            var positionMs = position.TotalMilliseconds;
+        var position = _lyricsVm.GetInterpolatedPosition();
+        var positionMs = position.TotalMilliseconds;
 
-            // Skip tiny deltas to avoid unnecessary DP churn every tick.
-            if (_lastCanvasPositionMs >= 0 && Math.Abs(positionMs - _lastCanvasPositionMs) < 35)
-                return;
+        // Skip tiny deltas to avoid unnecessary DP churn every tick.
+        if (_lastCanvasPositionMs >= 0 && Math.Abs(positionMs - _lastCanvasPositionMs) < 35)
+            return;
 
-            _lastCanvasPositionMs = positionMs;
-            NowPlayingCanvas.SetPosition(position);
-        }
+        _lastCanvasPositionMs = positionMs;
+        NowPlayingCanvas.SetPosition(position);
     }
 
     // ── Seek ──
@@ -474,7 +497,8 @@ public sealed partial class RightPanelView : UserControl
     {
         NowPlayingCanvas.MouseScrollOffset = 0;
         NowPlayingCanvas.IsMouseScrolling = false;
-        LyricsSyncButton.Visibility = Visibility.Collapsed;
+        if (LyricsSyncButton != null)
+            LyricsSyncButton.Visibility = Visibility.Collapsed;
         UpdateTimerState();
     }
 
@@ -489,19 +513,57 @@ public sealed partial class RightPanelView : UserControl
     {
         var w = RootGrid.ActualWidth;
         var h = RootGrid.ActualHeight;
-        if (w <= 0 || h <= 0) return;
+
+        // If layout hasn't measured the grid yet (common when we're called from
+        // ApplyCurrentLyricsState right as the panel/tab becomes visible), force
+        // a measure+arrange pass right now so we can read actual sizes synchronously.
+        // Without this, the call bails and the canvas never receives valid lyrics dimensions,
+        // and SetLyricsData ends up flowing through to the engine with a zero rect.
+        if (w <= 0 || h <= 0)
+        {
+            RootGrid.UpdateLayout();
+            w = RootGrid.ActualWidth;
+            h = RootGrid.ActualHeight;
+        }
+
+        // Final fallback: use the control's explicit Width if layout still hasn't resolved.
+        // RightPanelView has `Width = PanelWidth` hard-coded in the constructor, so this is
+        // always a valid non-zero value. Height fallback uses the app window height proxy
+        // from the parent (ActualHeight of RightPanelView itself).
+        if (w <= 0) w = Width;
+        if (h <= 0) h = ActualHeight;
+
+        if (w <= 0 || h <= 0)
+        {
+#if DEBUG
+            System.Diagnostics.Debug.WriteLine(
+                $"[RightPanel] UpdateCanvasLayout BAILED rootW={RootGrid.ActualWidth} rootH={RootGrid.ActualHeight} " +
+                $"ctrlW={Width} ctrlH={ActualHeight}");
+#endif
+            return;
+        }
 
         // Canvas spans the entire root; offset lyrics to the content area below tabs.
         var resizerW = PanelResizer.ActualWidth;
         var tabH = TabHeader.ActualHeight;
         const double padLeft = 12, padRight = 12, padBottom = 12;
 
+        var lyricsW = w - resizerW - padLeft - padRight;
+        var lyricsH = h - tabH - padBottom;
+
         NowPlayingCanvas.LyricsStartX = resizerW + padLeft;
         NowPlayingCanvas.LyricsStartY = tabH;
-        NowPlayingCanvas.LyricsWidth = w - resizerW - padLeft - padRight;
-        NowPlayingCanvas.LyricsHeight = h - tabH - padBottom;
+        NowPlayingCanvas.LyricsWidth = lyricsW > 0 ? lyricsW : w;
+        NowPlayingCanvas.LyricsHeight = lyricsH > 0 ? lyricsH : h;
         NowPlayingCanvas.LyricsOpacity = 1;
         NowPlayingCanvas.AlbumArtRect = Rect.Empty;
+
+#if DEBUG
+        System.Diagnostics.Debug.WriteLine(
+            $"[RightPanel] UpdateCanvasLayout ok root={w:F0}x{h:F0} " +
+            $"lyrics={NowPlayingCanvas.LyricsWidth:F0}x{NowPlayingCanvas.LyricsHeight:F0} " +
+            $"start=({NowPlayingCanvas.LyricsStartX:F0},{NowPlayingCanvas.LyricsStartY:F0})");
+#endif
     }
 
     private void UpdateCanvasClearColor()
@@ -541,10 +603,18 @@ public sealed partial class RightPanelView : UserControl
     {
         if (QueueContent == null || !IsLoaded) return;
 
+        // Materialize the deferred (x:Load="False") subtrees on first selection.
+        if (SelectedMode == RightPanelMode.Lyrics) EnsureLyricsTreeLoaded();
+        if (SelectedMode == RightPanelMode.Details) EnsureDetailsTreeLoaded();
+
         QueueContent.Visibility = SelectedMode == RightPanelMode.Queue ? Visibility.Visible : Visibility.Collapsed;
-        LyricsContent.Visibility = SelectedMode == RightPanelMode.Lyrics ? Visibility.Visible : Visibility.Collapsed;
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
-        DetailsContent.Visibility = SelectedMode == RightPanelMode.Details ? Visibility.Visible : Visibility.Collapsed;
+
+        // LyricsContent / DetailsContent are x:Load'd — only touch once materialized.
+        if (LyricsContent != null)
+            LyricsContent.Visibility = SelectedMode == RightPanelMode.Lyrics ? Visibility.Visible : Visibility.Collapsed;
+        if (DetailsContent != null)
+            DetailsContent.Visibility = SelectedMode == RightPanelMode.Details ? Visibility.Visible : Visibility.Collapsed;
 
         // Background — only visible on Details tab
         if (SelectedMode != RightPanelMode.Details)
@@ -578,10 +648,22 @@ public sealed partial class RightPanelView : UserControl
         if (_lyricsInitialized)
             ApplyCurrentLyricsState();
 
-        QueueTab.IsChecked = SelectedMode == RightPanelMode.Queue;
-        LyricsTab.IsChecked = SelectedMode == RightPanelMode.Lyrics;
-        FriendsTab.IsChecked = SelectedMode == RightPanelMode.FriendsActivity;
-        DetailsTab.IsChecked = SelectedMode == RightPanelMode.Details;
+        // Keep the Segmented tab header in sync when SelectedMode changes programmatically
+        // (e.g., DetailsLyricsSnippet tap). Suppress the event to avoid a recursive update.
+        var targetIdx = SelectedMode switch
+        {
+            RightPanelMode.Queue => 0,
+            RightPanelMode.Lyrics => 1,
+            RightPanelMode.FriendsActivity => 2,
+            RightPanelMode.Details => 3,
+            _ => 0
+        };
+        if (TabHeader != null && TabHeader.SelectedIndex != targetIdx)
+        {
+            _suppressTabSelectionChanged = true;
+            try { TabHeader.SelectedIndex = targetIdx; }
+            finally { _suppressTabSelectionChanged = false; }
+        }
 
         // When switching to lyrics tab, ensure we have the latest state
         if (SelectedMode == RightPanelMode.Lyrics && _lyricsInitialized)
@@ -606,19 +688,43 @@ public sealed partial class RightPanelView : UserControl
         UpdateTimerState();
     }
 
-    // ── Tab header clicks ──
+    // ── Tab header (Segmented) ──
 
-    private void QueueTab_Click(object sender, RoutedEventArgs e)
-        => SelectedMode = RightPanelMode.Queue;
+    private void TabHeader_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressTabSelectionChanged) return;
+        if (TabHeader?.SelectedIndex is not int idx || idx < 0) return;
 
-    private void LyricsTab_Click(object sender, RoutedEventArgs e)
-        => SelectedMode = RightPanelMode.Lyrics;
+        SelectedMode = idx switch
+        {
+            0 => RightPanelMode.Queue,
+            1 => RightPanelMode.Lyrics,
+            2 => RightPanelMode.FriendsActivity,
+            3 => RightPanelMode.Details,
+            _ => RightPanelMode.Queue
+        };
+    }
 
-    private void FriendsTab_Click(object sender, RoutedEventArgs e)
-        => SelectedMode = RightPanelMode.FriendsActivity;
+    // ── Deferred subtree materialization (x:Load="False") ──
 
-    private void DetailsTab_Click(object sender, RoutedEventArgs e)
-        => SelectedMode = RightPanelMode.Details;
+    private void EnsureLyricsTreeLoaded()
+    {
+        if (_lyricsTreeLoaded) return;
+        _ = FindName(nameof(LyricsContent));
+        _lyricsTreeLoaded = LyricsContent != null;
+    }
+
+    private void EnsureDetailsTreeLoaded()
+    {
+        if (_detailsTreeLoaded) return;
+        _ = FindName(nameof(DetailsContent));
+        _detailsTreeLoaded = DetailsContent != null;
+
+        // Wheel handler attaches directly to DetailsContent — must wait until the
+        // subtree exists to register it. Before this point there's nothing to handle.
+        if (_detailsTreeLoaded)
+            RegisterDetailsWheelHandler();
+    }
 
     // ── Details panel binding ──
 
@@ -650,6 +756,8 @@ public sealed partial class RightPanelView : UserControl
     private void ApplyDetailsState()
     {
         if (_detailsVm == null) return;
+        // DetailsContent subtree is x:Load="False" until first details-tab selection.
+        if (DetailsContent == null) return;
 
         DetailsLoadingShimmer.Visibility = _detailsVm.IsLoading ? Visibility.Visible : Visibility.Collapsed;
 
@@ -686,6 +794,7 @@ public sealed partial class RightPanelView : UserControl
     /// </summary>
     private async Task AnimateDetailsContentChangeAsync()
     {
+        if (DetailsContent == null) return;
         // Fade out
         await AnimationBuilder.Create()
             .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(150),
@@ -709,6 +818,7 @@ public sealed partial class RightPanelView : UserControl
     /// </summary>
     private async Task AnimateDetailsContentInAsync()
     {
+        if (DetailsContent == null) return;
         UpdateDetailsContent();
         DetailsContent.ChangeView(null, 0, null, true);
 
@@ -730,6 +840,7 @@ public sealed partial class RightPanelView : UserControl
     private void UpdateDetailsContent()
     {
         if (_detailsVm == null) return;
+        if (DetailsContent == null) return;
 
         var hasData = _detailsVm.HasData;
 
@@ -877,6 +988,8 @@ public sealed partial class RightPanelView : UserControl
     private void UpdateLyricsSnippetText()
     {
         if (_lyricsVm?.CurrentLyrics?.LyricsLines is not { Count: > 0 } lines) return;
+        // DetailsLyricsPrev/Current/Next live inside DetailsContent (x:Load'd).
+        if (DetailsContent == null) return;
 
         var posMs = _lyricsVm.GetInterpolatedPosition().TotalMilliseconds;
 
@@ -999,6 +1112,7 @@ public sealed partial class RightPanelView : UserControl
     private void ApplyCreditsCollapse()
     {
         if (_detailsVm == null) return;
+        if (DetailsContent == null) return;
         var allGroups = _detailsVm.CreditGroups;
         var totalPeople = allGroups.Sum(g => g.Contributors?.Count ?? 0);
 

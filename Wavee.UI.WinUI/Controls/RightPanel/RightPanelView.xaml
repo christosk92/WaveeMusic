@@ -7,6 +7,7 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
@@ -18,7 +19,12 @@
 >
 
     <UserControl.Resources>
-        <SolidColorBrush x:Key="DetailsCardBrush" Color="#66000000"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <SolidColorBrush x:Key="DetailsCardBrush" Color="#66000000"/>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <animations:Implicit.ShowAnimations>
@@ -92,73 +98,31 @@
                 <RowDefinition Height="*"/>     <!-- Content -->
             </Grid.RowDefinitions>
 
-            <!-- Tab header -->
-            <StackPanel
+            <!-- Tab header — Pivot-style Segmented switcher -->
+            <controls:Segmented
                 x:Name="TabHeader"
                 Grid.Row="0"
-                Orientation="Horizontal"
-                Spacing="2"
-                Padding="12,12,12,8"
-                HorizontalAlignment="Left">
-
-                <ToggleButton
-                    x:Name="QueueTab"
-                    Content="Queue"
-                    Click="QueueTab_Click"
-                    Style="{StaticResource DefaultToggleButtonStyle}"
-                    MinHeight="28"
-                    Padding="12,4"
-                    FontSize="12"
-                    CornerRadius="14"/>
-
-                <ToggleButton
-                    x:Name="LyricsTab"
-                    Content="Lyrics"
-                    Click="LyricsTab_Click"
-                    Style="{StaticResource DefaultToggleButtonStyle}"
-                    MinHeight="28"
-                    Padding="12,4"
-                    FontSize="12"
-                    CornerRadius="14"/>
-
-                <ToggleButton
-                    x:Name="FriendsTab"
-                    Content="Friends"
-                    Click="FriendsTab_Click"
-                    Style="{StaticResource DefaultToggleButtonStyle}"
-                    MinHeight="28"
-                    Padding="12,4"
-                    FontSize="12"
-                    CornerRadius="14"/>
-
-                <ToggleButton
-                    x:Name="DetailsTab"
-                    Content="Details"
-                    Click="DetailsTab_Click"
-                    Style="{StaticResource DefaultToggleButtonStyle}"
-                    MinHeight="28"
-                    Padding="12,4"
-                    FontSize="12"
-                    CornerRadius="14"/>
-            </StackPanel>
+                Margin="12,8,12,4"
+                HorizontalAlignment="Left"
+                SelectedIndex="0"
+                Style="{StaticResource PivotSegmentedStyle}"
+                SelectionChanged="TabHeader_SelectionChanged">
+                <controls:SegmentedItem Content="Queue"/>
+                <controls:SegmentedItem Content="Lyrics"/>
+                <controls:SegmentedItem Content="Friends"/>
+                <controls:SegmentedItem Content="Details"/>
+            </controls:Segmented>
 
             <!-- Content area -->
             <Grid Grid.Row="1" Padding="12,0,12,12">
 
-                <!-- Queue placeholder -->
-                <Grid x:Name="QueueContent">
-                    <animations:Implicit.ShowAnimations>
-                        <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
-                        <animations:TranslationAnimation Duration="0:0:0.2" From="0,8,0" To="0"/>
-                    </animations:Implicit.ShowAnimations>
-                    <animations:Implicit.HideAnimations>
-                        <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
-                    </animations:Implicit.HideAnimations>
-                    <queue:QueueControl/>
-                </Grid>
+                <!-- Queue tab (its own UserControl) -->
+                <local:QueueTabView x:Name="QueueContent"/>
 
-                <!-- Lyrics panel -->
-                <Grid x:Name="LyricsContent" Visibility="Collapsed"
+                <!-- Lyrics panel — deferred from visual tree until first selection -->
+                <Grid x:Name="LyricsContent"
+                      x:Load="False"
+                      Visibility="Collapsed"
                       SizeChanged="LyricsContent_SizeChanged">
 
                     <!-- Transparent overlay for mouse interaction (seek, scroll) -->
@@ -194,6 +158,22 @@
                         VerticalAlignment="Center"
                         Visibility="Collapsed"/>
 
+                    <!-- Loading shimmer placeholder -->
+                    <StackPanel
+                        x:Name="LyricsLoadingShimmer"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Center"
+                        Margin="14,0,14,0"
+                        Spacing="10">
+                        <controls:Shimmer Height="14" Width="210" CornerRadius="7" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Height="14" Width="248" CornerRadius="7" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Height="14" Width="186" CornerRadius="7" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Height="14" Width="230" CornerRadius="7" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Height="14" Width="170" CornerRadius="7" HorizontalAlignment="Left"/>
+                    </StackPanel>
+
                     <!-- No lyrics fallback -->
                     <TextBlock
                         x:Name="NoLyricsText"
@@ -223,30 +203,15 @@
                         Visibility="Collapsed"/>
                 </Grid>
 
-                <!-- Friends Activity placeholder -->
-                <StackPanel x:Name="FriendsContent" Spacing="8" Visibility="Collapsed">
-                    <animations:Implicit.ShowAnimations>
-                        <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
-                        <animations:TranslationAnimation Duration="0:0:0.2" From="0,8,0" To="0"/>
-                    </animations:Implicit.ShowAnimations>
-                    <animations:Implicit.HideAnimations>
-                        <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
-                    </animations:Implicit.HideAnimations>
-                    <TextBlock
-                        Text="Friends Activity"
-                        Style="{StaticResource SubtitleTextBlockStyle}"
-                        Margin="0,0,0,8"/>
-                    <TextBlock
-                        Text="See what your friends are listening to."
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="WrapWholeWords"
-                        FontSize="13"/>
-                </StackPanel>
+                <!-- Friends tab (its own UserControl) -->
+                <local:FriendsTabView x:Name="FriendsContent" Visibility="Collapsed"/>
 
-                <!-- Details panel -->
+                <!-- Details panel — deferred from visual tree until first selection -->
                 <ScrollViewer VerticalScrollBarVisibility="Hidden"
                               Margin="-8,0,-8,-12"
-                              x:Name="DetailsContent" Visibility="Collapsed"
+                              x:Name="DetailsContent"
+                              x:Load="False"
+                              Visibility="Collapsed"
                               SizeChanged="DetailsContent_SizeChanged">
                     <animations:Implicit.ShowAnimations>
                         <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1"/>

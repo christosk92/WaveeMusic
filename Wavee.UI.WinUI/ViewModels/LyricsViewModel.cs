@@ -35,6 +35,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     private readonly ILogger? _logger;
 
     private string? _loadedTrackId;
+    private bool _loadedTrackSucceeded;
     private CancellationTokenSource? _fetchCts;
     private bool _disposed;
 
@@ -88,6 +89,21 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.CurrentTrackId):
                 _ = DeferredLoadLyricsAsync();
                 break;
+            case nameof(IPlaybackStateService.CurrentTrackTitle):
+            case nameof(IPlaybackStateService.CurrentArtistName):
+                // Metadata can arrive after CurrentTrackId when the Spotify state stream
+                // delivers the URI before the title/artist. If the previous fetch failed
+                // (most commonly because the title was null at call time), retry now that
+                // metadata is present. _loadedTrackSucceeded gates this so successful
+                // loads aren't re-fetched on every metadata tweak.
+                if (_loadedTrackId == _playbackState.CurrentTrackId
+                    && !_loadedTrackSucceeded
+                    && !string.IsNullOrEmpty(_playbackState.CurrentTrackTitle))
+                {
+                    _loadedTrackId = null; // allow the early-exit guard to proceed
+                    _ = DeferredLoadLyricsAsync();
+                }
+                break;
             case nameof(IPlaybackStateService.Position):
                 LastServicePosition = _playbackState.Position;
                 LastPositionTimestamp = DateTime.UtcNow;
@@ -123,17 +139,26 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     {
         var trackId = _playbackState.CurrentTrackId;
 
+        _logger?.LogDebug(
+            "LoadLyricsAsync ENTER trackId={TrackId} titlePresent={HasTitle} loadedTrackId={LoadedId} loadedSucceeded={Succeeded}",
+            trackId, !string.IsNullOrEmpty(_playbackState.CurrentTrackTitle), _loadedTrackId, _loadedTrackSucceeded);
+
         if (string.IsNullOrEmpty(trackId))
         {
             _loadedTrackId = null;
+            _loadedTrackSucceeded = false;
             CurrentLyrics = null;
             HasLyrics = false;
             IsLoading = false;
             return;
         }
 
-        if (trackId == _loadedTrackId) return;
+        // Only skip re-fetching if we already have a successful result for this track.
+        // A previous failed attempt (e.g. metadata race, transient provider error) must
+        // be retryable — otherwise the VM is wedged for the rest of the track's playback.
+        if (trackId == _loadedTrackId && _loadedTrackSucceeded) return;
         _loadedTrackId = trackId;
+        _loadedTrackSucceeded = false;
 
         _fetchCts?.Cancel();
         _fetchCts?.Dispose();
@@ -158,6 +183,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 
             CurrentLyrics = lyrics;
             HasLyrics = lyrics != null;
+            _loadedTrackSucceeded = HasLyrics;
             LastDiagnostics = diagnostics;
 
             CurrentSongInfo = new SongInfo
@@ -181,14 +207,16 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 }
             }
 
-            _logger?.LogDebug("Lyrics loaded for \"{Title}\": {HasLyrics}",
-                _playbackState.CurrentTrackTitle, HasLyrics);
+            _logger?.LogDebug(
+                "LoadLyricsAsync EXIT title=\"{Title}\" hasLyrics={HasLyrics} lineCount={LineCount} cancelled={Cancelled}",
+                _playbackState.CurrentTrackTitle, HasLyrics, lyrics?.LyricsLines.Count ?? 0, ct.IsCancellationRequested);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to load lyrics for {TrackId}", trackId);
             HasLyrics = false;
+            _loadedTrackSucceeded = false;
         }
         finally
         {

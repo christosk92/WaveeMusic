@@ -20,6 +20,22 @@
     <Page.Resources>
         <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
 
+        <Style x:Key="HomeSectionDebugButtonStyle" TargetType="Button">
+            <Setter Property="Content" Value="&#xEBE8;"/>
+            <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}"/>
+            <Setter Property="ToolTipService.ToolTip" Value="Show section debug JSON"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
         <!-- ════════════════════════════════════════════════════════════
              ITEM-LEVEL TEMPLATES (used inside generic sections)
              ════════════════════════════════════════════════════════════ -->
@@ -67,23 +83,31 @@
 
         <!-- Shorts section: adaptive 2-row grid of pills -->
         <DataTemplate x:Key="ShortsSectionTemplate" x:DataType="vm:HomeSection">
-            <ItemsRepeater ItemsSource="{x:Bind Items}" Margin="0,0,0,24">
-                <ItemsRepeater.Layout>
-                    <layouts:ShortcutsGridLayout
-                        ItemHeight="56"
-                        ColumnSpacing="8"
-                        RowSpacing="8"
-                        RowCount="2"/>
-                </ItemsRepeater.Layout>
-                <ItemsRepeater.ItemTemplate>
-                    <DataTemplate x:DataType="vm:HomeSectionItem">
-                        <cards:ShortsPill
-                            ImageUrl="{x:Bind ImageUrl}"
-                            Title="{x:Bind Title}"
-                            Item="{x:Bind}"/>
-                    </DataTemplate>
-                </ItemsRepeater.ItemTemplate>
-            </ItemsRepeater>
+            <Grid Margin="0,0,0,24">
+                <ItemsRepeater ItemsSource="{x:Bind Items}">
+                    <ItemsRepeater.Layout>
+                        <layouts:ShortcutsGridLayout
+                            ItemHeight="56"
+                            ColumnSpacing="8"
+                            RowSpacing="8"
+                            RowCount="2"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:HomeSectionItem">
+                            <cards:ShortsPill
+                                ImageUrl="{x:Bind ImageUrl}"
+                                Title="{x:Bind Title}"
+                                Item="{x:Bind}"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
+                <Button
+                    Style="{StaticResource HomeSectionDebugButtonStyle}"
+                    Tag="{x:Bind}"
+                    Click="HomeSectionDebugButton_Click"
+                    Visibility="{x:Bind IsDebugVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+            </Grid>
         </DataTemplate>
 
         <!-- Generic section: title + horizontal card row with per-item templates -->
@@ -93,6 +117,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Header entity avatar (e.g. "More like X" sections) -->
@@ -115,6 +140,13 @@
                             Style="{StaticResource SubtitleTextBlockStyle}"
                             FontWeight="Bold"/>
                     </StackPanel>
+
+                    <Button
+                        Grid.Column="2"
+                        Style="{StaticResource HomeSectionDebugButtonStyle}"
+                        Tag="{x:Bind}"
+                        Click="HomeSectionDebugButton_Click"
+                        Visibility="{x:Bind IsDebugVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
                 <ItemsRepeater
@@ -130,11 +162,26 @@
         <!-- Baseline section: large card with background image overlay -->
         <DataTemplate x:Key="BaselineSectionTemplate" x:DataType="vm:HomeSection">
             <StackPanel Margin="0,0,0,8">
-                <TextBlock
-                    Text="{x:Bind Title}"
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        Grid.Column="0"
+                        Text="{x:Bind Title}"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center"/>
+
+                    <Button
+                        Grid.Column="1"
+                        Style="{StaticResource HomeSectionDebugButtonStyle}"
+                        Tag="{x:Bind}"
+                        Click="HomeSectionDebugButton_Click"
+                        Visibility="{x:Bind IsDebugVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </Grid>
 
                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                     <ItemsRepeater.Layout>

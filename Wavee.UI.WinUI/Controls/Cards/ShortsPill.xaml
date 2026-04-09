@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
     mc:Ignorable="d">
 
     <Button
@@ -22,75 +23,94 @@
         PointerEntered="PillButton_PointerEntered"
         PointerExited="PillButton_PointerExited"
         RightTapped="PillButton_RightTapped">
-        <Border
-            CornerRadius="{ThemeResource ControlCornerRadius}"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            HorizontalAlignment="Stretch">
-            <Grid ColumnSpacing="0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="56"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Image -->
-                <Grid x:Name="ImageContainer" Grid.Column="0"
-                      Width="56" Height="54"
-                      CornerRadius="3,0,0,3"
-                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Image x:Name="PillImage"
-                           Width="56" Height="54"
-                           Stretch="UniformToFill"/>
-                    <FontIcon x:Name="PlaceholderIcon"
-                              Glyph="&#xE8D6;"
-                              FontSize="20"
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                              Visibility="Collapsed"/>
-                </Grid>
-
-                <!-- Title + playing indicator + play button -->
-                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="12,0,8,0">
+        <Grid>
+            <Border
+                CornerRadius="{ThemeResource ControlCornerRadius}"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                HorizontalAlignment="Stretch">
+                <Grid ColumnSpacing="0">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0"
-                               x:Name="TitleText"
-                               VerticalAlignment="Center"
-                               MaxLines="2"
-                               TextTrimming="CharacterEllipsis"
-                               TextWrapping="WrapWholeWords"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"
-                               FontSize="13"/>
+                    <!-- Image -->
+                    <Grid x:Name="ImageContainer" Grid.Column="0"
+                          Width="56" Height="54"
+                          CornerRadius="3,0,0,3"
+                          Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <Image x:Name="PillImage"
+                               Width="56" Height="54"
+                               Stretch="UniformToFill"/>
+                        <FontIcon x:Name="PlaceholderIcon"
+                                  Glyph="&#xE8D6;"
+                                  FontSize="20"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  Visibility="Collapsed"/>
+                    </Grid>
 
-                    <FontIcon x:Name="PlayingIndicator"
-                              Grid.Column="1"
-                              Glyph="&#xE995;"
-                              FontSize="12"
-                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                              Visibility="Collapsed"
-                              Margin="6,0,0,0"
-                              VerticalAlignment="Center"/>
+                    <!-- Title + playing indicator + play button -->
+                    <Grid Grid.Column="1" VerticalAlignment="Center" Margin="12,0,8,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Play/Pause button on hover -->
-                    <Button x:Name="PlayButton"
-                            Grid.Column="1"
-                            Width="32" Height="32"
-                            CornerRadius="16"
-                            Padding="0"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource AccentFillColorDefaultBrush}"
-                            Foreground="White"
-                            Visibility="Collapsed"
-                            Click="PlayButton_Click">
-                        <FontIcon x:Name="PlayButtonIcon"
-                                  Glyph="&#xE768;"
-                                  FontSize="14"/>
-                    </Button>
+                        <TextBlock Grid.Column="0"
+                                   x:Name="TitleText"
+                                   VerticalAlignment="Center"
+                                   MaxLines="2"
+                                   TextTrimming="CharacterEllipsis"
+                                   TextWrapping="WrapWholeWords"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   FontSize="13"/>
+
+                        <local:LottieEqualizer x:Name="PlayingIndicator"
+                                               x:Load="False"
+                                               Grid.Column="1"
+                                               IconSize="18"
+                                               Visibility="Collapsed"
+                                               Margin="6,0,0,0"
+                                               VerticalAlignment="Center"/>
+
+                        <!-- Play/Pause button on hover -->
+                        <Button x:Name="PlayButton"
+                                x:Load="False"
+                                Grid.Column="2"
+                                Width="32" Height="32"
+                                CornerRadius="16"
+                                Padding="0"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                Foreground="White"
+                                Visibility="Collapsed"
+                                Click="PlayButton_Click">
+                            <Grid>
+                                <FontIcon x:Name="PlayButtonIcon"
+                                          Glyph="&#xE768;"
+                                          FontSize="14"/>
+                                <ProgressRing x:Name="PlayButtonSpinner"
+                                              Width="16"
+                                              Height="16"
+                                              IsActive="False"
+                                              Visibility="Collapsed"
+                                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                            </Grid>
+                        </Button>
+                    </Grid>
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
+            <local:PendingBorderBeam x:Name="PendingBeam"
+                                     x:Load="False"
+                                     Canvas.ZIndex="10"
+                                     HorizontalAlignment="Stretch"
+                                     VerticalAlignment="Stretch"
+                                     CornerRadius="{ThemeResource ControlCornerRadius}"
+                                     BeamThickness="2"/>
+        </Grid>
     </Button>
 </UserControl>

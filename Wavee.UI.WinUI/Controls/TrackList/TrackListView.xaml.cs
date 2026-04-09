@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
 using Windows.ApplicationModel.DataTransfer;
@@ -482,6 +483,12 @@ public sealed partial class TrackListView : UserControl
     /// </summary>
     public event EventHandler<IReadOnlyList<string>>? NewPlaylistRequested;
 
+    /// <summary>
+    /// Raised when the internal virtualizing list scrolls. Used by host pages that
+    /// need to coordinate companion chrome without taking over scroll ownership.
+    /// </summary>
+    public event EventHandler<double>? ScrollOffsetChanged;
+
     #endregion
 
     #region Initialization
@@ -689,6 +696,7 @@ public sealed partial class TrackListView : UserControl
     private void OnScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
         if (_scrollViewer == null) return;
+        ScrollOffsetChanged?.Invoke(this, _scrollViewer.VerticalOffset);
 
         // Get the position of the scrollable column headers relative to the control
         var transform = ScrollableColumnHeaders.TransformToVisual(this);
@@ -699,6 +707,17 @@ public sealed partial class TrackListView : UserControl
         StickyColumnHeaders.Visibility = ShowColumnHeaders && position.Y < 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    public void SetItemTransitionsEnabled(bool enabled)
+    {
+        InternalListView.ItemContainerTransitions = enabled
+            ? new TransitionCollection
+            {
+                new EntranceThemeTransition { IsStaggeringEnabled = true },
+                new AddDeleteThemeTransition()
+            }
+            : null;
     }
 
     #endregion

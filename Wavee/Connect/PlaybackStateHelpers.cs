@@ -343,7 +343,15 @@ public static class PlaybackStateHelpers
             CanSeek = localState.CanSeek
         };
 
-        var changes = localState.UpstreamChanges ?? DetectChanges(previousState, newState);
+        // The AudioHost supplies UpstreamChanges as a hint derived from its own
+        // _lastSentState bookkeeping. That bookkeeping is stale on the very first
+        // PublishState after cold start (no prior snapshot to diff against), so it
+        // silently misses the Track flag on the first local PlayAsync — that caused
+        // the "first track change doesn't update UI" bug. Always OR the fresh local
+        // diff with the upstream hint so track/status transitions can never be lost,
+        // regardless of which side's comparator saw them first.
+        var detected = DetectChanges(previousState, newState);
+        var changes = (localState.UpstreamChanges ?? StateChanges.None) | detected;
         return newState with { Changes = changes };
     }
 

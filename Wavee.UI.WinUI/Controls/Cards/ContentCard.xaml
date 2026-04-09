@@ -8,6 +8,7 @@
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
     mc:Ignorable="d"
     Background="Transparent"
     PointerEntered="Card_PointerEntered"
@@ -27,6 +28,7 @@
         Click="CardButton_Click"
         PointerPressed="CardButton_PointerPressed"
         RightTapped="CardButton_RightTapped">
+        <Grid>
         <!-- Card root: a single Grid carries background, rounded corners, stroke, padding, and
              the drop shadow. Previously wrapped by a <Border>, but Grid has built-in border
              properties (BorderBrush/BorderThickness/CornerRadius/Padding/Background) per the
@@ -82,7 +84,15 @@
                             Padding="0"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="PlayButton_Click">
-                        <FontIcon x:Name="SquarePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
+                        <Grid>
+                            <FontIcon x:Name="SquarePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
+                            <ProgressRing x:Name="SquarePlayButtonSpinner"
+                                          Width="18"
+                                          Height="18"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                        </Grid>
                     </Button>
 
                     <!-- Playing indicator (shown when IsPlaying) -->
@@ -95,8 +105,8 @@
                             Padding="4,2"
                             CornerRadius="4"
                             Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}">
-                        <FontIcon Glyph="&#xE995;" FontSize="12"
-                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        <local:LottieEqualizer x:Name="SquarePlayingEqualizer"
+                                               IconSize="20"/>
                     </Border>
                 </Grid>
 
@@ -142,20 +152,28 @@
                             Padding="0"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="PlayButton_Click">
-                        <FontIcon x:Name="CirclePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
+                        <Grid>
+                            <FontIcon x:Name="CirclePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
+                            <ProgressRing x:Name="CirclePlayButtonSpinner"
+                                          Width="18"
+                                          Height="18"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                        </Grid>
                     </Button>
 
                     <!-- Playing indicator for circle cards -->
                     <Border x:Name="CirclePlayingIndicator"
                             Visibility="Collapsed"
-                            HorizontalAlignment="Center"
+                            HorizontalAlignment="Left"
                             VerticalAlignment="Bottom"
-                            Margin="0,0,0,4"
+                            Margin="6,0,0,6"
                             Padding="4,2"
                             CornerRadius="4"
                             Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}">
-                        <FontIcon Glyph="&#xE995;" FontSize="12"
-                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        <local:LottieEqualizer x:Name="CirclePlayingEqualizer"
+                                               IconSize="20"/>
                     </Border>
                 </Grid>
 
@@ -173,6 +191,14 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            FontSize="12"/>
             </StackPanel>
+        </Grid>
+            <local:PendingBorderBeam x:Name="PendingBeam"
+                                     x:Load="False"
+                                     Canvas.ZIndex="10"
+                                     HorizontalAlignment="Stretch"
+                                     VerticalAlignment="Stretch"
+                                     CornerRadius="{ThemeResource ControlCornerRadius}"
+                                     BeamThickness="2"/>
         </Grid>
     </Button>
 </UserControl>

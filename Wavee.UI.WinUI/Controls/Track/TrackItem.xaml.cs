@@ -244,6 +244,7 @@ public sealed partial class TrackItem : UserControl
     {
         var item = (TrackItem)d;
         item.ApplyMode();
+        item.ResetHoverVisualState();
         item.BindTrackData();
         item.UpdateOverlayState();
     }
@@ -270,7 +271,8 @@ public sealed partial class TrackItem : UserControl
     private static void OnTrackChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
-        item._isHovered = false;
+        item.ResetHoverVisualState();
+        item.StopPendingBeam();
         item.BindTrackData();
         item.RefreshPlaybackState();
         item.UpdateOverlayState();
@@ -541,6 +543,8 @@ public sealed partial class TrackItem : UserControl
             item.RowContentGrid.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             item.RowShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
         }
+
+        item.UpdatePendingBeam();
     }
 
     #endregion
@@ -570,6 +574,12 @@ public sealed partial class TrackItem : UserControl
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        ResetHoverVisualState();
+        UpdateOverlayState();
+    }
+
+    private void ResetHoverVisualState()
+    {
         _isHovered = false;
 
         if (Mode == TrackItemDisplayMode.Compact)
@@ -584,8 +594,6 @@ public sealed partial class TrackItem : UserControl
                 ? (_themeColors?.CardBackground ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"])
                 : DefaultBackground;
         }
-
-        UpdateOverlayState();
     }
 
     #endregion
@@ -644,14 +652,19 @@ public sealed partial class TrackItem : UserControl
             _isThisTrackPlaying = false;
             _isThisTrackPaused = false;
             _isBuffering = false;
+            StopPendingBeam();
             return;
         }
 
+        var wasBuffering = _isBuffering;
         var isThisTrack = track.Id == TrackStateBehavior.CurrentTrackId;
         _isThisTrackPlaying = isThisTrack && TrackStateBehavior.IsCurrentlyPlaying;
         _isThisTrackPaused = isThisTrack && !TrackStateBehavior.IsCurrentlyPlaying;
         _isBuffering = track.Id == TrackStateBehavior.BufferingTrackId
                        && TrackStateBehavior.IsCurrentlyBuffering;
+
+        if (wasBuffering && !_isBuffering && isThisTrack)
+            ResetHoverVisualState();
 
         // Title accent color
         var accentBrush = _themeColors?.AccentText ?? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
@@ -669,19 +682,39 @@ public sealed partial class TrackItem : UserControl
 
     private void UpdateOverlayState()
     {
-        if (Track == null) return;
+        if (Track == null)
+        {
+            StopPendingBeam();
+            return;
+        }
 
         if (Mode == TrackItemDisplayMode.Compact)
             UpdateCompactOverlay();
         else
             UpdateRowOverlay();
+
+        UpdatePendingBeam();
     }
 
     private void UpdateCompactOverlay()
     {
-        if (_isHovered)
+        if (_isBuffering)
+        {
+            if (CompactPlayButton.Visibility == Visibility.Visible)
+            {
+                CompactPlayButton.Opacity = 0;
+                CompactPlayButton.Visibility = Visibility.Collapsed;
+            }
+
+            CompactNowPlaying.Visibility = Visibility.Collapsed;
+            CompactNowPlayingEqualizer.IsActive = false;
+            CompactBufferingRing.IsActive = true;
+            CompactBufferingRing.Visibility = Visibility.Visible;
+        }
+        else if (_isHovered)
         {
             CompactNowPlaying.Visibility = Visibility.Collapsed;
+            CompactNowPlayingEqualizer.IsActive = false;
             CompactBufferingRing.IsActive = false;
             CompactBufferingRing.Visibility = Visibility.Collapsed;
             CompactPlayIcon.Glyph = _isThisTrackPlaying ? "\uE769" : "\uE768";
@@ -706,30 +739,25 @@ public sealed partial class TrackItem : UserControl
                 _ = CollapseAfterDelay(CompactPlayButton, 120);
             }
 
-            if (_isBuffering)
-            {
-                CompactNowPlaying.Visibility = Visibility.Collapsed;
-                CompactBufferingRing.IsActive = true;
-                CompactBufferingRing.Visibility = Visibility.Visible;
-            }
-            else if (_isThisTrackPlaying)
+            if (_isThisTrackPlaying)
             {
                 CompactBufferingRing.IsActive = false;
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Visible;
                 CompactNowPlaying.Opacity = 1.0;
-                CompactNowPlayingIcon.Glyph = "\uE995";
+                CompactNowPlayingEqualizer.IsActive = true;
             }
             else if (_isThisTrackPaused)
             {
                 CompactBufferingRing.IsActive = false;
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Visible;
-                CompactNowPlaying.Opacity = 0.5;
-                CompactNowPlayingIcon.Glyph = "\uE995";
+                CompactNowPlaying.Opacity = 0.7;
+                CompactNowPlayingEqualizer.IsActive = false;
             }
             else
             {
+                CompactNowPlayingEqualizer.IsActive = false;
                 CompactBufferingRing.IsActive = false;
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Collapsed;
@@ -739,22 +767,24 @@ public sealed partial class TrackItem : UserControl
 
     private void UpdateRowOverlay()
     {
-        if (_isHovered)
+        if (_isBuffering)
         {
             RowIndexText.Visibility = Visibility.Collapsed;
-            RowNowPlayingIcon.Visibility = Visibility.Collapsed;
+            RowPlayButton.Visibility = Visibility.Collapsed;
+            RowNowPlayingEqualizer.IsActive = false;
+            RowNowPlayingEqualizer.Visibility = Visibility.Collapsed;
+            RowBufferingRing.IsActive = true;
+            RowBufferingRing.Visibility = Visibility.Visible;
+        }
+        else if (_isHovered)
+        {
+            RowIndexText.Visibility = Visibility.Collapsed;
+            RowNowPlayingEqualizer.IsActive = false;
+            RowNowPlayingEqualizer.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
             RowPlayButton.Visibility = Visibility.Visible;
             RowPlayIcon.Glyph = _isThisTrackPlaying ? "\uE769" : "\uE768";
-        }
-        else if (_isBuffering)
-        {
-            RowIndexText.Visibility = Visibility.Collapsed;
-            RowPlayButton.Visibility = Visibility.Collapsed;
-            RowNowPlayingIcon.Visibility = Visibility.Collapsed;
-            RowBufferingRing.IsActive = true;
-            RowBufferingRing.Visibility = Visibility.Visible;
         }
         else if (_isThisTrackPlaying)
         {
@@ -762,8 +792,8 @@ public sealed partial class TrackItem : UserControl
             RowPlayButton.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
-            RowNowPlayingIcon.Visibility = Visibility.Visible;
-            RowNowPlayingIcon.Glyph = "\uE995";
+            RowNowPlayingEqualizer.Visibility = Visibility.Visible;
+            RowNowPlayingEqualizer.IsActive = true;
         }
         else if (_isThisTrackPaused)
         {
@@ -771,23 +801,45 @@ public sealed partial class TrackItem : UserControl
             RowPlayButton.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
-            RowNowPlayingIcon.Visibility = Visibility.Visible;
-            RowNowPlayingIcon.Glyph = "\uE769";
+            RowNowPlayingEqualizer.Visibility = Visibility.Visible;
+            RowNowPlayingEqualizer.IsActive = false;
         }
         else
         {
             RowIndexText.Visibility = Visibility.Visible;
-            RowNowPlayingIcon.Visibility = Visibility.Collapsed;
+            RowNowPlayingEqualizer.IsActive = false;
+            RowNowPlayingEqualizer.Visibility = Visibility.Collapsed;
             RowPlayButton.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
         }
     }
 
+    private void UpdatePendingBeam()
+    {
+        if (_isBuffering && !IsLoading)
+            StartPendingBeam();
+        else
+            StopPendingBeam();
+    }
+
+    private void StartPendingBeam()
+    {
+        if (PlaybackPendingBeam == null)
+            this.FindName("PlaybackPendingBeam");
+        PlaybackPendingBeam?.Start();
+    }
+
+    private void StopPendingBeam()
+    {
+        PlaybackPendingBeam?.Stop();
+    }
+
     private static async Task CollapseAfterDelay(UIElement element, int ms)
     {
         await Task.Delay(ms);
-        element.Visibility = Visibility.Collapsed;
+        if (element.Opacity <= 0.01)
+            element.Visibility = Visibility.Collapsed;
     }
 
     #endregion
@@ -805,8 +857,7 @@ public sealed partial class TrackItem : UserControl
         }
         else
         {
-            if (PlayCommand?.CanExecute(track) == true)
-                PlayCommand.Execute(track);
+            ExecutePlayCommandWithPending(track);
         }
     }
 
@@ -836,6 +887,10 @@ public sealed partial class TrackItem : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ResetHoverVisualState();
+        CompactNowPlayingEqualizer.IsActive = false;
+        RowNowPlayingEqualizer.IsActive = false;
+        StopPendingBeam();
         TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChanged;
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
@@ -870,7 +925,24 @@ public sealed partial class TrackItem : UserControl
     private void HandleTrackPlay()
     {
         var track = Track;
-        if (track == null || PlayCommand?.CanExecute(track) != true) return;
+        if (track == null) return;
+        ExecutePlayCommandWithPending(track);
+    }
+
+    private void ExecutePlayCommandWithPending(ITrackItem track)
+    {
+        if (PlayCommand?.CanExecute(track) != true) return;
+
+        if (track.Id != TrackStateBehavior.CurrentTrackId)
+        {
+            _playbackStateService?.NotifyBuffering(track.Id);
+            ResetHoverVisualState();
+            _isThisTrackPlaying = false;
+            _isThisTrackPaused = false;
+            _isBuffering = true;
+            UpdateOverlayState();
+        }
+
         PlayCommand.Execute(track);
     }
 

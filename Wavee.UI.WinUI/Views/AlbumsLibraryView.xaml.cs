@@ -1,7 +1,4 @@
-using System;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -9,19 +6,16 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumsLibraryPage : Page
+public sealed partial class AlbumsLibraryView : UserControl
 {
     public AlbumsLibraryViewModel ViewModel { get; }
 
-    public AlbumsLibraryPage()
+    public AlbumsLibraryView(AlbumsLibraryViewModel viewModel)
     {
-        ViewModel = Ioc.Default.GetRequiredService<AlbumsLibraryViewModel>();
+        ViewModel = viewModel;
         InitializeComponent();
-    }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
+        // Load is idempotent (guarded in the VM); called once on first creation.
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 

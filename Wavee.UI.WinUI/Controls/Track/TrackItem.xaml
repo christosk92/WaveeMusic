@@ -10,6 +10,7 @@
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:ui="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -41,9 +42,10 @@
 
                 <Border x:Name="CompactNowPlaying" CornerRadius="4"
                         Background="#D9000000" Visibility="Collapsed">
-                    <FontIcon x:Name="CompactNowPlayingIcon" Glyph="&#xE995;" FontSize="20"
-                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <cards:LottieEqualizer x:Name="CompactNowPlayingEqualizer"
+                                           IconSize="24"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
                 </Border>
 
                 <ProgressRing x:Name="CompactBufferingRing"
@@ -144,13 +146,11 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
-                        <FontIcon x:Name="RowNowPlayingIcon"
-                                  Glyph="&#xE995;"
-                                  FontSize="14"
-                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  Visibility="Collapsed"/>
+                        <cards:LottieEqualizer x:Name="RowNowPlayingEqualizer"
+                                               IconSize="20"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Visibility="Collapsed"/>
                         <ProgressRing x:Name="RowBufferingRing"
                                       Width="16" Height="16"
                                       IsActive="False" Visibility="Collapsed"
@@ -263,6 +263,13 @@
                 </Grid>
             </Grid>
         </Border>
+        <cards:PendingBorderBeam x:Name="PlaybackPendingBeam"
+                                 x:Load="False"
+                                 Canvas.ZIndex="10"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Stretch"
+                                 CornerRadius="6"
+                                 BeamThickness="2"/>
     </Grid>
 
 </UserControl>

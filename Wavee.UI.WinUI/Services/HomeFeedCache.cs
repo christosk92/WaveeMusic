@@ -105,10 +105,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
             if (i < current.Count && current[i].SectionUri == fresh[i].SectionUri)
             {
                 // Same position — diff items in-place
-                DiffItems(current[i].Items, fresh[i].Items);
-                // Update title/subtitle if changed
-                if (current[i].Title != fresh[i].Title) current[i].Title = fresh[i].Title;
-                if (current[i].Subtitle != fresh[i].Subtitle) current[i].Subtitle = fresh[i].Subtitle;
+                UpdateSectionInPlace(current[i], fresh[i]);
             }
             else
             {
@@ -127,7 +124,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                 {
                     // Move existing section to correct position
                     current.Move(existingIdx, Math.Min(i, current.Count - 1));
-                    DiffItems(current[i].Items, fresh[i].Items);
+                    UpdateSectionInPlace(current[i], fresh[i]);
                 }
                 else
                 {
@@ -140,6 +137,18 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         // 3. Trim any excess sections (shouldn't happen often)
         while (current.Count > fresh.Count)
             current.RemoveAt(current.Count - 1);
+    }
+
+    private static void UpdateSectionInPlace(HomeSection target, HomeSection source)
+    {
+        DiffItems(target.Items, source.Items);
+        if (target.Title != source.Title) target.Title = source.Title;
+        if (target.Subtitle != source.Subtitle) target.Subtitle = source.Subtitle;
+        if (target.SectionType != source.SectionType) target.SectionType = source.SectionType;
+        if (target.RawSpotifyJson != source.RawSpotifyJson) target.RawSpotifyJson = source.RawSpotifyJson;
+        if (target.HeaderEntityName != source.HeaderEntityName) target.HeaderEntityName = source.HeaderEntityName;
+        if (target.HeaderEntityImageUrl != source.HeaderEntityImageUrl) target.HeaderEntityImageUrl = source.HeaderEntityImageUrl;
+        if (target.HeaderEntityUri != source.HeaderEntityUri) target.HeaderEntityUri = source.HeaderEntityUri;
     }
 
     /// <summary>
@@ -207,5 +216,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         if (target.Subtitle != source.Subtitle) target.Subtitle = source.Subtitle;
         if (target.ImageUrl != source.ImageUrl) target.ImageUrl = source.ImageUrl;
         if (target.ColorHex != source.ColorHex) target.ColorHex = source.ColorHex;
+        if (target.ContentType != source.ContentType) target.ContentType = source.ContentType;
+        if (target.PlaceholderGlyph != source.PlaceholderGlyph) target.PlaceholderGlyph = source.PlaceholderGlyph;
     }
 }

@@ -105,7 +105,7 @@ public sealed partial class ContentCard : UserControl
 
     public static readonly DependencyProperty NavigationUriProperty =
         DependencyProperty.Register(nameof(NavigationUri), typeof(string), typeof(ContentCard),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, OnNavigationUriChanged));
 
     public static readonly DependencyProperty NavigationTitleProperty =
         DependencyProperty.Register(nameof(NavigationTitle), typeof(string), typeof(ContentCard),
@@ -195,6 +195,9 @@ public sealed partial class ContentCard : UserControl
     private PointerEventHandler? _passivePointerExited;
     private PointerEventHandler? _passivePointerPressed;
     private PointerEventHandler? _passivePointerReleased;
+    private bool _isPointerOver;
+    private bool _isPlaybackPending;
+    private int _playbackPendingVersion;
 
     private readonly ImageCacheService? _imageCache;
     private readonly ThemeColorService? _themeColorService;
@@ -250,6 +253,9 @@ public sealed partial class ContentCard : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ResetInteractionState(updatePlayingState: false);
+        StopPendingBeam();
+
         // Unsubscribe from the highlight service — strong event, explicit unsubscribe required.
         if (_highlightService != null)
             _highlightService.CurrentChanged -= OnHighlightServiceChanged;
@@ -297,26 +303,38 @@ public sealed partial class ContentCard : UserControl
         var wasPaused = IsContextPaused;
         var newPlaying = isMatch && playing;
         var newPaused = isMatch && !playing;
-        if (newPlaying == wasPlaying && newPaused == wasPaused) return;
+        var shouldClearPending = _isPlaybackPending && (!isMatch || playing);
+        if (newPlaying == wasPlaying && newPaused == wasPaused && !shouldClearPending) return;
 
         DispatcherQueue.TryEnqueue(() =>
         {
+            if (_isPlaybackPending && isMatch && playing)
+                _isPointerOver = false;
+
             IsPlaying = newPlaying;
             IsContextPaused = newPaused;
+            if (_isPlaybackPending && (!isMatch || playing))
+                SetPlaybackPending(false);
         });
     }
 
     private void SyncInitialPlaybackState()
     {
+        if (_highlightService != null)
+        {
+            var (contextUri, playing) = _highlightService.Current;
+            ApplyHighlight(contextUri, playing);
+            return;
+        }
+
+        ApplyHighlightFromPlaybackStateService();
+    }
+
+    private void ApplyHighlightFromPlaybackStateService()
+    {
         var ps = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
         if (ps == null) return;
-        var contextUri = ps.CurrentContext?.ContextUri;
-        var playing = ps.IsPlaying;
-        var isMatch = !string.IsNullOrEmpty(contextUri)
-            && !string.IsNullOrEmpty(NavigationUri)
-            && string.Equals(NavigationUri, contextUri, StringComparison.OrdinalIgnoreCase);
-        IsPlaying = isMatch && playing;
-        IsContextPaused = isMatch && !playing;
+        ApplyHighlight(ps.CurrentContext?.ContextUri, ps.IsPlaying);
     }
 
     // ── Property changed callbacks ──
@@ -484,32 +502,19 @@ public sealed partial class ContentCard : UserControl
 
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        _isPointerOver = true;
         CardHover?.Invoke(this, EventArgs.Empty);
 
         // Realize the overlay for the current shape before reading the named elements —
         // after x:Load="False" on the overlays, the backing fields start null until FindName.
-        if (IsCircularImage)
-            EnsureCircleRealized();
-        else if (SquarePlayButton == null)
-            this.FindName("SquarePlayButton");
+        EnsurePlayOverlayRealized();
+        UpdatePlayingState();
 
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
-        var indicator = IsCircularImage ? CirclePlayingIndicator : SquarePlayingIndicator;
-
-        if (playBtn != null && playIcon != null)
-        {
-            // Show pause glyph when this context is playing, play glyph otherwise
-            playIcon.Glyph = IsPlaying ? "\uE769" : "\uE768";
-            playBtn.Visibility = Visibility.Visible;
+        if (playBtn != null)
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
                 .Start(playBtn);
-        }
-
-        // Hide the playing indicator while hovering (the play/pause button replaces it)
-        if (IsPlaying && indicator != null)
-            indicator.Visibility = Visibility.Collapsed;
 
         // Scale up via composition with proper CenterPoint
         if (CardRoot != null)
@@ -528,8 +533,9 @@ public sealed partial class ContentCard : UserControl
 
     private async void Card_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        _isPointerOver = false;
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        if (playBtn != null)
+        if (playBtn != null && !_isPlaybackPending && !IsContextPaused)
         {
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(100))
@@ -537,12 +543,11 @@ public sealed partial class ContentCard : UserControl
 
             // Collapse after fade-out to reset for next hover
             await System.Threading.Tasks.Task.Delay(120);
-            playBtn.Visibility = Visibility.Collapsed;
+            if (!_isPointerOver && !_isPlaybackPending && !IsContextPaused)
+                playBtn.Visibility = Visibility.Collapsed;
         }
 
-        // Restore playing indicator after hover ends
-        if (IsPlaying)
-            UpdatePlayingState();
+        UpdatePlayingState();
 
         if (CardRoot != null)
         {
@@ -577,9 +582,12 @@ public sealed partial class ContentCard : UserControl
         var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardRoot);
         visual.CenterPoint = new System.Numerics.Vector3((float)CardRoot.ActualWidth / 2, (float)CardRoot.ActualHeight / 2, 0);
 
-        // Scale back to hover state (1.03) since pointer is still over the card
+        // Mouse releases return to hover scale; touch/pen taps have no hover state.
+        var targetScale = _isPointerOver
+            ? new System.Numerics.Vector3(1.03f)
+            : System.Numerics.Vector3.One;
         CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-            .Scale(to: new System.Numerics.Vector3(1.03f), duration: TimeSpan.FromMilliseconds(150))
+            .Scale(to: targetScale, duration: TimeSpan.FromMilliseconds(150))
             .Start(CardRoot);
     }
 
@@ -614,7 +622,16 @@ public sealed partial class ContentCard : UserControl
     private static void OnIsContextPausedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (ContentCard)d;
+        if ((bool)e.NewValue)
+            card.EnsurePlayOverlayRealized();
         card.UpdatePlayingState();
+    }
+
+    private static void OnNavigationUriChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        card.ResetPlaybackVisualStateForNewItem();
+        card.SyncInitialPlaybackState();
     }
 
     private void UpdatePlayingState()
@@ -622,44 +639,67 @@ public sealed partial class ContentCard : UserControl
         var isPlaying = IsPlaying;
         var isPaused = IsContextPaused;
         var isActiveContext = isPlaying || isPaused;
+        var isPending = _isPlaybackPending;
 
-        // Realize the indicator for the current shape only if we actually need it.
-        if (isPlaying)
-        {
-            if (IsCircularImage)
-                EnsureCircleRealized();
-            else if (SquarePlayingIndicator == null)
-                this.FindName("SquarePlayingIndicator");
-        }
+        var showSquarePlaying = (isPlaying || isPaused) && !isPending && !IsCircularImage;
+        var showCirclePlaying = (isPlaying || isPaused) && !isPending && IsCircularImage;
+        var showPlayButton = _isPointerOver || isPaused || isPending;
 
-        // Null-guard every access — all four overlays are x:Load-deferred, so any of them
+        if (showSquarePlaying && SquarePlayingIndicator == null)
+            this.FindName("SquarePlayingIndicator");
+        if (showCirclePlaying)
+            EnsureCircleRealized();
+        if (showPlayButton)
+            EnsurePlayOverlayRealized();
+
+        // Null-guard every access — all overlays are x:Load-deferred, so any of them
         // may be null on a card that hasn't yet realized its subtree.
         if (SquarePlayingIndicator != null)
-            SquarePlayingIndicator.Visibility = isPlaying && !IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
-        if (CirclePlayingIndicator != null)
-            CirclePlayingIndicator.Visibility = isPlaying && IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
+            SquarePlayingIndicator.Visibility = showSquarePlaying
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        if (SquarePlayingEqualizer != null)
+            SquarePlayingEqualizer.IsActive = showSquarePlaying && isPlaying;
 
-        // When paused, show the play (resume) button permanently — realize it on demand.
-        if (isPaused)
-        {
-            if (IsCircularImage)
-                EnsureCircleRealized();
-            else if (SquarePlayButton == null)
-                this.FindName("SquarePlayButton");
-        }
+        if (CirclePlayingIndicator != null)
+            CirclePlayingIndicator.Visibility = showCirclePlaying
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        if (CirclePlayingEqualizer != null)
+            CirclePlayingEqualizer.IsActive = showCirclePlaying && isPlaying;
 
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
         var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
-        if (isPaused && playBtn != null && playIcon != null)
+        var playSpinner = IsCircularImage ? CirclePlayButtonSpinner : SquarePlayButtonSpinner;
+        if (playBtn != null && playIcon != null)
         {
-            playIcon.Glyph = "\uE768"; // Play
-            playBtn.Visibility = Visibility.Visible;
-            playBtn.Opacity = 1;
-        }
-        else if (!isPlaying && playBtn != null)
-        {
-            // Not active context — hide play button (hover will show it)
-            playBtn.Visibility = Visibility.Collapsed;
+            if (isPending)
+            {
+                playIcon.Glyph = isPlaying ? "\uE769" : "\uE768";
+                playIcon.Visibility = Visibility.Collapsed;
+                if (playSpinner != null)
+                {
+                    playSpinner.Visibility = Visibility.Visible;
+                    playSpinner.IsActive = true;
+                }
+                playBtn.Visibility = Visibility.Visible;
+                playBtn.Opacity = 1;
+            }
+            else
+            {
+                if (playSpinner != null)
+                {
+                    playSpinner.IsActive = false;
+                    playSpinner.Visibility = Visibility.Collapsed;
+                }
+
+                playIcon.Glyph = isPlaying ? "\uE769" : "\uE768";
+                playIcon.Visibility = Visibility.Visible;
+
+                playBtn.Visibility = showPlayButton ? Visibility.Visible : Visibility.Collapsed;
+                if (playBtn.Visibility == Visibility.Visible)
+                    playBtn.Opacity = 1;
+            }
         }
 
         // Accent color on title when this is the active context
@@ -681,6 +721,7 @@ public sealed partial class ContentCard : UserControl
         if (!string.IsNullOrEmpty(NavigationUri))
         {
             PrepareConnectedAnimation();
+            ResetInteractionState();
             if (NavigateToUri(Helpers.Navigation.NavigationHelpers.IsCtrlPressed()))
                 return;
         }
@@ -694,19 +735,42 @@ public sealed partial class ContentCard : UserControl
 
         var playback = Ioc.Default.GetService<Data.Contracts.IPlaybackService>();
         if (playback == null) return;
+        var playbackState = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
 
         try
         {
             var navUri = NavigationUri;
             if (IsPlaying)
+            {
                 await Task.Run(async () => await playback.PauseAsync());
+            }
             else if (IsContextPaused)
-                await Task.Run(async () => await playback.ResumeAsync());
-            else if (!string.IsNullOrEmpty(NavigationUri))
-                await Task.Run(async () => await playback.PlayContextAsync(navUri));
+            {
+                SetPlaybackPending(true);
+                playbackState?.NotifyBuffering(null);
+                var result = await Task.Run(async () => await playback.ResumeAsync());
+                if (!result.IsSuccess)
+                {
+                    SetPlaybackPending(false);
+                    playbackState?.ClearBuffering();
+                }
+            }
+            else if (!string.IsNullOrEmpty(navUri))
+            {
+                SetPlaybackPending(true);
+                playbackState?.NotifyBuffering(null);
+                var result = await Task.Run(async () => await playback.PlayContextAsync(navUri));
+                if (!result.IsSuccess)
+                {
+                    SetPlaybackPending(false);
+                    playbackState?.ClearBuffering();
+                }
+            }
         }
         catch(Exception x)
         {
+            SetPlaybackPending(false);
+            playbackState?.ClearBuffering();
             Debug.WriteLine(x.ToString());
             // Playback errors surface via IPlaybackService.Errors observable
         }
@@ -730,9 +794,11 @@ public sealed partial class ContentCard : UserControl
     {
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
         {
-            if (!string.IsNullOrEmpty(NavigationUri) && NavigateToUri(openInNewTab: true))
+            if (!string.IsNullOrEmpty(NavigationUri))
             {
-                return;
+                ResetInteractionState();
+                if (NavigateToUri(openInNewTab: true))
+                    return;
             }
             CardMiddleClick?.Invoke(this, EventArgs.Empty);
         }
@@ -748,7 +814,11 @@ public sealed partial class ContentCard : UserControl
                 Text = "Open in new tab",
                 Icon = new SymbolIcon(Symbol.OpenWith)
             };
-            openNewTab.Click += (_, _) => NavigateToUri(openInNewTab: true);
+            openNewTab.Click += (_, _) =>
+            {
+                ResetInteractionState();
+                NavigateToUri(openInNewTab: true);
+            };
             menu.Items.Add(openNewTab);
             menu.ShowAt(this, e.GetPosition(this));
             return;
@@ -820,6 +890,107 @@ public sealed partial class ContentCard : UserControl
     }
 
     // ── Helpers ──
+
+    private void EnsurePlayOverlayRealized()
+    {
+        if (IsCircularImage)
+            EnsureCircleRealized();
+        else if (SquarePlayButton == null)
+            this.FindName("SquarePlayButton");
+    }
+
+    private void SetPlaybackPending(bool pending)
+    {
+        if (_isPlaybackPending == pending) return;
+
+        _isPlaybackPending = pending;
+        _playbackPendingVersion++;
+        if (pending)
+        {
+            EnsurePlayOverlayRealized();
+            StartPendingBeam();
+            _ = ClearPlaybackPendingAfterTimeoutAsync(_playbackPendingVersion);
+        }
+        else
+        {
+            StopPendingBeam();
+        }
+
+        UpdatePlayingState();
+    }
+
+    private void ResetPlaybackVisualStateForNewItem()
+    {
+        _isPointerOver = false;
+        _isPlaybackPending = false;
+        _playbackPendingVersion++;
+        StopPendingBeam();
+        if (SquarePlayButton != null)
+            SquarePlayButton.Visibility = Visibility.Collapsed;
+        if (CirclePlayButton != null)
+            CirclePlayButton.Visibility = Visibility.Collapsed;
+        IsPlaying = false;
+        IsContextPaused = false;
+    }
+
+    private void ResetInteractionState(bool updatePlayingState = true)
+    {
+        _isPointerOver = false;
+
+        if (CardRoot != null)
+        {
+            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardRoot);
+            visual.Scale = System.Numerics.Vector3.One;
+        }
+
+        if (CardShadow != null)
+            CardShadow.Opacity = 0;
+
+        if (!_isPlaybackPending)
+            StopPendingBeam();
+
+        if (!_isPlaybackPending)
+        {
+            if (SquarePlayButton != null)
+            {
+                SquarePlayButton.Opacity = 0;
+                SquarePlayButton.Visibility = Visibility.Collapsed;
+            }
+            if (CirclePlayButton != null)
+            {
+                CirclePlayButton.Opacity = 0;
+                CirclePlayButton.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        if (updatePlayingState)
+            UpdatePlayingState();
+    }
+
+    private void StartPendingBeam()
+    {
+        if (PendingBeam == null)
+            this.FindName("PendingBeam");
+        PendingBeam?.Start();
+    }
+
+    private void StopPendingBeam()
+    {
+        PendingBeam?.Stop();
+    }
+
+    private async Task ClearPlaybackPendingAfterTimeoutAsync(int version)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_isPlaybackPending && _playbackPendingVersion == version)
+            {
+                SetPlaybackPending(false);
+                Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>()?.ClearBuffering();
+            }
+        });
+    }
 
     /// <summary>
     /// Realizes the <c>CircleImageContainer</c> subtree on demand. With <c>x:Load="False"</c>

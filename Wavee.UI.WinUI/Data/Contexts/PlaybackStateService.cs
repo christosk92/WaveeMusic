@@ -153,11 +153,26 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             try
             {
                 // First state received after subscribing — BehaviorSubject replays with partial
-                // change flags, so force a full sync to populate all UI properties
+                // change flags, so force a full sync to populate all UI properties.
+                //
+                // Also clamp a stale "Playing" status on cold start: the cluster-replayed state
+                // carries whatever the user was last doing in Spotify (often Playing), but on
+                // app launch nothing is actually playing here. Trusting the replayed Playing flag
+                // makes the PlayerBar render the pause icon while the audio pipeline sits idle.
+                // Only the Local state source is authoritative for "are we currently playing";
+                // until a Local state arrives, treat the replay as Paused.
                 if (_isFirstStateUpdate)
                 {
                     _isFirstStateUpdate = false;
-                    state = state with { Changes = StateChanges.All };
+                    var clampedStatus = state.Status == PlaybackStatus.Playing
+                                        && state.Source != StateSource.Local
+                        ? PlaybackStatus.Paused
+                        : state.Status;
+                    state = state with
+                    {
+                        Status = clampedStatus,
+                        Changes = StateChanges.All,
+                    };
                 }
 
                 // Track info — apply Connect state immediately, request API enrichment
@@ -745,7 +760,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         }
     }
 
-    private void ClearBuffering()
+    public void ClearBuffering()
     {
         _dispatcherQueue.TryEnqueue(() =>
         {

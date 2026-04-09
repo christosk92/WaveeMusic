@@ -339,6 +339,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<HomeViewModel>>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
+                .AddTransient<LibraryPageViewModel>()
                 .AddTransient<AlbumsLibraryViewModel>()
                 .AddTransient<ArtistsLibraryViewModel>()
                 .AddTransient<LikedSongsViewModel>()

@@ -39,8 +39,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
     private List<LazyTrackItem> _allTracks = [];
 
-    private const int RenderFrameSettleDelayMs = 50;
-
     private string _albumId = "";
     private string _albumName = "";
     private string? _albumImageUrl;
@@ -454,12 +452,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
                 .ToList();
 
-            // Start network I/O before yielding
+            // Start network I/O. Shimmer placeholders were assigned synchronously
+            // above and will render many frames during the network round-trip.
             var detailTask = Task.Run(async () => await _albumService.GetDetailAsync(albumId));
             var playlistsTask = Task.Run(async () => await _libraryDataService.GetUserPlaylistsAsync());
-
-            // Yield so shimmer placeholders render at least one frame
-            await Task.Delay(RenderFrameSettleDelayMs);
 
             await Task.WhenAll(detailTask, playlistsTask);
             var detail = await detailTask;

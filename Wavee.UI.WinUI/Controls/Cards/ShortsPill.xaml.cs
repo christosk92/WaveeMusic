@@ -18,6 +18,9 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 public sealed partial class ShortsPill : UserControl
 {
     private static ImageCacheService? _imageCache;
+    private bool _isPointerOver;
+    private bool _isPlaybackPending;
+    private int _playbackPendingVersion;
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(ShortsPill),
@@ -85,6 +88,8 @@ public sealed partial class ShortsPill : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ResetInteractionState();
+        StopPendingBeam();
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
@@ -93,12 +98,7 @@ public sealed partial class ShortsPill : UserControl
         DispatcherQueue.TryEnqueue(() =>
         {
             var (contextUri, playing) = msg.Value;
-            var uri = Item?.Uri;
-            var isMatch = !string.IsNullOrEmpty(contextUri)
-                && !string.IsNullOrEmpty(uri)
-                && string.Equals(uri, contextUri, StringComparison.OrdinalIgnoreCase);
-            IsPlaying = isMatch && playing;
-            IsContextPaused = isMatch && !playing;
+            ApplyPlaybackSnapshot(contextUri, playing);
         });
     }
 
@@ -106,14 +106,22 @@ public sealed partial class ShortsPill : UserControl
     {
         var ps = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
         if (ps == null) return;
-        var contextUri = ps.CurrentContext?.ContextUri;
-        var playing = ps.IsPlaying;
+        ApplyPlaybackSnapshot(ps.CurrentContext?.ContextUri, ps.IsPlaying);
+    }
+
+    private void ApplyPlaybackSnapshot(string? contextUri, bool playing)
+    {
         var uri = Item?.Uri;
         var isMatch = !string.IsNullOrEmpty(contextUri)
             && !string.IsNullOrEmpty(uri)
             && string.Equals(uri, contextUri, StringComparison.OrdinalIgnoreCase);
+        if (isMatch && playing)
+            _isPointerOver = false;
+
         IsPlaying = isMatch && playing;
         IsContextPaused = isMatch && !playing;
+        if (_isPlaybackPending && (!isMatch || playing))
+            SetPlaybackPending(false);
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -126,8 +134,10 @@ public sealed partial class ShortsPill : UserControl
         // Item is set after ImageUrl in the template. Re-apply image logic
         // so the Liked Songs heart icon can detect the :collection URI.
         var pill = (ShortsPill)d;
+        pill.ResetPlaybackVisualStateForNewItem();
         if (string.IsNullOrEmpty(pill.ImageUrl))
             pill.UpdateImage();
+        pill.SyncInitialPlaybackState();
     }
 
     private static void OnIsPlayingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -139,27 +149,53 @@ public sealed partial class ShortsPill : UserControl
     private static void OnIsContextPausedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var pill = (ShortsPill)d;
+        if ((bool)e.NewValue && pill.PlayButton == null)
+            pill.FindName("PlayButton");
         pill.UpdatePlayingState();
     }
 
     private void UpdatePlayingState()
     {
-        if (PlayingIndicator == null || TitleText == null) return;
+        if (TitleText == null) return;
 
         var isActiveContext = IsPlaying || IsContextPaused;
+        var isPending = _isPlaybackPending;
 
-        PlayingIndicator.Visibility = IsPlaying ? Visibility.Visible : Visibility.Collapsed;
+        var showPlayingIndicator = (IsPlaying || IsContextPaused) && !isPending;
+        var showPlayButton = _isPointerOver || IsContextPaused || isPending;
 
-        // When paused, show permanent play (resume) button
-        if (IsContextPaused && PlayButton != null)
+        if (showPlayingIndicator && PlayingIndicator == null)
+            FindName("PlayingIndicator");
+        if (showPlayButton && PlayButton == null)
+            FindName("PlayButton");
+
+        if (PlayingIndicator != null)
         {
-            PlayButtonIcon.Glyph = "\uE768"; // Play
-            PlayButton.Visibility = Visibility.Visible;
-            PlayButton.Opacity = 1;
+            PlayingIndicator.Visibility = showPlayingIndicator
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            PlayingIndicator.IsActive = showPlayingIndicator && IsPlaying;
         }
-        else if (!IsPlaying && PlayButton != null)
+
+        if (PlayButton != null && PlayButtonIcon != null && PlayButtonSpinner != null)
         {
-            PlayButton.Visibility = Visibility.Collapsed;
+            PlayButtonIcon.Glyph = IsPlaying ? "\uE769" : "\uE768";
+            if (isPending)
+            {
+                PlayButtonIcon.Visibility = Visibility.Collapsed;
+                PlayButtonSpinner.Visibility = Visibility.Visible;
+                PlayButtonSpinner.IsActive = true;
+            }
+            else
+            {
+                PlayButtonSpinner.IsActive = false;
+                PlayButtonSpinner.Visibility = Visibility.Collapsed;
+                PlayButtonIcon.Visibility = Visibility.Visible;
+            }
+
+            PlayButton.Visibility = showPlayButton ? Visibility.Visible : Visibility.Collapsed;
+            if (PlayButton.Visibility == Visibility.Visible)
+                PlayButton.Opacity = 1;
         }
 
         if (isActiveContext)
@@ -172,46 +208,56 @@ public sealed partial class ShortsPill : UserControl
 
     private void PillButton_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (PlayButton == null) return;
-
-        PlayButtonIcon.Glyph = IsPlaying ? "\uE769" : "\uE768"; // Pause or Play
-        PlayButton.Visibility = Visibility.Visible;
-        PlayButton.Opacity = 1;
-
-        // Hide playing indicator while hovering
-        if (IsPlaying && PlayingIndicator != null)
-            PlayingIndicator.Visibility = Visibility.Collapsed;
+        _isPointerOver = true;
+        UpdatePlayingState();
     }
 
     private void PillButton_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (PlayButton == null) return;
-
-        // Hide play button unless context is paused (permanent resume button)
-        if (!IsContextPaused)
-            PlayButton.Visibility = Visibility.Collapsed;
-
-        // Restore playing indicator
-        if (IsPlaying && PlayingIndicator != null)
-            PlayingIndicator.Visibility = Visibility.Visible;
+        _isPointerOver = false;
+        UpdatePlayingState();
     }
 
     private async void PlayButton_Click(object sender, RoutedEventArgs e)
     {
         var playback = Ioc.Default.GetService<Data.Contracts.IPlaybackService>();
         if (playback == null) return;
+        var playbackState = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
 
         try
         {
             if (IsPlaying)
-                await playback.PauseAsync();
+            {
+                await Task.Run(async () => await playback.PauseAsync());
+            }
             else if (IsContextPaused)
-                await playback.ResumeAsync();
+            {
+                SetPlaybackPending(true);
+                playbackState?.NotifyBuffering(null);
+                var result = await Task.Run(async () => await playback.ResumeAsync());
+                if (!result.IsSuccess)
+                {
+                    SetPlaybackPending(false);
+                    playbackState?.ClearBuffering();
+                }
+            }
             else if (Item != null && !string.IsNullOrEmpty(Item.Uri))
-                await playback.PlayContextAsync(Item.Uri);
+            {
+                SetPlaybackPending(true);
+                playbackState?.NotifyBuffering(null);
+                var uri = Item.Uri;
+                var result = await Task.Run(async () => await playback.PlayContextAsync(uri));
+                if (!result.IsSuccess)
+                {
+                    SetPlaybackPending(false);
+                    playbackState?.ClearBuffering();
+                }
+            }
         }
         catch
         {
+            SetPlaybackPending(false);
+            playbackState?.ClearBuffering();
             // Playback errors surface via IPlaybackService.Errors observable
         }
     }
@@ -273,6 +319,7 @@ public sealed partial class ShortsPill : UserControl
         if (IsPlayButtonSource(e.OriginalSource))
             return;
 
+        ResetInteractionState();
         if (Item != null)
             NavigateItem(NavigationHelpers.IsCtrlPressed());
     }
@@ -294,7 +341,10 @@ public sealed partial class ShortsPill : UserControl
     private void PillButton_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed && Item != null)
+        {
+            ResetInteractionState();
             NavigateItem(openInNewTab: true);
+        }
     }
 
     private void NavigateItem(bool openInNewTab)
@@ -341,8 +391,76 @@ public sealed partial class ShortsPill : UserControl
             Text = "Open in new tab",
             Icon = new SymbolIcon(Symbol.OpenWith)
         };
-        openNewTab.Click += (_, _) => HomeViewModel.NavigateToItem(Item, openInNewTab: true);
+        openNewTab.Click += (_, _) =>
+        {
+            ResetInteractionState();
+            HomeViewModel.NavigateToItem(Item, openInNewTab: true);
+        };
         menu.Items.Add(openNewTab);
         menu.ShowAt(PillButton, e.GetPosition(PillButton));
+    }
+
+    private void SetPlaybackPending(bool pending)
+    {
+        if (_isPlaybackPending == pending) return;
+
+        _isPlaybackPending = pending;
+        _playbackPendingVersion++;
+        if (pending)
+        {
+            StartPendingBeam();
+            _ = ClearPlaybackPendingAfterTimeoutAsync(_playbackPendingVersion);
+        }
+        else
+        {
+            StopPendingBeam();
+        }
+
+        UpdatePlayingState();
+    }
+
+    private void ResetPlaybackVisualStateForNewItem()
+    {
+        _isPointerOver = false;
+        _isPlaybackPending = false;
+        _playbackPendingVersion++;
+        StopPendingBeam();
+        if (PlayButton != null)
+            PlayButton.Visibility = Visibility.Collapsed;
+        IsPlaying = false;
+        IsContextPaused = false;
+    }
+
+    private void ResetInteractionState()
+    {
+        _isPointerOver = false;
+        if (!_isPlaybackPending)
+            StopPendingBeam();
+        UpdatePlayingState();
+    }
+
+    private void StartPendingBeam()
+    {
+        if (PendingBeam == null)
+            FindName("PendingBeam");
+        PendingBeam?.Start();
+    }
+
+    private void StopPendingBeam()
+    {
+        PendingBeam?.Stop();
+    }
+
+    private async Task ClearPlaybackPendingAfterTimeoutAsync(int version)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_isPlaybackPending && _playbackPendingVersion == version)
+            {
+                SetPlaybackPending(false);
+                Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>()?.ClearBuffering();
+            }
+        });
     }
 }

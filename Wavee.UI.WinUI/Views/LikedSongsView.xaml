@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Page
-    x:Class="Wavee.UI.WinUI.Views.LikedSongsPage"
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.LikedSongsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Grid>
@@ -88,4 +87,4 @@
             </trackList:TrackListView.EmptyStateContent>
         </trackList:TrackListView>
     </Grid>
-</Page>
+</UserControl>

@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Page
-    x:Class="Wavee.UI.WinUI.Views.ArtistsLibraryPage"
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.ArtistsLibraryView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
+    xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
     xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
@@ -15,16 +16,15 @@
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <media:AttachedCardShadow x:Key="CardShadow"
                                    Offset="4"
                                    BlurRadius="16"
                                    Opacity="0.25"
                                    CornerRadius="8"/>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid x:Name="RootGrid">
         <Grid.ColumnDefinitions>
@@ -512,53 +512,15 @@
                                                             </ItemsRepeater.Layout>
                                                             <ItemsRepeater.ItemTemplate>
                                                                 <DataTemplate x:DataType="dto:AlbumTrackDto">
-                                                                    <Grid
-                                                                    Padding="8,6"
-                                                                    ColumnSpacing="12"
-                                                                    Background="Transparent"
-                                                                    CornerRadius="4">
-                                                                        <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition Width="24"/>
-                                                                            <ColumnDefinition Width="*"/>
-                                                                            <ColumnDefinition Width="Auto"/>
-                                                                        </Grid.ColumnDefinitions>
-
-                                                                        <!-- Track Number -->
-                                                                        <TextBlock
-                                                                        Grid.Column="0"
-                                                                        Text="{x:Bind TrackNumber}"
-                                                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                        HorizontalAlignment="Right"
-                                                                        VerticalAlignment="Center"/>
-
-                                                                        <!-- Track Title -->
-                                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                                            <TextBlock
-                                                                            Text="{x:Bind Title}"
-                                                                            Style="{StaticResource BodyTextBlockStyle}"
-                                                                            TextTrimming="CharacterEllipsis"/>
-                                                                            <Border
-                                                                            Visibility="{x:Bind IsExplicit, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                                            Background="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                            CornerRadius="2"
-                                                                            Padding="4,1">
-                                                                                <TextBlock
-                                                                                Text="E"
-                                                                                FontSize="10"
-                                                                                FontWeight="Bold"
-                                                                                Foreground="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
-                                                                            </Border>
-                                                                        </StackPanel>
-
-                                                                        <!-- Duration -->
-                                                                        <TextBlock
-                                                                        Grid.Column="2"
-                                                                        Text="{x:Bind DurationFormatted}"
-                                                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                        VerticalAlignment="Center"/>
-                                                                    </Grid>
+                                                                    <track:TrackItem
+                                                                        Track="{x:Bind}"
+                                                                        Mode="Row"
+                                                                        ShowAlbumArt="False"
+                                                                        ShowArtistColumn="False"
+                                                                        ShowAlbumColumn="False"
+                                                                        ShowDateAdded="False"
+                                                                        IsCompactRow="True"
+                                                                        PlayCommand="{Binding ViewModel.PlayTrackCommand, ElementName=Root}"/>
                                                                 </DataTemplate>
                                                             </ItemsRepeater.ItemTemplate>
                                                         </ItemsRepeater>
@@ -721,4 +683,4 @@
             </Grid>
         </Border>
     </Grid>
-</Page>
+</UserControl>

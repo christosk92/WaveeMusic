@@ -1,44 +1,37 @@
 using System;
 using System.Collections;
 using System.ComponentModel;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ArtistsLibraryPage : Page
+public sealed partial class ArtistsLibraryView : UserControl
 {
     public ArtistsLibraryViewModel ViewModel { get; }
 
-    public ArtistsLibraryPage()
+    public ArtistsLibraryView(ArtistsLibraryViewModel viewModel)
     {
-        ViewModel = Ioc.Default.GetRequiredService<ArtistsLibraryViewModel>();
+        ViewModel = viewModel;
         InitializeComponent();
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-    }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        (ViewModel as IDisposable)?.Dispose();
+        // Subscribed once for the lifetime of this long-lived UserControl.
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        Loaded += OnLoaded;
+
+        // Load is idempotent (guarded in the VM); called once on first creation.
+        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Re-subscribe after Unloaded removed the handler (page cache restore)
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-
-        // Sync selection when page is loaded (for cache restoration)
+        // Sync selection when loaded into the visual tree
         SyncSelectionToItemsView();
 
         // Initialize tracks panel state
@@ -92,12 +85,6 @@ public sealed partial class ArtistsLibraryPage : Page
                     });
                 });
         }
-    }
-
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
-        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void ArtistsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)

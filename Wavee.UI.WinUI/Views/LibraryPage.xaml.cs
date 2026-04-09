@@ -1,36 +1,47 @@
-using System;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Controls;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class LibraryPage : Page
 {
-    private int _currentTabIndex = 0;
+    private const int MaxDeferredShowTabAttempts = 3;
+
     private readonly ShellViewModel _shellViewModel;
+
+    public LibraryPageViewModel ViewModel { get; }
+
+    // Lazy-cached UserControl instances. Created the first time a tab is
+    // selected, then kept alive for the lifetime of the LibraryPage.
+    // Switching tabs is just a ContentControl.Content reference swap —
+    // scroll position, selection, and filter state are all preserved.
+    private AlbumsLibraryView? _albumsView;
+    private ArtistsLibraryView? _artistsView;
+    private LikedSongsView? _likedSongsView;
+    private int _deferredShowTabAttempts;
 
     public LibraryPage()
     {
         _shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
+        ViewModel = Ioc.Default.GetRequiredService<LibraryPageViewModel>();
         InitializeComponent();
     }
 
     /// <summary>
-    /// Sets the SelectorBar visual selection without firing SelectionChanged.
+    /// Sets the Segmented visual selection without firing SelectionChanged.
     /// Detaches the event handler to avoid re-entrancy deadlocks.
     /// </summary>
-    private void SetSelectedItemSilently(SelectorBarItem itemToSelect)
+    private void SetSelectedItemSilently(SegmentedItem itemToSelect)
     {
+        if (ReferenceEquals(LibrarySelectorBar.SelectedItem, itemToSelect)) return;
+
         LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
         try
         {
-            AlbumsItem.IsSelected = false;
-            ArtistsItem.IsSelected = false;
-            LikedSongsItem.IsSelected = false;
-            itemToSelect.IsSelected = true;
+            LibrarySelectorBar.SelectedItem = itemToSelect;
         }
         finally
         {
@@ -43,25 +54,15 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     public void SelectTab(string tabName)
     {
-        SelectorBarItem itemToSelect = tabName.ToLowerInvariant() switch
+        SegmentedItem itemToSelect = tabName.ToLowerInvariant() switch
         {
             "artists" => ArtistsItem,
             "likedsongs" or "liked-songs" => LikedSongsItem,
             _ => AlbumsItem
         };
 
-        var pageType = GetPageType(itemToSelect);
-        if (ContentFrame.Content?.GetType() == pageType)
-        {
-            UpdateSidebarSelection(itemToSelect);
-            return;
-        }
-
         SetSelectedItemSilently(itemToSelect);
-
-        // Update content and sidebar
-        NavigateToContent(itemToSelect);
-        UpdateSidebarSelection(itemToSelect);
+        ShowTab(itemToSelect);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -70,13 +71,13 @@ public sealed partial class LibraryPage : Page
 
         // On back/forward navigation, restore the cached page as-is
         if (e.NavigationMode is NavigationMode.Back or NavigationMode.Forward
-            && ContentFrame.Content != null)
+            && ContentHost?.Content != null)
         {
             return;
         }
 
         // Determine which item to select based on parameter
-        SelectorBarItem itemToSelect = AlbumsItem; // default
+        SegmentedItem itemToSelect = AlbumsItem; // default
 
         if (e.Parameter is string tab)
         {
@@ -88,77 +89,68 @@ public sealed partial class LibraryPage : Page
             };
         }
 
-        // If already showing the requested sub-page, skip re-navigation
-        var pageType = GetPageType(itemToSelect);
-        if (ContentFrame.Content?.GetType() == pageType)
-            return;
-
         SetSelectedItemSilently(itemToSelect);
-
-        // Set initial tab index
-        _currentTabIndex = GetTabIndex(itemToSelect);
-
-        // Navigate without animation on initial load
-        ContentFrame.Navigate(pageType, null, new SuppressNavigationTransitionInfo());
+        ShowTab(itemToSelect);
     }
 
-    private void SelectorBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var selectedItem = sender.SelectedItem;
-        NavigateToContent(selectedItem);
+        if (LibrarySelectorBar.SelectedItem is SegmentedItem selectedItem)
+        {
+            ShowTab(selectedItem);
+        }
+    }
+
+    /// <summary>
+    /// Lazily resolves the cached UserControl for the given tab and assigns it
+    /// to the ContentControl. First access creates the view (and fires the
+    /// sub-VM's LoadCommand via its constructor); subsequent accesses are a
+    /// reference swap.
+    /// </summary>
+    private void ShowTab(SegmentedItem selectedItem)
+    {
+        // In rare timing windows the generated x:Name field may still be null.
+        // Defer to the UI queue and retry a few times instead of throwing.
+        if (ContentHost == null)
+        {
+            if (_deferredShowTabAttempts < MaxDeferredShowTabAttempts)
+            {
+                _deferredShowTabAttempts++;
+                DispatcherQueue.TryEnqueue(() => ShowTab(selectedItem));
+            }
+
+            return;
+        }
+
+        _deferredShowTabAttempts = 0;
+
+        UserControl view;
+
+        if (selectedItem == ArtistsItem)
+        {
+            view = _artistsView ??= new ArtistsLibraryView(ViewModel.Artists);
+        }
+        else if (selectedItem == LikedSongsItem)
+        {
+            view = _likedSongsView ??= new LikedSongsView(ViewModel.LikedSongs);
+        }
+        else
+        {
+            view = _albumsView ??= new AlbumsLibraryView(ViewModel.Albums);
+        }
+
+        if (!ReferenceEquals(ContentHost.Content, view))
+        {
+            ContentHost.Content = view;
+        }
+
         UpdateSidebarSelection(selectedItem);
     }
 
-    private void NavigateToContent(SelectorBarItem? selectedItem = null)
+    private void UpdateSidebarSelection(SegmentedItem? selectedItem = null)
     {
-        selectedItem ??= LibrarySelectorBar.SelectedItem;
+        selectedItem ??= LibrarySelectorBar.SelectedItem as SegmentedItem;
         if (selectedItem == null) return;
-
-        int newIndex = GetTabIndex(selectedItem);
-
-        // Skip if same tab
-        if (newIndex == _currentTabIndex && ContentFrame.Content != null)
-            return;
-
-        // Determine direction for slide animation
-        var effect = newIndex > _currentTabIndex
-            ? SlideNavigationTransitionEffect.FromRight
-            : SlideNavigationTransitionEffect.FromLeft;
-
-        _currentTabIndex = newIndex;
-
-        var pageType = GetPageType(selectedItem);
-        ContentFrame.Navigate(pageType, null, new SlideNavigationTransitionInfo
-        {
-            Effect = effect
-        });
-    }
-
-    private int GetTabIndex(SelectorBarItem item)
-    {
-        return item switch
-        {
-            _ when item == AlbumsItem => 0,
-            _ when item == ArtistsItem => 1,
-            _ when item == LikedSongsItem => 2,
-            _ => 0
-        };
-    }
-
-    private Type GetPageType(SelectorBarItem item)
-    {
-        return item switch
-        {
-            _ when item == AlbumsItem => typeof(AlbumsLibraryPage),
-            _ when item == ArtistsItem => typeof(ArtistsLibraryPage),
-            _ when item == LikedSongsItem => typeof(LikedSongsPage),
-            _ => typeof(AlbumsLibraryPage)
-        };
-    }
-
-    private void UpdateSidebarSelection(SelectorBarItem? selectedItem = null)
-    {
-        selectedItem ??= LibrarySelectorBar.SelectedItem;
 
         var shellViewModel = _shellViewModel;
 

@@ -57,7 +57,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-        PageScrollView.ViewChanged += OnPageScrollViewChanged;
+        TrackList.SetItemTransitionsEnabled(false);
         Loaded += AlbumPage_Loaded;
         Unloaded += AlbumPage_Unloaded;
     }
@@ -68,12 +68,16 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private void AlbumPage_Loaded(object sender, RoutedEventArgs e)
     {
         // If AlbumImageUrl was already set before the page was fully loaded
-        // (e.g. via PrefillFrom during OnNavigatedTo), set up the blur now
+        // (e.g. via PrefillFrom during OnNavigatedTo), set up the blur now.
+        // Deferred to Low priority so first paint completes before we spin up
+        // LoadedImageSurface + Compositor work.
         if (!string.IsNullOrEmpty(ViewModel.AlbumImageUrl) && _blurSprite == null)
         {
             var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
             if (!string.IsNullOrEmpty(url))
-                SetupBlurredBackground(url);
+                DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () => SetupBlurredBackground(url));
         }
     }
 
@@ -81,7 +85,6 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        PageScrollView.ViewChanged -= OnPageScrollViewChanged;
         (ViewModel as IDisposable)?.Dispose();
 
         // Dispose composition resources
@@ -102,7 +105,9 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         {
             var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
             if (!string.IsNullOrEmpty(url))
-                SetupBlurredBackground(url);
+                DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () => SetupBlurredBackground(url));
         }
     }
 
@@ -185,6 +190,13 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     public void RefreshWithParameter(object? parameter)
     {
+        // Album → Album (refresh-in-place from TabBarItem.Navigate) never routes
+        // through OnNavigatedTo, so we have to start the connected animation here
+        // ourselves — otherwise the source ContentCard's PrepareToAnimate snapshot
+        // is discarded and nothing animates.
+        Helpers.ConnectedAnimationHelper.TryStartAnimation(
+            Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
+
         LoadNewContent(parameter);
     }
 
@@ -209,22 +221,6 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         {
             _ = ViewModel.LoadCommand.ExecuteAsync(albumId);
         }
-    }
-
-    // ── Sticky left panel via Composition ──
-
-    private void OnPageScrollViewChanged(ScrollView sender, object args)
-    {
-        if (WideAlbumPanel.Visibility != Visibility.Visible) return;
-
-        var scrollOffset = sender.VerticalOffset;
-        var visual = ElementCompositionPreview.GetElementVisual(WideAlbumPanel);
-
-        // Cap the offset so the panel doesn't extend past the two-column grid
-        var maxOffset = Math.Max(0, TwoColumnGrid.ActualHeight - WideAlbumPanel.ActualHeight);
-        var offset = (float)Math.Min(scrollOffset, maxOffset);
-
-        visual.Offset = new Vector3(0, offset, 0);
     }
 
     // ── Click handlers ──

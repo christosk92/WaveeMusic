@@ -145,6 +145,9 @@ public sealed class PathfinderClient : IPathfinderClient
                 $"Failed to parse {operationName} response");
         }
 
+        if (result is HomeResponse homeResponse)
+            homeResponse.RawJson = responseJson;
+
         return result;
     }
 

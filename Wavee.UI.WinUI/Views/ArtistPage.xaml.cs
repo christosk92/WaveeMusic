@@ -28,6 +28,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private const int ShimmerCollapseDelayMs = 160;
     private const int ResizeDebounceDelayMs = 150;
 
+    // Avatar collapse — when the artist has a header image but no watch-feed
+    // video, the 120px circular avatar is redundant with the hero and collapses
+    // to reclaim horizontal space for the name/stats block.
+    private const double AvatarExpandedWidth = 136; // 120 avatar + 16 gap
+    private const double AvatarCollapseDurationMs = 320;
+    private bool _avatarCollapsed;
+    private int _avatarAnimGen;
+
     private readonly ILogger? _logger;
     private bool _showingContent;
     private bool _isNavigatingAway;
@@ -74,10 +82,90 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
                 DispatcherQueue.TryEnqueue(CrossfadeToContent);
             }
         }
-        else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed))
+        else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed)
+                                 or nameof(ArtistViewModel.HeaderImageUrl))
         {
-            // SetupWatchFeedVideo is called from CrossfadeToContent — no need here
+            // Re-evaluate avatar collapse state whenever either input changes
+            // after the initial crossfade. SetupWatchFeedVideo is called from
+            // CrossfadeToContent — no need here.
+            if (_showingContent)
+                UpdateAvatarLayout(animate: true);
         }
+    }
+
+    /// <summary>
+    /// Collapses or expands the circular avatar depending on whether the
+    /// artist has a header image (redundant with the hero) and a watch-feed
+    /// video (keep the avatar so the video can play inside it). Animated
+    /// with composition-backed Scale+Opacity plus a per-frame Width
+    /// interpolation so the name/stats block re-layouts smoothly.
+    /// </summary>
+    private void UpdateAvatarLayout(bool animate)
+    {
+        if (AvatarWrapper == null || ArtistImageContainer == null) return;
+
+        bool shouldCollapse = !string.IsNullOrEmpty(ViewModel.HeaderImageUrl)
+                              && string.IsNullOrEmpty(ViewModel.WatchFeed?.VideoUrl);
+
+        if (shouldCollapse == _avatarCollapsed) return;
+        _avatarCollapsed = shouldCollapse;
+
+        double targetWidth = shouldCollapse ? 0 : AvatarExpandedWidth;
+        double targetOpacity = shouldCollapse ? 0 : 1;
+        float targetScale = shouldCollapse ? 0.6f : 1f;
+
+        // Anchor composition transforms around the avatar center
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(ArtistImageContainer);
+        visual.CenterPoint = new System.Numerics.Vector3(60, 60, 0);
+
+        if (!animate)
+        {
+            AvatarWrapper.Width = targetWidth;
+            ArtistImageContainer.Opacity = targetOpacity;
+            visual.Scale = new System.Numerics.Vector3(targetScale, targetScale, 1f);
+            _avatarAnimGen++; // cancel any in-flight width interpolation
+            return;
+        }
+
+        // Composition-driven fade + scale (runs off the UI thread for buttery smoothness)
+        CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+            .Opacity(to: targetOpacity,
+                     duration: TimeSpan.FromMilliseconds(220),
+                     easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+            .Scale(to: new System.Numerics.Vector3(targetScale, targetScale, 1f),
+                   duration: TimeSpan.FromMilliseconds(AvatarCollapseDurationMs),
+                   easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+            .Start(ArtistImageContainer);
+
+        // Layout-affecting Width interpolation via CompositionTarget.Rendering
+        // (DoubleAnimation on Width is a dependent animation and looks janky;
+        //  per-frame manual interpolation gives a proper 60fps layout re-flow).
+        double startWidth = double.IsNaN(AvatarWrapper.Width) ? AvatarExpandedWidth : AvatarWrapper.Width;
+        var startTime = DateTime.UtcNow;
+        var duration = TimeSpan.FromMilliseconds(AvatarCollapseDurationMs);
+        var myGen = ++_avatarAnimGen;
+
+        EventHandler<object>? tick = null;
+        tick = (_, _) =>
+        {
+            if (myGen != _avatarAnimGen || _isNavigatingAway)
+            {
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= tick;
+                return;
+            }
+
+            var elapsed = DateTime.UtcNow - startTime;
+            double t = Math.Clamp(elapsed.TotalMilliseconds / duration.TotalMilliseconds, 0, 1);
+            // Cubic ease-out — snappy start, soft landing
+            double eased = 1 - Math.Pow(1 - t, 3);
+            AvatarWrapper.Width = startWidth + (targetWidth - startWidth) * eased;
+
+            if (t >= 1)
+            {
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= tick;
+            }
+        };
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += tick;
     }
 
     private void SetupWatchFeedVideo()
@@ -199,6 +287,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         // Set up watch feed video now that the content is visible
         SetupWatchFeedVideo();
+
+        // Decide whether to collapse the redundant circular avatar now that
+        // we know the final HeaderImageUrl + WatchFeed state.
+        UpdateAvatarLayout(animate: true);
     }
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)

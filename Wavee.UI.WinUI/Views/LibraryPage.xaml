@@ -5,9 +5,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
+
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -15,19 +24,29 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- SelectorBar with consistent padding -->
-        <SelectorBar
+        <!-- Segmented tab switcher (Pivot-style) with consistent padding -->
+        <controls:Segmented
             x:Name="LibrarySelectorBar"
             Margin="12,0,24,0"
+            SelectedIndex="0"
+            Style="{StaticResource PivotSegmentedStyle}"
             SelectionChanged="SelectorBar_SelectionChanged">
-            <SelectorBarItem x:Name="AlbumsItem" Text="Albums" IsSelected="True"/>
-            <SelectorBarItem x:Name="ArtistsItem" Text="Artists"/>
-            <SelectorBarItem x:Name="LikedSongsItem" Text="Liked Songs"/>
-        </SelectorBar>
+            <controls:SegmentedItem x:Name="AlbumsItem" Content="Albums"/>
+            <controls:SegmentedItem x:Name="ArtistsItem" Content="Artists"/>
+            <controls:SegmentedItem x:Name="LikedSongsItem" Content="Liked Songs"/>
+        </controls:Segmented>
 
         <!-- Content area -->
         <Grid Grid.Row="1" Padding="24,8,24,0">
-            <Frame x:Name="ContentFrame"/>
+            <ContentControl x:Name="ContentHost"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch">
+                <ContentControl.ContentTransitions>
+                    <TransitionCollection>
+                        <ContentThemeTransition/>
+                    </TransitionCollection>
+                </ContentControl.ContentTransitions>
+            </ContentControl>
         </Grid>
     </Grid>
 </Page>

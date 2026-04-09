@@ -156,6 +156,9 @@ namespace Wavee.Controls.Lyrics.Core
         private double _perfAvgDrawMs;
         private long _relayoutCountTotal;
 
+        // Throttle counter for Draw trace logging (~2s cadence at 60fps)
+        private int _drawTraceThrottle;
+
         // --- Read-only accessors (consumed by NowPlayingCanvas computed properties) ---
         public TimeSpan SongPosition => _songPosition;
         public double CurrentCanvasYScroll => _canvasYScrollTransition.Value;
@@ -229,6 +232,9 @@ namespace Wavee.Controls.Lyrics.Core
             _lyricsData = lyricsData;
             _synchronizer.Reset();
             Interlocked.Or(ref _dirtyFlags, (int)DirtyFlags.Layout);
+            System.Diagnostics.Debug.WriteLine(
+                $"[LyricsEngine] SetLyricsData lines={lyricsData?.LyricsLines.Count ?? 0} " +
+                $"renderW={_renderLyricsWidth:F0} renderH={_renderLyricsHeight:F0}");
         }
 
         public void SetSongInfo(SongInfo songInfo)
@@ -509,7 +515,25 @@ namespace Wavee.Controls.Lyrics.Core
 
         public void Draw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
         {
-            if (_lyricsWindowStatus == null || _renderContext == null) return;
+            if (_lyricsWindowStatus == null || _renderContext == null)
+            {
+                if (_drawTraceThrottle++ % 60 == 0)
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[LyricsEngine] Draw EARLY-EXIT status={_lyricsWindowStatus != null} ctx={_renderContext != null}");
+                return;
+            }
+
+            if (_drawTraceThrottle++ % 120 == 0) // ~2s at 60fps
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[LyricsEngine] Draw tick lines={_renderContext.Lines?.Count ?? -1} " +
+                    $"canvasSize={sender.Size.Width:F0}x{sender.Size.Height:F0} " +
+                    $"ctxLyrics={_renderContext.LyricsWidth:F0}x{_renderContext.LyricsHeight:F0} " +
+                    $"ctxStart=({_renderContext.LyricsStartX:F0},{_renderContext.LyricsStartY:F0}) " +
+                    $"opacity={_renderContext.LyricsOpacity:F2} " +
+                    $"playingIdx={_renderContext.PrimaryPlayingLineIndex} " +
+                    $"visible=[{_renderContext.VisibleRange.Start}-{_renderContext.VisibleRange.End}]");
+            }
 
             long drawStart = Stopwatch.GetTimestamp();
 
@@ -750,6 +774,24 @@ namespace Wavee.Controls.Lyrics.Core
             if (_renderLyricsLines == null) return;
 
             LyricsLayoutManager.CalculateLanes(_renderLyricsLines);
+
+            // If the DP-driven lyrics dimensions haven't been pushed yet (e.g. SetLyricsData
+            // arrived before the host's SizeChanged fired on first tab open), fall back to the
+            // full control size so we never measure lines at 0×0. We MUTATE the backing fields
+            // directly rather than just using a local — _renderContext (built later in Update)
+            // reads these same fields, and would otherwise serialize zeros into ctx.LyricsWidth,
+            // causing the renderer to draw into an empty rect even after this relayout ran.
+            // When the real DP values arrive they'll overwrite these fallback values.
+            if (_renderLyricsWidth <= 0 && _control.Size.Width > 0)
+                _renderLyricsWidth = _control.Size.Width;
+            if (_renderLyricsHeight <= 0 && _control.Size.Height > 0)
+                _renderLyricsHeight = _control.Size.Height;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[LyricsEngine] TriggerRelayout lines={_renderLyricsLines.Count} " +
+                $"canvas={_control.Size.Width:F0}x{_control.Size.Height:F0} " +
+                $"render={_renderLyricsWidth:F0}x{_renderLyricsHeight:F0} " +
+                $"startXY=({_renderLyricsStartX:F0},{_renderLyricsStartY:F0}) opacity={_renderLyricsOpacity:F2}");
 
             LyricsLayoutManager.MeasureAndArrange(
                 resourceCreator: _control,

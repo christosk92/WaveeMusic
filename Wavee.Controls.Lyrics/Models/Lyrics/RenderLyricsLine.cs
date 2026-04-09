@@ -105,7 +105,20 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
         /// </summary>
         public int LaneIndex { get; set; } = 0;
 
-        public double? PrimaryLineHeight => PrimaryRenderChars.FirstOrDefault()?.LayoutRect.Height;
+        // Fall back to the raw text layout bounds when per-character render data
+        // isn't available. RecreateRenderChars can legitimately produce an empty
+        // PrimaryRenderChars list when syllable StartIndex/EndIndex metadata doesn't
+        // perfectly tile PrimaryText (common with Musixmatch rich-sync data that
+        // contains empty/gap words or when characters aren't covered by any syllable).
+        // Without this fallback, LyricsAnimator skips the line entirely, its color
+        // transitions never start, and every syllable-synced line draws at the default
+        // transparent color — the root cause of the blank-lyrics regression for tracks
+        // whose syllables didn't tile cleanly.
+        public double? PrimaryLineHeight =>
+            PrimaryRenderChars.FirstOrDefault()?.LayoutRect.Height
+            ?? (PrimaryTextLayout != null && PrimaryTextLayout.LayoutBounds.Height > 0
+                ? PrimaryTextLayout.LayoutBounds.Height
+                : (double?)null);
 
         public bool IsPrimaryHasRealSyllableInfo { get; set; }
 
@@ -238,6 +251,17 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
 
             var textLength = PrimaryText.Length;
 
+            // Line-level fallback timing, used when syllable StartIndex/EndIndex
+            // metadata doesn't tile PrimaryText completely (happens with Musixmatch
+            // rich-sync data where gap words produce empty syllables or index drift).
+            // Without this the for-loop silently drops characters via `continue`,
+            // leaving PrimaryRenderChars empty → PrimaryLineHeight null → the
+            // animator skips the line → the line's color transitions never start
+            // → everything draws at the default transparent tint.
+            double lineStartMs = StartMs;
+            double lineDurationMs = Math.Max(((EndMs ?? StartMs) - StartMs), 1);
+            double perCharMs = lineDurationMs / Math.Max(textLength, 1);
+
             for (int startCharIndex = 0; startCharIndex < textLength; startCharIndex++)
             {
                 var region = PrimaryTextLayout.GetCharacterRegions(startCharIndex, 1).FirstOrDefault();
@@ -248,21 +272,32 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
                     strokeWidth / 2f);
 
                 var syllable = PrimaryRenderSyllables.FirstOrDefault(x => x.StartIndex <= startCharIndex && startCharIndex <= x.EndIndex);
-                if (syllable == null) continue;
 
-                var avgCharDuration = syllable.DurationMs / syllable.Length;
-                var charStartMs = syllable.StartMs + (startCharIndex - syllable.StartIndex) * avgCharDuration;
-                var charEndMs = charStartMs + avgCharDuration;
+                double charStartMs;
+                double charEndMs;
+
+                if (syllable != null && syllable.Length > 0)
+                {
+                    var avgCharDuration = syllable.DurationMs / (double)syllable.Length;
+                    charStartMs = syllable.StartMs + (startCharIndex - syllable.StartIndex) * avgCharDuration;
+                    charEndMs = charStartMs + avgCharDuration;
+                }
+                else
+                {
+                    // Fallback: distribute character timings linearly across the line
+                    charStartMs = lineStartMs + startCharIndex * perCharMs;
+                    charEndMs = charStartMs + perCharMs;
+                }
 
                 var renderLyricsChar = new RenderLyricsChar(new BaseLyrics
                 {
                     StartIndex = startCharIndex,
                     Text = PrimaryText[startCharIndex].ToString(),
-                    StartMs = charStartMs,
-                    EndMs = charEndMs,
+                    StartMs = (int)charStartMs,
+                    EndMs = (int)charEndMs,
                 }, bounds);
 
-                syllable.ChildrenRenderLyricsChars.Add(renderLyricsChar);
+                syllable?.ChildrenRenderLyricsChars.Add(renderLyricsChar);
 
                 PrimaryRenderChars.Add(renderLyricsChar);
             }

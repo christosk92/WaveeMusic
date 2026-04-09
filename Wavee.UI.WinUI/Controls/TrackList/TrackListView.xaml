@@ -144,6 +144,10 @@
                 </StackPanel>
             </ListView.Header>
 
+            <ListView.Footer>
+                <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"/>
+            </ListView.Footer>
+
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                     <Setter Property="Padding" Value="0"/>

@@ -291,8 +291,12 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         var apiSections = response.Data?.Home?.SectionContainer?.Sections?.Items;
         if (apiSections == null) return sections;
 
+        var rawSections = Services.HomeRawJsonHelper.GetRawSectionJsonByIndex(response);
+        var sectionIndex = -1;
+
         foreach (var entry in apiSections)
         {
+            sectionIndex++;
             var sectionType = entry.Data?.TypeName switch
             {
                 "HomeShortsSectionData" => HomeSectionType.Shorts,
@@ -316,7 +320,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 Title = title,
                 Subtitle = entry.Data?.Subtitle?.TransformedLabel,
                 SectionType = sectionType,
-                SectionUri = entry.Uri ?? ""
+                SectionUri = entry.Uri ?? "",
+                RawSpotifyJson = sectionIndex < rawSections.Count ? rawSections[sectionIndex] : null
             };
 
             if (entry.SectionItems?.Items != null)
@@ -981,6 +986,13 @@ public sealed class HomeSection
     public HomeSectionType SectionType { get; set; }
     public string SectionUri { get; set; } = "";
     public ObservableCollection<HomeSectionItem> Items { get; set; } = [];
+    public string? RawSpotifyJson { get; set; }
+
+#if DEBUG
+    public bool IsDebugVisible => true;
+#else
+    public bool IsDebugVisible => false;
+#endif
 
     /// <summary>
     /// Header entity name (e.g. artist name for "More like X" sections).

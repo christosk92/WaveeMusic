@@ -1,26 +1,19 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using CommunityToolkit.Mvvm.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LikedSongsPage : Page
+public sealed partial class LikedSongsView : UserControl
 {
-    private readonly ILogger? _logger;
-
     public LikedSongsViewModel ViewModel { get; }
 
-    public LikedSongsPage()
+    public LikedSongsView(LikedSongsViewModel viewModel)
     {
-        ViewModel = Ioc.Default.GetRequiredService<LikedSongsViewModel>();
-        _logger = Ioc.Default.GetService<ILogger<LikedSongsPage>>();
+        ViewModel = viewModel;
         InitializeComponent();
 
         // Set up the date formatter for the track list
@@ -30,11 +23,8 @@ public sealed partial class LikedSongsPage : Page
                 return song.AddedAtFormatted;
             return "";
         };
-    }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
+        // Load is idempotent (guarded in the VM); called once on first creation.
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 

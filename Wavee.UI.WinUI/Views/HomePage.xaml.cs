@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
@@ -210,6 +212,173 @@ public sealed partial class HomePage : Page, ITabBarItemContent
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed
             && sender is Button { DataContext: HomeSectionItem item })
             HomeViewModel.NavigateToItem(item, openInNewTab: true);
+    }
+
+    private async void HomeSectionDebugButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+        {
+            await ShowHomeDebugTextDialog(
+                "Home Section Debug",
+                "The debug button did not have a HomeSection attached.");
+            return;
+        }
+
+        var section = element.Tag as HomeSection ?? element.DataContext as HomeSection;
+        if (section == null)
+        {
+            await ShowHomeDebugTextDialog(
+                "Home Section Debug",
+                "The debug button did not have a HomeSection attached.");
+            return;
+        }
+
+        try
+        {
+            await ShowHomeSectionDebugDialog(section);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomeSectionDebug] Failed to show dialog: {ex}");
+            await ShowHomeDebugTextDialog("Home Section Debug Error", ex.ToString());
+        }
+    }
+
+    private static readonly JsonSerializerOptions HomeDebugJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    private async Task ShowHomeSectionDebugDialog(HomeSection section)
+    {
+        var pivot = new Pivot
+        {
+            MaxWidth = 860
+        };
+
+        pivot.Items.Add(new PivotItem
+        {
+            Header = "Raw Spotify",
+            Content = CreateJsonDebugViewer(BuildRawSectionDebugJson(section))
+        });
+
+        pivot.Items.Add(new PivotItem
+        {
+            Header = "ViewModel",
+            Content = CreateJsonDebugViewer(BuildViewModelDebugJson(section))
+        });
+
+        var dialog = new ContentDialog
+        {
+            Title = $"Home Section Debug: {section.Title ?? section.SectionUri}",
+            Content = pivot,
+            CloseButtonText = "Close",
+            XamlRoot = XamlRoot,
+            MaxWidth = 900
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static ScrollViewer CreateJsonDebugViewer(string json)
+    {
+        return new ScrollViewer
+        {
+            Content = new TextBlock
+            {
+                Text = json,
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code, Consolas"),
+                FontSize = 11,
+                IsTextSelectionEnabled = true,
+                TextWrapping = TextWrapping.NoWrap
+            },
+            MaxHeight = 520,
+            Padding = new Thickness(12),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+    }
+
+    private async Task ShowHomeDebugTextDialog(string title, string text)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = new ScrollViewer
+            {
+                Content = new TextBlock
+                {
+                    Text = text,
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code, Consolas"),
+                    FontSize = 11,
+                    IsTextSelectionEnabled = true,
+                    TextWrapping = TextWrapping.Wrap
+                },
+                MaxHeight = 500
+            },
+            CloseButtonText = "Close",
+            XamlRoot = XamlRoot
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static string BuildRawSectionDebugJson(HomeSection section)
+    {
+        if (string.IsNullOrWhiteSpace(section.RawSpotifyJson))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                message = "No raw Spotify section JSON is attached to this rendered section.",
+                title = section.Title,
+                sectionUri = section.SectionUri,
+                sectionType = section.SectionType.ToString(),
+                itemCount = section.Items.Count
+            }, HomeDebugJsonOptions);
+        }
+
+        return PrettyPrintJson(section.RawSpotifyJson);
+    }
+
+    private static string BuildViewModelDebugJson(HomeSection section)
+    {
+        var viewModel = new
+        {
+            title = section.Title,
+            subtitle = section.Subtitle,
+            sectionType = section.SectionType.ToString(),
+            sectionUri = section.SectionUri,
+            headerEntityName = section.HeaderEntityName,
+            headerEntityImageUrl = section.HeaderEntityImageUrl,
+            headerEntityUri = section.HeaderEntityUri,
+            itemCount = section.Items.Count,
+            items = section.Items.Select((item, index) => new
+            {
+                index,
+                uri = item.Uri,
+                title = item.Title,
+                subtitle = item.Subtitle,
+                imageUrl = item.ImageUrl,
+                contentType = item.ContentType.ToString(),
+                colorHex = item.ColorHex,
+                placeholderGlyph = item.PlaceholderGlyph
+            }).ToList()
+        };
+
+        return JsonSerializer.Serialize(viewModel, HomeDebugJsonOptions);
+    }
+
+    private static string PrettyPrintJson(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(document.RootElement, HomeDebugJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
     }
 
     // ── Customize flyout handlers ──

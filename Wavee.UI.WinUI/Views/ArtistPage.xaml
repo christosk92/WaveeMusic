@@ -55,9 +55,13 @@
                              FadeEnd="0.95">
                 <hero:HeroHeader.OverlayContent>
                     <StackPanel Padding="32,0,32,24" Spacing="8">
-                        <StackPanel Orientation="Horizontal" Spacing="16">
-                            <!-- Avatar / Watch Feed Video (connected animation target) -->
-                            <Grid x:Name="ArtistImageContainer" Width="120" Height="120">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Avatar wrapper — Width animates 136 → 0 when the artist has a
+                                 header image but no watch-feed video, reclaiming the space for
+                                 the name/stats block. 136 = 120 avatar + 16 gap. -->
+                            <Grid x:Name="AvatarWrapper" Width="136">
+                                <!-- Avatar / Watch Feed Video (connected animation target) -->
+                                <Grid x:Name="ArtistImageContainer" Width="120" Height="120" HorizontalAlignment="Left">
                                 <Border CornerRadius="60" Width="120" Height="120">
                                     <Grid>
                                         <!-- Static artist image (always present, video fades in on top) -->
@@ -83,6 +87,7 @@
                                         </Border>
                                     </Grid>
                                 </Border>
+                                </Grid>
                             </Grid>
 
                             <StackPanel VerticalAlignment="Bottom" Spacing="4">

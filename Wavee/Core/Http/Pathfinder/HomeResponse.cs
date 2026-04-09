@@ -9,6 +9,9 @@ public sealed class HomeResponse
 {
     [JsonPropertyName("data")]
     public HomeResponseData? Data { get; set; }
+
+    [JsonIgnore]
+    public string? RawJson { get; set; }
 }
 
 public sealed class HomeResponseData

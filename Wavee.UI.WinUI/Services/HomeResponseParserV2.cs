@@ -57,8 +57,12 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         System.Diagnostics.Debug.WriteLine($"[V2Parser] apiSections={apiSections?.Count ?? -1}");
         if (apiSections == null) return sections;
 
+        var rawSections = HomeRawJsonHelper.GetRawSectionJsonByIndex(response);
+        var sectionIndex = -1;
+
         foreach (var entry in apiSections)
         {
+            sectionIndex++;
             System.Diagnostics.Debug.WriteLine($"[V2Parser] Section: type={entry.Data?.TypeName}, items={entry.SectionItems?.Items?.Count ?? -1}");
             var sectionType = GetSectionType(entry.Data?.TypeName);
             var rawTitle = entry.Data?.Title?.TransformedLabel;
@@ -77,7 +81,8 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                 Title = title,
                 Subtitle = entry.Data?.Subtitle?.TransformedLabel,
                 SectionType = sectionType,
-                SectionUri = entry.Uri ?? ""
+                SectionUri = entry.Uri ?? "",
+                RawSpotifyJson = sectionIndex < rawSections.Count ? rawSections[sectionIndex] : null
             };
 
             // Extract header entity (e.g. artist avatar for "More like X" sections)
