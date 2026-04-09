@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -38,6 +39,7 @@ public sealed partial class MainWindow : WindowEx
         Closed += OnClosed;
         Activated += OnActivatedForMemoryRelease;
         VisibilityChanged += OnVisibilityChangedForMemoryRelease;
+        AppWindow.Changed += OnAppWindowChangedForMemoryRelease;
 
         // Extend content into titlebar
         ExtendsContentIntoTitleBar = true;
@@ -56,6 +58,7 @@ public sealed partial class MainWindow : WindowEx
     {
         Activated -= OnActivatedForMemoryRelease;
         VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
+        AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
         if (_memoryReleaseTimer != null)
         {
             _memoryReleaseTimer.Stop();
@@ -80,9 +83,8 @@ public sealed partial class MainWindow : WindowEx
     // window deactivates it briefly), so a long debounce + a "release once per
     // background session" guard keeps us out of the way of normal alt-tabbing.
     //
-    // Window.VisibilityChanged fires on actual minimize / hide-to-tray, which is
-    // a much stronger signal that the user genuinely isn't looking at us, so it
-    // gets a much shorter debounce.
+    // AppWindow.Changed is the reliable minimize signal in WinUI 3. VisibilityChanged
+    // is kept as a fallback for hide-to-tray / explicit hide paths.
 
     private static readonly TimeSpan MinimizeReleaseDelay = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan DeactivateReleaseDelay = TimeSpan.FromSeconds(30);
@@ -106,6 +108,19 @@ public sealed partial class MainWindow : WindowEx
             ScheduleMemoryRelease(MinimizeReleaseDelay, "minimized");
         else
             CancelPendingRelease();
+    }
+
+    private void OnAppWindowChangedForMemoryRelease(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (sender.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+        {
+            ScheduleMemoryRelease(MinimizeReleaseDelay, "minimized");
+        }
+        else if (_pendingReleaseReason == "minimized")
+        {
+            CancelPendingRelease();
+            _alreadyReleasedSinceLastFocus = false;
+        }
     }
 
     private void ScheduleMemoryRelease(TimeSpan delay, string reason)

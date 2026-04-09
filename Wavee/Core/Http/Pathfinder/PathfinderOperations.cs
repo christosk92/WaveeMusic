@@ -17,6 +17,8 @@ internal static class PathfinderOperations
     public const string Home = "home";
     public const string HomeHash = "3e8e118c033b10353783ec0404451de66ed44e5cb5e0caefc65e4fab7b9e0aef";
     public const string HomeWithFacetHash = "23e37f2e58d82d567f27080101d36609009d8c3676457b1086cb0acc55b72a5d";
+    public const string FeedBaselineLookup = "feedBaselineLookup";
+    public const string FeedBaselineLookupHash = "a950fb7c4ecdcaf2aad2f3ca9ee9c3aa4b9c43c97e1d07d05148c4d355bea7fc";
 
     public const string QueryArtistOverview = "queryArtistOverview";
     public const string QueryArtistOverviewHash = "5b9e64f43843fa3a9b6a98543600299b0a2cbbbccfdcdcef2402eb9c1017ca4c";

@@ -218,5 +218,14 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         if (target.ColorHex != source.ColorHex) target.ColorHex = source.ColorHex;
         if (target.ContentType != source.ContentType) target.ContentType = source.ContentType;
         if (target.PlaceholderGlyph != source.PlaceholderGlyph) target.PlaceholderGlyph = source.PlaceholderGlyph;
+        if (target.IsBaselineLoading != source.IsBaselineLoading) target.IsBaselineLoading = source.IsBaselineLoading;
+        if (target.HasBaselinePreview != source.HasBaselinePreview) target.HasBaselinePreview = source.HasBaselinePreview;
+        if (target.HeroImageUrl != source.HeroImageUrl) target.HeroImageUrl = source.HeroImageUrl;
+        if (target.HeroColorHex != source.HeroColorHex) target.HeroColorHex = source.HeroColorHex;
+        if (target.CanvasUrl != source.CanvasUrl) target.CanvasUrl = source.CanvasUrl;
+        if (target.CanvasThumbnailUrl != source.CanvasThumbnailUrl) target.CanvasThumbnailUrl = source.CanvasThumbnailUrl;
+        if (target.AudioPreviewUrl != source.AudioPreviewUrl) target.AudioPreviewUrl = source.AudioPreviewUrl;
+        if (target.BaselineGroupTitle != source.BaselineGroupTitle) target.BaselineGroupTitle = source.BaselineGroupTitle;
+        if (!ReferenceEquals(target.PreviewTracks, source.PreviewTracks)) target.PreviewTracks = source.PreviewTracks;
     }
 }

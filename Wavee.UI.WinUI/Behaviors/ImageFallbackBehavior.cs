@@ -25,9 +25,6 @@ public static class ImageFallbackBehavior
         public long Token { get; set; }
     }
 
-    // Track per-BitmapImage one-shot handlers to avoid double-subscription
-    private static readonly ConditionalWeakTable<BitmapImage, object> _bitmapHandlers = new();
-
     #region HideOnError Property
 
     public static readonly DependencyProperty HideOnErrorProperty =
@@ -165,29 +162,15 @@ public static class ImageFallbackBehavior
                 // Apply decode pixel size if set
                 ApplyDecodePixelSize(image);
 
-                // If PixelWidth > 0, the image is already decoded (cached) — fade in now
+                // If PixelWidth > 0, the image is already decoded (cached) — fade in now.
+                // Otherwise let the Image.ImageOpened handler above do the fade. Do not
+                // subscribe lambdas directly to BitmapImage.ImageOpened/ImageFailed here:
+                // shared cached BitmapImage instances outlive recycled Image controls, and
+                // a lambda that captures "image" creates a long-lived root from the cache
+                // back into the visual tree.
                 if (bitmapImage.PixelWidth > 0)
                 {
                     AnimateFadeIn(image);
-                }
-                else if (!_bitmapHandlers.TryGetValue(bitmapImage, out _))
-                {
-                    // Subscribe directly to BitmapImage.ImageOpened as a one-shot handler.
-                    // This is more reliable than Image.ImageOpened when many images load
-                    // concurrently in ItemsRepeater / virtualized containers.
-                    _bitmapHandlers.AddOrUpdate(bitmapImage, bitmapImage); // sentinel
-                    bitmapImage.ImageOpened += (s, e) =>
-                    {
-                        if (s is BitmapImage bmp)
-                            _bitmapHandlers.Remove(bmp);
-                        AnimateFadeIn(image);
-                    };
-                    bitmapImage.ImageFailed += (s, e) =>
-                    {
-                        if (s is BitmapImage bmp)
-                            _bitmapHandlers.Remove(bmp);
-                        image.Opacity = 1;
-                    };
                 }
             }
             else if (image.Source != null)

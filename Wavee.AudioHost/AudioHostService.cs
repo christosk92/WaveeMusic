@@ -28,6 +28,8 @@ internal sealed class AudioHostService : IAsyncDisposable
     private IDisposable? _errorSubscription;
     private readonly DeferredResolutionRegistry _deferredRegistry = new();
     private EngineState? _lastSentState;
+    private BassDecoder? _bassDecoder;
+    private PreviewAnalysisService? _previewAnalysisService;
 
     public AudioHostService(string pipeName, ILogger logger)
     {
@@ -94,6 +96,10 @@ internal sealed class AudioHostService : IAsyncDisposable
         var httpClient = new HttpClient();
 
         _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, _logger);
+        _previewAnalysisService = new PreviewAnalysisService(
+            _bassDecoder ?? new BassDecoder(_logger),
+            SendPreviewVisualizationFrameAsync,
+            _logger);
 
         _logger.LogInformation("AudioEngine created");
     }
@@ -102,7 +108,8 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         var registry = new AudioDecoderRegistry();
         registry.Register(new VorbisDecoder(_logger));
-        registry.Register(new BassDecoder(_logger));
+        _bassDecoder = new BassDecoder(_logger);
+        registry.Register(_bassDecoder);
         return registry;
     }
 
@@ -301,6 +308,22 @@ internal sealed class AudioHostService : IAsyncDisposable
                 _logger.LogDebug("Ping received");
                 await _transport!.SendAsync(IpcMessageTypes.Pong, msg.Id, ct);
                 break;
+            case IpcMessageTypes.StartPreviewAnalysis:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<StartPreviewAnalysisCommand>(msg);
+                if (cmd != null && _previewAnalysisService != null)
+                    await _previewAnalysisService.StartAsync(cmd, _cts.Token);
+                await SendOk(msg.Id, ct);
+                break;
+            }
+            case IpcMessageTypes.StopPreviewAnalysis:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<StopPreviewAnalysisCommand>(msg);
+                if (cmd != null && _previewAnalysisService != null)
+                    await _previewAnalysisService.StopAsync(cmd.SessionId, _cts.Token);
+                await SendOk(msg.Id, ct);
+                break;
+            }
             case IpcMessageTypes.Shutdown:
                 _logger.LogInformation("Shutdown requested by UI process");
                 await _cts.CancelAsync();
@@ -320,6 +343,17 @@ internal sealed class AudioHostService : IAsyncDisposable
                 RequestId = requestId,
                 Success = true
             }), ct: ct);
+    }
+
+    private Task SendPreviewVisualizationFrameAsync(PreviewVisualizationFrame frame, CancellationToken ct)
+    {
+        if (_transport == null)
+            return Task.CompletedTask;
+
+        return _transport.SendAsync(
+            IpcMessageTypes.PreviewVisualizationFrame,
+            IpcPayloadHelper.SerializeToUtf8(frame),
+            ct: ct);
     }
 
     private PlaybackStateSnapshot MapToSnapshot(EngineState state)
@@ -380,6 +414,9 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         _stateSubscription?.Dispose();
         _errorSubscription?.Dispose();
+
+        if (_previewAnalysisService != null)
+            await _previewAnalysisService.DisposeAsync();
 
         if (_engine != null)
             await _engine.DisposeAsync();

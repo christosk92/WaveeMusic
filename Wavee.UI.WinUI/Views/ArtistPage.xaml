@@ -34,6 +34,12 @@
         <converters:BoolToGridListGlyphConverter x:Key="BoolToGridListGlyphConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <converters:NullToForegroundConverter x:Key="NullToForegroundConverter"/>
+        <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="#66101010"/>
+        <SolidColorBrush x:Key="PinnedItemHoverBackgroundBrush" Color="#88202020"/>
+        <SolidColorBrush x:Key="PinnedItemPressedBackgroundBrush" Color="#AA050505"/>
+        <SolidColorBrush x:Key="PinnedItemNormalBorderBrush" Color="#44FFFFFF"/>
+        <SolidColorBrush x:Key="PinnedItemHoverBorderBrush" Color="#88FFFFFF"/>
+        <SolidColorBrush x:Key="PinnedItemPressedBorderBrush" Color="#BBFFFFFF"/>
     </Page.Resources>
 
     <ScrollView x:Name="PageScrollView">
@@ -152,45 +158,148 @@
 
                             <!-- Pinned item compact pill -->
                             <Button x:Name="PinnedItemButton"
-                                    Padding="0" Background="Transparent" BorderThickness="0"
-                                    CornerRadius="20" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="20"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
                                     Click="PinnedItem_Click"
                                     PointerEntered="PinnedItem_PointerEntered"
+                                    PointerExited="PinnedItem_PointerExited"
+                                    PointerPressed="PinnedItem_PointerPressed"
+                                    PointerReleased="PinnedItem_PointerReleased"
+                                    PointerCanceled="PinnedItem_PointerCanceled"
                                     Visibility="{x:Bind ViewModel.HasPinnedItem, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <Border CornerRadius="20" Padding="4,4,12,4"
-                                        Background="{ThemeResource AccentAcrylicBackgroundFillColorBaseBrush}">
+                                <FlyoutBase.AttachedFlyout>
+                                    <Flyout x:Name="PinnedItemPreviewFlyout"
+                                            Placement="BottomEdgeAlignedLeft"
+                                            ShouldConstrainToRootBounds="True"
+                                            Opened="PinnedItemPreviewFlyout_Opened"
+                                            Closed="PinnedItemPreviewFlyout_Closed">
+                                        <Flyout.FlyoutPresenterStyle>
+                                            <Style TargetType="FlyoutPresenter">
+                                                <Setter Property="MinWidth" Value="300"/>
+                                                <Setter Property="MaxWidth" Value="340"/>
+                                                <Setter Property="Padding" Value="0"/>
+                                                <Setter Property="CornerRadius" Value="8"/>
+                                                <Setter Property="Background" Value="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"/>
+                                                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                            </Style>
+                                        </Flyout.FlyoutPresenterStyle>
+                                        <Grid x:Name="PinnedItemPreviewRoot"
+                                              Width="320"
+                                              PointerEntered="PinnedItemPreview_PointerEntered"
+                                              PointerExited="PinnedItemPreview_PointerExited">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="150"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+
+                                            <Border Grid.Row="0"
+                                                    CornerRadius="8,8,0,0"
+                                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                                <Grid>
+                                                    <Image Source="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=320}"
+                                                           Stretch="UniformToFill"
+                                                           Visibility="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                                    <Image Source="{x:Bind ViewModel.PinnedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=160}"
+                                                           Stretch="UniformToFill"
+                                                           Opacity=".72"
+                                                           Visibility="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                                    <Border>
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                                <GradientStop Color="#14000000" Offset="0"/>
+                                                                <GradientStop Color="#AA000000" Offset="1"/>
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                    <Border Width="48"
+                                                            Height="48"
+                                                            CornerRadius="8"
+                                                            Margin="14"
+                                                            HorizontalAlignment="Left"
+                                                            VerticalAlignment="Bottom"
+                                                            BorderBrush="#66FFFFFF"
+                                                            BorderThickness="1"
+                                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                                        <Image Source="{x:Bind ViewModel.PinnedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=64}"
+                                                               Stretch="UniformToFill"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Row="1"
+                                                        Padding="14,12,14,14"
+                                                        Spacing="4">
+                                                <TextBlock Text="{x:Bind ViewModel.PinnedItem.Type, Mode=OneWay}"
+                                                           FontSize="10"
+                                                           FontWeight="SemiBold"
+                                                           CharacterSpacing="80"
+                                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1"/>
+                                                <TextBlock Text="{x:Bind ViewModel.PinnedItem.Title, Mode=OneWay}"
+                                                           FontSize="16"
+                                                           FontWeight="SemiBold"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1"/>
+                                                <TextBlock Text="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
+                                                           FontSize="12"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1"
+                                                           Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                                <TextBlock Text="{x:Bind ViewModel.PinnedItem.Comment, Mode=OneWay}"
+                                                           FontSize="12"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           TextWrapping="WrapWholeWords"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="2"
+                                                           Visibility="{x:Bind ViewModel.PinnedItem.Comment, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Flyout>
+                                </FlyoutBase.AttachedFlyout>
+                                <Border x:Name="PinnedItemPill"
+                                        CornerRadius="20"
+                                        Padding="4,4,12,4"
+                                        Background="{StaticResource PinnedItemNormalBackgroundBrush}"
+                                        BorderBrush="{StaticResource PinnedItemNormalBorderBrush}"
+                                        BorderThickness="1">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Border Width="32" Height="32" CornerRadius="16">
+                                        <Border Width="32"
+                                                Height="32"
+                                                CornerRadius="16"
+                                                BorderBrush="#66FFFFFF"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                                             <Image Source="{x:Bind ViewModel.PinnedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=32}"
                                                    Stretch="UniformToFill"/>
                                         </Border>
                                         <StackPanel VerticalAlignment="Center" MaxWidth="120">
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Title, Mode=OneWay}"
                                                        FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="White"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
-                                                       FontSize="10" Opacity="0.7"
+                                                       FontSize="10" Opacity="0.82"
+                                                       Foreground="White"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Comment, Mode=OneWay}"
-                                                       FontSize="10" Opacity="0.7"
+                                                       FontSize="10" Opacity="0.82"
+                                                       Foreground="White"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
                             </Button>
-                            <TeachingTip x:Name="PinnedItemTeachingTip"
-                                         Target="{x:Bind PinnedItemButton}"
-                                         PreferredPlacement="Bottom"
-                                         Title="{x:Bind ViewModel.PinnedItem.Title, Mode=OneWay}"
-                                         Subtitle="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
-                                         IsLightDismissEnabled="True">
-                                <TeachingTip.HeroContent>
-                                    <Image Source="{x:Bind ViewModel.PinnedItem.BackgroundImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=200}"
-                                           Stretch="UniformToFill" MaxHeight="200"/>
-                                </TeachingTip.HeroContent>
-                            </TeachingTip>
 
                         </StackPanel>
                     </StackPanel>

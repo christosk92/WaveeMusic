@@ -91,7 +91,11 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
                 {
                     var item = MapSectionItem(itemEntry);
                     if (item != null)
+                    {
+                        if (sectionType == HomeSectionType.Baseline)
+                            item.IsBaselineLoading = true;
                         section.Items.Add(item);
+                    }
                 }
             }
 

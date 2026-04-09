@@ -155,7 +155,9 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         var compositor = visual.Compositor;
 
         // Start loading image immediately (async, non-blocking)
-        _blurSurface = LoadedImageSurface.StartLoadFromUri(new Uri(imageUrl));
+        _blurSurface = LoadedImageSurface.StartLoadFromUri(
+            new Uri(imageUrl),
+            new Windows.Foundation.Size(512, 512));
 
         // Defer all GPU-heavy composition work (blur effect, gradient mask) until
         // the image has actually loaded — avoids stalling the navigation transition.

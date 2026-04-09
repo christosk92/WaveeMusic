@@ -159,10 +159,10 @@
             </StackPanel>
         </DataTemplate>
 
-        <!-- Baseline section: large card with background image overlay -->
+        <!-- Baseline section: grouped Spotify-style cards enriched in the background -->
         <DataTemplate x:Key="BaselineSectionTemplate" x:DataType="vm:HomeSection">
-            <StackPanel Margin="0,0,0,8">
-                <Grid Margin="0,0,0,4">
+            <StackPanel Margin="0,0,0,32" Spacing="12">
+                <Grid MinHeight="1">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -171,8 +171,9 @@
                     <TextBlock
                         Grid.Column="0"
                         Text="{x:Bind Title}"
-                        FontSize="12"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        FontWeight="Bold"
+                        Opacity="0"
                         VerticalAlignment="Center"/>
 
                     <Button
@@ -185,53 +186,26 @@
 
                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                     <ItemsRepeater.Layout>
-                        <StackLayout Orientation="Vertical" Spacing="8"/>
+                        <UniformGridLayout
+                            MinItemWidth="230"
+                            ItemsStretch="Fill"
+                            ItemsJustification="Start"
+                            MinColumnSpacing="0"
+                            MinRowSpacing="0"/>
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:HomeSectionItem">
-                            <Button
-                                Padding="0"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Stretch"
-                                Click="GenericItem_Click"
-                                PointerPressed="GenericItem_PointerPressed"
-                                Height="200">
-                                <Grid CornerRadius="{ThemeResource ControlCornerRadius}"
-                                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                      BorderThickness="1">
-                                    <Image
-                                        Stretch="UniformToFill"
-                                        Source="{x:Bind ImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=400}"
-                                        Opacity="0.6"/>
-                                    <Border CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                <GradientStop Color="Transparent" Offset="0"/>
-                                                <GradientStop Color="#CC000000" Offset="1"/>
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                    </Border>
-                                    <StackPanel VerticalAlignment="Bottom" Padding="16">
-                                        <TextBlock
-                                            Text="{x:Bind Title}"
-                                            FontSize="18"
-                                            FontWeight="Bold"
-                                            Foreground="White"
-                                            MaxLines="2"
-                                            TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock
-                                            Text="{x:Bind Subtitle}"
-                                            FontSize="12"
-                                            Foreground="#CCFFFFFF"
-                                            MaxLines="2"
-                                            TextTrimming="CharacterEllipsis"
-                                            Margin="0,4,0,0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Button>
+                            <Border Padding="10,8,10,12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock
+                                    Text="{x:Bind BaselineGroupTitle}"
+                                    Style="{StaticResource SubtitleTextBlockStyle}"
+                                    FontWeight="Bold"
+                                    MaxLines="1"
+                                    TextTrimming="CharacterEllipsis"/>
+                                    <cards:BaselineHomeCard Item="{x:Bind}"/>
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
@@ -239,15 +213,19 @@
         </DataTemplate>
     </Page.Resources>
 
-    <Grid Padding="24">
+    <Grid Padding="24,12,24,0">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <!-- Header: Greeting + customize button -->
         <Grid Margin="0,0,0,24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
             <TextBlock
                 Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
                 Style="{StaticResource TitleTextBlockStyle}"
@@ -255,7 +233,39 @@
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"/>
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
+            <!-- Filter chips (single row, morphs when parent chip has sub-chips) -->
+            <ItemsRepeater Grid.Column="1" 
+                           ItemsSource="{x:Bind ViewModel.DisplayedChips, Mode=OneWay}" 
+                           Margin="8,0,0,0">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Horizontal" Spacing="8"/>
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HomeChipViewModel">
+                        <Button
+                            Click="Chip_Click"
+                            Padding="12,6"
+                            CornerRadius="16"
+                            MinWidth="0"
+                            FontSize="13" Tag="{x:Bind }"
+                            BorderThickness="0"
+                            Background="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipBackgroundConverter}}"
+                            Foreground="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipForegroundConverter}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon
+                                    Glyph="&#xE711;"
+                                    FontSize="11"
+                                    Visibility="{x:Bind IsBackChip, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <TextBlock Text="{x:Bind Label}"/>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+
+            <StackPanel
+                Grid.Column="2"
+                Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
                 <!-- Refresh button -->
                 <Button
                     ToolTipService.ToolTip="Refresh"
@@ -269,40 +279,12 @@
             </StackPanel>
         </Grid>
 
-        <!-- Filter chips (single row, morphs when parent chip has sub-chips) -->
-        <ItemsRepeater Grid.Row="1" ItemsSource="{x:Bind ViewModel.DisplayedChips, Mode=OneWay}" Margin="0,0,0,16">
-            <ItemsRepeater.Layout>
-                <StackLayout Orientation="Horizontal" Spacing="8"/>
-            </ItemsRepeater.Layout>
-            <ItemsRepeater.ItemTemplate>
-                <DataTemplate x:DataType="vm:HomeChipViewModel">
-                    <Button
-                        Click="Chip_Click"
-                        Padding="12,6"
-                        CornerRadius="16"
-                        MinWidth="0"
-                        FontSize="13" Tag="{x:Bind }"
-                        BorderThickness="0"
-                        Background="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipBackgroundConverter}}"
-                        Foreground="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipForegroundConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon
-                                Glyph="&#xE711;"
-                                FontSize="11"
-                                Visibility="{x:Bind IsBackChip, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            <TextBlock Text="{x:Bind Label}"/>
-                        </StackPanel>
-                    </Button>
-                </DataTemplate>
-            </ItemsRepeater.ItemTemplate>
-        </ItemsRepeater>
-
         <!-- Loading: shimmer skeleton (crossfades to content) -->
         <ScrollView
             x:Name="ShimmerContainer"
             Margin="0,0,-24,0"
             Padding="0,0,24,0"
-            Grid.Row="2"
+            Grid.Row="1"
             VerticalScrollBarVisibility="Hidden"
             IsHitTestVisible="False">
             <StackPanel Spacing="24">
@@ -524,13 +506,13 @@
 
         <!-- Error -->
         <controls1:ErrorStateView
-            Grid.Row="2"
+            Grid.Row="1"
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 
         <!-- Content (starts invisible via composition, crossfades in when loaded) -->
-        <ScrollView x:Name="ContentContainer" Grid.Row="2" VerticalScrollBarVisibility="Auto"
+        <ScrollView x:Name="ContentContainer" Grid.Row="1" VerticalScrollBarVisibility="Auto"
                     Margin="0,0,-24,0"
                     Padding="0,0,24,0"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">

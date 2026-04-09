@@ -502,46 +502,40 @@ public sealed partial class ShellPage : Page
         _settingsService?.Update(s => s.ZoomLevel = zoom);
     }
 
-    private void ZoomIn_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        ApplyZoom(Math.Round(ZoomControl.Zoom + ZoomStep, 2));
-        args.Handled = true;
-    }
-
-    private void ZoomOut_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        ApplyZoom(Math.Round(ZoomControl.Zoom - ZoomStep, 2));
-        args.Handled = true;
-    }
-
-    private void ZoomReset_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        ApplyZoom(1.0);
-        args.Handled = true;
-    }
-
-    /// <summary>
-    /// Handles Ctrl+= (zoom in) and Ctrl+- (zoom out) on the main keyboard row.
-    /// The XAML KeyboardAccelerators only cover the numpad Add/Subtract keys.
-    /// </summary>
     protected override void OnProcessKeyboardAccelerators(ProcessKeyboardAcceleratorEventArgs args)
     {
         if (args.Modifiers == VirtualKeyModifiers.Control)
         {
-            // OemPlus (=+ key) → VirtualKey 187
-            if ((int)args.Key == 187)
+            switch (args.Key)
             {
-                ApplyZoom(Math.Round(ZoomControl.Zoom + ZoomStep, 2));
-                args.Handled = true;
-                return;
+                // Numpad + or OemPlus (=+ key, VirtualKey 187)
+                case VirtualKey.Add:
+                case (VirtualKey)187:
+                    ApplyZoom(Math.Round(ZoomControl.Zoom + ZoomStep, 2));
+                    args.Handled = true;
+                    return;
+
+                // Numpad - or OemMinus (-_ key, VirtualKey 189)
+                case VirtualKey.Subtract:
+                case (VirtualKey)189:
+                    ApplyZoom(Math.Round(ZoomControl.Zoom - ZoomStep, 2));
+                    args.Handled = true;
+                    return;
+
+                // Numpad 0 → reset zoom
+                case VirtualKey.Number0:
+                    ApplyZoom(1.0);
+                    args.Handled = true;
+                    return;
             }
-            // OemMinus (-_ key) → VirtualKey 189
-            if ((int)args.Key == 189)
-            {
-                ApplyZoom(Math.Round(ZoomControl.Zoom - ZoomStep, 2));
-                args.Handled = true;
-                return;
-            }
+        }
+
+        if (args.Modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift)
+            && args.Key == VirtualKey.F)
+        {
+            FpsOverlayAccelerator_Invoked(null!, null!);
+            args.Handled = true;
+            return;
         }
 
         base.OnProcessKeyboardAccelerators(args);

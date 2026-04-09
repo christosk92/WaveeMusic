@@ -51,6 +51,7 @@ public sealed partial class UiHealthOverlay : UserControl
         FrameText.Text = $"tick: {s.UiTickAvgMs:F1}ms  worst: {s.WorstRecentFrameMs:F0}ms  all-time: {s.WorstFrameMs:F0}ms";
         StallText.Text = $"stalls: {s.StallCount}  crits: {s.CriticalCount}  frames: {s.TotalFrames}";
         GcText.Text = $"GC: g0={s.GcGen0} g1={s.GcGen1} g2={s.GcGen2} g2-stall={s.Gen2DuringStalls}";
+        MemoryText.Text = $"mem: managed={s.ManagedMb:F0}MB  ws={s.WorkingSetMb:F0}MB  private={s.PrivateMb:F0}MB";
 
         // Profiler top operations
         var profiler = Services.UiOperationProfiler.Instance;

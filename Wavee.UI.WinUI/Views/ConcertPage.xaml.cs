@@ -53,9 +53,7 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
     private void ConcertPage_Unloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        foreach (var surface in _heroSurfaces)
-            surface.Dispose();
-        _heroSurfaces.Clear();
+        TeardownHeroImages();
     }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -115,6 +113,8 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
     }
 
     private readonly List<LoadedImageSurface> _heroSurfaces = [];
+    private readonly List<CompositionObject> _heroCompositionObjects = [];
+    private ContainerVisual? _heroContainerVisual;
 
     /// <summary>
     /// Creates diagonal-sliced Composition visuals for each artist's header image.
@@ -122,6 +122,8 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
     /// </summary>
     private void SetupHeroImages()
     {
+        TeardownHeroImages();
+
         var imageUrls = ViewModel.Artists
             .Where(a => !string.IsNullOrEmpty(a.HeaderImageUrl))
             .Select(a => SpotifyImageHelper.ToHttpsUrl(a.HeaderImageUrl!))
@@ -134,7 +136,9 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         var compositor = hostVisual.Compositor;
 
         var containerVisual = compositor.CreateContainerVisual();
+        _heroContainerVisual = containerVisual;
         containerVisual.RelativeSizeAdjustment = Vector2.One;
+        _heroCompositionObjects.Add(containerVisual);
 
         var width = (float)HeroImageContainer.ActualWidth;
         var height = (float)HeroImageContainer.ActualHeight;
@@ -155,9 +159,6 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
 
         for (int i = 0; i < n; i++)
         {
-            var surface = LoadedImageSurface.StartLoadFromUri(new Uri(imageUrls[i]!));
-            _heroSurfaces.Add(surface);
-
             // Polygon corners in hero-space
             float tl = i == 0 ? 0 : splitPoints[i] + skew;
             float tr = i == n - 1 ? width : splitPoints[i + 1] + skew;
@@ -169,16 +170,23 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
             float maxX = Math.Max(tr, br);
             float sliceW = maxX - minX;
 
+            var surface = LoadedImageSurface.StartLoadFromUri(
+                new Uri(imageUrls[i]!),
+                new Windows.Foundation.Size(Math.Max(1, Math.Ceiling(sliceW)), Math.Max(1, Math.Ceiling(height))));
+            _heroSurfaces.Add(surface);
+
             var surfaceBrush = compositor.CreateSurfaceBrush();
             surfaceBrush.Surface = surface;
             surfaceBrush.Stretch = CompositionStretch.UniformToFill;
             surfaceBrush.HorizontalAlignmentRatio = 0.5f;
             surfaceBrush.VerticalAlignmentRatio = 0.3f;
+            _heroCompositionObjects.Add(surfaceBrush);
 
             var sprite = compositor.CreateSpriteVisual();
             sprite.Brush = surfaceBrush;
             sprite.Size = new Vector2(sliceW, height);
             sprite.Offset = new Vector3(minX, 0, 0);
+            _heroCompositionObjects.Add(sprite);
 
             // Clip polygon relative to sprite's local coords (shifted by -minX)
             using var pathBuilder = new CanvasPathBuilder(null);
@@ -191,11 +199,27 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
             var canvasGeo = CanvasGeometry.CreatePath(pathBuilder);
             var pathGeo = compositor.CreatePathGeometry(new CompositionPath(canvasGeo));
             sprite.Clip = compositor.CreateGeometricClip(pathGeo);
+            _heroCompositionObjects.Add(pathGeo);
+            _heroCompositionObjects.Add(sprite.Clip);
 
             containerVisual.Children.InsertAtTop(sprite);
         }
 
         ElementCompositionPreview.SetElementChildVisual(HeroImageContainer, containerVisual);
+    }
+
+    private void TeardownHeroImages()
+    {
+        ElementCompositionPreview.SetElementChildVisual(HeroImageContainer, null);
+
+        foreach (var surface in _heroSurfaces)
+            surface.Dispose();
+        _heroSurfaces.Clear();
+
+        for (int i = _heroCompositionObjects.Count - 1; i >= 0; i--)
+            _heroCompositionObjects[i].Dispose();
+        _heroCompositionObjects.Clear();
+        _heroContainerVisual = null;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)

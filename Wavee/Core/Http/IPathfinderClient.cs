@@ -55,6 +55,13 @@ public interface IPathfinderClient
         CancellationToken ct = default);
 
     /// <summary>
+    /// Looks up preview media for home feed baseline items.
+    /// </summary>
+    Task<FeedBaselineLookupResponse> GetFeedBaselineLookupAsync(
+        IReadOnlyList<string> uris,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Fetches a comprehensive artist overview including profile, discography, top tracks, and related artists.
     /// </summary>
     /// <param name="artistUri">Spotify artist URI (e.g. "spotify:artist:xxx").</param>

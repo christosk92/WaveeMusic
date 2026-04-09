@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.AboutSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0">
+            <StackPanel Spacing="4" Padding="0,16,0,24">
+                <StackPanel Spacing="4" Margin="0,0,0,20">
+                    <TextBlock Text="Wavee" FontSize="32" FontWeight="SemiBold"/>
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13">
+                        <Run Text="v"/>
+                        <Run Text="{x:Bind ViewModel.AppVersion}"/>
+                        <Run Text=" - "/>
+                        <Run Text="{x:Bind ViewModel.DistributionModeDisplay}"/>
+                    </TextBlock>
+                </StackPanel>
+
+                <TextBlock Text="Updates" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+                <controls:SettingsExpander Header="Check for updates"
+                                           Description="{x:Bind ViewModel.UpdateService.Status, Mode=OneWay}">
+                    <controls:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="&#xE895;"/>
+                    </controls:SettingsExpander.HeaderIcon>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="{x:Bind ViewModel.UpdateService.LatestVersion, Mode=OneWay}"/>
+                        <Button Content="Check now" Command="{x:Bind ViewModel.CheckForUpdateCommand}"/>
+                    </StackPanel>
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Current version">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7C3;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <TextBlock Text="{x:Bind ViewModel.AppVersion}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Distribution">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE71B;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <TextBlock Text="{x:Bind ViewModel.DistributionModeDisplay}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Changelog"
+                                               Description="{x:Bind ViewModel.UpdateService.Changelog, Mode=OneWay}">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8FD;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Error"
+                                               Description="{x:Bind ViewModel.UpdateService.ErrorMessage, Mode=OneWay}"
+                                               Visibility="{x:Bind ViewModel.HasUpdateError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xEA39;" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <Button Content="Retry" Command="{x:Bind ViewModel.CheckForUpdateCommand}"/>
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+
+                <controls:SettingsCard Header="What's new"
+                                       Description="See the latest features and improvements"
+                                       IsClickEnabled="True"
+                                       Click="WhatsNew_Click"
+                                       Margin="0,12,0,0">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE789;"/>
+                    </controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                </controls:SettingsCard>
+
+                <TextBlock Text="Help" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+                <controls:SettingsCard Header="Send feedback"
+                                       Description="Report bugs, request features, or share your thoughts"
+                                       IsClickEnabled="True"
+                                       Click="Feedback_Click">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xED15;"/>
+                    </controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                </controls:SettingsCard>
+
+                <TextBlock Text="Links" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+                <controls:SettingsCard Header="Source code"
+                                       Description="View the project on GitHub"
+                                       IsClickEnabled="True"
+                                       Click="GitHub_Click">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE943;"/>
+                    </controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                </controls:SettingsCard>
+            </StackPanel>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="1" HorizontalAlignment="Center"
+                   Margin="0,8,0,12" FontSize="12"
+                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                   Text="Built with WinUI 3 and .NET"/>
+    </Grid>
+</UserControl>

@@ -24,6 +24,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     private readonly BehaviorSubject<LocalPlaybackState> _stateSubject = new(new LocalPlaybackState());
     private readonly Subject<PlaybackError> _errorSubject = new();
     private readonly Subject<TrackFinishedMessage> _trackFinishedSubject = new();
+    private readonly Subject<PreviewVisualizationFrame> _previewVisualizationFrameSubject = new();
 
     private long _nextRequestId;
     private Task? _receiveLoop;
@@ -81,6 +82,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     public IObservable<LocalPlaybackState> StateChanges => _stateSubject.AsObservable();
     public IObservable<PlaybackError> Errors => _errorSubject.AsObservable();
+    public IObservable<PreviewVisualizationFrame> PreviewVisualizationFrames => _previewVisualizationFrameSubject.AsObservable();
 
     /// <summary>
     /// Fires when AudioHost reports a track has finished playing naturally.
@@ -212,6 +214,19 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     public Task SendPingAsync(CancellationToken ct = default)
         => SendSimpleCommandAsync(IpcMessageTypes.Ping, ct);
+
+    public Task StartPreviewAnalysisAsync(string sessionId, string previewUrl, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.StartPreviewAnalysis, new StartPreviewAnalysisCommand
+        {
+            SessionId = sessionId,
+            PreviewUrl = previewUrl
+        }, ct);
+
+    public Task StopPreviewAnalysisAsync(string sessionId, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.StopPreviewAnalysis, new StopPreviewAnalysisCommand
+        {
+            SessionId = sessionId
+        }, ct);
 
     // ── Internals ──
 
@@ -373,6 +388,13 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                 }
                 break;
             }
+            case IpcMessageTypes.PreviewVisualizationFrame:
+            {
+                var frame = IpcPayloadHelper.Deserialize<PreviewVisualizationFrame>(msg);
+                if (frame != null)
+                    _previewVisualizationFrameSubject.OnNext(frame);
+                break;
+            }
             case IpcMessageTypes.Pong:
             {
                 // Compute RTT
@@ -450,6 +472,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
         _stateSubject.Dispose();
         _errorSubject.Dispose();
+        _previewVisualizationFrameSubject.Dispose();
         await _transport.DisposeAsync();
         _cts.Dispose();
     }

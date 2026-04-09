@@ -215,6 +215,19 @@ internal sealed class UiHealthMonitor : IDisposable
 
                 var avgForFps = renderAvgMs > 0 ? renderAvgMs : uiAvgMs;
                 var fps = avgForFps > 0 ? 1000.0 / avgForFps : 0;
+                var managedMb = GC.GetTotalMemory(false) / 1048576.0;
+                double workingSetMb = 0;
+                double privateMb = 0;
+                try
+                {
+                    using var process = Process.GetCurrentProcess();
+                    workingSetMb = process.WorkingSet64 / 1048576.0;
+                    privateMb = process.PrivateMemorySize64 / 1048576.0;
+                }
+                catch
+                {
+                    // Diagnostics-only; keep the overlay alive if process counters fail.
+                }
 
                 return new UiHealthStats
                 {
@@ -230,6 +243,9 @@ internal sealed class UiHealthMonitor : IDisposable
                     GcGen1 = _gcGen1Total,
                     GcGen2 = _gcGen2Total,
                     Gen2DuringStalls = _gen2DuringStallCount,
+                    ManagedMb = managedMb,
+                    WorkingSetMb = workingSetMb,
+                    PrivateMb = privateMb,
                 };
             }
         }
@@ -270,6 +286,7 @@ internal sealed class UiHealthMonitor : IDisposable
         sb.AppendLine();
         sb.AppendLine($"--- GC Collections ---");
         sb.AppendLine($"Gen0: {s.GcGen0}  Gen1: {s.GcGen1}  Gen2: {s.GcGen2}  Gen2-during-stalls: {s.Gen2DuringStalls}");
+        sb.AppendLine($"Managed: {s.ManagedMb:F1} MB  Working set: {s.WorkingSetMb:F1} MB  Private: {s.PrivateMb:F1} MB");
 
         // Append profiler stats if available
         UiOperationProfiler.Instance?.AppendReport(sb);
@@ -331,4 +348,7 @@ internal record struct UiHealthStats
     public int GcGen1 { get; init; }
     public int GcGen2 { get; init; }
     public int Gen2DuringStalls { get; init; }
+    public double ManagedMb { get; init; }
+    public double WorkingSetMb { get; init; }
+    public double PrivateMb { get; init; }
 }

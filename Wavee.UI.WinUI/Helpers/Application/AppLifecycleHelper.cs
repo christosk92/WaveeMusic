@@ -201,6 +201,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton(sp => new Services.ImageCacheService(cacheCapacities.ImageCacheMaxSize))
+                .AddSingleton<Services.PreviewAudioVisualizationCoordinator>()
                 // Shared now-playing highlight observer. Subscribes to NowPlayingChangedMessage
                 // once; ContentCard instances subscribe to its C# event instead of registering
                 // individually with WeakReferenceMessenger. Big savings during HomePage realization.

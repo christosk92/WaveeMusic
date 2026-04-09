@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Threading;
@@ -25,7 +26,7 @@ using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed partial class SettingsViewModel : ObservableObject
+public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
@@ -33,6 +34,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISession? _session;
     private readonly IUpdateService? _updateService;
     private readonly ILogger? _logger;
+    private bool _disposed;
 
     private static readonly string LogDirectory = AppPaths.LogsDirectory;
 
@@ -171,11 +173,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // Listen to update service status changes for HasUpdateError
         if (_updateService != null)
         {
-            _updateService.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName == nameof(Services.UpdateStatus) || e.PropertyName == "Status")
-                    OnPropertyChanged(nameof(HasUpdateError));
-            };
+            _updateService.PropertyChanged += OnUpdateServicePropertyChanged;
         }
 
         // Initialize clock sync display + start live countdown timer
@@ -183,25 +181,38 @@ public sealed partial class SettingsViewModel : ObservableObject
         StartClockTimer();
 
         // Subscribe to log entry changes to maintain filtered view
-        LogEntries.CollectionChanged += (_, e) =>
-        {
-            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add && e.NewItems != null)
-            {
-                foreach (LogEntry entry in e.NewItems)
-                {
-                    if (PassesFilter(entry))
-                        FilteredLogEntries.Insert(0, entry);
-                }
-            }
-            else if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
-            {
-                FilteredLogEntries.Clear();
-            }
-        };
+        LogEntries.CollectionChanged += OnLogEntriesCollectionChanged;
 
         // Initial populate
         RefreshFilteredLogs();
         RefreshPastLogs();
+    }
+
+    private void OnUpdateServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Services.UpdateStatus) || e.PropertyName == "Status")
+            OnPropertyChanged(nameof(HasUpdateError));
+    }
+
+    private void OnLogEntriesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
+        {
+            foreach (LogEntry entry in e.NewItems)
+            {
+                if (PassesFilter(entry))
+                    FilteredLogEntries.Insert(0, entry);
+            }
+        }
+        else if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems != null)
+        {
+            foreach (LogEntry entry in e.OldItems)
+                FilteredLogEntries.Remove(entry);
+        }
+        else if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            FilteredLogEntries.Clear();
+        }
     }
 
     // ── General ──
@@ -594,10 +605,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void StartClockTimer()
     {
         if (_session?.Clock is null) return;
+        if (_clockTimer != null) return;
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _clockTimer.Tick += (_, _) => UpdateClockCountdown();
+        _clockTimer.Tick += OnClockTimerTick;
         _clockTimer.Start();
     }
+
+    private void OnClockTimerTick(object? sender, object e) => UpdateClockCountdown();
 
     private void UpdateClockCountdown()
     {
@@ -673,16 +687,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (_audioDiagTimer != null) return;
         _audioDiagTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _audioDiagTimer.Tick += (_, _) => RefreshAudioDiagnostics();
+        _audioDiagTimer.Tick += OnAudioDiagTimerTick;
         _audioDiagTimer.Start();
         RefreshAudioDiagnostics();
     }
 
     public void StopAudioDiagnostics()
     {
-        _audioDiagTimer?.Stop();
+        if (_audioDiagTimer != null)
+        {
+            _audioDiagTimer.Stop();
+            _audioDiagTimer.Tick -= OnAudioDiagTimerTick;
+        }
         _audioDiagTimer = null;
     }
+
+    private void OnAudioDiagTimerTick(object? sender, object e) => RefreshAudioDiagnostics();
 
     private void RefreshAudioDiagnostics()
     {
@@ -988,6 +1008,37 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void SendEqToAudioHost()
     {
         _ = _pipelineControl?.SetEqualizerAsync(IsEqualizerEnabled, GetBandGains());
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_updateService != null)
+            _updateService.PropertyChanged -= OnUpdateServicePropertyChanged;
+
+        LogEntries.CollectionChanged -= OnLogEntriesCollectionChanged;
+
+        if (_clockTimer != null)
+        {
+            _clockTimer.Stop();
+            _clockTimer.Tick -= OnClockTimerTick;
+            _clockTimer = null;
+        }
+
+        StopAudioDiagnostics();
+
+        _eqRefreshCts?.Cancel();
+        _eqRefreshCts?.Dispose();
+        _eqRefreshCts = null;
+
+        foreach (var band in EqBands)
+            band.GainChanged -= OnBandGainChanged;
+
+        UpdateRttChart = null;
+        ZoomChanged = null;
+        ContentChanged = null;
     }
 }
 

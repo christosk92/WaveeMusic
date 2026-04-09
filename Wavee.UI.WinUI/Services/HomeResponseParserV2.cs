@@ -122,19 +122,33 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                     {
                         var listItems = UnwrapListItems(itemEntry.Content);
                         foreach (var li in listItems)
+                        {
+                            if (sectionType == HomeSectionType.Baseline)
+                                li.IsBaselineLoading = true;
                             section.Items.Add(li);
+                        }
                     }
                     else if (itemEntry.Entity != null)
                     {
                         // Direct entity item
                         var item = MapEntityItem(itemEntry.Entity, itemEntry.Uri, itemEntry.FormatListAttributes);
-                        if (item != null) section.Items.Add(item);
+                        if (item != null)
+                        {
+                            if (sectionType == HomeSectionType.Baseline)
+                                item.IsBaselineLoading = true;
+                            section.Items.Add(item);
+                        }
                     }
                     else
                     {
                         // V1-style content item — delegate to V1 parser logic
                         var item = MapV1ContentItem(itemEntry);
-                        if (item != null) section.Items.Add(item);
+                        if (item != null)
+                        {
+                            if (sectionType == HomeSectionType.Baseline)
+                                item.IsBaselineLoading = true;
+                            section.Items.Add(item);
+                        }
                     }
                 }
             }

@@ -220,7 +220,10 @@ public sealed partial class HeroHeader : UserControl
         if (string.IsNullOrEmpty(httpsUrl)) return;
 
         _imageSurface?.Dispose();
-        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl));
+        var desiredSize = new Windows.Foundation.Size(
+            Math.Max(1, ImageBorder.ActualWidth > 0 ? ImageBorder.ActualWidth : 1200),
+            Math.Max(1, ImageBorder.ActualHeight > 0 ? ImageBorder.ActualHeight : 420));
+        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), desiredSize);
         _surfaceBrush.Surface = _imageSurface;
 
         _imageSurface.LoadCompleted += (_, _) =>

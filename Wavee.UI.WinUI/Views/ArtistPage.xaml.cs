@@ -7,10 +7,12 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
@@ -27,6 +29,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 {
     private const int ShimmerCollapseDelayMs = 160;
     private const int ResizeDebounceDelayMs = 150;
+    private const int PinnedItemFlyoutDelayMs = 900;
+    private const int PinnedItemFlyoutCloseDelayMs = 220;
 
     // Avatar collapse — when the artist has a header image but no watch-feed
     // video, the 120px circular avatar is redundant with the hero and collapses
@@ -39,6 +43,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private readonly ILogger? _logger;
     private bool _showingContent;
     private bool _isNavigatingAway;
+    private DispatcherQueueTimer? _pinnedItemHoverTimer;
+    private DispatcherQueueTimer? _pinnedItemCloseTimer;
+    private bool _isPointerOverPinnedItem;
+    private bool _isPointerOverPinnedPreview;
+    private bool _isPinnedItemPreviewOpen;
+    private bool _isPinnedItemPressed;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -298,6 +308,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Only tear down ephemeral resources. ViewModel subscriptions stay alive
         // because the page may be re-attached from navigation cache.
         _isNavigatingAway = true;
+        CancelPinnedItemPreview();
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
@@ -675,6 +686,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         base.OnNavigatingFrom(e);
         _isNavigatingAway = true;
+        CancelPinnedItemPreview();
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
@@ -704,6 +716,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void PinnedItem_Click(object sender, RoutedEventArgs e)
     {
+        CancelPinnedItemPreview();
+
         if (ViewModel.PinnedItem?.Uri == null) return;
 
         var type = ViewModel.PinnedItem.Type?.ToUpperInvariant();
@@ -735,8 +749,184 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void PinnedItem_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(ViewModel.PinnedItem?.BackgroundImageUrl))
-            PinnedItemTeachingTip.IsOpen = true;
+        _isPointerOverPinnedItem = true;
+        _isPointerOverPinnedPreview = false;
+        _isPinnedItemPressed = false;
+        _pinnedItemCloseTimer?.Stop();
+        SetPinnedItemVisual(PinnedItemVisualState.Hover);
+        StartPinnedItemPreviewDelay();
+    }
+
+    private void PinnedItem_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _isPointerOverPinnedItem = false;
+        _isPinnedItemPressed = false;
+        _pinnedItemHoverTimer?.Stop();
+        if (!_isPinnedItemPreviewOpen)
+            StartPinnedItemPreviewCloseDelay();
+        SetPinnedItemVisual(PinnedItemVisualState.Normal);
+    }
+
+    private void PinnedItem_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _isPinnedItemPressed = true;
+        CancelPinnedItemPreview();
+        SetPinnedItemVisual(PinnedItemVisualState.Pressed);
+    }
+
+    private void PinnedItem_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        _isPinnedItemPressed = false;
+        SetPinnedItemVisual(_isPointerOverPinnedItem ? PinnedItemVisualState.Hover : PinnedItemVisualState.Normal);
+    }
+
+    private void PinnedItem_PointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        _isPointerOverPinnedItem = false;
+        _isPointerOverPinnedPreview = false;
+        _isPinnedItemPressed = false;
+        CancelPinnedItemPreview();
+        SetPinnedItemVisual(PinnedItemVisualState.Normal);
+    }
+
+    private void PinnedItemPreview_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _isPointerOverPinnedPreview = true;
+        _pinnedItemCloseTimer?.Stop();
+        SetPinnedItemVisual(PinnedItemVisualState.Hover);
+    }
+
+    private void PinnedItemPreview_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _isPointerOverPinnedPreview = false;
+        StartPinnedItemPreviewCloseDelay();
+    }
+
+    private void PinnedItemPreviewFlyout_Opened(object? sender, object e)
+    {
+        _isPinnedItemPreviewOpen = true;
+        _pinnedItemCloseTimer?.Stop();
+    }
+
+    private void PinnedItemPreviewFlyout_Closed(object? sender, object e)
+    {
+        _isPinnedItemPreviewOpen = false;
+        _isPointerOverPinnedPreview = false;
+        if (!_isPointerOverPinnedItem)
+            SetPinnedItemVisual(PinnedItemVisualState.Normal);
+    }
+
+    private void StartPinnedItemPreviewDelay()
+    {
+        if (ViewModel.PinnedItem == null)
+            return;
+
+        _pinnedItemHoverTimer ??= CreatePinnedItemHoverTimer();
+        _pinnedItemHoverTimer.Stop();
+        _pinnedItemHoverTimer.Start();
+    }
+
+    private void StartPinnedItemPreviewCloseDelay()
+    {
+        _pinnedItemCloseTimer ??= CreatePinnedItemCloseTimer();
+        _pinnedItemCloseTimer.Stop();
+        _pinnedItemCloseTimer.Start();
+    }
+
+    private DispatcherQueueTimer CreatePinnedItemHoverTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(PinnedItemFlyoutDelayMs);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) =>
+        {
+            if (!_isPointerOverPinnedItem || _isPinnedItemPressed || _isNavigatingAway || ViewModel.PinnedItem == null)
+                return;
+
+            _pinnedItemCloseTimer?.Stop();
+            FlyoutBase.ShowAttachedFlyout(PinnedItemButton);
+        };
+        return timer;
+    }
+
+    private DispatcherQueueTimer CreatePinnedItemCloseTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(PinnedItemFlyoutCloseDelayMs);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) =>
+        {
+            if (_isPointerOverPinnedItem || _isPointerOverPinnedPreview)
+                return;
+
+            CancelPinnedItemPreview();
+            SetPinnedItemVisual(PinnedItemVisualState.Normal);
+        };
+        return timer;
+    }
+
+    private void CancelPinnedItemPreview()
+    {
+        _pinnedItemHoverTimer?.Stop();
+        _pinnedItemCloseTimer?.Stop();
+
+        if (PinnedItemButton != null)
+            FlyoutBase.GetAttachedFlyout(PinnedItemButton)?.Hide();
+
+        _isPinnedItemPreviewOpen = false;
+    }
+
+    private void SetPinnedItemVisual(PinnedItemVisualState state)
+    {
+        if (PinnedItemPill == null)
+            return;
+
+        PinnedItemPill.Background = GetPinnedItemBrush(state switch
+        {
+            PinnedItemVisualState.Hover => "PinnedItemHoverBackgroundBrush",
+            PinnedItemVisualState.Pressed => "PinnedItemPressedBackgroundBrush",
+            _ => "PinnedItemNormalBackgroundBrush"
+        });
+        PinnedItemPill.BorderBrush = GetPinnedItemBrush(state switch
+        {
+            PinnedItemVisualState.Hover => "PinnedItemHoverBorderBrush",
+            PinnedItemVisualState.Pressed => "PinnedItemPressedBorderBrush",
+            _ => "PinnedItemNormalBorderBrush"
+        });
+
+        var scale = state switch
+        {
+            PinnedItemVisualState.Hover => 1.025f,
+            PinnedItemVisualState.Pressed => 0.965f,
+            _ => 1f
+        };
+
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(PinnedItemPill);
+        visual.CenterPoint = new System.Numerics.Vector3(
+            (float)(PinnedItemPill.ActualWidth / 2),
+            (float)(PinnedItemPill.ActualHeight / 2),
+            0);
+
+        AnimationBuilder.Create()
+            .Scale(to: new System.Numerics.Vector3(scale, scale, 1),
+                   duration: TimeSpan.FromMilliseconds(state == PinnedItemVisualState.Pressed ? 80 : 140),
+                   easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+            .Start(PinnedItemPill);
+    }
+
+    private Brush GetPinnedItemBrush(string resourceKey)
+    {
+        if (Resources.TryGetValue(resourceKey, out var resource) && resource is Brush brush)
+            return brush;
+
+        return PinnedItemPill.Background;
+    }
+
+    private enum PinnedItemVisualState
+    {
+        Normal,
+        Hover,
+        Pressed
     }
 
     private async Task FetchAlbumColorAsync(ArtistReleaseVm album, AlbumDetailPanel panel)

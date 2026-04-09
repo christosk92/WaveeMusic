@@ -85,6 +85,29 @@ public sealed class BassDecoder : IAudioDecoder
     {
         EnsureBassInitialized();
 
+        var urlStream = FindUrlAwareStream(stream);
+        if (urlStream != null &&
+            (urlStream.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+             urlStream.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+        {
+            var urlHandle = Bass.CreateStream(urlStream.Url, 0, BassFlags.Decode | BassFlags.Float, null);
+            if (urlHandle == 0)
+            {
+                var error = Bass.LastError;
+                throw new InvalidOperationException($"BASS failed to create URL stream: {error}");
+            }
+
+            try
+            {
+                var info = Bass.ChannelGetInfo(urlHandle);
+                return new AudioFormat(info.Frequency, info.Channels, 16);
+            }
+            finally
+            {
+                Bass.StreamFree(urlHandle);
+            }
+        }
+
         // For non-seekable streams (HTTP radio), we can't read ahead without consuming data.
         // Return a default format - actual format will be determined during decode.
         if (!stream.CanSeek)

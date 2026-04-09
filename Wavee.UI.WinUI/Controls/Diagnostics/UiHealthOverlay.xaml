@@ -38,6 +38,11 @@
                 FontSize="11"
                 Foreground="{ThemeResource SystemControlForegroundBaseHighBrush}" />
             <TextBlock
+                x:Name="MemoryText"
+                FontFamily="Consolas"
+                FontSize="11"
+                Foreground="{ThemeResource SystemControlForegroundBaseHighBrush}" />
+            <TextBlock
                 x:Name="ProfilerText"
                 FontFamily="Consolas"
                 FontSize="10"

@@ -361,7 +361,25 @@ public sealed partial class HomePage : Page, ITabBarItemContent
                 imageUrl = item.ImageUrl,
                 contentType = item.ContentType.ToString(),
                 colorHex = item.ColorHex,
-                placeholderGlyph = item.PlaceholderGlyph
+                placeholderGlyph = item.PlaceholderGlyph,
+                isBaselineLoading = item.IsBaselineLoading,
+                hasBaselinePreview = item.HasBaselinePreview,
+                heroImageUrl = item.HeroImageUrl,
+                heroColorHex = item.HeroColorHex,
+                canvasUrl = item.CanvasUrl,
+                canvasThumbnailUrl = item.CanvasThumbnailUrl,
+                audioPreviewUrl = item.AudioPreviewUrl,
+                baselineGroupTitle = item.BaselineGroupTitle,
+                previewTracks = item.PreviewTracks.Select(track => new
+                {
+                    uri = track.Uri,
+                    name = track.Name,
+                    coverArtUrl = track.CoverArtUrl,
+                    colorHex = track.ColorHex,
+                    canvasUrl = track.CanvasUrl,
+                    canvasThumbnailUrl = track.CanvasThumbnailUrl,
+                    audioPreviewUrl = track.AudioPreviewUrl
+                }).ToList()
             }).ToList()
         };
 

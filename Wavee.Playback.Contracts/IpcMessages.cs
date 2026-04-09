@@ -189,6 +189,21 @@ public sealed class SetEqualizerCommand
     public double[]? BandGains { get; init; }
 }
 
+public sealed class StartPreviewAnalysisCommand
+{
+    [JsonPropertyName("sessionId")]
+    public required string SessionId { get; init; }
+
+    [JsonPropertyName("previewUrl")]
+    public required string PreviewUrl { get; init; }
+}
+
+public sealed class StopPreviewAnalysisCommand
+{
+    [JsonPropertyName("sessionId")]
+    public required string SessionId { get; init; }
+}
+
 // ── Audio → UI State ──
 
 public sealed class PlaybackStateSnapshot
@@ -309,6 +324,21 @@ public sealed class TrackFinishedMessage
     public required string Reason { get; init; }
 }
 
+public sealed class PreviewVisualizationFrame
+{
+    [JsonPropertyName("sessionId")]
+    public required string SessionId { get; init; }
+
+    [JsonPropertyName("amplitudes")]
+    public float[] Amplitudes { get; init; } = [];
+
+    [JsonPropertyName("sequence")]
+    public long Sequence { get; init; }
+
+    [JsonPropertyName("completed")]
+    public bool Completed { get; init; }
+}
+
 /// <summary>
 /// Play a track with head data for instant start. CDN URL + audio key arrive
 /// later via DeferredResolvedCommand, enabling gapless head→CDN transition.
@@ -416,6 +446,8 @@ public static class IpcMessageTypes
     public const string SetNormalization = "set_normalization";
     public const string SwitchQuality = "switch_quality";
     public const string SetEqualizer = "set_equalizer";
+    public const string StartPreviewAnalysis = "start_preview_analysis";
+    public const string StopPreviewAnalysis = "stop_preview_analysis";
     public const string Configure = "configure";
     public const string Shutdown = "shutdown";
     public const string Ping = "ping";
@@ -425,6 +457,7 @@ public static class IpcMessageTypes
     public const string Error = "error";
     public const string CommandResult = "command_result";
     public const string TrackFinished = "track_finished";
+    public const string PreviewVisualizationFrame = "preview_visualization_frame";
     public const string Ready = "ready";
     public const string Pong = "pong";
 }
@@ -449,10 +482,13 @@ public static class IpcMessageTypes
 [JsonSerializable(typeof(SetNormalizationCommand))]
 [JsonSerializable(typeof(SwitchQualityCommand))]
 [JsonSerializable(typeof(SetEqualizerCommand))]
+[JsonSerializable(typeof(StartPreviewAnalysisCommand))]
+[JsonSerializable(typeof(StopPreviewAnalysisCommand))]
 [JsonSerializable(typeof(PlaybackStateSnapshot))]
 [JsonSerializable(typeof(PlaybackErrorMessage))]
 [JsonSerializable(typeof(CommandResultMessage))]
 [JsonSerializable(typeof(TrackFinishedMessage))]
+[JsonSerializable(typeof(PreviewVisualizationFrame))]
 [JsonSerializable(typeof(AudioHostReady))]
 [JsonSerializable(typeof(AudioHostConfig))]
 public partial class IpcJsonContext : JsonSerializerContext;

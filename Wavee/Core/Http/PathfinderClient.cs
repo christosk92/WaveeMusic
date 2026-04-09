@@ -84,6 +84,7 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.QueryNpvArtist
             or PathfinderOperations.QueryTrackCreditsModal
             or PathfinderOperations.Home
+            or PathfinderOperations.FeedBaselineLookup
             or PathfinderOperations.FetchEntitiesForRecentlyPlayed
             or PathfinderOperations.UserLocation
             or PathfinderOperations.ConcertLocationsByLatLon
@@ -255,6 +256,25 @@ public sealed class PathfinderClient : IPathfinderClient
             PathfinderOperations.Home,
             hash,
             HomeJsonContext.Default.HomeResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<FeedBaselineLookupResponse> GetFeedBaselineLookupAsync(
+        IReadOnlyList<string> uris, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(uris);
+
+        var variables = new FeedBaselineLookupVariables
+        {
+            Uris = uris.Where(uri => !string.IsNullOrWhiteSpace(uri)).Distinct(StringComparer.Ordinal).ToList()
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.FeedBaselineLookup,
+            PathfinderOperations.FeedBaselineLookupHash,
+            FeedBaselineLookupJsonContext.Default.FeedBaselineLookupResponse,
             ct);
     }
 
@@ -563,6 +583,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is HomeVariables hv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(hv, HomeVariablesJsonContext.Default.HomeVariables);
+        }
+        else if (variables is FeedBaselineLookupVariables fbl)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(fbl, FeedBaselineLookupVariablesJsonContext.Default.FeedBaselineLookupVariables);
         }
         else if (variables is ArtistOverviewVariables aov)
         {

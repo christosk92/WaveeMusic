@@ -20,7 +20,9 @@ using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using System.Numerics;
 using CommunityToolkit.WinUI.Animations;
+using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml.Hosting;
 using Windows.Foundation;
@@ -118,6 +120,8 @@ public sealed partial class RightPanelView : UserControl
         }
         TeardownCanvasBackground();
         TeardownBlurredAlbumArt();
+        _canvasDevice?.Dispose();
+        _canvasDevice = null;
         TeardownDetailsLyricsSnippet();
     }
 
@@ -1236,10 +1240,12 @@ public sealed partial class RightPanelView : UserControl
     private Windows.Media.Playback.MediaPlayer? _canvasMediaPlayer;
     private string? _currentCanvasUrl;
     private string? _currentAlbumArtUrl;
-    private Microsoft.Graphics.Canvas.CanvasDevice? _canvasDevice;
-    private Microsoft.Graphics.Canvas.CanvasRenderTarget? _canvasFrameTarget;
+    private CanvasDevice? _canvasDevice;
+    private CanvasRenderTarget? _canvasFrameTarget;
     private const float AlbumArtBlurAmount = 40f;
-    private Microsoft.Graphics.Canvas.UI.Xaml.CanvasImageSource? _canvasImageSource;
+    private CanvasImageSource? _canvasImageSource;
+    private CanvasImageSource? _blurredAlbumArtImageSource;
+    private int _detailsBackgroundGeneration;
     private DetailsBackgroundMode _activeBackgroundMode;
 
     private DetailsBackgroundMode GetSettingsBackgroundMode()
@@ -1291,14 +1297,15 @@ public sealed partial class RightPanelView : UserControl
 
     private async void SetupBlurredAlbumArt()
     {
+        var generation = ++_detailsBackgroundGeneration;
         var albumArt = SpotifyImageHelper.ToHttpsUrl(
             _lyricsVm?.PlaybackState.CurrentAlbumArtLarge
             ?? _lyricsVm?.PlaybackState.CurrentAlbumArt);
 
         if (string.IsNullOrEmpty(albumArt))
         {
+            TeardownBlurredAlbumArt();
             DetailsCanvasImage.Visibility = Visibility.Collapsed;
-            _currentAlbumArtUrl = null;
             return;
         }
 
@@ -1306,58 +1313,69 @@ public sealed partial class RightPanelView : UserControl
             return;
 
         _currentAlbumArtUrl = albumArt;
-        _canvasDevice ??= new Microsoft.Graphics.Canvas.CanvasDevice();
+        _canvasDevice ??= new CanvasDevice();
 
         try
         {
-            var bitmap = await Microsoft.Graphics.Canvas.CanvasBitmap.LoadAsync(
+            using var bitmap = await CanvasBitmap.LoadAsync(
                 _canvasDevice, new Uri(albumArt));
 
             // Render at panel size (half res for perf)
             var w = Math.Max(1, (int)RootGrid.ActualWidth / 2);
             var h = Math.Max(1, (int)RootGrid.ActualHeight / 2);
 
-            var imageSource = new Microsoft.Graphics.Canvas.UI.Xaml.CanvasImageSource(_canvasDevice, w, h, 96);
-            using (var ds = imageSource.CreateDrawingSession(Colors.Transparent))
+            var imageSource = new CanvasImageSource(_canvasDevice, w, h, 96);
+            try
             {
-                // Scale bitmap to fill the target rect
-                var scaleX = (float)w / bitmap.SizeInPixels.Width;
-                var scaleY = (float)h / bitmap.SizeInPixels.Height;
-                var scale = Math.Max(scaleX, scaleY);
-
-                var scaledW = bitmap.SizeInPixels.Width * scale;
-                var scaledH = bitmap.SizeInPixels.Height * scale;
-                var offsetX = (w - scaledW) / 2f;
-                var offsetY = (h - scaledH) / 2f;
-
-                var scaled = new Microsoft.Graphics.Canvas.Effects.ScaleEffect
+                using (var ds = imageSource.CreateDrawingSession(Colors.Transparent))
                 {
-                    Source = bitmap,
-                    Scale = new System.Numerics.Vector2(scale, scale),
-                    CenterPoint = System.Numerics.Vector2.Zero
-                };
+                    // Scale bitmap to fill the target rect
+                    var scaleX = (float)w / bitmap.SizeInPixels.Width;
+                    var scaleY = (float)h / bitmap.SizeInPixels.Height;
+                    var scale = Math.Max(scaleX, scaleY);
 
-                var blur = new Microsoft.Graphics.Canvas.Effects.GaussianBlurEffect
+                    var scaledW = bitmap.SizeInPixels.Width * scale;
+                    var scaledH = bitmap.SizeInPixels.Height * scale;
+                    var offsetX = (w - scaledW) / 2f;
+                    var offsetY = (h - scaledH) / 2f;
+
+                    var scaled = new Microsoft.Graphics.Canvas.Effects.ScaleEffect
+                    {
+                        Source = bitmap,
+                        Scale = new System.Numerics.Vector2(scale, scale),
+                        CenterPoint = System.Numerics.Vector2.Zero
+                    };
+
+                    var blur = new Microsoft.Graphics.Canvas.Effects.GaussianBlurEffect
+                    {
+                        Source = scaled,
+                        BlurAmount = AlbumArtBlurAmount,
+                        BorderMode = Microsoft.Graphics.Canvas.Effects.EffectBorderMode.Hard
+                    };
+
+                    ds.DrawImage(blur, new System.Numerics.Vector2(offsetX, offsetY));
+                    blur.Dispose();
+                    scaled.Dispose();
+                }
+
+                // Verify we're still in blurred album art mode and same URL
+                if (_activeBackgroundMode != DetailsBackgroundMode.BlurredAlbumArt
+                    || _currentAlbumArtUrl != albumArt
+                    || generation != _detailsBackgroundGeneration)
                 {
-                    Source = scaled,
-                    BlurAmount = AlbumArtBlurAmount,
-                    BorderMode = Microsoft.Graphics.Canvas.Effects.EffectBorderMode.Hard
-                };
+                    DisposeCanvasImageSource(imageSource);
+                    return;
+                }
 
-                ds.DrawImage(blur, new System.Numerics.Vector2(offsetX, offsetY));
-                blur.Dispose();
-                scaled.Dispose();
+                ReplaceBlurredAlbumArtSource(imageSource);
+                DetailsCanvasImage.Source = imageSource;
+                DetailsCanvasImage.Visibility = Visibility.Visible;
             }
-
-            bitmap.Dispose();
-
-            // Verify we're still in blurred album art mode and same URL
-            if (_activeBackgroundMode != DetailsBackgroundMode.BlurredAlbumArt
-                || _currentAlbumArtUrl != albumArt)
-                return;
-
-            DetailsCanvasImage.Source = imageSource;
-            DetailsCanvasImage.Visibility = Visibility.Visible;
+            catch
+            {
+                DisposeCanvasImageSource(imageSource);
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -1368,7 +1386,22 @@ public sealed partial class RightPanelView : UserControl
 
     private void TeardownBlurredAlbumArt()
     {
+        _detailsBackgroundGeneration++;
         _currentAlbumArtUrl = null;
+        if (ReferenceEquals(DetailsCanvasImage.Source, _blurredAlbumArtImageSource))
+            DetailsCanvasImage.Source = null;
+        DisposeCanvasImageSource(ref _blurredAlbumArtImageSource);
+    }
+
+    private void ReplaceBlurredAlbumArtSource(CanvasImageSource imageSource)
+    {
+        if (!ReferenceEquals(_blurredAlbumArtImageSource, imageSource))
+        {
+            if (ReferenceEquals(DetailsCanvasImage.Source, _blurredAlbumArtImageSource))
+                DetailsCanvasImage.Source = null;
+            DisposeCanvasImageSource(ref _blurredAlbumArtImageSource);
+            _blurredAlbumArtImageSource = imageSource;
+        }
     }
 
     // ── Canvas layout (push content to bottom so video is visible) ──
@@ -1526,11 +1559,11 @@ public sealed partial class RightPanelView : UserControl
         }
 
         if (url == _currentCanvasUrl && _canvasMediaPlayer != null) return;
-        _currentCanvasUrl = url;
 
         TeardownCanvasBackground();
+        _currentCanvasUrl = url;
 
-        _canvasDevice ??= new Microsoft.Graphics.Canvas.CanvasDevice();
+        _canvasDevice ??= new CanvasDevice();
 
         _canvasMediaPlayer = new Windows.Media.Playback.MediaPlayer
         {
@@ -1561,7 +1594,7 @@ public sealed partial class RightPanelView : UserControl
                 if (_canvasFrameTarget == null || _canvasFrameTarget.SizeInPixels.Width != w || _canvasFrameTarget.SizeInPixels.Height != h)
                 {
                     _canvasFrameTarget?.Dispose();
-                    _canvasFrameTarget = new Microsoft.Graphics.Canvas.CanvasRenderTarget(_canvasDevice, w, h, 96);
+                    _canvasFrameTarget = new CanvasRenderTarget(_canvasDevice, w, h, 96);
                 }
 
                 _canvasMediaPlayer.CopyFrameToVideoSurface(_canvasFrameTarget);
@@ -1569,7 +1602,10 @@ public sealed partial class RightPanelView : UserControl
                 // Create or resize the image source
                 if (_canvasImageSource == null || _canvasImageSource.SizeInPixels.Width != w || _canvasImageSource.SizeInPixels.Height != h)
                 {
-                    _canvasImageSource = new Microsoft.Graphics.Canvas.UI.Xaml.CanvasImageSource(_canvasDevice, w, h, 96);
+                    if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
+                        DetailsCanvasImage.Source = null;
+                    DisposeCanvasImageSource(ref _canvasImageSource);
+                    _canvasImageSource = new CanvasImageSource(_canvasDevice, w, h, 96);
                     DetailsCanvasImage.Source = _canvasImageSource;
                 }
 
@@ -1584,7 +1620,9 @@ public sealed partial class RightPanelView : UserControl
                 _canvasDevice = null;
                 _canvasFrameTarget?.Dispose();
                 _canvasFrameTarget = null;
-                _canvasImageSource = null;
+                if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
+                    DetailsCanvasImage.Source = null;
+                DisposeCanvasImageSource(ref _canvasImageSource);
 
                 // Force re-setup on next call
                 var url = _currentCanvasUrl;
@@ -1597,6 +1635,7 @@ public sealed partial class RightPanelView : UserControl
 
     private void TeardownCanvasBackground()
     {
+        _detailsBackgroundGeneration++;
         if (_canvasMediaPlayer != null)
         {
             _canvasMediaPlayer.VideoFrameAvailable -= OnCanvasVideoFrameAvailable;
@@ -1606,12 +1645,23 @@ public sealed partial class RightPanelView : UserControl
             _canvasMediaPlayer = null;
         }
 
-        _canvasImageSource = null;
+        if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
+            DetailsCanvasImage.Source = null;
+        DisposeCanvasImageSource(ref _canvasImageSource);
         _canvasFrameTarget?.Dispose();
         _canvasFrameTarget = null;
         // Keep _canvasDevice alive for reuse
 
         _currentCanvasUrl = null;
+    }
+
+    private static void DisposeCanvasImageSource(CanvasImageSource? source)
+    {
+    }
+
+    private static void DisposeCanvasImageSource(ref CanvasImageSource? source)
+    {
+        source = null;
     }
 
     // ── Resize gripper ──

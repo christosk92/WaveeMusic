@@ -26,14 +26,7 @@
 
     <!-- F12 debug shortcut removed — use Settings > Diagnostics instead -->
 
-    <Page.KeyboardAccelerators>
-        <!-- Zoom: Ctrl+Plus / Ctrl+Minus / Ctrl+0 (numpad) -->
-        <KeyboardAccelerator Key="Add" Modifiers="Control" Invoked="ZoomIn_Invoked"/>
-        <KeyboardAccelerator Key="Subtract" Modifiers="Control" Invoked="ZoomOut_Invoked"/>
-        <KeyboardAccelerator Key="Number0" Modifiers="Control" Invoked="ZoomReset_Invoked"/>
-        <!-- FPS overlay toggle: Ctrl+Shift+F -->
-        <KeyboardAccelerator Key="F" Modifiers="Control,Shift" Invoked="FpsOverlayAccelerator_Invoked"/>
-    </Page.KeyboardAccelerators>
+    <!-- Keyboard shortcuts handled in ProcessKeyboardAccelerators to avoid tooltip flyouts -->
 
     <controls:ZoomContentControl x:Name="ZoomControl">
     <Grid x:Name="RootLayoutGrid">

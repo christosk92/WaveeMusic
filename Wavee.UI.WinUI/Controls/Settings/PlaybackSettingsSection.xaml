@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.PlaybackSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    mc:Ignorable="d">
+
+    <ScrollView>
+        <StackPanel Spacing="4" Padding="0,16,0,24">
+            <TextBlock Text="Interaction" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+            <controls:SettingsCard Header="Track click behavior"
+                                   Description="How clicking a track starts playback">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8B0;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ComboBox SelectedIndex="{x:Bind ViewModel.TrackClickIndex, Mode=TwoWay}"
+                          MinWidth="140">
+                    <ComboBoxItem Content="Single tap"/>
+                    <ComboBoxItem Content="Double tap"/>
+                </ComboBox>
+            </controls:SettingsCard>
+
+            <TextBlock Text="Queue" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <controls:SettingsCard Header="Default play action"
+                                   Description="What happens when you start a track">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8FD;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ComboBox SelectedIndex="{x:Bind ViewModel.DefaultPlayActionIndex, Mode=TwoWay}"
+                          MinWidth="180">
+                    <ComboBoxItem Content="Play and clear queue"/>
+                    <ComboBoxItem Content="Play next"/>
+                    <ComboBoxItem Content="Play later"/>
+                </ComboBox>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Ask before playing"
+                                   Description="Show a prompt before replacing the current queue">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE9CE;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AskPlayAction, Mode=TwoWay}"
+                              OnContent="" OffContent=""/>
+            </controls:SettingsCard>
+
+            <TextBlock Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <controls:SettingsCard Header="Streaming quality"
+                                   Description="Higher quality uses more bandwidth and storage">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8D6;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ComboBox SelectedIndex="{x:Bind ViewModel.AudioQualityIndex, Mode=TwoWay}"
+                          MinWidth="160">
+                    <ComboBoxItem Content="Normal (96 kbps)"/>
+                    <ComboBoxItem Content="High (160 kbps)"/>
+                    <ComboBoxItem Content="Very High (320 kbps)"/>
+                </ComboBox>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Normalize volume"
+                                   Description="Adjust volume levels so all tracks play at a similar loudness">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE767;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.NormalizationEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent=""/>
+            </controls:SettingsCard>
+
+            <TextBlock Text="Lyrics sources" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,4"/>
+            <TextBlock Text="Drag to reorder by preference. Higher position = stronger weight when multiple sources match."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,8"/>
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.LyricsSources}"
+                      AllowDrop="True">
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LyricsSourceItem">
+                        <Grid Padding="0,4" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Name}" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock Text="{x:Bind Description}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                          IsOn="{x:Bind IsEnabled, Mode=TwoWay}"
+                                          OnContent="" OffContent=""
+                                          VerticalAlignment="Center"/>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </StackPanel>
+    </ScrollView>
+</UserControl>

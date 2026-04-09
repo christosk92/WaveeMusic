@@ -78,30 +78,26 @@ public sealed class ImageCacheService
         decodePixelSize = SnapToBucket(decodePixelSize);
         var key = new CacheKey(uri, decodePixelSize);
 
-        // Fast path: read lock only. On a hit we DO update the access tick (cheap
-        // relaxed write — wrong-by-a-few-ticks is fine, it's just an eviction-age
-        // hint), but we do NOT reorder the LRU list. The previous version skipped
-        // the tick update entirely and let CleanupStale evict still-in-use entries
-        // by their original insert time, which created duplicate decoded bitmaps:
-        // the old bitmap stayed pinned by Image.Source on visible UI while a fresh
-        // BitmapImage was created for the same URL, doubling unmanaged bitmap
-        // memory for the hottest images in the app (player bar, sidebar, hero).
-        _rwLock.EnterReadLock();
+        // Fast path: no LRU list reorder on hit, but refresh LastAccessedTick under
+        // the write lock so CleanupStale does not evict still-in-use hot images.
+        _rwLock.EnterUpgradeableReadLock();
         try
         {
             if (_cache.TryGetValue(key, out var node))
             {
-                // Refresh the access tick in-place. Concurrent reads racing on
-                // this assignment are harmless — they all want roughly the same
-                // value, and the worst case is a few-ms-stale tick that
-                // CleanupStale ignores anyway because the entry is fresh.
-                node.Value = new KeyValuePair<CacheKey, CacheEntry>(
-                    key,
-                    new CacheEntry(node.Value.Value.Image, Environment.TickCount64));
-                return node.Value.Value.Image;
+                _rwLock.EnterWriteLock();
+                try
+                {
+                    var image = node.Value.Value.Image;
+                    node.Value = new KeyValuePair<CacheKey, CacheEntry>(
+                        key,
+                        new CacheEntry(image, Environment.TickCount64));
+                    return image;
+                }
+                finally { _rwLock.ExitWriteLock(); }
             }
         }
-        finally { _rwLock.ExitReadLock(); }
+        finally { _rwLock.ExitUpgradeableReadLock(); }
 
         // Cache miss — create BitmapImage outside the lock
         var bitmap = new BitmapImage();

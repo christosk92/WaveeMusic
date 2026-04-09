@@ -201,7 +201,10 @@ public sealed partial class AlbumDetailPanel : UserControl
         var url = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(url)) return;
 
-        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(url));
+        var desiredSize = new Windows.Foundation.Size(
+            Math.Max(1, ImageArea.ActualWidth > 0 ? ImageArea.ActualWidth : 640),
+            Math.Max(1, ImageArea.ActualHeight > 0 ? ImageArea.ActualHeight : 640));
+        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(url), desiredSize);
         _surfaceBrush.Surface = _imageSurface;
     }
 

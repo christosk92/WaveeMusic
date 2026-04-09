@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Audio.Queue;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Queue;
 
@@ -33,6 +34,7 @@ public sealed class QueueDisplayItem
 public sealed partial class QueueControl : UserControl
 {
     private readonly IPlaybackStateService? _playbackService;
+    private readonly ImageCacheService? _imageCache;
     private readonly ILogger? _logger;
 
     public QueueControl()
@@ -40,6 +42,7 @@ public sealed partial class QueueControl : UserControl
         InitializeComponent();
 
         _playbackService = Ioc.Default.GetService<IPlaybackStateService>();
+        _imageCache = Ioc.Default.GetService<ImageCacheService>();
         _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("QueueControl");
 
         if (_playbackService is INotifyPropertyChanged pc)
@@ -85,7 +88,8 @@ public sealed partial class QueueControl : UserControl
 
             var artUrl = SpotifyImageHelper.ToHttpsUrl(_playbackService.CurrentAlbumArt);
             NowPlayingArt.Source = artUrl != null
-                ? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 40 }
+                ? _imageCache?.GetOrCreate(artUrl, 40)
+                  ?? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 40 }
                 : null;
         }
 

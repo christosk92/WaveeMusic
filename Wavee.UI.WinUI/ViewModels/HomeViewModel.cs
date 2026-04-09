@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +25,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Services.HomeResponseParserFactory _parserFactory;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
+    private CancellationTokenSource? _baselineEnrichmentCts;
+    private int _baselineEnrichmentVersion;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -92,6 +95,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private async Task LoadAsync()
     {
         if (IsLoading) return;
+        CancelBaselineEnrichment();
         IsLoading = true;
         HasError = false;
         ErrorMessage = null;
@@ -117,6 +121,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     else
                         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
                     ApplyChips(snapshot.Chips);
+                    BeginBaselineEnrichment();
                     return;
                 }
             }
@@ -134,6 +139,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
 
                 ApplyChips(snapshot.Chips);
+                BeginBaselineEnrichment();
 
                 // Start background refresh
                 _homeFeedCache.StartBackgroundRefresh(_session);
@@ -147,6 +153,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 var ordered = ApplyPreferences(result.Sections);
                 await PopulateSectionsChunkedAsync(ordered);
                 ApplyChips(result.Chips);
+                BeginBaselineEnrichment();
             }
 
             if (string.IsNullOrEmpty(Greeting))
@@ -173,9 +180,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// </summary>
     public void ApplyBackgroundRefresh(Services.HomeFeedSnapshot snapshot)
     {
+        CancelBaselineEnrichment();
         var ordered = ApplyPreferences(snapshot.Sections);
         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
         ApplyChips(snapshot.Chips);
+        BeginBaselineEnrichment();
     }
 
     /// <summary>
@@ -893,6 +902,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         if (_homeFeedCache == null || _session == null || !_session.IsConnected()) return;
 
+        CancelBaselineEnrichment();
         _homeFeedCache.CurrentFacet = string.IsNullOrEmpty(facet) ? null : facet;
         _homeFeedCache.Invalidate();
 
@@ -918,6 +928,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     g => Greeting = g ?? Greeting, snapshot.Greeting);
 
             System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] After diff: {Sections.Count} sections displayed");
+            BeginBaselineEnrichment();
 
             if (string.IsNullOrEmpty(Greeting))
                 UpdateGreeting();
@@ -974,6 +985,201 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 break;
         }
     }
+
+    // ── Baseline enrichment ──
+
+    private void CancelBaselineEnrichment()
+    {
+        _baselineEnrichmentVersion++;
+        _baselineEnrichmentCts?.Cancel();
+        _baselineEnrichmentCts?.Dispose();
+        _baselineEnrichmentCts = null;
+    }
+
+    private void BeginBaselineEnrichment()
+    {
+        if (_session == null || !_session.IsConnected()) return;
+
+        CancelBaselineEnrichment();
+
+        var baselineItems = Sections
+            .Where(section => section.SectionType == HomeSectionType.Baseline)
+            .SelectMany(section => section.Items)
+            .Where(item => !item.HasBaselinePreview
+                           && !string.IsNullOrWhiteSpace(item.Uri)
+                           && item.ContentType is HomeContentType.Playlist or HomeContentType.Album)
+            .ToList();
+
+        if (baselineItems.Count == 0)
+        {
+            ClearLoadingForBaselineItems(Sections);
+            return;
+        }
+
+        foreach (var item in baselineItems)
+            item.IsBaselineLoading = true;
+
+        var uris = baselineItems
+            .Select(item => item.Uri!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var version = ++_baselineEnrichmentVersion;
+        var cts = new CancellationTokenSource();
+        _baselineEnrichmentCts = cts;
+        _ = EnrichBaselineItemsAsync(uris, version, cts.Token);
+    }
+
+    private async Task EnrichBaselineItemsAsync(List<string> uris, int version, CancellationToken ct)
+    {
+        try
+        {
+            var response = await _session!.Pathfinder.GetFeedBaselineLookupAsync(uris, ct).ConfigureAwait(false);
+            var lookup = BuildBaselineEnrichmentLookup(response);
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (ct.IsCancellationRequested || version != _baselineEnrichmentVersion)
+                    return;
+
+                ApplyBaselineEnrichment(Sections, lookup);
+
+                var cached = _homeFeedCache?.GetCached();
+                if (cached != null)
+                    ApplyBaselineEnrichment(cached.Sections, lookup);
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to enrich home baseline sections");
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (version == _baselineEnrichmentVersion)
+                    ClearLoadingForBaselineItems(Sections);
+            });
+        }
+    }
+
+    private static Dictionary<string, HomeBaselineEnrichment> BuildBaselineEnrichmentLookup(
+        FeedBaselineLookupResponse response)
+    {
+        var result = new Dictionary<string, HomeBaselineEnrichment>(StringComparer.Ordinal);
+        var entries = response.Data?.Lookup;
+        if (entries == null) return result;
+
+        foreach (var entry in entries)
+        {
+            var previewItems = entry.TypeName switch
+            {
+                "PlaylistResponseWrapper" => entry.GetPlaylistData()?.PreviewItems,
+                "AlbumResponseWrapper" => entry.GetAlbumData()?.PreviewItems,
+                _ => null
+            };
+
+            var tracks = previewItems?.Items?
+                .Select(wrapper => wrapper.Data)
+                .Where(track => track != null)
+                .Select(track => MapBaselinePreviewTrack(track!))
+                .Where(track => !string.IsNullOrWhiteSpace(track.Uri) || !string.IsNullOrWhiteSpace(track.Name))
+                .ToList() ?? [];
+
+            var uri = entry.TypeName switch
+            {
+                "PlaylistResponseWrapper" => entry.GetPlaylistData()?.Uri ?? entry.Uri,
+                "AlbumResponseWrapper" => entry.GetAlbumData()?.Uri ?? entry.Uri,
+                _ => entry.Uri
+            };
+
+            if (string.IsNullOrWhiteSpace(uri))
+                continue;
+
+            var primary = tracks.FirstOrDefault();
+            result[uri] = new HomeBaselineEnrichment(
+                uri,
+                tracks,
+                primary?.CanvasThumbnailUrl ?? primary?.CoverArtUrl,
+                primary?.ColorHex,
+                primary?.CanvasUrl,
+                primary?.CanvasThumbnailUrl,
+                primary?.AudioPreviewUrl);
+        }
+
+        return result;
+    }
+
+    private static HomeBaselinePreviewTrack MapBaselinePreviewTrack(FeedBaselineTrackData track)
+    {
+        var cover = track.AlbumOfTrack?.CoverArt;
+        var coverUrl = cover?.Sources?
+            .OrderByDescending(source => source.Width ?? 0)
+            .FirstOrDefault()?.Url;
+
+        var canvasThumbnail = PickCanvasThumbnail(track.Canvas?.Thumbnail?.Sources);
+
+        return new HomeBaselinePreviewTrack
+        {
+            Uri = track.Uri,
+            Name = track.Name,
+            CoverArtUrl = coverUrl,
+            ColorHex = cover?.ExtractedColors?.ColorDark?.Hex,
+            CanvasUrl = track.Canvas?.Url,
+            CanvasThumbnailUrl = canvasThumbnail,
+            AudioPreviewUrl = track.Previews?.AudioPreviews?.Items?.FirstOrDefault()?.Url
+        };
+    }
+
+    private static string? PickCanvasThumbnail(IReadOnlyList<FeedBaselineCanvasThumbnailSource>? sources)
+    {
+        if (sources == null || sources.Count == 0) return null;
+
+        return sources.FirstOrDefault(source =>
+                   source.Url?.Contains("288x512", StringComparison.OrdinalIgnoreCase) == true)?.Url
+               ?? sources.LastOrDefault(source => !string.IsNullOrWhiteSpace(source.Url))?.Url
+               ?? sources.FirstOrDefault()?.Url;
+    }
+
+    private static void ApplyBaselineEnrichment(
+        IEnumerable<HomeSection> sections,
+        IReadOnlyDictionary<string, HomeBaselineEnrichment> lookup)
+    {
+        foreach (var item in sections
+                     .Where(section => section.SectionType == HomeSectionType.Baseline)
+                     .SelectMany(section => section.Items))
+        {
+            if (item.Uri != null && lookup.TryGetValue(item.Uri, out var enrichment))
+            {
+                item.PreviewTracks = enrichment.PreviewTracks;
+                item.HeroImageUrl = enrichment.HeroImageUrl ?? item.ImageUrl;
+                item.HeroColorHex = enrichment.HeroColorHex ?? item.ColorHex;
+                item.CanvasUrl = enrichment.CanvasUrl;
+                item.CanvasThumbnailUrl = enrichment.CanvasThumbnailUrl;
+                item.AudioPreviewUrl = enrichment.AudioPreviewUrl;
+                item.HasBaselinePreview = enrichment.PreviewTracks.Count > 0;
+            }
+            else
+            {
+                item.HeroImageUrl ??= item.ImageUrl;
+                item.HeroColorHex ??= item.ColorHex;
+            }
+
+            item.IsBaselineLoading = false;
+        }
+    }
+
+    private static void ClearLoadingForBaselineItems(IEnumerable<HomeSection> sections)
+    {
+        foreach (var item in sections
+                     .Where(section => section.SectionType == HomeSectionType.Baseline)
+                     .SelectMany(section => section.Items))
+        {
+            item.HeroImageUrl ??= item.ImageUrl;
+            item.HeroColorHex ??= item.ColorHex;
+            item.IsBaselineLoading = false;
+        }
+    }
 }
 
 public enum HomeSectionType { Shorts, Generic, RecentlyPlayed, Baseline }
@@ -1010,15 +1216,140 @@ public sealed class HomeSection
     public string? HeaderEntityUri { get; set; }
 }
 
-public sealed class HomeSectionItem
+public sealed class HomeSectionItem : ObservableObject
 {
-    public string? Uri { get; set; }
-    public string? Title { get; set; }
-    public string? Subtitle { get; set; }
-    public string? ImageUrl { get; set; }
-    public HomeContentType ContentType { get; set; }
-    public string? ColorHex { get; set; }
-    public string? PlaceholderGlyph { get; set; }
+    private string? _uri;
+    private string? _title;
+    private string? _subtitle;
+    private string? _imageUrl;
+    private HomeContentType _contentType;
+    private string? _colorHex;
+    private string? _placeholderGlyph;
+    private bool _isBaselineLoading;
+    private bool _hasBaselinePreview;
+    private string? _heroImageUrl;
+    private string? _heroColorHex;
+    private string? _canvasUrl;
+    private string? _canvasThumbnailUrl;
+    private string? _audioPreviewUrl;
+    private string? _baselineGroupTitle;
+    private List<HomeBaselinePreviewTrack> _previewTracks = [];
+
+    public string? Uri
+    {
+        get => _uri;
+        set => SetProperty(ref _uri, value);
+    }
+
+    public string? Title
+    {
+        get => _title;
+        set => SetProperty(ref _title, value);
+    }
+
+    public string? Subtitle
+    {
+        get => _subtitle;
+        set => SetProperty(ref _subtitle, value);
+    }
+
+    public string? ImageUrl
+    {
+        get => _imageUrl;
+        set => SetProperty(ref _imageUrl, value);
+    }
+
+    public HomeContentType ContentType
+    {
+        get => _contentType;
+        set => SetProperty(ref _contentType, value);
+    }
+
+    public string? ColorHex
+    {
+        get => _colorHex;
+        set => SetProperty(ref _colorHex, value);
+    }
+
+    public string? PlaceholderGlyph
+    {
+        get => _placeholderGlyph;
+        set => SetProperty(ref _placeholderGlyph, value);
+    }
+
+    public bool IsBaselineLoading
+    {
+        get => _isBaselineLoading;
+        set => SetProperty(ref _isBaselineLoading, value);
+    }
+
+    public bool HasBaselinePreview
+    {
+        get => _hasBaselinePreview;
+        set => SetProperty(ref _hasBaselinePreview, value);
+    }
+
+    public string? HeroImageUrl
+    {
+        get => _heroImageUrl;
+        set => SetProperty(ref _heroImageUrl, value);
+    }
+
+    public string? HeroColorHex
+    {
+        get => _heroColorHex;
+        set => SetProperty(ref _heroColorHex, value);
+    }
+
+    public string? CanvasUrl
+    {
+        get => _canvasUrl;
+        set => SetProperty(ref _canvasUrl, value);
+    }
+
+    public string? CanvasThumbnailUrl
+    {
+        get => _canvasThumbnailUrl;
+        set => SetProperty(ref _canvasThumbnailUrl, value);
+    }
+
+    public string? AudioPreviewUrl
+    {
+        get => _audioPreviewUrl;
+        set => SetProperty(ref _audioPreviewUrl, value);
+    }
+
+    public string? BaselineGroupTitle
+    {
+        get => _baselineGroupTitle;
+        set => SetProperty(ref _baselineGroupTitle, value);
+    }
+
+    public List<HomeBaselinePreviewTrack> PreviewTracks
+    {
+        get => _previewTracks;
+        set => SetProperty(ref _previewTracks, value);
+    }
+}
+
+internal sealed record HomeBaselineEnrichment(
+    string Uri,
+    List<HomeBaselinePreviewTrack> PreviewTracks,
+    string? HeroImageUrl,
+    string? HeroColorHex,
+    string? CanvasUrl,
+    string? CanvasThumbnailUrl,
+    string? AudioPreviewUrl);
+
+public sealed class HomeBaselinePreviewTrack
+{
+    public string? Uri { get; init; }
+    public string? Name { get; init; }
+    public string? CoverArtUrl { get; init; }
+    public string? ColorHex { get; init; }
+    public string? CanvasUrl { get; init; }
+    public string? CanvasThumbnailUrl { get; init; }
+    public string? AudioPreviewUrl { get; init; }
 }
 
 public sealed partial class HomeChipViewModel : ObservableObject

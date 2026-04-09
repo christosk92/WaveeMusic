@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -43,6 +44,10 @@ public sealed class HomeResponseParserFactory
                 if (!canParse) continue;
 
                 var result = parser.Parse(response);
+                result = new HomeParseResult(
+                    result.Greeting,
+                    CombineBaselineSections(result.Sections),
+                    result.Chips);
                 _logger?.LogDebug("HomeParserFactory: {Parser}.Parse returned {Sections} sections, {Items} total items",
                     name, result.Sections.Count,
                     result.Sections.Sum(s => s.Items.Count));
@@ -59,5 +64,51 @@ public sealed class HomeResponseParserFactory
             response.Data?.Home?.Greeting?.TransformedLabel,
             [],
             []);
+    }
+
+    private static List<HomeSection> CombineBaselineSections(List<HomeSection> sections)
+    {
+        var baselineSections = sections
+            .Where(section => section.SectionType == HomeSectionType.Baseline)
+            .ToList();
+
+        foreach (var section in baselineSections)
+        {
+            foreach (var item in section.Items)
+                item.BaselineGroupTitle = section.Title;
+        }
+
+        if (baselineSections.Count <= 1)
+            return sections;
+
+        var firstBaselineIndex = sections.FindIndex(section => section.SectionType == HomeSectionType.Baseline);
+        var combined = new HomeSection
+        {
+            Title = "More like your music",
+            SectionType = HomeSectionType.Baseline,
+            SectionUri = "spotify:section:home-feed-baseline-group"
+        };
+
+        var seenUris = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var section in baselineSections)
+        {
+            foreach (var item in section.Items)
+            {
+                if (!string.IsNullOrWhiteSpace(item.Uri) && !seenUris.Add(item.Uri))
+                    continue;
+
+                combined.Items.Add(item);
+            }
+        }
+
+        if (combined.Items.Count == 0)
+            return sections.Where(section => section.SectionType != HomeSectionType.Baseline).ToList();
+
+        var result = sections
+            .Where(section => section.SectionType != HomeSectionType.Baseline)
+            .ToList();
+
+        result.Insert(Math.Clamp(firstBaselineIndex, 0, result.Count), combined);
+        return result;
     }
 }

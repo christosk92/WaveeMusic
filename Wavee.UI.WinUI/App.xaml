@@ -43,6 +43,31 @@
                             <!-- Accent -->
                             <Color x:Key="App.Theme.AccentColor">#1DB954</Color>
                             <SolidColorBrush x:Key="App.Theme.AccentBrush" Color="{StaticResource App.Theme.AccentColor}"/>
+
+                            <!-- Baseline home card -->
+                            <Color x:Key="HomeBaselineCardOverlayPrimaryTextColor">#FFFFFFFF</Color>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayPrimaryTextBrush" Color="{StaticResource HomeBaselineCardOverlayPrimaryTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlaySecondaryTextBrush" Color="#D9FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayTertiaryTextBrush" Color="#B5FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayThumbBackgroundBrush" Color="#20FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayThumbBorderBrush" Color="#30FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayChromeBackgroundBrush" Color="#B81B1B1B"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayChromeBorderBrush" Color="#33FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardDividerBrush" Color="#1AFFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewBadgeBackgroundBrush" Color="#24FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewBadgeBorderBrush" Color="#28FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewSurfaceBackgroundBrush" Color="#38121720"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewSurfaceBorderBrush" Color="#30FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewPlaceholderBackgroundBrush" Color="#14000000"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewPlaceholderStrokeBrush" Color="#EAF7FBFF"/>
+                            <Color x:Key="HomeBaselineCardPreviewVisualizerForegroundColor">#FFF7FBFF</Color>
+                            <Color x:Key="HomeBaselineCardPreviewVisualizerTrackColor">#00000000</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightStartColor">#54FFFFFF</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightMidColor">#10FFFFFF</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightEndColor">#00FFFFFF</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowTopColor">#26000000</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowMidColor">#09000000</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowBottomColor">#A6000000</Color>
                         </ResourceDictionary>
 
                         <ResourceDictionary x:Key="Dark">
@@ -63,6 +88,31 @@
                             <!-- Accent -->
                             <Color x:Key="App.Theme.AccentColor">#1DB954</Color>
                             <SolidColorBrush x:Key="App.Theme.AccentBrush" Color="{StaticResource App.Theme.AccentColor}"/>
+
+                            <!-- Baseline home card -->
+                            <Color x:Key="HomeBaselineCardOverlayPrimaryTextColor">#FFFFFFFF</Color>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayPrimaryTextBrush" Color="{StaticResource HomeBaselineCardOverlayPrimaryTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlaySecondaryTextBrush" Color="#D9FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayTertiaryTextBrush" Color="#B5FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayThumbBackgroundBrush" Color="#20FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayThumbBorderBrush" Color="#30FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayChromeBackgroundBrush" Color="#B81B1B1B"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayChromeBorderBrush" Color="#33FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardDividerBrush" Color="#1AFFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewBadgeBackgroundBrush" Color="#24FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewBadgeBorderBrush" Color="#28FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewSurfaceBackgroundBrush" Color="#38121720"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewSurfaceBorderBrush" Color="#30FFFFFF"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewPlaceholderBackgroundBrush" Color="#14000000"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewPlaceholderStrokeBrush" Color="#EAF7FBFF"/>
+                            <Color x:Key="HomeBaselineCardPreviewVisualizerForegroundColor">#FFF7FBFF</Color>
+                            <Color x:Key="HomeBaselineCardPreviewVisualizerTrackColor">#00000000</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightStartColor">#54FFFFFF</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightMidColor">#10FFFFFF</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightEndColor">#00FFFFFF</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowTopColor">#26000000</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowMidColor">#09000000</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowBottomColor">#A6000000</Color>
                         </ResourceDictionary>
 
                         <ResourceDictionary x:Key="HighContrast">
@@ -82,6 +132,31 @@
 
                             <!-- Accent -->
                             <SolidColorBrush x:Key="App.Theme.AccentBrush" Color="{StaticResource SystemColorHighlightColor}"/>
+
+                            <!-- Baseline home card -->
+                            <Color x:Key="HomeBaselineCardOverlayPrimaryTextColor">{StaticResource SystemColorButtonTextColor}</Color>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayPrimaryTextBrush" Color="{StaticResource HomeBaselineCardOverlayPrimaryTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlaySecondaryTextBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayTertiaryTextBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayThumbBackgroundBrush" Color="{StaticResource SystemColorWindowColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayThumbBorderBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayChromeBackgroundBrush" Color="{StaticResource SystemColorWindowColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardOverlayChromeBorderBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardDividerBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewBadgeBackgroundBrush" Color="{StaticResource SystemColorWindowColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewBadgeBorderBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewSurfaceBackgroundBrush" Color="{StaticResource SystemColorWindowColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewSurfaceBorderBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewPlaceholderBackgroundBrush" Color="{StaticResource SystemColorWindowColor}"/>
+                            <SolidColorBrush x:Key="HomeBaselineCardPreviewPlaceholderStrokeBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
+                            <Color x:Key="HomeBaselineCardPreviewVisualizerForegroundColor">{StaticResource SystemColorHighlightColor}</Color>
+                            <Color x:Key="HomeBaselineCardPreviewVisualizerTrackColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightStartColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightMidColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="HomeBaselineCardHeroHighlightEndColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowTopColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowMidColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="HomeBaselineCardHeroShadowBottomColor">{StaticResource SystemColorWindowColor}</Color>
                         </ResourceDictionary>
                     </ResourceDictionary.ThemeDictionaries>
                 </ResourceDictionary>

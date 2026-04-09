@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.StorageNetworkSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:CachingProfileTooltipConverter x:Key="CachingProfileTooltipConverter"/>
+    </UserControl.Resources>
+
+    <ScrollView>
+        <StackPanel Spacing="4" Padding="0,16,0,24">
+            <TextBlock Text="Memory Caches" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
+                     Message="Cache and connection changes take effect after restarting the app."
+                     Margin="0,0,0,8"/>
+
+            <controls:SettingsCard Header="Caching profile"
+                                   Description="Balances memory usage against network refetches and browsing speed. Medium matches the default. Takes effect after restart.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8F1;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Right">
+                    <Slider MinWidth="280"
+                            Minimum="0"
+                            Maximum="3"
+                            StepFrequency="1"
+                            SnapsTo="Ticks"
+                            TickFrequency="1"
+                            TickPlacement="Outside"
+                            Value="{x:Bind ViewModel.CachingProfileIndex, Mode=TwoWay}"
+                            ThumbToolTipValueConverter="{StaticResource CachingProfileTooltipConverter}"/>
+                    <Grid MinWidth="280">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Low"
+                                   HorizontalAlignment="Left"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Medium"
+                                   HorizontalAlignment="Center"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="2" Text="High"
+                                   HorizontalAlignment="Center"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="3" Text="Very&#x0a;Aggressive"
+                                   HorizontalAlignment="Right"
+                                   TextAlignment="Right"
+                                   TextWrapping="Wrap"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Grid>
+                    <TextBlock Text="{x:Bind ViewModel.CachingProfileSummary, Mode=OneWay}"
+                               HorizontalAlignment="Right"
+                               Margin="0,4,0,0"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <TextBlock Text="Audio Cache" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+
+            <controls:SettingsCard Header="Enable cache"
+                                   Description="Cache audio files locally for faster playback">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE74E;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.CacheEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent=""/>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Cache size limit"
+                                   Description="Oldest tracks are automatically removed when the limit is reached">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xEDA2;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ComboBox SelectedIndex="{x:Bind ViewModel.CacheSizeLimitIndex, Mode=TwoWay}"
+                          MinWidth="140">
+                    <ComboBoxItem Content="500 MB"/>
+                    <ComboBoxItem Content="1 GB"/>
+                    <ComboBoxItem Content="2 GB"/>
+                    <ComboBoxItem Content="5 GB"/>
+                </ComboBox>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Cache location"
+                                   Description="{x:Bind ViewModel.CacheLocationDisplay}">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8B7;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <TextBlock Text="{x:Bind ViewModel.CacheSizeDisplay}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Clear cache"
+                                   Description="Delete all cached audio files">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE74D;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <Button Content="Clear Cache" Command="{x:Bind ViewModel.ClearCacheCommand}"/>
+            </controls:SettingsCard>
+
+            <TextBlock Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <controls:SettingsCard Header="Auto-reconnect"
+                                   Description="Automatically reconnect when the connection is lost">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE703;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AutoReconnect, Mode=TwoWay}"
+                              OnContent="" OffContent=""/>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Connection timeout"
+                                   Description="Maximum time to wait when connecting">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE916;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ComboBox SelectedIndex="{x:Bind ViewModel.ConnectionTimeoutIndex, Mode=TwoWay}"
+                          MinWidth="140">
+                    <ComboBoxItem Content="10 seconds"/>
+                    <ComboBoxItem Content="30 seconds"/>
+                    <ComboBoxItem Content="60 seconds"/>
+                </ComboBox>
+            </controls:SettingsCard>
+        </StackPanel>
+    </ScrollView>
+</UserControl>
