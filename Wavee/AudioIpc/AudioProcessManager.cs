@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Wavee.Playback.Contracts;
 
@@ -50,6 +51,14 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
     // ── Resilience configuration ──
     private const int MaxRestartAttempts = 5;
+
+    /// <summary>
+    /// Exit code the child AudioHost uses to signal a deterministic native-dependency
+    /// provisioning failure (e.g. offline first-run on Windows ARM64 without portaudio.dll).
+    /// Keep in sync with Wavee.AudioHost/Program.cs (Environment.ExitCode = 3) and with
+    /// Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs.
+    /// </summary>
+    private const int ProvisioningFailedExitCode = 3;
     private static readonly TimeSpan[] BackoffDelays =
     [
         TimeSpan.FromSeconds(1),
@@ -94,24 +103,41 @@ public sealed class AudioProcessManager : IAsyncDisposable
     {
         _logger = logger;
 
-        // Locate Wavee.AudioHost executable — try multiple search paths
+        // Locate Wavee.AudioHost executable by parsing the WinUI output layout.
+        // Expected: {solutionDir}/Wavee.UI.WinUI/bin/[{Platform}/]{Config}/{Tfm}/AppX/
+        // (Note: .NET 10 WinUI output has NO RID subfolder between Tfm and AppX.)
         var baseDir = AppContext.BaseDirectory;
-        // WinUI packaged output: .../Wavee/Wavee.UI.WinUI/bin/x64/Debug/net10.0-.../win-x64/AppX/
-        // Count up: AppX(1)/win-x64(2)/net10.0-...(3)/Debug(4)/x64(5)/bin(6)/Wavee.UI.WinUI(7) = solution dir
-        var solutionRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..", "..", ".."));
-        _logger?.LogDebug("AudioHost solutionRoot resolved to: {Root}", solutionRoot);
-        var candidates = new[]
+        var (solutionRoot, platform, config) = ResolveBuildLayout(baseDir);
+        _logger?.LogDebug(
+            "AudioHost layout resolved: solutionRoot={Root} platform={Platform} config={Config}",
+            solutionRoot ?? "<none>", platform ?? "<none>", config ?? "<none>");
+
+        var candidates = new List<string>
         {
-            // Same directory (deployed side by side)
+            // Same directory (deployed side by side, e.g. packaged AppX)
             Path.Combine(baseDir, "Wavee.AudioHost.exe"),
-            // Solution-relative: Debug build
-            Path.Combine(solutionRoot, "Wavee.AudioHost", "bin", "Debug", "net10.0", "Wavee.AudioHost.exe"),
-            // Solution-relative: Release build
-            Path.Combine(solutionRoot, "Wavee.AudioHost", "bin", "Release", "net10.0", "Wavee.AudioHost.exe"),
-            // 4 dirs up (non-packaged layout)
-            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..",
-                "Wavee.AudioHost", "bin", "Debug", "net10.0", "Wavee.AudioHost.exe")),
         };
+
+        if (solutionRoot is not null)
+        {
+            var audioHostBin = Path.Combine(solutionRoot, "Wavee.AudioHost", "bin");
+
+            // Prefer platform+config match (e.g. bin/ARM64/Debug/net10.0)
+            if (platform is not null && config is not null)
+            {
+                candidates.Add(Path.Combine(audioHostBin, platform, config, "net10.0", "Wavee.AudioHost.exe"));
+            }
+
+            // Fall back to config without platform (AnyCPU, e.g. bin/Debug/net10.0)
+            if (config is not null)
+            {
+                candidates.Add(Path.Combine(audioHostBin, config, "net10.0", "Wavee.AudioHost.exe"));
+            }
+
+            // Last-resort fallbacks
+            candidates.Add(Path.Combine(audioHostBin, "Debug", "net10.0", "Wavee.AudioHost.exe"));
+            candidates.Add(Path.Combine(audioHostBin, "Release", "net10.0", "Wavee.AudioHost.exe"));
+        }
 
         _audioHostPath = "";
         foreach (var candidate in candidates)
@@ -133,6 +159,57 @@ public sealed class AudioProcessManager : IAsyncDisposable
         {
             _logger?.LogInformation("AudioHost found at: {Path}", _audioHostPath);
         }
+    }
+
+    /// <summary>
+    /// Parses the WinUI build output layout to recover the solution root, MSBuild Platform,
+    /// and Configuration from <see cref="AppContext.BaseDirectory"/>.
+    /// Expected layout: {solutionDir}/Wavee.UI.WinUI/bin/[{Platform}/]{Config}/{Tfm}/AppX/
+    /// Returns (null, null, null) if the layout is unrecognized (e.g., a packaged install).
+    /// </summary>
+    private static (string? solutionRoot, string? platform, string? config) ResolveBuildLayout(string baseDir)
+    {
+        // Walk up until we find a directory named "bin".
+        var dir = new DirectoryInfo(baseDir);
+        while (dir is not null && !string.Equals(dir.Name, "bin", StringComparison.OrdinalIgnoreCase))
+        {
+            dir = dir.Parent;
+        }
+        if (dir?.Parent?.Parent is null)
+        {
+            return (null, null, null);
+        }
+
+        var binDir = dir.FullName;
+        var solutionRoot = dir.Parent.Parent.FullName; // bin/.. = project dir, ../.. = solution dir
+
+        // Path segments between bin/ and baseDir are: [Platform?] [Config] [Tfm] [AppX?]
+        var relative = Path.GetRelativePath(binDir, baseDir);
+        var parts = relative.Split(
+            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        string? platform = null;
+        string? config = null;
+        if (parts.Length >= 1)
+        {
+            // If parts[0] is a known Config, no Platform layer is present (AnyCPU).
+            if (IsKnownConfig(parts[0]))
+            {
+                config = parts[0];
+            }
+            else if (parts.Length >= 2)
+            {
+                platform = parts[0];
+                config = parts[1];
+            }
+        }
+
+        return (solutionRoot, platform, config);
+
+        static bool IsKnownConfig(string s) =>
+            string.Equals(s, "Debug", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(s, "Release", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -287,11 +364,83 @@ public sealed class AudioProcessManager : IAsyncDisposable
         _logger?.LogWarning("Audio host process exited (code={ExitCode}, restarts={Restarts}/{Max})",
             exitCode, _restartCount, MaxRestartAttempts);
 
-        // Directly trigger restart — don't rely solely on proxy disconnect detection,
-        // because the pipe read may not immediately fail on Windows when the server exits.
         _heartbeatTimer?.Dispose();
         _heartbeatTimer = null;
+
+        // Exit code 3 is a deterministic native-dependency provisioning failure
+        // (e.g. offline first-run on Windows ARM64 with missing portaudio.dll).
+        // The AudioHost drops a JSON marker under %LOCALAPPDATA%\Wavee\NativeDeps\ before exiting.
+        // Retrying won't help — surface a specific, actionable error and stop the restart loop.
+        if (exitCode == ProvisioningFailedExitCode)
+        {
+            var friendlyMessage = TryReadProvisioningFailureMessage()
+                ?? "Audio engine needs first-run setup. Check your connection and click Retry.";
+            SetState(AudioProcessState.Failed, friendlyMessage);
+            return;
+        }
+
+        // Directly trigger restart — don't rely solely on proxy disconnect detection,
+        // because the pipe read may not immediately fail on Windows when the server exits.
         _ = TryRestartAsync();
+    }
+
+    /// <summary>
+    /// Scans %LOCALAPPDATA%\Wavee\NativeDeps\ for any *.failure.json marker files produced by
+    /// Wavee.AudioHost/NativeDeps/NativeLibraryFailureMarker and returns a user-facing message
+    /// describing the failure. The marker file is deleted after reading so a subsequent
+    /// successful retry does not re-trigger this path. Returns null if no marker is present.
+    /// </summary>
+    private string? TryReadProvisioningFailureMessage()
+    {
+        try
+        {
+            var markerDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Wavee", "NativeDeps");
+            if (!Directory.Exists(markerDir)) return null;
+
+            var markers = Directory.GetFiles(markerDir, "*.failure.json");
+            if (markers.Length == 0) return null;
+
+            // Pick the newest marker (typically only one exists).
+            Array.Sort(markers, (a, b) => File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a)));
+            var markerPath = markers[0];
+
+            string displayName = "Audio engine";
+            string reason = "First-run setup failed";
+            try
+            {
+                var json = File.ReadAllText(markerPath);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("displayName", out var d) && d.ValueKind == JsonValueKind.String)
+                {
+                    var v = d.GetString();
+                    if (!string.IsNullOrWhiteSpace(v)) displayName = v!;
+                }
+                if (doc.RootElement.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String)
+                {
+                    var v = r.GetString();
+                    if (!string.IsNullOrWhiteSpace(v)) reason = v!;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Failed to parse native-deps failure marker {Path}", markerPath);
+            }
+
+            // Delete all markers we saw so a successful retry doesn't re-trigger.
+            foreach (var path in markers)
+            {
+                try { File.Delete(path); } catch { /* best effort */ }
+            }
+
+            return $"{displayName} setup failed: {reason}. Check your connection and click Retry.";
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Error scanning native-deps failure markers");
+            return null;
+        }
     }
 
     private void OnProxyDisconnected(string reason)

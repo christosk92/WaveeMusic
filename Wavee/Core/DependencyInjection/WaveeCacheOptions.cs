@@ -69,6 +69,12 @@ public class WaveeCacheOptions
     public int ContextCacheSize { get; set; } = 50;
 
     /// <summary>
+    /// Maximum entries in each of the CacheService auxiliary caches
+    /// (audio keys, CDN URLs, head data). Default: 1000 per cache.
+    /// </summary>
+    public int AudioAuxCacheSize { get; set; } = 1000;
+
+    /// <summary>
     /// Interval between background cache cleanup passes. Default: 5 minutes.
     /// </summary>
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromMinutes(5);

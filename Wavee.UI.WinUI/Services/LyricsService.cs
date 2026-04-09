@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -35,18 +34,29 @@ public sealed class LyricsService : ILyricsService
     private readonly AmllTtmlDbClient _amllClient = new();
     private readonly Lyricify.Lyrics.Providers.Web.Musixmatch.Api _musixmatchApi = new();
     private readonly ILogger? _logger;
-    private readonly ConcurrentDictionary<string, (ControlsLyricsData Data, string Provider)> _memoryCache = new();
+
+    // Bounded LRU of hot lyrics. Each ControlsLyricsData can be 50-200 KB (word/syllable-synced
+    // entries are the fat ones), so an unbounded cache used to grow to tens of megabytes over
+    // a browsing session. Capacity is supplied by the caching profile at DI construction time;
+    // the default matches the Medium profile to preserve legacy behaviour when no profile is set.
+    private readonly LyricsMemoryCache _memoryCache;
 
     private static readonly TimeSpan ProviderTimeout = TimeSpan.FromSeconds(10);
     private static readonly Regex CollapseWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex PunctuationRegex = new(@"[\p{P}\p{S}]", RegexOptions.Compiled);
 
-    public LyricsService(ISession session, IMetadataDatabase? db = null, ISettingsService? settingsService = null, ILogger<LyricsService>? logger = null)
+    public LyricsService(
+        ISession session,
+        IMetadataDatabase? db = null,
+        ISettingsService? settingsService = null,
+        ILogger<LyricsService>? logger = null,
+        int memoryCacheCapacity = 150)
     {
         _session = session;
         _db = db;
         _settingsService = settingsService;
         _logger = logger;
+        _memoryCache = new LyricsMemoryCache(memoryCacheCapacity);
     }
 
     public async Task<(ControlsLyricsData? Lyrics, LyricsSearchDiagnostics Diagnostics)> GetLyricsForTrackAsync(
@@ -936,4 +946,91 @@ public sealed class LyricsService : ILyricsService
     }
 
     private sealed record ProviderResult(string Provider, ControlsLyricsData? Data, string? Error = null);
+
+    /// <summary>
+    /// Bounded LRU cache of lyrics keyed by track id. Exposes a minimal subset of the
+    /// <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey, TValue}"/> API
+    /// (TryGetValue, TryRemove, indexer set) so call sites read the same as before.
+    /// Thread-safe via a single lock — contention is low because lyrics fetches happen
+    /// on track changes, not on a hot UI path.
+    /// </summary>
+    private sealed class LyricsMemoryCache
+    {
+        private readonly int _capacity;
+        private readonly object _lock = new();
+        private readonly LinkedList<KeyValuePair<string, (ControlsLyricsData Data, string Provider)>> _lru = new();
+        private readonly Dictionary<string, LinkedListNode<KeyValuePair<string, (ControlsLyricsData Data, string Provider)>>> _map = new();
+
+        public LyricsMemoryCache(int capacity)
+        {
+            if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+            _capacity = capacity;
+        }
+
+        public bool TryGetValue(string key, out (ControlsLyricsData Data, string Provider) value)
+        {
+            lock (_lock)
+            {
+                if (_map.TryGetValue(key, out var node))
+                {
+                    // LRU bump: move hit to the front so eviction targets cold entries.
+                    if (!ReferenceEquals(_lru.First, node))
+                    {
+                        _lru.Remove(node);
+                        _lru.AddFirst(node);
+                    }
+                    value = node.Value.Value;
+                    return true;
+                }
+            }
+            value = default;
+            return false;
+        }
+
+        public bool TryRemove(string key, out (ControlsLyricsData Data, string Provider) value)
+        {
+            lock (_lock)
+            {
+                if (_map.Remove(key, out var node))
+                {
+                    _lru.Remove(node);
+                    value = node.Value.Value;
+                    return true;
+                }
+            }
+            value = default;
+            return false;
+        }
+
+        public (ControlsLyricsData Data, string Provider) this[string key]
+        {
+            set
+            {
+                lock (_lock)
+                {
+                    if (_map.TryGetValue(key, out var existing))
+                    {
+                        // Update in place + move to front.
+                        existing.Value = new KeyValuePair<string, (ControlsLyricsData, string)>(key, value);
+                        if (!ReferenceEquals(_lru.First, existing))
+                        {
+                            _lru.Remove(existing);
+                            _lru.AddFirst(existing);
+                        }
+                        return;
+                    }
+
+                    var node = _lru.AddFirst(new KeyValuePair<string, (ControlsLyricsData, string)>(key, value));
+                    _map[key] = node;
+
+                    // Evict tail entries until within capacity.
+                    while (_map.Count > _capacity && _lru.Last is { } tail)
+                    {
+                        _map.Remove(tail.Value.Key);
+                        _lru.RemoveLast();
+                    }
+                }
+            }
+        }
+    }
 }

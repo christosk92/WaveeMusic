@@ -198,11 +198,13 @@ public sealed partial class ContentCard : UserControl
 
     private readonly ImageCacheService? _imageCache;
     private readonly ThemeColorService? _themeColorService;
+    private readonly NowPlayingHighlightService? _highlightService;
 
     public ContentCard()
     {
         _imageCache = Ioc.Default.GetService<ImageCacheService>();
         _themeColorService = Ioc.Default.GetService<ThemeColorService>();
+        _highlightService = Ioc.Default.GetService<NowPlayingHighlightService>();
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -232,16 +234,25 @@ public sealed partial class ContentCard : UserControl
             AddHandler(PointerReleasedEvent, _passivePointerReleased, true);
         }
 
-        // Self-manage now-playing state via messenger
-        if (!WeakReferenceMessenger.Default.IsRegistered<NowPlayingChangedMessage>(this))
-            WeakReferenceMessenger.Default.Register<NowPlayingChangedMessage>(this, OnNowPlayingChanged);
+        // Subscribe to the shared NowPlayingHighlightService singleton instead of
+        // registering directly with WeakReferenceMessenger. The service listens to
+        // NowPlayingChangedMessage once at startup and broadcasts via a plain C# event
+        // — avoiding ~310 per-card messenger Register calls during HomePage realization.
+        if (_highlightService != null)
+        {
+            _highlightService.CurrentChanged += OnHighlightServiceChanged;
+            // Apply the current snapshot immediately so newly-realized cards reflect playback state.
+            var (uri, playing) = _highlightService.Current;
+            ApplyHighlight(uri, playing);
+        }
         SyncInitialPlaybackState();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // Unsubscribe from now-playing messages
-        WeakReferenceMessenger.Default.UnregisterAll(this);
+        // Unsubscribe from the highlight service — strong event, explicit unsubscribe required.
+        if (_highlightService != null)
+            _highlightService.CurrentChanged -= OnHighlightServiceChanged;
 
         // Clean up SizeChanged subscription to prevent memory leaks
         if (CircleImageContainer != null)
@@ -267,13 +278,15 @@ public sealed partial class ContentCard : UserControl
         }
     }
 
-    // ── Now-playing self-management ──
+    // ── Now-playing self-management (via shared NowPlayingHighlightService) ──
 
-    private void OnNowPlayingChanged(object recipient, NowPlayingChangedMessage msg)
+    private void OnHighlightServiceChanged(string? contextUri, bool playing)
+        => ApplyHighlight(contextUri, playing);
+
+    private void ApplyHighlight(string? contextUri, bool playing)
     {
         // Do the cheap string comparison BEFORE scheduling a dispatcher callback.
         // This avoids queuing 20-50 TryEnqueue calls when only 0-1 cards actually match.
-        var (contextUri, playing) = msg.Value;
         var navUri = NavigationUri; // read once — safe, DependencyProperty reads are thread-safe for strings
         var isMatch = !string.IsNullOrEmpty(contextUri)
             && !string.IsNullOrEmpty(navUri)
@@ -337,8 +350,12 @@ public sealed partial class ContentCard : UserControl
     {
         var card = (ContentCard)d;
         var glyph = e.NewValue as string ?? "\uE8D6";
-        card.SquarePlaceholderIcon.Glyph = glyph;
-        card.CirclePlaceholderIcon.Glyph = glyph;
+        if (card.SquarePlaceholderIcon != null)
+            card.SquarePlaceholderIcon.Glyph = glyph;
+        // CirclePlaceholderIcon only exists after CircleImageContainer is realized;
+        // EnsureCircleRealized re-applies this glyph when the subtree loads.
+        if (card.CirclePlaceholderIcon != null)
+            card.CirclePlaceholderIcon.Glyph = glyph;
     }
 
     private static void OnIsCircularChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -367,7 +384,9 @@ public sealed partial class ContentCard : UserControl
         // Show placeholders — they sit on top of the image via z-order
         // Image stays Visible (Collapsed causes unload on scroll)
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
-        CirclePlaceholderIcon.Visibility = Visibility.Visible;
+        // Only touch circle placeholder if the circle subtree has been realized.
+        if (CirclePlaceholderIcon != null)
+            CirclePlaceholderIcon.Visibility = Visibility.Visible;
 
         if (string.IsNullOrEmpty(url)) return;
 
@@ -379,9 +398,10 @@ public sealed partial class ContentCard : UserControl
 
         if (IsCircularImage)
         {
-            CircleImageBrush.ImageSource = bitmap;
+            EnsureCircleRealized();
+            CircleImageBrush!.ImageSource = bitmap;
             // Hide placeholder — image renders via ImageBrush on the Ellipse
-            CirclePlaceholderIcon.Visibility = Visibility.Collapsed;
+            CirclePlaceholderIcon!.Visibility = Visibility.Collapsed;
         }
         else
         {
@@ -402,8 +422,9 @@ public sealed partial class ContentCard : UserControl
         var brush = new SolidColorBrush(color) { Opacity = 0.3 };
         SquareImageContainer.Background = brush;
 
-        // Also apply to circle placeholder
-        if (CirclePlaceholder.Fill is SolidColorBrush)
+        // Only apply to circle placeholder if the circle subtree is realized;
+        // EnsureCircleRealized re-applies this color when the subtree loads.
+        if (CirclePlaceholder?.Fill is SolidColorBrush)
             CirclePlaceholder.Fill = new SolidColorBrush(color) { Opacity = 0.3 };
     }
 
@@ -413,15 +434,19 @@ public sealed partial class ContentCard : UserControl
 
         if (IsCircularImage)
         {
+            EnsureCircleRealized();
             SquareImageContainer.Visibility = Visibility.Collapsed;
-            CircleImageContainer.Visibility = Visibility.Visible;
+            CircleImageContainer!.Visibility = Visibility.Visible;
             // Size will be set dynamically based on card width via SizeChanged
             CircleImageContainer.SizeChanged += OnCircleContainerSizeChanged;
         }
         else
         {
             SquareImageContainer.Visibility = Visibility.Visible;
-            CircleImageContainer.Visibility = Visibility.Collapsed;
+            // Only collapse the circle container if it was actually realized;
+            // for square cards the x:Load-deferred subtree simply never exists.
+            if (CircleImageContainer != null)
+                CircleImageContainer.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -461,6 +486,13 @@ public sealed partial class ContentCard : UserControl
     {
         CardHover?.Invoke(this, EventArgs.Empty);
 
+        // Realize the overlay for the current shape before reading the named elements —
+        // after x:Load="False" on the overlays, the backing fields start null until FindName.
+        if (IsCircularImage)
+            EnsureCircleRealized();
+        else if (SquarePlayButton == null)
+            this.FindName("SquarePlayButton");
+
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
         var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
         var indicator = IsCircularImage ? CirclePlayingIndicator : SquarePlayingIndicator;
@@ -480,14 +512,14 @@ public sealed partial class ContentCard : UserControl
             indicator.Visibility = Visibility.Collapsed;
 
         // Scale up via composition with proper CenterPoint
-        if (CardBorder != null)
+        if (CardRoot != null)
         {
-            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardBorder);
-            visual.CenterPoint = new System.Numerics.Vector3((float)CardBorder.ActualWidth / 2, (float)CardBorder.ActualHeight / 2, 0);
+            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardRoot);
+            visual.CenterPoint = new System.Numerics.Vector3((float)CardRoot.ActualWidth / 2, (float)CardRoot.ActualHeight / 2, 0);
 
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Scale(from: System.Numerics.Vector3.One, to: new System.Numerics.Vector3(1.03f), duration: TimeSpan.FromMilliseconds(200))
-                .Start(CardBorder);
+                .Start(CardRoot);
         }
 
         if (CardShadow != null)
@@ -512,14 +544,14 @@ public sealed partial class ContentCard : UserControl
         if (IsPlaying)
             UpdatePlayingState();
 
-        if (CardBorder != null)
+        if (CardRoot != null)
         {
-            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardBorder);
-            visual.CenterPoint = new System.Numerics.Vector3((float)CardBorder.ActualWidth / 2, (float)CardBorder.ActualHeight / 2, 0);
+            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardRoot);
+            visual.CenterPoint = new System.Numerics.Vector3((float)CardRoot.ActualWidth / 2, (float)CardRoot.ActualHeight / 2, 0);
 
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Scale(from: new System.Numerics.Vector3(1.03f), to: System.Numerics.Vector3.One, duration: TimeSpan.FromMilliseconds(200))
-                .Start(CardBorder);
+                .Start(CardRoot);
         }
 
         if (CardShadow != null)
@@ -530,25 +562,25 @@ public sealed partial class ContentCard : UserControl
 
     private void Card_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (CardBorder == null) return;
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardBorder);
-        visual.CenterPoint = new System.Numerics.Vector3((float)CardBorder.ActualWidth / 2, (float)CardBorder.ActualHeight / 2, 0);
+        if (CardRoot == null) return;
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardRoot);
+        visual.CenterPoint = new System.Numerics.Vector3((float)CardRoot.ActualWidth / 2, (float)CardRoot.ActualHeight / 2, 0);
 
         CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
             .Scale(to: new System.Numerics.Vector3(0.96f), duration: TimeSpan.FromMilliseconds(100))
-            .Start(CardBorder);
+            .Start(CardRoot);
     }
 
     private void Card_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (CardBorder == null) return;
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardBorder);
-        visual.CenterPoint = new System.Numerics.Vector3((float)CardBorder.ActualWidth / 2, (float)CardBorder.ActualHeight / 2, 0);
+        if (CardRoot == null) return;
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(CardRoot);
+        visual.CenterPoint = new System.Numerics.Vector3((float)CardRoot.ActualWidth / 2, (float)CardRoot.ActualHeight / 2, 0);
 
         // Scale back to hover state (1.03) since pointer is still over the card
         CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
             .Scale(to: new System.Numerics.Vector3(1.03f), duration: TimeSpan.FromMilliseconds(150))
-            .Start(CardBorder);
+            .Start(CardRoot);
     }
 
     // ── Passive mode ──
@@ -587,16 +619,35 @@ public sealed partial class ContentCard : UserControl
 
     private void UpdatePlayingState()
     {
-        if (SquarePlayingIndicator == null) return;
-
         var isPlaying = IsPlaying;
         var isPaused = IsContextPaused;
         var isActiveContext = isPlaying || isPaused;
 
-        SquarePlayingIndicator.Visibility = isPlaying && !IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
-        CirclePlayingIndicator.Visibility = isPlaying && IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
+        // Realize the indicator for the current shape only if we actually need it.
+        if (isPlaying)
+        {
+            if (IsCircularImage)
+                EnsureCircleRealized();
+            else if (SquarePlayingIndicator == null)
+                this.FindName("SquarePlayingIndicator");
+        }
 
-        // When paused, show the play (resume) button permanently
+        // Null-guard every access — all four overlays are x:Load-deferred, so any of them
+        // may be null on a card that hasn't yet realized its subtree.
+        if (SquarePlayingIndicator != null)
+            SquarePlayingIndicator.Visibility = isPlaying && !IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
+        if (CirclePlayingIndicator != null)
+            CirclePlayingIndicator.Visibility = isPlaying && IsCircularImage ? Visibility.Visible : Visibility.Collapsed;
+
+        // When paused, show the play (resume) button permanently — realize it on demand.
+        if (isPaused)
+        {
+            if (IsCircularImage)
+                EnsureCircleRealized();
+            else if (SquarePlayButton == null)
+                this.FindName("SquarePlayButton");
+        }
+
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
         var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
         if (isPaused && playBtn != null && playIcon != null)
@@ -769,6 +820,33 @@ public sealed partial class ContentCard : UserControl
     }
 
     // ── Helpers ──
+
+    /// <summary>
+    /// Realizes the <c>CircleImageContainer</c> subtree on demand. With <c>x:Load="False"</c>
+    /// on the grid, all circle-mode named elements (<c>CirclePlaceholder</c>, <c>CirclePlaceholderIcon</c>,
+    /// <c>CircleImage</c>, <c>CircleImageBrush</c>, <c>CirclePlayButton</c>, <c>CirclePlayingIndicator</c>, etc.)
+    /// start null until <see cref="FrameworkElement.FindName"/> triggers the subtree load.
+    /// Idempotent — returns early if the container is already realized.
+    /// </summary>
+    private void EnsureCircleRealized()
+    {
+        if (CircleImageContainer != null) return;
+        this.FindName("CircleImageContainer");
+
+        // Re-apply DP-sourced state that the DP callbacks skipped while the circle
+        // subtree was null. For the common case of a square card (which never
+        // realizes this subtree), none of this ever runs.
+        if (CirclePlaceholderIcon != null)
+        {
+            var glyph = GetValue(PlaceholderGlyphProperty) as string ?? "\uE8D6";
+            CirclePlaceholderIcon.Glyph = glyph;
+        }
+        if (CirclePlaceholder != null && GetValue(PlaceholderColorHexProperty) is string hex && !string.IsNullOrEmpty(hex))
+        {
+            var color = ParseHexColor(hex);
+            CirclePlaceholder.Fill = new SolidColorBrush(color) { Opacity = 0.3 };
+        }
+    }
 
     private static Windows.UI.Color ParseHexColor(string hex)
     {

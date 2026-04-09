@@ -108,13 +108,20 @@
 		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
 	</PropertyGroup>
 
-	<!-- Publish Properties -->
+	<!-- Publish Properties.
+	     Both PublishTrimmed and PublishReadyToRun were previously enabled for non-Debug
+	     builds, but the project is framework-dependent (<SelfContained> is not set).
+	     The .NET SDK rejects both optimizations in that state:
+	       - PublishTrimmed needs SelfContained=true (trimmer needs the full runtime).
+	       - PublishReadyToRun needs either SelfContained=true or an explicit
+	         <RuntimeIdentifier> with a restored runtime package.
+	     Re-enabling either would require bundling the entire .NET runtime into the AppX
+	     (~70-100 MB bigger) and validating trim safety across WinUI, ReactiveUI, MVVM
+	     Toolkit, and ComputeSharp, which all use reflection or source generators. Not
+	     worth it for a framework-dependent store/sideload distribution. When self-
+	     contained packaging is revisited, both can be re-enabled together. -->
 	<PropertyGroup>
-		<PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-		<PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-		<PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-		<PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
-		<TrimMode>partial</TrimMode>
+		<PublishReadyToRun>false</PublishReadyToRun>
 	</PropertyGroup>
 
 	<!-- Auto-build Wavee.AudioHost and copy the exe to our output (for out-of-process audio) -->
@@ -122,13 +129,77 @@
 		<MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
 	</Target>
 
-	<!-- Preserve assemblies whose types are resolved via XAML reflection (invisible to the IL trimmer).
-       Microsoft.WinUI is marked IsTrimmable, so even TrimMode=partial trims it —
-       stripping StackLayout, UniformGridLayout, etc. that ItemsRepeater.Layout needs.
-       See: https://github.com/microsoft/microsoft-ui-xaml/issues/9675 -->
-	<ItemGroup>
-		<TrimmerRootAssembly Include="Microsoft.WinUI" />
-		<TrimmerRootAssembly Include="Wavee.Controls.Lyrics" />
-		<TrimmerRootDescriptor Include="TrimmerRoots.xml" />
-	</ItemGroup>
+	<!-- WinUI AppX packaging copies <Content> items from referenced projects twice:
+	     once flattened to the AppX root (e.g. AppX\Assets\Wiki82.profile.xml) which
+	     PathHelper reads via AppContext.BaseDirectory\Assets\*, and once preserved
+	     under the per-project subfolder (e.g. AppX\Wavee.Controls.Lyrics\Assets\...).
+	     The nested Assets copies are dead weight — ~14.6 MB for Wiki82.profile.xml alone.
+
+	     IMPORTANT: do NOT delete the entire AppX\Wavee.Controls.Lyrics\ folder. That
+	     folder also contains the compiled per-assembly XAML (.xbf files for
+	     NowPlayingCanvas, ImageSwitcher, ShadowImage) which WinUI resolves via
+	     ms-appx:///Wavee.Controls.Lyrics/Controls/*.xaml at runtime. Removing them
+	     breaks XAML type activation with "Cannot create instance of type ..." errors.
+	     Only the specific orphan asset files under the nested Assets subfolder are
+	     safe to delete. -->
+	<Target Name="RemoveDuplicateReferencedProjectAssets"
+	        AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
+		<ItemGroup>
+			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
+			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
+			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
+			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
+		</ItemGroup>
+		<Delete Files="@(_OrphanAssetFiles)" Condition="Exists('%(Identity)')" />
+	</Target>
+
+	<!-- Strip unused Windows App SDK AI payload.
+	     The Windows App SDK bundles on-device ML capabilities (Microsoft.Windows.AI.*
+	     projections + ONNX runtime + DirectML) by default. Our app has ZERO references
+	     to any of these APIs (confirmed by grep), so they are pure dead weight:
+	         onnxruntime.dll                                 21.7 MB (native)
+	         DirectML.dll                                    18.5 MB (native)
+	         Microsoft.Windows.AI.MachineLearning.dll         1.0 MB (native)
+	         7 × Microsoft.Windows.AI.*.Projection.dll        ~1 MB (managed)
+	         Microsoft.ML.OnnxRuntime.dll                     ~0.3 MB (managed)
+	     Total ~42 MB disk, ~30-60 MB process RSS just for being mapped into the process.
+	     Removing them is safe because PortAudioSharp2, WinUI, WinAppSDK base runtime,
+	     CommunityToolkit, ReactiveUI, and our own code do not depend on these types.
+	     If a future feature needs on-device ML, delete this target to re-enable them. -->
+	<Target Name="StripUnusedWindowsAiPayload"
+	        AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
+		<ItemGroup>
+			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.*.Projection.dll" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.*.Projection.pdb" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.*.Projection.xml" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.Projection.dll" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.Projection.pdb" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.Projection.xml" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.ML.OnnxRuntime.dll" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.ML.OnnxRuntime.pdb" />
+			<_StripManagedAi Include="$(OutputPath)Microsoft.ML.OnnxRuntime.xml" />
+
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.Windows.AI.*.Projection.dll" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.Windows.AI.*.Projection.pdb" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.Windows.AI.*.Projection.xml" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.Windows.AI.Projection.dll" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.Windows.AI.Projection.pdb" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.Windows.AI.Projection.xml" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.ML.OnnxRuntime.dll" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.ML.OnnxRuntime.pdb" />
+			<_StripManagedAi Include="$(OutputPath)AppX\Microsoft.ML.OnnxRuntime.xml" />
+
+			<!-- Native ML runtimes: wildcard the RID folder so x64/arm64 builds both work. -->
+			<_StripNativeAi Include="$(OutputPath)runtimes\*\native\onnxruntime.dll" />
+			<_StripNativeAi Include="$(OutputPath)runtimes\*\native\DirectML.dll" />
+			<_StripNativeAi Include="$(OutputPath)runtimes\*\native\Microsoft.Windows.AI.MachineLearning.dll" />
+
+			<_StripNativeAi Include="$(OutputPath)AppX\runtimes\*\native\onnxruntime.dll" />
+			<_StripNativeAi Include="$(OutputPath)AppX\runtimes\*\native\DirectML.dll" />
+			<_StripNativeAi Include="$(OutputPath)AppX\runtimes\*\native\Microsoft.Windows.AI.MachineLearning.dll" />
+		</ItemGroup>
+		<Delete Files="@(_StripManagedAi)" Condition="Exists('%(Identity)')" />
+		<Delete Files="@(_StripNativeAi)" Condition="Exists('%(Identity)')" />
+	</Target>
+
 </Project>

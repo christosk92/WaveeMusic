@@ -20,6 +20,36 @@ public sealed class SettingsService : ISettingsService, IDisposable
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Wavee", "settings.json");
 
+    /// <summary>
+    /// Reads ONLY the <c>CachingProfile</c> field from settings.json without going through
+    /// the full deserializer. Used by <c>AppLifecycleHelper</c> before the DI container is
+    /// built — we need to know which cache capacities to use, but can't resolve
+    /// <see cref="ISettingsService"/> yet because the services we're configuring depend on
+    /// its output. Falls back to <see cref="CachingProfile.Medium"/> on any failure
+    /// (missing file, malformed JSON, unknown enum value).
+    /// </summary>
+    public static CachingProfile PeekCachingProfile()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return CachingProfile.Medium;
+
+            using var stream = File.OpenRead(SettingsPath);
+            using var doc = JsonDocument.Parse(stream);
+            if (doc.RootElement.TryGetProperty("CachingProfile", out var prop)
+                && prop.ValueKind == JsonValueKind.String
+                && Enum.TryParse<CachingProfile>(prop.GetString(), ignoreCase: true, out var profile))
+            {
+                return profile;
+            }
+        }
+        catch
+        {
+            // Any exception falls through to the default.
+        }
+        return CachingProfile.Medium;
+    }
+
     private AppSettings _settings = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private CancellationTokenSource? _debounceCts;

@@ -155,6 +155,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         _zoomLevelIndex = Array.IndexOf(ZoomStops, Math.Round(s.ZoomLevel, 1));
         if (_zoomLevelIndex < 0) _zoomLevelIndex = 3; // default 100%
 
+        // Initialize caching profile slider from persisted settings.
+        // Slider uses double so it binds to Slider.Value without a converter.
+        _cachingProfileIndex = (double)(int)s.CachingProfile;
+
         _autoReconnect = s.AutoReconnect;
         _connectionTimeoutIndex = s.ConnectionTimeoutSeconds switch
         {
@@ -249,6 +253,41 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void ResetZoom()
     {
         ZoomLevelIndex = 3; // 100%
+    }
+
+    // ── Caching profile ──
+
+    /// <summary>
+    /// Slider-bound index (0-3) mapping to the <see cref="CachingProfile"/> enum.
+    /// Using double so the slider binds directly to Slider.Value without a converter.
+    /// Changes take effect after restart (cache services are singletons built at startup).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CachingProfileSummary))]
+    private double _cachingProfileIndex;
+
+    /// <summary>
+    /// "Medium · ~120 MB estimated in caches" — updates live as the user drags the slider.
+    /// </summary>
+    public string CachingProfileSummary
+    {
+        get
+        {
+            var profile = IndexToProfile(_cachingProfileIndex);
+            return $"{CachingProfilePresets.GetDisplayName(profile)} · {CachingProfilePresets.FormatEstimate(profile)} estimated in caches";
+        }
+    }
+
+    partial void OnCachingProfileIndexChanged(double value)
+    {
+        var profile = IndexToProfile(value);
+        _settingsService.Update(s => s.CachingProfile = profile);
+    }
+
+    private static CachingProfile IndexToProfile(double index)
+    {
+        var i = Math.Clamp((int)Math.Round(index), 0, 3);
+        return (CachingProfile)i;
     }
 
     // ── Playback ──

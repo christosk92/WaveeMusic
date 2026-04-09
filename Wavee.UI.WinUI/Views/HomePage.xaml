@@ -24,7 +24,13 @@
              ITEM-LEVEL TEMPLATES (used inside generic sections)
              ════════════════════════════════════════════════════════════ -->
 
-        <!-- Playlist / Album / Podcast card: square image -->
+        <!-- Playlist / Album / Podcast card: square image.
+             NOTE: x:Phase was attempted here to enable progressive rendering, but
+             x:Phase only applies to ListView/GridView container-recycling scenarios,
+             NOT to ItemsRepeater which uses a different virtualization model. The
+             analogous win for ItemsRepeater comes from virtualizing the inner layout
+             (see step A in the plan — rewriting SingleRowLayout) and from batching
+             the outer collection population (already landed via PopulateSectionsChunkedAsync). -->
         <DataTemplate x:Key="PlaylistCardTemplate" x:DataType="vm:HomeSectionItem">
             <cards:ContentCard
                 ImageUrl="{x:Bind ImageUrl}"
@@ -335,6 +341,134 @@
                             <controls:Shimmer Height="180" CornerRadius="4"/>
                             <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
                             <controls:Shimmer Height="12" Width="60" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Shimmer section 3 -->
+                <StackPanel Spacing="12">
+                    <controls:Shimmer Height="24" Width="220" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="150" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="90" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="85" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Shimmer section 4 -->
+                <StackPanel Spacing="12">
+                    <controls:Shimmer Height="24" Width="180" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="95" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="75" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="85" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="115" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="65" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Shimmer section 5 -->
+                <StackPanel Spacing="12">
+                    <controls:Shimmer Height="24" Width="200" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="135" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="95" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="145" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="105" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="125" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="105" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Shimmer section 6 -->
+                <StackPanel Spacing="12">
+                    <controls:Shimmer Height="24" Width="170" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="85" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="115" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="75" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="95" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Width="180">
+                            <controls:Shimmer Height="180" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="65" HorizontalAlignment="Left" CornerRadius="4"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>

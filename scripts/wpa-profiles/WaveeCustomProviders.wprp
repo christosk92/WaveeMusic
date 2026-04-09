@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    WaveeCustomProviders.wprp
+    =========================
+
+    Windows Performance Recorder profile that enables Wavee's custom ETW providers
+    during trace capture. Layered on top of the built-in XAMLAppResponsiveness profile
+    by scripts/measure-page-nav.ps1 (wpr supports multiple -start flags).
+
+    Providers captured:
+      - Wavee-UI-Navigation ({6b8c8d6a-3c21-4a07-9f5c-8e7d2f3a9c5b})
+        Source: Wavee.UI.WinUI/Diagnostics/WaveeNavigationEventSource.cs
+        Emits Navigating/Navigated event pairs around every Frame.Navigate call.
+        Consumed by scripts/analyze-trace.ps1 fallback pairing (lines 362-381)
+        to compute per-hop navigation E2E durations.
+
+    Keep the provider GUID in lockstep with the [EventSource(Guid = ...)] attribute
+    on WaveeNavigationEventSource. If you rotate one, rotate the other.
+-->
+<WindowsPerformanceRecorder Version="1.0" Author="Wavee" Copyright="Wavee" Company="Wavee">
+    <Profiles>
+        <EventCollector Id="EventCollector_WaveeCustom" Name="Wavee Custom Collector">
+            <BufferSize Value="1024" />
+            <Buffers Value="128" />
+        </EventCollector>
+
+        <EventProvider Id="EventProvider_WaveeNavigation" Name="6b8c8d6a-3c21-4a07-9f5c-8e7d2f3a9c5b" />
+
+        <Profile Id="WaveeCustomProviders.Verbose.File" Name="WaveeCustomProviders"
+                 Description="Wavee custom ETW providers (navigation pairs, etc.)"
+                 LoggingMode="File" DetailLevel="Verbose">
+            <Collectors>
+                <EventCollectorId Value="EventCollector_WaveeCustom">
+                    <EventProviders>
+                        <EventProviderId Value="EventProvider_WaveeNavigation" />
+                    </EventProviders>
+                </EventCollectorId>
+            </Collectors>
+        </Profile>
+
+        <Profile Id="WaveeCustomProviders.Verbose.Memory" Name="WaveeCustomProviders"
+                 Description="Wavee custom ETW providers (navigation pairs, etc.)"
+                 LoggingMode="Memory" DetailLevel="Verbose" Base="WaveeCustomProviders.Verbose.File" />
+    </Profiles>
+</WindowsPerformanceRecorder>

@@ -10,8 +10,13 @@
     xmlns:services="using:Wavee.UI.WinUI.Services"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:diag="using:Wavee.UI.WinUI.Controls.Diagnostics"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     mc:Ignorable="d"
     Background="Transparent">
+
+    <Page.Resources>
+        <converters:CachingProfileTooltipConverter x:Key="CachingProfileTooltipConverter"/>
+    </Page.Resources>
 
     <Grid Padding="32,24,32,0">
         <Grid.RowDefinitions>
@@ -327,10 +332,61 @@
                 <ScrollViewer x:Name="StorageContent" Visibility="Collapsed">
                     <StackPanel Spacing="4" Padding="0,16,0,24">
 
-                        <TextBlock Text="Audio Cache" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+                        <TextBlock Text="Memory Caches" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
                         <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
                                  Message="Cache and connection changes take effect after restarting the app."
                                  Margin="0,0,0,8"/>
+
+                        <controls:SettingsCard Header="Caching profile"
+                                               Description="Balances memory usage against network refetches and browsing speed. Medium matches the default. Takes effect after restart.">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8F1;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Right">
+                                <Slider MinWidth="280"
+                                        Minimum="0"
+                                        Maximum="3"
+                                        StepFrequency="1"
+                                        SnapsTo="Ticks"
+                                        TickFrequency="1"
+                                        TickPlacement="Outside"
+                                        Value="{x:Bind ViewModel.CachingProfileIndex, Mode=TwoWay}"
+                                        ThumbToolTipValueConverter="{StaticResource CachingProfileTooltipConverter}"/>
+                                <Grid MinWidth="280">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Low"
+                                               HorizontalAlignment="Left"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="Medium"
+                                               HorizontalAlignment="Center"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="2" Text="High"
+                                               HorizontalAlignment="Center"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="3" Text="Very&#x0a;Aggressive"
+                                               HorizontalAlignment="Right"
+                                               TextAlignment="Right"
+                                               TextWrapping="Wrap"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
+                                <TextBlock Text="{x:Bind ViewModel.CachingProfileSummary, Mode=OneWay}"
+                                           HorizontalAlignment="Right"
+                                           Margin="0,4,0,0"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                        </controls:SettingsCard>
+
+                        <TextBlock Text="Audio Cache" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
 
                         <controls:SettingsCard Header="Enable cache"
                                                Description="Cache audio files locally for faster playback">

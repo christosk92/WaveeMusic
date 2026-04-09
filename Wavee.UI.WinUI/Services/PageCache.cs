@@ -61,10 +61,10 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
     /// </summary>
     public async Task<TSnapshot> FetchFreshAsync(ISession session, CancellationToken ct = default)
     {
-        await _fetchLock.WaitAsync(ct);
+        await _fetchLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var snapshot = await FetchCoreAsync(session, ct);
+            var snapshot = await FetchCoreAsync(session, ct).ConfigureAwait(false);
             _cached = snapshot;
             _lastFetchTime = DateTimeOffset.UtcNow;
             return snapshot;
@@ -99,14 +99,14 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
     {
         try
         {
-            while (await _refreshTimer!.WaitForNextTickAsync(ct))
+            while (await _refreshTimer!.WaitForNextTickAsync(ct).ConfigureAwait(false))
             {
                 try
                 {
                     if (_suspended || !session.IsConnected()) continue;
 
                     Logger?.LogDebug("{CacheType} background refresh starting", GetType().Name);
-                    var snapshot = await FetchFreshAsync(session, ct);
+                    var snapshot = await FetchFreshAsync(session, ct).ConfigureAwait(false);
                     DataRefreshed?.Invoke(snapshot);
                     Logger?.LogDebug("{CacheType} background refresh complete", GetType().Name);
                 }

@@ -1,3 +1,6 @@
+using System;
+using System.Runtime;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Xaml;
@@ -71,5 +74,35 @@ public partial class App : Application
         // Launch main window
         MainWindow.Instance.Activate();
         _ = MainWindow.Instance.InitializeApplicationAsync();
+
+        // One-shot post-startup heap compaction. Startup allocates aggressively across
+        // many code paths (XAML parse, DI graph construction, library sync, home feed),
+        // leaving gen2 + LOH fragmented. Scheduling a single compacting GC ~5s after the
+        // window is active reclaims the post-startup slack with one short pause that
+        // lands while the user is still orienting themselves — invisible in practice.
+        // This is a one-off, not a periodic loop.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(
+                    generation: GC.MaxGeneration,
+                    mode: GCCollectionMode.Aggressive,
+                    blocking: true,
+                    compacting: true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(
+                    generation: GC.MaxGeneration,
+                    mode: GCCollectionMode.Aggressive,
+                    blocking: true,
+                    compacting: true);
+            }
+            catch
+            {
+                // Best-effort; if the GC hint fails for any reason we just keep running.
+            }
+        });
     }
 }

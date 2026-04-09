@@ -113,7 +113,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     Greeting = snapshot.Greeting ?? Greeting;
                     var ordered = ApplyPreferences(snapshot.Sections);
                     if (Sections.Count == 0)
-                        Sections = new ObservableCollection<HomeSection>(ordered);
+                        await PopulateSectionsChunkedAsync(ordered);
                     else
                         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
                     ApplyChips(snapshot.Chips);
@@ -129,7 +129,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 var ordered = ApplyPreferences(snapshot.Sections);
 
                 if (Sections.Count == 0)
-                    Sections = new ObservableCollection<HomeSection>(ordered);
+                    await PopulateSectionsChunkedAsync(ordered);
                 else
                     Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
 
@@ -142,10 +142,10 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             {
                 // No cache service — direct fetch
                 var response = await _session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10);
-                var result = _parserFactory.Parse(response);
+                var result = await Task.Run(() => _parserFactory.Parse(response));
                 Greeting = result.Greeting ?? Greeting;
                 var ordered = ApplyPreferences(result.Sections);
-                Sections = new ObservableCollection<HomeSection>(ordered);
+                await PopulateSectionsChunkedAsync(ordered);
                 ApplyChips(result.Chips);
             }
 
@@ -176,6 +176,42 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         var ordered = ApplyPreferences(snapshot.Sections);
         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
         ApplyChips(snapshot.Chips);
+    }
+
+    /// <summary>
+    /// Populates the bound <see cref="Sections"/> collection in small chunks, yielding
+    /// to the dispatcher between chunks so the layout engine can paint each chunk's cards
+    /// and handle input (scroll, click) before the next batch lands.
+    ///
+    /// <para>
+    /// Without this, assigning a 31-section collection in one shot triggers a single
+    /// massive layout pass that realizes all ~4,650 card elements before the UI thread
+    /// yields — the root cause of the "heavy" navigation feel. Yielding every
+    /// <paramref name="chunkSize"/> sections spreads that work across several frames
+    /// so the user sees content stream in progressively.
+    /// </para>
+    ///
+    /// <para>
+    /// Uses <see cref="Task.Yield"/> rather than <c>DispatcherQueue.TryEnqueue</c> because
+    /// an async method resumed on the UI thread via <c>Task.Yield</c> posts a continuation
+    /// at normal dispatcher priority — equivalent to a message-pump tick — which is exactly
+    /// what we need to let WinUI paint between chunks.
+    /// </para>
+    /// </summary>
+    private async Task PopulateSectionsChunkedAsync(IList<HomeSection> ordered, int chunkSize = 4)
+    {
+        // Start from empty: we only call this when Sections.Count == 0, but guard anyway.
+        if (Sections.Count > 0) Sections.Clear();
+
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            Sections.Add(ordered[i]);
+
+            // Yield back to the dispatcher every chunkSize items so realization cost
+            // is spread across multiple frames instead of a single 4,650-element burst.
+            if ((i + 1) % chunkSize == 0 && i + 1 < ordered.Count)
+                await Task.Yield();
+        }
     }
 
     private void ApplyChips(List<HomeChipViewModel>? chips)

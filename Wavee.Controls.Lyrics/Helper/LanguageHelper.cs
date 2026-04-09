@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using WanaKanaNet;
 using Windows.Globalization;
 
@@ -17,8 +18,14 @@ namespace Wavee.Controls.Lyrics.Helper
     {
         private static readonly Lazy<ILocalizationService> _lazyLocalizationService = new(() => Ioc.Default.GetRequiredService<ILocalizationService>());
         private static ILocalizationService _localizationService => _lazyLocalizationService.Value;
-        private static readonly RankedLanguageIdentifierFactory _factory = new();
-        private static readonly RankedLanguageIdentifier _identifier;
+
+        // Lazy-loaded: defers ~14.6 MB Wiki82.profile.xml parse (≈45-75 MB resident object graph)
+        // until the first call that actually needs statistical language detection. Most sessions
+        // never hit this — phonetic detection (pinyin/jyutping/romaji) and CJK range checks cover
+        // the common cases via TryDetectTransliteration() and the various IsXxx() helpers.
+        private static readonly Lazy<RankedLanguageIdentifier> _lazyIdentifier = new(
+            static () => new RankedLanguageIdentifierFactory().Load(PathHelper.LanguageProfilePath),
+            LazyThreadSafetyMode.ExecutionAndPublication);
 
         public const string ChineseCode = "zh";
         public const string JapaneseCode = "ja";
@@ -71,11 +78,6 @@ namespace Wavee.Controls.Lyrics.Helper
         ]);
         public static List<ExtendedLanguage> SupportedDisplayLanguages => _lazySupportedDisplayLanguages.Value;
 
-        static LanguageHelper()
-        {
-            _identifier = _factory.Load(PathHelper.LanguageProfilePath);
-        }
-
         /// <summary>
         /// 智能检测语言代码，支持识别拼音、粤拼、罗马音
         /// </summary>
@@ -89,7 +91,8 @@ namespace Wavee.Controls.Lyrics.Helper
                 return transliterationCode;
             }
 
-            var guessList = _identifier.Identify(text);
+            // First touch here triggers the ~14.6 MB Wiki82 profile load (see _lazyIdentifier above).
+            var guessList = _lazyIdentifier.Value.Identify(text);
             var bestMatch = guessList?.FirstOrDefault();
 
             if (bestMatch == null) return null;

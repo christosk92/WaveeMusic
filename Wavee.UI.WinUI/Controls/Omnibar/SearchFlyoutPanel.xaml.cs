@@ -71,21 +71,43 @@ public sealed partial class SearchFlyoutPanel : UserControl
     /// <summary>
     /// Shows the shimmer loading state immediately while data is being fetched.
     /// </summary>
+    /// <remarks>
+    /// This method is idempotent — if the shimmer is already visible we only update the
+    /// header and return. Critically, we fade the <see cref="ResultsList"/> via Opacity
+    /// rather than collapsing it, so its ListViewItem containers stay realized and can
+    /// be recycled by the next <see cref="SetItems"/> call. The previous behaviour
+    /// (<c>ResultsList.Visibility = Collapsed</c>) tore down every container on every
+    /// keystroke, causing visible UI hangs while the user typed.
+    /// </remarks>
     public void ShowShimmer(bool isRecentSearches)
     {
+        // Fast path — already showing shimmer. Only the header label may need updating
+        // (e.g. "Recent searches" vs. hidden when the user starts typing).
+        if (ShimmerPanel.Visibility == Visibility.Visible)
+        {
+            HeaderText.Visibility = isRecentSearches ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+
         HeaderText.Visibility = isRecentSearches ? Visibility.Visible : Visibility.Collapsed;
         ShimmerPanel.Visibility = Visibility.Visible;
-        ResultsList.Visibility = Visibility.Collapsed;
+        // Fade (don't collapse) so containers survive. Next SetItems will restore opacity.
+        ResultsList.Opacity = 0;
+        ResultsList.IsHitTestVisible = false;
     }
 
     /// <summary>
-    /// Swaps from shimmer to real data.
+    /// Swaps from shimmer to real data. Restores opacity so previously-realized
+    /// ListView containers become visible again, and replaces the items source —
+    /// the ListView recycles existing containers in place rather than rebuilding.
     /// </summary>
     public void SetItems(List<SearchSuggestionItem>? items, string queryText, bool isRecentSearches)
     {
         _queryText = queryText;
         HeaderText.Visibility = isRecentSearches ? Visibility.Visible : Visibility.Collapsed;
         ShimmerPanel.Visibility = Visibility.Collapsed;
+        ResultsList.Opacity = 1;
+        ResultsList.IsHitTestVisible = true;
         ResultsList.Visibility = Visibility.Visible;
         ResultsList.ItemsSource = items;
         ResetSelection();

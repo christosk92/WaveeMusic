@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -28,13 +27,23 @@ public sealed class AlbumService : IAlbumService
     private readonly IPathfinderClient _pathfinder;
     private readonly IMetadataDatabase _db;
     private readonly ILogger? _logger;
-    private readonly ConcurrentDictionary<string, List<AlbumTrackDto>> _hot = new();
 
-    public AlbumService(IPathfinderClient pathfinder, IMetadataDatabase db, ILogger? logger = null)
+    // Bounded LRU of resolved album track lists. Unbounded growth used to leak memory as
+    // users browsed through many albums (each entry is a List<AlbumTrackDto> ~5-10 KB).
+    // Capacity is supplied by the caching profile at DI construction time; the default
+    // matches the Medium profile to preserve legacy behaviour when no profile is set.
+    private readonly AlbumTracksLruCache _hot;
+
+    public AlbumService(
+        IPathfinderClient pathfinder,
+        IMetadataDatabase db,
+        ILogger? logger = null,
+        int hotCacheCapacity = 50)
     {
         _pathfinder = pathfinder;
         _db = db;
         _logger = logger;
+        _hot = new AlbumTracksLruCache(hotCacheCapacity);
     }
 
     public async Task<List<AlbumTrackDto>> GetTracksAsync(string albumUri, CancellationToken ct = default)
@@ -251,5 +260,65 @@ public sealed class AlbumService : IAlbumService
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Bounded LRU of album track lists. Exposes the subset of the
+    /// <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey, TValue}"/>
+    /// API that <see cref="AlbumService"/> uses (TryGetValue + TryAdd), so call sites
+    /// read the same as the previous unbounded dictionary. Thread-safe via a single lock.
+    /// </summary>
+    private sealed class AlbumTracksLruCache
+    {
+        private readonly int _capacity;
+        private readonly object _lock = new();
+        private readonly LinkedList<KeyValuePair<string, List<AlbumTrackDto>>> _lru = new();
+        private readonly Dictionary<string, LinkedListNode<KeyValuePair<string, List<AlbumTrackDto>>>> _map = new();
+
+        public AlbumTracksLruCache(int capacity)
+        {
+            if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+            _capacity = capacity;
+        }
+
+        public bool TryGetValue(string key, out List<AlbumTrackDto> value)
+        {
+            lock (_lock)
+            {
+                if (_map.TryGetValue(key, out var node))
+                {
+                    // LRU bump: move the hit to the head so eviction targets cold entries.
+                    if (!ReferenceEquals(_lru.First, node))
+                    {
+                        _lru.Remove(node);
+                        _lru.AddFirst(node);
+                    }
+                    value = node.Value.Value;
+                    return true;
+                }
+            }
+            value = default!;
+            return false;
+        }
+
+        public bool TryAdd(string key, List<AlbumTrackDto> value)
+        {
+            lock (_lock)
+            {
+                if (_map.ContainsKey(key)) return false;
+
+                var node = _lru.AddFirst(new KeyValuePair<string, List<AlbumTrackDto>>(key, value));
+                _map[key] = node;
+
+                // Evict tail entries until within capacity.
+                while (_map.Count > _capacity && _lru.Last is { } tail)
+                {
+                    _map.Remove(tail.Value.Key);
+                    _lru.RemoveLast();
+                }
+
+                return true;
+            }
+        }
     }
 }

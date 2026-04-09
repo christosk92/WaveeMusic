@@ -44,12 +44,14 @@ public sealed class CacheService : ICacheService, ICleanableCache
     private readonly ILogger? _logger;
     private bool _disposed;
 
-    // Separate hot caches for audio keys and CDN (smaller, frequently accessed)
+    // Separate hot caches for audio keys and CDN (smaller, frequently accessed).
+    // Capacity is supplied by the caching profile at DI construction time; the default
+    // matches the Medium profile to preserve legacy behaviour when no profile is set.
     private readonly Dictionary<string, byte[]> _audioKeyCache = new();
     private readonly Dictionary<string, CdnCacheEntry> _cdnCache = new();
     private readonly Dictionary<string, byte[]> _headDataCache = new();
     private readonly object _auxCacheLock = new();
-    private const int MaxAuxCacheSize = 1000;
+    private readonly int _maxAuxCacheSize;
 
     /// <summary>
     /// Creates a new CacheService with an internal hot cache.
@@ -57,15 +59,19 @@ public sealed class CacheService : ICacheService, ICleanableCache
     public CacheService(
         IMetadataDatabase database,
         int hotCacheSize = 10_000,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        int maxAuxCacheSize = 1000)
     {
         ArgumentNullException.ThrowIfNull(database);
 
         _database = database;
         _hotCache = new HotCache<TrackCacheEntry>(hotCacheSize, logger);
         _logger = logger;
+        _maxAuxCacheSize = maxAuxCacheSize;
 
-        _logger?.LogInformation("CacheService initialized with hot cache size {Size}", hotCacheSize);
+        _logger?.LogInformation(
+            "CacheService initialized with hot cache size {Size}, aux cache size {AuxSize}",
+            hotCacheSize, maxAuxCacheSize);
     }
 
     /// <summary>
@@ -74,7 +80,8 @@ public sealed class CacheService : ICacheService, ICleanableCache
     public CacheService(
         IMetadataDatabase database,
         IHotCache<TrackCacheEntry> hotCache,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        int maxAuxCacheSize = 1000)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(hotCache);
@@ -82,8 +89,11 @@ public sealed class CacheService : ICacheService, ICleanableCache
         _database = database;
         _hotCache = hotCache;
         _logger = logger;
+        _maxAuxCacheSize = maxAuxCacheSize;
 
-        _logger?.LogInformation("CacheService initialized with injected hot cache");
+        _logger?.LogInformation(
+            "CacheService initialized with injected hot cache, aux cache size {AuxSize}",
+            maxAuxCacheSize);
     }
 
     #region Track Operations
@@ -275,10 +285,10 @@ public sealed class CacheService : ICacheService, ICleanableCache
         lock (_auxCacheLock)
         {
             // Simple size-based eviction
-            if (_audioKeyCache.Count >= MaxAuxCacheSize)
+            if (_audioKeyCache.Count >= _maxAuxCacheSize)
             {
                 // Remove oldest entries (first 10%)
-                var keysToRemove = _audioKeyCache.Keys.Take(MaxAuxCacheSize / 10).ToList();
+                var keysToRemove = _audioKeyCache.Keys.Take(_maxAuxCacheSize / 10).ToList();
                 foreach (var k in keysToRemove)
                 {
                     _audioKeyCache.Remove(k);
@@ -334,7 +344,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
         lock (_auxCacheLock)
         {
             // Simple size-based eviction
-            if (_cdnCache.Count >= MaxAuxCacheSize)
+            if (_cdnCache.Count >= _maxAuxCacheSize)
             {
                 // Remove expired entries first
                 var expired = _cdnCache.Where(kvp => !kvp.Value.IsValid).Select(kvp => kvp.Key).ToList();
@@ -344,11 +354,11 @@ public sealed class CacheService : ICacheService, ICleanableCache
                 }
 
                 // If still over, remove oldest
-                if (_cdnCache.Count >= MaxAuxCacheSize)
+                if (_cdnCache.Count >= _maxAuxCacheSize)
                 {
                     var keysToRemove = _cdnCache
                         .OrderBy(kvp => kvp.Value.Expiry)
-                        .Take(MaxAuxCacheSize / 10)
+                        .Take(_maxAuxCacheSize / 10)
                         .Select(kvp => kvp.Key)
                         .ToList();
                     foreach (var k in keysToRemove)
@@ -398,9 +408,9 @@ public sealed class CacheService : ICacheService, ICleanableCache
         lock (_auxCacheLock)
         {
             // Simple size-based eviction
-            if (_headDataCache.Count >= MaxAuxCacheSize)
+            if (_headDataCache.Count >= _maxAuxCacheSize)
             {
-                var keysToRemove = _headDataCache.Keys.Take(MaxAuxCacheSize / 10).ToList();
+                var keysToRemove = _headDataCache.Keys.Take(_maxAuxCacheSize / 10).ToList();
                 foreach (var k in keysToRemove)
                 {
                     _headDataCache.Remove(k);

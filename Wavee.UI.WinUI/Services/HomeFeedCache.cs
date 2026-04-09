@@ -34,9 +34,10 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 
     protected override async Task<HomeFeedSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
     {
-        var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct);
+        var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct)
+            .ConfigureAwait(false);
 
-        var result = _parserFactory.Parse(response);
+        var result = await Task.Run(() => _parserFactory.Parse(response), ct).ConfigureAwait(false);
 
         // Only use chips from unfaceted (default) responses
         List<HomeChipViewModel>? chips = string.IsNullOrEmpty(CurrentFacet) ? result.Chips : null;

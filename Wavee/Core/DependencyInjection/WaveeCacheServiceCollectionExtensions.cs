@@ -97,7 +97,8 @@ public static class WaveeCacheServiceCollectionExtensions
             var database = sp.GetRequiredService<IMetadataDatabase>();
             var trackHotCache = sp.GetRequiredService<IHotCache<TrackCacheEntry>>();
             var logger = sp.GetService<ILogger<CacheService>>();
-            return new CacheService(database, trackHotCache, logger);
+            var opts = sp.GetRequiredService<WaveeCacheOptions>();
+            return new CacheService(database, trackHotCache, logger, opts.AudioAuxCacheSize);
         });
 
         // Register ICleanableCache for each HotCache instance

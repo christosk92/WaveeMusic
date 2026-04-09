@@ -507,9 +507,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             TotalDuration = FormatDuration(_allTracks.Sum(t => t.Duration.TotalSeconds));
             IsLoadingTracks = false;
 
-            // Clear shimmers, yield a frame, then show real tracks for staggered entrance
-            FilteredTracks = [];
-            await Task.Delay(RenderFrameSettleDelayMs);
+            // Swap directly from shimmer placeholders to real tracks — one realization
+            // burst instead of two, and no visible empty-state flash. The previous
+            // "clear -> delay -> repopulate" pattern forced the ListView to tear down
+            // every container, flash empty for 50 ms, then rebuild every container,
+            // which read as "buggy and laggy" in the transition.
             ApplyFilterAndSort();
 
             // Related albums

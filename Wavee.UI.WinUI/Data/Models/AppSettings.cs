@@ -70,6 +70,13 @@ public sealed class AppSettings
     /// </summary>
     public long CacheSizeLimitBytes { get; set; } = 1L * 1024 * 1024 * 1024;
 
+    /// <summary>
+    /// In-memory caching aggressiveness profile. Controls LRU and hot-cache
+    /// capacities across the app. Medium matches the pre-profile defaults.
+    /// Applied at DI construction time — changes take effect on next launch.
+    /// </summary>
+    public CachingProfile CachingProfile { get; set; } = CachingProfile.Medium;
+
     // ── Connection (applied on next launch) ──
 
     /// <summary>

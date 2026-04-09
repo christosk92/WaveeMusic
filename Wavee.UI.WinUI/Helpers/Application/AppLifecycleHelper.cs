@@ -83,14 +83,37 @@ public static class AppLifecycleHelper
             .Enrich.FromLogContext()
             .CreateLogger();
 
+        // Read the caching profile BEFORE the DI container is built. Cache services
+        // are singletons constructed at container build time, so we need their capacities
+        // available now — we can't resolve ISettingsService yet because it's itself
+        // about to be registered. PeekCachingProfile() does a minimal JSON file read
+        // and falls back to Medium on any failure.
+        var cachingProfile = SettingsService.PeekCachingProfile();
+        var cacheCapacities = CachingProfilePresets.Get(cachingProfile);
+        Log.Information(
+            "Caching profile: {Profile} (estimated ~{EstMb} MB in caches)",
+            cachingProfile, CachingProfilePresets.EstimateMegabytes(cacheCapacities));
+
         return Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging
                 .ClearProviders()
                 .AddSerilog(Log.Logger, dispose: false)
                 .SetMinimumLevel(LogLevel.Debug))
             .ConfigureServices(services => services
-                // Wavee Core services
-                .AddWaveeCache()
+                // Wavee Core services — capacities driven by the caching profile
+                .AddWaveeCache(opts =>
+                {
+                    opts.TrackHotCacheSize = cacheCapacities.TrackHotCacheSize;
+                    opts.AlbumHotCacheSize = cacheCapacities.AlbumHotCacheSize;
+                    opts.ArtistHotCacheSize = cacheCapacities.ArtistHotCacheSize;
+                    opts.PlaylistHotCacheSize = cacheCapacities.PlaylistHotCacheSize;
+                    opts.ShowHotCacheSize = cacheCapacities.ShowHotCacheSize;
+                    opts.EpisodeHotCacheSize = cacheCapacities.EpisodeHotCacheSize;
+                    opts.UserHotCacheSize = cacheCapacities.UserHotCacheSize;
+                    opts.ContextCacheSize = cacheCapacities.ContextCacheSize;
+                    opts.DatabaseHotCacheSize = cacheCapacities.DatabaseHotCacheSize;
+                    opts.AudioAuxCacheSize = cacheCapacities.AudioAuxCacheSize;
+                })
 
                 // Messenger (singleton - global default instance)
                 .AddSingleton<IMessenger>(WeakReferenceMessenger.Default)
@@ -177,7 +200,11 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<Services.RecentlyPlayedService>>()))
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
-                .AddSingleton<Services.ImageCacheService>()
+                .AddSingleton(sp => new Services.ImageCacheService(cacheCapacities.ImageCacheMaxSize))
+                // Shared now-playing highlight observer. Subscribes to NowPlayingChangedMessage
+                // once; ContentCard instances subscribe to its C# event instead of registering
+                // individually with WeakReferenceMessenger. Big savings during HomePage realization.
+                .AddSingleton(sp => new Services.NowPlayingHighlightService(sp.GetRequiredService<IMessenger>()))
                 .AddSingleton(sp =>
                 {
                     var profiler = new Services.UiOperationProfiler(
@@ -267,7 +294,8 @@ public static class AppLifecycleHelper
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
-                        sp.GetService<ILogger<Data.Contexts.AlbumService>>()))
+                        sp.GetService<ILogger<Data.Contexts.AlbumService>>(),
+                        cacheCapacities.AlbumTracksHotCacheCapacity))
                 .AddSingleton<ISearchService>(sp =>
                     new Data.Contexts.SearchService(
                         sp.GetRequiredService<ISession>().Pathfinder))
@@ -278,7 +306,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>(),
                         sp.GetService<IMetadataDatabase>(),
                         sp.GetService<ISettingsService>(),
-                        sp.GetService<ILogger<Services.LyricsService>>()))
+                        sp.GetService<ILogger<Services.LyricsService>>(),
+                        cacheCapacities.LyricsMemoryCacheCapacity))
                 .AddSingleton<LyricsViewModel>(sp =>
                     new LyricsViewModel(
                         sp.GetRequiredService<IPlaybackStateService>(),

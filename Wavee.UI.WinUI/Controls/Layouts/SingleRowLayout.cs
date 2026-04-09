@@ -7,10 +7,21 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 
 /// <summary>
 /// A single-row adaptive layout that fills available width with evenly sized items.
-/// Items that don't fit are hidden (not wrapped). The number of visible items
-/// adapts responsively based on MinItemWidth and available space -- like Spotify's card grid.
+/// Items that don't fit are <b>not realized at all</b> (hidden + never instantiated).
+/// The number of visible items adapts responsively based on <see cref="MinItemWidth"/>
+/// and available space — like Spotify's card grid.
+///
+/// <para>
+/// This layout inherits from <see cref="VirtualizingLayout"/>. The previous
+/// <c>NonVirtualizingLayout</c> base forced <see cref="ItemsRepeater"/> to instantiate,
+/// measure, and arrange every child in the items source — even items that were immediately
+/// hidden off-screen. On HomePage that meant 31 sections × ~10 items = ~310 cards
+/// fully realized at page-load time. This rewrite requests only the <c>N</c> items
+/// that actually fit in the row; the rest are never created. Framework automatically
+/// recycles any element we stop requesting between layout passes.
+/// </para>
 /// </summary>
-public sealed class SingleRowLayout : NonVirtualizingLayout
+public sealed class SingleRowLayout : VirtualizingLayout
 {
     public static readonly DependencyProperty MinItemWidthProperty =
         DependencyProperty.Register(nameof(MinItemWidth), typeof(double), typeof(SingleRowLayout),
@@ -56,13 +67,12 @@ public sealed class SingleRowLayout : NonVirtualizingLayout
     private double _itemWidth;
     private Size _lastMeasuredSize;
 
-    protected override Size MeasureOverride(NonVirtualizingLayoutContext context, Size availableSize)
+    protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
         try
         {
-            var children = context.Children;
-            var count = children.Count;
-            if (count == 0)
+            var itemCount = context.ItemCount;
+            if (itemCount == 0)
                 return new Size(0, 0);
 
             var availableWidth = availableSize.Width;
@@ -70,7 +80,7 @@ public sealed class SingleRowLayout : NonVirtualizingLayout
                 availableWidth = 1000;
 
             _columnCount = Math.Max(1, (int)Math.Floor((availableWidth + Spacing) / (MinItemWidth + Spacing)));
-            _columnCount = Math.Min(_columnCount, count);
+            _columnCount = Math.Min(_columnCount, itemCount);
             _itemWidth = (availableWidth - (_columnCount - 1) * Spacing) / _columnCount;
 
             // Clamp to max width so single items don't stretch absurdly
@@ -82,11 +92,15 @@ public sealed class SingleRowLayout : NonVirtualizingLayout
             var measureSize = new Size(_itemWidth, measureHeight);
 
             double maxHeight = 0;
-            for (int i = 0; i < count; i++)
+            // Realize ONLY the visible items. Items beyond _columnCount are never requested,
+            // so ItemsRepeater never instantiates their DataTemplates — the core virtualization win.
+            // Any previously-realized elements that we stop requesting are auto-recycled by
+            // the framework between layout passes.
+            for (int i = 0; i < _columnCount; i++)
             {
-                children[i].Measure(measureSize);
-                if (i < _columnCount)
-                    maxHeight = Math.Max(maxHeight, children[i].DesiredSize.Height);
+                var child = context.GetOrCreateElementAt(i);
+                child.Measure(measureSize);
+                maxHeight = Math.Max(maxHeight, child.DesiredSize.Height);
             }
 
             // Return the exact available width (not computed width) to avoid layout cycle
@@ -100,34 +114,23 @@ public sealed class SingleRowLayout : NonVirtualizingLayout
         }
     }
 
-    protected override Size ArrangeOverride(NonVirtualizingLayoutContext context, Size finalSize)
+    protected override Size ArrangeOverride(VirtualizingLayoutContext context, Size finalSize)
     {
         try
         {
-            var children = context.Children;
-            var count = children.Count;
-            if (count == 0)
+            var itemCount = context.ItemCount;
+            if (itemCount == 0)
                 return finalSize;
 
-            double maxHeight = 0;
-            for (int i = 0; i < _columnCount && i < count; i++)
-                maxHeight = Math.Max(maxHeight, children[i].DesiredSize.Height);
+            var visibleCount = Math.Min(_columnCount, itemCount);
 
-            if (maxHeight <= 0) maxHeight = finalSize.Height;
-
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < visibleCount; i++)
             {
-                if (i < _columnCount)
-                {
-                    var x = i * (_itemWidth + Spacing);
-                    children[i].Arrange(new Rect(x, 0, _itemWidth, maxHeight));
-                }
-                else
-                {
-                    // Arrange past the right edge with valid dimensions
-                    children[i].Arrange(new Rect(finalSize.Width + 100, 0, _itemWidth, maxHeight));
-                }
+                var child = context.GetOrCreateElementAt(i);
+                var x = i * (_itemWidth + Spacing);
+                child.Arrange(new Rect(x, 0, _itemWidth, finalSize.Height));
             }
+            // No arrange for items beyond visibleCount — they don't exist in the visual tree.
         }
         catch (ArgumentException)
         {

@@ -27,19 +27,26 @@
         Click="CardButton_Click"
         PointerPressed="CardButton_PointerPressed"
         RightTapped="CardButton_RightTapped">
-        <Border
-            x:Name="CardBorder"
-            CornerRadius="{ThemeResource ControlCornerRadius}"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            Padding="8,8,8,12">
+        <!-- Card root: a single Grid carries background, rounded corners, stroke, padding, and
+             the drop shadow. Previously wrapped by a <Border>, but Grid has built-in border
+             properties (BorderBrush/BorderThickness/CornerRadius/Padding/Background) per the
+             "Optimize your XAML layout" WinUI doc. Eliminates ~310 framework elements from the
+             HomePage first-paint burst (one Border per card). AttachedCardShadow attaches to any
+             FrameworkElement, so the shadow still works unchanged. -->
+        <Grid x:Name="CardRoot"
+              CornerRadius="{ThemeResource ControlCornerRadius}"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              BorderThickness="1"
+              Padding="8,8,8,12">
             <winUi:Effects.Shadow>
                 <ui:AttachedCardShadow x:Name="CardShadow" Opacity="0" BlurRadius="16" Offset="0,4" CornerRadius="4"/>
             </winUi:Effects.Shadow>
-            <Grid>
-            <!-- Shimmer overlay (visible when IsLoading=true) -->
-            <StackPanel x:Name="ShimmerOverlay" Spacing="8" Visibility="Collapsed">
+            <!-- Shimmer overlay — instantiated lazily only when a card is in the IsLoading
+                 state (passive/placeholder mode). Skipping creation cuts ~3 framework elements
+                 × ~310 cards = ~930 elements from the HomePage realization burst. -->
+            <StackPanel x:Name="ShimmerOverlay" Spacing="8"
+                        x:Load="{x:Bind IsLoading, Mode=OneWay}">
                 <controls:Shimmer Height="120" HorizontalAlignment="Stretch" CornerRadius="4"/>
                 <controls:Shimmer Height="16" HorizontalAlignment="Left" Width="100"/>
                 <controls:Shimmer Height="14" HorizontalAlignment="Left" Width="70"/>
@@ -65,6 +72,7 @@
 
                     <!-- Play button overlay (shown on hover) -->
                     <Button x:Name="SquarePlayButton"
+                            x:Load="False"
                             Visibility="Collapsed"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Bottom"
@@ -79,6 +87,7 @@
 
                     <!-- Playing indicator (shown when IsPlaying) -->
                     <Border x:Name="SquarePlayingIndicator"
+                            x:Load="False"
                             Visibility="Collapsed"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Bottom"
@@ -91,8 +100,12 @@
                     </Border>
                 </Grid>
 
-                <!-- Circular image mode (hidden by default) -->
+                <!-- Circular image mode — deferred via x:Load="False". Realized on demand
+                     by EnsureCircleRealized() in code-behind whenever a circle-mode access
+                     is needed (image load, hover, playing-state change, placeholder color/glyph
+                     re-apply). Square cards never realize this subtree. -->
                 <Grid x:Name="CircleImageContainer"
+                      x:Load="False"
                       HorizontalAlignment="Stretch"
                       Visibility="Collapsed">
                     <Ellipse x:Name="CirclePlaceholder"
@@ -160,7 +173,6 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            FontSize="12"/>
             </StackPanel>
-            </Grid>
-        </Border>
+        </Grid>
     </Button>
 </UserControl>

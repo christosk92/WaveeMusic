@@ -141,3 +141,8 @@ $RECYCLE.BIN/
 
 _NCrunch*nul
 bass24.zip
+
+# Performance traces — large (50MB+ per ETL, multi-GB per session)
+perf-traces/
+*.etl
+*.etl.cab

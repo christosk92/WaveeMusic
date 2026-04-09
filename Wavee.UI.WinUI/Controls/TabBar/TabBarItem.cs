@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Diagnostics;
 
 namespace Wavee.UI.WinUI.Controls.TabBar;
 
@@ -62,6 +63,14 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     private ITabBarItemContent? _previousContent;
     private const int MaxBackStackSize = 20;
 
+    // Correlates Start/Stop ETW pairs for a single navigation. Set inside Navigate()
+    // (or the NavigationParameter setter) right before ContentFrame.Navigate, read
+    // from ContentFrame_Navigated to emit the Stop event with the matching nav id.
+    // A plain field is safe because all navigations on a given tab's UI thread are
+    // sequential — no interleaving possible.
+    private long _pendingNavId;
+    private string? _pendingPageName;
+
     private TabItemParameter? _navigationParameter;
     public TabItemParameter? NavigationParameter
     {
@@ -73,6 +82,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 _navigationParameter = value;
                 if (_navigationParameter?.InitialPageType != null)
                 {
+                    var navId = WaveeNavigationEventSource.Log.NextNavId();
+                    WaveeNavigationEventSource.Log.Navigating(navId, _navigationParameter.InitialPageType.Name, "Restore");
+                    _pendingNavId = navId;
+                    _pendingPageName = _navigationParameter.InitialPageType.Name;
+
                     ContentFrame.Navigate(
                         _navigationParameter.InitialPageType,
                         _navigationParameter.NavigationParameter,
@@ -106,6 +120,13 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
     {
+        // Open the ETW navigation pair for this hop. We emit Navigating unconditionally
+        // so every user-perceived navigation gets a row in Navigation_Metrics.csv —
+        // including the same-page no-op and the refresh-in-place cases, which are both
+        // closed with an immediate Navigated below.
+        var navId = WaveeNavigationEventSource.Log.NextNavId();
+        WaveeNavigationEventSource.Log.Navigating(navId, pageType.Name, suppressTransition ? "Suppressed" : "DrillIn");
+
         var oldParameter = _navigationParameter;
 
         _navigationParameter = new TabItemParameter
@@ -122,18 +143,28 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             var newUri = GetParameterUri(parameter);
 
             if (string.Equals(currentUri, newUri, StringComparison.Ordinal))
-                return; // Same page, same parameter — nothing to do
+            {
+                // Same page, same parameter — no Frame.Navigate will fire, so close the pair now.
+                WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
+                return;
+            }
 
             // Different parameter — let the page refresh in-place
             if (ContentFrame.Content is ITabBarItemContent refreshable)
             {
                 refreshable.RefreshWithParameter(parameter);
+                // RefreshWithParameter is synchronous from our caller's perspective; close the pair.
+                WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
                 return;
             }
 
             // Fallback: page doesn't support refresh, force re-creation
             ContentFrame.Content = null;
         }
+
+        // Real Frame.Navigate path — stash the nav id so ContentFrame_Navigated can close the pair.
+        _pendingNavId = navId;
+        _pendingPageName = pageType.Name;
 
         var transition = suppressTransition
             ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
@@ -150,6 +181,18 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
+        // Close the ETW navigation pair opened in Navigate() / NavigationParameter setter.
+        // _pendingNavId == 0 means this callback fired without a preceding Start (shouldn't
+        // happen in practice, but guard so we never emit a Stop without a Start).
+        if (_pendingNavId != 0)
+        {
+            WaveeNavigationEventSource.Log.Navigated(
+                _pendingNavId,
+                _pendingPageName ?? e.SourcePageType?.Name ?? "Unknown");
+            _pendingNavId = 0;
+            _pendingPageName = null;
+        }
+
         // Forward navigation event for external subscribers
         Navigated?.Invoke(this, e);
 
