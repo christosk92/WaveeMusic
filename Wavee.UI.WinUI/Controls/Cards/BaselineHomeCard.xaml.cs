@@ -37,6 +37,8 @@ public sealed partial class BaselineHomeCard : UserControl
     private bool _isPointerOver;
     private bool _isPreviewAudioPlaying;
     private bool _isApplyingResponsiveSize;
+    private bool _isHoverStateRefreshQueued;
+    private bool _hasQueuedDeferredHoverStateRefresh;
     private int _previewTrackIndex;
     private string? _previewVisualizationSessionId;
     private string? _previewVisualizationUrl;
@@ -219,6 +221,7 @@ public sealed partial class BaselineHomeCard : UserControl
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         _isPointerOver = true;
+        _hasQueuedDeferredHoverStateRefresh = false;
 
         if (s_activeCard != null && !ReferenceEquals(s_activeCard, this))
             s_activeCard.StopHoverMedia();
@@ -226,6 +229,11 @@ public sealed partial class BaselineHomeCard : UserControl
         s_activeCard = this;
         EnsureHoverChromeRealized();
         ApplyHoverState();
+
+        var hasPreviewAudio = !string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl());
+        var hasCanvas = !string.IsNullOrWhiteSpace(GetActiveCanvasUrl());
+        if ((hasPreviewAudio && PreviewAudioButton == null) || (hasCanvas && CanvasPlayer == null))
+            QueueDeferredHoverStateRefresh();
     }
 
     private void ApplyHoverState()
@@ -255,6 +263,9 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (HoverChrome != null)
         {
+            // Set opacity directly first to guarantee visibility,
+            // then run the animation for smoothness on subsequent hovers
+            HoverChrome.Opacity = 1;
             AnimationBuilder.Create()
                 .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(140))
                 .Start(HoverChrome);
@@ -282,6 +293,8 @@ public sealed partial class BaselineHomeCard : UserControl
     private void StopHoverMedia()
     {
         _isPointerOver = false;
+        _isHoverStateRefreshQueued = false;
+        _hasQueuedDeferredHoverStateRefresh = false;
         StopCanvasPreview();
         StopPreviewVisualization();
         StopPreviewAudio();
@@ -328,6 +341,64 @@ public sealed partial class BaselineHomeCard : UserControl
             s_activeCard = null;
     }
 
+    private void QueueDeferredHoverStateRefresh()
+    {
+        if (!_isPointerOver || _isHoverStateRefreshQueued || _hasQueuedDeferredHoverStateRefresh)
+            return;
+
+        _isHoverStateRefreshQueued = true;
+        _hasQueuedDeferredHoverStateRefresh = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            _isHoverStateRefreshQueued = false;
+            if (!_isPointerOver || !IsLoaded)
+                return;
+
+            ApplyHoverState();
+        }))
+        {
+            _isHoverStateRefreshQueued = false;
+        }
+    }
+
+    private void ResetInteractionStateForNavigation()
+    {
+        _isPointerOver = false;
+        _isHoverStateRefreshQueued = false;
+        _hasQueuedDeferredHoverStateRefresh = false;
+
+        StopCanvasPreview();
+        StopPreviewVisualization();
+        StopPreviewAudio();
+
+        if (PreviewAudioButton != null)
+            PreviewAudioButton.Visibility = Visibility.Collapsed;
+        if (PreviewOverlayRoot != null)
+            PreviewOverlayRoot.Visibility = Visibility.Collapsed;
+        if (PreviousPreviewTrackButton != null)
+            PreviousPreviewTrackButton.Visibility = Visibility.Collapsed;
+        if (NextPreviewTrackButton != null)
+            NextPreviewTrackButton.Visibility = Visibility.Collapsed;
+        if (PreviewVisualizer != null)
+        {
+            PreviewVisualizer.Reset();
+            PreviewVisualizer.SetActive(false);
+            PreviewVisualizer.Visibility = Visibility.Collapsed;
+        }
+        if (HoverChrome != null)
+        {
+            HoverChrome.Opacity = 0;
+            HoverChrome.Visibility = Visibility.Collapsed;
+        }
+
+        var visual = ElementCompositionPreview.GetElementVisual(CardRoot);
+        visual.Scale = System.Numerics.Vector3.One;
+        Canvas.SetZIndex(this, 0);
+
+        if (ReferenceEquals(s_activeCard, this))
+            s_activeCard = null;
+    }
+
     private async Task CollapseHoverChromeAsync()
     {
         await Task.Delay(150);
@@ -348,7 +419,10 @@ public sealed partial class BaselineHomeCard : UserControl
         {
             EnsureCanvasPlayerRealized();
             if (CanvasPlayer == null)
+            {
+                QueueDeferredHoverStateRefresh();
                 return;
+            }
 
             _canvasMediaPlayer ??= new MediaPlayer
             {
@@ -534,27 +608,41 @@ public sealed partial class BaselineHomeCard : UserControl
     private void CardRoot_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (IsPreviewButtonSource(e.OriginalSource))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var item = Item;
+        if (item == null)
             return;
 
-        if (Item != null)
-            HomeViewModel.NavigateToItem(Item, NavigationHelpers.IsCtrlPressed());
+        ResetInteractionStateForNavigation();
+        HomeViewModel.NavigateToItem(item, NavigationHelpers.IsCtrlPressed());
+        e.Handled = true;
     }
 
     private void CardRoot_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (IsPreviewButtonSource(e.OriginalSource))
-            return;
-
-        if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed && Item != null)
         {
-            HomeViewModel.NavigateToItem(Item, openInNewTab: true);
+            e.Handled = true;
+            return;
+        }
+
+        var item = Item;
+        if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed && item != null)
+        {
+            ResetInteractionStateForNavigation();
+            HomeViewModel.NavigateToItem(item, openInNewTab: true);
             e.Handled = true;
         }
     }
 
     private void CardRoot_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (Item == null)
+        var item = Item;
+        if (item == null)
             return;
 
         var menu = new MenuFlyout();
@@ -563,7 +651,11 @@ public sealed partial class BaselineHomeCard : UserControl
             Text = "Open in new tab",
             Icon = new SymbolIcon(Symbol.OpenWith)
         };
-        openNewTab.Click += (_, _) => HomeViewModel.NavigateToItem(Item, openInNewTab: true);
+        openNewTab.Click += (_, _) =>
+        {
+            ResetInteractionStateForNavigation();
+            HomeViewModel.NavigateToItem(item, openInNewTab: true);
+        };
         menu.Items.Add(openNewTab);
         menu.ShowAt(this, e.GetPosition(this));
         e.Handled = true;
@@ -609,41 +701,53 @@ public sealed partial class BaselineHomeCard : UserControl
         if (_isApplyingResponsiveSize)
             return;
 
-        var width = e.NewSize.Width;
-        if (width <= 0)
-            return;
-
-        var targetHeight = width / CardAspectRatio;
-
-        if (!double.IsNaN(Height) && Math.Abs(Height - targetHeight) < 1)
-            return;
-
         _isApplyingResponsiveSize = true;
-        Height = targetHeight;
-        DispatcherQueue.TryEnqueue(() => _isApplyingResponsiveSize = false);
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                var width = ActualWidth > 0 ? ActualWidth : e.NewSize.Width;
+                if (width <= 0)
+                    return;
+
+                var targetHeight = width / CardAspectRatio;
+                if (!double.IsNaN(Height) && Math.Abs(Height - targetHeight) < 1)
+                    return;
+
+                Height = targetHeight;
+            }
+            finally
+            {
+                _isApplyingResponsiveSize = false;
+            }
+        }))
+        {
+            _isApplyingResponsiveSize = false;
+        }
     }
 
     private void EnsureHoverChromeRealized()
     {
         if (HoverChrome != null)
             return;
-        FindName("HoverChrome");
-        UpdateLayout();
+
+        _ = FindName(nameof(HoverChrome));
     }
 
     private void EnsureCanvasPlayerRealized()
     {
         if (CanvasPlayer != null)
             return;
-        FindName("CanvasPlayer");
-        UpdateLayout();
+
+        _ = FindName(nameof(CanvasPlayer));
     }
 
     private void EnsureShimmerRealized()
     {
         if (ShimmerOverlay != null)
             return;
-        FindName("ShimmerOverlay");
+
+        _ = FindName(nameof(ShimmerOverlay));
     }
 
     private void EnsurePreviewVisualizerRealized()
