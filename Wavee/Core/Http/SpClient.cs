@@ -355,7 +355,11 @@ public sealed class SpClient : ISpClient
         // Build request matching librespot-java's format
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
-        request.Headers.Add("Accept-Language", "en");
+        var locale = GetEffectiveLocale();
+        if (!string.IsNullOrEmpty(locale))
+        {
+            request.Headers.AcceptLanguage.ParseAdd(locale);
+        }
         request.Headers.Add("X-ClientTimeStamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
         request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
 

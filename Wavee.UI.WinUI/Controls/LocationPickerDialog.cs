@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls;
 
@@ -24,7 +25,7 @@ public static class LocationPickerDialog
 
         var searchBox = new AutoSuggestBox
         {
-            PlaceholderText = "Search city...",
+            PlaceholderText = AppLocalization.GetString("Location_SearchPlaceholder"),
             QueryIcon = new SymbolIcon(Symbol.Find),
             Width = 300,
             DisplayMemberPath = "FullName"
@@ -32,7 +33,7 @@ public static class LocationPickerDialog
 
         var useCurrentBtn = new HyperlinkButton
         {
-            Content = "Use current location",
+            Content = AppLocalization.GetString("Location_UseCurrent"),
             Padding = new Thickness(0)
         };
 
@@ -42,7 +43,7 @@ public static class LocationPickerDialog
         {
             panel.Children.Add(new TextBlock
             {
-                Text = $"Current: {currentCity}",
+                Text = AppLocalization.Format("Location_Current", currentCity),
                 Opacity = 0.6,
                 FontSize = 13
             });
@@ -53,9 +54,9 @@ public static class LocationPickerDialog
 
         var dialog = new ContentDialog
         {
-            Title = "Concert location",
+            Title = AppLocalization.GetString("Location_DialogTitle"),
             Content = panel,
-            CloseButtonText = "Cancel",
+            CloseButtonText = AppLocalization.GetString("Location_Cancel"),
             XamlRoot = xamlRoot
         };
 
@@ -101,7 +102,7 @@ public static class LocationPickerDialog
             try
             {
                 useCurrentBtn.IsEnabled = false;
-                useCurrentBtn.Content = "Detecting location...";
+                useCurrentBtn.Content = AppLocalization.GetString("Location_Detecting");
 
                 var geolocator = new Windows.Devices.Geolocation.Geolocator();
                 var position = await geolocator.GetGeopositionAsync();
@@ -111,7 +112,7 @@ public static class LocationPickerDialog
 
                 if (resolved == null)
                 {
-                    useCurrentBtn.Content = "Could not detect location";
+                    useCurrentBtn.Content = AppLocalization.GetString("Location_CouldNotDetect");
                     useCurrentBtn.IsEnabled = true;
                     return;
                 }
@@ -119,13 +120,13 @@ public static class LocationPickerDialog
                 // Pre-fill for user confirmation
                 searchBox.Text = resolved.FullName ?? resolved.Name ?? "";
                 searchBox.ItemsSource = new[] { resolved };
-                useCurrentBtn.Content = $"Detected: {resolved.Name} — select above to confirm";
+                useCurrentBtn.Content = AppLocalization.Format("Location_DetectedConfirm", resolved.Name);
                 useCurrentBtn.IsEnabled = true;
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Failed to get current location");
-                useCurrentBtn.Content = "Failed to detect location";
+                useCurrentBtn.Content = AppLocalization.GetString("Location_DetectFailed");
                 useCurrentBtn.IsEnabled = true;
             }
         };

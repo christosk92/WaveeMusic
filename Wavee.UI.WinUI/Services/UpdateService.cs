@@ -57,10 +57,10 @@ public sealed class UpdateService : IUpdateService
             {
                 _notificationService?.Show(new NotificationInfo
                 {
-                    Message = $"Wavee v{LatestVersion} is available",
+                    Message = AppLocalization.Format("Update_AvailableMessage", LatestVersion),
                     Severity = NotificationSeverity.Informational,
                     AutoDismissAfter = TimeSpan.FromSeconds(8),
-                    ActionLabel = "View",
+                    ActionLabel = AppLocalization.GetString("Update_View"),
                     Action = async () =>
                     {
                         if (ReleaseUrl != null)
@@ -178,10 +178,10 @@ public sealed class UpdateService : IUpdateService
 
             _notificationService?.Show(new NotificationInfo
             {
-                Message = "Update check failed — check your connection",
+                Message = AppLocalization.GetString("Update_CheckFailed"),
                 Severity = NotificationSeverity.Error,
                 AutoDismissAfter = TimeSpan.FromSeconds(8),
-                ActionLabel = "Retry",
+                ActionLabel = AppLocalization.GetString("Retry"),
                 Action = () => CheckForUpdateAsync()
             });
         }

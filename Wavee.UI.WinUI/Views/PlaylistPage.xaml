@@ -58,7 +58,7 @@
                     <!-- Playlist Info -->
                     <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
                         <!-- Playlist type label -->
-                        <TextBlock Text="Playlist"
+                        <TextBlock x:Uid="Views_PlaylistPage__TextBlock_1" Text="Playlist"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontWeight="SemiBold"
@@ -82,7 +82,7 @@
                         <!-- Owner and stats -->
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}">
-                                <Run Text="by" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <Run x:Uid="Views_PlaylistPage__Run_2" Text="by" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <Run Text="{x:Bind ViewModel.OwnerName, Mode=OneWay}" FontWeight="SemiBold"/>
                             </TextBlock>
                             <TextBlock Text=" &#x2022; "
@@ -91,7 +91,7 @@
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                                 <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/>
-                                <Run Text="songs"/>
+                                <Run x:Uid="Views_PlaylistPage__Run_3" Text="songs"/>
                             </TextBlock>
                             <TextBlock Text=" &#x2022; "
                                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -116,20 +116,20 @@
                                     Padding="16,8">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock Text="Play"/>
+                                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_4" Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button Command="{x:Bind ViewModel.ShuffleCommand}" Padding="16,8">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                    <TextBlock Text="Shuffle"/>
+                                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_5" Text="Shuffle"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
                     </StackPanel>
 
                     <!-- Search -->
-                    <TextBox
+                    <TextBox x:Uid="Views_PlaylistPage__TextBox_6"
                         Grid.Column="2"
                         PlaceholderText="Filter tracks..."
                         Width="200"
@@ -142,7 +142,7 @@
             <trackList:TrackListView.EmptyStateContent>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                     <FontIcon Glyph="&#xE8FD;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock
+                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_7"
                         Text="This playlist is empty"
                         Style="{StaticResource BodyTextBlockStyle}"
                         Opacity="0.5"

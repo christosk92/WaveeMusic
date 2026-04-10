@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using PortAudioSharp;
 using Wavee.AudioHost.Audio.Abstractions;
+using Wavee.AudioHost.Audio.Processors;
 
 namespace Wavee.AudioHost.Audio.Sinks;
 
@@ -36,8 +37,9 @@ public sealed class PortAudioSink : IAudioSink
     private int _currentDeviceIndex;
     private Timer? _deviceCheckTimer;
 
-    // Real-time volume applied in the callback (instant, no buffer delay)
-    private volatile float _callbackVolume = 1.0f;
+    // Optional final-stage processor applied after the circular buffer is read,
+    // so user volume changes are not delayed by already-buffered PCM.
+    private VolumeProcessor? _realtimeVolumeProcessor;
 
     // Underrun detection (logged from callback thread)
     private long _underrunCount;
@@ -62,16 +64,6 @@ public sealed class PortAudioSink : IAudioSink
 
     public string SinkName => "PortAudio";
 
-    /// <summary>
-    /// Sets the playback volume applied directly in the audio callback.
-    /// Takes effect within ~50ms (next callback), bypassing the circular buffer delay.
-    /// </summary>
-    public float CallbackVolume
-    {
-        get => _callbackVolume;
-        set => _callbackVolume = Math.Clamp(value, 0f, 1.0f);
-    }
-
     /// <inheritdoc />
     public long PlaybackPositionMs
     {
@@ -95,6 +87,17 @@ public sealed class PortAudioSink : IAudioSink
     {
         _logger = logger;
         EnsurePortAudioInitialized();
+    }
+
+    public void SetRealtimeVolumeProcessor(VolumeProcessor? processor)
+    {
+        lock (_lock)
+        {
+            _realtimeVolumeProcessor = processor;
+            var format = _format;
+            if (processor != null && format != null)
+                processor.InitializeAsync(format).GetAwaiter().GetResult();
+        }
     }
 
     private void EnsurePortAudioInitialized()
@@ -123,6 +126,7 @@ public sealed class PortAudioSink : IAudioSink
 
             _format = format;
             _bytesPerMs = format.BytesPerSecond / 1000.0;
+            _realtimeVolumeProcessor?.InitializeAsync(format, cancellationToken).GetAwaiter().GetResult();
 
             // Calculate buffer size in bytes (2x requested for safety margin)
             var bufferBytes = format.BytesPerSecond * bufferSizeMs * 2 / 1000;
@@ -242,19 +246,9 @@ public sealed class PortAudioSink : IAudioSink
                 _lastUnderrunBytesNeeded = bytesNeeded;
             }
 
-            // Apply real-time volume scaling directly in the callback.
-            // This bypasses the circular buffer delay — volume changes take effect
-            // on the very next callback (~50ms) instead of after 8s of buffered audio.
-            var vol = _callbackVolume;
-            if (bytesRead > 0 && Math.Abs(vol - 1.0f) > 0.0001f && format.BitsPerSample == 16)
-            {
-                var samples = bytesRead / 2;
-                var ptr = (short*)output;
-                for (int i = 0; i < samples; i++)
-                {
-                    ptr[i] = (short)Math.Clamp((int)(ptr[i] * vol), short.MinValue, short.MaxValue);
-                }
-            }
+            var volumeProcessor = _realtimeVolumeProcessor;
+            if (bytesRead > 0 && volumeProcessor is { IsEnabled: true })
+                volumeProcessor.ProcessInPlace(span[..bytesRead]);
 
             // Track playback position from bytes actually sent to the speaker
             if (bytesRead > 0)

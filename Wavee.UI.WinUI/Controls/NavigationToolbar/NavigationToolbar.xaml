@@ -50,7 +50,7 @@
             Spacing="2">
 
             <!-- Back Button -->
-            <Button
+            <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_1"
                 x:Name="BackButton"
                 Style="{StaticResource NavigationButtonStyle}"
                 ToolTipService.ToolTip="Back"
@@ -60,7 +60,7 @@
             </Button>
 
             <!-- Forward Button -->
-            <Button
+            <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_2"
                 x:Name="ForwardButton"
                 Style="{StaticResource NavigationButtonStyle}"
                 ToolTipService.ToolTip="Forward"
@@ -76,7 +76,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Button
+                <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_3"
                     x:Name="HomeButton"
                     Grid.Row="0"
                     Style="{StaticResource NavigationButtonStyle}"
@@ -99,7 +99,7 @@
             </Grid>
 
             <!-- Refresh Button (optional) -->
-            <Button
+            <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_4"
                 x:Name="RefreshButton"
                 Style="{StaticResource NavigationButtonStyle}"
                 ToolTipService.ToolTip="Refresh"
@@ -110,7 +110,7 @@
         </StackPanel>
 
         <!-- Omnibar / Search Box -->
-        <omnibar:Omnibar
+        <omnibar:Omnibar x:Uid="Controls_NavigationToolbar_NavigationToolbar__Omnibar_5"
             x:Name="SearchOmnibar"
             Grid.Column="1"
             Margin="8,0"
@@ -133,7 +133,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Button
+                <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_6"
                     x:Name="ProfileButton"
                     Grid.Row="0"
                     Style="{StaticResource NavigationButtonStyle}"
@@ -142,18 +142,18 @@
                     ToolTipService.ToolTip="Profile">
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedRight">
-                            <MenuFlyoutItem Text="View Profile" Click="ViewProfileMenuItem_Click">
+                            <MenuFlyoutItem x:Uid="Controls_NavigationToolbar_NavigationToolbar__MenuFlyoutItem_7" Text="View Profile" Click="ViewProfileMenuItem_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE77B;" FontSize="14"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Settings" Click="SettingsMenuItem_Click">
+                            <MenuFlyoutItem x:Uid="Controls_NavigationToolbar_NavigationToolbar__MenuFlyoutItem_8" Text="Settings" Click="SettingsMenuItem_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE713;" FontSize="14"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator/>
-                            <MenuFlyoutItem Text="Sign out" Click="SignOutMenuItem_Click">
+                            <MenuFlyoutItem x:Uid="Controls_NavigationToolbar_NavigationToolbar__MenuFlyoutItem_9" Text="Sign out" Click="SignOutMenuItem_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xF3B1;" FontSize="14"/>
                                 </MenuFlyoutItem.Icon>
@@ -200,7 +200,7 @@
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
 
             <!-- Theme Toggle -->
-            <Button
+            <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_10"
                 x:Name="ThemeToggleButton"
                 Style="{StaticResource NavigationButtonStyle}"
                 ToolTipService.ToolTip="Toggle theme"

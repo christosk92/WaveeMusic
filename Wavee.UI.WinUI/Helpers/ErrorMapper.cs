@@ -2,6 +2,7 @@ using System;
 using System.Net.Http;
 using Wavee.Core.Http;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Helpers;
 
@@ -13,25 +14,25 @@ public static class ErrorMapper
 {
     public static string ToUserMessage(Exception ex) => ex switch
     {
-        HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound } => "Content not found.",
-        HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } => "Too many requests. Please wait a moment.",
-        HttpRequestException => "Network error. Check your connection.",
-        OperationCanceledException => "Request was cancelled.",
-        SpClientException { Reason: SpClientFailureReason.Unauthorized } => "Session expired. Please reconnect.",
-        SpClientException { Reason: SpClientFailureReason.NotFound } => "Content not found.",
-        SpClientException { Reason: SpClientFailureReason.RateLimited } => "Too many requests. Please wait.",
-        SpClientException => "Something went wrong. Please try again.",
-        _ => "An unexpected error occurred."
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound } => AppLocalization.GetString("Error_ContentNotFound"),
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } => AppLocalization.GetString("Error_TooManyRequestsMoment"),
+        HttpRequestException => AppLocalization.GetString("Error_NetworkCheckConnection"),
+        OperationCanceledException => AppLocalization.GetString("Error_RequestCancelled"),
+        SpClientException { Reason: SpClientFailureReason.Unauthorized } => AppLocalization.GetString("Error_SessionExpiredReconnect"),
+        SpClientException { Reason: SpClientFailureReason.NotFound } => AppLocalization.GetString("Error_ContentNotFound"),
+        SpClientException { Reason: SpClientFailureReason.RateLimited } => AppLocalization.GetString("Error_TooManyRequestsWait"),
+        SpClientException => AppLocalization.GetString("Error_GenericTryAgain"),
+        _ => AppLocalization.GetString("Error_Unexpected")
     };
 
     public static string ToPlaybackMessage(PlaybackErrorKind kind) => kind switch
     {
-        PlaybackErrorKind.Network => "Network error. Check your connection.",
-        PlaybackErrorKind.Unauthorized => "Session expired. Please reconnect.",
-        PlaybackErrorKind.DeviceUnavailable => "No active device. Open Spotify on a device first.",
-        PlaybackErrorKind.PremiumRequired => "Premium required for this feature.",
-        PlaybackErrorKind.RateLimited => "Too many requests. Please wait.",
-        PlaybackErrorKind.NotFound => "Track or playlist not found.",
-        _ => "Something went wrong with playback."
+        PlaybackErrorKind.Network => AppLocalization.GetString("Error_NetworkCheckConnection"),
+        PlaybackErrorKind.Unauthorized => AppLocalization.GetString("Error_SessionExpiredReconnect"),
+        PlaybackErrorKind.DeviceUnavailable => AppLocalization.GetString("PlaybackError_NoActiveDevice"),
+        PlaybackErrorKind.PremiumRequired => AppLocalization.GetString("PlaybackError_PremiumRequired"),
+        PlaybackErrorKind.RateLimited => AppLocalization.GetString("Error_TooManyRequestsWait"),
+        PlaybackErrorKind.NotFound => AppLocalization.GetString("PlaybackError_NotFound"),
+        _ => AppLocalization.GetString("PlaybackError_Generic")
     };
 }

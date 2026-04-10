@@ -154,7 +154,7 @@
     </UserControl.Resources>
 
     <Grid>
-        <Button x:Name="BellButton"
+        <Button x:Uid="Controls_ActivityBell_ActivityBell__Button_1" x:Name="BellButton"
                 Background="Transparent"
                 BorderThickness="0"
                 Padding="8,6"
@@ -183,14 +183,14 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Activity" FontSize="16" FontWeight="SemiBold"
+                            <TextBlock x:Uid="Controls_ActivityBell_ActivityBell__TextBlock_2" Text="Activity" FontSize="16" FontWeight="SemiBold"
                                        VerticalAlignment="Center"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
-                                <Button Content="Read all" Click="MarkAllRead_Click"
+                                <Button x:Uid="Controls_ActivityBell_ActivityBell__Button_3" Content="Read all" Click="MarkAllRead_Click"
                                         Background="Transparent" BorderThickness="0"
                                         Padding="8,4" FontSize="12"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <Button Content="Clear" Click="ClearAll_Click"
+                                <Button x:Uid="Controls_ActivityBell_ActivityBell__Button_4" Content="Clear" Click="ClearAll_Click"
                                         Background="Transparent" BorderThickness="0"
                                         Padding="8,4" FontSize="12"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -223,7 +223,7 @@
                                     Visibility="Collapsed" Spacing="8" Padding="0,32">
                             <FontIcon Glyph="&#xEA8F;" FontSize="28" Opacity="0.2"
                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="No recent activity" Opacity="0.4"
+                            <TextBlock x:Uid="Controls_ActivityBell_ActivityBell__TextBlock_5" Text="No recent activity" Opacity="0.4"
                                        FontSize="13" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Grid>

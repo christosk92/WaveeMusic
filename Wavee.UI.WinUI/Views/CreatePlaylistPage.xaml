@@ -57,13 +57,13 @@
                 Orientation="Horizontal"
                 HorizontalAlignment="Center"
                 Spacing="12">
-                <Button
+                <Button x:Uid="Views_CreatePlaylistPage__Button_1"
                     Content="Create"
                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                     Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                     Command="{x:Bind ViewModel.CreateCommand}"
                     MinWidth="120"/>
-                <Button
+                <Button x:Uid="Views_CreatePlaylistPage__Button_2"
                     Content="Cancel"
                     Command="{x:Bind ViewModel.CancelCommand}"
                     MinWidth="120"/>

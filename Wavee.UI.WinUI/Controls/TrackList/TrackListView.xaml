@@ -71,7 +71,7 @@
                                 HorizontalAlignment="Left"
                                 HorizontalContentAlignment="Left">
                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="Title" Style="{StaticResource CaptionTextBlockStyle}"
+                                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_1" Text="Title" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                           FontSize="10"
@@ -90,7 +90,7 @@
                                 HorizontalAlignment="Left"
                                 HorizontalContentAlignment="Left">
                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"
+                                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_2" Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                           FontSize="10"
@@ -109,7 +109,7 @@
                                 HorizontalAlignment="Left"
                                 HorizontalContentAlignment="Left">
                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="Album" Style="{StaticResource CaptionTextBlockStyle}"
+                                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_3" Text="Album" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                           FontSize="10"
@@ -128,7 +128,7 @@
                                 HorizontalAlignment="Left"
                                 HorizontalContentAlignment="Left">
                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="Date Added" Style="{StaticResource CaptionTextBlockStyle}"
+                                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_4" Text="Date Added" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                           FontSize="10"
@@ -137,7 +137,7 @@
                             </StackPanel>
                         </Button>
 
-                        <TextBlock Grid.Column="7" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_5" Grid.Column="7" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8"/>
                     </Grid>
@@ -205,7 +205,7 @@
                         HorizontalAlignment="Left"
                         HorizontalContentAlignment="Left">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="Title" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_6" Text="Title" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                   FontSize="10"
@@ -224,7 +224,7 @@
                         HorizontalAlignment="Left"
                         HorizontalContentAlignment="Left">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_7" Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                   FontSize="10"
@@ -243,7 +243,7 @@
                         HorizontalAlignment="Left"
                         HorizontalContentAlignment="Left">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="Album" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_8" Text="Album" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                   FontSize="10"
@@ -262,7 +262,7 @@
                         HorizontalAlignment="Left"
                         HorizontalContentAlignment="Left">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="Date Added" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_9" Text="Date Added" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
                                   FontSize="10"
@@ -271,7 +271,7 @@
                     </StackPanel>
                 </Button>
 
-                <TextBlock Grid.Column="7" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_10" Grid.Column="7" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8"/>
             </Grid>
@@ -332,7 +332,7 @@
                                 <MenuFlyout x:Name="AddToPlaylistFlyout"
                                             Placement="TopEdgeAlignedLeft"
                                             Opening="AddToPlaylistFlyout_Opening">
-                                    <MenuFlyoutItem Text="New playlist..."
+                                    <MenuFlyoutItem x:Uid="Controls_TrackList_TrackListView__MenuFlyoutItem_11" Text="New playlist..."
                                                     Icon="{ui:FontIcon Glyph=&#xE710;}"
                                                     Click="NewPlaylist_Click"/>
                                     <MenuFlyoutSeparator x:Name="PlaylistSeparator" Visibility="Collapsed"/>

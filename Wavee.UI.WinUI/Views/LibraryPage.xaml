@@ -31,9 +31,9 @@
             SelectedIndex="0"
             Style="{StaticResource PivotSegmentedStyle}"
             SelectionChanged="SelectorBar_SelectionChanged">
-            <controls:SegmentedItem x:Name="AlbumsItem" Content="Albums"/>
-            <controls:SegmentedItem x:Name="ArtistsItem" Content="Artists"/>
-            <controls:SegmentedItem x:Name="LikedSongsItem" Content="Liked Songs"/>
+            <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_1" x:Name="AlbumsItem" Content="Albums"/>
+            <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_2" x:Name="ArtistsItem" Content="Artists"/>
+            <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_3" x:Name="LikedSongsItem" Content="Liked Songs"/>
         </controls:Segmented>
 
         <!-- Content area -->

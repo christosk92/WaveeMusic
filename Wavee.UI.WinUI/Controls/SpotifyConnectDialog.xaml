@@ -31,7 +31,7 @@
             <StackPanel Grid.Column="0" Padding="32" Spacing="16" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Glyph="&#xE8D6;" FontSize="32" Foreground="#1DB954"/>
-                    <TextBlock Text="Spotify" FontSize="24" FontWeight="Bold" Foreground="#1DB954"
+                    <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_1" Text="Spotify" FontSize="24" FontWeight="Bold" Foreground="#1DB954"
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
@@ -45,7 +45,7 @@
                         HorizontalAlignment="Stretch" Padding="12"
                         Command="{x:Bind ViewModel.ConnectWithBrowserCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                        <TextBlock Text="Log in" FontWeight="SemiBold"/>
+                        <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_2" Text="Log in" FontWeight="SemiBold"/>
                         <FontIcon Glyph="&#xE8A7;" FontSize="12"/>
                     </StackPanel>
                 </Button>
@@ -70,7 +70,7 @@
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1">
-                    <TextBlock Text="OR" FontSize="11" FontWeight="SemiBold"
+                    <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_3" Text="OR" FontSize="11" FontWeight="SemiBold"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"/>
                 </Border>
@@ -100,18 +100,18 @@
                     </Grid>
                 </Border>
 
-                <TextBlock Text="Scan QR code to log in" FontWeight="SemiBold"
+                <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_4" Text="Scan QR code to log in" FontWeight="SemiBold"
                            HorizontalAlignment="Center"/>
 
                 <StackPanel Orientation="Horizontal" Spacing="4"
                             HorizontalAlignment="Center">
-                    <TextBlock Text="Or go to"
+                    <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_5" Text="Or go to"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center"/>
-                    <HyperlinkButton Content="spotify.com/pair" Padding="4,0"
+                    <HyperlinkButton x:Uid="Controls_SpotifyConnectDialog__HyperlinkButton_6" Content="spotify.com/pair" Padding="4,0"
                                      NavigateUri="https://spotify.com/pair"
                                      VerticalAlignment="Center"/>
-                    <TextBlock Text="and enter code:"
+                    <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_7" Text="and enter code:"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -122,7 +122,7 @@
                                FontSize="28" FontWeight="Bold" CharacterSpacing="150"
                                IsTextSelectionEnabled="True" FontFamily="Consolas"
                                VerticalAlignment="Center"/>
-                    <Button x:Name="CopyCodeButton" Click="CopyCode_Click"
+                    <Button x:Uid="Controls_SpotifyConnectDialog__Button_8" x:Name="CopyCodeButton" Click="CopyCode_Click"
                             Width="32" Height="32" Padding="0"
                             Background="Transparent" BorderThickness="0"
                             VerticalAlignment="Center"
@@ -143,7 +143,7 @@
         <StackPanel x:Name="ConnectingPanel" Grid.Row="0" Visibility="Collapsed"
                     Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center">
             <ProgressRing IsActive="True" Width="48" Height="48"/>
-            <TextBlock Text="Connecting to Spotify..."
+            <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_9" Text="Connecting to Spotify..."
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
         </StackPanel>
@@ -153,7 +153,7 @@
                     Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center"
                     MaxWidth="400">
             <FontIcon Glyph="&#xE895;" FontSize="36" Foreground="#1DB954"/>
-            <TextBlock Text="Setting up your library..."
+            <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_10" Text="Setting up your library..."
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
             <TextBlock Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
@@ -168,7 +168,7 @@
         <StackPanel x:Name="SuccessPanel" Grid.Row="0" Visibility="Collapsed"
                     Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
             <FontIcon Glyph="&#xE73E;" FontSize="48" Foreground="#1DB954"/>
-            <TextBlock Text="Connected!" Style="{StaticResource SubtitleTextBlockStyle}"
+            <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_11" Text="Connected!" Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
         </StackPanel>
 
@@ -180,7 +180,7 @@
             <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                        TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"
                        MaxWidth="400"/>
-            <Button Content="Try Again" Style="{StaticResource AccentButtonStyle}"
+            <Button x:Uid="Controls_SpotifyConnectDialog__Button_12" Content="Try Again" Style="{StaticResource AccentButtonStyle}"
                     HorizontalAlignment="Center"
                     Command="{x:Bind ViewModel.RetryCommand}"/>
         </StackPanel>
@@ -193,12 +193,12 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Center">
-                <TextBlock x:Name="StepText" Text="Step 1 of 3"
+                <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_13" x:Name="StepText" Text="Step 1 of 3"
                            Style="{StaticResource CaptionTextBlockStyle}"/>
                 <ProgressBar x:Name="StepProgress" Value="33" Maximum="100"
                              Height="4" CornerRadius="2"/>
             </StackPanel>
-            <Button x:Name="CloseButton" Grid.Column="1" Content="Close"
+            <Button x:Uid="Controls_SpotifyConnectDialog__Button_14" x:Name="CloseButton" Grid.Column="1" Content="Close"
                     MinWidth="120" Margin="24,0,0,0"
                     Command="{x:Bind ViewModel.CancelCommand}"/>
         </Grid>

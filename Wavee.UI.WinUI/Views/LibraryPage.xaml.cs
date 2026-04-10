@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Controls;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -145,6 +146,32 @@ public sealed partial class LibraryPage : Page
         }
 
         UpdateSidebarSelection(selectedItem);
+        UpdateCurrentTabTitle(selectedItem);
+    }
+
+    private static string GetLocalizedTabTitle(SegmentedItem selectedItem, SegmentedItem albumsItem, SegmentedItem artistsItem, SegmentedItem likedSongsItem)
+    {
+        return selectedItem switch
+        {
+            _ when selectedItem == albumsItem => AppLocalization.GetString("Shell_SidebarAlbums"),
+            _ when selectedItem == artistsItem => AppLocalization.GetString("Shell_SidebarArtists"),
+            _ when selectedItem == likedSongsItem => AppLocalization.GetString("Shell_SidebarLikedSongs"),
+            _ => AppLocalization.GetString("Shell_SidebarYourLibrary")
+        };
+    }
+
+    private void UpdateCurrentTabTitle(SegmentedItem selectedItem)
+    {
+        var tabIndex = App.AppModel.TabStripSelectedIndex;
+        if (tabIndex < 0 || tabIndex >= ShellViewModel.TabInstances.Count)
+        {
+            return;
+        }
+
+        var title = GetLocalizedTabTitle(selectedItem, AlbumsItem, ArtistsItem, LikedSongsItem);
+        var currentTab = ShellViewModel.TabInstances[tabIndex];
+        currentTab.Header = title;
+        currentTab.ToolTipText = title;
     }
 
     private void UpdateSidebarSelection(SegmentedItem? selectedItem = null)

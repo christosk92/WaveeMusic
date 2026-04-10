@@ -111,7 +111,7 @@
                                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" BorderThickness="0">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xEB51;" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                                    <TextBlock Text="Save" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="13"/>
+                                    <TextBlock x:Uid="Views_ConcertPage__TextBlock_1" Text="Save" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="13"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -119,7 +119,7 @@
 
                 <!-- Lineup -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Lineup" FontWeight="Bold" FontSize="20"/>
+                    <TextBlock x:Uid="Views_ConcertPage__TextBlock_2" Text="Lineup" FontWeight="Bold" FontSize="20"/>
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.Artists, Mode=OneWay}">
                         <ItemsRepeater.Layout>
                             <StackLayout Orientation="Vertical" Spacing="20"/>
@@ -159,7 +159,7 @@
 
                                     <!-- On tour link -->
                                     <TextBlock FontSize="12" Opacity="0.6" Margin="0,4,0,0">
-                                        <Run Text="On tour · View all upcoming concerts ("/>
+                                        <Run x:Uid="Views_ConcertPage__Run_3" Text="On tour · View all upcoming concerts ("/>
                                         <Run Text="{x:Bind UpcomingConcertCount}"/>
                                         <Run Text=")"/>
                                     </TextBlock>
@@ -175,7 +175,7 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="Venue" FontWeight="Bold" FontSize="16"/>
+                        <TextBlock x:Uid="Views_ConcertPage__TextBlock_4" Text="Venue" FontWeight="Bold" FontSize="16"/>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE81D;" FontSize="14"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -193,7 +193,7 @@
                             <FontIcon Glyph="&#xE823;" FontSize="14"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock FontSize="13" Opacity="0.7">
-                                <Run Text="Show at "/>
+                                <Run x:Uid="Views_ConcertPage__Run_5" Text="Show at "/>
                                 <Run Text="{x:Bind ViewModel.ShowTime, Mode=OneWay}"/>
                             </TextBlock>
                         </StackPanel>
@@ -204,7 +204,7 @@
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.HasRelatedConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="More Concerts Nearby" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
+                        <TextBlock x:Uid="Views_ConcertPage__TextBlock_6" Text="More Concerts Nearby" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
                         <appControls:LocationButton
                             LocationName="{x:Bind ViewModel.UserLocationName, Mode=TwoWay}"
                             LocationChanged="LocationButton_LocationChanged"/>

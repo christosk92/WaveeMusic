@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Track;
 
@@ -39,7 +40,7 @@ public static class TrackContextMenu
         // Play
         var playItem = new MenuFlyoutItem
         {
-            Text = "Play",
+            Text = AppLocalization.GetString("TrackMenu_Play"),
             Icon = new FontIcon { Glyph = "\uE768" }
         };
         if (options.PlayCommand != null)
@@ -52,7 +53,7 @@ public static class TrackContextMenu
         // Play after current
         var playNextItem = new MenuFlyoutItem
         {
-            Text = "Play next",
+            Text = AppLocalization.GetString("TrackMenu_PlayNext"),
             Icon = new FontIcon { Glyph = "\uE71A" }
         };
         // TODO: Wire up play next command when available
@@ -61,7 +62,7 @@ public static class TrackContextMenu
         // Add to queue
         var addToQueueItem = new MenuFlyoutItem
         {
-            Text = "Add to queue",
+            Text = AppLocalization.GetString("TrackMenu_AddToQueue"),
             Icon = new FontIcon { Glyph = "\uE710" }
         };
         if (options.AddToQueueCommand != null)
@@ -74,7 +75,7 @@ public static class TrackContextMenu
         // Save to Liked Songs / Remove from Liked Songs
         var likeItem = new MenuFlyoutItem
         {
-            Text = track.IsLiked ? "Remove from Liked Songs" : "Save to Liked Songs",
+            Text = AppLocalization.GetString(track.IsLiked ? "TrackMenu_RemoveFromLikedSongs" : "TrackMenu_SaveToLikedSongs"),
             Icon = new FontIcon { Glyph = track.IsLiked ? "\uEB52" : "\uEB51" }
         };
         if (options.ToggleLikeCommand != null)
@@ -89,11 +90,11 @@ public static class TrackContextMenu
         // Add to playlist (submenu)
         var addToPlaylistItem = new MenuFlyoutSubItem
         {
-            Text = "Add to playlist",
+            Text = AppLocalization.GetString("TrackMenu_AddToPlaylist"),
             Icon = new FontIcon { Glyph = "\uE710" }
         };
         // TODO: Populate from ILibraryDataService.GetPlaylistsAsync()
-        addToPlaylistItem.Items.Add(new MenuFlyoutItem { Text = "Create new playlist..." });
+        addToPlaylistItem.Items.Add(new MenuFlyoutItem { Text = AppLocalization.GetString("TrackMenu_CreateNewPlaylist") });
         menu.Items.Add(addToPlaylistItem);
 
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -101,7 +102,7 @@ public static class TrackContextMenu
         // Go to artist
         var goToArtistItem = new MenuFlyoutItem
         {
-            Text = "Go to artist",
+            Text = AppLocalization.GetString("TrackMenu_GoToArtist"),
             Icon = new FontIcon { Glyph = "\uE77B" },
             Tag = track
         };
@@ -111,7 +112,7 @@ public static class TrackContextMenu
         // Go to album
         var goToAlbumItem = new MenuFlyoutItem
         {
-            Text = "Go to album",
+            Text = AppLocalization.GetString("TrackMenu_GoToAlbum"),
             Icon = new FontIcon { Glyph = "\uE93C" },
             Tag = track
         };
@@ -123,7 +124,7 @@ public static class TrackContextMenu
         {
             var radioItem = new MenuFlyoutItem
             {
-                Text = "Start radio",
+                Text = AppLocalization.GetString("TrackMenu_StartRadio"),
                 Icon = new FontIcon { Glyph = "\uEC05" },
                 Command = options.StartRadioCommand,
                 CommandParameter = track
@@ -140,7 +141,7 @@ public static class TrackContextMenu
             {
                 var creditsItem = new MenuFlyoutItem
                 {
-                    Text = "Show credits",
+                    Text = AppLocalization.GetString("TrackMenu_ShowCredits"),
                     Icon = new FontIcon { Glyph = "\uE946" }
                 };
                 var creditsAction = options.ShowCreditsAction;
@@ -152,13 +153,13 @@ public static class TrackContextMenu
             {
                 var bgSubMenu = new MenuFlyoutSubItem
                 {
-                    Text = "Background",
+                    Text = AppLocalization.GetString("TrackMenu_Background"),
                     Icon = new FontIcon { Glyph = "\uE91B" }
                 };
 
                 var noneItem = new ToggleMenuFlyoutItem
                 {
-                    Text = "None",
+                    Text = AppLocalization.GetString("TrackMenu_BackgroundNone"),
                     IsChecked = options.CurrentBackgroundMode == DetailsBackgroundMode.None
                 };
                 var setAction = options.SetBackgroundModeAction;
@@ -167,7 +168,7 @@ public static class TrackContextMenu
 
                 var blurItem = new ToggleMenuFlyoutItem
                 {
-                    Text = "Album art",
+                    Text = AppLocalization.GetString("TrackMenu_BackgroundAlbumArt"),
                     IsChecked = options.CurrentBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt
                 };
                 blurItem.Click += (_, _) => setAction(DetailsBackgroundMode.BlurredAlbumArt);
@@ -177,7 +178,7 @@ public static class TrackContextMenu
                 {
                     var canvasItem = new ToggleMenuFlyoutItem
                     {
-                        Text = "Canvas",
+                        Text = AppLocalization.GetString("TrackMenu_BackgroundCanvas"),
                         IsChecked = options.CurrentBackgroundMode == DetailsBackgroundMode.Canvas
                     };
                     canvasItem.Click += (_, _) => setAction(DetailsBackgroundMode.Canvas);
@@ -195,7 +196,7 @@ public static class TrackContextMenu
 
             var shareItem = new MenuFlyoutItem
             {
-                Text = "Share",
+                Text = AppLocalization.GetString("TrackMenu_Share"),
                 Icon = new FontIcon { Glyph = "\uE72D" },
                 Command = options.ShareCommand,
                 CommandParameter = track
@@ -210,7 +211,7 @@ public static class TrackContextMenu
 
             var removeItem = new MenuFlyoutItem
             {
-                Text = options.RemoveLabel ?? "Remove",
+                Text = options.RemoveLabel ?? AppLocalization.GetString("TrackMenu_Remove"),
                 Icon = new FontIcon { Glyph = "\uE74D" },
                 Command = options.RemoveCommand,
                 CommandParameter = track

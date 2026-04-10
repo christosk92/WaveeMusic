@@ -125,7 +125,7 @@
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                    FontWeight="SemiBold" FontSize="14"
                                                    Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}" Opacity=".9">
-                                            <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run Text=" monthly listeners"/>
+                                            <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run x:Uid="Views_ArtistPage__Run_1" Text=" monthly listeners"/>
                                         </TextBlock>
                                     </Grid>
                                     <controls:Shimmer Width="160" Height="16" HorizontalAlignment="Left"
@@ -143,7 +143,7 @@
                                     Padding="20,10" CornerRadius="20">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE768;" FontSize="16"/>
-                                    <TextBlock Text="Play"/>
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_2" Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
@@ -383,8 +383,8 @@
                 <StackPanel Spacing="12">
                     <Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Top Tracks" FontWeight="Bold" FontSize="20"/>
-                            <HyperlinkButton Content="Show all >" Padding="4,0"
+                            <TextBlock x:Uid="Views_ArtistPage__TextBlock_3" Text="Top Tracks" FontWeight="Bold" FontSize="20"/>
+                            <HyperlinkButton x:Uid="Views_ArtistPage__HyperlinkButton_4" Content="Show all >" Padding="4,0"
                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                              VerticalAlignment="Center"/>
                         </StackPanel>
@@ -426,7 +426,7 @@
                             Visibility="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <Grid>
                         <TextBlock FontWeight="Bold" FontSize="20" VerticalAlignment="Center">
-                            <Run Text="Albums"/>
+                            <Run x:Uid="Views_ArtistPage__Run_5" Text="Albums"/>
                             <Run Text=" · " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <Run Text="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay}"
                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -500,13 +500,13 @@
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                                         <Run Text="{x:Bind Data.TrackCount, Mode=OneWay}"/>
-                                        <Run Text=" tracks"/>
+                                        <Run x:Uid="Views_ArtistPage__Run_6" Text=" tracks"/>
                                     </TextBlock>
                                 </Grid>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
-                    <controls1:ErrorStateView
+                    <controls1:ErrorStateView x:Uid="Views_ArtistPage__ErrorStateView_7"
                         Visibility="{x:Bind ViewModel.HasAlbumsError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Title="Couldn't load all albums"
                         Message="Some albums may be missing"
@@ -520,7 +520,7 @@
                             Visibility="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <Grid>
                         <TextBlock FontWeight="Bold" FontSize="20" VerticalAlignment="Center">
-                            <Run Text="Singles &amp; EPs"/>
+                            <Run x:Uid="Views_ArtistPage__Run_8" Text="Singles &amp; EPs"/>
                             <Run Text=" · " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <Run Text="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay}"
                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -591,13 +591,13 @@
                                     <TextBlock Grid.Column="2" VerticalAlignment="Center"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                                        <Run Text="{x:Bind Data.TrackCount, Mode=OneWay}"/><Run Text=" tracks"/>
+                                        <Run Text="{x:Bind Data.TrackCount, Mode=OneWay}"/><Run x:Uid="Views_ArtistPage__Run_9" Text=" tracks"/>
                                     </TextBlock>
                                 </Grid>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
-                    <controls1:ErrorStateView
+                    <controls1:ErrorStateView x:Uid="Views_ArtistPage__ErrorStateView_10"
                         Visibility="{x:Bind ViewModel.HasSinglesError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Title="Couldn't load all singles"
                         Message="Some singles may be missing"
@@ -612,12 +612,12 @@
                     <Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock FontWeight="Bold" FontSize="20">
-                                <Run Text="Compilations"/>
+                                <Run x:Uid="Views_ArtistPage__Run_11" Text="Compilations"/>
                                 <Run Text=" · " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 <Run Text="{x:Bind ViewModel.CompilationsTotalCount, Mode=OneWay}"
                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </TextBlock>
-                            <HyperlinkButton Content="Show all >" Padding="4,0"
+                            <HyperlinkButton x:Uid="Views_ArtistPage__HyperlinkButton_12" Content="Show all >" Padding="4,0"
                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                              VerticalAlignment="Center"/>
                         </StackPanel>
@@ -657,7 +657,7 @@
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
-                    <controls1:ErrorStateView
+                    <controls1:ErrorStateView x:Uid="Views_ArtistPage__ErrorStateView_13"
                         Visibility="{x:Bind ViewModel.HasCompilationsError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Title="Couldn't load all compilations"
                         Message="Some compilations may be missing"
@@ -670,7 +670,7 @@
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="Concerts" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
+                        <TextBlock x:Uid="Views_ArtistPage__TextBlock_14" Text="Concerts" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
                         <controls1:LocationButton
                             LocationName="{x:Bind ViewModel.UserLocationName, Mode=TwoWay}"
                             LocationChanged="LocationButton_LocationChanged"/>
@@ -705,7 +705,7 @@
                                             <Border CornerRadius="4" Padding="6,2" Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                     Visibility="{x:Bind IsNearUser, Converter={StaticResource BoolToVisibilityConverter}}"
                                                     VerticalAlignment="Center">
-                                                <TextBlock Text="Near you" FontSize="10" FontWeight="SemiBold"
+                                                <TextBlock x:Uid="Views_ArtistPage__TextBlock_15" Text="Near you" FontSize="10" FontWeight="SemiBold"
                                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                                             </Border>
                                         </StackPanel>
@@ -730,7 +730,7 @@
 
                 <!-- ─── Related Artists ─── -->
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Fans Also Like" FontWeight="Bold" FontSize="20"/>
+                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_16" Text="Fans Also Like" FontWeight="Bold" FontSize="20"/>
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.RelatedArtists, Mode=OneWay}">
                         <ItemsRepeater.Layout>
                             <layouts:SingleRowLayout MinItemWidth="140" Spacing="12"/>
@@ -754,7 +754,7 @@
                 <!-- ─── Biography ─── -->
                 <StackPanel Spacing="8"
                             Visibility="{x:Bind ViewModel.Biography, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                    <TextBlock Text="About" FontWeight="Bold" FontSize="20"/>
+                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_17" Text="About" FontWeight="Bold" FontSize="20"/>
                     <controls1:HtmlTextBlock Text="{x:Bind ViewModel.Biography, Mode=OneWay}"
                                             MaxLines="6"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

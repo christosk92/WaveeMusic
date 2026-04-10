@@ -23,6 +23,7 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -184,7 +185,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             _dispatcher?.TryEnqueue(() =>
             {
                 _logger?.LogWarning("Sidebar: sync failed — {Error}", msg.Value);
-                ShowNotification($"Library sync failed: {msg.Value}");
+                ShowNotification(AppLocalization.Format("Shell_LibrarySyncFailed", msg.Value));
             });
         });
 
@@ -230,7 +231,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void ClearLibraryBadges()
     {
-        var librarySection = SidebarItems.FirstOrDefault(x => x.Text == "Your Library");
+        var librarySection = SidebarItems.FirstOrDefault(x => x.Tag == "YourLibrary");
         if (librarySection?.Children is ObservableCollection<SidebarItemModel> libraryChildren)
         {
             foreach (var item in libraryChildren)
@@ -265,7 +266,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Failed to handle playlists change event");
-                ShowNotification("Failed to refresh playlists");
+                ShowNotification(AppLocalization.GetString("Shell_RefreshPlaylistsFailed"));
             }
         });
     }
@@ -276,7 +277,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             var playlists = await _libraryDataService.GetUserPlaylistsAsync();
 
-            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Text == "Playlists");
+            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
             if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
             {
                 playlistChildren.Clear();
@@ -307,7 +308,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // Pinned section (collapsible, dynamic items)
             new SidebarItemModel
             {
-                Text = "Pinned",
+                Text = AppLocalization.GetString("Shell_SidebarPinned"),
+                Tag = "Pinned",
                 IsExpanded = true,
                 ShowEmptyPlaceholder = true,
                 Children = new ObservableCollection<SidebarItemModel>
@@ -318,27 +320,28 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // Your Library section (collapsible, NO playlists)
             new SidebarItemModel
             {
-                Text = "Your Library",
+                Text = AppLocalization.GetString("Shell_SidebarYourLibrary"),
+                Tag = "YourLibrary",
                 IsExpanded = true,
                 Children = new ObservableCollection<SidebarItemModel>
                 {
                     new SidebarItemModel
                     {
-                        Text = "Albums",
+                        Text = AppLocalization.GetString("Shell_SidebarAlbums"),
                         IconSource = new FontIconSource { Glyph = "\uE93C" },
                         Tag = "Albums",
                         BadgeCount = 42 // TODO: Connect to library service
                     },
                     new SidebarItemModel
                     {
-                        Text = "Artists",
+                        Text = AppLocalization.GetString("Shell_SidebarArtists"),
                         IconSource = new FontIconSource { Glyph = "\uE77B" },
                         Tag = "Artists",
                         BadgeCount = 15 // TODO: Connect to library service
                     },
                     new SidebarItemModel
                     {
-                        Text = "Liked Songs",
+                        Text = AppLocalization.GetString("Shell_SidebarLikedSongs"),
                         IconSource = new FontIconSource { Glyph = "\uEB52" },
                         Tag = "LikedSongs",
                         BadgeCount = 156 // TODO: Connect to library service
@@ -348,10 +351,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // Playlists section (collapsible)
             new SidebarItemModel
             {
-                Text = "Playlists",
+                Text = AppLocalization.GetString("Shell_SidebarPlaylists"),
+                Tag = "Playlists",
                 IsExpanded = true,
                 ShowEmptyPlaceholder = true,
-                EmptyPlaceholderText = "You have no playlists yet. Create one!",
+                EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarNoPlaylists"),
                 ItemDecorator = CreatePlaylistsAddButton(),
                 Children = new ObservableCollection<SidebarItemModel>
                 {
@@ -393,14 +397,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         _newPlaylistMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
-            Text = "New Playlist",
+            Text = AppLocalization.GetString("Shell_NewPlaylist"),
             Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = "\uE93F" }
         };
         _newPlaylistMenuItem.Click += NewPlaylistMenuItem_Click;
 
         _newFolderMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
-            Text = "New Folder",
+            Text = AppLocalization.GetString("Shell_NewFolder"),
             Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = "\uE8F4" }
         };
         _newFolderMenuItem.Click += NewFolderMenuItem_Click;
@@ -452,7 +456,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             var playlists = await playlistsTask;
 
             // Update "Your Library" section badges
-            var librarySection = SidebarItems.FirstOrDefault(x => x.Text == "Your Library");
+            var librarySection = SidebarItems.FirstOrDefault(x => x.Tag == "YourLibrary");
             if (librarySection?.Children is ObservableCollection<SidebarItemModel> libraryChildren)
             {
                 var albumsItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "Albums");
@@ -466,7 +470,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             }
 
             // Update "Playlists" section
-            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Text == "Playlists");
+            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
             if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
             {
                 playlistChildren.Clear();
@@ -486,7 +490,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to load library data");
-            ShowNotification("Failed to load library data");
+            ShowNotification(AppLocalization.GetString("Shell_LoadLibraryFailed"));
         }
     }
 

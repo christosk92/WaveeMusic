@@ -37,12 +37,12 @@
                      FontFamily="Cascadia Code, Consolas" FontSize="13"
                      PlaceholderText="https://spclient.wg.spotify.com"/>
 
-            <Button Grid.Column="1" Content="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+            <Button x:Uid="Views_DebugPage__Button_1" Grid.Column="1" Content="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
                     ToolTipService.ToolTip="Reset to session URL"
                     Command="{x:Bind ViewModel.ResetBaseUrlCommand}"
                     Padding="10,8"/>
 
-            <ComboBox Grid.Column="2"
+            <ComboBox x:Uid="Views_DebugPage__ComboBox_2" Grid.Column="2"
                       ItemsSource="{x:Bind ViewModel.Presets}"
                       SelectedIndex="{x:Bind ViewModel.SelectedPresetIndex, Mode=TwoWay}"
                       Width="180" PlaceholderText="Preset"/>
@@ -88,7 +88,7 @@
                                   Width="16" Height="16"
                                   Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                                   Foreground="White"/>
-                    <TextBlock Text="Send" VerticalAlignment="Center"/>
+                    <TextBlock x:Uid="Views_DebugPage__TextBlock_3" Text="Send" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
         </Grid>
@@ -96,27 +96,27 @@
         <!-- Preset fields: Collection Page -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10"
                     Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=1}">
-            <TextBox Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBox Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
-            <NumberBox Header="Limit" Width="100" Value="{x:Bind ViewModel.Limit, Mode=TwoWay}" Minimum="1" Maximum="1000" SpinButtonPlacementMode="Compact"/>
-            <TextBox Header="Page Token" Width="280" Text="{x:Bind ViewModel.PaginationToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = first page)"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_4" Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_5" Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
+            <NumberBox x:Uid="Views_DebugPage__NumberBox_6" Header="Limit" Width="100" Value="{x:Bind ViewModel.Limit, Mode=TwoWay}" Minimum="1" Maximum="1000" SpinButtonPlacementMode="Compact"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_7" Header="Page Token" Width="280" Text="{x:Bind ViewModel.PaginationToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = first page)"/>
         </StackPanel>
 
         <!-- Preset fields: Collection Delta -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10"
                     Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=2}">
-            <TextBox Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBox Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
-            <TextBox Header="Sync Token" Width="400" Text="{x:Bind ViewModel.LastSyncToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = full sync)"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_8" Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_9" Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_10" Header="Sync Token" Width="400" Text="{x:Bind ViewModel.LastSyncToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = full sync)"/>
         </StackPanel>
 
         <!-- Preset fields: Collection Write -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10"
                     Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=3}">
-            <TextBox Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBox Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_11" Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBox x:Uid="Views_DebugPage__TextBox_12" Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
             <TextBox Header="URI" Width="300" Text="{x:Bind ViewModel.ItemUri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="spotify:track:xxxxx"/>
-            <ToggleSwitch Header="Remove" IsOn="{x:Bind ViewModel.IsRemoved, Mode=TwoWay}" Margin="0,6,0,0"/>
+            <ToggleSwitch x:Uid="Views_DebugPage__ToggleSwitch_13" Header="Remove" IsOn="{x:Bind ViewModel.IsRemoved, Mode=TwoWay}" Margin="0,6,0,0"/>
         </StackPanel>
 
         <!-- Custom body (only when preset = Custom) -->
@@ -128,14 +128,14 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Request Body" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                <TextBlock x:Uid="Views_DebugPage__TextBlock_14" Grid.Column="0" Text="Request Body" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-                    <TextBox Width="200" Text="{x:Bind ViewModel.ContentType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox x:Uid="Views_DebugPage__TextBox_15" Width="200" Text="{x:Bind ViewModel.ContentType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              FontSize="11" Padding="6,4" PlaceholderText="Content-Type"/>
-                    <Button Content="Format JSON" Command="{x:Bind ViewModel.FormatBodyCommand}" Padding="8,4" FontSize="11"/>
+                    <Button x:Uid="Views_DebugPage__Button_16" Content="Format JSON" Command="{x:Bind ViewModel.FormatBodyCommand}" Padding="8,4" FontSize="11"/>
                 </StackPanel>
             </Grid>
-            <TextBox Text="{x:Bind ViewModel.RequestBody, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+            <TextBox x:Uid="Views_DebugPage__TextBox_17" Text="{x:Bind ViewModel.RequestBody, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True" TextWrapping="Wrap"
                      MinHeight="60" MaxHeight="160"
                      FontFamily="Cascadia Code, Consolas" FontSize="12"
@@ -151,8 +151,8 @@
                 </DataTemplate>
             </Pivot.HeaderTemplate>
 
-            <PivotItem Header="Body"/>
-            <PivotItem Header="Headers"/>
+            <PivotItem x:Uid="Views_DebugPage__PivotItem_18" Header="Body"/>
+            <PivotItem x:Uid="Views_DebugPage__PivotItem_19" Header="Headers"/>
         </Pivot>
 
         <!-- Row 4: Response content -->

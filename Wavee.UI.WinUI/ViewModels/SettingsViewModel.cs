@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Serilog.Events;
 // Processors now live in AudioHost — EQ config goes via IPC
 using Wavee.UI.WinUI.Data.Contracts;
@@ -28,12 +29,31 @@ namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 {
+    private enum PendingRestartArea
+    {
+        Localization,
+        SpotifyMetadata,
+        Cache,
+        Connection,
+    }
+
+    private sealed record RestartSensitiveSettingsSnapshot(
+        string Language,
+        string SpotifyMetadataLanguage,
+        CachingProfile CachingProfile,
+        bool CacheEnabled,
+        long CacheSizeLimitBytes,
+        bool AutoReconnect,
+        int ConnectionTimeoutSeconds);
+
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly InMemorySink _inMemorySink;
     private readonly ISession? _session;
     private readonly IUpdateService? _updateService;
     private readonly ILogger? _logger;
+    private readonly RestartSensitiveSettingsSnapshot _launchRestartSettings;
+    private readonly HashSet<PendingRestartArea> _pendingRestartAreas = [];
     private bool _disposed;
 
     private static readonly string LogDirectory = AppPaths.LogsDirectory;
@@ -76,9 +96,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string DistributionModeDisplay => _updateService?.Distribution switch
     {
-        DistributionMode.Store => "Microsoft Store",
-        DistributionMode.Sideloaded => "Sideloaded",
-        _ => "Portable"
+        DistributionMode.Store => AppLocalization.GetString("DistributionMode_Store"),
+        DistributionMode.Sideloaded => AppLocalization.GetString("DistributionMode_Sideloaded"),
+        _ => AppLocalization.GetString("DistributionMode_Portable")
     };
 
     [RelayCommand]
@@ -105,6 +125,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         // Initialize from persisted settings
         var s = _settingsService.Settings;
+        _launchRestartSettings = CaptureRestartSensitiveSettings(s);
 
         _selectedThemeIndex = s.Theme switch
         {
@@ -112,6 +133,17 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             "Dark" => 1,
             _ => 2 // Default / System
         };
+
+        _selectedLanguageIndex = AppLocalization.NormalizeLanguage(s.Language) switch
+        {
+            "en-US" => 1,
+            "ko-KR" => 2,
+            _ => 0
+        };
+
+        var spotifyMetadataLanguage = SpotifyMetadataLanguageSettings.NormalizeSetting(s.SpotifyMetadataLanguage);
+        _isSpotifyMetadataSameAsApp = spotifyMetadataLanguage == SpotifyMetadataLanguageSettings.MatchApp;
+        _spotifyMetadataCustomLanguageCode = _isSpotifyMetadataSameAsApp ? string.Empty : spotifyMetadataLanguage;
 
         _trackClickIndex = s.TrackClickBehavior == "SingleTap" ? 0 : 1;
 
@@ -186,6 +218,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         // Initial populate
         RefreshFilteredLogs();
         RefreshPastLogs();
+        UpdatePendingRestartState();
     }
 
     private void OnUpdateServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -232,6 +265,124 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settingsService.Update(s => s.Theme = theme.ToString());
     }
 
+    [ObservableProperty]
+    private int _selectedLanguageIndex;
+
+    partial void OnSelectedLanguageIndexChanged(int value)
+    {
+        var language = value switch
+        {
+            1 => "en-US",
+            2 => "ko-KR",
+            _ => "system"
+        };
+
+        _settingsService.Update(s => s.Language = language);
+        UpdatePendingRestartState();
+    }
+
+    [ObservableProperty]
+    private bool _isSpotifyMetadataSameAsApp = true;
+
+    [ObservableProperty]
+    private string _spotifyMetadataCustomLanguageCode = string.Empty;
+
+    public bool IsSpotifyMetadataCustomCodeVisible => !IsSpotifyMetadataSameAsApp;
+
+    partial void OnIsSpotifyMetadataSameAsAppChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsSpotifyMetadataCustomCodeVisible));
+        PersistSpotifyMetadataLanguageSetting();
+    }
+
+    partial void OnSpotifyMetadataCustomLanguageCodeChanged(string value)
+    {
+        var normalized = SpotifyMetadataLanguageSettings.NormalizeLocaleCode(value);
+        if (!string.Equals(normalized, value, StringComparison.Ordinal))
+        {
+            SpotifyMetadataCustomLanguageCode = normalized;
+            return;
+        }
+
+        PersistSpotifyMetadataLanguageSetting();
+    }
+
+    private void PersistSpotifyMetadataLanguageSetting()
+    {
+        var spotifyMetadataLanguage = IsSpotifyMetadataSameAsApp
+            ? SpotifyMetadataLanguageSettings.MatchApp
+            : SpotifyMetadataLanguageSettings.NormalizeLocaleCode(SpotifyMetadataCustomLanguageCode);
+
+        _settingsService.Update(s => s.SpotifyMetadataLanguage = spotifyMetadataLanguage);
+        UpdatePendingRestartState();
+    }
+
+    [ObservableProperty]
+    private bool _isRestartInProgress;
+
+    [ObservableProperty]
+    private bool _hasRestartError;
+
+    partial void OnIsRestartInProgressChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PendingRestartTitle));
+        OnPropertyChanged(nameof(PendingRestartMessage));
+        OnPropertyChanged(nameof(RestartNowActionText));
+        OnPropertyChanged(nameof(PendingRestartSeverity));
+        OnPropertyChanged(nameof(CanRestartNow));
+    }
+
+    partial void OnHasRestartErrorChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PendingRestartTitle));
+        OnPropertyChanged(nameof(PendingRestartMessage));
+        OnPropertyChanged(nameof(PendingRestartSeverity));
+    }
+
+    public bool HasPendingRestart => _pendingRestartAreas.Count > 0;
+
+    public string PendingRestartTitle => HasRestartError
+        ? AppLocalization.GetString("Settings_RestartFailedTitle")
+        : AppLocalization.GetString("Settings_RestartPendingTitle");
+
+    public string PendingRestartMessage => HasPendingRestart
+        ? HasRestartError
+            ? AppLocalization.GetString("Settings_RestartFailedMessage")
+            : AppLocalization.Format("Settings_RestartPendingMessage", FormatPendingRestartAreas())
+        : string.Empty;
+
+    public string RestartNowActionText => IsRestartInProgress
+        ? AppLocalization.GetString("Settings_Restarting")
+        : AppLocalization.GetString("Settings_RestartNow");
+
+    public InfoBarSeverity PendingRestartSeverity => HasRestartError
+        ? InfoBarSeverity.Error
+        : InfoBarSeverity.Informational;
+
+    public bool CanRestartNow => HasPendingRestart && !IsRestartInProgress;
+
+    [RelayCommand]
+    private async Task RestartNowAsync()
+    {
+        if (!CanRestartNow)
+        {
+            return;
+        }
+
+        try
+        {
+            HasRestartError = false;
+            IsRestartInProgress = true;
+            await MainWindow.Instance.RestartApplicationAsync();
+        }
+        catch (Exception ex)
+        {
+            IsRestartInProgress = false;
+            HasRestartError = true;
+            _logger?.LogWarning(ex, "Failed to restart application from settings");
+        }
+    }
+
     // ── Zoom / Display scaling ──
 
     private static readonly double[] ZoomStops = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3];
@@ -245,9 +396,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public string ZoomPreviewLabel => ZoomStops[ZoomLevelIndex] switch
     {
-        <= 0.8 => "Compact",
-        <= 1.1 => "Default",
-        _ => "Spacious"
+        <= 0.8 => AppLocalization.GetString("Settings_Zoom_Compact"),
+        <= 1.1 => AppLocalization.GetString("Settings_Zoom_Default"),
+        _ => AppLocalization.GetString("Settings_Zoom_Spacious")
     };
 
     partial void OnZoomLevelIndexChanged(int value)
@@ -285,7 +436,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         get
         {
             var profile = IndexToProfile(_cachingProfileIndex);
-            return $"{CachingProfilePresets.GetDisplayName(profile)} · {CachingProfilePresets.FormatEstimate(profile)} estimated in caches";
+            return AppLocalization.Format(
+                "Settings_CachingProfileSummary",
+                CachingProfilePresets.GetDisplayName(profile),
+                CachingProfilePresets.FormatEstimate(profile));
         }
     }
 
@@ -293,6 +447,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         var profile = IndexToProfile(value);
         _settingsService.Update(s => s.CachingProfile = profile);
+        UpdatePendingRestartState();
     }
 
     private static CachingProfile IndexToProfile(double index)
@@ -475,6 +630,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     partial void OnCacheEnabledChanged(bool value)
     {
         _settingsService.Update(s => s.CacheEnabled = value);
+        UpdatePendingRestartState();
     }
 
     [ObservableProperty]
@@ -491,6 +647,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             _ => 1L * 1024 * 1024 * 1024
         };
         _settingsService.Update(s => s.CacheSizeLimitBytes = bytes);
+        UpdatePendingRestartState();
     }
 
     public string CacheLocationDisplay => CacheDirectory;
@@ -501,18 +658,18 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             try
             {
-                if (!Directory.Exists(CacheDirectory)) return "0 MB";
+                if (!Directory.Exists(CacheDirectory)) return AppLocalization.GetString("Size_ZeroMb");
                 var size = new DirectoryInfo(CacheDirectory)
                     .EnumerateFiles("*", SearchOption.AllDirectories)
                     .Sum(f => f.Length);
                 return size switch
                 {
-                    < 1024 * 1024 => $"{size / 1024.0:F1} KB",
-                    < 1024L * 1024 * 1024 => $"{size / (1024.0 * 1024):F1} MB",
-                    _ => $"{size / (1024.0 * 1024 * 1024):F2} GB"
+                    < 1024 * 1024 => string.Format(System.Globalization.CultureInfo.CurrentUICulture, "{0:F1} KB", size / 1024.0),
+                    < 1024L * 1024 * 1024 => string.Format(System.Globalization.CultureInfo.CurrentUICulture, "{0:F1} MB", size / (1024.0 * 1024)),
+                    _ => string.Format(System.Globalization.CultureInfo.CurrentUICulture, "{0:F2} GB", size / (1024.0 * 1024 * 1024))
                 };
             }
-            catch (Exception ex) { _logger?.LogDebug(ex, "Failed to calculate cache size"); return "Unknown"; }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Failed to calculate cache size"); return AppLocalization.GetString("State_Unknown"); }
         }
     }
 
@@ -541,6 +698,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     partial void OnAutoReconnectChanged(bool value)
     {
         _settingsService.Update(s => s.AutoReconnect = value);
+        UpdatePendingRestartState();
     }
 
     [ObservableProperty]
@@ -556,6 +714,97 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             _ => 30
         };
         _settingsService.Update(s => s.ConnectionTimeoutSeconds = seconds);
+        UpdatePendingRestartState();
+    }
+
+    private RestartSensitiveSettingsSnapshot CaptureRestartSensitiveSettings(AppSettings settings)
+    {
+        return new RestartSensitiveSettingsSnapshot(
+            Language: AppLocalization.NormalizeLanguage(settings.Language),
+            SpotifyMetadataLanguage: SpotifyMetadataLanguageSettings.NormalizeSetting(settings.SpotifyMetadataLanguage),
+            CachingProfile: settings.CachingProfile,
+            CacheEnabled: settings.CacheEnabled,
+            CacheSizeLimitBytes: settings.CacheSizeLimitBytes,
+            AutoReconnect: settings.AutoReconnect,
+            ConnectionTimeoutSeconds: settings.ConnectionTimeoutSeconds);
+    }
+
+    private void UpdatePendingRestartState()
+    {
+        var current = CaptureRestartSensitiveSettings(_settingsService.Settings);
+        var pending = new HashSet<PendingRestartArea>();
+
+        if (!string.Equals(current.Language, _launchRestartSettings.Language, StringComparison.Ordinal))
+        {
+            pending.Add(PendingRestartArea.Localization);
+        }
+
+        if (!string.Equals(current.SpotifyMetadataLanguage, _launchRestartSettings.SpotifyMetadataLanguage, StringComparison.Ordinal))
+        {
+            pending.Add(PendingRestartArea.SpotifyMetadata);
+        }
+
+        if (current.CachingProfile != _launchRestartSettings.CachingProfile ||
+            current.CacheEnabled != _launchRestartSettings.CacheEnabled ||
+            current.CacheSizeLimitBytes != _launchRestartSettings.CacheSizeLimitBytes)
+        {
+            pending.Add(PendingRestartArea.Cache);
+        }
+
+        if (current.AutoReconnect != _launchRestartSettings.AutoReconnect ||
+            current.ConnectionTimeoutSeconds != _launchRestartSettings.ConnectionTimeoutSeconds)
+        {
+            pending.Add(PendingRestartArea.Connection);
+        }
+
+        if (_pendingRestartAreas.SetEquals(pending))
+        {
+            return;
+        }
+
+        _pendingRestartAreas.Clear();
+        foreach (var area in pending)
+        {
+            _pendingRestartAreas.Add(area);
+        }
+
+        OnPropertyChanged(nameof(HasPendingRestart));
+        OnPropertyChanged(nameof(PendingRestartTitle));
+        OnPropertyChanged(nameof(PendingRestartMessage));
+        OnPropertyChanged(nameof(PendingRestartSeverity));
+        OnPropertyChanged(nameof(CanRestartNow));
+
+        if (!HasPendingRestart)
+        {
+            HasRestartError = false;
+        }
+    }
+
+    private string FormatPendingRestartAreas()
+    {
+        var labels = new List<string>();
+
+        if (_pendingRestartAreas.Contains(PendingRestartArea.Localization))
+        {
+            labels.Add(AppLocalization.GetString("Settings_RestartArea_Localization"));
+        }
+
+        if (_pendingRestartAreas.Contains(PendingRestartArea.SpotifyMetadata))
+        {
+            labels.Add(AppLocalization.GetString("Settings_RestartArea_SpotifyMetadata"));
+        }
+
+        if (_pendingRestartAreas.Contains(PendingRestartArea.Cache))
+        {
+            labels.Add(AppLocalization.GetString("Settings_RestartArea_Cache"));
+        }
+
+        if (_pendingRestartAreas.Contains(PendingRestartArea.Connection))
+        {
+            labels.Add(AppLocalization.GetString("Settings_RestartArea_Connection"));
+        }
+
+        return string.Join(", ", labels);
     }
 
     // ── Clock Sync ──
@@ -570,10 +819,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _clockIsSynced;
 
     [ObservableProperty]
-    private string _clockLastSyncDisplay = "Never";
+    private string _clockLastSyncDisplay = AppLocalization.GetString("Clock_Never");
 
     [ObservableProperty]
-    private string _clockNextSyncCountdown = "—";
+    private string _clockNextSyncCountdown = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
     private int _clockSyncIntervalIndex = 1; // default 10 min
@@ -617,14 +866,14 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (_session?.Clock is not { } clock || !clock.IsSynced)
         {
-            ClockNextSyncCountdown = "—";
+            ClockNextSyncCountdown = AppLocalization.GetString("State_EmDash");
             return;
         }
 
         var nextSync = clock.LastSyncUtc + TimeSpan.FromMinutes(clock.SyncIntervalMinutes);
         var remaining = nextSync - DateTimeOffset.UtcNow;
         if (remaining.TotalSeconds <= 0)
-            ClockNextSyncCountdown = "syncing...";
+            ClockNextSyncCountdown = AppLocalization.GetString("Clock_Syncing");
         else if (remaining.TotalMinutes >= 1)
             ClockNextSyncCountdown = $"{(int)remaining.TotalMinutes}m {remaining.Seconds:D2}s";
         else
@@ -638,18 +887,18 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ClockLastRttMs = clock.LastRttMs;
         ClockIsSynced = clock.IsSynced;
         ClockLastSyncDisplay = clock.IsSynced
-            ? $"Synced at {clock.LastSyncUtc.ToLocalTime():HH:mm:ss}"
-            : "Never";
+            ? AppLocalization.Format("Clock_SyncedAt", clock.LastSyncUtc.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.CurrentUICulture))
+            : AppLocalization.GetString("Clock_Never");
         UpdateClockCountdown();
     }
 
     // ── Audio Pipeline Health ──
 
     [ObservableProperty]
-    private string _audioPipelineMode = "In-Process";
+    private string _audioPipelineMode = AppLocalization.GetString("AudioPipeline_InProcess");
 
     [ObservableProperty]
-    private string _audioPipelineStatus = "Unknown";
+    private string _audioPipelineStatus = AppLocalization.GetString("State_Unknown");
 
     [ObservableProperty]
     private int _audioPipelinePid;
@@ -661,19 +910,19 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private long _audioUnderrunCount;
 
     [ObservableProperty]
-    private string _audioGcStats = "—";
+    private string _audioGcStats = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioProfilerTop = "—";
+    private string _audioProfilerTop = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioUiStalls = "—";
+    private string _audioUiStalls = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioThroughput = "—";
+    private string _audioThroughput = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
-    private string _audioStateFreshness = "—";
+    private string _audioStateFreshness = AppLocalization.GetString("State_EmDash");
 
     [ObservableProperty]
     private double _audioLastRttMs;
@@ -685,6 +934,14 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void StartAudioDiagnostics()
     {
+        AudioPipelineMode = AppLocalization.GetString("AudioPipeline_InProcess");
+        AudioPipelineStatus = AppLocalization.GetString("State_Unknown");
+        AudioGcStats = AppLocalization.GetString("State_EmDash");
+        AudioProfilerTop = AppLocalization.GetString("State_EmDash");
+        AudioUiStalls = AppLocalization.GetString("State_EmDash");
+        AudioThroughput = AppLocalization.GetString("State_EmDash");
+        AudioStateFreshness = AppLocalization.GetString("State_EmDash");
+
         if (_audioDiagTimer != null) return;
         _audioDiagTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _audioDiagTimer.Tick += OnAudioDiagTimerTick;
@@ -710,20 +967,20 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         var mgr = AppLifecycleHelper.AudioProcessManager;
         if (mgr != null)
         {
-            AudioPipelineMode = "Out-of-Process";
+            AudioPipelineMode = AppLocalization.GetString("AudioPipeline_OutOfProcess");
             AudioPipelineStatus = mgr.State.ToString();
             AudioPipelinePid = mgr.ProcessId;
             AudioRestartCount = mgr.RestartCount;
         }
         else if (AppLifecycleHelper.UseOutOfProcessAudio)
         {
-            AudioPipelineMode = "Out-of-Process";
-            AudioPipelineStatus = "Not started";
+            AudioPipelineMode = AppLocalization.GetString("AudioPipeline_OutOfProcess");
+            AudioPipelineStatus = AppLocalization.GetString("AudioPipeline_NotStarted");
         }
         else
         {
-            AudioPipelineMode = "In-Process";
-            AudioPipelineStatus = "Active";
+            AudioPipelineMode = AppLocalization.GetString("AudioPipeline_InProcess");
+            AudioPipelineStatus = AppLocalization.GetString("State_Active");
         }
 
         // Profiler stats
@@ -742,7 +999,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             }
             else
             {
-                AudioProfilerTop = "No operations recorded";
+                AudioProfilerTop = AppLocalization.GetString("AudioPipeline_NoOperationsRecorded");
             }
 
             AudioUiStalls = $"Underruns: {profiler.AudioUnderrunCount}";
@@ -754,7 +1011,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             AudioThroughput = $"sent: {proxy.MessagesSent}  recv: {proxy.MessagesReceived}";
             var freshness = proxy.StateFreshnessMs;
-            AudioStateFreshness = freshness < 1 ? "—" : $"{freshness:F0}ms ago";
+            AudioStateFreshness = freshness < 1
+                ? AppLocalization.GetString("State_EmDash")
+                : AppLocalization.Format("AudioPipeline_MillisecondsAgo", freshness.ToString("F0", System.Globalization.CultureInfo.CurrentUICulture));
             AudioLastRttMs = proxy.LastRttMs;
 
             // Update chart
@@ -762,8 +1021,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
         else
         {
-            AudioThroughput = "—";
-            AudioStateFreshness = "—";
+            AudioThroughput = AppLocalization.GetString("State_EmDash");
+            AudioStateFreshness = AppLocalization.GetString("State_EmDash");
         }
     }
 

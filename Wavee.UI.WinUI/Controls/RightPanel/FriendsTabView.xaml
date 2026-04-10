@@ -16,11 +16,11 @@
         <animations:Implicit.HideAnimations>
             <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
         </animations:Implicit.HideAnimations>
-        <TextBlock
+        <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__TextBlock_1"
             Text="Friends Activity"
             Style="{StaticResource SubtitleTextBlockStyle}"
             Margin="0,0,0,8"/>
-        <TextBlock
+        <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__TextBlock_2"
             Text="See what your friends are listening to."
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             TextWrapping="WrapWholeWords"

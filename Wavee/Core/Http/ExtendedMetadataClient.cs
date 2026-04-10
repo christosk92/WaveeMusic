@@ -282,6 +282,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-protobuf"));
         httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        var locale = GetEffectiveLocale();
+        if (!string.IsNullOrEmpty(locale))
+        {
+            httpRequest.Headers.AcceptLanguage.ParseAdd(locale);
+        }
 
         var protobufBytes = request.ToByteArray();
         httpRequest.Content = new ByteArrayContent(protobufBytes);
@@ -319,6 +324,18 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         await CacheResponseAsync(response, cancellationToken);
 
         return response;
+    }
+
+    private string? GetEffectiveLocale()
+    {
+        var sessionLocale = _session.GetPreferredLocale();
+        if (!string.IsNullOrEmpty(sessionLocale))
+        {
+            return sessionLocale;
+        }
+
+        var userData = _session.GetUserData();
+        return userData?.PreferredLocale;
     }
 
     private async Task CacheResponseAsync(BatchedExtensionResponse response, CancellationToken cancellationToken)

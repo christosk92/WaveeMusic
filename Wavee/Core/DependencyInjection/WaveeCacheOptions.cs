@@ -15,6 +15,12 @@ public class WaveeCacheOptions
         "metadata.db");
 
     /// <summary>
+    /// Preferred 2-character Spotify locale for localized metadata cache rows.
+    /// Null or empty keeps the shared default-locale cache.
+    /// </summary>
+    public string? SpotifyMetadataLocale { get; set; }
+
+    /// <summary>
     /// Maximum entries in the metadata database's internal hot cache.
     /// Default: 1000
     /// </summary>

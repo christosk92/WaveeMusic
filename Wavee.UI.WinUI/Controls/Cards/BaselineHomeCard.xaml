@@ -14,6 +14,7 @@
     VerticalAlignment="Top"
     PointerEntered="Card_PointerEntered"
     PointerExited="Card_PointerExited"
+    PointerCanceled="Card_PointerCanceled"
     SizeChanged="BaselineHomeCard_SizeChanged"
     Unloaded="Card_Unloaded">
 
@@ -40,21 +41,23 @@
         </Grid.RowDefinitions>
 
         <Grid x:Name="ImageStage" Grid.Row="0" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-            <Image
-                x:Name="HeroImage"
-                Stretch="UniformToFill"
-                Opacity="0.94"/>
+            <Grid x:Name="HeroMotionHost">
+                <Image
+                    x:Name="HeroImage"
+                    Stretch="UniformToFill"
+                    Opacity="0.94"/>
 
-            <MediaPlayerElement
-                x:Name="CanvasPlayer"
-                x:Load="False"
-                AreTransportControlsEnabled="False"
-                Stretch="UniformToFill"
-                IsHitTestVisible="False"
-                Opacity="0"
-                Visibility="Collapsed"/>
+                <MediaPlayerElement
+                    x:Name="CanvasPlayer"
+                    x:Load="False"
+                    AreTransportControlsEnabled="False"
+                    Stretch="UniformToFill"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    Visibility="Collapsed"/>
 
-            <Border x:Name="ColorWash" Opacity="0.24"/>
+                <Border x:Name="ColorWash" Opacity="0.24"/>
+            </Grid>
 
             <Border>
                 <Border.Background>
@@ -80,10 +83,20 @@
                 x:Name="PreviewOverlayRoot"
                 Margin="0"
                 HorizontalAlignment="Stretch"
-                Height="92"
+                Height="78"
                 VerticalAlignment="Bottom"
+                Opacity="1"
                 Visibility="Collapsed"
                 IsHitTestVisible="False">
+                <Border VerticalAlignment="Stretch">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00101010" Offset="0"/>
+                            <GradientStop Color="#22101010" Offset="0.34"/>
+                            <GradientStop Color="#5A101010" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
                 <cards:PreviewAudioVisualizer
                     x:Name="PreviewVisualizer"
                     Visibility="Collapsed"
@@ -129,17 +142,17 @@
             <StackPanel
                 x:Name="TitleOverlay"
                 VerticalAlignment="Bottom"
-                Padding="18,0,18,28"
+                Padding="18,0,18,94"
                 Spacing="4">
                 <TextBlock
                     x:Name="TitleText"
                     TextWrapping="Wrap"
                     FontSize="26"
-                    FontWeight="ExtraBold"
+                    FontWeight="Black"
                     Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
                     MaxLines="3"
                     TextTrimming="CharacterEllipsis"/>
-                <TextBlock
+                <TextBlock x:Uid="Controls_Cards_BaselineHomeCard__TextBlock_1"
                     x:Name="TypeText"
                     Text="Playlist"
                     FontSize="11"
@@ -223,53 +236,55 @@
             Grid.Row="1"
             Padding="18,16,18,20"
             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-            <Grid RowSpacing="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+            <Grid x:Name="BottomContentMotionHost">
+                <Grid RowSpacing="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                <Border
-                    Height="1"
-                    Margin="0,0,0,8"
-                    HorizontalAlignment="Stretch"
-                    Background="{ThemeResource HomeBaselineCardDividerBrush}"
-                    CornerRadius="999"/>
+                    <Border
+                        Height="1"
+                        Margin="0,0,0,8"
+                        HorizontalAlignment="Stretch"
+                        Background="{ThemeResource HomeBaselineCardDividerBrush}"
+                        CornerRadius="999"/>
 
-                <TextBlock
-                    x:Name="PreviewEyebrowText"
-                    Grid.Row="1"
-                    Text="FEATURING"
-                    FontSize="11"
-                    FontWeight="SemiBold"
-                    CharacterSpacing="180"
-                    Foreground="{ThemeResource HomeBaselineCardOverlayTertiaryTextBrush}"
-                    MaxLines="1"
-                    TextTrimming="CharacterEllipsis"
-                    Visibility="Collapsed"/>
+                    <TextBlock x:Uid="Controls_Cards_BaselineHomeCard__TextBlock_2"
+                        x:Name="PreviewEyebrowText"
+                        Grid.Row="1"
+                        Text="FEATURING"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        CharacterSpacing="180"
+                        Foreground="{ThemeResource HomeBaselineCardOverlayTertiaryTextBrush}"
+                        MaxLines="1"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="Collapsed"/>
 
-                <TextBlock
-                    x:Name="PreviewTrackText"
-                    Grid.Row="2"
-                    FontSize="18"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
-                    MaxLines="2"
-                    TextWrapping="Wrap"
-                    TextTrimming="CharacterEllipsis"
-                    Visibility="Collapsed"/>
+                    <TextBlock
+                        x:Name="PreviewTrackText"
+                        Grid.Row="2"
+                        FontSize="18"
+                        FontWeight="Bold"
+                        Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
+                        MaxLines="2"
+                        TextWrapping="Wrap"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="Collapsed"/>
 
-                <TextBlock
-                    x:Name="SubtitleText"
-                    Grid.Row="3"
-                    Margin="0,6,0,0"
-                    FontSize="13"
-                    Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
-                    MaxLines="3"
-                    TextWrapping="Wrap"
-                    TextTrimming="CharacterEllipsis"/>
+                    <TextBlock
+                        x:Name="SubtitleText"
+                        Grid.Row="3"
+                        Margin="0,6,0,0"
+                        FontSize="13"
+                        Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
+                        MaxLines="3"
+                        TextWrapping="Wrap"
+                        TextTrimming="CharacterEllipsis"/>
+                </Grid>
             </Grid>
         </Border>
 

@@ -13,11 +13,39 @@ namespace Wavee.Core.Storage;
 /// </summary>
 public sealed class MetadataDatabase : IMetadataDatabase
 {
+    private const string EntityColumns = """
+        uri,
+        source_type,
+        entity_type,
+        title,
+        artist_name,
+        album_name,
+        album_uri,
+        duration_ms,
+        track_number,
+        disc_number,
+        release_year,
+        image_url,
+        genre,
+        track_count,
+        follower_count,
+        publisher,
+        episode_count,
+        description,
+        file_path,
+        stream_url,
+        expires_at,
+        added_at,
+        created_at,
+        updated_at
+        """;
+
     private readonly string _connectionString;
     private readonly ILogger? _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, CachedExtensionEntry> _hotCache = new();
     private readonly int _maxHotCacheSize;
+    private readonly string _spotifyMetadataLocale;
     private bool _disposed;
 
     // Schema version for migrations - bump to force fresh start
@@ -33,12 +61,14 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// </summary>
     /// <param name="databasePath">Path to the SQLite database file.</param>
     /// <param name="maxHotCacheSize">Maximum entries in the in-memory hot cache.</param>
+    /// <param name="spotifyMetadataLocale">Optional 2-character Spotify metadata locale scope.</param>
     /// <param name="logger">Optional logger.</param>
-    public MetadataDatabase(string databasePath, int maxHotCacheSize = 1000, ILogger? logger = null)
+    public MetadataDatabase(string databasePath, int maxHotCacheSize = 1000, string? spotifyMetadataLocale = null, ILogger? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
 
         _maxHotCacheSize = maxHotCacheSize;
+        _spotifyMetadataLocale = NormalizeSpotifyLocale(spotifyMetadataLocale);
         _logger = logger;
 
         // Ensure directory exists
@@ -90,6 +120,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
             CreateTables(connection);
             SetSchemaVersion(connection, CurrentSchemaVersion);
         }
+
+        EnsureLocalizedMetadataTables(connection);
     }
 
     private static void DropAllTables(SqliteConnection connection)
@@ -98,6 +130,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
         cmd.CommandText = """
             DROP TABLE IF EXISTS extension_cache;
             DROP TABLE IF EXISTS entities;
+            DROP TABLE IF EXISTS localized_extension_cache;
+            DROP TABLE IF EXISTS localized_entities;
             DROP TABLE IF EXISTS spotify_library;
             DROP TABLE IF EXISTS play_history;
             DROP TABLE IF EXISTS sync_state;
@@ -457,6 +491,60 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
     }
 
+    private static void EnsureLocalizedMetadataTables(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS localized_entities (
+                uri              TEXT NOT NULL,
+                locale           TEXT NOT NULL,
+                source_type      INTEGER NOT NULL DEFAULT 0,
+                entity_type      INTEGER NOT NULL,
+                title            TEXT,
+                artist_name      TEXT,
+                album_name       TEXT,
+                album_uri        TEXT,
+                duration_ms      INTEGER,
+                track_number     INTEGER,
+                disc_number      INTEGER,
+                release_year     INTEGER,
+                image_url        TEXT,
+                genre            TEXT,
+                track_count      INTEGER,
+                follower_count   INTEGER,
+                publisher        TEXT,
+                episode_count    INTEGER,
+                description      TEXT,
+                file_path        TEXT,
+                stream_url       TEXT,
+                expires_at       INTEGER,
+                added_at         INTEGER,
+                created_at       INTEGER NOT NULL,
+                updated_at       INTEGER NOT NULL,
+                PRIMARY KEY (uri, locale)
+            );
+            CREATE TABLE IF NOT EXISTS localized_extension_cache (
+                entity_uri       TEXT NOT NULL,
+                locale           TEXT NOT NULL,
+                extension_kind   INTEGER NOT NULL,
+                data             BLOB NOT NULL,
+                etag             TEXT,
+                expires_at       INTEGER NOT NULL,
+                created_at       INTEGER NOT NULL,
+                PRIMARY KEY (entity_uri, locale, extension_kind)
+            );
+            CREATE INDEX IF NOT EXISTS idx_localized_entities_locale ON localized_entities(locale);
+            CREATE INDEX IF NOT EXISTS idx_localized_entities_type ON localized_entities(entity_type);
+            CREATE INDEX IF NOT EXISTS idx_localized_entities_artist ON localized_entities(artist_name COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_localized_entities_album ON localized_entities(album_name COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_localized_entities_title ON localized_entities(title COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_localized_entities_updated ON localized_entities(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_localized_extension_expires ON localized_extension_cache(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_localized_extension_entity ON localized_extension_cache(entity_uri, locale);
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
     #endregion
 
     #region Entity Operations
@@ -490,6 +578,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var useLocalizedTable = ShouldUseLocalizedSpotifyMetadata(sourceType);
 
         await _writeLock.WaitAsync(cancellationToken);
         try
@@ -498,44 +587,85 @@ public sealed class MetadataDatabase : IMetadataDatabase
             await connection.OpenAsync(cancellationToken);
 
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO entities (
-                    uri, source_type, entity_type, title, artist_name, album_name, album_uri,
-                    duration_ms, track_number, disc_number, release_year, image_url, genre,
-                    track_count, follower_count, publisher, episode_count, description,
-                    file_path, stream_url, expires_at, added_at, created_at, updated_at
-                ) VALUES (
-                    $uri, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
-                    $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
-                    $track_count, $follower_count, $publisher, $episode_count, $description,
-                    $file_path, $stream_url, $expires_at, $added_at, $now, $now
-                )
-                ON CONFLICT(uri) DO UPDATE SET
-                    source_type = excluded.source_type,
-                    entity_type = excluded.entity_type,
-                    title = COALESCE(excluded.title, entities.title),
-                    artist_name = COALESCE(excluded.artist_name, entities.artist_name),
-                    album_name = COALESCE(excluded.album_name, entities.album_name),
-                    album_uri = COALESCE(excluded.album_uri, entities.album_uri),
-                    duration_ms = COALESCE(excluded.duration_ms, entities.duration_ms),
-                    track_number = COALESCE(excluded.track_number, entities.track_number),
-                    disc_number = COALESCE(excluded.disc_number, entities.disc_number),
-                    release_year = COALESCE(excluded.release_year, entities.release_year),
-                    image_url = COALESCE(excluded.image_url, entities.image_url),
-                    genre = COALESCE(excluded.genre, entities.genre),
-                    track_count = COALESCE(excluded.track_count, entities.track_count),
-                    follower_count = COALESCE(excluded.follower_count, entities.follower_count),
-                    publisher = COALESCE(excluded.publisher, entities.publisher),
-                    episode_count = COALESCE(excluded.episode_count, entities.episode_count),
-                    description = COALESCE(excluded.description, entities.description),
-                    file_path = COALESCE(excluded.file_path, entities.file_path),
-                    stream_url = COALESCE(excluded.stream_url, entities.stream_url),
-                    expires_at = COALESCE(excluded.expires_at, entities.expires_at),
-                    added_at = COALESCE(excluded.added_at, entities.added_at),
-                    updated_at = $now;
-                """;
+            cmd.CommandText = useLocalizedTable
+                ? """
+                    INSERT INTO localized_entities (
+                        uri, locale, source_type, entity_type, title, artist_name, album_name, album_uri,
+                        duration_ms, track_number, disc_number, release_year, image_url, genre,
+                        track_count, follower_count, publisher, episode_count, description,
+                        file_path, stream_url, expires_at, added_at, created_at, updated_at
+                    ) VALUES (
+                        $uri, $locale, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
+                        $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
+                        $track_count, $follower_count, $publisher, $episode_count, $description,
+                        $file_path, $stream_url, $expires_at, $added_at, $now, $now
+                    )
+                    ON CONFLICT(uri, locale) DO UPDATE SET
+                        source_type = excluded.source_type,
+                        entity_type = excluded.entity_type,
+                        title = COALESCE(excluded.title, localized_entities.title),
+                        artist_name = COALESCE(excluded.artist_name, localized_entities.artist_name),
+                        album_name = COALESCE(excluded.album_name, localized_entities.album_name),
+                        album_uri = COALESCE(excluded.album_uri, localized_entities.album_uri),
+                        duration_ms = COALESCE(excluded.duration_ms, localized_entities.duration_ms),
+                        track_number = COALESCE(excluded.track_number, localized_entities.track_number),
+                        disc_number = COALESCE(excluded.disc_number, localized_entities.disc_number),
+                        release_year = COALESCE(excluded.release_year, localized_entities.release_year),
+                        image_url = COALESCE(excluded.image_url, localized_entities.image_url),
+                        genre = COALESCE(excluded.genre, localized_entities.genre),
+                        track_count = COALESCE(excluded.track_count, localized_entities.track_count),
+                        follower_count = COALESCE(excluded.follower_count, localized_entities.follower_count),
+                        publisher = COALESCE(excluded.publisher, localized_entities.publisher),
+                        episode_count = COALESCE(excluded.episode_count, localized_entities.episode_count),
+                        description = COALESCE(excluded.description, localized_entities.description),
+                        file_path = COALESCE(excluded.file_path, localized_entities.file_path),
+                        stream_url = COALESCE(excluded.stream_url, localized_entities.stream_url),
+                        expires_at = COALESCE(excluded.expires_at, localized_entities.expires_at),
+                        added_at = COALESCE(excluded.added_at, localized_entities.added_at),
+                        updated_at = $now;
+                    """
+                : """
+                    INSERT INTO entities (
+                        uri, source_type, entity_type, title, artist_name, album_name, album_uri,
+                        duration_ms, track_number, disc_number, release_year, image_url, genre,
+                        track_count, follower_count, publisher, episode_count, description,
+                        file_path, stream_url, expires_at, added_at, created_at, updated_at
+                    ) VALUES (
+                        $uri, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
+                        $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
+                        $track_count, $follower_count, $publisher, $episode_count, $description,
+                        $file_path, $stream_url, $expires_at, $added_at, $now, $now
+                    )
+                    ON CONFLICT(uri) DO UPDATE SET
+                        source_type = excluded.source_type,
+                        entity_type = excluded.entity_type,
+                        title = COALESCE(excluded.title, entities.title),
+                        artist_name = COALESCE(excluded.artist_name, entities.artist_name),
+                        album_name = COALESCE(excluded.album_name, entities.album_name),
+                        album_uri = COALESCE(excluded.album_uri, entities.album_uri),
+                        duration_ms = COALESCE(excluded.duration_ms, entities.duration_ms),
+                        track_number = COALESCE(excluded.track_number, entities.track_number),
+                        disc_number = COALESCE(excluded.disc_number, entities.disc_number),
+                        release_year = COALESCE(excluded.release_year, entities.release_year),
+                        image_url = COALESCE(excluded.image_url, entities.image_url),
+                        genre = COALESCE(excluded.genre, entities.genre),
+                        track_count = COALESCE(excluded.track_count, entities.track_count),
+                        follower_count = COALESCE(excluded.follower_count, entities.follower_count),
+                        publisher = COALESCE(excluded.publisher, entities.publisher),
+                        episode_count = COALESCE(excluded.episode_count, entities.episode_count),
+                        description = COALESCE(excluded.description, entities.description),
+                        file_path = COALESCE(excluded.file_path, entities.file_path),
+                        stream_url = COALESCE(excluded.stream_url, entities.stream_url),
+                        expires_at = COALESCE(excluded.expires_at, entities.expires_at),
+                        added_at = COALESCE(excluded.added_at, entities.added_at),
+                        updated_at = $now;
+                    """;
 
             cmd.Parameters.AddWithValue("$uri", uri);
+            if (useLocalizedTable)
+            {
+                cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+            }
             cmd.Parameters.AddWithValue("$source_type", (int)sourceType);
             cmd.Parameters.AddWithValue("$entity_type", (int)entityType);
             cmd.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
@@ -578,8 +708,32 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(cancellationToken);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT * FROM entities WHERE uri = $uri;";
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? $"""
+                WITH candidates AS (
+                    SELECT {EntityColumns}, 0 AS priority
+                    FROM localized_entities
+                    WHERE uri = $uri AND locale = $locale
+                    UNION ALL
+                    SELECT {EntityColumns}, 1 AS priority
+                    FROM entities
+                    WHERE uri = $uri
+                    UNION ALL
+                    SELECT {EntityColumns}, 2 AS priority
+                    FROM localized_entities
+                    WHERE uri = $uri AND locale <> $locale
+                )
+                SELECT {EntityColumns}
+                FROM candidates
+                ORDER BY priority, updated_at DESC
+                LIMIT 1;
+                """
+            : "SELECT * FROM entities WHERE uri = $uri;";
         cmd.Parameters.AddWithValue("$uri", uri);
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
 
         using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         if (await reader.ReadAsync(cancellationToken))
@@ -607,11 +761,40 @@ public sealed class MetadataDatabase : IMetadataDatabase
         // Build parameterized query for batch fetch
         var placeholders = string.Join(", ", uriList.Select((_, i) => $"$uri{i}"));
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT * FROM entities WHERE uri IN ({placeholders});";
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? $"""
+                WITH candidates AS (
+                    SELECT {EntityColumns}, 0 AS priority
+                    FROM localized_entities
+                    WHERE locale = $locale AND uri IN ({placeholders})
+                    UNION ALL
+                    SELECT {EntityColumns}, 1 AS priority
+                    FROM entities
+                    WHERE uri IN ({placeholders})
+                    UNION ALL
+                    SELECT {EntityColumns}, 2 AS priority
+                    FROM localized_entities
+                    WHERE locale <> $locale AND uri IN ({placeholders})
+                ),
+                ranked AS (
+                    SELECT
+                        {EntityColumns},
+                        ROW_NUMBER() OVER (PARTITION BY uri ORDER BY priority, updated_at DESC) AS rn
+                    FROM candidates
+                )
+                SELECT {EntityColumns}
+                FROM ranked
+                WHERE rn = 1;
+                """
+            : $"SELECT * FROM entities WHERE uri IN ({placeholders});";
 
         for (int i = 0; i < uriList.Count; i++)
         {
             cmd.Parameters.AddWithValue($"$uri{i}", uriList[i]);
+        }
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
         }
 
         using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
@@ -635,7 +818,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
             await connection.OpenAsync(cancellationToken);
 
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM entities WHERE uri = $uri;";
+            cmd.CommandText = """
+                DELETE FROM entities WHERE uri = $uri;
+                DELETE FROM localized_entities WHERE uri = $uri;
+                """;
             cmd.Parameters.AddWithValue("$uri", uri);
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
@@ -735,11 +921,39 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(cancellationToken);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT * FROM entities {whereClause} {orderClause} LIMIT $limit OFFSET $offset;";
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? $"""
+                WITH candidates AS (
+                    SELECT {EntityColumns}, 0 AS priority FROM localized_entities
+                    WHERE locale = $locale
+                    UNION ALL
+                    SELECT {EntityColumns}, 1 AS priority FROM entities
+                    UNION ALL
+                    SELECT {EntityColumns}, 2 AS priority FROM localized_entities
+                    WHERE locale <> $locale
+                ),
+                ranked AS (
+                    SELECT
+                        {EntityColumns},
+                        ROW_NUMBER() OVER (PARTITION BY uri ORDER BY priority, updated_at DESC) AS rn
+                    FROM candidates
+                    {whereClause}
+                )
+                SELECT {EntityColumns}
+                FROM ranked
+                WHERE rn = 1
+                {orderClause}
+                LIMIT $limit OFFSET $offset;
+                """
+            : $"SELECT * FROM entities {whereClause} {orderClause} LIMIT $limit OFFSET $offset;";
 
         foreach (var param in parameters)
         {
             cmd.Parameters.Add(param);
+        }
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
         }
         cmd.Parameters.AddWithValue("$limit", limit);
         cmd.Parameters.AddWithValue("$offset", offset);
@@ -803,7 +1017,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         ExtensionKind extensionKind,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind);
+        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind, _spotifyMetadataLocale);
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         // Check hot cache first
@@ -826,11 +1040,20 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(cancellationToken);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT data, etag, expires_at FROM extension_cache
-            WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;
-            """;
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? """
+                SELECT data, etag, expires_at FROM localized_extension_cache
+                WHERE entity_uri = $entity_uri AND locale = $locale AND extension_kind = $extension_kind;
+                """
+            : """
+                SELECT data, etag, expires_at FROM extension_cache
+                WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;
+                """;
         cmd.Parameters.AddWithValue("$entity_uri", entityUri);
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
         cmd.Parameters.AddWithValue("$extension_kind", (int)extensionKind);
 
         using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
@@ -862,7 +1085,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         ExtensionKind extensionKind,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind);
+        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind, _spotifyMetadataLocale);
 
         // Check hot cache first
         if (_hotCache.TryGetValue(cacheKey, out var hotEntry))
@@ -875,11 +1098,20 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(cancellationToken);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT etag FROM extension_cache
-            WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;
-            """;
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? """
+                SELECT etag FROM localized_extension_cache
+                WHERE entity_uri = $entity_uri AND locale = $locale AND extension_kind = $extension_kind;
+                """
+            : """
+                SELECT etag FROM extension_cache
+                WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;
+                """;
         cmd.Parameters.AddWithValue("$entity_uri", entityUri);
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
         cmd.Parameters.AddWithValue("$extension_kind", (int)extensionKind);
 
         var result = await cmd.ExecuteScalarAsync(cancellationToken);
@@ -899,7 +1131,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var expiresAt = now + ttlSeconds;
-        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind);
+        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind, _spotifyMetadataLocale);
 
         // Update hot cache
         PromoteToHotCache(cacheKey, data, etag, expiresAt);
@@ -912,16 +1144,29 @@ public sealed class MetadataDatabase : IMetadataDatabase
             await connection.OpenAsync(cancellationToken);
 
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO extension_cache (entity_uri, extension_kind, data, etag, expires_at, created_at)
-                VALUES ($entity_uri, $extension_kind, $data, $etag, $expires_at, $now)
-                ON CONFLICT(entity_uri, extension_kind) DO UPDATE SET
-                    data = excluded.data,
-                    etag = excluded.etag,
-                    expires_at = excluded.expires_at;
-                """;
+            cmd.CommandText = HasLocalizedSpotifyMetadata
+                ? """
+                    INSERT INTO localized_extension_cache (entity_uri, locale, extension_kind, data, etag, expires_at, created_at)
+                    VALUES ($entity_uri, $locale, $extension_kind, $data, $etag, $expires_at, $now)
+                    ON CONFLICT(entity_uri, locale, extension_kind) DO UPDATE SET
+                        data = excluded.data,
+                        etag = excluded.etag,
+                        expires_at = excluded.expires_at;
+                    """
+                : """
+                    INSERT INTO extension_cache (entity_uri, extension_kind, data, etag, expires_at, created_at)
+                    VALUES ($entity_uri, $extension_kind, $data, $etag, $expires_at, $now)
+                    ON CONFLICT(entity_uri, extension_kind) DO UPDATE SET
+                        data = excluded.data,
+                        etag = excluded.etag,
+                        expires_at = excluded.expires_at;
+                    """;
 
             cmd.Parameters.AddWithValue("$entity_uri", entityUri);
+            if (HasLocalizedSpotifyMetadata)
+            {
+                cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+            }
             cmd.Parameters.AddWithValue("$extension_kind", (int)extensionKind);
             cmd.Parameters.AddWithValue("$data", data);
             cmd.Parameters.AddWithValue("$etag", (object?)etag ?? DBNull.Value);
@@ -964,7 +1209,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
             await connection.OpenAsync(cancellationToken);
 
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM extension_cache WHERE expires_at <= $now;";
+            cmd.CommandText = """
+                DELETE FROM extension_cache WHERE expires_at <= $now;
+                DELETE FROM localized_extension_cache WHERE expires_at <= $now;
+                """;
             cmd.Parameters.AddWithValue("$now", now);
 
             var deleted = await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -988,7 +1236,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     public async Task InvalidateEntityAsync(string entityUri, CancellationToken cancellationToken = default)
     {
         // Remove from hot cache
-        var keysToRemove = _hotCache.Keys.Where(k => k.StartsWith(entityUri + ":")).ToList();
+        var keysToRemove = _hotCache.Keys.Where(k => k.Contains($":{entityUri}:", StringComparison.Ordinal)).ToList();
         foreach (var key in keysToRemove)
         {
             _hotCache.TryRemove(key, out _);
@@ -1002,7 +1250,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
             await connection.OpenAsync(cancellationToken);
 
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM extension_cache WHERE entity_uri = $entity_uri;";
+            cmd.CommandText = """
+                DELETE FROM extension_cache WHERE entity_uri = $entity_uri;
+                DELETE FROM localized_extension_cache WHERE entity_uri = $entity_uri;
+                """;
             cmd.Parameters.AddWithValue("$entity_uri", entityUri);
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
@@ -1116,15 +1367,199 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(cancellationToken);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT e.*, sl.added_at AS added_at FROM entities e
-            INNER JOIN spotify_library sl ON e.uri = sl.item_uri
-            WHERE sl.item_type = $item_type
-            ORDER BY sl.added_at DESC
-            LIMIT $limit OFFSET $offset;
-            """;
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? $"""
+                WITH candidates AS (
+                    SELECT
+                        e.uri,
+                        e.source_type,
+                        e.entity_type,
+                        e.title,
+                        e.artist_name,
+                        e.album_name,
+                        e.album_uri,
+                        e.duration_ms,
+                        e.track_number,
+                        e.disc_number,
+                        e.release_year,
+                        e.image_url,
+                        e.genre,
+                        e.track_count,
+                        e.follower_count,
+                        e.publisher,
+                        e.episode_count,
+                        e.description,
+                        e.file_path,
+                        e.stream_url,
+                        e.expires_at,
+                        e.added_at,
+                        e.created_at,
+                        e.updated_at,
+                        sl.added_at AS library_added_at,
+                        0 AS priority
+                    FROM localized_entities e
+                    INNER JOIN spotify_library sl ON e.uri = sl.item_uri
+                    WHERE sl.item_type = $item_type AND e.locale = $locale
+                    UNION ALL
+                    SELECT
+                        e.uri,
+                        e.source_type,
+                        e.entity_type,
+                        e.title,
+                        e.artist_name,
+                        e.album_name,
+                        e.album_uri,
+                        e.duration_ms,
+                        e.track_number,
+                        e.disc_number,
+                        e.release_year,
+                        e.image_url,
+                        e.genre,
+                        e.track_count,
+                        e.follower_count,
+                        e.publisher,
+                        e.episode_count,
+                        e.description,
+                        e.file_path,
+                        e.stream_url,
+                        e.expires_at,
+                        e.added_at,
+                        e.created_at,
+                        e.updated_at,
+                        sl.added_at AS library_added_at,
+                        1 AS priority
+                    FROM entities e
+                    INNER JOIN spotify_library sl ON e.uri = sl.item_uri
+                    WHERE sl.item_type = $item_type
+                    UNION ALL
+                    SELECT
+                        e.uri,
+                        e.source_type,
+                        e.entity_type,
+                        e.title,
+                        e.artist_name,
+                        e.album_name,
+                        e.album_uri,
+                        e.duration_ms,
+                        e.track_number,
+                        e.disc_number,
+                        e.release_year,
+                        e.image_url,
+                        e.genre,
+                        e.track_count,
+                        e.follower_count,
+                        e.publisher,
+                        e.episode_count,
+                        e.description,
+                        e.file_path,
+                        e.stream_url,
+                        e.expires_at,
+                        e.added_at,
+                        e.created_at,
+                        e.updated_at,
+                        sl.added_at AS library_added_at,
+                        2 AS priority
+                    FROM localized_entities e
+                    INNER JOIN spotify_library sl ON e.uri = sl.item_uri
+                    WHERE sl.item_type = $item_type AND e.locale <> $locale
+                ),
+                ranked AS (
+                    SELECT
+                        uri,
+                        source_type,
+                        entity_type,
+                        title,
+                        artist_name,
+                        album_name,
+                        album_uri,
+                        duration_ms,
+                        track_number,
+                        disc_number,
+                        release_year,
+                        image_url,
+                        genre,
+                        track_count,
+                        follower_count,
+                        publisher,
+                        episode_count,
+                        description,
+                        file_path,
+                        stream_url,
+                        expires_at,
+                        library_added_at AS added_at,
+                        created_at,
+                        updated_at,
+                        ROW_NUMBER() OVER (PARTITION BY uri ORDER BY priority, updated_at DESC) AS rn
+                    FROM candidates
+                )
+                SELECT
+                    uri,
+                    source_type,
+                    entity_type,
+                    title,
+                    artist_name,
+                    album_name,
+                    album_uri,
+                    duration_ms,
+                    track_number,
+                    disc_number,
+                    release_year,
+                    image_url,
+                    genre,
+                    track_count,
+                    follower_count,
+                    publisher,
+                    episode_count,
+                    description,
+                    file_path,
+                    stream_url,
+                    expires_at,
+                    added_at,
+                    created_at,
+                    updated_at
+                FROM ranked
+                WHERE rn = 1
+                ORDER BY added_at DESC
+                LIMIT $limit OFFSET $offset;
+                """
+            : """
+                SELECT
+                    e.uri,
+                    e.source_type,
+                    e.entity_type,
+                    e.title,
+                    e.artist_name,
+                    e.album_name,
+                    e.album_uri,
+                    e.duration_ms,
+                    e.track_number,
+                    e.disc_number,
+                    e.release_year,
+                    e.image_url,
+                    e.genre,
+                    e.track_count,
+                    e.follower_count,
+                    e.publisher,
+                    e.episode_count,
+                    e.description,
+                    e.file_path,
+                    e.stream_url,
+                    e.expires_at,
+                    sl.added_at AS added_at,
+                    e.created_at,
+                    e.updated_at
+                FROM entities e
+                INNER JOIN spotify_library sl ON e.uri = sl.item_uri
+                WHERE sl.item_type = $item_type
+                ORDER BY sl.added_at DESC
+                LIMIT $limit OFFSET $offset;
+                """;
 
         cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
         cmd.Parameters.AddWithValue("$limit", limit);
         cmd.Parameters.AddWithValue("$offset", offset);
 
@@ -1166,12 +1601,22 @@ public sealed class MetadataDatabase : IMetadataDatabase
         await connection.OpenAsync(cancellationToken);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT sl.item_uri FROM spotify_library sl
-            LEFT JOIN entities e ON e.uri = sl.item_uri
-            WHERE sl.item_type = $item_type AND e.uri IS NULL;
-            """;
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? """
+                SELECT sl.item_uri FROM spotify_library sl
+                LEFT JOIN localized_entities e ON e.uri = sl.item_uri AND e.locale = $locale
+                WHERE sl.item_type = $item_type AND e.uri IS NULL;
+                """
+            : """
+                SELECT sl.item_uri FROM spotify_library sl
+                LEFT JOIN entities e ON e.uri = sl.item_uri
+                WHERE sl.item_type = $item_type AND e.uri IS NULL;
+                """;
         cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
 
         using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -1720,13 +2165,23 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT COUNT(*) FROM entities;";
+            cmd.CommandText = """
+                SELECT COUNT(*) FROM (
+                    SELECT uri FROM entities
+                    UNION
+                    SELECT uri FROM localized_entities
+                );
+                """;
             entityCount = (long)(await cmd.ExecuteScalarAsync(cancellationToken) ?? 0L);
         }
 
         using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT COUNT(*), COALESCE(SUM(LENGTH(data)), 0) FROM extension_cache;";
+            cmd.CommandText = """
+                SELECT
+                    (SELECT COUNT(*) FROM extension_cache) + (SELECT COUNT(*) FROM localized_extension_cache),
+                    (SELECT COALESCE(SUM(LENGTH(data)), 0) FROM extension_cache) + (SELECT COALESCE(SUM(LENGTH(data)), 0) FROM localized_extension_cache);
+                """;
             using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
@@ -1738,7 +2193,11 @@ public sealed class MetadataDatabase : IMetadataDatabase
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT COUNT(*) FROM extension_cache WHERE expires_at <= $now;";
+            cmd.CommandText = """
+                SELECT
+                    (SELECT COUNT(*) FROM extension_cache WHERE expires_at <= $now) +
+                    (SELECT COUNT(*) FROM localized_extension_cache WHERE expires_at <= $now);
+                """;
             cmd.Parameters.AddWithValue("$now", now);
             expiredCount = (long)(await cmd.ExecuteScalarAsync(cancellationToken) ?? 0L);
         }
@@ -1792,7 +2251,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
                 DELETE FROM extension_cache;
+                DELETE FROM localized_extension_cache;
                 DELETE FROM entities;
+                DELETE FROM localized_entities;
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
@@ -1813,9 +2274,30 @@ public sealed class MetadataDatabase : IMetadataDatabase
         return new SqliteConnection(_connectionString);
     }
 
-    private static string GetExtensionCacheKey(string entityUri, ExtensionKind extensionKind)
+    private static string GetExtensionCacheKey(string entityUri, ExtensionKind extensionKind, string? locale)
     {
-        return $"{entityUri}:{(int)extensionKind}";
+        return $"{locale ?? string.Empty}:{entityUri}:{(int)extensionKind}";
+    }
+
+    private bool HasLocalizedSpotifyMetadata => !string.IsNullOrEmpty(_spotifyMetadataLocale);
+
+    private bool ShouldUseLocalizedSpotifyMetadata(SourceType sourceType) =>
+        sourceType == SourceType.Spotify && HasLocalizedSpotifyMetadata;
+
+    private static string NormalizeSpotifyLocale(string? locale)
+    {
+        if (string.IsNullOrWhiteSpace(locale))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = locale.Trim();
+        if (trimmed.Length != 2 || !char.IsLetter(trimmed[0]) || !char.IsLetter(trimmed[1]))
+        {
+            return string.Empty;
+        }
+
+        return trimmed.ToLowerInvariant();
     }
 
     private void PromoteToHotCache(string cacheKey, byte[] data, string? etag, long expiresAt)

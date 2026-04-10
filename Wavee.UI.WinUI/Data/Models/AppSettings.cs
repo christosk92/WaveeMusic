@@ -6,6 +6,8 @@ namespace Wavee.UI.WinUI.Data.Models;
 public sealed class AppSettings
 {
     public string Theme { get; set; } = "Default";
+    public string Language { get; set; } = "system";
+    public string SpotifyMetadataLanguage { get; set; } = "app";
     public double SidebarWidth { get; set; } = 280;
     public double RightPanelWidth { get; set; } = 300;
     public Dictionary<string, double> PanelWidths { get; set; } = new();

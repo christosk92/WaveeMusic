@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data;
 
@@ -10,50 +11,50 @@ public static class ChangelogData
         new ChangelogRelease
         {
             Version = "1.0.0",
-            ReleaseTitle = "What's new in Wavee",
-            Announcement = "Thanks for using Wavee! This release brings some of the most requested features. If you run into any issues, please send feedback from Settings.",
+            ReleaseTitle = AppLocalization.GetString("Changelog_1_0_0_Title"),
+            Announcement = AppLocalization.GetString("Changelog_1_0_0_Announcement"),
             ReleaseUrl = "https://github.com/christosk92/WaveeMusic/releases/tag/v1.0.0",
             Features =
             [
                 new ChangelogFeature
                 {
-                    Title = "Canvas Lyrics",
-                    ShortDescription = "Spotify Canvas visuals behind your lyrics",
+                    Title = AppLocalization.GetString("Changelog_1_0_0_Feature_CanvasLyrics_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_CanvasLyrics_Short"),
                     Glyph = "\uE8D6",
-                    DetailTitle = "Canvas Lyrics Overlay",
-                    DetailDescription = "Experience lyrics like never before. When a track has a Spotify Canvas video, it plays as a beautiful backdrop behind synced lyrics, bringing your music to life with immersive visuals.",
+                    DetailTitle = AppLocalization.GetString("Changelog_1_0_0_Feature_CanvasLyrics_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_CanvasLyrics_Detail"),
                 },
                 new ChangelogFeature
                 {
-                    Title = "10-Band Equalizer",
-                    ShortDescription = "Fine-tune your sound with precision",
+                    Title = AppLocalization.GetString("Changelog_1_0_0_Feature_Equalizer_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_Equalizer_Short"),
                     Glyph = "\uE9E9",
-                    DetailTitle = "Graphic Equalizer",
-                    DetailDescription = "Take full control of your audio with a 10-band graphic equalizer. Choose from presets like Bass Boost, Treble Boost, Vocal, and Radio, or create your own custom profile.",
+                    DetailTitle = AppLocalization.GetString("Changelog_1_0_0_Feature_Equalizer_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_Equalizer_Detail"),
                 },
                 new ChangelogFeature
                 {
-                    Title = "Home Feed",
-                    ShortDescription = "A personalized home experience",
+                    Title = AppLocalization.GetString("Changelog_1_0_0_Feature_HomeFeed_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_HomeFeed_Short"),
                     Glyph = "\uE80F",
-                    DetailTitle = "Your Personalized Home",
-                    DetailDescription = "The redesigned home feed surfaces your recently played tracks, personalized mixes, and curated recommendations. Pin your favorite sections and reorder them to your liking.",
+                    DetailTitle = AppLocalization.GetString("Changelog_1_0_0_Feature_HomeFeed_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_HomeFeed_Detail"),
                 },
                 new ChangelogFeature
                 {
-                    Title = "Smart Reconnect",
-                    ShortDescription = "Seamless recovery from connection drops",
+                    Title = AppLocalization.GetString("Changelog_1_0_0_Feature_SmartReconnect_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_SmartReconnect_Short"),
                     Glyph = "\uE701",
-                    DetailTitle = "Auto-Reconnect",
-                    DetailDescription = "Wavee now automatically reconnects when your network drops. Audio playback resumes right where you left off with no manual intervention required.",
+                    DetailTitle = AppLocalization.GetString("Changelog_1_0_0_Feature_SmartReconnect_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_SmartReconnect_Detail"),
                 },
                 new ChangelogFeature
                 {
-                    Title = "Audio Caching",
-                    ShortDescription = "Listen offline with local caching",
+                    Title = AppLocalization.GetString("Changelog_1_0_0_Feature_AudioCaching_Title"),
+                    ShortDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_AudioCaching_Short"),
                     Glyph = "\uE896",
-                    DetailTitle = "Local Audio Cache",
-                    DetailDescription = "Frequently played tracks are cached locally so they start instantly and work even when your connection is spotty. Configure the cache size in Settings.",
+                    DetailTitle = AppLocalization.GetString("Changelog_1_0_0_Feature_AudioCaching_DetailTitle"),
+                    DetailDescription = AppLocalization.GetString("Changelog_1_0_0_Feature_AudioCaching_Detail"),
                 },
             ]
         }

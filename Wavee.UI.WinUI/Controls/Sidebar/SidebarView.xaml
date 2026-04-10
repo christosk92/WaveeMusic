@@ -79,7 +79,7 @@
 					HorizontalScrollMode="Disabled"
 					VerticalScrollBarVisibility="Auto"
 					XYFocusKeyboardNavigation="Enabled">
-					<ItemsRepeater
+					<ItemsRepeater x:Uid="Controls_Sidebar_SidebarView__ItemsRepeater_1"
 						x:Name="MenuItemsHost"
 						Margin="4,0,4,16"
 						AutomationProperties.AccessibilityView="Content"

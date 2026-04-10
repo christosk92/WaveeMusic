@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -16,7 +17,7 @@ public static class CardContextMenu
 
         var openItem = new MenuFlyoutItem
         {
-            Text = "Open artist",
+            Text = AppLocalization.GetString("CardMenu_OpenArtist"),
             Icon = new FontIcon { Glyph = "\uE77B" },
             Tag = new CardNavInfo(artistUri, artistName)
         };
@@ -25,7 +26,7 @@ public static class CardContextMenu
 
         var openInNewTabItem = new MenuFlyoutItem
         {
-            Text = "Open in new tab",
+            Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
             Icon = new FontIcon { Glyph = "\uE8A7" },
             Tag = new CardNavInfo(artistUri, artistName)
         };
@@ -41,7 +42,7 @@ public static class CardContextMenu
 
         var openItem = new MenuFlyoutItem
         {
-            Text = "Open album",
+            Text = AppLocalization.GetString("CardMenu_OpenAlbum"),
             Icon = new FontIcon { Glyph = "\uE93C" },
             Tag = new CardNavInfo(albumUri, albumName)
         };
@@ -50,7 +51,7 @@ public static class CardContextMenu
 
         var openInNewTabItem = new MenuFlyoutItem
         {
-            Text = "Open in new tab",
+            Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
             Icon = new FontIcon { Glyph = "\uE8A7" },
             Tag = new CardNavInfo(albumUri, albumName)
         };
@@ -66,7 +67,7 @@ public static class CardContextMenu
 
         var openItem = new MenuFlyoutItem
         {
-            Text = "Open playlist",
+            Text = AppLocalization.GetString("CardMenu_OpenPlaylist"),
             Icon = new FontIcon { Glyph = "\uE8FD" },
             Tag = new CardNavInfo(playlistUri, playlistName)
         };
@@ -75,7 +76,7 @@ public static class CardContextMenu
 
         var openInNewTabItem = new MenuFlyoutItem
         {
-            Text = "Open in new tab",
+            Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
             Icon = new FontIcon { Glyph = "\uE8A7" },
             Tag = new CardNavInfo(playlistUri, playlistName)
         };

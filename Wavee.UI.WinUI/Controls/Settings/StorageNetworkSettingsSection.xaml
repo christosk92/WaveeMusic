@@ -15,13 +15,10 @@
 
     <ScrollView>
         <StackPanel Spacing="4" Padding="0,16,0,24">
-            <TextBlock Text="Memory Caches" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
-            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
-                     Message="Cache and connection changes take effect after restarting the app."
-                     Margin="0,0,0,8"/>
+            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_1" Text="Memory Caches" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
 
-            <controls:SettingsCard Header="Caching profile"
-                                   Description="Balances memory usage against network refetches and browsing speed. Medium matches the default. Takes effect after restart.">
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_2" Header="Caching profile"
+                                   Description="Balances memory usage against network refetches and browsing speed. Medium matches the default.">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8F1;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -46,15 +43,15 @@
                                    HorizontalAlignment="Left"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Column="1" Text="Medium"
+                        <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_3" Grid.Column="1" Text="Medium"
                                    HorizontalAlignment="Center"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Column="2" Text="High"
+                        <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_4" Grid.Column="2" Text="High"
                                    HorizontalAlignment="Center"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Column="3" Text="Very&#x0a;Aggressive"
+                        <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_5" Grid.Column="3" Text="Very&#x0a;Aggressive"
                                    HorizontalAlignment="Right"
                                    TextAlignment="Right"
                                    TextWrapping="Wrap"
@@ -69,9 +66,9 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <TextBlock Text="Audio Cache" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_6" Text="Audio Cache" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
 
-            <controls:SettingsCard Header="Enable cache"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_7" Header="Enable cache"
                                    Description="Cache audio files locally for faster playback">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE74E;"/>
@@ -79,20 +76,20 @@
                 <ToggleSwitch IsOn="{x:Bind ViewModel.CacheEnabled, Mode=TwoWay}"
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Cache size limit"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_8" Header="Cache size limit"
                                    Description="Oldest tracks are automatically removed when the limit is reached">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xEDA2;"/>
                 </controls:SettingsCard.HeaderIcon>
                 <ComboBox SelectedIndex="{x:Bind ViewModel.CacheSizeLimitIndex, Mode=TwoWay}"
                           MinWidth="140">
-                    <ComboBoxItem Content="500 MB"/>
-                    <ComboBoxItem Content="1 GB"/>
-                    <ComboBoxItem Content="2 GB"/>
-                    <ComboBoxItem Content="5 GB"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_9" Content="500 MB"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_10" Content="1 GB"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_11" Content="2 GB"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_12" Content="5 GB"/>
                 </ComboBox>
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Cache location"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_13" Header="Cache location"
                                    Description="{x:Bind ViewModel.CacheLocationDisplay}">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B7;"/>
@@ -100,16 +97,16 @@
                 <TextBlock Text="{x:Bind ViewModel.CacheSizeDisplay}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Clear cache"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_14" Header="Clear cache"
                                    Description="Delete all cached audio files">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE74D;"/>
                 </controls:SettingsCard.HeaderIcon>
-                <Button Content="Clear Cache" Command="{x:Bind ViewModel.ClearCacheCommand}"/>
+                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_15" Content="Clear Cache" Command="{x:Bind ViewModel.ClearCacheCommand}"/>
             </controls:SettingsCard>
 
-            <TextBlock Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
-            <controls:SettingsCard Header="Auto-reconnect"
+            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_16" Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_17" Header="Auto-reconnect"
                                    Description="Automatically reconnect when the connection is lost">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE703;"/>
@@ -117,16 +114,16 @@
                 <ToggleSwitch IsOn="{x:Bind ViewModel.AutoReconnect, Mode=TwoWay}"
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Connection timeout"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_18" Header="Connection timeout"
                                    Description="Maximum time to wait when connecting">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE916;"/>
                 </controls:SettingsCard.HeaderIcon>
                 <ComboBox SelectedIndex="{x:Bind ViewModel.ConnectionTimeoutIndex, Mode=TwoWay}"
                           MinWidth="140">
-                    <ComboBoxItem Content="10 seconds"/>
-                    <ComboBoxItem Content="30 seconds"/>
-                    <ComboBoxItem Content="60 seconds"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_19" Content="10 seconds"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_20" Content="30 seconds"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_21" Content="60 seconds"/>
                 </ComboBox>
             </controls:SettingsCard>
         </StackPanel>

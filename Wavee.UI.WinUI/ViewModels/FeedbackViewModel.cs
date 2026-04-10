@@ -364,14 +364,14 @@ public sealed partial class FeedbackViewModel : ObservableObject
             else
             {
                 IsError = true;
-                ErrorMessage = "Failed to submit feedback. Please try again.";
+                ErrorMessage = AppLocalization.GetString("Feedback_SubmitFailed");
             }
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Feedback submission error");
             IsError = true;
-            ErrorMessage = "An unexpected error occurred.";
+            ErrorMessage = AppLocalization.GetString("Error_Unexpected");
         }
         finally
         {

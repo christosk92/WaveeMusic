@@ -21,7 +21,7 @@
 
                 <!-- Header Section -->
                 <StackPanel Spacing="24" HorizontalAlignment="Center">
-                    <TextBlock
+                    <TextBlock x:Uid="Views_StartPage__TextBlock_1"
                         Text="What are you looking for?"
                         Style="{StaticResource TitleLargeTextBlockStyle}"
                         FontSize="32"
@@ -29,7 +29,7 @@
                         HorizontalAlignment="Center"/>
 
                     <!-- Search Box -->
-                    <AutoSuggestBox
+                    <AutoSuggestBox x:Uid="Views_StartPage__AutoSuggestBox_2"
                         x:Name="SearchBox"
                         Width="400"
                         PlaceholderText="Search songs, artists, albums..."
@@ -39,7 +39,7 @@
 
                 <!-- Quick Access Section -->
                 <StackPanel Spacing="16">
-                    <TextBlock
+                    <TextBlock x:Uid="Views_StartPage__TextBlock_3"
                         Text="Quick Access"
                         Style="{StaticResource SubtitleTextBlockStyle}"/>
 

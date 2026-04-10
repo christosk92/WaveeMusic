@@ -94,6 +94,9 @@ public static class AppLifecycleHelper
             "Caching profile: {Profile} (estimated ~{EstMb} MB in caches)",
             cachingProfile, CachingProfilePresets.EstimateMegabytes(cacheCapacities));
 
+        var spotifyMetadataLocale = SpotifyMetadataLanguageSettings.ResolveEffectiveLocale(
+            SettingsService.PeekSpotifyMetadataLanguage());
+
         return Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging
                 .ClearProviders()
@@ -113,6 +116,7 @@ public static class AppLifecycleHelper
                     opts.ContextCacheSize = cacheCapacities.ContextCacheSize;
                     opts.DatabaseHotCacheSize = cacheCapacities.DatabaseHotCacheSize;
                     opts.AudioAuxCacheSize = cacheCapacities.AudioAuxCacheSize;
+                    opts.SpotifyMetadataLocale = spotifyMetadataLocale;
                 })
 
                 // Messenger (singleton - global default instance)
@@ -185,6 +189,7 @@ public static class AppLifecycleHelper
 
                 // App services
                 .AddSingleton<Wavee.Controls.Lyrics.Services.LocalizationService.ILocalizationService, Wavee.Controls.Lyrics.Services.LocalizationService.LocalizationService>()
+                .AddSingleton<IAppLocalizationService, AppLocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
@@ -202,6 +207,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton(sp => new Services.ImageCacheService(cacheCapacities.ImageCacheMaxSize))
                 .AddSingleton<Services.PreviewAudioVisualizationCoordinator>()
+                .AddSingleton<Services.PreviewAudioGraphService>()
                 // Shared now-playing highlight observer. Subscribes to NowPlayingChangedMessage
                 // once; ContentCard instances subscribe to its C# event instead of registering
                 // individually with WeakReferenceMessenger. Big savings during HomePage realization.
@@ -233,7 +239,11 @@ public static class AppLifecycleHelper
                     })
                     .Services
                 .AddSingleton<ICredentialsCache, CredentialsCache>()
-                .AddSingleton(new SessionConfig { DeviceId = DeviceIdHelper.GetOrCreateDeviceId() })
+                .AddSingleton(new SessionConfig
+                {
+                    DeviceId = DeviceIdHelper.GetOrCreateDeviceId(),
+                    PreferredLocale = spotifyMetadataLocale
+                })
                 .AddSingleton(sp => Session.Create(
                     sp.GetRequiredService<SessionConfig>(),
                     sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(),
@@ -446,9 +456,9 @@ public static class AppLifecycleHelper
                         case Wavee.AudioIpc.AudioProcessState.Connected:
                             notifService?.Dismiss();
                             if (audioActivityId != null)
-                                actSvc?.Complete(audioActivityId.Value, "Audio engine connected (out-of-process)");
+                                actSvc?.Complete(audioActivityId.Value, AppLocalization.GetString("AudioHost_Connected"));
                             else
-                                actSvc?.Post("playback", "Audio engine connected (out-of-process)",
+                                actSvc?.Post("playback", AppLocalization.GetString("AudioHost_Connected"),
                                     "\uE768", Data.Models.ActivityStatus.Completed,
                                     $"PID {_audioProcessManager?.ProcessId}", silent: true);
                             audioActivityId = null;
@@ -469,7 +479,7 @@ public static class AppLifecycleHelper
                             {
                                 Message = message,
                                 Severity = Data.Models.NotificationSeverity.Error,
-                                ActionLabel = "Retry",
+                                ActionLabel = AppLocalization.GetString("Retry"),
                                 Action = async () =>
                                 {
                                     if (_audioProcessManager != null)
@@ -482,7 +492,7 @@ public static class AppLifecycleHelper
                             if (audioActivityId != null)
                                 actSvc?.Fail(audioActivityId.Value, message);
                             else
-                                actSvc?.Post("playback", "Audio engine failed", "\uE783",
+                                actSvc?.Post("playback", AppLocalization.GetString("AudioHost_Failed"), "\uE783",
                                     Data.Models.ActivityStatus.Failed, message);
                             audioActivityId = null;
                             break;

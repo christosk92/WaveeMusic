@@ -80,14 +80,14 @@
                             Visibility="{x:Bind ViewModel.HasNotificationAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </InfoBar.ActionButton>
             </InfoBar>
-            <InfoBar
+            <InfoBar x:Uid="Views_ShellPage__InfoBar_1"
                 x:Name="ConnectionErrorBar"
                 Title="Connection failed"
                 Severity="Error"
                 IsOpen="False"
                 IsClosable="True">
                 <InfoBar.ActionButton>
-                    <Button Content="Retry" Click="RetryConnection_Click"/>
+                    <Button x:Uid="Views_ShellPage__Button_2" Content="Retry" Click="RetryConnection_Click"/>
                 </InfoBar.ActionButton>
             </InfoBar>
         </StackPanel>
@@ -103,7 +103,7 @@
             Visibility="Collapsed">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
                 <ProgressRing x:Name="ReconnectingRing" IsActive="True" Width="36" Height="36"/>
-                <TextBlock x:Name="ConnectionOverlayText"
+                <TextBlock x:Uid="Views_ShellPage__TextBlock_3" x:Name="ConnectionOverlayText"
                            Text="Reconnecting to Spotify..."
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            HorizontalAlignment="Center"

@@ -55,13 +55,13 @@
                                     <FontIcon Glyph="&#xE718;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="CompactMenuItem" Text="Compact" Click="CompactTab_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__MenuFlyoutItem_1" x:Name="CompactMenuItem" Text="Compact" Click="CompactTab_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE921;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator/>
-                            <MenuFlyoutItem Text="Close Tab" Click="CloseTab_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__MenuFlyoutItem_2" Text="Close Tab" Click="CloseTab_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE8BB;"/>
                                 </MenuFlyoutItem.Icon>
@@ -70,18 +70,18 @@
                                 </MenuFlyoutItem.KeyboardAccelerators>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator/>
-                            <MenuFlyoutItem Text="Close Tabs to the Left" Click="CloseTabsToLeft_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__MenuFlyoutItem_3" Text="Close Tabs to the Left" Click="CloseTabsToLeft_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE76B;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Close Tabs to the Right" Click="CloseTabsToRight_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__MenuFlyoutItem_4" Text="Close Tabs to the Right" Click="CloseTabsToRight_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE76C;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator/>
-                            <MenuFlyoutItem Text="Close Other Tabs" Click="CloseOtherTabs_Click" Tag="{x:Bind}">
+                            <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__MenuFlyoutItem_5" Text="Close Other Tabs" Click="CloseOtherTabs_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE8BB;"/>
                                 </MenuFlyoutItem.Icon>

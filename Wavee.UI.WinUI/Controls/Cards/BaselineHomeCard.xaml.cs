@@ -14,6 +14,7 @@ using Windows.Media.Playback;
 using Windows.UI;
 using Microsoft.UI;
 using Wavee.Playback.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -23,23 +24,44 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class BaselineHomeCard : UserControl
 {
-    private const double CardAspectRatio = 200d / 350d;
+    private const double CardAspectRatio = 230d / 340d;
+    private const int MaxDeferredHoverStateRefreshAttempts = 4;
+    private const double PreviewTransitionDistance = 24d;
+    private const double PreviewDuckTargetVolume = 0d;
+
+    private static readonly TimeSpan PreviewTransitionOutDuration = TimeSpan.FromMilliseconds(110);
+    private static readonly TimeSpan PreviewTransitionInDuration = TimeSpan.FromMilliseconds(190);
+    private static readonly TimeSpan PreviewMotionResetDuration = TimeSpan.FromMilliseconds(1);
+    private static readonly TimeSpan PreviewDuckFadeOutDuration = TimeSpan.FromMilliseconds(180);
+    private static readonly TimeSpan PreviewDuckFadeInDuration = TimeSpan.FromMilliseconds(220);
 
     private static BaselineHomeCard? s_activeCard;
     private static BaselineHomeCard? s_activeAudioCard;
     private static bool s_isPreviewAudioAutoPlayEnabled;
 
     private readonly ImageCacheService? _imageCache;
-    private readonly PreviewAudioVisualizationCoordinator? _previewVisualizationCoordinator;
+    private readonly PreviewAudioGraphService? _previewAudioGraphService;
+    private readonly IPlaybackService? _playbackService;
+    private readonly IPlaybackStateService? _playbackStateService;
     private MediaPlayer? _canvasMediaPlayer;
-    private MediaPlayer? _previewAudioPlayer;
     private HomeSectionItem? _subscribedItem;
     private bool _isPointerOver;
     private bool _isPreviewAudioPlaying;
     private bool _isApplyingResponsiveSize;
     private bool _isHoverStateRefreshQueued;
-    private bool _hasQueuedDeferredHoverStateRefresh;
+    private bool _isPlaybackDucked;
+    private bool _didPausePlaybackForPreview;
+    private int _deferredHoverStateRefreshAttempts;
     private int _previewTrackIndex;
+    private int _canvasPreviewVersion;
+    private int _playbackDuckVersion;
+    private bool _isPreviewTransitioning;
+    private int? _queuedPreviewDelta;
+    private int _previewTransitionVersion;
+    private int _hoverValidationVersion;
+    private int _hoverStopVersion;
+    private double _playbackVolumeBeforeDuck;
+    private string? _activeCanvasUrl;
     private string? _previewVisualizationSessionId;
     private string? _previewVisualizationUrl;
 
@@ -56,8 +78,11 @@ public sealed partial class BaselineHomeCard : UserControl
     public BaselineHomeCard()
     {
         _imageCache = Ioc.Default.GetService<ImageCacheService>();
-        _previewVisualizationCoordinator = Ioc.Default.GetService<PreviewAudioVisualizationCoordinator>();
+        _previewAudioGraphService = Ioc.Default.GetService<PreviewAudioGraphService>();
+        _playbackService = Ioc.Default.GetService<IPlaybackService>();
+        _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         InitializeComponent();
+        EffectiveViewportChanged += Card_EffectiveViewportChanged;
     }
 
     private static void OnItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -65,7 +90,8 @@ public sealed partial class BaselineHomeCard : UserControl
         var card = (BaselineHomeCard)d;
         card.SetSubscribedItem(e.OldValue as HomeSectionItem, e.NewValue as HomeSectionItem);
         card._previewTrackIndex = 0;
-        card.StopHoverMedia();
+        card.CancelPreviewTransition(resetMotionHosts: true);
+        card.StopHoverMedia(deferCanvasTeardown: false);
         card.StopPreviewAudio();
         card.UpdateFromItem();
     }
@@ -115,6 +141,8 @@ public sealed partial class BaselineHomeCard : UserControl
             : Visibility.Visible;
 
         var hasPreviewAudio = !string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl(item, activePreviewTrack));
+        var canvasUrl = GetActiveCanvasUrl(item, activePreviewTrack);
+        var hasCanvas = !string.IsNullOrWhiteSpace(canvasUrl);
         PreviewOverlayRoot.Visibility = _isPointerOver && hasPreviewAudio
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -124,7 +152,7 @@ public sealed partial class BaselineHomeCard : UserControl
             PreviewVisualizer.Visibility = _isPointerOver && hasPreviewAudio
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            PreviewVisualizer.SetActive(_isPointerOver && hasPreviewAudio);
+            PreviewVisualizer.SetActive(_isPointerOver && hasPreviewAudio && _isPreviewAudioPlaying);
         }
 
         if (PreviewAudioButton != null)
@@ -146,13 +174,23 @@ public sealed partial class BaselineHomeCard : UserControl
             {
                 StopPreviewVisualization();
             }
-            else if (!string.Equals(_previewVisualizationUrl, GetActiveAudioPreviewUrl(item, activePreviewTrack), StringComparison.Ordinal))
+            else if (_isPreviewAudioPlaying &&
+                     !string.Equals(_previewVisualizationUrl, GetActiveAudioPreviewUrl(item, activePreviewTrack), StringComparison.Ordinal))
             {
-                StartPreviewVisualization();
+                _ = StartPreviewAudioAsync();
+            }
+            else if (!_isPreviewAudioPlaying)
+            {
+                StopPreviewVisualization();
             }
 
             if (hasPreviewAudio && s_isPreviewAudioAutoPlayEnabled && !_isPreviewAudioPlaying)
                 _ = StartPreviewAudioAsync();
+
+            if (hasCanvas && !string.Equals(_activeCanvasUrl, canvasUrl, StringComparison.Ordinal))
+                _ = StartCanvasPreviewAsync();
+            else if (!hasCanvas)
+                StopCanvasPreview();
         }
 
         LoadImages(
@@ -220,8 +258,9 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        _hoverStopVersion++;
         _isPointerOver = true;
-        _hasQueuedDeferredHoverStateRefresh = false;
+        _deferredHoverStateRefreshAttempts = 0;
 
         if (s_activeCard != null && !ReferenceEquals(s_activeCard, this))
             s_activeCard.StopHoverMedia();
@@ -229,9 +268,12 @@ public sealed partial class BaselineHomeCard : UserControl
         s_activeCard = this;
         EnsureHoverChromeRealized();
         ApplyHoverState();
+        StartHoverVisibilityValidation();
 
         var hasPreviewAudio = !string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl());
         var hasCanvas = !string.IsNullOrWhiteSpace(GetActiveCanvasUrl());
+        if (hasCanvas)
+            EnsureCanvasPlayerRealized();
         if ((hasPreviewAudio && PreviewAudioButton == null) || (hasCanvas && CanvasPlayer == null))
             QueueDeferredHoverStateRefresh();
     }
@@ -254,9 +296,6 @@ public sealed partial class BaselineHomeCard : UserControl
             PreviousPreviewTrackButton.Visibility = hasMultiplePreviewTracks ? Visibility.Visible : Visibility.Collapsed;
         if (NextPreviewTrackButton != null)
             NextPreviewTrackButton.Visibility = hasMultiplePreviewTracks ? Visibility.Visible : Visibility.Collapsed;
-
-        if (hasPreviewAudio)
-            StartPreviewVisualization();
 
         if (hasPreviewAudio && s_isPreviewAudioAutoPlayEnabled && !_isPreviewAudioPlaying)
             _ = StartPreviewAudioAsync();
@@ -282,7 +321,10 @@ public sealed partial class BaselineHomeCard : UserControl
             .Scale(from: System.Numerics.Vector3.One, to: new System.Numerics.Vector3(1.025f), duration: TimeSpan.FromMilliseconds(180))
             .Start(CardRoot);
 
-        StartCanvasPreview();
+        if (!string.IsNullOrWhiteSpace(GetActiveCanvasUrl()))
+            EnsureCanvasPlayerRealized();
+
+        _ = StartCanvasPreviewAsync();
     }
 
     private void Card_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -290,12 +332,19 @@ public sealed partial class BaselineHomeCard : UserControl
         StopHoverMedia();
     }
 
-    private void StopHoverMedia()
+    private void Card_PointerCanceled(object sender, PointerRoutedEventArgs e)
     {
+        StopHoverMedia();
+    }
+
+    private void StopHoverMedia(bool deferCanvasTeardown = true)
+    {
+        var stopVersion = ++_hoverStopVersion;
+        _hoverValidationVersion++;
+        CancelPreviewTransition(resetMotionHosts: true);
         _isPointerOver = false;
         _isHoverStateRefreshQueued = false;
-        _hasQueuedDeferredHoverStateRefresh = false;
-        StopCanvasPreview();
+        _deferredHoverStateRefreshAttempts = 0;
         StopPreviewVisualization();
         StopPreviewAudio();
 
@@ -339,15 +388,32 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (ReferenceEquals(s_activeCard, this))
             s_activeCard = null;
+
+        if (deferCanvasTeardown)
+        {
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                if (stopVersion != _hoverStopVersion || _isPointerOver)
+                    return;
+
+                StopCanvasPreview();
+            });
+        }
+        else
+        {
+            StopCanvasPreview();
+        }
     }
 
     private void QueueDeferredHoverStateRefresh()
     {
-        if (!_isPointerOver || _isHoverStateRefreshQueued || _hasQueuedDeferredHoverStateRefresh)
+        if (!_isPointerOver ||
+            _isHoverStateRefreshQueued ||
+            _deferredHoverStateRefreshAttempts >= MaxDeferredHoverStateRefreshAttempts)
             return;
 
         _isHoverStateRefreshQueued = true;
-        _hasQueuedDeferredHoverStateRefresh = true;
+        _deferredHoverStateRefreshAttempts++;
         if (!DispatcherQueue.TryEnqueue(() =>
         {
             _isHoverStateRefreshQueued = false;
@@ -355,6 +421,11 @@ public sealed partial class BaselineHomeCard : UserControl
                 return;
 
             ApplyHoverState();
+
+            var hasPreviewAudio = !string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl());
+            var hasCanvas = !string.IsNullOrWhiteSpace(GetActiveCanvasUrl());
+            if ((hasPreviewAudio && PreviewAudioButton == null) || (hasCanvas && CanvasPlayer == null))
+                QueueDeferredHoverStateRefresh();
         }))
         {
             _isHoverStateRefreshQueued = false;
@@ -363,9 +434,11 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private void ResetInteractionStateForNavigation()
     {
+        _hoverValidationVersion++;
+        CancelPreviewTransition(resetMotionHosts: true);
         _isPointerOver = false;
         _isHoverStateRefreshQueued = false;
-        _hasQueuedDeferredHoverStateRefresh = false;
+        _deferredHoverStateRefreshAttempts = 0;
 
         StopCanvasPreview();
         StopPreviewVisualization();
@@ -399,6 +472,62 @@ public sealed partial class BaselineHomeCard : UserControl
             s_activeCard = null;
     }
 
+    private void Card_EffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
+    {
+        if (!_isPointerOver)
+            return;
+
+        if (args.EffectiveViewport.Width <= 0 || args.EffectiveViewport.Height <= 0)
+            StopHoverMedia();
+    }
+
+    private void StartHoverVisibilityValidation()
+    {
+        var version = ++_hoverValidationVersion;
+        _ = ValidateHoverVisibilityAsync(version);
+    }
+
+    private async Task ValidateHoverVisibilityAsync(int version)
+    {
+        while (_isPointerOver && version == _hoverValidationVersion)
+        {
+            await Task.Delay(120);
+
+            if (!_isPointerOver || version != _hoverValidationVersion)
+                return;
+
+            if (!IsCardVisibleInRootViewport())
+            {
+                StopHoverMedia();
+                return;
+            }
+        }
+    }
+
+    private bool IsCardVisibleInRootViewport()
+    {
+        try
+        {
+            if (!IsLoaded || ActualWidth <= 0 || ActualHeight <= 0 || XamlRoot?.Content is not UIElement root)
+                return false;
+
+            var rootSize = XamlRoot.Size;
+            if (rootSize.Width <= 0 || rootSize.Height <= 0)
+                return false;
+
+            var bounds = TransformToVisual(root).TransformBounds(new Windows.Foundation.Rect(0, 0, ActualWidth, ActualHeight));
+            return bounds.Right > 0 &&
+                   bounds.Bottom > 0 &&
+                   bounds.Left < rootSize.Width &&
+                   bounds.Top < rootSize.Height;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Hover visibility check failed: {ex.Message}");
+            return false;
+        }
+    }
+
     private async Task CollapseHoverChromeAsync()
     {
         await Task.Delay(150);
@@ -406,7 +535,7 @@ public sealed partial class BaselineHomeCard : UserControl
             HoverChrome.Visibility = Visibility.Collapsed;
     }
 
-    private void StartCanvasPreview()
+    private async Task StartCanvasPreviewAsync()
     {
         var canvasUrl = GetActiveCanvasUrl();
         if (string.IsNullOrWhiteSpace(canvasUrl))
@@ -417,26 +546,56 @@ public sealed partial class BaselineHomeCard : UserControl
 
         try
         {
-            EnsureCanvasPlayerRealized();
-            if (CanvasPlayer == null)
+            var previewVersion = ++_canvasPreviewVersion;
+
+            var isCanvasPlayerReady = await EnsureCanvasPlayerReadyAsync();
+            if (CanvasPlayer == null || !isCanvasPlayerReady)
             {
-                QueueDeferredHoverStateRefresh();
+                if (_isPointerOver &&
+                    previewVersion == _canvasPreviewVersion &&
+                    string.Equals(GetActiveCanvasUrl(), canvasUrl, StringComparison.Ordinal))
+                {
+                    QueueDeferredHoverStateRefresh();
+                    _ = RetryCanvasPreviewInitializationAsync(previewVersion, canvasUrl);
+                }
+
                 return;
             }
+
+            if (!_isPointerOver ||
+                previewVersion != _canvasPreviewVersion ||
+                !string.Equals(GetActiveCanvasUrl(), canvasUrl, StringComparison.Ordinal))
+                return;
 
             _canvasMediaPlayer ??= new MediaPlayer
             {
                 IsLoopingEnabled = true,
-                IsMuted = true
+                IsMuted = true,
+                AutoPlay = true
             };
 
+            _activeCanvasUrl = canvasUrl;
             CanvasPlayer.Stretch = Stretch.UniformToFill;
+            CanvasPlayer.AutoPlay = true;
             CanvasPlayer.SetMediaPlayer(_canvasMediaPlayer);
             CanvasPlayer.Visibility = Visibility.Visible;
             CanvasPlayer.Opacity = 0;
 
             _canvasMediaPlayer.Source = MediaSource.CreateFromUri(new Uri(canvasUrl));
             _canvasMediaPlayer.Play();
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_isPointerOver ||
+                    previewVersion != _canvasPreviewVersion ||
+                    !string.Equals(_activeCanvasUrl, canvasUrl, StringComparison.Ordinal) ||
+                    _canvasMediaPlayer == null ||
+                    CanvasPlayer == null)
+                    return;
+
+                CanvasPlayer.Visibility = Visibility.Visible;
+                _canvasMediaPlayer.Play();
+            });
+            _ = RetryCanvasPlaybackStartAsync(previewVersion, canvasUrl);
 
             AnimationBuilder.Create()
                 .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(400),
@@ -451,24 +610,116 @@ public sealed partial class BaselineHomeCard : UserControl
         }
     }
 
+    private async Task RetryCanvasPlaybackStartAsync(int previewVersion, string canvasUrl)
+    {
+        await Task.Delay(120);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_isPointerOver ||
+                previewVersion != _canvasPreviewVersion ||
+                !string.Equals(_activeCanvasUrl, canvasUrl, StringComparison.Ordinal) ||
+                _canvasMediaPlayer == null ||
+                CanvasPlayer == null)
+                return;
+
+            CanvasPlayer.Visibility = Visibility.Visible;
+            _canvasMediaPlayer.Play();
+        });
+    }
+
+    private async Task RetryCanvasPreviewInitializationAsync(int previewVersion, string canvasUrl)
+    {
+        await Task.Delay(90);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_isPointerOver ||
+                previewVersion != _canvasPreviewVersion ||
+                !string.Equals(GetActiveCanvasUrl(), canvasUrl, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(_activeCanvasUrl))
+                return;
+
+            _ = StartCanvasPreviewAsync();
+        });
+    }
+
+    private async Task<bool> EnsureCanvasPlayerReadyAsync()
+    {
+        EnsureCanvasPlayerRealized();
+        var player = CanvasPlayer;
+        if (player == null)
+            return false;
+
+        if (player.IsLoaded)
+            return true;
+
+        player.Visibility = Visibility.Visible;
+        player.Opacity = 0;
+        player.Stretch = Stretch.UniformToFill;
+        player.AutoPlay = true;
+
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        RoutedEventHandler? loadedHandler = null;
+        loadedHandler = (_, _) =>
+        {
+            player.Loaded -= loadedHandler;
+            loaded.TrySetResult();
+        };
+
+        player.Loaded += loadedHandler;
+        await Task.WhenAny(loaded.Task, Task.Delay(220));
+
+        if (loadedHandler != null)
+            player.Loaded -= loadedHandler;
+
+        return player.IsLoaded;
+    }
+
     private void StopCanvasPreview()
     {
+        _canvasPreviewVersion++;
+        _activeCanvasUrl = null;
+
         if (_canvasMediaPlayer == null)
         {
             if (CanvasPlayer != null)
             {
+                DetachCanvasPlayer();
                 CanvasPlayer.Visibility = Visibility.Collapsed;
                 CanvasPlayer.Opacity = 0;
             }
             return;
         }
 
-        _canvasMediaPlayer.Pause();
-        _canvasMediaPlayer.Source = null;
+        try
+        {
+            _canvasMediaPlayer.Pause();
+            _canvasMediaPlayer.Source = null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Canvas preview stop failed: {ex.Message}");
+        }
+
+        DetachCanvasPlayer();
         if (CanvasPlayer != null)
         {
             CanvasPlayer.Visibility = Visibility.Collapsed;
             CanvasPlayer.Opacity = 0;
+        }
+    }
+
+    private void DetachCanvasPlayer()
+    {
+        if (CanvasPlayer == null)
+            return;
+
+        try
+        {
+            CanvasPlayer.SetMediaPlayer(null);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Canvas player detach failed: {ex.Message}");
         }
     }
 
@@ -477,8 +728,6 @@ public sealed partial class BaselineHomeCard : UserControl
         var previewUrl = GetActiveAudioPreviewUrl();
         if (!_isPointerOver || string.IsNullOrWhiteSpace(previewUrl))
             return;
-
-        StopPreviewVisualization();
 
         EnsurePreviewVisualizerRealized();
         if (PreviewVisualizer != null)
@@ -489,22 +738,28 @@ public sealed partial class BaselineHomeCard : UserControl
         }
 
         _previewVisualizationUrl = previewUrl;
-        _previewVisualizationSessionId = _previewVisualizationCoordinator?.Activate(previewUrl, OnPreviewVisualizationFrame);
+        _previewVisualizationSessionId = _previewAudioGraphService?.CurrentSessionId;
     }
 
     private void StopPreviewVisualization()
     {
-        var sessionId = _previewVisualizationSessionId;
         _previewVisualizationSessionId = null;
         _previewVisualizationUrl = null;
 
-        if (!string.IsNullOrWhiteSpace(sessionId))
-            _previewVisualizationCoordinator?.Deactivate(sessionId);
+        if (PreviewVisualizer != null)
+        {
+            PreviewVisualizer.Reset();
+            PreviewVisualizer.SetActive(false);
+        }
     }
 
     private void OnPreviewVisualizationFrame(PreviewVisualizationFrame frame)
     {
-        if (!_isPointerOver || PreviewVisualizer == null)
+        if (!_isPointerOver || !_isPreviewAudioPlaying || PreviewVisualizer == null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(_previewVisualizationSessionId) &&
+            !string.Equals(frame.SessionId, _previewVisualizationSessionId, StringComparison.Ordinal))
             return;
 
         if (frame.Completed)
@@ -514,6 +769,17 @@ public sealed partial class BaselineHomeCard : UserControl
         }
 
         PreviewVisualizer.PushLevels(frame.Amplitudes);
+    }
+
+    private void OnPreviewAudioCompleted()
+    {
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            if (!_isPreviewAudioPlaying)
+                return;
+
+            await AutoAdvancePreviewAfterAudioEndedAsync();
+        });
     }
 
     private void PreviewAudioButton_Click(object sender, RoutedEventArgs e)
@@ -529,32 +795,28 @@ public sealed partial class BaselineHomeCard : UserControl
         _ = StartPreviewAudioAsync();
     }
 
-    private Task StartPreviewAudioAsync()
+    private async Task StartPreviewAudioAsync()
     {
         var previewUrl = GetActiveAudioPreviewUrl();
         if (string.IsNullOrWhiteSpace(previewUrl))
-            return Task.CompletedTask;
+            return;
 
         if (s_activeAudioCard != null && !ReferenceEquals(s_activeAudioCard, this))
-            s_activeAudioCard.StopPreviewAudio();
+            TransferPreviewAudioFrom(s_activeAudioCard);
 
-        StopPreviewAudio();
+        StopPreviewAudio(restorePlaybackDucking: false);
 
         try
         {
-            _previewAudioPlayer ??= new MediaPlayer
-            {
-                IsLoopingEnabled = false,
-                IsMuted = false
-            };
+            await DuckLocalPlaybackForPreviewAsync();
+            if (_previewAudioGraphService == null)
+                throw new InvalidOperationException("Preview audio service is unavailable.");
 
-            _previewAudioPlayer.MediaEnded -= PreviewAudioPlayer_MediaEnded;
-            _previewAudioPlayer.MediaEnded += PreviewAudioPlayer_MediaEnded;
-            _previewAudioPlayer.Source = MediaSource.CreateFromUri(new Uri(previewUrl));
-            _previewAudioPlayer.Play();
+            await _previewAudioGraphService.StartAsync(previewUrl, OnPreviewVisualizationFrame, OnPreviewAudioCompleted);
 
             _isPreviewAudioPlaying = true;
             s_activeAudioCard = this;
+            StartPreviewVisualization();
 
             if (PreviewAudioIcon != null)
                 PreviewAudioIcon.Glyph = "\uE15D";
@@ -564,45 +826,179 @@ public sealed partial class BaselineHomeCard : UserControl
             System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Audio preview failed: {ex.Message}");
             StopPreviewAudio();
         }
-
-        return Task.CompletedTask;
     }
 
-    private void StopPreviewAudio()
+    private void TransferPreviewAudioFrom(BaselineHomeCard activeCard)
     {
-        if (_previewAudioPlayer != null)
-        {
-            try
-            {
-                _previewAudioPlayer.MediaEnded -= PreviewAudioPlayer_MediaEnded;
-                _previewAudioPlayer.Pause();
-                _previewAudioPlayer.Source = null;
-            }
-            catch
-            {
-            }
-        }
+        var wasPlaybackDucked = activeCard._isPlaybackDucked;
+        var restoreVolume = activeCard._playbackVolumeBeforeDuck;
+        var didPausePlayback = activeCard._didPausePlaybackForPreview;
+
+        activeCard._playbackDuckVersion++;
+        activeCard.StopPreviewAudio(restorePlaybackDucking: false);
+
+        if (!wasPlaybackDucked)
+            return;
+
+        activeCard._isPlaybackDucked = false;
+        activeCard._didPausePlaybackForPreview = false;
+
+        _isPlaybackDucked = true;
+        _didPausePlaybackForPreview = didPausePlayback;
+        _playbackVolumeBeforeDuck = restoreVolume;
+    }
+
+    private void StopPreviewAudio(bool restorePlaybackDucking = true)
+    {
+        if (_previewAudioGraphService != null)
+            _ = _previewAudioGraphService.StopAsync();
 
         _isPreviewAudioPlaying = false;
+        StopPreviewVisualization();
+
         if (ReferenceEquals(s_activeAudioCard, this))
             s_activeAudioCard = null;
         if (PreviewAudioIcon != null)
             PreviewAudioIcon.Glyph = "\uE198";
+
+        if (restorePlaybackDucking)
+            _ = RestoreLocalPlaybackAfterPreviewAsync();
     }
 
-    private void PreviewAudioPlayer_MediaEnded(MediaPlayer sender, object args)
+    private async Task AutoAdvancePreviewAfterAudioEndedAsync()
     {
-        DispatcherQueue.TryEnqueue(StopPreviewAudio);
+        var item = Item;
+        if (!_isPointerOver || item == null || item.PreviewTracks.Count <= 1)
+        {
+            StopPreviewAudio();
+            return;
+        }
+
+        s_isPreviewAudioAutoPlayEnabled = true;
+        await ChangePreviewTrackAsync(1);
     }
 
-    private void PreviousPreviewTrackButton_Click(object sender, RoutedEventArgs e)
+    private async Task DuckLocalPlaybackForPreviewAsync()
     {
-        ChangePreviewTrack(-1);
+        var playback = _playbackStateService;
+        var duckVersion = ++_playbackDuckVersion;
+
+        if (_isPlaybackDucked)
+        {
+            if (playback != null && !playback.IsVolumeRestricted)
+                playback.Volume = PreviewDuckTargetVolume;
+
+            return;
+        }
+
+        if (playback == null || !playback.IsPlaying || playback.IsPlayingRemotely || playback.IsVolumeRestricted)
+            return;
+
+        _playbackVolumeBeforeDuck = playback.Volume;
+        _isPlaybackDucked = true;
+        _didPausePlaybackForPreview = false;
+
+        await FadePlaybackVolumeAsync(
+            playback,
+            from: playback.Volume,
+            to: PreviewDuckTargetVolume,
+            duration: PreviewDuckFadeOutDuration,
+            duckVersion);
+
+        if (duckVersion != _playbackDuckVersion ||
+            _playbackService == null ||
+            !playback.IsPlaying ||
+            playback.IsPlayingRemotely)
+            return;
+
+        try
+        {
+            var pauseResult = await _playbackService.PauseAsync();
+            if (duckVersion == _playbackDuckVersion)
+                _didPausePlaybackForPreview = pauseResult.IsSuccess;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Local playback pause for preview failed: {ex.Message}");
+        }
     }
 
-    private void NextPreviewTrackButton_Click(object sender, RoutedEventArgs e)
+    private async Task RestoreLocalPlaybackAfterPreviewAsync()
     {
-        ChangePreviewTrack(1);
+        var playback = _playbackStateService;
+        var duckVersion = ++_playbackDuckVersion;
+
+        if (!_isPlaybackDucked || playback == null)
+            return;
+
+        var restoreVolume = _playbackVolumeBeforeDuck;
+        var shouldResumePlayback = _didPausePlaybackForPreview;
+        _isPlaybackDucked = false;
+        _didPausePlaybackForPreview = false;
+
+        if (shouldResumePlayback &&
+            _playbackService != null &&
+            !playback.IsPlayingRemotely)
+        {
+            try
+            {
+                await _playbackService.ResumeAsync();
+                if (duckVersion != _playbackDuckVersion)
+                    return;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Local playback resume after preview failed: {ex.Message}");
+            }
+        }
+
+        if (playback.IsVolumeRestricted)
+            return;
+
+        await FadePlaybackVolumeAsync(
+            playback,
+            from: playback.Volume,
+            to: restoreVolume,
+            duration: PreviewDuckFadeInDuration,
+            duckVersion);
+    }
+
+    private async Task FadePlaybackVolumeAsync(
+        IPlaybackStateService playback,
+        double from,
+        double to,
+        TimeSpan duration,
+        int duckVersion)
+    {
+        const int steps = 8;
+        var stepDelay = TimeSpan.FromMilliseconds(duration.TotalMilliseconds / steps);
+
+        from = Math.Clamp(from, 0, 100);
+        to = Math.Clamp(to, 0, 100);
+
+        for (var step = 1; step <= steps; step++)
+        {
+            if (duckVersion != _playbackDuckVersion)
+                return;
+
+            var progress = step / (double)steps;
+            var eased = 1 - Math.Pow(1 - progress, 3);
+            playback.Volume = from + ((to - from) * eased);
+            await Task.Delay(stepDelay);
+        }
+
+        if (duckVersion == _playbackDuckVersion)
+            playback.Volume = to;
+    }
+
+    private async void PreviousPreviewTrackButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ChangePreviewTrackAsync(-1);
+    }
+
+    private async void NextPreviewTrackButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ChangePreviewTrackAsync(1);
     }
 
     private void CardRoot_Tapped(object sender, TappedRoutedEventArgs e)
@@ -681,6 +1077,8 @@ public sealed partial class BaselineHomeCard : UserControl
     {
         SetSubscribedItem(_subscribedItem, null);
 
+        CancelPreviewTransition(resetMotionHosts: false);
+        _hoverValidationVersion++;
         _isPointerOver = false;
         StopCanvasPreview();
         StopPreviewVisualization();
@@ -689,11 +1087,16 @@ public sealed partial class BaselineHomeCard : UserControl
         if (ReferenceEquals(s_activeCard, this))
             s_activeCard = null;
 
-        _canvasMediaPlayer?.Dispose();
-        _canvasMediaPlayer = null;
+        try
+        {
+            _canvasMediaPlayer?.Dispose();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[BaselineHomeCard] Canvas player dispose failed: {ex.Message}");
+        }
 
-        _previewAudioPlayer?.Dispose();
-        _previewAudioPlayer = null;
+        _canvasMediaPlayer = null;
     }
 
     private void BaselineHomeCard_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -756,30 +1159,192 @@ public sealed partial class BaselineHomeCard : UserControl
             return;
     }
 
-    private void ChangePreviewTrack(int delta)
+    private async Task ChangePreviewTrackAsync(int delta)
     {
+        delta = Math.Sign(delta);
+        if (delta == 0)
+            return;
+
         var item = Item;
         if (item == null || item.PreviewTracks.Count <= 1)
             return;
 
-        var wasPreviewAudioPlaying = _isPreviewAudioPlaying;
+        if (_isPreviewTransitioning)
+        {
+            _queuedPreviewDelta = delta;
+            return;
+        }
+
+        _isPreviewTransitioning = true;
+        var version = ++_previewTransitionVersion;
+
+        try
+        {
+            var wasPreviewAudioPlaying = _isPreviewAudioPlaying;
+
+            await AnimatePreviewOutAsync(delta, version);
+            if (!IsPreviewTransitionCurrent(version))
+                return;
+
+            var shouldRestartPreviewAudio = ApplyPreviewTrackChange(delta, keepPlaybackDucked: wasPreviewAudioPlaying);
+            if (shouldRestartPreviewAudio && IsPreviewTransitionCurrent(version))
+                _ = StartPreviewAudioAsync();
+
+            await AnimatePreviewInAsync(delta, version);
+            if (IsPreviewTransitionCurrent(version))
+                ResetPreviewMotionHosts();
+        }
+        finally
+        {
+            if (version == _previewTransitionVersion)
+                _isPreviewTransitioning = false;
+        }
+
+        if (version == _previewTransitionVersion)
+            await RunQueuedPreviewTransitionAsync();
+    }
+
+    private bool ApplyPreviewTrackChange(int delta, bool keepPlaybackDucked)
+    {
+        var item = Item;
+        if (item == null || item.PreviewTracks.Count <= 1)
+            return false;
+
         _previewTrackIndex = (_previewTrackIndex + delta + item.PreviewTracks.Count) % item.PreviewTracks.Count;
+        var shouldKeepPlaybackDucked =
+            keepPlaybackDucked &&
+            !string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl(item, GetActivePreviewTrack(item)));
 
         StopCanvasPreview();
         StopPreviewVisualization();
-        StopPreviewAudio();
+        StopPreviewAudio(restorePlaybackDucking: !shouldKeepPlaybackDucked);
 
         UpdateFromItem();
+        return shouldKeepPlaybackDucked;
+    }
 
-        if (_isPointerOver)
+    private async Task RunQueuedPreviewTransitionAsync()
+    {
+        var queuedDelta = _queuedPreviewDelta;
+        _queuedPreviewDelta = null;
+
+        if (queuedDelta == null || !_isPointerOver || !IsLoaded)
+            return;
+
+        await ChangePreviewTrackAsync(queuedDelta.Value);
+    }
+
+    private async Task AnimatePreviewOutAsync(int direction, int version)
+    {
+        var targetOffset = direction > 0 ? -PreviewTransitionDistance : PreviewTransitionDistance;
+
+        await Task.WhenAll(
+            AnimatePreviewElementOutAsync(HeroMotionHost, targetOffset, scaleTo: 1f),
+            AnimatePreviewElementOutAsync(CoverThumbBorder, targetOffset, scaleTo: 0.97f),
+            AnimatePreviewElementOutAsync(TitleOverlay, targetOffset, scaleTo: 1f),
+            AnimatePreviewElementOutAsync(BottomContentMotionHost, targetOffset, scaleTo: 1f));
+
+        if (!IsPreviewTransitionCurrent(version) && IsLoaded)
+            ResetPreviewMotionHosts();
+    }
+
+    private async Task AnimatePreviewInAsync(int direction, int version)
+    {
+        var startOffset = direction > 0 ? PreviewTransitionDistance : -PreviewTransitionDistance;
+        PreparePreviewMotionForIncoming(startOffset);
+
+        if (!IsPreviewTransitionCurrent(version))
         {
-            StartCanvasPreview();
-            if (!string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl(item, GetActivePreviewTrack(item))))
-                StartPreviewVisualization();
+            if (IsLoaded)
+                ResetPreviewMotionHosts();
+            return;
         }
 
-        if (wasPreviewAudioPlaying)
-            _ = StartPreviewAudioAsync();
+        await Task.WhenAll(
+            AnimatePreviewElementInAsync(HeroMotionHost, startOffset, scaleFrom: 1f),
+            AnimatePreviewElementInAsync(CoverThumbBorder, startOffset, scaleFrom: 0.97f),
+            AnimatePreviewElementInAsync(TitleOverlay, startOffset, scaleFrom: 1f),
+            AnimatePreviewElementInAsync(BottomContentMotionHost, startOffset, scaleFrom: 1f));
+
+        if (!IsPreviewTransitionCurrent(version) && IsLoaded)
+            ResetPreviewMotionHosts();
+    }
+
+    private Task AnimatePreviewElementOutAsync(UIElement element, double targetOffset, float scaleTo)
+    {
+        return AnimationBuilder.Create()
+            .Opacity(to: 0, duration: PreviewTransitionOutDuration,
+                easingType: EasingType.Sine,
+                easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn)
+            .Translation(Axis.X, to: targetOffset, duration: PreviewTransitionOutDuration,
+                easingType: EasingType.Sine,
+                easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn)
+            .Scale(to: new System.Numerics.Vector3(scaleTo, scaleTo, 1f), duration: PreviewTransitionOutDuration,
+                easingType: EasingType.Sine,
+                easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn)
+            .StartAsync(element);
+    }
+
+    private Task AnimatePreviewElementInAsync(UIElement element, double startOffset, float scaleFrom)
+    {
+        return AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: PreviewTransitionInDuration,
+                easingType: EasingType.Sine,
+                easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+            .Translation(Axis.X, from: startOffset, to: 0, duration: PreviewTransitionInDuration,
+                easingType: EasingType.Sine,
+                easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+            .Scale(from: new System.Numerics.Vector3(scaleFrom, scaleFrom, 1f),
+                to: System.Numerics.Vector3.One,
+                duration: PreviewTransitionInDuration,
+                easingType: EasingType.Sine,
+                easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
+            .StartAsync(element);
+    }
+
+    private void PreparePreviewMotionForIncoming(double startOffset)
+    {
+        foreach (var element in GetPreviewMotionElements())
+        {
+            element.Opacity = 0;
+            var scale = ReferenceEquals(element, CoverThumbBorder) ? 0.97f : 1f;
+            AnimationBuilder.Create()
+                .Translation(Axis.X, to: startOffset, duration: PreviewMotionResetDuration)
+                .Scale(to: new System.Numerics.Vector3(scale, scale, 1f), duration: PreviewMotionResetDuration)
+                .Start(element);
+        }
+    }
+
+    private void CancelPreviewTransition(bool resetMotionHosts)
+    {
+        _previewTransitionVersion++;
+        _queuedPreviewDelta = null;
+        _isPreviewTransitioning = false;
+
+        if (resetMotionHosts)
+            ResetPreviewMotionHosts();
+    }
+
+    private bool IsPreviewTransitionCurrent(int version)
+    {
+        return version == _previewTransitionVersion && IsLoaded;
+    }
+
+    private void ResetPreviewMotionHosts()
+    {
+        foreach (var element in GetPreviewMotionElements())
+        {
+            element.Opacity = 1;
+            AnimationBuilder.Create()
+                .Translation(Axis.X, to: 0, duration: PreviewMotionResetDuration)
+                .Scale(to: System.Numerics.Vector3.One, duration: PreviewMotionResetDuration)
+                .Start(element);
+        }
+    }
+
+    private UIElement[] GetPreviewMotionElements()
+    {
+        return [HeroMotionHost, CoverThumbBorder, TitleOverlay, BottomContentMotionHost];
     }
 
     private void ClampPreviewTrackIndex(HomeSectionItem item)

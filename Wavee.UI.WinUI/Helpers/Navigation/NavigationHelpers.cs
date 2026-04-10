@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Wavee.UI.WinUI.Views;
 using Windows.System;
@@ -75,7 +76,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenLibrary(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), null, "Library", new SymbolIconSource { Symbol = Symbol.Library }, openInNewTab);
+        Navigate(typeof(LibraryPage), null, AppLocalization.GetString("Shell_SidebarYourLibrary"), new SymbolIconSource { Symbol = Symbol.Library }, openInNewTab);
     }
 
     /// <summary>
@@ -96,7 +97,7 @@ public static class NavigationHelpers
 
     public static void OpenAlbums(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), "albums", "Albums", new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
+        Navigate(typeof(LibraryPage), "albums", AppLocalization.GetString("Shell_SidebarAlbums"), new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
     }
 
     /// <summary>
@@ -104,7 +105,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenArtists(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), "artists", "Artists", new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
+        Navigate(typeof(LibraryPage), "artists", AppLocalization.GetString("Shell_SidebarArtists"), new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
     }
 
     /// <summary>
@@ -112,7 +113,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenLikedSongs(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), "likedsongs", "Liked Songs", new SymbolIconSource { Symbol = Symbol.Like }, openInNewTab);
+        Navigate(typeof(LibraryPage), "likedsongs", AppLocalization.GetString("Shell_SidebarLikedSongs"), new SymbolIconSource { Symbol = Symbol.Like }, openInNewTab);
     }
 
     /// <summary>

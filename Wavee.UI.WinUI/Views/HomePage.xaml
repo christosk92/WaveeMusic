@@ -186,10 +186,9 @@
 
                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                     <ItemsRepeater.Layout>
-                        <UniformGridLayout
+                        <layouts:SafeUniformGridLayout
                             MinItemWidth="230"
-                            ItemsStretch="Fill"
-                            ItemsJustification="Start"
+                            MinItemHeight="340"
                             MinColumnSpacing="0"
                             MinRowSpacing="0"/>
                     </ItemsRepeater.Layout>
@@ -267,7 +266,7 @@
                 Grid.Column="2"
                 Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
                 <!-- Refresh button -->
-                <Button
+                <Button x:Uid="Views_HomePage__Button_1"
                     ToolTipService.ToolTip="Refresh"
                     Background="Transparent"
                     BorderThickness="0"

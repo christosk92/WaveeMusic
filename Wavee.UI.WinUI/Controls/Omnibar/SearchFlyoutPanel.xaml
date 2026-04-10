@@ -88,7 +88,7 @@
             </Grid.RowDefinitions>
 
             <!-- Header (shown for recent searches) -->
-            <TextBlock x:Name="HeaderText" Grid.Row="0"
+            <TextBlock x:Uid="Controls_Omnibar_SearchFlyoutPanel__TextBlock_1" x:Name="HeaderText" Grid.Row="0"
                        Text="Recent searches" FontWeight="Bold" FontSize="14"
                        Padding="16,12,16,8" Visibility="Collapsed"/>
 

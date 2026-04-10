@@ -36,13 +36,13 @@
                         <!-- Title with heart icon -->
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xEB52;" FontSize="32" Foreground="{ThemeResource App.Theme.AccentBrush}"/>
-                            <TextBlock Text="Liked Songs" Style="{StaticResource TitleTextBlockStyle}"/>
+                            <TextBlock x:Uid="Views_LikedSongsView__TextBlock_1" Text="Liked Songs" Style="{StaticResource TitleTextBlockStyle}"/>
                         </StackPanel>
 
                         <!-- Stats -->
                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                             <Run Text="{x:Bind ViewModel.TotalSongs, Mode=OneWay}"/>
-                            <Run Text="songs"/>
+                            <Run x:Uid="Views_LikedSongsView__Run_2" Text="songs"/>
                             <Run Text=" &#x2022; "/>
                             <Run Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"/>
                         </TextBlock>
@@ -52,20 +52,20 @@
                             <Button Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.PlayAllCommand}" Padding="16,8">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock Text="Play"/>
+                                    <TextBlock x:Uid="Views_LikedSongsView__TextBlock_3" Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button Command="{x:Bind ViewModel.ShuffleCommand}" Padding="16,8">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                    <TextBlock Text="Shuffle"/>
+                                    <TextBlock x:Uid="Views_LikedSongsView__TextBlock_4" Text="Shuffle"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
                     </StackPanel>
 
                     <!-- Search -->
-                    <TextBox
+                    <TextBox x:Uid="Views_LikedSongsView__TextBox_5"
                         Grid.Column="1"
                         PlaceholderText="Filter songs..."
                         Width="200"
@@ -78,7 +78,7 @@
             <trackList:TrackListView.EmptyStateContent>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                     <FontIcon Glyph="&#xEB52;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock
+                    <TextBlock x:Uid="Views_LikedSongsView__TextBlock_6"
                         Text="No liked songs yet"
                         Style="{StaticResource BodyTextBlockStyle}"
                         Opacity="0.5"

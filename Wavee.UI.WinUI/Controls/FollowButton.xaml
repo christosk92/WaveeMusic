@@ -10,7 +10,7 @@
             Padding="12,6" CornerRadius="20">
         <StackPanel Orientation="Horizontal" Spacing="6">
             <FontIcon x:Name="FollowIcon" Glyph="&#xEB51;" FontSize="14"/>
-            <TextBlock x:Name="FollowText" Text="Follow"/>
+            <TextBlock x:Uid="Controls_FollowButton__TextBlock_1" x:Name="FollowText" Text="Follow"/>
         </StackPanel>
     </Button>
 </UserControl>

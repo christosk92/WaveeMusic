@@ -10,9 +10,17 @@ using Microsoft.UI.Dispatching;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
+
+public enum ArtistsLibraryStage
+{
+    Artists,
+    Details,
+    Tracks
+}
 
 public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
@@ -87,6 +95,30 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     [ObservableProperty]
     private int _selectedAlbumYear;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWideLayout))]
+    [NotifyPropertyChangedFor(nameof(IsNarrowLayout))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowArtistsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowArtistDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowAlbumTracksStage))]
+    [NotifyPropertyChangedFor(nameof(ShowBreadcrumbBar))]
+    private bool _useNarrowLayout;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowArtistsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowArtistDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowAlbumTracksStage))]
+    [NotifyPropertyChangedFor(nameof(ShowBreadcrumbBar))]
+    private ArtistsLibraryStage _narrowStage = ArtistsLibraryStage.Artists;
+
+    public ObservableCollection<string> BreadcrumbItems { get; } = [];
+    public bool IsWideLayout => !UseNarrowLayout;
+    public bool IsNarrowLayout => UseNarrowLayout;
+    public bool ShowNarrowArtistsStage => UseNarrowLayout && NarrowStage == ArtistsLibraryStage.Artists;
+    public bool ShowNarrowArtistDetailsStage => UseNarrowLayout && NarrowStage == ArtistsLibraryStage.Details;
+    public bool ShowNarrowAlbumTracksStage => UseNarrowLayout && NarrowStage == ArtistsLibraryStage.Tracks;
+    public bool ShowBreadcrumbBar => UseNarrowLayout;
 
     public ILibraryDataService LibraryDataService => _libraryDataService;
 
@@ -196,12 +228,22 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     private void SelectAlbumForTracks(ArtistAlbumItemViewModel? album)
     {
         SelectedAlbumForTracks = album;
+        if (UseNarrowLayout && album != null)
+        {
+            SetNarrowStage(ArtistsLibraryStage.Tracks);
+        }
     }
 
     [RelayCommand]
     private void CloseTracksPanel()
     {
         SelectedAlbumForTracks = null;
+        if (UseNarrowLayout)
+        {
+            SetNarrowStage(SelectedArtist != null
+                ? ArtistsLibraryStage.Details
+                : ArtistsLibraryStage.Artists);
+        }
     }
 
     [RelayCommand]
@@ -227,6 +269,17 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         {
             SelectedAlbumTracks.Clear();
         }
+
+        if (UseNarrowLayout)
+        {
+            NarrowStage = value != null
+                ? ArtistsLibraryStage.Tracks
+                : SelectedArtist != null
+                    ? ArtistsLibraryStage.Details
+                    : ArtistsLibraryStage.Artists;
+        }
+
+        UpdateBreadcrumbs();
     }
 
     private async Task LoadSelectedAlbumTracksAsync(string albumId)
@@ -259,12 +312,131 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         SelectedArtistAddedAt = value?.AddedAtFormatted ?? "";
         SelectedArtistAlbumCount = value?.AlbumCount ?? 0;
 
+        if (UseNarrowLayout && value == null)
+        {
+            NarrowStage = ArtistsLibraryStage.Artists;
+        }
+
+        UpdateBreadcrumbs();
+
         _ = LoadSelectedArtistDetailsAsync();
     }
 
     partial void OnSearchQueryChanged(string value)
     {
         ApplyFilter();
+    }
+
+    public void SetNarrowLayout(bool isNarrow, bool preserveContext)
+    {
+        if (UseNarrowLayout == isNarrow)
+        {
+            if (isNarrow)
+            {
+                SetNarrowStage(GetPreferredNarrowStage(preserveContext));
+            }
+            else
+            {
+                UpdateBreadcrumbs();
+            }
+
+            return;
+        }
+
+        UseNarrowLayout = isNarrow;
+
+        if (isNarrow)
+        {
+            SetNarrowStage(GetPreferredNarrowStage(preserveContext));
+        }
+        else
+        {
+            UpdateBreadcrumbs();
+        }
+    }
+
+    public void ShowArtistsRoot()
+    {
+        SelectedAlbumForTracks = null;
+        SetNarrowStage(ArtistsLibraryStage.Artists);
+    }
+
+    public void ShowSelectedArtistDetails(LibraryArtistDto? artist = null)
+    {
+        if (artist != null)
+        {
+            SelectedArtist = artist;
+        }
+
+        if (SelectedArtist == null)
+        {
+            return;
+        }
+
+        SelectedAlbumForTracks = null;
+        SetNarrowStage(ArtistsLibraryStage.Details);
+    }
+
+    public void ShowSelectedAlbumTracks(ArtistAlbumItemViewModel? album = null)
+    {
+        if (album != null)
+        {
+            SelectedAlbumForTracks = album;
+        }
+
+        if (SelectedAlbumForTracks == null)
+        {
+            return;
+        }
+
+        SetNarrowStage(ArtistsLibraryStage.Tracks);
+    }
+
+    private ArtistsLibraryStage GetPreferredNarrowStage(bool preserveContext)
+    {
+        if (!preserveContext)
+        {
+            return ArtistsLibraryStage.Artists;
+        }
+
+        if (SelectedAlbumForTracks != null)
+        {
+            return ArtistsLibraryStage.Tracks;
+        }
+
+        return SelectedArtist != null
+            ? ArtistsLibraryStage.Details
+            : ArtistsLibraryStage.Artists;
+    }
+
+    private void SetNarrowStage(ArtistsLibraryStage stage)
+    {
+        NarrowStage = stage;
+        UpdateBreadcrumbs();
+    }
+
+    private void UpdateBreadcrumbs()
+    {
+        BreadcrumbItems.Clear();
+        BreadcrumbItems.Add(AppLocalization.GetString("Shell_SidebarArtists"));
+
+        if (!UseNarrowLayout)
+        {
+            OnPropertyChanged(nameof(ShowBreadcrumbBar));
+            return;
+        }
+
+        if (NarrowStage is ArtistsLibraryStage.Details or ArtistsLibraryStage.Tracks && SelectedArtist != null)
+        {
+            BreadcrumbItems.Add(SelectedArtist.Name);
+        }
+
+        if (NarrowStage == ArtistsLibraryStage.Tracks && SelectedAlbumForTracks != null)
+        {
+            BreadcrumbItems.Add(SelectedAlbumForTracks.Album.Name);
+        }
+
+        OnPropertyChanged(nameof(ShowBreadcrumbBar));
     }
 
     private async Task LoadSelectedArtistDetailsAsync()

@@ -19,6 +19,7 @@ public partial class App : Application
 
     public App()
     {
+        AppLocalization.ApplyLanguageOverride(SettingsService.PeekLanguage());
         InitializeComponent();
         UnhandledException += OnUnhandledException;
     }

@@ -11,6 +11,7 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -114,7 +115,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
             {
-                Title = $"Search: {query}"
+                Title = AppLocalization.Format("Search_TabTitle", query)
             };
             ContentChanged?.Invoke(this, TabItemParameter);
         }
@@ -122,7 +123,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             _logger?.LogWarning(ex, "Search failed for query: {Query}", query);
             HasError = true;
-            ErrorMessage = "Search failed. Please try again.";
+            ErrorMessage = AppLocalization.GetString("Search_Failed");
         }
         finally
         {

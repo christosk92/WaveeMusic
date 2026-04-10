@@ -9,9 +9,16 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
+
+public enum AlbumsLibraryStage
+{
+    Grid,
+    Details
+}
 
 public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackListViewModel
 {
@@ -62,6 +69,27 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     [ObservableProperty]
     private string _selectedAlbumMetadata = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWideLayout))]
+    [NotifyPropertyChangedFor(nameof(IsNarrowLayout))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowGridStage))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowBreadcrumbBar))]
+    private bool _useNarrowLayout;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowGridStage))]
+    [NotifyPropertyChangedFor(nameof(ShowNarrowDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowBreadcrumbBar))]
+    private AlbumsLibraryStage _narrowStage = AlbumsLibraryStage.Grid;
+
+    public ObservableCollection<string> BreadcrumbItems { get; } = [];
+    public bool IsWideLayout => !UseNarrowLayout;
+    public bool IsNarrowLayout => UseNarrowLayout;
+    public bool ShowNarrowGridStage => UseNarrowLayout && NarrowStage == AlbumsLibraryStage.Grid;
+    public bool ShowNarrowDetailsStage => UseNarrowLayout && NarrowStage == AlbumsLibraryStage.Details;
+    public bool ShowBreadcrumbBar => UseNarrowLayout;
 
     public AlbumsLibraryViewModel(
         ILibraryDataService libraryDataService,
@@ -183,12 +211,90 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
             ? $"{value.Year} • {value.TrackCount} tracks"
             : "";
 
+        if (UseNarrowLayout && value == null)
+        {
+            NarrowStage = AlbumsLibraryStage.Grid;
+        }
+
+        UpdateBreadcrumbs();
+
         _ = LoadSelectedAlbumTracksAsync();
     }
 
     partial void OnSearchQueryChanged(string value)
     {
         ApplyFilter();
+    }
+
+    public void SetNarrowLayout(bool isNarrow, bool preserveContext)
+    {
+        if (UseNarrowLayout == isNarrow)
+        {
+            if (isNarrow)
+            {
+                SetNarrowStage(preserveContext && SelectedAlbum != null
+                    ? AlbumsLibraryStage.Details
+                    : AlbumsLibraryStage.Grid);
+            }
+            else
+            {
+                UpdateBreadcrumbs();
+            }
+
+            return;
+        }
+
+        UseNarrowLayout = isNarrow;
+
+        if (isNarrow)
+        {
+            SetNarrowStage(preserveContext && SelectedAlbum != null
+                ? AlbumsLibraryStage.Details
+                : AlbumsLibraryStage.Grid);
+        }
+        else
+        {
+            UpdateBreadcrumbs();
+        }
+    }
+
+    public void ShowAlbumsRoot()
+    {
+        SetNarrowStage(AlbumsLibraryStage.Grid);
+    }
+
+    public void ShowSelectedAlbumDetails(LibraryAlbumDto? album = null)
+    {
+        if (album != null)
+        {
+            SelectedAlbum = album;
+        }
+
+        if (SelectedAlbum == null)
+        {
+            return;
+        }
+
+        SetNarrowStage(AlbumsLibraryStage.Details);
+    }
+
+    private void SetNarrowStage(AlbumsLibraryStage stage)
+    {
+        NarrowStage = stage;
+        UpdateBreadcrumbs();
+    }
+
+    private void UpdateBreadcrumbs()
+    {
+        BreadcrumbItems.Clear();
+        BreadcrumbItems.Add(AppLocalization.GetString("Shell_SidebarAlbums"));
+
+        if (UseNarrowLayout && NarrowStage == AlbumsLibraryStage.Details && SelectedAlbum != null)
+        {
+            BreadcrumbItems.Add(SelectedAlbum.Name);
+        }
+
+        OnPropertyChanged(nameof(ShowBreadcrumbBar));
     }
 
     private async Task LoadSelectedAlbumTracksAsync()

@@ -48,6 +48,7 @@ public sealed class AudioEngine : IAsyncDisposable
         AudioDecoderRegistry decoderRegistry,
         AudioProcessingChain processingChain,
         HttpClient httpClient,
+        VolumeProcessor? volumeProcessor = null,
         ILogger? logger = null)
     {
         _audioSink = audioSink ?? throw new ArgumentNullException(nameof(audioSink));
@@ -58,7 +59,7 @@ public sealed class AudioEngine : IAsyncDisposable
 
         _stateSubject = new BehaviorSubject<EngineState>(_currentState);
 
-        _volumeProcessor = _processingChain.Processors.OfType<VolumeProcessor>().FirstOrDefault();
+        _volumeProcessor = volumeProcessor ?? _processingChain.Processors.OfType<VolumeProcessor>().FirstOrDefault();
         _userEq = _processingChain.Processors.OfType<EqualizerProcessor>().FirstOrDefault();
     }
 

@@ -52,7 +52,7 @@
 
             <!-- Buttons row -->
             <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
-                <Button
+                <Button x:Uid="Controls_Diagnostics_UiHealthOverlay__Button_1"
                     x:Name="ExpandButton"
                     Content="Graph"
                     FontSize="10"
@@ -60,7 +60,7 @@
                     MinHeight="0"
                     MinWidth="0"
                     Click="ExpandButton_Click" />
-                <Button
+                <Button x:Uid="Controls_Diagnostics_UiHealthOverlay__Button_2"
                     x:Name="CopyButton"
                     Content="Copy"
                     FontSize="10"
@@ -68,7 +68,7 @@
                     MinHeight="0"
                     MinWidth="0"
                     Click="CopyButton_Click" />
-                <Button
+                <Button x:Uid="Controls_Diagnostics_UiHealthOverlay__Button_3"
                     x:Name="ResetButton"
                     Content="Reset"
                     FontSize="10"
@@ -91,15 +91,15 @@
             <StackPanel x:Name="GraphLegend" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" Spacing="2">
                     <Border Width="8" Height="8" Background="#4CAF50" CornerRadius="1" VerticalAlignment="Center" />
-                    <TextBlock Text="&lt;16ms" FontSize="9" FontFamily="Consolas" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock x:Uid="Controls_Diagnostics_UiHealthOverlay__TextBlock_4" Text="&lt;16ms" FontSize="9" FontFamily="Consolas" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="2">
                     <Border Width="8" Height="8" Background="#FFC107" CornerRadius="1" VerticalAlignment="Center" />
-                    <TextBlock Text="&lt;50ms" FontSize="9" FontFamily="Consolas" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock x:Uid="Controls_Diagnostics_UiHealthOverlay__TextBlock_5" Text="&lt;50ms" FontSize="9" FontFamily="Consolas" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="2">
                     <Border Width="8" Height="8" Background="#F44336" CornerRadius="1" VerticalAlignment="Center" />
-                    <TextBlock Text="&gt;50ms" FontSize="9" FontFamily="Consolas" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock x:Uid="Controls_Diagnostics_UiHealthOverlay__TextBlock_6" Text="&gt;50ms" FontSize="9" FontFamily="Consolas" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
                 </StackPanel>
             </StackPanel>
         </StackPanel>

@@ -115,7 +115,7 @@
                                     Visibility="{x:Bind ViewModel.TotalTracks, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                                <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run Text=" songs"/>
+                                <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run x:Uid="Views_AlbumPage__Run_1" Text=" songs"/>
                             </TextBlock>
                             <TextBlock Text=" · " Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -209,7 +209,7 @@
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                                            <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run Text=" songs"/>
+                                            <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run x:Uid="Views_AlbumPage__Run_2" Text=" songs"/>
                                         </TextBlock>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
@@ -217,13 +217,13 @@
                                                 Command="{x:Bind ViewModel.PlayAlbumCommand}" Padding="16,8">
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                                <TextBlock Text="Play"/>
+                                                <TextBlock x:Uid="Views_AlbumPage__TextBlock_3" Text="Play"/>
                                             </StackPanel>
                                         </Button>
                                         <Button Command="{x:Bind ViewModel.ShuffleAlbumCommand}" Padding="16,8">
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                                <TextBlock Text="Shuffle"/>
+                                                <TextBlock x:Uid="Views_AlbumPage__TextBlock_4" Text="Shuffle"/>
                                             </StackPanel>
                                         </Button>
                                         <Button Command="{x:Bind ViewModel.ToggleSaveCommand}" Padding="12,8">
@@ -240,7 +240,7 @@
                                 <StackPanel x:Name="MoreByArtistSection" Margin="16,32,16,24" Spacing="12"
                                             Visibility="{x:Bind ViewModel.HasMoreByArtist, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">
-                                        <Run Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
+                                        <Run x:Uid="Views_AlbumPage__Run_5" Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
                                     </TextBlock>
                                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.MoreByArtist, Mode=OneWay}">
                                         <ItemsRepeater.Layout>
@@ -264,7 +264,7 @@
                                 <!-- Merch -->
                                 <StackPanel x:Name="MerchSection" Margin="16,32,16,24" Spacing="12"
                                             Visibility="{x:Bind ViewModel.HasMerch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="Merch" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="Bold"/>
+                                    <TextBlock x:Uid="Views_AlbumPage__TextBlock_6" Text="Merch" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="Bold"/>
                                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.MerchItems, Mode=OneWay}">
                                         <ItemsRepeater.Layout>
                                             <StackLayout Orientation="Horizontal" Spacing="12"/>
@@ -305,7 +305,7 @@
                         <trackList:TrackListView.EmptyStateContent>
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                                 <FontIcon Glyph="&#xE93C;" FontSize="48" Opacity="0.3"/>
-                                <TextBlock Text="No tracks available" Style="{StaticResource BodyTextBlockStyle}"
+                                <TextBlock x:Uid="Views_AlbumPage__TextBlock_7" Text="No tracks available" Style="{StaticResource BodyTextBlockStyle}"
                                            Opacity="0.5" TextAlignment="Center"/>
                             </StackPanel>
                         </trackList:TrackListView.EmptyStateContent>

@@ -23,22 +23,22 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <ComboBox Grid.Column="0" Header="Preset"
+            <ComboBox x:Uid="Controls_Settings_AudioSettingsSection__ComboBox_1" Grid.Column="0" Header="Preset"
                       SelectedIndex="{x:Bind ViewModel.SelectedEqPresetIndex, Mode=TwoWay}"
                       MinWidth="160">
-                <ComboBoxItem Content="Flat"/>
-                <ComboBoxItem Content="Bass Boost"/>
-                <ComboBoxItem Content="Treble Boost"/>
-                <ComboBoxItem Content="Vocal"/>
-                <ComboBoxItem Content="Radio"/>
+                <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_2" Content="Flat"/>
+                <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_3" Content="Bass Boost"/>
+                <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_4" Content="Treble Boost"/>
+                <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_5" Content="Vocal"/>
+                <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_6" Content="Radio"/>
             </ComboBox>
 
-            <ToggleSwitch Grid.Column="2" Header="Equalizer"
+            <ToggleSwitch x:Uid="Controls_Settings_AudioSettingsSection__ToggleSwitch_7" Grid.Column="2" Header="Equalizer"
                           IsOn="{x:Bind ViewModel.IsEqualizerEnabled, Mode=TwoWay}"
                           OnContent="On" OffContent="Off"
                           Margin="0,0,16,0"/>
 
-            <Button Grid.Column="3" Content="Reset" VerticalAlignment="Bottom"
+            <Button x:Uid="Controls_Settings_AudioSettingsSection__Button_8" Grid.Column="3" Content="Reset" VerticalAlignment="Bottom"
                     Command="{x:Bind ViewModel.ResetEqCommand}"/>
         </Grid>
 

@@ -24,19 +24,19 @@
                              IsChecked="True" Click="FilterChip_Click" Tag="All"
                              Style="{StaticResource DefaultToggleButtonStyle}"
                              CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
-                <RadioButton x:Name="FilterSongs" Content="Songs" GroupName="SearchFilter"
+                <RadioButton x:Uid="Views_SearchPage__RadioButton_1" x:Name="FilterSongs" Content="Songs" GroupName="SearchFilter"
                              Click="FilterChip_Click" Tag="Songs"
                              Style="{StaticResource DefaultToggleButtonStyle}"
                              CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
-                <RadioButton x:Name="FilterArtists" Content="Artists" GroupName="SearchFilter"
+                <RadioButton x:Uid="Views_SearchPage__RadioButton_2" x:Name="FilterArtists" Content="Artists" GroupName="SearchFilter"
                              Click="FilterChip_Click" Tag="Artists"
                              Style="{StaticResource DefaultToggleButtonStyle}"
                              CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
-                <RadioButton x:Name="FilterAlbums" Content="Albums" GroupName="SearchFilter"
+                <RadioButton x:Uid="Views_SearchPage__RadioButton_3" x:Name="FilterAlbums" Content="Albums" GroupName="SearchFilter"
                              Click="FilterChip_Click" Tag="Albums"
                              Style="{StaticResource DefaultToggleButtonStyle}"
                              CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
-                <RadioButton x:Name="FilterPlaylists" Content="Playlists" GroupName="SearchFilter"
+                <RadioButton x:Uid="Views_SearchPage__RadioButton_4" x:Name="FilterPlaylists" Content="Playlists" GroupName="SearchFilter"
                              Click="FilterChip_Click" Tag="Playlists"
                              Style="{StaticResource DefaultToggleButtonStyle}"
                              CornerRadius="16" MinHeight="32" MinWidth="0" Padding="16,6"/>
@@ -143,7 +143,7 @@
                         PointerExited="TopResult_PointerExited"
                         Visibility="{x:Bind ViewModel.TopResult, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <StackPanel Spacing="16">
-                        <TextBlock Text="Top result"
+                        <TextBlock x:Uid="Views_SearchPage__TextBlock_5" Text="Top result"
                                    Style="{StaticResource SubtitleTextBlockStyle}"
                                    FontWeight="Bold"/>
 
@@ -174,7 +174,7 @@
                 <!-- Right: Songs (column-first grid, capped at 4 rows) -->
                 <StackPanel x:Name="SongsPanel" Grid.Column="1" VerticalAlignment="Top" Spacing="12"
                             Visibility="{x:Bind ViewModel.ShowTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="Songs"
+                    <TextBlock x:Uid="Views_SearchPage__TextBlock_6" Text="Songs"
                                Style="{StaticResource SubtitleTextBlockStyle}"
                                FontWeight="Bold"/>
 
@@ -197,7 +197,7 @@
             <!-- ══════════════════ Artists Section ══════════════════ -->
             <StackPanel Margin="0,0,0,32"
                         Visibility="{x:Bind ViewModel.ShowArtists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                <TextBlock Text="Artists"
+                <TextBlock x:Uid="Views_SearchPage__TextBlock_7" Text="Artists"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            FontWeight="Bold"
                            Margin="0,0,0,16"/>
@@ -225,7 +225,7 @@
             <!-- ══════════════════ Albums Section ══════════════════ -->
             <StackPanel Margin="0,0,0,32"
                         Visibility="{x:Bind ViewModel.ShowAlbums, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                <TextBlock Text="Albums"
+                <TextBlock x:Uid="Views_SearchPage__TextBlock_8" Text="Albums"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            FontWeight="Bold"
                            Margin="0,0,0,16"/>
@@ -251,7 +251,7 @@
             <!-- ══════════════════ Playlists Section ══════════════════ -->
             <StackPanel Margin="0,0,0,32"
                         Visibility="{x:Bind ViewModel.ShowPlaylists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                <TextBlock Text="Playlists"
+                <TextBlock x:Uid="Views_SearchPage__TextBlock_9" Text="Playlists"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            FontWeight="Bold"
                            Margin="0,0,0,16"/>

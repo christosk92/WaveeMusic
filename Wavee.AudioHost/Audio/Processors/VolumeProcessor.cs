@@ -9,7 +9,7 @@ namespace Wavee.AudioHost.Audio.Processors;
 /// </summary>
 public sealed class VolumeProcessor : IAudioProcessor
 {
-    private float _volumeLinear = 1.0f;
+    private int _volumeLinearBits = BitConverter.SingleToInt32Bits(1.0f);
     private AudioFormat? _format;
 
     public string ProcessorName => "Volume";
@@ -20,8 +20,12 @@ public sealed class VolumeProcessor : IAudioProcessor
     /// </summary>
     public float Volume
     {
-        get => _volumeLinear;
-        set => _volumeLinear = Math.Max(0.0f, value);
+        get => BitConverter.Int32BitsToSingle(System.Threading.Volatile.Read(ref _volumeLinearBits));
+        set
+        {
+            var safeValue = float.IsNaN(value) || value < 0.0f ? 0.0f : value;
+            System.Threading.Volatile.Write(ref _volumeLinearBits, BitConverter.SingleToInt32Bits(safeValue));
+        }
     }
 
     /// <summary>
@@ -29,8 +33,8 @@ public sealed class VolumeProcessor : IAudioProcessor
     /// </summary>
     public float VolumeDb
     {
-        get => LinearToDb(_volumeLinear);
-        set => _volumeLinear = DbToLinear(value);
+        get => LinearToDb(Volume);
+        set => Volume = DbToLinear(value);
     }
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
@@ -44,7 +48,8 @@ public sealed class VolumeProcessor : IAudioProcessor
         if (_format == null)
             throw new InvalidOperationException("Processor not initialized");
 
-        if (input.IsEmpty || Math.Abs(_volumeLinear - 1.0f) < 0.0001f)
+        var volume = Volume;
+        if (input.IsEmpty || Math.Abs(volume - 1.0f) < 0.0001f)
             return input; // No change needed
 
         var inputSpan = input.Data.Span;
@@ -53,15 +58,15 @@ public sealed class VolumeProcessor : IAudioProcessor
 
         if (_format.BitsPerSample == 16)
         {
-            ProcessInt16(inputSpan, outputSpan, _volumeLinear);
+            ProcessInt16(inputSpan, outputSpan, volume);
         }
         else if (_format.BitsPerSample == 24)
         {
-            ProcessInt24(inputSpan, outputSpan, _volumeLinear);
+            ProcessInt24(inputSpan, outputSpan, volume);
         }
         else if (_format.BitsPerSample == 32)
         {
-            ProcessInt32(inputSpan, outputSpan, _volumeLinear);
+            ProcessInt32(inputSpan, outputSpan, volume);
         }
         else
         {
@@ -73,15 +78,16 @@ public sealed class VolumeProcessor : IAudioProcessor
 
     public void ProcessInPlace(Span<byte> data)
     {
-        if (_format == null || Math.Abs(_volumeLinear - 1.0f) < 0.0001f)
+        var volume = Volume;
+        if (_format == null || Math.Abs(volume - 1.0f) < 0.0001f)
             return;
 
         if (_format.BitsPerSample == 16)
-            ProcessInt16(data, data, _volumeLinear);
+            ProcessInt16(data, data, volume);
         else if (_format.BitsPerSample == 24)
-            ProcessInt24(data, data, _volumeLinear);
+            ProcessInt24(data, data, volume);
         else if (_format.BitsPerSample == 32)
-            ProcessInt32(data, data, _volumeLinear);
+            ProcessInt32(data, data, volume);
     }
 
     public void Reset()

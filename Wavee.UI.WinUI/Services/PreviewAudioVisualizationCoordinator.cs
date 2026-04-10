@@ -1,24 +1,24 @@
 using System;
-using System.Reactive.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
-using Wavee.AudioIpc;
+using Wavee.Controls.Lyrics.Helper;
 using Wavee.Playback.Contracts;
-using Wavee.UI.WinUI.Helpers.Application;
 
 namespace Wavee.UI.WinUI.Services;
 
 public sealed class PreviewAudioVisualizationCoordinator : IDisposable
 {
+    private const int VisualizerBarCount = 24;
+    private const int LoopbackBarCount = VisualizerBarCount * 2;
+
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
     private readonly object _gate = new();
 
-    private AudioProcessManager? _manager;
-    private AudioPipelineProxy? _proxy;
-    private IDisposable? _frameSubscription;
+    private SpectrumAnalyzer? _loopbackAnalyzer;
+    private DispatcherQueueTimer? _loopbackTimer;
     private ActivePreviewSession? _activeSession;
+    private long _loopbackSequence;
 
     public PreviewAudioVisualizationCoordinator(ILogger<PreviewAudioVisualizationCoordinator>? logger = null)
     {
@@ -31,27 +31,22 @@ public sealed class PreviewAudioVisualizationCoordinator : IDisposable
         if (string.IsNullOrWhiteSpace(previewUrl))
             return null;
 
-        ActivePreviewSession? previousSession;
-        ActivePreviewSession nextSession;
-        AudioPipelineProxy? proxy;
+        lock (_gate)
+            _activeSession = null;
 
+        StopLoopbackCapture();
+
+        if (!TryStartLoopbackCapture())
+            return null;
+
+        var session = new ActivePreviewSession(Guid.NewGuid().ToString("N"), previewUrl, onFrame);
         lock (_gate)
         {
-            EnsureAttached_NoLock();
-
-            previousSession = _activeSession;
-            nextSession = new ActivePreviewSession(Guid.NewGuid().ToString("N"), previewUrl, onFrame);
-            _activeSession = nextSession;
-            proxy = _proxy;
+            _activeSession = session;
+            _loopbackSequence = 0;
         }
 
-        if (previousSession != null && proxy != null)
-            _ = StopPreviewAnalysisAsync(proxy, previousSession.SessionId);
-
-        if (proxy != null)
-            _ = StartPreviewAnalysisAsync(proxy, nextSession);
-
-        return nextSession.SessionId;
+        return session.SessionId;
     }
 
     public void Deactivate(string? sessionId)
@@ -59,117 +54,130 @@ public sealed class PreviewAudioVisualizationCoordinator : IDisposable
         if (string.IsNullOrWhiteSpace(sessionId))
             return;
 
-        AudioPipelineProxy? proxy;
-
         lock (_gate)
         {
             if (!string.Equals(_activeSession?.SessionId, sessionId, StringComparison.Ordinal))
                 return;
 
-            EnsureAttached_NoLock();
-            proxy = _proxy;
             _activeSession = null;
         }
 
-        if (proxy != null)
-            _ = StopPreviewAnalysisAsync(proxy, sessionId);
+        StopLoopbackCapture();
     }
 
-    private void EnsureAttached_NoLock()
+    private bool TryStartLoopbackCapture()
     {
-        var currentManager = AppLifecycleHelper.AudioProcessManager;
-        if (!ReferenceEquals(_manager, currentManager))
+        try
         {
-            if (_manager != null)
-                _manager.ProxyRestarted -= OnProxyRestarted;
+            _loopbackAnalyzer ??= new SpectrumAnalyzer
+            {
+                BarCount = LoopbackBarCount,
+                Sensitivity = 100,
+                SmoothingFactor = 0.82f
+            };
 
-            _manager = currentManager;
+            if (!_loopbackAnalyzer.IsCapturing)
+                _loopbackAnalyzer.StartCapture();
 
-            if (_manager != null)
-                _manager.ProxyRestarted += OnProxyRestarted;
+            if (!_loopbackAnalyzer.IsCapturing)
+                return false;
+
+            _loopbackTimer ??= _dispatcherQueue.CreateTimer();
+            _loopbackTimer.Interval = TimeSpan.FromMilliseconds(33);
+            _loopbackTimer.Tick -= OnLoopbackTimerTick;
+            _loopbackTimer.Tick += OnLoopbackTimerTick;
+            _loopbackTimer.Start();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to start preview loopback visualization");
+            StopLoopbackCapture();
+            return false;
+        }
+    }
+
+    private void StopLoopbackCapture()
+    {
+        if (_loopbackTimer != null)
+        {
+            _loopbackTimer.Stop();
+            _loopbackTimer.Tick -= OnLoopbackTimerTick;
+            _loopbackTimer = null;
         }
 
-        AttachProxy_NoLock(_manager?.Proxy);
+        try
+        {
+            if (_loopbackAnalyzer?.IsCapturing == true)
+                _loopbackAnalyzer.StopCapture();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to stop preview loopback visualization");
+        }
     }
 
-    private void AttachProxy_NoLock(AudioPipelineProxy? proxy)
-    {
-        if (ReferenceEquals(_proxy, proxy))
-            return;
-
-        _frameSubscription?.Dispose();
-        _frameSubscription = null;
-        _proxy = proxy;
-
-        if (_proxy != null)
-            _frameSubscription = _proxy.PreviewVisualizationFrames.Subscribe(OnPreviewFrame);
-    }
-
-    private void OnProxyRestarted(AudioPipelineProxy proxy)
+    private void OnLoopbackTimerTick(DispatcherQueueTimer sender, object args)
     {
         ActivePreviewSession? activeSession;
-
         lock (_gate)
-        {
-            AttachProxy_NoLock(proxy);
             activeSession = _activeSession;
-        }
 
-        if (activeSession != null)
-            _ = StartPreviewAnalysisAsync(proxy, activeSession);
-    }
-
-    private void OnPreviewFrame(PreviewVisualizationFrame frame)
-    {
-        Action<PreviewVisualizationFrame>? handler = null;
-
-        lock (_gate)
-        {
-            if (string.Equals(_activeSession?.SessionId, frame.SessionId, StringComparison.Ordinal))
-                handler = _activeSession.OnFrame;
-        }
-
-        if (handler == null)
+        if (activeSession == null || _loopbackAnalyzer == null)
             return;
 
-        _dispatcherQueue.TryEnqueue(() => handler(frame));
+        _loopbackAnalyzer.UpdateSmoothSpectrum();
+        var spectrum = _loopbackAnalyzer.SmoothSpectrum;
+        if (spectrum == null || spectrum.Length == 0)
+            return;
+
+        var amplitudes = FoldMirroredSpectrum(spectrum, VisualizerBarCount);
+        var frame = new PreviewVisualizationFrame
+        {
+            SessionId = activeSession.SessionId,
+            Sequence = ++_loopbackSequence,
+            Amplitudes = amplitudes,
+            Completed = false
+        };
+
+        _dispatcherQueue.TryEnqueue(() => activeSession.OnFrame(frame));
     }
 
-    private async Task StartPreviewAnalysisAsync(AudioPipelineProxy proxy, ActivePreviewSession session)
+    private static float[] FoldMirroredSpectrum(float[] spectrum, int outputCount)
     {
-        try
-        {
-            await proxy.StartPreviewAnalysisAsync(session.SessionId, session.PreviewUrl).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Failed to start preview analysis for {SessionId}", session.SessionId);
-        }
-    }
+        var amplitudes = new float[outputCount];
+        if (spectrum.Length == 0)
+            return amplitudes;
 
-    private async Task StopPreviewAnalysisAsync(AudioPipelineProxy proxy, string sessionId)
-    {
-        try
+        var center = spectrum.Length / 2;
+        if (center <= 0)
         {
-            await proxy.StopPreviewAnalysisAsync(sessionId).ConfigureAwait(false);
+            for (int i = 0; i < amplitudes.Length; i++)
+                amplitudes[i] = Math.Clamp(spectrum[Math.Min(i, spectrum.Length - 1)], 0f, 1f);
+
+            return amplitudes;
         }
-        catch (Exception ex)
+
+        for (int i = 0; i < amplitudes.Length; i++)
         {
-            _logger?.LogDebug(ex, "Failed to stop preview analysis for {SessionId}", sessionId);
+            var amount = amplitudes.Length == 1 ? 0f : i / (float)(amplitudes.Length - 1);
+            var sourceOffset = amount * (center - 1);
+            var lowIndex = Math.Clamp(center - 1 - (int)MathF.Round(sourceOffset), 0, spectrum.Length - 1);
+            var highIndex = Math.Clamp(center + (int)MathF.Round(sourceOffset), 0, spectrum.Length - 1);
+            amplitudes[i] = Math.Clamp((spectrum[lowIndex] + spectrum[highIndex]) * 0.5f, 0f, 1f);
         }
+
+        return amplitudes;
     }
 
     public void Dispose()
     {
+        StopLoopbackCapture();
+
         lock (_gate)
         {
-            if (_manager != null)
-                _manager.ProxyRestarted -= OnProxyRestarted;
-
-            _frameSubscription?.Dispose();
-            _frameSubscription = null;
-            _proxy = null;
-            _manager = null;
+            _loopbackAnalyzer?.Dispose();
+            _loopbackAnalyzer = null;
             _activeSession = null;
         }
     }

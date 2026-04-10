@@ -96,7 +96,7 @@
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                               VerticalAlignment="Center" Margin="0,0,3,0"
                               Visibility="Collapsed"/>
-                    <TextBlock x:Name="CompactVideoLabel" Text="Music Video"
+                    <TextBlock x:Uid="Controls_Track_TrackItem__TextBlock_1" x:Name="CompactVideoLabel" Text="Music Video"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Visibility="Collapsed"/>

@@ -17,17 +17,17 @@
         </Grid.RowDefinitions>
 
         <!-- ═══════════════════ HEADER ═══════════════════ -->
-        <TextBlock Grid.Row="0" Text="Send Feedback"
+        <TextBlock x:Uid="Views_FeedbackPage__TextBlock_1" Grid.Row="0" Text="Send Feedback"
                    Style="{StaticResource TitleTextBlockStyle}"
                    Margin="0,0,0,24"/>
 
         <!-- ═══════════════════ RESULT BARS ═══════════════════ -->
         <StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,12">
-            <InfoBar IsOpen="{x:Bind ViewModel.IsSuccess, Mode=OneWay}"
+            <InfoBar x:Uid="Views_FeedbackPage__InfoBar_2" IsOpen="{x:Bind ViewModel.IsSuccess, Mode=OneWay}"
                      Severity="Success" Title="Feedback submitted"
                      Message="Thank you! Your feedback has been received."
                      IsClosable="False"/>
-            <InfoBar IsOpen="{x:Bind ViewModel.IsError, Mode=OneWay}"
+            <InfoBar x:Uid="Views_FeedbackPage__InfoBar_3" IsOpen="{x:Bind ViewModel.IsError, Mode=OneWay}"
                      Severity="Error" Title="Submission failed"
                      Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                      IsClosable="False"/>
@@ -42,7 +42,7 @@
 
             <!-- ─── LEFT COLUMN: Category ─── -->
             <StackPanel Grid.Column="0" Spacing="16">
-                <TextBlock Text="What would you like to tell us?"
+                <TextBlock x:Uid="Views_FeedbackPage__TextBlock_4" Text="What would you like to tell us?"
                            Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,4"/>
 
                 <!-- Category cards — 2×2 grid -->
@@ -66,9 +66,9 @@
                             <FontIcon Glyph="&#xEBE8;" FontSize="24"
                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="Bug Report" FontWeight="SemiBold" FontSize="13"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_5" Text="Bug Report" FontWeight="SemiBold" FontSize="13"
                                        HorizontalAlignment="Center"/>
-                            <TextBlock Text="Something isn't working"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_6" Text="Something isn't working"
                                        FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
                         </StackPanel>
@@ -84,9 +84,9 @@
                             <FontIcon Glyph="&#xEA80;" FontSize="24"
                                       Foreground="{ThemeResource SystemFillColorSuccessBrush}"
                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="Feature Request" FontWeight="SemiBold" FontSize="13"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_7" Text="Feature Request" FontWeight="SemiBold" FontSize="13"
                                        HorizontalAlignment="Center"/>
-                            <TextBlock Text="Suggest an improvement"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_8" Text="Suggest an improvement"
                                        FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
                         </StackPanel>
@@ -102,9 +102,9 @@
                             <FontIcon Glyph="&#xE8F2;" FontSize="24"
                                       Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="Support Ticket" FontWeight="SemiBold" FontSize="13"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_9" Text="Support Ticket" FontWeight="SemiBold" FontSize="13"
                                        HorizontalAlignment="Center"/>
-                            <TextBlock Text="Get help with an issue"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_10" Text="Get help with an issue"
                                        FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
                         </StackPanel>
@@ -120,9 +120,9 @@
                             <FontIcon Glyph="&#xE8BD;" FontSize="24"
                                       Foreground="{ThemeResource AccentFillColorDefaultBrush}"
                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="General Feedback" FontWeight="SemiBold" FontSize="13"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_11" Text="General Feedback" FontWeight="SemiBold" FontSize="13"
                                        HorizontalAlignment="Center"/>
-                            <TextBlock Text="Share your thoughts"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_12" Text="Share your thoughts"
                                        FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
                         </StackPanel>
@@ -134,17 +134,17 @@
             <!-- ─── RIGHT COLUMN: Details ─── -->
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Details"
+                    <TextBlock x:Uid="Views_FeedbackPage__TextBlock_13" Text="Details"
                                Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,4"/>
 
                     <!-- Title -->
                     <StackPanel Spacing="0">
-                        <TextBox x:Name="TitleBox" MaxLength="200"
+                        <TextBox x:Uid="Views_FeedbackPage__TextBox_14" x:Name="TitleBox" MaxLength="200"
                                  PlaceholderText="Brief summary of your feedback"
                                  Text="{x:Bind ViewModel.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                             <TextBox.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <TextBlock Text="Title"/>
+                                    <TextBlock x:Uid="Views_FeedbackPage__TextBlock_15" Text="Title"/>
                                     <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                FontWeight="Bold"/>
                                 </StackPanel>
@@ -159,10 +159,10 @@
                     <!-- Description with markdown toolbar -->
                     <StackPanel Spacing="0">
                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
-                            <TextBlock Text="Description"/>
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_16" Text="Description"/>
                             <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                        FontWeight="Bold"/>
-                            <TextBlock Text="(Markdown supported)" FontSize="11"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_17" Text="(Markdown supported)" FontSize="11"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                        VerticalAlignment="Center" Margin="4,0,0,0"/>
                         </StackPanel>
@@ -172,34 +172,34 @@
                                 CornerRadius="4,4,0,0" Padding="2" BorderThickness="1,1,1,0"
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
                             <StackPanel Orientation="Horizontal" Spacing="1">
-                                <Button Click="FormatBold_Click" Padding="8,4"
+                                <Button x:Uid="Views_FeedbackPage__Button_18" Click="FormatBold_Click" Padding="8,4"
                                         Background="Transparent" BorderBrush="Transparent"
                                         ToolTipService.ToolTip="Bold (**text**)">
                                     <FontIcon Glyph="&#xE8DD;" FontSize="14"/>
                                 </Button>
-                                <Button Click="FormatItalic_Click" Padding="8,4"
+                                <Button x:Uid="Views_FeedbackPage__Button_19" Click="FormatItalic_Click" Padding="8,4"
                                         Background="Transparent" BorderBrush="Transparent"
                                         ToolTipService.ToolTip="Italic (_text_)">
                                     <FontIcon Glyph="&#xE8DB;" FontSize="14"/>
                                 </Button>
-                                <Button Click="FormatCode_Click" Padding="8,4"
+                                <Button x:Uid="Views_FeedbackPage__Button_20" Click="FormatCode_Click" Padding="8,4"
                                         Background="Transparent" BorderBrush="Transparent"
                                         ToolTipService.ToolTip="Code (`text`)">
                                     <FontIcon Glyph="&#xE943;" FontSize="14"/>
                                 </Button>
                                 <Border Width="1" Margin="4,4" Background="{ThemeResource ControlStrokeColorDefaultBrush}"/>
-                                <Button Click="FormatBulletList_Click" Padding="8,4"
+                                <Button x:Uid="Views_FeedbackPage__Button_21" Click="FormatBulletList_Click" Padding="8,4"
                                         Background="Transparent" BorderBrush="Transparent"
                                         ToolTipService.ToolTip="Bullet list (- item)">
                                     <FontIcon Glyph="&#xE8FD;" FontSize="14"/>
                                 </Button>
-                                <Button Click="FormatNumberedList_Click" Padding="8,4"
+                                <Button x:Uid="Views_FeedbackPage__Button_22" Click="FormatNumberedList_Click" Padding="8,4"
                                         Background="Transparent" BorderBrush="Transparent"
                                         ToolTipService.ToolTip="Numbered list (1. item)">
                                     <FontIcon Glyph="&#xEA37;" FontSize="14"/>
                                 </Button>
                                 <Border Width="1" Margin="4,4" Background="{ThemeResource ControlStrokeColorDefaultBrush}"/>
-                                <Button Click="FormatLink_Click" Padding="8,4"
+                                <Button x:Uid="Views_FeedbackPage__Button_23" Click="FormatLink_Click" Padding="8,4"
                                         Background="Transparent" BorderBrush="Transparent"
                                         ToolTipService.ToolTip="Link ([text](url))">
                                     <FontIcon Glyph="&#xE71B;" FontSize="14"/>
@@ -207,7 +207,7 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBox x:Name="BodyBox" MaxLength="5000"
+                        <TextBox x:Uid="Views_FeedbackPage__TextBox_24" x:Name="BodyBox" MaxLength="5000"
                                  PlaceholderText="Provide as much detail as possible — steps to reproduce, expected behavior, etc.&#x0a;&#x0a;Supports Markdown: **bold**, _italic_, `code`, - lists"
                                  Text="{x:Bind ViewModel.Body, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  TextWrapping="Wrap" AcceptsReturn="True" MinHeight="140"
@@ -221,9 +221,9 @@
                     <!-- Image attachments -->
                     <StackPanel Spacing="8">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Screenshots" Style="{StaticResource BodyStrongTextBlockStyle}"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_25" Text="Screenshots" Style="{StaticResource BodyStrongTextBlockStyle}"
                                        VerticalAlignment="Center"/>
-                            <TextBlock Text="(optional, max 5)" FontSize="12"
+                            <TextBlock x:Uid="Views_FeedbackPage__TextBlock_26" Text="(optional, max 5)" FontSize="12"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
@@ -243,7 +243,7 @@
                                             Width="100" Height="100">
                                         <Grid>
                                             <Image Stretch="UniformToFill" Loaded="ImageThumbnail_Loaded"/>
-                                            <Button Click="RemoveImage_Click"
+                                            <Button x:Uid="Views_FeedbackPage__Button_27" Click="RemoveImage_Click"
                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
                                                     Padding="4" Margin="2"
                                                     Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
@@ -267,11 +267,11 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                                     <FontIcon Glyph="&#xE8B9;" FontSize="16"
                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                    <HyperlinkButton Content="Browse files" Click="BrowseImages_Click" Padding="0"/>
-                                    <TextBlock Text="or drag and drop" VerticalAlignment="Center"
+                                    <HyperlinkButton x:Uid="Views_FeedbackPage__HyperlinkButton_28" Content="Browse files" Click="BrowseImages_Click" Padding="0"/>
+                                    <TextBlock x:Uid="Views_FeedbackPage__TextBlock_29" Text="or drag and drop" VerticalAlignment="Center"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13"/>
                                 </StackPanel>
-                                <TextBlock Text="PNG, JPG, GIF, WebP, BMP — max 5 MB each"
+                                <TextBlock x:Uid="Views_FeedbackPage__TextBlock_30" Text="PNG, JPG, GIF, WebP, BMP — max 5 MB each"
                                            FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                            HorizontalAlignment="Center"/>
                             </StackPanel>
@@ -288,21 +288,21 @@
                                 Visibility="{x:Bind ViewModel.ShowSeverity, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <!-- Severity -->
                         <StackPanel Spacing="0">
-                            <ComboBox x:Name="SeverityBox"
+                            <ComboBox x:Uid="Views_FeedbackPage__ComboBox_31" x:Name="SeverityBox"
                                       PlaceholderText="Select..."
                                       SelectedIndex="{x:Bind ViewModel.SeverityIndex, Mode=TwoWay}"
                                       MinWidth="200" HorizontalAlignment="Left">
                                 <ComboBox.Header>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="Severity"/>
+                                        <TextBlock x:Uid="Views_FeedbackPage__TextBlock_32" Text="Severity"/>
                                         <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                    FontWeight="Bold"/>
                                     </StackPanel>
                                 </ComboBox.Header>
                                 <ComboBoxItem Content="Low"/>
-                                <ComboBoxItem Content="Medium"/>
-                                <ComboBoxItem Content="High"/>
-                                <ComboBoxItem Content="Critical"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_33" Content="Medium"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_34" Content="High"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_35" Content="Critical"/>
                             </ComboBox>
                             <TextBlock Text="{x:Bind ViewModel.SeverityError, Mode=OneWay}"
                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
@@ -312,22 +312,22 @@
 
                         <!-- Reproducibility -->
                         <StackPanel Spacing="0">
-                            <ComboBox x:Name="ReproducibilityBox"
+                            <ComboBox x:Uid="Views_FeedbackPage__ComboBox_36" x:Name="ReproducibilityBox"
                                       PlaceholderText="Select..."
                                       SelectedIndex="{x:Bind ViewModel.ReproducibilityIndex, Mode=TwoWay}"
                                       MinWidth="240" HorizontalAlignment="Left">
                                 <ComboBox.Header>
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="Reproducibility"/>
+                                        <TextBlock x:Uid="Views_FeedbackPage__TextBlock_37" Text="Reproducibility"/>
                                         <TextBlock Text="*" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                    FontWeight="Bold"/>
                                     </StackPanel>
                                 </ComboBox.Header>
-                                <ComboBoxItem Content="Always"/>
-                                <ComboBoxItem Content="Sometimes"/>
-                                <ComboBoxItem Content="Rarely"/>
-                                <ComboBoxItem Content="Unable to reproduce"/>
-                                <ComboBoxItem Content="Not applicable"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_38" Content="Always"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_39" Content="Sometimes"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_40" Content="Rarely"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_41" Content="Unable to reproduce"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_42" Content="Not applicable"/>
                             </ComboBox>
                             <TextBlock Text="{x:Bind ViewModel.ReproducibilityError, Mode=OneWay}"
                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
@@ -338,7 +338,7 @@
 
                     <!-- Privacy toggles -->
                     <StackPanel Spacing="4">
-                        <controls:SettingsCard Header="Include diagnostics"
+                        <controls:SettingsCard x:Uid="Views_FeedbackPage__SettingsCard_43" Header="Include diagnostics"
                                                Description="Attach recent app logs (auto-scrubbed of personal info)">
                             <controls:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE9D9;"/>
@@ -347,7 +347,7 @@
                                           OnContent="" OffContent=""/>
                         </controls:SettingsCard>
 
-                        <controls:SettingsCard Header="Include device metadata"
+                        <controls:SettingsCard x:Uid="Views_FeedbackPage__SettingsCard_44" Header="Include device metadata"
                                                Description="Share OS version, architecture, and app version">
                             <controls:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE7F7;"/>
@@ -356,7 +356,7 @@
                                           OnContent="" OffContent=""/>
                         </controls:SettingsCard>
 
-                        <controls:SettingsCard Header="Submit anonymously"
+                        <controls:SettingsCard x:Uid="Views_FeedbackPage__SettingsCard_45" Header="Submit anonymously"
                                                Description="No personal information will be attached">
                             <controls:SettingsCard.HeaderIcon>
                                 <FontIcon Glyph="&#xE77B;"/>
@@ -366,13 +366,13 @@
                         </controls:SettingsCard>
                     </StackPanel>
 
-                    <TextBox Header="Contact email (optional)"
+                    <TextBox x:Uid="Views_FeedbackPage__TextBox_46" Header="Contact email (optional)"
                              PlaceholderText="your@email.com"
                              Text="{x:Bind ViewModel.ContactEmail, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              MaxLength="254" MaxWidth="400" HorizontalAlignment="Left"
                              Visibility="{x:Bind ViewModel.ShowContactEmail, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                    <TextBlock Text="Diagnostics logs are automatically scrubbed of emails, tokens, and file paths before transmission."
+                    <TextBlock x:Uid="Views_FeedbackPage__TextBlock_47" Text="Diagnostics logs are automatically scrubbed of emails, tokens, and file paths before transmission."
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                FontSize="11" TextWrapping="Wrap"/>
 
@@ -381,7 +381,7 @@
                                 Margin="0,8,0,16">
                         <ProgressRing IsActive="{x:Bind ViewModel.IsSubmitting, Mode=OneWay}"
                                       Width="20" Height="20" VerticalAlignment="Center"/>
-                        <Button Content="Submit Feedback" MinWidth="150"
+                        <Button x:Uid="Views_FeedbackPage__Button_48" Content="Submit Feedback" MinWidth="150"
                                 Style="{StaticResource AccentButtonStyle}"
                                 Command="{x:Bind ViewModel.SubmitCommand}"/>
                     </StackPanel>

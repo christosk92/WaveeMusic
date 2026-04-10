@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -9,18 +10,22 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class PreviewAudioVisualizer : UserControl
 {
-    public const int VisibleBarCount = 28;
+    private const float Tau = MathF.PI * 2f;
+    public const int VisibleBarCount = 24;
+    private const int WaveSampleCount = 120;
 
     private readonly float[] _targetLevels = new float[VisibleBarCount];
     private readonly float[] _renderedLevels = new float[VisibleBarCount];
-    private readonly Border[] _bars = new Border[VisibleBarCount];
+    private readonly float[] _mappedLevels = new float[VisibleBarCount];
+    private readonly float[] _spatialLevels = new float[VisibleBarCount];
 
     private bool _isActive;
     private bool _isRenderingSubscribed;
     private int _framesSincePush = 999;
-    private float _idlePhase;
     private Color _cachedBarColor = Colors.Transparent;
     private Color _cachedTrackColor = Colors.Transparent;
+    private float _primaryPhase;
+    private float _secondaryPhase;
 
     public static readonly DependencyProperty BarColorProperty =
         DependencyProperty.Register(nameof(BarColor), typeof(Color), typeof(PreviewAudioVisualizer),
@@ -48,7 +53,6 @@ public sealed partial class PreviewAudioVisualizer : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         SizeChanged += OnSizeChanged;
-        EnsureBarsCreated();
         Reset();
     }
 
@@ -60,7 +64,7 @@ public sealed partial class PreviewAudioVisualizer : UserControl
             Reset();
 
         UpdateRenderingSubscription();
-        ApplyBarVisuals();
+        VisualizerCanvas?.Invalidate();
     }
 
     public void PushLevels(ReadOnlySpan<float> levels)
@@ -86,43 +90,61 @@ public sealed partial class PreviewAudioVisualizer : UserControl
 
             var sampleCount = Math.Max(1, sampleEnd - sampleStart);
             var rms = MathF.Sqrt(energy / sampleCount);
-            var combined = (peak * 0.82f) + (rms * 0.18f);
-            var boosted = MathF.Pow(Math.Clamp((combined - 0.015f) * 1.55f, 0f, 1f), 0.72f);
-            _targetLevels[i] = Math.Clamp(boosted, 0f, 1f);
+            var combined = (peak * 0.64f) + (rms * 0.36f);
+            var boosted = MathF.Pow(Math.Clamp((combined - 0.028f) * 1.08f, 0f, 1f), 1.18f);
+            _mappedLevels[i] = Math.Clamp(boosted, 0f, 1f);
+        }
+
+        for (int i = 0; i < VisibleBarCount; i++)
+        {
+            var left = i > 0 ? _mappedLevels[i - 1] : _mappedLevels[i];
+            var center = _mappedLevels[i];
+            var right = i + 1 < VisibleBarCount ? _mappedLevels[i + 1] : _mappedLevels[i];
+            _spatialLevels[i] = (left * 0.24f) + (center * 0.52f) + (right * 0.24f);
+        }
+
+        for (int i = 0; i < VisibleBarCount; i++)
+        {
+            var left = i > 0 ? _spatialLevels[i - 1] : _spatialLevels[i];
+            var center = _spatialLevels[i];
+            var right = i + 1 < VisibleBarCount ? _spatialLevels[i + 1] : _spatialLevels[i];
+            _targetLevels[i] = Math.Clamp((left * 0.14f) + (center * 0.72f) + (right * 0.14f), 0f, 1f);
         }
 
         _framesSincePush = 0;
-        ApplyBarVisuals();
+        VisualizerCanvas?.Invalidate();
     }
 
     public void Reset()
     {
         Array.Clear(_targetLevels);
         Array.Clear(_renderedLevels);
+        Array.Clear(_mappedLevels);
+        Array.Clear(_spatialLevels);
         _framesSincePush = 999;
-        _idlePhase = 0;
-        ApplyBarVisuals();
+        _primaryPhase = 0f;
+        _secondaryPhase = 0f;
+        VisualizerCanvas?.Invalidate();
     }
 
     private static void OnBarColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var self = (PreviewAudioVisualizer)d;
         self._cachedBarColor = (Color)e.NewValue;
-        self.ApplyBarVisuals();
+        self.VisualizerCanvas?.Invalidate();
     }
 
     private static void OnTrackColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var self = (PreviewAudioVisualizer)d;
         self._cachedTrackColor = (Color)e.NewValue;
-        self.ApplyBarVisuals();
+        self.VisualizerCanvas?.Invalidate();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        EnsureBarsCreated();
         UpdateRenderingSubscription();
-        ApplyBarVisuals();
+        VisualizerCanvas?.Invalidate();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -132,36 +154,7 @@ public sealed partial class PreviewAudioVisualizer : UserControl
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplyBarVisuals();
-    }
-
-    private void EnsureBarsCreated()
-    {
-        if (BarHost == null || _bars[0] != null)
-            return;
-
-        BarHost.ColumnDefinitions.Clear();
-        BarHost.Children.Clear();
-
-        for (int i = 0; i < VisibleBarCount; i++)
-        {
-            BarHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var bar = new Border
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                MinHeight = 3,
-                Height = 3,
-                CornerRadius = new CornerRadius(2),
-                Background = new SolidColorBrush(Colors.Transparent),
-                Opacity = 0
-            };
-
-            Grid.SetColumn(bar, i);
-            BarHost.Children.Add(bar);
-            _bars[i] = bar;
-        }
+        VisualizerCanvas?.Invalidate();
     }
 
     private void UpdateRenderingSubscription()
@@ -191,60 +184,141 @@ public sealed partial class PreviewAudioVisualizer : UserControl
     private void CompositionTarget_Rendering(object? sender, object e)
     {
         _framesSincePush++;
-        _idlePhase += 0.085f;
+        var overallEnergy = 0f;
 
         for (int i = 0; i < VisibleBarCount; i++)
         {
-            var t = i / (float)(VisibleBarCount - 1);
-            var edgeBias = 0.94f + (0.16f * MathF.Sin(t * MathF.PI));
-
             if (_framesSincePush > 2)
-                _targetLevels[i] *= 0.9f;
+                _targetLevels[i] *= 0.84f;
 
-            var idleCarrier =
-                0.045f +
-                (0.028f * MathF.Sin(_idlePhase + (t * 6.2f))) +
-                (0.02f * MathF.Sin((_idlePhase * 1.45f) - (t * 4.6f)));
-            var idleEnvelope = MathF.Max(0.012f, idleCarrier * edgeBias);
-            var liveEnvelope = _targetLevels[i] * edgeBias;
-            var targetEnvelope = MathF.Max(idleEnvelope, liveEnvelope);
-
-            _renderedLevels[i] += (targetEnvelope - _renderedLevels[i]) * 0.38f;
+            var targetEnvelope = _targetLevels[i];
+            var smoothing = targetEnvelope > _renderedLevels[i] ? 0.52f : 0.3f;
+            _renderedLevels[i] += (targetEnvelope - _renderedLevels[i]) * smoothing;
             _renderedLevels[i] = Math.Clamp(_renderedLevels[i], 0f, 1f);
+            overallEnergy += _renderedLevels[i];
         }
 
-        ApplyBarVisuals();
+        overallEnergy /= VisibleBarCount;
+        var motionStep = MathF.Max(0f, overallEnergy - 0.01f);
+        _primaryPhase = WrapPhase(_primaryPhase + (motionStep * 0.12f));
+        _secondaryPhase = WrapPhase(_secondaryPhase + (motionStep * 0.068f));
+
+        VisualizerCanvas?.Invalidate();
     }
 
-    private void ApplyBarVisuals()
+    private void VisualizerCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
-        if (BarHost == null)
+        var width = (float)sender.ActualWidth;
+        var height = (float)sender.ActualHeight;
+        if (width <= 0f || height <= 0f)
             return;
 
-        EnsureBarsCreated();
-
+        var ds = args.DrawingSession;
         var activeColor = ResolveColor(_cachedBarColor, "HomeBaselineCardPreviewVisualizerForegroundColor", Colors.White);
-        var baseColor = ResolveColor(_cachedTrackColor, "HomeBaselineCardPreviewVisualizerTrackColor", WithAlpha(activeColor, 72));
+        var baseColor = ResolveColor(_cachedTrackColor, "HomeBaselineCardPreviewVisualizerTrackColor", WithAlpha(activeColor, 56));
         if (baseColor.A == 0)
-            baseColor = WithAlpha(activeColor, 72);
+            baseColor = WithAlpha(activeColor, 56);
 
-        var availableHeight = (float)Math.Max(8, BarHost.ActualHeight > 0 ? BarHost.ActualHeight : ActualHeight);
-        var minHeight = MathF.Max(3f, availableHeight * 0.03f);
-        var glowColor = Lighten(activeColor, 0.3f);
+        var glowColor = Lighten(activeColor, 0.18f);
+        var softGlowColor = Blend(baseColor, glowColor, 0.42f);
+        var horizonColor = WithAlpha(Blend(baseColor, glowColor, 0.24f), 108);
+        var centerY = height * 0.58f;
+        var sideInset = MathF.Max(6f, width * 0.02f);
+        var drawableWidth = MathF.Max(8f, width - (sideInset * 2f));
+        var overallEnergy = AverageRange(_renderedLevels, 0, VisibleBarCount);
+        var lowEnergy = AverageRange(_renderedLevels, 0, Math.Max(1, VisibleBarCount / 3));
+        var midEnergy = AverageRange(_renderedLevels, VisibleBarCount / 4, Math.Max(1, VisibleBarCount / 2));
+        var highEnergy = AverageRange(_renderedLevels, VisibleBarCount / 2, VisibleBarCount - (VisibleBarCount / 2));
+        var maxAmplitude = MathF.Max(12f, height * (0.24f + (overallEnergy * 0.16f)));
 
-        for (int i = 0; i < VisibleBarCount; i++)
+        DrawWaveGlow(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0f, 1.04f, WithAlpha(softGlowColor, 34), 7.5f);
+        DrawWaveGlow(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0.72f, 0.7f, WithAlpha(softGlowColor, 24), 4.75f);
+        DrawWaveGlow(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, -0.94f, -0.56f, WithAlpha(softGlowColor, 16), 3f);
+
+        ds.DrawLine(sideInset, centerY, sideInset + drawableWidth, centerY, horizonColor, 1f);
+
+        DrawWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0.72f, 0.7f, WithAlpha(Blend(baseColor, glowColor, 0.58f), 84), 1.08f);
+        DrawWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, -0.94f, -0.56f, WithAlpha(Blend(baseColor, glowColor, 0.52f), 62), 1f);
+        DrawWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0f, 1.04f, WithAlpha(glowColor, 236), 1.82f);
+    }
+
+    private void DrawWaveGlow(
+        Microsoft.Graphics.Canvas.CanvasDrawingSession ds,
+        float startX,
+        float width,
+        float centerY,
+        float amplitude,
+        float overallEnergy,
+        float lowEnergy,
+        float midEnergy,
+        float highEnergy,
+        float phaseOffset,
+        float amplitudeScale,
+        Color color,
+        float strokeWidth)
+    {
+        if (strokeWidth <= 0f || color.A == 0)
+            return;
+
+        DrawWaveLine(ds, startX, width, centerY, amplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, phaseOffset, amplitudeScale, color, strokeWidth);
+    }
+
+    private void DrawWaveLine(
+        Microsoft.Graphics.Canvas.CanvasDrawingSession ds,
+        float startX,
+        float width,
+        float centerY,
+        float amplitude,
+        float overallEnergy,
+        float lowEnergy,
+        float midEnergy,
+        float highEnergy,
+        float phaseOffset,
+        float amplitudeScale,
+        Color color,
+        float strokeWidth)
+    {
+        var previousX = startX;
+        var previousY = ComputeWaveY(0f, centerY, amplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, phaseOffset, amplitudeScale);
+
+        for (int sampleIndex = 1; sampleIndex < WaveSampleCount; sampleIndex++)
         {
-            var bar = _bars[i];
-            if (bar == null)
-                continue;
-
-            var level = Math.Clamp(_renderedLevels[i], 0f, 1f);
-            var visualLevel = MathF.Min(1f, 0.02f + (MathF.Pow(level, 0.46f) * 1.2f));
-            var barHeight = minHeight + ((availableHeight - minHeight) * visualLevel);
-            bar.Height = barHeight;
-            bar.Opacity = 0.18 + (visualLevel * 0.82f);
-            bar.Background = new SolidColorBrush(Blend(baseColor, glowColor, 0.3f + (level * 0.7f)));
+            var t = sampleIndex / (float)(WaveSampleCount - 1);
+            var x = startX + (width * t);
+            var y = ComputeWaveY(t, centerY, amplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, phaseOffset, amplitudeScale);
+            ds.DrawLine(previousX, previousY, x, y, color, strokeWidth);
+            previousX = x;
+            previousY = y;
         }
+    }
+
+    private float ComputeWaveY(
+        float t,
+        float centerY,
+        float amplitude,
+        float overallEnergy,
+        float lowEnergy,
+        float midEnergy,
+        float highEnergy,
+        float phaseOffset,
+        float amplitudeScale)
+    {
+        var sampledLevel = Math.Clamp(SampleCatmullRom(_renderedLevels, t), 0f, 1f);
+        var ambientFloor = overallEnergy <= 0.02f
+            ? 0f
+            : (0.006f + (overallEnergy * 0.018f) + (t * 0.003f));
+        var envelope = Math.Clamp((sampledLevel * 0.97f) + ambientFloor, 0f, 1f);
+        var focus = MathF.Pow(Math.Clamp(MathF.Sin(t * MathF.PI), 0f, 1f), 0.78f);
+        var liveEnvelope = MathF.Pow(envelope, 0.95f) * focus;
+        var primaryCycles = 1.05f + (lowEnergy * 0.92f);
+        var secondaryCycles = 2.2f + (midEnergy * 1.15f);
+        var tertiaryCycles = 5.1f + (highEnergy * 1.7f);
+        var primary = MathF.Sin((t * primaryCycles * Tau) + _primaryPhase + phaseOffset);
+        var secondary = 0.4f * MathF.Sin((t * secondaryCycles * Tau) - (_secondaryPhase * 1.08f) + (phaseOffset * 0.68f));
+        var tertiary = 0.16f * MathF.Sin((t * tertiaryCycles * Tau) + (_primaryPhase * 0.55f) - (phaseOffset * 0.42f));
+        var motion = primary + secondary + tertiary;
+        var displacement = amplitude * amplitudeScale * liveEnvelope * motion * (0.92f + (overallEnergy * 0.2f));
+        return centerY - displacement;
     }
 
     private static Color ResolveColor(Color candidate, string resourceKey, Color fallback)
@@ -285,5 +359,58 @@ public sealed partial class PreviewAudioVisualizer : UserControl
             (byte)(color.R + ((255 - color.R) * amount)),
             (byte)(color.G + ((255 - color.G) * amount)),
             (byte)(color.B + ((255 - color.B) * amount)));
+    }
+
+    private static float AverageRange(float[] values, int start, int count)
+    {
+        if (values.Length == 0 || count <= 0)
+            return 0f;
+
+        start = Math.Clamp(start, 0, values.Length - 1);
+        var end = Math.Clamp(start + count, start + 1, values.Length);
+        var sum = 0f;
+        for (int i = start; i < end; i++)
+            sum += values[i];
+
+        return sum / (end - start);
+    }
+
+    private static float SampleCatmullRom(float[] values, float t)
+    {
+        if (values.Length == 0)
+            return 0f;
+
+        if (values.Length == 1)
+            return values[0];
+
+        t = Math.Clamp(t, 0f, 1f);
+        var position = t * (values.Length - 1);
+        var index1 = (int)MathF.Floor(position);
+        var index2 = Math.Min(values.Length - 1, index1 + 1);
+        var index0 = Math.Max(0, index1 - 1);
+        var index3 = Math.Min(values.Length - 1, index2 + 1);
+        var localT = position - index1;
+        var localT2 = localT * localT;
+        var localT3 = localT2 * localT;
+        var p0 = values[index0];
+        var p1 = values[index1];
+        var p2 = values[index2];
+        var p3 = values[index3];
+
+        var interpolated = 0.5f * (
+            (2f * p1) +
+            ((-p0 + p2) * localT) +
+            ((2f * p0) - (5f * p1) + (4f * p2) - p3) * localT2 +
+            ((-p0 + (3f * p1) - (3f * p2) + p3) * localT3));
+
+        return Math.Clamp(interpolated, 0f, 1f);
+    }
+
+    private static float WrapPhase(float phase)
+    {
+        while (phase > Tau)
+            phase -= Tau;
+
+        return phase;
     }
 }

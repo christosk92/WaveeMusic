@@ -4,7 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Button x:Name="InternalButton"
+    <Button x:Uid="Controls_HeartButton__Button_1" x:Name="InternalButton"
             Click="OnClick"
             Background="Transparent"
             BorderThickness="0"

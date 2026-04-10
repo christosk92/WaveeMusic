@@ -92,10 +92,17 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         var sink = AudioSinkFactory.CreateDefault(_logger);
         var decoderRegistry = CreateDecoderRegistry();
-        var processingChain = CreateProcessingChain(config);
+        var volumeProcessor = new VolumeProcessor();
+        if (sink is PortAudioSink portAudioSink)
+            portAudioSink.SetRealtimeVolumeProcessor(volumeProcessor);
+
+        var processingChain = CreateProcessingChain(
+            config,
+            includeBufferedVolume: sink is not PortAudioSink,
+            volumeProcessor);
         var httpClient = new HttpClient();
 
-        _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, _logger);
+        _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, volumeProcessor, _logger);
         _previewAnalysisService = new PreviewAnalysisService(
             _bassDecoder ?? new BassDecoder(_logger),
             SendPreviewVisualizationFrameAsync,
@@ -113,12 +120,12 @@ internal sealed class AudioHostService : IAsyncDisposable
         return registry;
     }
 
-    private AudioProcessingChain CreateProcessingChain(AudioHostConfig? config)
+    private AudioProcessingChain CreateProcessingChain(
+        AudioHostConfig? config,
+        bool includeBufferedVolume,
+        VolumeProcessor volumeProcessor)
     {
         var chain = new AudioProcessingChain();
-
-        // Volume
-        chain.AddProcessor(new VolumeProcessor());
 
         // Normalization
         var normalization = new NormalizationProcessor();
@@ -140,6 +147,10 @@ internal sealed class AudioHostService : IAsyncDisposable
         // Compressor + Limiter for safety
         chain.AddProcessor(new CompressorProcessor());
         chain.AddProcessor(new LimiterProcessor());
+
+        // Non-realtime sinks still need user volume in the normal buffered chain.
+        if (includeBufferedVolume)
+            chain.AddProcessor(volumeProcessor);
 
         return chain;
     }

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -194,7 +195,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to load details for track {TrackId}", trackId);
-            ErrorMessage = "Could not load details";
+            ErrorMessage = AppLocalization.GetString("TrackDetails_LoadFailed");
         }
         finally
         {

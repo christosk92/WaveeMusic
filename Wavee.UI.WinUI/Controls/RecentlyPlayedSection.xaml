@@ -38,7 +38,7 @@
     </UserControl.Resources>
 
     <StackPanel x:Name="RootPanel" Visibility="Collapsed">
-        <TextBlock
+        <TextBlock x:Uid="Controls_RecentlyPlayedSection__TextBlock_1"
             Text="Recently Played"
             Style="{StaticResource SubtitleTextBlockStyle}"
             FontWeight="Bold"

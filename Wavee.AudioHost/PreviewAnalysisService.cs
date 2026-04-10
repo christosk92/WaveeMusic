@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Wavee.AudioHost.Audio.Abstractions;
 using Wavee.AudioHost.Audio.Decoders;
@@ -9,8 +10,13 @@ namespace Wavee.AudioHost;
 
 internal sealed class PreviewAnalysisService : IAsyncDisposable
 {
-    private const int BucketCount = 12;
+    private const int BucketCount = 28;
+    private const int FftLength = 2048;
     private const double MinFrameIntervalMs = 50;
+    private const float MinFrequencyHz = 45f;
+    private const float MaxFrequencyHz = 16000f;
+
+    private static readonly float[] HannWindow = CreateHannWindow();
 
     private readonly BassDecoder _decoder;
     private readonly Func<PreviewVisualizationFrame, CancellationToken, Task> _sendFrameAsync;
@@ -103,8 +109,9 @@ internal sealed class PreviewAnalysisService : IAsyncDisposable
     private async Task RunSessionAsync(string sessionId, string previewUrl, CancellationToken ct)
     {
         long sequence = 0;
-        long lastFrameTimestamp = 0;
+        long lastFramePositionMs = -1;
         var smoothed = new float[BucketCount];
+        var playbackClock = Stopwatch.StartNew();
 
         try
         {
@@ -119,14 +126,18 @@ internal sealed class PreviewAnalysisService : IAsyncDisposable
                     if (ct.IsCancellationRequested)
                         break;
 
-                    var now = Environment.TickCount64;
-                    if (lastFrameTimestamp != 0 && now - lastFrameTimestamp < MinFrameIntervalMs)
+                    if (lastFramePositionMs >= 0 &&
+                        buffer.PositionMs - lastFramePositionMs < MinFrameIntervalMs)
                         continue;
 
                     if (!TryCreateFrame(buffer, format, smoothed, out var amplitudes))
                         continue;
 
-                    lastFrameTimestamp = now;
+                    var delayMs = buffer.PositionMs - playbackClock.ElapsedMilliseconds;
+                    if (delayMs > 1)
+                        await Task.Delay(TimeSpan.FromMilliseconds(delayMs), ct).ConfigureAwait(false);
+
+                    lastFramePositionMs = buffer.PositionMs;
                     sequence++;
 
                     await _sendFrameAsync(new PreviewVisualizationFrame
@@ -232,16 +243,19 @@ internal sealed class PreviewAnalysisService : IAsyncDisposable
         var pcm = buffer.Data.Span;
         var bytesPerFrame = Math.Max(format.BytesPerFrame, sizeof(short));
         var frameCount = pcm.Length / bytesPerFrame;
-        if (frameCount <= 0)
+        if (frameCount < 16)
             return false;
 
-        Span<float> peak = stackalloc float[BucketCount];
-        Span<float> sumSquares = stackalloc float[BucketCount];
-        Span<int> counts = stackalloc int[BucketCount];
+        var real = new float[FftLength];
+        var imaginary = new float[FftLength];
+        var sourceFrameOffset = Math.Max(0, frameCount - FftLength);
+        var framesToCopy = Math.Min(frameCount, FftLength);
+        var fftOffset = FftLength - framesToCopy;
 
-        for (int frameIndex = 0; frameIndex < frameCount; frameIndex++)
+        for (int frameIndex = 0; frameIndex < framesToCopy; frameIndex++)
         {
-            var offset = frameIndex * bytesPerFrame;
+            var sourceFrameIndex = sourceFrameOffset + frameIndex;
+            var offset = sourceFrameIndex * bytesPerFrame;
             float mixed = 0;
 
             for (int channel = 0; channel < format.Channels; channel++)
@@ -255,27 +269,124 @@ internal sealed class PreviewAnalysisService : IAsyncDisposable
             }
 
             mixed /= Math.Max(format.Channels, 1);
-            var magnitude = MathF.Abs(mixed);
-            var bucket = Math.Min(BucketCount - 1, (frameIndex * BucketCount) / frameCount);
-
-            if (magnitude > peak[bucket])
-                peak[bucket] = magnitude;
-
-            sumSquares[bucket] += magnitude * magnitude;
-            counts[bucket]++;
+            real[fftOffset + frameIndex] = mixed * HannWindow[fftOffset + frameIndex];
         }
 
+        Transform(real, imaginary);
+
         amplitudes = new float[BucketCount];
+        var rawBands = new float[BucketCount];
+        var sampleRate = Math.Max(1, format.SampleRate);
+        var nyquist = Math.Max(1f, sampleRate / 2f);
+        var maxFrequency = Math.Min(MaxFrequencyHz, nyquist * 0.92f);
+        var minFrequency = Math.Min(MinFrequencyHz, maxFrequency * 0.5f);
+        var maxBand = 0f;
+
         for (int i = 0; i < BucketCount; i++)
         {
-            var rms = counts[i] > 0 ? MathF.Sqrt(sumSquares[i] / counts[i]) : 0f;
-            var envelope = (peak[i] * 0.62f) + (rms * 0.38f);
-            var normalized = Math.Clamp(MathF.Pow(envelope * 2.75f, 0.78f), 0f, 1f);
-            smoothed[i] += (normalized - smoothed[i]) * 0.42f;
-            amplitudes[i] = smoothed[i];
+            var bandStart = i / (float)BucketCount;
+            var bandEnd = (i + 1) / (float)BucketCount;
+            var lowFrequency = LogLerp(minFrequency, maxFrequency, bandStart);
+            var highFrequency = LogLerp(minFrequency, maxFrequency, bandEnd);
+            var startBin = Math.Clamp((int)MathF.Floor(lowFrequency * FftLength / sampleRate), 1, (FftLength / 2) - 1);
+            var endBin = Math.Clamp((int)MathF.Ceiling(highFrequency * FftLength / sampleRate), startBin + 1, FftLength / 2);
+
+            var sum = 0f;
+            var peak = 0f;
+            for (int bin = startBin; bin < endBin; bin++)
+            {
+                var magnitude = MathF.Sqrt((real[bin] * real[bin]) + (imaginary[bin] * imaginary[bin])) / FftLength;
+                var frequency = bin * sampleRate / (float)FftLength;
+                var compensated = magnitude * MathF.Pow(MathF.Max(frequency, 1f) / 250f, 0.18f);
+                sum += compensated * compensated;
+                peak = MathF.Max(peak, compensated);
+            }
+
+            var binCount = Math.Max(1, endBin - startBin);
+            var rms = MathF.Sqrt(sum / binCount);
+            var raw = (peak * 0.72f) + (rms * 0.28f);
+            rawBands[i] = raw;
+            maxBand = MathF.Max(maxBand, raw);
+        }
+
+        var gain = maxBand > 0.000001f
+            ? MathF.Min(18f, 0.9f / maxBand)
+            : 1f;
+
+        for (int i = 0; i < BucketCount; i++)
+        {
+            var normalized = Math.Clamp(MathF.Pow(rawBands[i] * gain, 0.58f), 0f, 1f);
+            var smoothing = normalized > smoothed[i] ? 0.56f : 0.22f;
+            smoothed[i] += (normalized - smoothed[i]) * smoothing;
+            amplitudes[i] = Math.Clamp(smoothed[i], 0f, 1f);
         }
 
         return true;
+    }
+
+    private static float[] CreateHannWindow()
+    {
+        var window = new float[FftLength];
+        for (int i = 0; i < window.Length; i++)
+            window[i] = 0.5f - (0.5f * MathF.Cos(2f * MathF.PI * i / (window.Length - 1)));
+
+        return window;
+    }
+
+    private static float LogLerp(float start, float end, float amount)
+    {
+        start = MathF.Max(start, 1f);
+        end = MathF.Max(end, start + 1f);
+        return start * MathF.Pow(end / start, amount);
+    }
+
+    private static void Transform(float[] real, float[] imaginary)
+    {
+        var n = real.Length;
+        for (int i = 1, j = 0; i < n; i++)
+        {
+            var bit = n >> 1;
+            for (; (j & bit) != 0; bit >>= 1)
+                j ^= bit;
+
+            j ^= bit;
+            if (i >= j)
+                continue;
+
+            (real[i], real[j]) = (real[j], real[i]);
+            (imaginary[i], imaginary[j]) = (imaginary[j], imaginary[i]);
+        }
+
+        for (int length = 2; length <= n; length <<= 1)
+        {
+            var angle = -2f * MathF.PI / length;
+            var wLengthReal = MathF.Cos(angle);
+            var wLengthImaginary = MathF.Sin(angle);
+
+            for (int i = 0; i < n; i += length)
+            {
+                var wReal = 1f;
+                var wImaginary = 0f;
+                var halfLength = length >> 1;
+
+                for (int j = 0; j < halfLength; j++)
+                {
+                    var evenIndex = i + j;
+                    var oddIndex = evenIndex + halfLength;
+                    var oddReal = (real[oddIndex] * wReal) - (imaginary[oddIndex] * wImaginary);
+                    var oddImaginary = (real[oddIndex] * wImaginary) + (imaginary[oddIndex] * wReal);
+
+                    real[oddIndex] = real[evenIndex] - oddReal;
+                    imaginary[oddIndex] = imaginary[evenIndex] - oddImaginary;
+                    real[evenIndex] += oddReal;
+                    imaginary[evenIndex] += oddImaginary;
+
+                    var nextWReal = (wReal * wLengthReal) - (wImaginary * wLengthImaginary);
+                    wImaginary = (wReal * wLengthImaginary) + (wImaginary * wLengthReal);
+                    wReal = nextWReal;
+                }
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -10,21 +10,54 @@
 
     <ScrollView>
         <StackPanel Spacing="4" Padding="0,16,0,24">
-            <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
-            <controls:SettingsCard Header="Theme"
+            <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_1" Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+            <controls:SettingsCard x:Uid="Controls_Settings_GeneralSettingsSection__SettingsCard_2" Header="Theme"
                                    Description="Choose light, dark, or match your system">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE790;"/>
                 </controls:SettingsCard.HeaderIcon>
                 <ComboBox SelectedIndex="{x:Bind ViewModel.SelectedThemeIndex, Mode=TwoWay}"
                           MinWidth="140">
-                    <ComboBoxItem Content="Light"/>
-                    <ComboBoxItem Content="Dark"/>
-                    <ComboBoxItem Content="System"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_GeneralSettingsSection__ComboBoxItem_3" Content="Light"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_GeneralSettingsSection__ComboBoxItem_4" Content="Dark"/>
+                    <ComboBoxItem x:Uid="Controls_Settings_GeneralSettingsSection__ComboBoxItem_5" Content="System"/>
                 </ComboBox>
             </controls:SettingsCard>
 
-            <TextBlock Text="Display" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <controls:SettingsCard x:Uid="Settings_General_LanguageCard">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE774;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <StackPanel Spacing="8">
+                    <ComboBox SelectedIndex="{x:Bind ViewModel.SelectedLanguageIndex, Mode=TwoWay}"
+                              MinWidth="180">
+                        <ComboBoxItem x:Uid="Settings_General_LanguageSystemItem"/>
+                        <ComboBoxItem x:Uid="Settings_General_LanguageEnglishItem"/>
+                        <ComboBoxItem x:Uid="Settings_General_LanguageKoreanItem"/>
+                    </ComboBox>
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <controls:SettingsCard x:Uid="Settings_General_SpotifyLanguageCard">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE189;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <StackPanel Spacing="8">
+                    <CheckBox x:Uid="Settings_General_SpotifyLanguageSameAsAppCheckBox"
+                              IsChecked="{x:Bind ViewModel.IsSpotifyMetadataSameAsApp, Mode=TwoWay}"/>
+                    <StackPanel Spacing="8"
+                                Visibility="{x:Bind ViewModel.IsSpotifyMetadataCustomCodeVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBox x:Uid="Settings_General_SpotifyLanguageCodeTextBox"
+                                 Text="{x:Bind ViewModel.SpotifyMetadataCustomLanguageCode, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                 MaxLength="2"
+                                 MinWidth="120"/>
+                        <TextBlock x:Uid="Settings_General_SpotifyLanguageHintText"
+                                   Style="{StaticResource BodyTextBlockStyle}"/>
+                    </StackPanel>
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_6" Text="Display" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
 
             <Grid ColumnSpacing="12" Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
@@ -43,7 +76,7 @@
                             <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1" Height="2" HorizontalAlignment="Left" Width="52"/>
                             <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1" Height="2" HorizontalAlignment="Left" Width="36"/>
                         </StackPanel>
-                        <TextBlock Text="Compact" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_7" Text="Compact" FontSize="11" FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -58,7 +91,7 @@
                             <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1.5" Height="3" HorizontalAlignment="Left" Width="44"/>
                             <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="1.5" Height="3" HorizontalAlignment="Left" Width="52"/>
                         </StackPanel>
-                        <TextBlock Text="Default" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_8" Text="Default" FontSize="11" FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -72,14 +105,14 @@
                             <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="2" Height="4" HorizontalAlignment="Left" Width="56"/>
                             <Border Background="{ThemeResource TextFillColorDisabledBrush}" CornerRadius="2" Height="4" HorizontalAlignment="Left" Width="44"/>
                         </StackPanel>
-                        <TextBlock Text="Spacious" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_9" Text="Spacious" FontSize="11" FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <controls:SettingsCard Header="Zoom level"
+            <controls:SettingsCard x:Uid="Controls_Settings_GeneralSettingsSection__SettingsCard_10" Header="Zoom level"
                                    Description="{x:Bind ViewModel.ZoomPreviewLabel, Mode=OneWay}">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A3;"/>
@@ -87,7 +120,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                     <TextBlock Text="{x:Bind ViewModel.ZoomLevelDisplay, Mode=OneWay}"
                                FontWeight="SemiBold" VerticalAlignment="Center" MinWidth="36"/>
-                    <Button Content="Reset" Command="{x:Bind ViewModel.ResetZoomCommand}"/>
+                    <Button x:Uid="Controls_Settings_GeneralSettingsSection__Button_11" Content="Reset" Command="{x:Bind ViewModel.ResetZoomCommand}"/>
                 </StackPanel>
             </controls:SettingsCard>
 

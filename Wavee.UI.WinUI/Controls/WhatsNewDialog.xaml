@@ -151,14 +151,14 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <HyperlinkButton Grid.Column="0"
+                    <HyperlinkButton x:Uid="Controls_WhatsNewDialog__HyperlinkButton_1" Grid.Column="0"
                                      Content="View full changelog on GitHub"
                                      VerticalAlignment="Center"
                                      Padding="0"
                                      Visibility="{x:Bind HasReleaseUrl, Mode=OneTime}"
                                      Click="ReleaseLink_Click"/>
 
-                    <Button Grid.Column="1"
+                    <Button x:Uid="Controls_WhatsNewDialog__Button_2" Grid.Column="1"
                             Content="Start exploring"
                             Style="{StaticResource AccentButtonStyle}"
                             Padding="24,8"

@@ -71,6 +71,12 @@ public sealed record SessionConfig
     public int InitialVolume { get; init; } = 32767;
 
     /// <summary>
+    /// Preferred 2-character Spotify locale override (for example "en" or "ko").
+    /// When null or empty, Spotify services use their default locale.
+    /// </summary>
+    public string? PreferredLocale { get; init; }
+
+    /// <summary>
     /// Gets the effective client ID (user-provided or platform default).
     /// </summary>
     public string GetClientId()

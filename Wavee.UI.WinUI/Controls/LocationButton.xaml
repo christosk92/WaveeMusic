@@ -18,7 +18,7 @@
                        FontSize="13"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Visibility="{x:Bind LocationName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-            <TextBlock Text="Set location" FontSize="13"
+            <TextBlock x:Uid="Controls_LocationButton__TextBlock_1" Text="Set location" FontSize="13"
                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                        Visibility="{x:Bind LocationName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
         </StackPanel>

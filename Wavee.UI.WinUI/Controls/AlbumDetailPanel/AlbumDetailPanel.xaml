@@ -72,13 +72,13 @@
                                     Click="PlayButton_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE768;" FontSize="12"/>
-                                    <TextBlock Text="Play" FontSize="12"/>
+                                    <TextBlock x:Uid="Controls_AlbumDetailPanel_AlbumDetailPanel__TextBlock_1" Text="Play" FontSize="12"/>
                                 </StackPanel>
                             </Button>
                             <Button Padding="14,6" CornerRadius="16" Click="ShuffleButton_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8B1;" FontSize="12"/>
-                                    <TextBlock Text="Shuffle" FontSize="12"/>
+                                    <TextBlock x:Uid="Controls_AlbumDetailPanel_AlbumDetailPanel__TextBlock_2" Text="Shuffle" FontSize="12"/>
                                 </StackPanel>
                             </Button>
                             <Button Padding="8,6" Background="Transparent" BorderThickness="0">
@@ -106,7 +106,7 @@
 
                         <!-- Footer -->
                         <StackPanel Orientation="Horizontal" Spacing="12">
-                            <HyperlinkButton Content="View album" Padding="0"
+                            <HyperlinkButton x:Uid="Controls_AlbumDetailPanel_AlbumDetailPanel__HyperlinkButton_3" Content="View album" Padding="0"
                                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                              Click="ViewAlbumButton_Click"/>
                             <TextBlock x:Name="FooterYearText"

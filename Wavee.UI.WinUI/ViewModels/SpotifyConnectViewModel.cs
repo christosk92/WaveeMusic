@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using QRCoder;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Services;
 using Windows.Storage.Streams;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -50,7 +51,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
     private string? _errorMessage;
 
     [ObservableProperty]
-    private string? _statusMessage = "Requesting pairing code...";
+    private string? _statusMessage = AppLocalization.GetString("Connect_RequestingPairingCode");
 
     [ObservableProperty]
     private string? _syncStatus;
@@ -84,7 +85,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
     {
         _deviceCodeCts?.Cancel();
         _deviceCodeCts = new CancellationTokenSource();
-        StatusMessage = "Requesting pairing code...";
+        StatusMessage = AppLocalization.GetString("Connect_RequestingPairingCode");
 
         // Fire-and-forget: start device code flow in background
         _ = RunDeviceCodeFlowAsync(_deviceCodeCts.Token);
@@ -123,7 +124,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         {
             UserCode = info.UserCode;
             VerificationUri = info.VerificationUri;
-            StatusMessage = "Ready to authenticate. Use the QR code, pairing code, or open in browser.";
+            StatusMessage = AppLocalization.GetString("Connect_ReadyToAuthenticate");
             IsDeviceCodeReady = true;
 
             if (!string.IsNullOrEmpty(info.VerificationUriComplete))
@@ -201,7 +202,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         _dispatcherQueue.TryEnqueue(() =>
         {
             CurrentStep = ConnectStep.Syncing;
-            SyncStatus = "Fetching your profile...";
+            SyncStatus = AppLocalization.GetString("Connect_FetchingProfile");
             SyncProgress = 0;
         });
 
@@ -210,11 +211,11 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         // Artificial progress stages to feel responsive even if sync is fast
         var stages = new (string Message, double Progress, int DelayMs)[]
         {
-            ("Fetching your profile...", 0.1, 600),
-            ("Loading playlists...", 0.25, 800),
-            ("Syncing liked songs...", 0.45, 700),
-            ("Syncing albums...", 0.6, 600),
-            ("Syncing artists...", 0.75, 500),
+            (AppLocalization.GetString("Connect_FetchingProfile"), 0.1, 600),
+            (AppLocalization.GetString("Connect_LoadingPlaylists"), 0.25, 800),
+            (AppLocalization.GetString("Connect_SyncingLikedSongs"), 0.45, 700),
+            (AppLocalization.GetString("Connect_SyncingAlbums"), 0.6, 600),
+            (AppLocalization.GetString("Connect_SyncingArtists"), 0.75, 500),
         };
 
         // Library sync is handled by LibrarySyncOrchestrator — reacts to AuthStatusChangedMessage
@@ -236,7 +237,7 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         // Final stage
         _dispatcherQueue.TryEnqueue(() =>
         {
-            SyncStatus = "Finishing up...";
+            SyncStatus = AppLocalization.GetString("Connect_FinishingUp");
             SyncProgress = 0.95;
         });
         await Task.Delay(FinishingUpDelayMs, CancellationToken.None);
@@ -272,13 +273,13 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
     private static string GetFriendlyError(Exception ex)
     {
         if (ex.Message.Contains("access_denied", StringComparison.OrdinalIgnoreCase))
-            return "Authorization was denied. Please try again.";
+            return AppLocalization.GetString("Connect_ErrorAuthorizationDenied");
         if (ex.Message.Contains("expired", StringComparison.OrdinalIgnoreCase))
-            return "The pairing code expired. Please try again.";
+            return AppLocalization.GetString("Connect_ErrorPairingCodeExpired");
         if (ex.Message.Contains("network", StringComparison.OrdinalIgnoreCase) ||
             ex is System.Net.Http.HttpRequestException)
-            return "Network error. Check your connection and try again.";
+            return AppLocalization.GetString("Connect_ErrorNetwork");
 
-        return $"Something went wrong: {ex.Message}";
+        return AppLocalization.Format("Connect_ErrorGeneric", ex.Message);
     }
 }

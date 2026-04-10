@@ -13,6 +13,9 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ArtistsLibraryView : UserControl
 {
+    private const double NarrowLayoutBreakpoint = 800;
+    private bool _hasInitializedLayoutMode;
+
     public ArtistsLibraryViewModel ViewModel { get; }
 
     public ArtistsLibraryView(ArtistsLibraryViewModel viewModel)
@@ -24,6 +27,7 @@ public sealed partial class ArtistsLibraryView : UserControl
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         Loaded += OnLoaded;
+        SizeChanged += OnSizeChanged;
 
         // Load is idempotent (guarded in the VM); called once on first creation.
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
@@ -31,11 +35,25 @@ public sealed partial class ArtistsLibraryView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        UpdateLayoutMode(preserveContext: false);
+
         // Sync selection when loaded into the visual tree
         SyncSelectionToItemsView();
 
         // Initialize tracks panel state
         UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: false);
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateLayoutMode(preserveContext: _hasInitializedLayoutMode);
+    }
+
+    private void UpdateLayoutMode(bool preserveContext)
+    {
+        var isNarrow = ActualWidth <= NarrowLayoutBreakpoint;
+        ViewModel.SetNarrowLayout(isNarrow, preserveContext);
+        _hasInitializedLayoutMode = true;
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -146,6 +164,35 @@ public sealed partial class ArtistsLibraryView : UserControl
             ImageUrl = album.ImageUrl
         };
         NavigationHelpers.OpenAlbum(param, album.Name, NavigationHelpers.IsCtrlPressed());
+    }
+
+    private void NarrowArtistsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
+    {
+        if (sender.SelectedItem is Data.DTOs.LibraryArtistDto artist)
+        {
+            ViewModel.ShowSelectedArtistDetails(artist);
+        }
+    }
+
+    private void NarrowArtistItem_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.DataContext is Data.DTOs.LibraryArtistDto artist)
+        {
+            ViewModel.ShowSelectedArtistDetails(artist);
+        }
+    }
+
+    private void BreadcrumbBar_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        switch (args.Index)
+        {
+            case 0:
+                ViewModel.ShowArtistsRoot();
+                break;
+            case 1:
+                ViewModel.ShowSelectedArtistDetails();
+                break;
+        }
     }
 
     private void SyncSelectionToItemsView()

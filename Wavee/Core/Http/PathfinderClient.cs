@@ -78,7 +78,11 @@ public sealed class PathfinderClient : IPathfinderClient
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        httpRequest.Headers.AcceptLanguage.ParseAdd("en");
+        var locale = GetEffectiveLocale();
+        if (!string.IsNullOrEmpty(locale))
+        {
+            httpRequest.Headers.AcceptLanguage.ParseAdd(locale);
+        }
         // Artist overview needs WebPlayer platform to get watchFeedEntrypoint data
         var useWebPlayer = operationName is PathfinderOperations.QueryArtistOverview
             or PathfinderOperations.QueryNpvArtist
@@ -284,7 +288,7 @@ public sealed class PathfinderClient : IPathfinderClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artistUri);
 
-        var variables = new ArtistOverviewVariables(artistUri);
+        var variables = new ArtistOverviewVariables(artistUri, GetEffectiveLocale() ?? "");
 
         return await QueryAsync(
             variables,
@@ -421,6 +425,18 @@ public sealed class PathfinderClient : IPathfinderClient
             PathfinderOperations.UserLocationHash,
             UserLocationJsonContext.Default.UserLocationResponse,
             ct);
+    }
+
+    private string? GetEffectiveLocale()
+    {
+        var sessionLocale = _session.GetPreferredLocale();
+        if (!string.IsNullOrEmpty(sessionLocale))
+        {
+            return sessionLocale;
+        }
+
+        var userData = _session.GetUserData();
+        return userData?.PreferredLocale;
     }
 
     /// <inheritdoc />

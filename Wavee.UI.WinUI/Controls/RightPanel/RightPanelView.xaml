@@ -107,10 +107,10 @@
                 SelectedIndex="0"
                 Style="{StaticResource PivotSegmentedStyle}"
                 SelectionChanged="TabHeader_SelectionChanged">
-                <controls:SegmentedItem Content="Queue"/>
-                <controls:SegmentedItem Content="Lyrics"/>
-                <controls:SegmentedItem Content="Friends"/>
-                <controls:SegmentedItem Content="Details"/>
+                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_1" Content="Queue"/>
+                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_2" Content="Lyrics"/>
+                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_3" Content="Friends"/>
+                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_4" Content="Details"/>
             </controls:Segmented>
 
             <!-- Content area -->
@@ -175,7 +175,7 @@
                     </StackPanel>
 
                     <!-- No lyrics fallback -->
-                    <TextBlock
+                    <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_5"
                         x:Name="NoLyricsText"
                         Text="No lyrics available for this track"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -328,7 +328,7 @@
                             </StackPanel>
 
                             <!-- More options button -->
-                            <Button
+                            <Button x:Uid="Controls_RightPanel_RightPanelView__Button_6"
                                 x:Name="DetailsMoreButton"
                                 Grid.Column="2"
                                 Click="DetailsMoreButton_Click"
@@ -354,7 +354,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xED1E;" FontSize="12"
                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                    <TextBlock Text="Lyrics" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_7" Text="Lyrics" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                                 <!-- Previous line (faded) -->
@@ -385,7 +385,7 @@
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">
                             <StackPanel Spacing="4">
-                                <TextBlock
+                                <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_8"
                                     Text="About"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"
                                     Margin="0,0,0,4"/>
@@ -397,7 +397,7 @@
                                     TextTrimming="CharacterEllipsis"
                                     MaxLines="3"
                                     IsTextTrimmedChanged="DetailsBioText_IsTextTrimmedChanged"/>
-                                <HyperlinkButton
+                                <HyperlinkButton x:Uid="Controls_RightPanel_RightPanelView__HyperlinkButton_9"
                                     x:Name="DetailsBioToggle"
                                     Content="Show more"
                                     Click="DetailsBioToggle_Click"
@@ -421,7 +421,7 @@
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">
                             <StackPanel Spacing="14">
-                                <TextBlock
+                                <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_10"
                                     Text="Credits"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <ItemsRepeater x:Name="DetailsCreditGroups">
@@ -483,7 +483,7 @@
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>
-                                <HyperlinkButton
+                                <HyperlinkButton x:Uid="Controls_RightPanel_RightPanelView__HyperlinkButton_11"
                                     x:Name="DetailsCreditsToggle"
                                     Content="View all credits"
                                     Click="DetailsCreditsToggle_Click"
@@ -501,7 +501,7 @@
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">
                             <StackPanel Spacing="8">
-                                <TextBlock
+                                <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_12"
                                     Text="Concerts"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <ItemsRepeater x:Name="DetailsConcertsList">
@@ -546,7 +546,7 @@
                         <Border x:Name="DetailsRelatedVideosSection"
                                 Visibility="Collapsed">
                             <StackPanel Spacing="10">
-                                <TextBlock
+                                <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_13"
                                     Text="Related Videos"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"/>
                                 <ItemsRepeater x:Name="DetailsRelatedVideosList">

@@ -51,6 +51,7 @@ internal sealed class SessionData : IDisposable
         ArgumentNullException.ThrowIfNull(httpClient);
 
         _config = config;
+        _preferredLocale = NormalizePreferredLocale(config.PreferredLocale);
 
         // Lazy initialization for managers (thread-safe by default)
         _mercury = new Lazy<object>(() => CreateMercuryManager());
@@ -58,6 +59,22 @@ internal sealed class SessionData : IDisposable
         _audioKey = new Lazy<object>(() => CreateAudioKeyManager());
         _login5Client = new Lazy<Login5Client>(() =>
             new Login5Client(httpClient, config.GetClientId(), config.DeviceId, logger));
+    }
+
+    private static string? NormalizePreferredLocale(string? locale)
+    {
+        if (string.IsNullOrWhiteSpace(locale))
+        {
+            return null;
+        }
+
+        var trimmed = locale.Trim();
+        if (trimmed.Length != 2 || !char.IsLetter(trimmed[0]) || !char.IsLetter(trimmed[1]))
+        {
+            return null;
+        }
+
+        return trimmed.ToLowerInvariant();
     }
 
     /// <summary>
@@ -259,7 +276,7 @@ internal sealed class SessionData : IDisposable
         _lock.EnterWriteLock();
         try
         {
-            _preferredLocale = locale;
+            _preferredLocale = NormalizePreferredLocale(locale);
         }
         finally
         {

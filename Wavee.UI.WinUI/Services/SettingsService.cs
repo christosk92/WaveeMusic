@@ -50,6 +50,50 @@ public sealed class SettingsService : ISettingsService, IDisposable
         return CachingProfile.Medium;
     }
 
+    public static string PeekLanguage()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return "system";
+
+            using var stream = File.OpenRead(SettingsPath);
+            using var doc = JsonDocument.Parse(stream);
+            if (doc.RootElement.TryGetProperty("Language", out var prop)
+                && prop.ValueKind == JsonValueKind.String)
+            {
+                return prop.GetString() ?? "system";
+            }
+        }
+        catch
+        {
+            // Any exception falls through to the default.
+        }
+
+        return "system";
+    }
+
+    public static string PeekSpotifyMetadataLanguage()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return SpotifyMetadataLanguageSettings.MatchApp;
+
+            using var stream = File.OpenRead(SettingsPath);
+            using var doc = JsonDocument.Parse(stream);
+            if (doc.RootElement.TryGetProperty("SpotifyMetadataLanguage", out var prop)
+                && prop.ValueKind == JsonValueKind.String)
+            {
+                return SpotifyMetadataLanguageSettings.NormalizeSetting(prop.GetString());
+            }
+        }
+        catch
+        {
+            // Any exception falls through to the default.
+        }
+
+        return SpotifyMetadataLanguageSettings.MatchApp;
+    }
+
     private AppSettings _settings = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private CancellationTokenSource? _debounceCts;

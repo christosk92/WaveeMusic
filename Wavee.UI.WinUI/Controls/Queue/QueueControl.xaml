@@ -75,7 +75,7 @@
                         </Border>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock Text="Now Playing" FontSize="10"
+                            <TextBlock x:Uid="Controls_Queue_QueueControl__TextBlock_1" Text="Now Playing" FontSize="10"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                             <TextBlock x:Name="NowPlayingTitle" FontSize="13" FontWeight="SemiBold"
                                        MaxLines="1" TextTrimming="CharacterEllipsis"/>
@@ -131,7 +131,7 @@
         </ScrollView>
 
         <!-- Empty state -->
-        <TextBlock x:Name="EmptyState"
+        <TextBlock x:Uid="Controls_Queue_QueueControl__TextBlock_2" x:Name="EmptyState"
                    Text="Your queue is empty. Play something to see it here."
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                    TextWrapping="WrapWholeWords"

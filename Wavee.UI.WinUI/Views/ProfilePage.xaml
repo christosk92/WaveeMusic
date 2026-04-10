@@ -35,19 +35,19 @@
 
                     <!-- Name + stats -->
                     <StackPanel Spacing="8" VerticalAlignment="Bottom" Padding="0,0,0,8">
-                        <TextBlock Text="Profile"
+                        <TextBlock x:Uid="Views_ProfilePage__TextBlock_1" Text="Profile"
                                    Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7"/>
                         <TextBlock Text="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
                                    FontSize="48" FontWeight="Bold"/>
                         <StackPanel Orientation="Horizontal" Spacing="4" Opacity="0.7">
                             <TextBlock Style="{StaticResource BodyTextBlockStyle}">
                                 <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/>
-                                <Run Text=" Public Playlists"/>
+                                <Run x:Uid="Views_ProfilePage__Run_2" Text=" Public Playlists"/>
                             </TextBlock>
                             <TextBlock Text="&#x00B7;" Style="{StaticResource BodyTextBlockStyle}"/>
                             <TextBlock Style="{StaticResource BodyTextBlockStyle}">
                                 <Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/>
-                                <Run Text=" Following"/>
+                                <Run x:Uid="Views_ProfilePage__Run_3" Text=" Following"/>
                             </TextBlock>
                         </StackPanel>
                     </StackPanel>
@@ -183,12 +183,12 @@
                 <StackPanel Spacing="16">
                     <Grid Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Top artists this month" FontWeight="Bold" FontSize="20"/>
-                            <TextBlock Text="Only visible to you"
+                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_4" Text="Top artists this month" FontWeight="Bold" FontSize="20"/>
+                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_5" Text="Only visible to you"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
-                        <HyperlinkButton Content="Show all" HorizontalAlignment="Right"
+                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_6" Content="Show all" HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Grid>
@@ -219,12 +219,12 @@
                 <StackPanel Spacing="16">
                     <Grid Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Top tracks this month" FontWeight="Bold" FontSize="20"/>
-                            <TextBlock Text="Only visible to you"
+                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_7" Text="Top tracks this month" FontWeight="Bold" FontSize="20"/>
+                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_8" Text="Only visible to you"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
-                        <HyperlinkButton Content="Show all" HorizontalAlignment="Right"
+                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_9" Content="Show all" HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Grid>
@@ -248,10 +248,10 @@
                     <Grid Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock FontWeight="Bold" FontSize="20">
-                                <Run Text="Public Playlists"/>
+                                <Run x:Uid="Views_ProfilePage__Run_10" Text="Public Playlists"/>
                             </TextBlock>
                         </StackPanel>
-                        <HyperlinkButton Content="Show all" HorizontalAlignment="Right"
+                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_11" Content="Show all" HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Grid>
@@ -281,10 +281,10 @@
                     <Grid Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock FontWeight="Bold" FontSize="20">
-                                <Run Text="Following"/>
+                                <Run x:Uid="Views_ProfilePage__Run_12" Text="Following"/>
                             </TextBlock>
                         </StackPanel>
-                        <HyperlinkButton Content="Show all" HorizontalAlignment="Right"
+                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_13" Content="Show all" HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Grid>
@@ -310,7 +310,7 @@
                 </StackPanel>
 
                 <!-- Sign out link -->
-                <HyperlinkButton Content="Sign out of Spotify" HorizontalAlignment="Center"
+                <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_14" Content="Sign out of Spotify" HorizontalAlignment="Center"
                                  Command="{x:Bind ViewModel.SignOutCommand}"
                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                  Margin="0,16,0,0"/>

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -190,6 +191,34 @@ public sealed partial class MainWindow : WindowEx
                 // Not critical -- user can connect manually via sidebar button
             }
         });
+    }
+
+    public async Task RestartApplicationAsync()
+    {
+        var settingsService = Ioc.Default.GetService<ISettingsService>();
+        if (settingsService is not null)
+        {
+            await settingsService.SaveAsync();
+        }
+
+        var processPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            processPath = Process.GetCurrentProcess().MainModule?.FileName;
+        }
+
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            throw new InvalidOperationException("Could not determine the current process path for restart.");
+        }
+
+        Process.Start(new ProcessStartInfo(processPath)
+        {
+            UseShellExecute = true,
+            WorkingDirectory = AppContext.BaseDirectory
+        });
+
+        Application.Current.Exit();
     }
 
     private async Task ShowWhatsNewAfterDelayAsync(ISettingsService settingsService)

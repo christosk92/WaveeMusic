@@ -19,7 +19,7 @@
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 <TextBlock x:Name="LabelPlus6" Text="+6" FontSize="10" FontFamily="Consolas"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                <TextBlock x:Name="LabelZero" Text="0 dB" FontSize="10" FontFamily="Consolas"
+                <TextBlock x:Uid="Controls_Equalizer_EqualizerCurveControl__TextBlock_1" x:Name="LabelZero" Text="0 dB" FontSize="10" FontFamily="Consolas"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontWeight="SemiBold"/>
                 <TextBlock x:Name="LabelMinus6" Text="-6" FontSize="10" FontFamily="Consolas"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>

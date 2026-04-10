@@ -179,14 +179,14 @@
                 VerticalAlignment="Center"
                 Spacing="0"
                 Margin="0,0,12,0">
-                <Button
+                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_1"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     Command="{x:Bind ViewModel.PreviousCommand}"
                     ToolTipService.ToolTip="Previous">
                     <FontIcon Glyph="&#xF8AC;" FontSize="14" />
                 </Button>
-                <Button
+                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_2"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="36" Height="36" Padding="0"
                     Command="{x:Bind ViewModel.PlayPauseCommand}"
@@ -203,7 +203,7 @@
                             Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
                     </Grid>
                 </Button>
-                <Button
+                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_3"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     Command="{x:Bind ViewModel.NextCommand}"
@@ -252,7 +252,7 @@
                 Spacing="0">
 
                 <!-- Shuffle -->
-                <ToggleButton
+                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_4"
                     Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
@@ -262,7 +262,7 @@
                 </ToggleButton>
 
                 <!-- Repeat -->
-                <ToggleButton
+                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_5"
                     Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
@@ -272,7 +272,7 @@
                 </ToggleButton>
 
                 <!-- Volume icon -->
-                <Button
+                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_6"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     Command="{x:Bind ViewModel.ToggleMuteCommand}"
@@ -295,7 +295,7 @@
                     IsThumbToolTipEnabled="False" />
 
                 <!-- Queue -->
-                <ToggleButton
+                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_7"
                     Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
@@ -305,7 +305,7 @@
                 </ToggleButton>
 
                 <!-- Details -->
-                <ToggleButton
+                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_8"
                     Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
@@ -315,7 +315,7 @@
                 </ToggleButton>
 
                 <!-- Lyrics -->
-                <ToggleButton
+                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_9"
                     Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
@@ -325,7 +325,7 @@
                 </ToggleButton>
 
                 <!-- Friends Activity -->
-                <ToggleButton
+                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_10"
                     Style="{StaticResource SubtleToggleButtonStyle}"
                     Width="32" Height="32" Padding="0"
                     IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"

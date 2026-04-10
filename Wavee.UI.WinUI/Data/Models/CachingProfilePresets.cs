@@ -1,4 +1,5 @@
 using System;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Models;
 
@@ -172,10 +173,10 @@ public static class CachingProfilePresets
     /// </summary>
     public static string GetDisplayName(CachingProfile profile) => profile switch
     {
-        CachingProfile.Low => "Low",
-        CachingProfile.Medium => "Medium",
-        CachingProfile.High => "High",
-        CachingProfile.VeryAggressive => "Very Aggressive",
-        _ => "Medium",
+        CachingProfile.Low => AppLocalization.GetString("CachingProfile_Low"),
+        CachingProfile.Medium => AppLocalization.GetString("CachingProfile_Medium"),
+        CachingProfile.High => AppLocalization.GetString("CachingProfile_High"),
+        CachingProfile.VeryAggressive => AppLocalization.GetString("CachingProfile_VeryAggressive"),
+        _ => AppLocalization.GetString("CachingProfile_Medium"),
     };
 }

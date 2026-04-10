@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.Services;
 using CommunityToolkit.Mvvm.Messaging;
 
 namespace Wavee.UI.WinUI.Views;
@@ -480,7 +481,7 @@ public sealed partial class ShellPage : Page
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to handle track drop onto playlist {PlaylistId}", playlistId);
-            ViewModel.ShowNotification("Failed to add tracks to playlist");
+            ViewModel.ShowNotification(AppLocalization.GetString("Playlist_AddTracksFailed"));
         }
     }
 

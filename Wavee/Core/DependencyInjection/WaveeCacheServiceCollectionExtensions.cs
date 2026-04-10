@@ -31,7 +31,7 @@ public static class WaveeCacheServiceCollectionExtensions
         {
             var opts = sp.GetRequiredService<WaveeCacheOptions>();
             var logger = sp.GetService<ILogger<MetadataDatabase>>();
-            return new MetadataDatabase(opts.DatabasePath, opts.DatabaseHotCacheSize, logger);
+            return new MetadataDatabase(opts.DatabasePath, opts.DatabaseHotCacheSize, opts.SpotifyMetadataLocale, logger);
         });
 
         // Register hot caches for each entity type (singleton)
