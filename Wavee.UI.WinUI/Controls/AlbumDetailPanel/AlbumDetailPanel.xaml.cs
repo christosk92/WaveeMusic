@@ -318,8 +318,9 @@ public sealed partial class AlbumDetailPanel : UserControl
     {
         if (Album == null) return;
 
-        Helpers.ConnectedAnimationHelper.PrepareAnimation(
-            Helpers.ConnectedAnimationHelper.AlbumArt, ImageArea);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // Helpers.ConnectedAnimationHelper.PrepareAnimation(
+        //     Helpers.ConnectedAnimationHelper.AlbumArt, ImageArea);
 
         var param = new ContentNavigationParameter
         {

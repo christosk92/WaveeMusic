@@ -96,7 +96,13 @@ public static class CachingProfilePresets
         CachingProfile.VeryAggressive => new Capacities(
             LyricsMemoryCacheCapacity:   1_000,
             AlbumTracksHotCacheCapacity: 500,
-            ImageCacheMaxSize:           400,
+            // Lowered from 400 → 150. Bitmap cache is the largest single
+            // contributor to working set on this profile (each entry holds a
+            // decoded BitmapImage with unmanaged bitmap data on the GPU side),
+            // and 400 was hitting diminishing returns long before saving any
+            // measurable hit-rate. 150 keeps the player bar + sidebar + the
+            // currently visible page comfortably resident.
+            ImageCacheMaxSize:           150,
             TrackHotCacheSize:           50_000,
             AlbumHotCacheSize:           12_000,
             ArtistHotCacheSize:          6_000,

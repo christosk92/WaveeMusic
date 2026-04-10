@@ -200,14 +200,16 @@ public static class NavigationHelpers
             return;
         }
 
-        // Suppress default transition for content pages (connected animations handle the transition)
-        var hasConnectedAnim = IsContentPage(pageType);
+        // CONNECTED-ANIM (disabled): suppression of default transition is only
+        // meaningful when connected animations are running. With them disabled,
+        // every navigation uses the default DrillIn transition.
+        // var hasConnectedAnim = IsContentPage(pageType);
 
         var currentTab = ShellViewModel.TabInstances[currentIndex];
         currentTab.Header = header;
         currentTab.IconSource = icon;
         currentTab.ToolTipText = header;
-        currentTab.Navigate(pageType, parameter, suppressTransition: hasConnectedAnim);
+        currentTab.Navigate(pageType, parameter, suppressTransition: false);
     }
 
     private static void AddNewTab(Type pageType, object? parameter, string header, IconSource icon)
@@ -224,12 +226,13 @@ public static class NavigationHelpers
         _shellViewModel!.SelectTab(ShellViewModel.TabInstances.Count - 1);
     }
 
-    private static bool IsContentPage(Type pageType)
-    {
-        return pageType == typeof(ArtistPage)
-            || pageType == typeof(AlbumPage)
-            || pageType == typeof(PlaylistPage);
-    }
+    // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+    // private static bool IsContentPage(Type pageType)
+    // {
+    //     return pageType == typeof(ArtistPage)
+    //         || pageType == typeof(AlbumPage)
+    //         || pageType == typeof(PlaylistPage);
+    // }
 
     /// <summary>
     /// Handle content changes from pages to update tab header

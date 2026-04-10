@@ -166,9 +166,13 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         _pendingNavId = navId;
         _pendingPageName = pageType.Name;
 
-        var transition = suppressTransition
-            ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
-            : new DrillInNavigationTransitionInfo();
+        // CONNECTED-ANIM (disabled): suppression branch was only used for content
+        // pages running connected animations. With them disabled, every navigation
+        // uses the default DrillIn transition.
+        // var transition = suppressTransition
+        //     ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
+        //     : new DrillInNavigationTransitionInfo();
+        var transition = (NavigationTransitionInfo)new DrillInNavigationTransitionInfo();
         ContentFrame.Navigate(pageType, parameter, transition);
     }
 

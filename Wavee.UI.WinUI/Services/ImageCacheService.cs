@@ -78,17 +78,26 @@ public sealed class ImageCacheService
         decodePixelSize = SnapToBucket(decodePixelSize);
         var key = new CacheKey(uri, decodePixelSize);
 
-        // Fast path: read lock only. On a hit we do NOT reorder the LRU or update the
-        // access tick — the write lock cost on every UI repaint is too expensive.
-        // Instead we rely on the write-lock bump happening on cache MISS (below) and
-        // on CleanupStale's time-based sweep to drop genuinely cold entries. This keeps
-        // the cache tightly bounded because any entry that hasn't been (re)inserted
-        // recently will age out on the next periodic cleanup pass.
+        // Fast path: read lock only. On a hit we DO update the access tick (cheap
+        // relaxed write — wrong-by-a-few-ticks is fine, it's just an eviction-age
+        // hint), but we do NOT reorder the LRU list. The previous version skipped
+        // the tick update entirely and let CleanupStale evict still-in-use entries
+        // by their original insert time, which created duplicate decoded bitmaps:
+        // the old bitmap stayed pinned by Image.Source on visible UI while a fresh
+        // BitmapImage was created for the same URL, doubling unmanaged bitmap
+        // memory for the hottest images in the app (player bar, sidebar, hero).
         _rwLock.EnterReadLock();
         try
         {
             if (_cache.TryGetValue(key, out var node))
             {
+                // Refresh the access tick in-place. Concurrent reads racing on
+                // this assignment are harmless — they all want roughly the same
+                // value, and the worst case is a few-ms-stale tick that
+                // CleanupStale ignores anyway because the entry is fresh.
+                node.Value = new KeyValuePair<CacheKey, CacheEntry>(
+                    key,
+                    new CacheEntry(node.Value.Value.Image, Environment.TickCount64));
                 return node.Value.Value.Image;
             }
         }

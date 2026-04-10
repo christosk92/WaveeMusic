@@ -601,22 +601,32 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             SelectedTabIndex = TabInstances.Count - 1;
         }
+
+        // Tab close is a deliberate user action where a brief stutter is acceptable
+        // in exchange for actually returning the closed page's visual tree, composition
+        // resources, and view-model state to the OS. Without this the .NET runtime and
+        // DirectComposition both lazy-release and the working set stays elevated until
+        // the next gen2 collection many seconds later.
+        Services.MemoryReleaseHelper.ReleaseWorkingSet(_logger, "tab-close");
     }
 
     public void GoBack()
     {
         if (SelectedTabItem?.ContentFrame is Frame frame && frame.CanGoBack)
         {
-            // Suppress default transition for content pages — connected animations handle visuals
-            var currentPage = frame.Content;
-            var isContentPage = currentPage is Views.ArtistPage
-                             or Views.AlbumPage
-                             or Views.PlaylistPage;
-
-            if (isContentPage)
-                frame.GoBack(new SuppressNavigationTransitionInfo());
-            else
-                frame.GoBack(new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromLeft });
+            // CONNECTED-ANIM (disabled): suppression of default transition is only
+            // meaningful when connected animations are running. With them disabled,
+            // every back navigation uses the default Slide transition.
+            // var currentPage = frame.Content;
+            // var isContentPage = currentPage is Views.ArtistPage
+            //                  or Views.AlbumPage
+            //                  or Views.PlaylistPage;
+            //
+            // if (isContentPage)
+            //     frame.GoBack(new SuppressNavigationTransitionInfo());
+            // else
+            //     frame.GoBack(new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromLeft });
+            frame.GoBack(new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromLeft });
 
             UpdateNavigationState();
         }

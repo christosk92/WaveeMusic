@@ -28,6 +28,34 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private LoadedImageSurface? _blurSurface;
     private SpriteVisual? _blurSprite;
 
+    // CompositionEffectFactory compiles a pixel shader on creation, which is
+    // expensive (Microsoft's Composition docs explicitly call this out). The
+    // previous version built a fresh factory inside SetupBlurredBackground per
+    // page instance, so every album navigation re-compiled the same blur shader
+    // and re-allocated intermediate render targets. Cache the factory once per
+    // Compositor (a single Compositor is shared across the whole app via the
+    // root visual) and reuse it for every AlbumPage instance.
+    private static CompositionEffectFactory? s_blurEffectFactory;
+    private static readonly object s_blurEffectFactoryLock = new();
+
+    private static CompositionEffectFactory GetBlurEffectFactory(Compositor compositor)
+    {
+        if (s_blurEffectFactory != null) return s_blurEffectFactory;
+        lock (s_blurEffectFactoryLock)
+        {
+            if (s_blurEffectFactory != null) return s_blurEffectFactory;
+            var blurEffect = new GaussianBlurEffect
+            {
+                Name = "Blur",
+                BlurAmount = 60f,
+                Source = new CompositionEffectSourceParameter("image"),
+                BorderMode = EffectBorderMode.Hard
+            };
+            s_blurEffectFactory = compositor.CreateEffectFactory(blurEffect);
+            return s_blurEffectFactory;
+        }
+    }
+
     public AlbumViewModel ViewModel { get; }
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
@@ -141,16 +169,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
                 surfaceBrush.Surface = _blurSurface;
                 surfaceBrush.Stretch = CompositionStretch.UniformToFill;
 
-                // Gaussian blur effect
-                var blurEffect = new GaussianBlurEffect
-                {
-                    Name = "Blur",
-                    BlurAmount = 60f,
-                    Source = new CompositionEffectSourceParameter("image"),
-                    BorderMode = EffectBorderMode.Hard
-                };
-
-                var effectFactory = compositor.CreateEffectFactory(blurEffect);
+                // Use the shared static effect factory — see GetBlurEffectFactory.
+                // Compiling the GaussianBlurEffect shader once at app startup
+                // (lazily on first navigation) instead of per AlbumPage instance
+                // saves both CPU on navigation and GPU intermediate-target memory.
+                var effectFactory = GetBlurEffectFactory(compositor);
                 var effectBrush = effectFactory.CreateBrush();
                 effectBrush.SetSourceParameter("image", surfaceBrush);
 
@@ -190,12 +213,13 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     public void RefreshWithParameter(object? parameter)
     {
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph.
         // Album → Album (refresh-in-place from TabBarItem.Navigate) never routes
         // through OnNavigatedTo, so we have to start the connected animation here
         // ourselves — otherwise the source ContentCard's PrepareToAnimate snapshot
         // is discarded and nothing animates.
-        Helpers.ConnectedAnimationHelper.TryStartAnimation(
-            Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
+        // Helpers.ConnectedAnimationHelper.TryStartAnimation(
+        //     Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
 
         LoadNewContent(parameter);
     }
@@ -204,8 +228,9 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         base.OnNavigatedTo(e);
 
-        Helpers.ConnectedAnimationHelper.TryStartAnimation(
-            Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // Helpers.ConnectedAnimationHelper.TryStartAnimation(
+        //     Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
 
         LoadNewContent(e.Parameter);
     }

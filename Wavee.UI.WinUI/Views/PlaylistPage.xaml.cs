@@ -37,9 +37,10 @@ public sealed partial class PlaylistPage : Page
     {
         base.OnNavigatedTo(e);
 
-        // Receive connected animation from source card
-        Helpers.ConnectedAnimationHelper.TryStartAnimation(
-            Helpers.ConnectedAnimationHelper.PlaylistArt, PlaylistArtContainer);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // // Receive connected animation from source card
+        // Helpers.ConnectedAnimationHelper.TryStartAnimation(
+        //     Helpers.ConnectedAnimationHelper.PlaylistArt, PlaylistArtContainer);
 
         if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
         {

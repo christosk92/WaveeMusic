@@ -439,7 +439,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         base.OnNavigatedTo(e);
         _isNavigatingAway = false;
 
-        ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
 
         // Extract the incoming artist URI
         var incomingUri = e.Parameter is ContentNavigationParameter nav ? nav.Uri
@@ -716,7 +717,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             return;
         }
 
-        ConnectedAnimationHelper.CancelPending();
+        // CONNECTED-ANIM (disabled): nothing to cancel once nothing is being prepared
+        // ConnectedAnimationHelper.CancelPending();
 
         var param = new ContentNavigationParameter
         {

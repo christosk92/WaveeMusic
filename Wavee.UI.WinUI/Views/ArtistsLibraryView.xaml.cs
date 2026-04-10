@@ -99,9 +99,10 @@ public sealed partial class ArtistsLibraryView : UserControl
     {
         if (ViewModel.SelectedArtist is not { } artist) return;
 
-        // Prepare connected animation from the detail panel artist image
-        Helpers.ConnectedAnimationHelper.PrepareAnimation(
-            Helpers.ConnectedAnimationHelper.ArtistImage, DetailArtistImageContainer);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // // Prepare connected animation from the detail panel artist image
+        // Helpers.ConnectedAnimationHelper.PrepareAnimation(
+        //     Helpers.ConnectedAnimationHelper.ArtistImage, DetailArtistImageContainer);
 
         var param = new ContentNavigationParameter
         {
@@ -116,8 +117,9 @@ public sealed partial class ArtistsLibraryView : UserControl
     {
         if (ViewModel.SelectedArtist is not { } artist) return;
 
-        Helpers.ConnectedAnimationHelper.PrepareAnimation(
-            Helpers.ConnectedAnimationHelper.ArtistImage, DetailArtistImageContainer);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // Helpers.ConnectedAnimationHelper.PrepareAnimation(
+        //     Helpers.ConnectedAnimationHelper.ArtistImage, DetailArtistImageContainer);
 
         var param = new ContentNavigationParameter
         {
@@ -133,8 +135,9 @@ public sealed partial class ArtistsLibraryView : UserControl
         if (ViewModel.SelectedAlbumForTracks == null) return;
         var album = ViewModel.SelectedAlbumForTracks.Album;
 
-        Helpers.ConnectedAnimationHelper.PrepareAnimation(
-            Helpers.ConnectedAnimationHelper.AlbumArt, DetailAlbumImageContainer);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // Helpers.ConnectedAnimationHelper.PrepareAnimation(
+        //     Helpers.ConnectedAnimationHelper.AlbumArt, DetailAlbumImageContainer);
 
         var param = new ContentNavigationParameter
         {

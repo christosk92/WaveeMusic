@@ -210,12 +210,13 @@ public sealed partial class LibraryGridView : UserControl
     {
         if (SelectedItem == null) return;
 
-        // Prepare connected animation from the tapped card's image
-        if (e.OriginalSource is DependencyObject source)
-        {
-            var card = FindParent<Cards.ContentCard>(source);
-            card?.PrepareConnectedAnimation();
-        }
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // // Prepare connected animation from the tapped card's image
+        // if (e.OriginalSource is DependencyObject source)
+        // {
+        //     var card = FindParent<Cards.ContentCard>(source);
+        //     card?.PrepareConnectedAnimation();
+        // }
 
         ItemDoubleTapped?.Invoke(this, SelectedItem);
     }

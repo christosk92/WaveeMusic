@@ -1,7 +1,10 @@
 using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Services;
@@ -17,6 +20,15 @@ public sealed partial class MainWindow : WindowEx
 
     public nint WindowHandle { get; }
 
+    // Memory release on minimize / lose focus.
+    // Single timer instance, restarted on each event so we naturally debounce.
+    // _alreadyReleasedSinceLastFocus prevents hammering the GC if the user leaves
+    // the window deactivated for a long time — we release once, then wait for them
+    // to come back before we're allowed to release again.
+    private DispatcherQueueTimer? _memoryReleaseTimer;
+    private bool _alreadyReleasedSinceLastFocus;
+    private ILogger? _memoryReleaseLogger;
+
     private MainWindow()
     {
         InitializeComponent();
@@ -24,6 +36,8 @@ public sealed partial class MainWindow : WindowEx
         WindowHandle = this.GetWindowHandle();
 
         Closed += OnClosed;
+        Activated += OnActivatedForMemoryRelease;
+        VisibilityChanged += OnVisibilityChangedForMemoryRelease;
 
         // Extend content into titlebar
         ExtendsContentIntoTitleBar = true;
@@ -40,6 +54,15 @@ public sealed partial class MainWindow : WindowEx
 
     private async void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
     {
+        Activated -= OnActivatedForMemoryRelease;
+        VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
+        if (_memoryReleaseTimer != null)
+        {
+            _memoryReleaseTimer.Stop();
+            _memoryReleaseTimer.Tick -= OnMemoryReleaseTick;
+            _memoryReleaseTimer = null;
+        }
+
         var shellVm = Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
         shellVm?.Cleanup();
 
@@ -49,6 +72,73 @@ public sealed partial class MainWindow : WindowEx
         {
             await settings.SaveAsync();
         }
+    }
+
+    // ── Memory release on minimize / lose focus ──────────────────────────
+    //
+    // Window.Activated fires constantly during normal use (any click outside the
+    // window deactivates it briefly), so a long debounce + a "release once per
+    // background session" guard keeps us out of the way of normal alt-tabbing.
+    //
+    // Window.VisibilityChanged fires on actual minimize / hide-to-tray, which is
+    // a much stronger signal that the user genuinely isn't looking at us, so it
+    // gets a much shorter debounce.
+
+    private static readonly TimeSpan MinimizeReleaseDelay = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan DeactivateReleaseDelay = TimeSpan.FromSeconds(30);
+
+    private void OnActivatedForMemoryRelease(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            ScheduleMemoryRelease(DeactivateReleaseDelay, "deactivated");
+        }
+        else
+        {
+            CancelPendingRelease();
+            _alreadyReleasedSinceLastFocus = false;
+        }
+    }
+
+    private void OnVisibilityChangedForMemoryRelease(object sender, WindowVisibilityChangedEventArgs args)
+    {
+        if (!args.Visible)
+            ScheduleMemoryRelease(MinimizeReleaseDelay, "minimized");
+        else
+            CancelPendingRelease();
+    }
+
+    private void ScheduleMemoryRelease(TimeSpan delay, string reason)
+    {
+        if (_alreadyReleasedSinceLastFocus) return;
+
+        _memoryReleaseLogger ??= Ioc.Default.GetService<ILogger<MainWindow>>();
+        _memoryReleaseTimer ??= DispatcherQueue.CreateTimer();
+        _memoryReleaseTimer.Interval = delay;
+        _memoryReleaseTimer.IsRepeating = false;
+
+        _memoryReleaseTimer.Stop();
+        _memoryReleaseTimer.Tick -= OnMemoryReleaseTick;
+        _memoryReleaseTimer.Tick += OnMemoryReleaseTick;
+        _pendingReleaseReason = reason;
+        _memoryReleaseTimer.Start();
+    }
+
+    private string _pendingReleaseReason = "";
+
+    private void OnMemoryReleaseTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        sender.Tick -= OnMemoryReleaseTick;
+        _alreadyReleasedSinceLastFocus = true;
+        MemoryReleaseHelper.ReleaseWorkingSet(_memoryReleaseLogger, _pendingReleaseReason);
+    }
+
+    private void CancelPendingRelease()
+    {
+        if (_memoryReleaseTimer == null) return;
+        _memoryReleaseTimer.Stop();
+        _memoryReleaseTimer.Tick -= OnMemoryReleaseTick;
     }
 
     public async Task InitializeApplicationAsync()

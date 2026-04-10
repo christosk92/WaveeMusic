@@ -720,7 +720,8 @@ public sealed partial class ContentCard : UserControl
         // Self-navigation: if NavigationUri is set, navigate directly
         if (!string.IsNullOrEmpty(NavigationUri))
         {
-            PrepareConnectedAnimation();
+            // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+            // PrepareConnectedAnimation();
             ResetInteractionState();
             if (NavigateToUri(Helpers.Navigation.NavigationHelpers.IsCtrlPressed()))
                 return;
@@ -866,27 +867,28 @@ public sealed partial class ContentCard : UserControl
 
     internal void PrepareConnectedAnimation()
     {
-        var uri = NavigationUri;
-        if (string.IsNullOrEmpty(uri)) return;
-
-        var parts = uri.Split(':');
-        if (parts.Length < 2) return;
-
-        var type = parts[1];
-        var imageElement = IsCircularImage
-            ? (UIElement)CircleImageContainer
-            : (UIElement)SquareImageContainer;
-
-        var key = type switch
-        {
-            "artist" => Helpers.ConnectedAnimationHelper.ArtistImage,
-            "album" => Helpers.ConnectedAnimationHelper.AlbumArt,
-            "playlist" => Helpers.ConnectedAnimationHelper.PlaylistArt,
-            _ => null
-        };
-
-        if (key != null)
-            Helpers.ConnectedAnimationHelper.PrepareAnimation(key, imageElement);
+        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
+        // var uri = NavigationUri;
+        // if (string.IsNullOrEmpty(uri)) return;
+        //
+        // var parts = uri.Split(':');
+        // if (parts.Length < 2) return;
+        //
+        // var type = parts[1];
+        // var imageElement = IsCircularImage
+        //     ? (UIElement)CircleImageContainer
+        //     : (UIElement)SquareImageContainer;
+        //
+        // var key = type switch
+        // {
+        //     "artist" => Helpers.ConnectedAnimationHelper.ArtistImage,
+        //     "album" => Helpers.ConnectedAnimationHelper.AlbumArt,
+        //     "playlist" => Helpers.ConnectedAnimationHelper.PlaylistArt,
+        //     _ => null
+        // };
+        //
+        // if (key != null)
+        //     Helpers.ConnectedAnimationHelper.PrepareAnimation(key, imageElement);
     }
 
     // ── Helpers ──
