@@ -23,6 +23,7 @@ public sealed record ArtistOverviewResult
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
     public string? HeaderImageUrl { get; init; }
+    public string? HeroColorHex { get; init; }
     public long MonthlyListeners { get; init; }
     public long Followers { get; init; }
     public string? Biography { get; init; }

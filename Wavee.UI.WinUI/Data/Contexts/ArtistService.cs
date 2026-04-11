@@ -20,17 +20,20 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 public sealed class ArtistService : IArtistService
 {
     private readonly IPathfinderClient _pathfinder;
+    private readonly IColorService _colorService;
     private readonly ILocationService _locationService;
     private readonly IMessenger _messenger;
     private readonly ILogger? _logger;
 
     public ArtistService(
         IPathfinderClient pathfinder,
+        IColorService colorService,
         ILocationService locationService,
         IMessenger messenger,
         ILogger? logger = null)
     {
         _pathfinder = pathfinder;
+        _colorService = colorService;
         _locationService = locationService;
         _messenger = messenger;
         _logger = logger;
@@ -43,14 +46,30 @@ public sealed class ArtistService : IArtistService
             ?? throw new InvalidOperationException("Artist not found");
 
         var latest = artist.Discography?.Latest;
+        var headerImageUrl = artist.HeaderImage?.Data?.Sources
+            ?.OrderByDescending(s => s.MaxWidth ?? s.Width ?? 0)
+            .FirstOrDefault()?.Url;
+        string? heroColorHex = null;
+
+        if (!string.IsNullOrEmpty(headerImageUrl))
+        {
+            try
+            {
+                var extracted = await _colorService.GetColorAsync(headerImageUrl, ct).ConfigureAwait(false);
+                heroColorHex = extracted?.RawHex ?? extracted?.DarkHex ?? extracted?.LightHex;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Failed to resolve artist hero color for {ArtistUri}", artistUri);
+            }
+        }
 
         return new ArtistOverviewResult
         {
             Name = artist.Profile?.Name,
             ImageUrl = artist.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url,
-            HeaderImageUrl = artist.HeaderImage?.Data?.Sources
-                ?.OrderByDescending(s => s.MaxWidth ?? s.Width ?? 0)
-                .FirstOrDefault()?.Url,
+            HeaderImageUrl = headerImageUrl,
+            HeroColorHex = heroColorHex,
             MonthlyListeners = artist.Stats?.MonthlyListeners ?? 0,
             Followers = artist.Stats?.Followers ?? 0,
             Biography = artist.Profile?.Biography?.Text,

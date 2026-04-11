@@ -38,6 +38,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ILogger? _logger;
     private readonly IDispatcherService? _dispatcher;
     private readonly Helpers.Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
+    private readonly Dictionary<string, CachedSearchSuggestions> _querySuggestionCache = new(StringComparer.OrdinalIgnoreCase);
+    private CachedSearchSuggestions? _recentSearchesCache;
+    private string _activeSearchText = string.Empty;
+
+    private const int MaxCachedSuggestionQueries = 24;
+    private static readonly TimeSpan RecentSearchesCacheLifetime = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan QuerySuggestionsCacheLifetime = TimeSpan.FromMinutes(2);
 
     // UI element references for cleanup
     private Microsoft.UI.Xaml.Controls.SplitButton? _playlistsSplitButton;
@@ -650,9 +657,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private List<SearchSuggestionItem>? _searchSuggestions;
 
+    private sealed record CachedSearchSuggestions(List<SearchSuggestionItem> Items, DateTimeOffset CachedAt);
+
     public void Search(string query)
     {
         if (string.IsNullOrWhiteSpace(query)) return;
+
+        InvalidateRecentSearchesCache();
 
         // Navigate to search page with query
         Helpers.Navigation.NavigationHelpers.OpenSearch(query);
@@ -660,33 +671,52 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public async void OnSearchTextChanged(string text)
     {
+        var normalizedText = text?.Trim() ?? string.Empty;
+        _activeSearchText = normalizedText;
+
         try
         {
             // If already on SearchPage, re-search directly instead of showing suggestions
             if (SelectedTabItem?.ContentFrame?.Content is SearchPage searchPage
-                && !string.IsNullOrWhiteSpace(text))
+                && !string.IsNullOrWhiteSpace(normalizedText))
             {
                 await _searchDebouncer.DebounceAsync(async _ =>
                 {
-                    await searchPage.ViewModel.LoadAsync(text);
+                    await searchPage.ViewModel.LoadAsync(normalizedText);
                 });
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrWhiteSpace(normalizedText))
             {
                 // Empty → show recent searches immediately (no debounce)
                 _searchDebouncer.Cancel();
-                var recents = await Task.Run(() => _searchService.GetRecentSearchesAsync());
-                SearchSuggestions = recents;
+
+                if (TryGetCachedRecentSearches(out var cachedRecents, out var recentCacheIsFresh))
+                {
+                    SearchSuggestions = cachedRecents;
+                    if (recentCacheIsFresh)
+                        return;
+
+                    _ = RefreshRecentSearchesAsync(normalizedText);
+                    return;
+                }
+
+                await RefreshRecentSearchesAsync(normalizedText);
             }
             else
             {
+                if (TryGetCachedQuerySuggestions(normalizedText, out var cachedSuggestions, out var queryCacheIsFresh))
+                {
+                    SearchSuggestions = cachedSuggestions;
+                    if (queryCacheIsFresh)
+                        return;
+                }
+
                 // Debounce 300ms before calling API
                 await _searchDebouncer.DebounceAsync(async ct =>
                 {
-                    var suggestions = await Task.Run(() => _searchService.GetSuggestionsAsync(text, ct));
-                    SearchSuggestions = suggestions;
+                    await RefreshQuerySuggestionsAsync(normalizedText, ct);
                 });
             }
         }
@@ -700,6 +730,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void OnSuggestionChosen(object? item)
     {
         if (item is not SearchSuggestionItem suggestion) return;
+
+        InvalidateRecentSearchesCache();
 
         switch (suggestion.Type)
         {
@@ -765,6 +797,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Cleanup()
     {
+        _searchDebouncer.Dispose();
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
@@ -792,4 +825,73 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <inheritdoc />
     public void Dispose() => Cleanup();
+
+    private bool TryGetCachedRecentSearches(out List<SearchSuggestionItem> items, out bool isFresh)
+    {
+        if (_recentSearchesCache != null)
+        {
+            items = CloneSuggestions(_recentSearchesCache.Items);
+            isFresh = DateTimeOffset.UtcNow - _recentSearchesCache.CachedAt <= RecentSearchesCacheLifetime;
+            return true;
+        }
+
+        items = [];
+        isFresh = false;
+        return false;
+    }
+
+    private bool TryGetCachedQuerySuggestions(string query, out List<SearchSuggestionItem> items, out bool isFresh)
+    {
+        if (_querySuggestionCache.TryGetValue(query, out var cached))
+        {
+            items = CloneSuggestions(cached.Items);
+            isFresh = DateTimeOffset.UtcNow - cached.CachedAt <= QuerySuggestionsCacheLifetime;
+            return true;
+        }
+
+        items = [];
+        isFresh = false;
+        return false;
+    }
+
+    private async Task RefreshRecentSearchesAsync(string querySnapshot, CancellationToken ct = default)
+    {
+        var recents = await _searchService.GetRecentSearchesAsync(ct);
+        _recentSearchesCache = new CachedSearchSuggestions(CloneSuggestions(recents), DateTimeOffset.UtcNow);
+
+        if (string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+            SearchSuggestions = CloneSuggestions(recents);
+    }
+
+    private async Task RefreshQuerySuggestionsAsync(string querySnapshot, CancellationToken ct)
+    {
+        var suggestions = await _searchService.GetSuggestionsAsync(querySnapshot, ct);
+        StoreQuerySuggestionCache(querySnapshot, suggestions);
+
+        if (string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+            SearchSuggestions = CloneSuggestions(suggestions);
+    }
+
+    private void StoreQuerySuggestionCache(string query, List<SearchSuggestionItem> suggestions)
+    {
+        _querySuggestionCache[query] = new CachedSearchSuggestions(CloneSuggestions(suggestions), DateTimeOffset.UtcNow);
+
+        if (_querySuggestionCache.Count <= MaxCachedSuggestionQueries)
+            return;
+
+        var oldest = _querySuggestionCache
+            .OrderBy(kvp => kvp.Value.CachedAt)
+            .FirstOrDefault();
+
+        if (!string.IsNullOrEmpty(oldest.Key))
+            _querySuggestionCache.Remove(oldest.Key);
+    }
+
+    private void InvalidateRecentSearchesCache()
+    {
+        _recentSearchesCache = null;
+    }
+
+    private static List<SearchSuggestionItem> CloneSuggestions(IEnumerable<SearchSuggestionItem> items)
+        => items.ToList();
 }

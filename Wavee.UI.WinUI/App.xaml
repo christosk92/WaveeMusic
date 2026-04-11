@@ -68,6 +68,12 @@
                             <Color x:Key="HomeBaselineCardHeroShadowTopColor">#26000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowMidColor">#09000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowBottomColor">#A6000000</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowStartColor">#30FFFFFF</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowMidColor">#141DB954</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowEndColor">#001DB954</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowTopColor">#00000000</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowMidColor">#06000000</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowBottomColor">#18000000</Color>
                         </ResourceDictionary>
 
                         <ResourceDictionary x:Key="Dark">
@@ -113,6 +119,12 @@
                             <Color x:Key="HomeBaselineCardHeroShadowTopColor">#26000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowMidColor">#09000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowBottomColor">#A6000000</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowStartColor">#36FFFFFF</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowMidColor">#181DB954</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowEndColor">#001DB954</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowTopColor">#00000000</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowMidColor">#12000000</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowBottomColor">#54000000</Color>
                         </ResourceDictionary>
 
                         <ResourceDictionary x:Key="HighContrast">
@@ -157,6 +169,12 @@
                             <Color x:Key="HomeBaselineCardHeroShadowTopColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowMidColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowBottomColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowStartColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowMidColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="ArtistHeroFallbackGlowEndColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowTopColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowMidColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="ArtistHeroFallbackShadowBottomColor">{StaticResource SystemColorWindowColor}</Color>
                         </ResourceDictionary>
                     </ResourceDictionary.ThemeDictionaries>
                 </ResourceDictionary>

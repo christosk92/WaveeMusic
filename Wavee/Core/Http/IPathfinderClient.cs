@@ -17,6 +17,7 @@ public interface IPathfinderClient
     /// <returns>Search results containing tracks, artists, albums, and playlists.</returns>
     Task<SearchResult> SearchAsync(
         string query,
+        SearchScope scope = SearchScope.All,
         int limit = 10,
         int offset = 0,
         CancellationToken cancellationToken = default);

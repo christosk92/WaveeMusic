@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -146,10 +148,13 @@ public sealed partial class Omnibar : Control
     {
         _hasFocus = true;
 
-        // Show shimmer flyout immediately while data loads
-        var isRecent = string.IsNullOrWhiteSpace(_searchBox?.Text);
-        _flyoutPanel?.ShowShimmer(isRecent);
-        ShowPopup();
+        if (!TryShowCachedResults())
+        {
+            // Show shimmer flyout immediately while data loads
+            var isRecent = string.IsNullOrWhiteSpace(_searchBox?.Text);
+            _flyoutPanel?.ShowShimmer(isRecent);
+            ShowPopup();
+        }
 
         // Trigger TextChanged to start the API call
         TextChanged?.Invoke(this, new OmnibarTextChangedEventArgs(_searchBox?.Text ?? ""));
@@ -176,10 +181,13 @@ public sealed partial class Omnibar : Control
     {
         if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
         {
-            // Show shimmer immediately while debounce + API call runs
-            var isRecent = string.IsNullOrWhiteSpace(sender.Text);
-            _flyoutPanel?.ShowShimmer(isRecent);
-            ShowPopup();
+            if (!TryShowCachedResults())
+            {
+                // Show shimmer immediately while debounce + API call runs
+                var isRecent = string.IsNullOrWhiteSpace(sender.Text);
+                _flyoutPanel?.ShowShimmer(isRecent);
+                ShowPopup();
+            }
 
             TextChanged?.Invoke(this, new OmnibarTextChangedEventArgs(sender.Text));
         }
@@ -257,6 +265,30 @@ public sealed partial class Omnibar : Control
         {
             HidePopup();
         }
+    }
+
+    private bool TryShowCachedResults()
+    {
+        if (_flyoutPanel == null || _searchBox == null) return false;
+        if (SearchResults is not List<SearchSuggestionItem> items || items.Count == 0) return false;
+
+        var queryText = _searchBox.Text ?? string.Empty;
+        if (!DoResultsMatchQuery(items, queryText))
+            return false;
+
+        var isRecent = string.IsNullOrWhiteSpace(queryText);
+        _flyoutPanel.SetItems(items, queryText, isRecent);
+        ShowPopup();
+        return true;
+    }
+
+    private static bool DoResultsMatchQuery(IReadOnlyList<SearchSuggestionItem> items, string queryText)
+    {
+        if (string.IsNullOrWhiteSpace(queryText))
+            return items.All(item => string.IsNullOrWhiteSpace(item.QueryText));
+
+        return items.All(item =>
+            string.Equals(item.QueryText, queryText, StringComparison.OrdinalIgnoreCase));
     }
 
     #region Dependency Properties

@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -7,7 +6,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http.Pathfinder;
-using Wavee.UI.WinUI.Controls.Track;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -16,7 +14,6 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class SearchPage : Page
 {
-    private bool _isNarrowLayout;
     private readonly Services.ThemeColorService? _themeColors;
 
     public SearchViewModel ViewModel { get; }
@@ -53,39 +50,42 @@ public sealed partial class SearchPage : Page
         }
     }
 
-    private void TracksRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
-    {
-        if (args.Element is TrackItem trackItem)
-        {
-            trackItem.PlayCommand = ViewModel.PlayTrackCommand;
-        }
-    }
-
     private void TopResult_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        var topResult = ViewModel.TopResult;
-        if (topResult == null) return;
+        ExecuteResult(ViewModel.TopResult);
+    }
 
-        switch (topResult.Type)
+    private void ResultRow_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.Tag is SearchResultItem item)
+            ExecuteResult(item);
+    }
+
+    private void ExecuteResult(SearchResultItem? item)
+    {
+        if (item == null)
+            return;
+
+        switch (item.Type)
         {
             case SearchResultType.Track:
-                var adapted = ViewModel.AdaptedTracks.FirstOrDefault(t => t.Uri == topResult.Uri)
-                              ?? new SearchTrackAdapter(topResult);
+                var adapted = ViewModel.AdaptedTracks.FirstOrDefault(t => t.Uri == item.Uri)
+                              ?? new SearchTrackAdapter(item);
                 ViewModel.PlayTrackCommand.Execute(adapted);
                 break;
             case SearchResultType.Artist:
-                NavigationHelpers.OpenArtist(topResult.Uri, topResult.Name);
+                NavigationHelpers.OpenArtist(item.Uri, item.Name);
                 break;
             case SearchResultType.Album:
-                NavigationHelpers.OpenAlbum(topResult.Uri, topResult.Name);
+                NavigationHelpers.OpenAlbum(item.Uri, item.Name);
                 break;
             case SearchResultType.Playlist:
-                NavigationHelpers.OpenPlaylist(topResult.Uri, topResult.Name);
+                NavigationHelpers.OpenPlaylist(item.Uri, item.Name);
                 break;
         }
     }
 
-    private void TopResult_PointerEntered(object sender, PointerRoutedEventArgs e)
+    private void InteractiveCard_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is Border border)
         {
@@ -94,57 +94,14 @@ public sealed partial class SearchPage : Page
         }
     }
 
-    private void TopResult_PointerExited(object sender, PointerRoutedEventArgs e)
+    private void InteractiveCard_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         if (sender is Border border)
         {
-            border.Background = _themeColors?.CardBackground ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-        }
-    }
-
-    private void RootPanel_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var isNarrow = e.NewSize.Width < 600;
-        if (isNarrow == _isNarrowLayout) return;
-        _isNarrowLayout = isNarrow;
-
-        if (isNarrow)
-        {
-            // Stack vertically: single column, two rows
-            TopResultCol.Width = new GridLength(1, GridUnitType.Star);
-            SongsCol.Width = new GridLength(0);
-            SongsRow.Height = GridLength.Auto;
-            TopResultGrid.ColumnSpacing = 0;
-            TopResultGrid.RowSpacing = 24;
-            Grid.SetRow(SongsPanel, 1);
-            Grid.SetColumn(SongsPanel, 0);
-
-            ShimmerTopResultCol.Width = new GridLength(1, GridUnitType.Star);
-            ShimmerSongsCol.Width = new GridLength(0);
-            ShimmerSongsRow.Height = GridLength.Auto;
-            ShimmerGrid.ColumnSpacing = 0;
-            ShimmerGrid.RowSpacing = 24;
-            Grid.SetRow(ShimmerSongsPanel, 1);
-            Grid.SetColumn(ShimmerSongsPanel, 0);
-        }
-        else
-        {
-            // Side by side: two columns, single row
-            TopResultCol.Width = new GridLength(2, GridUnitType.Star);
-            SongsCol.Width = new GridLength(3, GridUnitType.Star);
-            SongsRow.Height = new GridLength(0);
-            TopResultGrid.ColumnSpacing = 24;
-            TopResultGrid.RowSpacing = 0;
-            Grid.SetRow(SongsPanel, 0);
-            Grid.SetColumn(SongsPanel, 1);
-
-            ShimmerTopResultCol.Width = new GridLength(2, GridUnitType.Star);
-            ShimmerSongsCol.Width = new GridLength(3, GridUnitType.Star);
-            ShimmerSongsRow.Height = new GridLength(0);
-            ShimmerGrid.ColumnSpacing = 24;
-            ShimmerGrid.RowSpacing = 0;
-            Grid.SetRow(ShimmerSongsPanel, 0);
-            Grid.SetColumn(ShimmerSongsPanel, 1);
+            border.Background = ReferenceEquals(border, TopResultCard)
+                ? _themeColors?.CardBackgroundSecondary ??
+                  (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
     }
 }

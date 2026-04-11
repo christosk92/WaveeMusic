@@ -494,6 +494,17 @@ public sealed class SearchResult
             TotalAlbums = response.Data?.SearchV2?.AlbumsV2?.TotalCount ?? 0,
             TotalPlaylists = response.Data?.SearchV2?.Playlists?.TotalCount ?? 0
         };
+        var seenKeys = new HashSet<string>(StringComparer.Ordinal);
+
+        void AddItem(SearchResultItem? item)
+        {
+            if (item == null)
+                return;
+
+            var key = $"{item.Type}:{item.Uri}";
+            if (seenKeys.Add(key))
+                result.Items.Add(item);
+        }
 
         // Add tracks
         if (response.Data?.SearchV2?.TracksV2?.Items != null)
@@ -508,7 +519,7 @@ public sealed class SearchResult
                     .Select(a => a.Profile!.Name!)
                     .ToList() ?? new List<string>();
 
-                result.Items.Add(new SearchResultItem
+                AddItem(new SearchResultItem
                 {
                     Type = SearchResultType.Track,
                     Uri = track.Uri,
@@ -529,7 +540,7 @@ public sealed class SearchResult
                 var artist = wrapper.Data;
                 if (artist?.Uri == null) continue;
 
-                result.Items.Add(new SearchResultItem
+                AddItem(new SearchResultItem
                 {
                     Type = SearchResultType.Artist,
                     Uri = artist.Uri,
@@ -553,7 +564,7 @@ public sealed class SearchResult
                     .Select(a => a.Profile!.Name!)
                     .ToList() ?? new List<string>();
 
-                result.Items.Add(new SearchResultItem
+                AddItem(new SearchResultItem
                 {
                     Type = SearchResultType.Album,
                     Uri = album.Uri,
@@ -574,7 +585,7 @@ public sealed class SearchResult
                 var playlist = wrapper.Data;
                 if (playlist?.Uri == null) continue;
 
-                result.Items.Add(new SearchResultItem
+                AddItem(new SearchResultItem
                 {
                     Type = SearchResultType.Playlist,
                     Uri = playlist.Uri,
@@ -595,19 +606,18 @@ public sealed class SearchResult
                 var topItem = topWrapper.Item;
                 if (topItem?.Data is not JsonElement je) continue;
 
-                var mapped = MapTopResultFromJson(topItem.TypeName, je);
-                if (mapped != null)
-                {
+                var mapped = MapSearchItemFromJson(topItem.TypeName, je);
+                AddItem(mapped);
+
+                if (result.TopResult == null && mapped != null)
                     result.TopResult = mapped;
-                    break;
-                }
             }
         }
 
         return result;
     }
 
-    private static SearchResultItem? MapTopResultFromJson(string? typeName, JsonElement data)
+    private static SearchResultItem? MapSearchItemFromJson(string? typeName, JsonElement data)
     {
         try
         {
@@ -725,6 +735,12 @@ public enum SearchResultType
     Playlist
 }
 
+public enum SearchScope
+{
+    All,
+    Artists
+}
+
 /// <summary>
 /// A single search result item.
 /// </summary>
@@ -766,6 +782,81 @@ public sealed class SearchResultItem
             SearchResultType.Playlist => $"{Name} by {OwnerName ?? "Unknown"}",
             _ => Name
         };
+    }
+
+    public string GetSubtitle()
+    {
+        return Type switch
+        {
+            SearchResultType.Track => BuildTrackSubtitle(),
+            SearchResultType.Artist => "Artist",
+            SearchResultType.Album => BuildAlbumSubtitle(),
+            SearchResultType.Playlist => string.IsNullOrWhiteSpace(OwnerName)
+                ? "Playlist"
+                : $"Playlist · {OwnerName}",
+            _ => Name
+        };
+    }
+
+    public string GetTypeTag()
+    {
+        return Type switch
+        {
+            SearchResultType.Track => "Song",
+            SearchResultType.Artist => "Artist",
+            SearchResultType.Album => "Album",
+            SearchResultType.Playlist => "Playlist",
+            _ => "Result"
+        };
+    }
+
+    public string GetActionGlyph()
+    {
+        return Type switch
+        {
+            SearchResultType.Track => "\uE768",
+            _ => "\uE76C"
+        };
+    }
+
+    public string GetPlaceholderGlyph()
+    {
+        return Type switch
+        {
+            SearchResultType.Track => "\uE189",
+            SearchResultType.Artist => "\uE77B",
+            SearchResultType.Album => "\uE93C",
+            SearchResultType.Playlist => "\uE142",
+            _ => "\uE721"
+        };
+    }
+
+    private string BuildTrackSubtitle()
+    {
+        var artists = ArtistNames is { Count: > 0 }
+            ? string.Join(", ", ArtistNames)
+            : null;
+
+        return string.IsNullOrWhiteSpace(artists)
+            ? "Song"
+            : $"Song · {artists}";
+    }
+
+    private string BuildAlbumSubtitle()
+    {
+        var artists = ArtistNames is { Count: > 0 }
+            ? string.Join(", ", ArtistNames)
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(artists) && ReleaseYear is int year)
+            return $"Album · {artists} · {year}";
+
+        if (!string.IsNullOrWhiteSpace(artists))
+            return $"Album · {artists}";
+
+        return ReleaseYear is int releaseYear
+            ? $"Album · {releaseYear}"
+            : "Album";
     }
 }
 

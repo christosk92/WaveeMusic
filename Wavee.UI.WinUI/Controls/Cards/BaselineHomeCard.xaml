@@ -107,6 +107,12 @@
             </Grid>
 
             <Border
+                x:Name="HeroToBottomBlendOverlay"
+                Height="92"
+                VerticalAlignment="Bottom"
+                IsHitTestVisible="False"/>
+
+            <Border
                 x:Name="CoverThumbBorder"
                 Width="58"
                 Height="58"

@@ -29,22 +29,23 @@ public sealed class PathfinderRequest
         {
             Variables = new SearchVariables
             {
-                SearchTerm = searchTerm,
+                Query = searchTerm,
                 Limit = limit,
                 Offset = offset,
                 NumberOfTopResults = numberOfTopResults,
                 IncludeAudiobooks = true,
                 IncludeArtistHasConcertsField = false,
                 IncludePreReleases = true,
-                IncludeAuthors = true
+                IncludeAuthors = true,
+                SectionFilters = ["GENERIC", "VIDEO_CONTENT"]
             },
-            OperationName = "searchDesktop",
+            OperationName = PathfinderOperations.SearchTopResultsList,
             Extensions = new QueryExtensions
             {
                 PersistedQuery = new PersistedQuery
                 {
                     Version = 1,
-                    Sha256Hash = "fcad5a3e0d5af727fb76966f06971c19cfa2275e6ff7671196753e008611873c"
+                    Sha256Hash = PathfinderOperations.SearchTopResultsListHash
                 }
             }
         };
@@ -56,8 +57,8 @@ public sealed class PathfinderRequest
 /// </summary>
 public sealed class SearchVariables
 {
-    [JsonPropertyName("searchTerm")]
-    public required string SearchTerm { get; init; }
+    [JsonPropertyName("query")]
+    public required string Query { get; init; }
 
     [JsonPropertyName("offset")]
     public int Offset { get; init; }
@@ -79,6 +80,33 @@ public sealed class SearchVariables
 
     [JsonPropertyName("includeAuthors")]
     public bool IncludeAuthors { get; init; } = true;
+
+    [JsonPropertyName("sectionFilters")]
+    public string[] SectionFilters { get; init; } = ["GENERIC", "VIDEO_CONTENT"];
+}
+
+public sealed class FilteredSearchVariables
+{
+    [JsonPropertyName("searchTerm")]
+    public required string SearchTerm { get; init; }
+
+    [JsonPropertyName("offset")]
+    public int Offset { get; init; }
+
+    [JsonPropertyName("limit")]
+    public int Limit { get; init; } = 30;
+
+    [JsonPropertyName("numberOfTopResults")]
+    public int NumberOfTopResults { get; init; } = 20;
+
+    [JsonPropertyName("includeAudiobooks")]
+    public bool IncludeAudiobooks { get; init; } = true;
+
+    [JsonPropertyName("includeAuthors")]
+    public bool IncludeAuthors { get; init; } = true;
+
+    [JsonPropertyName("includePreReleases")]
+    public bool IncludePreReleases { get; init; }
 }
 
 /// <summary>

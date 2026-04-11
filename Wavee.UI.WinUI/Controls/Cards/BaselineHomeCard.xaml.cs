@@ -234,12 +234,45 @@ public sealed partial class BaselineHomeCard : UserControl
         {
             ColorWash.Background = null;
             BottomPanel.ClearValue(Border.BackgroundProperty);
+            UpdateHeroToBottomBlendBrush(GetBottomPanelBackgroundColor());
             return;
         }
 
         var color = ParseHexColor(hex);
+        var bottomColor = Darken(color, 0.66);
         ColorWash.Background = new SolidColorBrush(color);
-        BottomPanel.Background = new SolidColorBrush(Darken(color, 0.66));
+        BottomPanel.Background = new SolidColorBrush(bottomColor);
+        UpdateHeroToBottomBlendBrush(bottomColor);
+    }
+
+    private void UpdateHeroToBottomBlendBrush(Color bottomColor)
+    {
+        HeroToBottomBlendOverlay.Background = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop { Color = Color.FromArgb(0, bottomColor.R, bottomColor.G, bottomColor.B), Offset = 0 },
+                new GradientStop { Color = Color.FromArgb(18, bottomColor.R, bottomColor.G, bottomColor.B), Offset = 0.28 },
+                new GradientStop { Color = Color.FromArgb(86, bottomColor.R, bottomColor.G, bottomColor.B), Offset = 0.68 },
+                new GradientStop { Color = Color.FromArgb(255, bottomColor.R, bottomColor.G, bottomColor.B), Offset = 1 }
+            }
+        };
+    }
+
+    private Color GetBottomPanelBackgroundColor()
+    {
+        if (BottomPanel.Background is SolidColorBrush solidBrush)
+            return solidBrush.Color;
+
+        if (Application.Current.Resources.TryGetValue("CardBackgroundFillColorSecondaryBrush", out var brushObj)
+            && brushObj is SolidColorBrush themeBrush)
+        {
+            return themeBrush.Color;
+        }
+
+        return Color.FromArgb(255, 32, 32, 32);
     }
 
     private void UpdateLoadingState(bool isLoading)

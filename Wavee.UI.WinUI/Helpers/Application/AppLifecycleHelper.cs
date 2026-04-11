@@ -298,6 +298,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<IArtistService>(sp =>
                     new Data.Contexts.ArtistService(
                         sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<Wavee.Core.Http.IColorService>(),
                         sp.GetRequiredService<ILocationService>(),
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetService<ILogger<Data.Contexts.ArtistService>>()))

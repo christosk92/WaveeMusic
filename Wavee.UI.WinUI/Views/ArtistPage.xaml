@@ -53,6 +53,7 @@
             <!-- HERO HEADER -->
             <hero:HeroHeader x:Name="HeroGrid"
                              ImageUrl="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay}"
+                             ColorHex="{x:Bind ViewModel.HeaderHeroColorHex, Mode=OneWay}"
                              MinHeight="300"
                              InitialScale="1.0"
                              FinalScale="1.05"
@@ -443,7 +444,7 @@
                                    ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.AlbumsGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="160" MinItemHeight="240"
+                            <UniformGridLayout MinItemWidth="140" MinItemHeight="200"
                                                MinRowSpacing="12" MinColumnSpacing="12"
                                                ItemsStretch="Uniform"/>
                         </ItemsRepeater.Layout>
@@ -537,7 +538,7 @@
                                    ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.SinglesGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="160" MinItemHeight="240"
+                            <UniformGridLayout MinItemWidth="140" MinItemHeight="200"
                                                MinRowSpacing="12" MinColumnSpacing="12"
                                                ItemsStretch="Uniform"/>
                         </ItemsRepeater.Layout>

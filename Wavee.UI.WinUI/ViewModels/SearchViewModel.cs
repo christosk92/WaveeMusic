@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,6 +30,8 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private readonly IPathfinderClient _pathfinderClient;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
+    private readonly List<SearchResultItem> _allItems = [];
+    private int _requestVersion;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -63,11 +66,21 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     private bool _showPlaylists = true;
 
+    [ObservableProperty]
+    private bool _showEmptyState;
+
     public ObservableCollection<SearchResultItem> Tracks { get; } = [];
     public ObservableCollection<ITrackItem> AdaptedTracks { get; } = [];
     public ObservableCollection<SearchResultItem> Artists { get; } = [];
     public ObservableCollection<SearchResultItem> Albums { get; } = [];
     public ObservableCollection<SearchResultItem> Playlists { get; } = [];
+    public ObservableCollection<SearchResultItem> VisibleResults { get; } = [];
+
+    public bool ShowHeroCard => ShowTopResult && TopResult != null;
+    public bool HasVisibleResults => VisibleResults.Count > 0;
+    public string EmptyStateMessage => string.IsNullOrWhiteSpace(Query)
+        ? "Start a search to explore music, artists, albums, and playlists."
+        : $"No results for \"{Query}\"";
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -94,6 +107,14 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         ShowArtists = value is SearchFilterType.All or SearchFilterType.Artists;
         ShowAlbums = value is SearchFilterType.All or SearchFilterType.Albums;
         ShowPlaylists = value is SearchFilterType.All or SearchFilterType.Playlists;
+
+        if (!string.IsNullOrWhiteSpace(Query))
+        {
+            _ = LoadAsync(Query);
+            return;
+        }
+
+        UpdateVisibleResults();
     }
 
     public async Task LoadAsync(string query)
@@ -101,17 +122,29 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         if (string.IsNullOrWhiteSpace(query))
             return;
 
+        var requestVersion = ++_requestVersion;
+
         Query = query;
         IsLoading = true;
         HasError = false;
         ErrorMessage = null;
+        ShowEmptyState = false;
 
         try
         {
-            var result = await Task.Run(() => _pathfinderClient.SearchAsync(query));
+            var result = await Task.Run(() => _pathfinderClient.SearchAsync(
+                query,
+                GetSearchScope(),
+                limit: 30));
 
+            if (requestVersion != _requestVersion)
+                return;
+
+            _allItems.Clear();
+            _allItems.AddRange(result.Items);
             DispatchResults(result.Items);
             TopResult = result.TopResult;
+            UpdateVisibleResults();
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
             {
@@ -121,13 +154,25 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         }
         catch (Exception ex)
         {
+            if (requestVersion != _requestVersion)
+                return;
+
+            _allItems.Clear();
+            DispatchResults([]);
+            TopResult = null;
+            UpdateVisibleResults();
             _logger?.LogWarning(ex, "Search failed for query: {Query}", query);
             HasError = true;
             ErrorMessage = AppLocalization.GetString("Search_Failed");
         }
         finally
         {
-            IsLoading = false;
+            if (requestVersion == _requestVersion)
+            {
+
+                IsLoading = false;
+                UpdateEmptyState();
+            }
         }
     }
 
@@ -158,6 +203,61 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
                     break;
             }
         }
+    }
+
+    partial void OnTopResultChanged(SearchResultItem? value)
+    {
+        OnPropertyChanged(nameof(ShowHeroCard));
+        UpdateVisibleResults();
+    }
+
+    partial void OnQueryChanged(string? value)
+    {
+        OnPropertyChanged(nameof(EmptyStateMessage));
+    }
+
+    private void UpdateVisibleResults()
+    {
+        VisibleResults.Clear();
+
+        IEnumerable<SearchResultItem> filtered = SelectedFilter switch
+        {
+            SearchFilterType.Songs => _allItems.Where(static item => item.Type == SearchResultType.Track),
+            SearchFilterType.Artists => _allItems.Where(static item => item.Type == SearchResultType.Artist),
+            SearchFilterType.Albums => _allItems.Where(static item => item.Type == SearchResultType.Album),
+            SearchFilterType.Playlists => _allItems.Where(static item => item.Type == SearchResultType.Playlist),
+            _ => _allItems
+        };
+
+        var topKey = ShowHeroCard && TopResult != null
+            ? $"{TopResult.Type}:{TopResult.Uri}"
+            : null;
+
+        foreach (var item in filtered)
+        {
+            if (topKey != null && $"{item.Type}:{item.Uri}" == topKey)
+                continue;
+
+            VisibleResults.Add(item);
+        }
+
+        OnPropertyChanged(nameof(HasVisibleResults));
+        OnPropertyChanged(nameof(ShowHeroCard));
+        UpdateEmptyState();
+    }
+
+    private void UpdateEmptyState()
+    {
+        ShowEmptyState = !IsLoading && !HasError && !ShowHeroCard && VisibleResults.Count == 0;
+    }
+
+    private SearchScope GetSearchScope()
+    {
+        return SelectedFilter switch
+        {
+            SearchFilterType.Artists => SearchScope.Artists,
+            _ => SearchScope.All
+        };
     }
 
     [RelayCommand]

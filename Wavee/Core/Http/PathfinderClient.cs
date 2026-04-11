@@ -159,32 +159,59 @@ public sealed class PathfinderClient : IPathfinderClient
     /// <inheritdoc />
     public async Task<SearchResult> SearchAsync(
         string query,
+        SearchScope scope = SearchScope.All,
         int limit = 10,
         int offset = 0,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
 
-        var variables = new SearchVariables
-        {
-            SearchTerm = query,
-            Limit = limit,
-            Offset = offset,
-            NumberOfTopResults = 5,
-            IncludeAudiobooks = true,
-            IncludeArtistHasConcertsField = false,
-            IncludePreReleases = true,
-            IncludeAuthors = true
-        };
-
         _logger?.LogDebug("Searching for: {Query} (limit={Limit}, offset={Offset})", query, limit, offset);
 
-        var searchResponse = await QueryAsync(
-            variables,
-            PathfinderOperations.SearchDesktop,
-            PathfinderOperations.SearchDesktopHash,
-            PathfinderJsonContext.Default.PathfinderSearchResponse,
-            cancellationToken);
+        PathfinderSearchResponse searchResponse;
+
+        if (scope == SearchScope.Artists)
+        {
+            var variables = new FilteredSearchVariables
+            {
+                SearchTerm = query,
+                Limit = Math.Max(limit, 30),
+                Offset = offset,
+                NumberOfTopResults = 20,
+                IncludeAudiobooks = true,
+                IncludeAuthors = true,
+                IncludePreReleases = false
+            };
+
+            searchResponse = await QueryAsync(
+                variables,
+                PathfinderOperations.SearchArtists,
+                PathfinderOperations.SearchArtistsHash,
+                PathfinderJsonContext.Default.PathfinderSearchResponse,
+                cancellationToken);
+        }
+        else
+        {
+            var variables = new SearchVariables
+            {
+                Query = query,
+                Limit = limit,
+                Offset = offset,
+                NumberOfTopResults = limit,
+                IncludeAudiobooks = true,
+                IncludeArtistHasConcertsField = false,
+                IncludePreReleases = true,
+                IncludeAuthors = true,
+                SectionFilters = ["GENERIC", "VIDEO_CONTENT"]
+            };
+
+            searchResponse = await QueryAsync(
+                variables,
+                PathfinderOperations.SearchTopResultsList,
+                PathfinderOperations.SearchTopResultsListHash,
+                PathfinderJsonContext.Default.PathfinderSearchResponse,
+                cancellationToken);
+        }
 
         var result = SearchResult.FromResponse(searchResponse);
 
@@ -587,6 +614,10 @@ public sealed class PathfinderClient : IPathfinderClient
         if (variables is SearchVariables sv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(sv, PathfinderJsonContext.Default.SearchVariables);
+        }
+        else if (variables is FilteredSearchVariables fsv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(fsv, PathfinderJsonContext.Default.FilteredSearchVariables);
         }
         else if (variables is UserTopContentVariables utc)
         {

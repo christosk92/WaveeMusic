@@ -61,6 +61,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private string? _artistName;
     [ObservableProperty] private string? _artistImageUrl;
     [ObservableProperty] private string? _headerImageUrl;
+    [ObservableProperty] private string? _headerHeroColorHex;
     [ObservableProperty] private string? _monthlyListeners;
     [ObservableProperty] private long _followers;
     [ObservableProperty] private string? _biography;
@@ -190,6 +191,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ArtistName = null;
         ArtistImageUrl = null;
         HeaderImageUrl = null;
+        HeaderHeroColorHex = null;
         MonthlyListeners = null;
         Followers = 0;
         Biography = null;
@@ -298,6 +300,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             if (string.IsNullOrEmpty(ArtistImageUrl))
                 ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
             HeaderImageUrl = overview.HeaderImageUrl;
+            HeaderHeroColorHex = overview.HeroColorHex;
             MonthlyListeners = overview.MonthlyListeners > 0
                 ? overview.MonthlyListeners.ToString("N0")
                 : null;

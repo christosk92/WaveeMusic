@@ -31,17 +31,74 @@
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <Style x:Key="PlayerVolumeFlyoutPresenterStyle" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}" TargetType="FlyoutPresenter">
+                <Setter Property="Padding" Value="12" />
+                <Setter Property="MinWidth" Value="0" />
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <!-- Shadow wrapper (must be separate from CornerRadius to avoid clipping) -->
+    <VisualStateManager.VisualStateGroups>
+        <VisualStateGroup x:Name="LayoutStates">
+            <VisualState x:Name="Wide">
+                <VisualState.Setters>
+                    <Setter Target="WideLayoutRoot.Visibility" Value="Visible" />
+                    <Setter Target="NarrowLayoutRoot.Visibility" Value="Collapsed" />
+                    <Setter Target="InlinePanelGroup.Visibility" Value="Visible" />
+                    <Setter Target="InlineModeGroup.Visibility" Value="Visible" />
+                    <Setter Target="InlineVolumeGroup.Visibility" Value="Visible" />
+                    <Setter Target="OverflowButton.Visibility" Value="Collapsed" />
+                    <Setter Target="WideLayoutRoot.Height" Value="56" />
+                    <Setter Target="PlayerBarLayoutRoot.MinHeight" Value="56" />
+                </VisualState.Setters>
+            </VisualState>
+
+            <VisualState x:Name="Compact">
+                <VisualState.Setters>
+                    <Setter Target="WideLayoutRoot.Visibility" Value="Visible" />
+                    <Setter Target="NarrowLayoutRoot.Visibility" Value="Collapsed" />
+                    <Setter Target="InlinePanelGroup.Visibility" Value="Visible" />
+                    <Setter Target="InlineModeGroup.Visibility" Value="Visible" />
+                    <Setter Target="InlineVolumeGroup.Visibility" Value="Collapsed" />
+                    <Setter Target="OverflowButton.Visibility" Value="Visible" />
+                    <Setter Target="WideLayoutRoot.Height" Value="56" />
+                    <Setter Target="PlayerBarLayoutRoot.MinHeight" Value="56" />
+                </VisualState.Setters>
+            </VisualState>
+
+            <VisualState x:Name="Narrow">
+                <VisualState.Setters>
+                    <Setter Target="WideLayoutRoot.Visibility" Value="Visible" />
+                    <Setter Target="NarrowLayoutRoot.Visibility" Value="Collapsed" />
+                    <Setter Target="InlinePanelGroup.Visibility" Value="Collapsed" />
+                    <Setter Target="InlineModeGroup.Visibility" Value="Visible" />
+                    <Setter Target="InlineVolumeGroup.Visibility" Value="Collapsed" />
+                    <Setter Target="OverflowButton.Visibility" Value="Visible" />
+                    <Setter Target="WideLayoutRoot.Height" Value="56" />
+                    <Setter Target="PlayerBarLayoutRoot.MinHeight" Value="56" />
+                </VisualState.Setters>
+            </VisualState>
+
+            <VisualState x:Name="VeryNarrow">
+                <VisualState.Setters>
+                    <Setter Target="WideLayoutRoot.Visibility" Value="Collapsed" />
+                    <Setter Target="NarrowLayoutRoot.Visibility" Value="Visible" />
+                    <Setter Target="NarrowRemoteDeviceHost.Visibility" Value="Collapsed" />
+                    <Setter Target="NarrowInlineModeGroup.Visibility" Value="Collapsed" />
+                    <Setter Target="NarrowVolumeButton.Visibility" Value="Visible" />
+                    <Setter Target="NarrowTrackMetadataHost.Margin" Value="8,0,0,0" />
+                    <Setter Target="PlayerBarLayoutRoot.MinHeight" Value="76" />
+                </VisualState.Setters>
+            </VisualState>
+        </VisualStateGroup>
+    </VisualStateManager.VisualStateGroups>
+
     <Border
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
         <toolkit:Effects.Shadow>
-            <media:AttachedCardShadow BlurRadius="32"  Offset="0,-2" Opacity="0.4" Color="Black" CornerRadius="8" />
+            <media:AttachedCardShadow BlurRadius="32" Offset="0,-2" Opacity="0.4" Color="Black" CornerRadius="8" />
         </toolkit:Effects.Shadow>
 
-        <!-- Inner border with visual styling -->
         <Border
             CornerRadius="4"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -50,291 +107,767 @@
                 <AcrylicBrush
                     x:Name="PlayerBarTintBrush"
                     TintColor="#C05040"
-                    TintOpacity="0.88"  TintLuminosityOpacity="0.25"
-                    FallbackColor="{ThemeResource SolidBackgroundFillColorBase}"/>
+                    TintOpacity="0.88"
+                    TintLuminosityOpacity="0.25"
+                    FallbackColor="{ThemeResource SolidBackgroundFillColorBase}" />
             </Border.Background>
 
-        <!-- Single-row layout -->
-        <Grid Height="56" Padding="0,0,8,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />           <!-- Album art + track info -->
-                <ColumnDefinition Width="Auto" />           <!-- Transport controls -->
-                <ColumnDefinition Width="Auto" />           <!-- Current time -->
-                <ColumnDefinition Width="*" />              <!-- Progress slider -->
-                <ColumnDefinition Width="Auto" />           <!-- Duration -->
-                <ColumnDefinition Width="Auto" />           <!-- Secondary controls + volume -->
-            </Grid.ColumnDefinitions>
+            <Grid x:Name="PlayerBarLayoutRoot" MinHeight="56" Padding="0,0,8,0">
+                <ProgressBar
+                    IsIndeterminate="True"
+                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Height="2"
+                    Margin="0"
+                    VerticalAlignment="Top"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
 
-            <!-- Buffering indicator (full width, top edge) -->
-            <ProgressBar
-                Grid.ColumnSpan="6"
-                IsIndeterminate="True"
-                Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                Height="2" Margin="0"
-                VerticalAlignment="Top"
-                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <Grid x:Name="WideLayoutRoot" Height="56">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-            <!-- Column 0: Album Art + Track Info -->
-            <Grid
-                Grid.Column="0"
-                VerticalAlignment="Center"
-                MinWidth="200"
-                MaxWidth="280">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Album Art (48x48) — tap to expand in sidebar -->
-                <Grid
-                    Width="48"
-                    Height="48"
-                    Margin="4"
-                    CornerRadius="4"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    Tapped="AlbumArt_Tapped"
-                    Visibility="{x:Bind ViewModel.IsAlbumArtExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                    <animations:Implicit.ShowAnimations>
-                        <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1" />
-                        <animations:ScaleAnimation Duration="0:0:0.2" From="0.8,0.8,1" To="1,1,1" />
-                    </animations:Implicit.ShowAnimations>
-                    <animations:Implicit.HideAnimations>
-                        <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0" />
-                        <animations:ScaleAnimation Duration="0:0:0.15" From="1,1,1" To="0.8,0.8,1" />
-                    </animations:Implicit.HideAnimations>
-                    <Image
-                        Width="48"
-                        Height="48"
-                        Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
-                        Stretch="UniformToFill"
-                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                        behaviors:ImageFallbackBehavior.DecodePixelWidth="96"/>
-                    <FontIcon
-                        Glyph="&#xE8D6;"
-                        FontSize="18"
-                        HorizontalAlignment="Center"
+                    <Grid
+                        x:Name="TrackGroup"
+                        Grid.Column="0"
                         VerticalAlignment="Center"
-                        Visibility="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
+                        MinWidth="200"
+                        MaxWidth="320">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid
+                            x:Name="AlbumArtHost"
+                            Width="48"
+                            Height="48"
+                            Margin="4"
+                            CornerRadius="4"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            Tapped="AlbumArt_Tapped"
+                            Visibility="{x:Bind ViewModel.IsAlbumArtExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <animations:Implicit.ShowAnimations>
+                                <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1" />
+                                <animations:ScaleAnimation Duration="0:0:0.2" From="0.8,0.8,1" To="1,1,1" />
+                            </animations:Implicit.ShowAnimations>
+                            <animations:Implicit.HideAnimations>
+                                <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0" />
+                                <animations:ScaleAnimation Duration="0:0:0.15" From="1,1,1" To="0.8,0.8,1" />
+                            </animations:Implicit.HideAnimations>
+                            <Image
+                                Width="48"
+                                Height="48"
+                                Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
+                                Stretch="UniformToFill"
+                                behaviors:ImageFallbackBehavior.HideOnError="True"
+                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                behaviors:ImageFallbackBehavior.DecodePixelWidth="96" />
+                            <FontIcon
+                                Glyph="&#xE8D6;"
+                                FontSize="18"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
+                        </Grid>
+
+                        <StackPanel
+                            x:Name="TrackMetadataHost"
+                            Grid.Column="1"
+                            Margin="8,0,12,0"
+                            VerticalAlignment="Center"
+                            Spacing="0">
+                            <HyperlinkButton
+                                Padding="0"
+                                MinHeight="0"
+                                MinWidth="0"
+                                Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
+                                Click="TrackTitle_Click">
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    MaxLines="1"
+                                    TextWrapping="WrapWholeWords"
+                                    TextTrimming="CharacterEllipsis" />
+                            </HyperlinkButton>
+                            <ctk:MetadataControl
+                                Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
+                                Separator=", ">
+                                <ctk:MetadataControl.TextBlockStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="FontSize" Value="12" />
+                                        <Setter Property="Opacity" Value="0.6" />
+                                        <Setter Property="Foreground" Value="{ThemeResource ApplicationForegroundThemeBrush}" />
+                                        <Setter Property="MaxLines" Value="1" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    </Style>
+                                </ctk:MetadataControl.TextBlockStyle>
+                            </ctk:MetadataControl>
+                            <StackPanel
+                                x:Name="RemoteDeviceHost"
+                                Orientation="Horizontal"
+                                Spacing="4"
+                                Visibility="{x:Bind ViewModel.IsPlayingRemotely, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <FontIcon Glyph="&#xE703;" FontSize="9" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.ActiveDeviceName, Mode=OneWay, FallbackValue='Remote device'}"
+                                    FontSize="10"
+                                    Opacity="0.7"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid
+                            x:Name="HeartHost"
+                            Grid.Column="2"
+                            VerticalAlignment="Center">
+                            <controls:HeartButton
+                                x:Name="PlayerHeartButton"
+                                Width="28"
+                                Height="28"
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center" />
+                        </Grid>
+                    </Grid>
+
+                    <StackPanel
+                        x:Name="TransportGroup"
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Spacing="0"
+                        Margin="0,0,12,0">
+                        <Button
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.PreviousCommand}"
+                            ToolTipService.ToolTip="Previous">
+                            <FontIcon Glyph="&#xF8AC;" FontSize="14" />
+                        </Button>
+                        <Button
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.PlayPauseCommand}"
+                            ToolTipService.ToolTip="Play/Pause">
+                            <Grid>
+                                <FontIcon
+                                    FontSize="18"
+                                    Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}"
+                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                <ProgressRing
+                                    Width="20"
+                                    Height="20"
+                                    IsActive="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            </Grid>
+                        </Button>
+                        <Button
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.NextCommand}"
+                            ToolTipService.ToolTip="Next">
+                            <FontIcon Glyph="&#xF8AD;" FontSize="14" />
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock
+                        x:Name="TimeStartText"
+                        Grid.Column="2"
+                        Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Margin="4,0,8,0" />
+
+                    <Grid
+                        x:Name="ProgressGroup"
+                        Grid.Column="3"
+                        VerticalAlignment="Center">
+                        <Slider
+                            x:Name="WideProgressSlider"
+                            VerticalAlignment="Center"
+                            Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
+                            Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
+                            IsThumbToolTipEnabled="False"
+                            Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                            PointerPressed="ProgressSlider_PointerPressed"
+                            PointerReleased="ProgressSlider_PointerReleased"
+                            PointerCaptureLost="ProgressSlider_PointerCaptureLost"
+                            Style="{StaticResource PlayerProgressSliderStyle}" />
+                    </Grid>
+
+                    <TextBlock
+                        x:Name="TimeEndText"
+                        Grid.Column="4"
+                        Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Opacity="0.6"
+                        Margin="8,0,12,0" />
+
+                    <StackPanel
+                        Grid.Column="5"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Spacing="0">
+                        <StackPanel
+                            x:Name="InlineModeGroup"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Spacing="0">
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                                ToolTipService.ToolTip="Shuffle">
+                                <FontIcon Glyph="&#xE8B1;" FontSize="14" />
+                            </ToggleButton>
+
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                                Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                                ToolTipService.ToolTip="Repeat">
+                                <FontIcon
+                                    Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                    FontSize="14" />
+                            </ToggleButton>
+                        </StackPanel>
+
+                        <StackPanel
+                            x:Name="InlineVolumeGroup"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Spacing="0">
+                            <Button
+                                Style="{StaticResource TransparentButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                Command="{x:Bind ViewModel.ToggleMuteCommand}"
+                                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                ToolTipService.ToolTip="Volume">
+                                <FontIcon
+                                    FontSize="14"
+                                    Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
+                            </Button>
+
+                            <Slider
+                                x:Name="VolumeSlider"
+                                Width="90"
+                                VerticalAlignment="Center"
+                                Minimum="0"
+                                Maximum="100"
+                                Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
+                                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                IsThumbToolTipEnabled="False" />
+                        </StackPanel>
+
+                        <Button
+                            x:Name="CollapsedVolumeButton"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Visibility="Collapsed"
+                            IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                            ToolTipService.ToolTip="Volume">
+                            <Button.Flyout>
+                                <Flyout Placement="TopEdgeAlignedRight">
+                                    <Flyout.FlyoutPresenterStyle>
+                                        <StaticResource ResourceKey="PlayerVolumeFlyoutPresenterStyle" />
+                                    </Flyout.FlyoutPresenterStyle>
+                                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                                        <FontIcon
+                                            HorizontalAlignment="Center"
+                                            FontSize="14"
+                                            Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
+                                        <Slider
+                                            Height="132"
+                                            Orientation="Vertical"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
+                                            IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                            IsThumbToolTipEnabled="False" />
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                            <FontIcon
+                                FontSize="14"
+                                Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
+                        </Button>
+
+                        <StackPanel
+                            x:Name="InlinePanelGroup"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Spacing="0">
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleQueuePanelCommand}"
+                                ToolTipService.ToolTip="Queue">
+                                <FontIcon Glyph="&#xE142;" FontSize="14" />
+                            </ToggleButton>
+
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
+                                ToolTipService.ToolTip="Details">
+                                <FontIcon Glyph="&#xE946;" FontSize="14" />
+                            </ToggleButton>
+
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
+                                ToolTipService.ToolTip="Lyrics">
+                                <FontIcon Glyph="&#xED1E;" FontSize="14" />
+                            </ToggleButton>
+
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
+                                ToolTipService.ToolTip="Friends Activity">
+                                <FontIcon Glyph="&#xE716;" FontSize="14" />
+                            </ToggleButton>
+                        </StackPanel>
+
+                        <Button
+                            x:Name="OverflowButton"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Visibility="Collapsed"
+                            ToolTipService.ToolTip="More">
+                            <Button.Flyout>
+                                <MenuFlyout Opening="OverflowFlyout_Opening">
+                                    <MenuFlyoutItem
+                                        x:Name="WideLikeMenuItem"
+                                        Tag="like"
+                                        Text="Like track"
+                                        Click="LikeOverflowMenuItem_Click">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xEB52;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Queue"
+                                        IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleQueuePanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE142;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Lyrics"
+                                        IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xED1E;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Details"
+                                        IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE946;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Friends Activity"
+                                        IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE716;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <ToggleMenuFlyoutItem
+                                        Text="Shuffle"
+                                        IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleShuffleCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8B1;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Repeat"
+                                        IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                                        Command="{x:Bind ViewModel.ToggleRepeatCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon
+                                                Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                                FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                            <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        </Button>
+                    </StackPanel>
                 </Grid>
 
-                <!-- Track info -->
-                <StackPanel
-                    Grid.Column="1"
-                    Margin="8,0,16,0"
-                    VerticalAlignment="Center"
-                    Spacing="0">
-                    <HyperlinkButton
-                        Padding="0" MinHeight="0" MinWidth="0"
-                        Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
-                        Click="TrackTitle_Click">
-                        <TextBlock
-                            Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
-                            FontSize="13"
-                            FontWeight="SemiBold"
-                            MaxLines="1"
-                            TextWrapping="WrapWholeWords"
-                            TextTrimming="CharacterEllipsis" />
-                    </HyperlinkButton>
-                    <ctk:MetadataControl
-                        Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
-                        Separator=", ">
-                        <ctk:MetadataControl.TextBlockStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontSize" Value="12" />
-                                <Setter Property="Opacity" Value="0.6" />
-                                <Setter Property="Foreground" Value="{ThemeResource ApplicationForegroundThemeBrush}" />
-                                <Setter Property="MaxLines" Value="1" />
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                            </Style>
-                        </ctk:MetadataControl.TextBlockStyle>
-                    </ctk:MetadataControl>
-                    <!-- Remote device indicator -->
-                    <StackPanel
-                        Orientation="Horizontal"
-                        Spacing="4"
-                        Visibility="{x:Bind ViewModel.IsPlayingRemotely, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <FontIcon Glyph="&#xE703;" FontSize="9" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                        <TextBlock
-                            Text="{x:Bind ViewModel.ActiveDeviceName, Mode=OneWay, FallbackValue='Remote device'}"
-                            FontSize="10"
-                            Opacity="0.7"
-                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                    </StackPanel>
-                </StackPanel>
+                <Grid x:Name="NarrowLayoutRoot" Visibility="Collapsed" Margin="0,4,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- Heart button (after track info) -->
-                <controls:HeartButton x:Name="PlayerHeartButton"
-                                       Grid.Column="2"
-                                       VerticalAlignment="Center"
-                                       Width="28" Height="28"
-                                       Margin="0,0,4,0"/>
-            </Grid>
+                    <Grid
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-            <!-- Column 1: Transport Controls (prev, play/pause, next) -->
-            <StackPanel
-                Grid.Column="1"
-                Orientation="Horizontal"
-                VerticalAlignment="Center"
-                Spacing="0"
-                Margin="0,0,12,0">
-                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_1"
-                    Style="{StaticResource TransparentButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    Command="{x:Bind ViewModel.PreviousCommand}"
-                    ToolTipService.ToolTip="Previous">
-                    <FontIcon Glyph="&#xF8AC;" FontSize="14" />
-                </Button>
-                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_2"
-                    Style="{StaticResource TransparentButtonStyle}"
-                    Width="36" Height="36" Padding="0"
-                    Command="{x:Bind ViewModel.PlayPauseCommand}"
-                    ToolTipService.ToolTip="Play/Pause">
-                    <Grid>
-                        <FontIcon
-                            FontSize="18"
-                            Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}"
-                            Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                        <ProgressRing
-                            Width="20" Height="20"
-                            IsActive="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
-                            Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                        <Grid
+                            x:Name="NarrowAlbumArtHost"
+                            Width="40"
+                            Height="40"
+                            Margin="4"
+                            CornerRadius="4"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            Tapped="AlbumArt_Tapped"
+                            Visibility="{x:Bind ViewModel.IsAlbumArtExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <Image
+                                Width="40"
+                                Height="40"
+                                Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
+                                Stretch="UniformToFill"
+                                behaviors:ImageFallbackBehavior.HideOnError="True"
+                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                behaviors:ImageFallbackBehavior.DecodePixelWidth="96" />
+                            <FontIcon
+                                Glyph="&#xE8D6;"
+                                FontSize="16"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
+                        </Grid>
+
+                        <StackPanel
+                            x:Name="NarrowTrackMetadataHost"
+                            Grid.Column="1"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Spacing="0">
+                            <HyperlinkButton
+                                Padding="0"
+                                MinHeight="0"
+                                MinWidth="0"
+                                Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
+                                Click="TrackTitle_Click">
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    MaxLines="1"
+                                    TextTrimming="CharacterEllipsis" />
+                            </HyperlinkButton>
+                            <ctk:MetadataControl
+                                Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
+                                Separator=", ">
+                                <ctk:MetadataControl.TextBlockStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="FontSize" Value="12" />
+                                        <Setter Property="Opacity" Value="0.6" />
+                                        <Setter Property="Foreground" Value="{ThemeResource ApplicationForegroundThemeBrush}" />
+                                        <Setter Property="MaxLines" Value="1" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    </Style>
+                                </ctk:MetadataControl.TextBlockStyle>
+                            </ctk:MetadataControl>
+                            <StackPanel
+                                x:Name="NarrowRemoteDeviceHost"
+                                Orientation="Horizontal"
+                                Spacing="4"
+                                Visibility="{x:Bind ViewModel.IsPlayingRemotely, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <FontIcon Glyph="&#xE703;" FontSize="9" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.ActiveDeviceName, Mode=OneWay, FallbackValue='Remote device'}"
+                                    FontSize="10"
+                                    Opacity="0.7"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
-                </Button>
-                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_3"
-                    Style="{StaticResource TransparentButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    Command="{x:Bind ViewModel.NextCommand}"
-                    ToolTipService.ToolTip="Next">
-                    <FontIcon Glyph="&#xF8AD;" FontSize="14" />
-                </Button>
-            </StackPanel>
 
-            <!-- Column 2: Current Time -->
-            <TextBlock
-                Grid.Column="2"
-                Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
-                VerticalAlignment="Center"
-                FontSize="12"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Margin="4,0,8,0" />
+                    <StackPanel
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Spacing="0"
+                        Margin="0,0,4,0">
+                        <Button
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.PreviousCommand}"
+                            ToolTipService.ToolTip="Previous">
+                            <FontIcon Glyph="&#xF8AC;" FontSize="14" />
+                        </Button>
+                        <Button
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.PlayPauseCommand}"
+                            ToolTipService.ToolTip="Play/Pause">
+                            <Grid>
+                                <FontIcon
+                                    FontSize="18"
+                                    Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}"
+                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                <ProgressRing
+                                    Width="20"
+                                    Height="20"
+                                    IsActive="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            </Grid>
+                        </Button>
+                        <Button
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Command="{x:Bind ViewModel.NextCommand}"
+                            ToolTipService.ToolTip="Next">
+                            <FontIcon Glyph="&#xF8AD;" FontSize="14" />
+                        </Button>
+                    </StackPanel>
 
-            <!-- Column 3: Progress Slider (inline) -->
-            <Slider x:Name="ProgressSlider"
-                    Grid.Column="3"
-                    VerticalAlignment="Center"
-                    Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
-                    Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
-                    IsThumbToolTipEnabled="False"
-                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                    PointerPressed="ProgressSlider_PointerPressed"
-                    PointerReleased="ProgressSlider_PointerReleased"
-                    PointerCaptureLost="ProgressSlider_PointerCaptureLost"
-                    Style="{StaticResource PlayerProgressSliderStyle}" />
+                    <StackPanel
+                        Grid.Row="0"
+                        Grid.Column="3"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Spacing="0">
+                        <StackPanel
+                            x:Name="NarrowInlineModeGroup"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Spacing="0">
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="30"
+                                Height="30"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                                ToolTipService.ToolTip="Shuffle">
+                                <FontIcon Glyph="&#xE8B1;" FontSize="13" />
+                            </ToggleButton>
 
-            <!-- Column 4: Duration -->
-            <TextBlock
-                Grid.Column="4"
-                Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
-                VerticalAlignment="Center"
-                FontSize="12"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Opacity="0.6"
-                Margin="8,0,12,0" />
+                            <ToggleButton
+                                Style="{StaticResource SubtleToggleButtonStyle}"
+                                Width="30"
+                                Height="30"
+                                Padding="0"
+                                IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                                Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                                ToolTipService.ToolTip="Repeat">
+                                <FontIcon
+                                    Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                    FontSize="13" />
+                            </ToggleButton>
+                        </StackPanel>
 
-            <!-- Column 5: Secondary Controls + Volume -->
-            <StackPanel
-                Grid.Column="5"
-                Orientation="Horizontal"
-                VerticalAlignment="Center"
-                Spacing="0">
+                        <Button
+                            x:Name="NarrowVolumeButton"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                            ToolTipService.ToolTip="Volume">
+                            <Button.Flyout>
+                                <Flyout Placement="TopEdgeAlignedRight">
+                                    <Flyout.FlyoutPresenterStyle>
+                                        <StaticResource ResourceKey="PlayerVolumeFlyoutPresenterStyle" />
+                                    </Flyout.FlyoutPresenterStyle>
+                                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                                        <FontIcon
+                                            HorizontalAlignment="Center"
+                                            FontSize="14"
+                                            Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
+                                        <Slider
+                                            Height="132"
+                                            Orientation="Vertical"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
+                                            IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                            IsThumbToolTipEnabled="False" />
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                            <FontIcon
+                                FontSize="14"
+                                Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
+                        </Button>
 
-                <!-- Shuffle -->
-                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_4"
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
-                    Command="{x:Bind ViewModel.ToggleShuffleCommand}"
-                    ToolTipService.ToolTip="Shuffle">
-                    <FontIcon Glyph="&#xE8B1;" FontSize="14" />
-                </ToggleButton>
+                        <Button
+                            x:Name="NarrowOverflowButton"
+                            Style="{StaticResource TransparentButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            ToolTipService.ToolTip="More">
+                            <Button.Flyout>
+                                <MenuFlyout Opening="OverflowFlyout_Opening">
+                                    <MenuFlyoutItem
+                                        x:Name="NarrowLikeMenuItem"
+                                        Tag="like"
+                                        Text="Like track"
+                                        Click="LikeOverflowMenuItem_Click">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xEB52;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Queue"
+                                        IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleQueuePanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE142;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Lyrics"
+                                        IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xED1E;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Details"
+                                        IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE946;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Friends Activity"
+                                        IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE716;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <ToggleMenuFlyoutItem
+                                        Text="Shuffle"
+                                        IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleShuffleCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8B1;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Repeat"
+                                        IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                                        Command="{x:Bind ViewModel.ToggleRepeatCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon
+                                                Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                                FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                            <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        </Button>
+                    </StackPanel>
 
-                <!-- Repeat -->
-                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_5"
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
-                    Command="{x:Bind ViewModel.ToggleRepeatCommand}"
-                    ToolTipService.ToolTip="Repeat">
-                    <FontIcon Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}" FontSize="14" />
-                </ToggleButton>
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Margin="8,0,8,4" />
 
-                <!-- Volume icon -->
-                <Button x:Uid="Controls_PlayerBar_PlayerBar__Button_6"
-                    Style="{StaticResource TransparentButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    Command="{x:Bind ViewModel.ToggleMuteCommand}"
-                    IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                    ToolTipService.ToolTip="Volume">
-                    <FontIcon
-                        FontSize="14"
-                        Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                </Button>
+                    <Slider
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Grid.ColumnSpan="2"
+                        VerticalAlignment="Center"
+                        Margin="0,0,8,4"
+                        Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
+                        Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
+                        IsThumbToolTipEnabled="False"
+                        Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                        PointerPressed="ProgressSlider_PointerPressed"
+                        PointerReleased="ProgressSlider_PointerReleased"
+                        PointerCaptureLost="ProgressSlider_PointerCaptureLost"
+                        Style="{StaticResource PlayerProgressSliderStyle}" />
 
-                <!-- Volume slider -->
-                <Slider
-                    x:Name="VolumeSlider"
-                    Width="90"
-                    VerticalAlignment="Center"
-                    Minimum="0"
-                    Maximum="100"
-                    Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                    IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                    IsThumbToolTipEnabled="False" />
-
-                <!-- Queue -->
-                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_7"
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
-                    Command="{x:Bind ViewModel.ToggleQueuePanelCommand}"
-                    ToolTipService.ToolTip="Queue">
-                    <FontIcon Glyph="&#xE142;" FontSize="14" />
-                </ToggleButton>
-
-                <!-- Details -->
-                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_8"
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
-                    Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
-                    ToolTipService.ToolTip="Details">
-                    <FontIcon Glyph="&#xE946;" FontSize="14" />
-                </ToggleButton>
-
-                <!-- Lyrics -->
-                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_9"
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
-                    Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
-                    ToolTipService.ToolTip="Lyrics">
-                    <FontIcon Glyph="&#xED1E;" FontSize="14" />
-                </ToggleButton>
-
-                <!-- Friends Activity -->
-                <ToggleButton x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_10"
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="32" Height="32" Padding="0"
-                    IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                    Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
-                    ToolTipService.ToolTip="Friends Activity">
-                    <FontIcon Glyph="&#xE716;" FontSize="14" />
-                </ToggleButton>
-            </StackPanel>
-        </Grid>
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="3"
+                        Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Opacity="0.6"
+                        Margin="0,0,4,4" />
+                </Grid>
+            </Grid>
         </Border>
     </Border>
 </UserControl>

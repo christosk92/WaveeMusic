@@ -17,6 +17,14 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 public sealed partial class HeroHeader : UserControl
 {
     private CompositionSurfaceBrush? _surfaceBrush;
+    private CompositionLinearGradientBrush? _colorBlendBrush;
+    private CompositionColorGradientStop? _colorBlendMidStop;
+    private CompositionColorGradientStop? _colorBlendBottomStop;
+    private SpriteVisual? _colorBlendVisual;
+    private CompositionLinearGradientBrush? _scrimBrush;
+    private CompositionColorGradientStop? _scrimMidStop;
+    private CompositionColorGradientStop? _scrimBottomStop;
+    private SpriteVisual? _scrimVisual;
     private ContainerVisual? _containerVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
@@ -27,6 +35,10 @@ public sealed partial class HeroHeader : UserControl
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(HeroHeader),
             new PropertyMetadata(null, OnImageUrlChanged));
+
+    public static readonly DependencyProperty ColorHexProperty =
+        DependencyProperty.Register(nameof(ColorHex), typeof(string), typeof(HeroHeader),
+            new PropertyMetadata(null, OnColorHexChanged));
 
     public static readonly DependencyProperty OverlayContentProperty =
         DependencyProperty.Register(nameof(OverlayContent), typeof(object), typeof(HeroHeader),
@@ -56,6 +68,12 @@ public sealed partial class HeroHeader : UserControl
     {
         get => (string?)GetValue(ImageUrlProperty);
         set => SetValue(ImageUrlProperty, value);
+    }
+
+    public string? ColorHex
+    {
+        get => (string?)GetValue(ColorHexProperty);
+        set => SetValue(ColorHexProperty, value);
     }
 
     public object? OverlayContent
@@ -99,6 +117,7 @@ public sealed partial class HeroHeader : UserControl
         InitializeComponent();
         ImageBorder.Loaded += OnImageBorderLoaded;
         Unloaded += OnUnloaded;
+        ApplyColor(ColorHex);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -114,6 +133,15 @@ public sealed partial class HeroHeader : UserControl
             _surfaceBrush.Dispose();
             _surfaceBrush = null;
         }
+
+        _colorBlendBrush = null;
+        _colorBlendMidStop = null;
+        _colorBlendBottomStop = null;
+        _colorBlendVisual = null;
+        _scrimBrush = null;
+        _scrimMidStop = null;
+        _scrimBottomStop = null;
+        _scrimVisual = null;
 
         if (_containerVisual != null)
         {
@@ -145,8 +173,12 @@ public sealed partial class HeroHeader : UserControl
         fadeMask.EndPoint = new Vector2(0.5f, 1f);
         fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
             Windows.UI.Color.FromArgb(255, 255, 255, 255)));
-        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeStart,
+        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop(Math.Max(0f, (float)FadeStart - 0.12f),
             Windows.UI.Color.FromArgb(255, 255, 255, 255)));
+        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop((float)((FadeStart + FadeEnd) * 0.5),
+            Windows.UI.Color.FromArgb(214, 255, 255, 255)));
+        fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop(Math.Min(1f, (float)FadeEnd - 0.08f),
+            Windows.UI.Color.FromArgb(120, 255, 255, 255)));
         fadeMask.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeEnd,
             Windows.UI.Color.FromArgb(0, 255, 255, 255)));
 
@@ -163,25 +195,72 @@ public sealed partial class HeroHeader : UserControl
         imageVisual.RelativeSizeAdjustment = Vector2.One;
         _containerVisual.Children.InsertAtBottom(imageVisual);
 
-        // 2. Dark gradient scrim for text readability (transparent top → semi-opaque black → transparent bottom)
-        //    The scrim must fade back to transparent at the same point the image mask does,
-        //    otherwise it creates a hard edge instead of blending into the page background.
-        var scrimGradient = _compositor.CreateLinearGradientBrush();
-        scrimGradient.StartPoint = new Vector2(0.5f, 0f);
-        scrimGradient.EndPoint = new Vector2(0.5f, 1f);
-        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+        // 2. Color blend that softly accumulates toward the bottom but still shares
+        // the same fade mask as the image, so it disappears cleanly into the page.
+        _colorBlendBrush = _compositor.CreateLinearGradientBrush();
+        _colorBlendBrush.StartPoint = new Vector2(0.5f, 0f);
+        _colorBlendBrush.EndPoint = new Vector2(0.5f, 1f);
+        _colorBlendBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
             Windows.UI.Color.FromArgb(0, 0, 0, 0)));
-        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0.4f,
+        _colorBlendBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.30f,
             Windows.UI.Color.FromArgb(0, 0, 0, 0)));
-        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeStart,
-            Windows.UI.Color.FromArgb(180, 0, 0, 0)));
-        scrimGradient.ColorStops.Add(_compositor.CreateColorGradientStop((float)FadeEnd,
-            Windows.UI.Color.FromArgb(0, 0, 0, 0)));
+        _colorBlendMidStop = _compositor.CreateColorGradientStop(0.70f,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        _colorBlendBottomStop = _compositor.CreateColorGradientStop(1f,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        _colorBlendBrush.ColorStops.Add(_colorBlendMidStop);
+        _colorBlendBrush.ColorStops.Add(_colorBlendBottomStop);
 
-        var scrimVisual = _compositor.CreateSpriteVisual();
-        scrimVisual.Brush = scrimGradient;
-        scrimVisual.RelativeSizeAdjustment = Vector2.One;
-        _containerVisual.Children.InsertAtTop(scrimVisual);
+        var colorBlendMaskBrush = _compositor.CreateMaskBrush();
+        colorBlendMaskBrush.Source = _colorBlendBrush;
+        colorBlendMaskBrush.Mask = fadeMask;
+
+        _colorBlendVisual = _compositor.CreateSpriteVisual();
+        _colorBlendVisual.Brush = colorBlendMaskBrush;
+        _colorBlendVisual.RelativeSizeAdjustment = Vector2.One;
+        _colorBlendVisual.Opacity = 0f;
+        _containerVisual.Children.InsertAtTop(_colorBlendVisual);
+
+        // 3. Soft top highlight so bright images keep a little shape.
+        var highlightGradient = _compositor.CreateLinearGradientBrush();
+        highlightGradient.StartPoint = new Vector2(0.5f, 0f);
+        highlightGradient.EndPoint = new Vector2(0.5f, 1f);
+        highlightGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+            Windows.UI.Color.FromArgb(84, 255, 255, 255)));
+        highlightGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0.18f,
+            Windows.UI.Color.FromArgb(16, 255, 255, 255)));
+        highlightGradient.ColorStops.Add(_compositor.CreateColorGradientStop(0.46f,
+            Windows.UI.Color.FromArgb(0, 255, 255, 255)));
+
+        var highlightVisual = _compositor.CreateSpriteVisual();
+        highlightVisual.Brush = highlightGradient;
+        highlightVisual.RelativeSizeAdjustment = Vector2.One;
+        _containerVisual.Children.InsertAtTop(highlightVisual);
+
+        // 4. Dark readability scrim. This now shares the image fade mask too,
+        // so the entire hero stack eases out together instead of forming a band.
+        _scrimBrush = _compositor.CreateLinearGradientBrush();
+        _scrimBrush.StartPoint = new Vector2(0.5f, 0f);
+        _scrimBrush.EndPoint = new Vector2(0.5f, 1f);
+        _scrimBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
+            Windows.UI.Color.FromArgb(8, 0, 0, 0)));
+        _scrimBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.32f,
+            Windows.UI.Color.FromArgb(10, 0, 0, 0)));
+        _scrimMidStop = _compositor.CreateColorGradientStop(0.68f,
+            Windows.UI.Color.FromArgb(44, 0, 0, 0));
+        _scrimBottomStop = _compositor.CreateColorGradientStop(1f,
+            Windows.UI.Color.FromArgb(110, 0, 0, 0));
+        _scrimBrush.ColorStops.Add(_scrimMidStop);
+        _scrimBrush.ColorStops.Add(_scrimBottomStop);
+
+        var scrimMaskBrush = _compositor.CreateMaskBrush();
+        scrimMaskBrush.Source = _scrimBrush;
+        scrimMaskBrush.Mask = fadeMask;
+
+        _scrimVisual = _compositor.CreateSpriteVisual();
+        _scrimVisual.Brush = scrimMaskBrush;
+        _scrimVisual.RelativeSizeAdjustment = Vector2.One;
+        _containerVisual.Children.InsertAtTop(_scrimVisual);
 
         // On first load: start hidden for pop-in. On re-attach: show immediately.
         if (_hasAnimated)
@@ -200,6 +279,7 @@ public sealed partial class HeroHeader : UserControl
             (float)(ImageBorder.ActualHeight / 2), 0);
 
         ElementCompositionPreview.SetElementChildVisual(ImageBorder, _containerVisual);
+        ApplyColor(ColorHex);
 
         ImageBorder.SizeChanged -= OnImageBorderSizeChanged;
         ImageBorder.SizeChanged += OnImageBorderSizeChanged;
@@ -230,6 +310,38 @@ public sealed partial class HeroHeader : UserControl
         {
             DispatcherQueue.TryEnqueue(() => PlayPopInAnimation());
         };
+    }
+
+    private void ApplyColor(string? hex)
+    {
+        if (_colorBlendBrush == null
+            || _colorBlendMidStop == null
+            || _colorBlendBottomStop == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 0f;
+            return;
+        }
+
+        try
+        {
+            var color = Darken(ParseHexColor(hex), 0.42);
+            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(30, color.R, color.G, color.B);
+            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(120, color.R, color.G, color.B);
+            if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 1f;
+        }
+        catch
+        {
+            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 0f;
+        }
     }
 
     private void OnImageBorderSizeChanged(object sender, SizeChangedEventArgs args)
@@ -275,5 +387,44 @@ public sealed partial class HeroHeader : UserControl
     {
         if (d is HeroHeader header)
             header.LoadImage(e.NewValue as string);
+    }
+
+    private static void OnColorHexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is HeroHeader header)
+            header.ApplyColor(e.NewValue as string);
+    }
+
+    private static Windows.UI.Color ParseHexColor(string hex)
+    {
+        hex = hex.Trim().TrimStart('#');
+        if (hex.Length == 6)
+        {
+            var r = Convert.ToByte(hex[0..2], 16);
+            var g = Convert.ToByte(hex[2..4], 16);
+            var b = Convert.ToByte(hex[4..6], 16);
+            return Windows.UI.Color.FromArgb(255, r, g, b);
+        }
+
+        if (hex.Length == 8)
+        {
+            var a = Convert.ToByte(hex[0..2], 16);
+            var r = Convert.ToByte(hex[2..4], 16);
+            var g = Convert.ToByte(hex[4..6], 16);
+            var b = Convert.ToByte(hex[6..8], 16);
+            return Windows.UI.Color.FromArgb(a, r, g, b);
+        }
+
+        throw new FormatException($"Unsupported color format '{hex}'.");
+    }
+
+    private static Windows.UI.Color Darken(Windows.UI.Color color, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return Windows.UI.Color.FromArgb(
+            color.A,
+            (byte)Math.Round(color.R * (1 - amount)),
+            (byte)Math.Round(color.G * (1 - amount)),
+            (byte)Math.Round(color.B * (1 - amount)));
     }
 }

@@ -4,12 +4,48 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid x:Name="RootGrid" MinHeight="300">
-        <!-- Image rendered via composition with gradient opacity mask + scale animation -->
-        <Border x:Name="ImageBorder"/>
+    <UserControl.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
+    </UserControl.Resources>
+
+    <Grid x:Name="RootGrid" MinHeight="300" Background="Transparent">
+        <Grid
+            x:Name="FallbackStage"
+            Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}">
+            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+
+            <Border>
+                <Border.Background>
+                    <RadialGradientBrush Center="0.18,0.08" GradientOrigin="0.18,0.08" RadiusX="1.18" RadiusY="0.96">
+                        <GradientStop Color="{ThemeResource ArtistHeroFallbackGlowStartColor}" Offset="0"/>
+                        <GradientStop Color="{ThemeResource ArtistHeroFallbackGlowMidColor}" Offset="0.42"/>
+                        <GradientStop Color="{ThemeResource ArtistHeroFallbackGlowEndColor}" Offset="1"/>
+                    </RadialGradientBrush>
+                </Border.Background>
+            </Border>
+
+            <Border>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="{ThemeResource ArtistHeroFallbackShadowTopColor}" Offset="0"/>
+                        <GradientStop Color="{ThemeResource ArtistHeroFallbackShadowMidColor}" Offset="0.5"/>
+                        <GradientStop Color="{ThemeResource ArtistHeroFallbackShadowBottomColor}" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+        </Grid>
+
+        <Grid
+            x:Name="ImageStage"
+            Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+            <!-- Image rendered via composition with gradient opacity mask + scale animation -->
+            <Border x:Name="ImageBorder"/>
+        </Grid>
 
         <!-- Optional overlay content (artist info, buttons, etc.) -->
         <ContentPresenter x:Name="OverlayPresenter"

@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -14,10 +15,15 @@ namespace Wavee.UI.WinUI.Controls.PlayerBar;
 
 public sealed partial class PlayerBar : UserControl
 {
+    private const double WideBreakpoint = 1500;
+    private const double CompactBreakpoint = 860;
+    private const double NarrowBreakpoint = 520;
+
     public PlayerBarViewModel ViewModel { get; }
 
     private readonly Data.Contracts.ITrackLikeService? _likeService;
     private readonly IPlaybackStateService? _playbackStateService;
+    private string? _currentLayoutState;
 
     public PlayerBar()
     {
@@ -28,6 +34,8 @@ public sealed partial class PlayerBar : UserControl
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Unloaded += (_, _) => ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        SizeChanged += OnPlayerBarSizeChanged;
+        Loaded += OnPlayerBarLoaded;
 
         PlayerHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnPlayerHeartClicked);
 
@@ -41,6 +49,72 @@ public sealed partial class PlayerBar : UserControl
 
         // Apply initial color if available
         ApplyTintColor(ViewModel.AlbumArtColor);
+        UpdatePlayerHeartState();
+    }
+
+    private void OnPlayerBarLoaded(object sender, RoutedEventArgs e)
+    {
+        UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : ActualWidth);
+    }
+
+    private void OnPlayerBarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : e.NewSize.Width);
+    }
+
+    private void UpdateLayoutState(double width)
+    {
+        var nextState =
+            width >= WideBreakpoint ? "Wide" :
+            width >= CompactBreakpoint ? "Compact" :
+            width >= NarrowBreakpoint ? "Narrow" :
+            "VeryNarrow";
+
+        if (_currentLayoutState == nextState)
+        {
+            return;
+        }
+
+        _currentLayoutState = nextState;
+        _ = VisualStateManager.GoToState(this, nextState, true);
+        ApplyLayoutState(nextState);
+    }
+
+    private void ApplyLayoutState(string state)
+    {
+        var showWide = state is "Wide" or "Compact" or "Narrow";
+        var showInlinePanels = state is "Wide" or "Compact";
+        var showOverflow = state != "Wide";
+        var showNarrowAlbumArt = !ViewModel.IsAlbumArtExpanded;
+        var showNarrowRemote = state != "VeryNarrow" && ViewModel.IsPlayingRemotely;
+        var showInlineModes = state is "Wide" or "Compact" or "Narrow";
+        var showInlineVolume = state == "Wide";
+        var showCollapsedVolume = state is "Compact" or "Narrow";
+        var showNarrowModes = false;
+        var showNarrowVolume = true;
+
+        WideLayoutRoot.Visibility = showWide ? Visibility.Visible : Visibility.Collapsed;
+        NarrowLayoutRoot.Visibility = showWide ? Visibility.Collapsed : Visibility.Visible;
+
+        InlinePanelGroup.Visibility = showInlinePanels ? Visibility.Visible : Visibility.Collapsed;
+        InlineModeGroup.Visibility = showInlineModes ? Visibility.Visible : Visibility.Collapsed;
+        InlineVolumeGroup.Visibility = showInlineVolume ? Visibility.Visible : Visibility.Collapsed;
+        CollapsedVolumeButton.Visibility = showCollapsedVolume ? Visibility.Visible : Visibility.Collapsed;
+        OverflowButton.Visibility = showOverflow && showWide ? Visibility.Visible : Visibility.Collapsed;
+
+        WideLayoutRoot.Height = showWide ? 56 : double.NaN;
+        PlayerBarLayoutRoot.MinHeight = state switch
+        {
+            "Wide" or "Compact" => 56,
+            "Narrow" => 84,
+            _ => 76
+        };
+
+        NarrowAlbumArtHost.Visibility = showNarrowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+        NarrowRemoteDeviceHost.Visibility = showNarrowRemote ? Visibility.Visible : Visibility.Collapsed;
+        NarrowInlineModeGroup.Visibility = showNarrowModes ? Visibility.Visible : Visibility.Collapsed;
+        NarrowVolumeButton.Visibility = showNarrowVolume ? Visibility.Visible : Visibility.Collapsed;
+        NarrowTrackMetadataHost.Margin = new Thickness(8, 0, 0, 0);
     }
 
     private void OnSaveStateChanged()
@@ -57,6 +131,12 @@ public sealed partial class PlayerBar : UserControl
         else if (e.PropertyName is nameof(PlayerBarViewModel.HasTrack) or nameof(PlayerBarViewModel.TrackTitle))
         {
             UpdatePlayerHeartState();
+        }
+
+        if (e.PropertyName is nameof(PlayerBarViewModel.IsAlbumArtExpanded)
+            or nameof(PlayerBarViewModel.IsPlayingRemotely))
+        {
+            ApplyLayoutState(_currentLayoutState ?? "Wide");
         }
     }
 
@@ -123,6 +203,28 @@ public sealed partial class PlayerBar : UserControl
             ImageUrl = ViewModel.AlbumArt
         };
         NavigationHelpers.OpenAlbum(param, param.Title);
+    }
+
+    private void OverflowFlyout_Opening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        var currentTrackId = GetCurrentTrackId();
+        var likeItem = flyout.Items.OfType<MenuFlyoutItem>().FirstOrDefault(static item => Equals(item.Tag, "like"));
+        if (likeItem != null)
+        {
+            likeItem.Text = PlayerHeartButton.IsLiked ? "Unlike track" : "Like track";
+            likeItem.IsEnabled = !string.IsNullOrEmpty(currentTrackId);
+        }
+
+    }
+
+    private void LikeOverflowMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OnPlayerHeartClicked();
     }
 
     private void ProgressSlider_PointerPressed(object sender, PointerRoutedEventArgs e)

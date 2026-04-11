@@ -5,8 +5,10 @@ namespace Wavee.Core.Http.Pathfinder;
 /// </summary>
 internal static class PathfinderOperations
 {
-    public const string SearchDesktop = "searchDesktop";
-    public const string SearchDesktopHash = "fcad5a3e0d5af727fb76966f06971c19cfa2275e6ff7671196753e008611873c";
+    public const string SearchTopResultsList = "searchTopResultsList";
+    public const string SearchTopResultsListHash = "474a35115866d6a40d95b780f8de82a3c6edd2a6dfd4387b286bb838a023431c";
+    public const string SearchArtists = "searchArtists";
+    public const string SearchArtistsHash = "72c8c7c1e789a9f11e261c4f9ae35a9465bbb90137c584428989573617b6c08d";
 
     public const string UserTopContent = "userTopContent";
     public const string UserTopContentHash = "49ee15704de4a7fdeac65a02db20604aa11e46f02e809c55d9a89f6db9754356";
