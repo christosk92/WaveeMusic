@@ -197,9 +197,14 @@ public sealed partial class ShellPage : Page
         // Only open home tab if no tabs exist (first launch)
         if (ShellViewModel.TabInstances.Count == 0)
         {
-            NavigationHelpers.OpenHome(openInNewTab: true);
+            if (!ViewModel.RestorePersistedTabs())
+            {
+                NavigationHelpers.OpenHome(openInNewTab: true);
+            }
+
             // Directly set SelectedTabItem since SelectedTabIndex may already be 0
-            ViewModel.SelectedTabItem = ShellViewModel.TabInstances[0];
+            if (ShellViewModel.TabInstances.Count > 0)
+                ViewModel.SelectedTabItem = ShellViewModel.TabInstances[ViewModel.SelectedTabIndex];
         }
 
         // FPS overlay — always available, toggled with Ctrl+Shift+F

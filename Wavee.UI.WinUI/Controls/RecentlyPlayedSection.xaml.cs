@@ -9,11 +9,13 @@ namespace Wavee.UI.WinUI.Controls;
 public sealed partial class RecentlyPlayedSection : UserControl
 {
     private RecentlyPlayedService? _service;
+    private bool _isSubscribed;
 
     public RecentlyPlayedSection()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -35,7 +37,11 @@ public sealed partial class RecentlyPlayedSection : UserControl
         }
 
         // Subscribe to updates
-        _service.ItemsChanged += OnItemsChanged;
+        if (!_isSubscribed)
+        {
+            _service.ItemsChanged += OnItemsChanged;
+            _isSubscribed = true;
+        }
 
         // Trigger load if empty
         if (_service.Items.Count == 0)
@@ -54,6 +60,15 @@ public sealed partial class RecentlyPlayedSection : UserControl
     private void OnItemsChanged()
     {
         DispatcherQueue.TryEnqueue(ShowItems);
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_service != null && _isSubscribed)
+        {
+            _service.ItemsChanged -= OnItemsChanged;
+            _isSubscribed = false;
+        }
     }
 
     private void ShowItems()

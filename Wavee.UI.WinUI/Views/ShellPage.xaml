@@ -115,7 +115,8 @@
         <sidebar:SidebarView
             x:Name="SidebarControl"
             Grid.Row="2"
-            DisplayMode="Expanded"
+            DisplayMode="{x:Bind ViewModel.SidebarDisplayMode, Mode=TwoWay}"
+            IsPaneOpen="{x:Bind ViewModel.IsSidebarPaneOpen, Mode=TwoWay}"
             OpenPaneLength="{x:Bind ViewModel.SidebarWidth, Mode=TwoWay}"
             MenuItemsSource="{x:Bind ViewModel.SidebarItems}"
             SelectedItem="{x:Bind ViewModel.SelectedSidebarItem, Mode=TwoWay}"

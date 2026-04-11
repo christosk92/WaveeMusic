@@ -200,13 +200,10 @@ public sealed class LyricsService : ILyricsService
         foreach (var ext in external)
             TrimMetadataHeaders(ext!.Data!, spotifyResult?.Data);
 
-        // Score each external result against Spotify lyrics to verify correctness,
-        // then prefer syllable-synced and highest line count among verified results.
-        ProviderResult? best = null;
-        double bestScore = -1;
-        string? bestReason = null;
-        ProviderResult? musixmatchFallback = null;
-        double musixmatchContentScore = 0;
+        // Score each external result against Spotify lyrics to verify correctness.
+        // Musixmatch is intentionally excluded from normal ranking and is only used
+        // as a last-resort fallback when no other external source survives validation.
+        var selectionCandidates = new List<LyricsSelectionCandidate>();
 
         foreach (var ext in external)
         {
@@ -230,58 +227,23 @@ public sealed class LyricsService : ILyricsService
                 continue;
             }
 
-            // Musixmatch when disabled: stash as syllable-sync fallback, don't enter main scoring
-            if (musixmatchDisabled && ext.Provider == "Musixmatch")
-            {
-                bool mxHasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
-                if (mxHasSyllable)
-                {
-                    musixmatchFallback = ext;
-                    musixmatchContentScore = contentScore;
-                }
-                continue;
-            }
-
-            bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
-
             // Preference bonus: user's top-ranked source gets highest bonus (tiebreaker)
             int prefBonus = priorityMap.TryGetValue(ext.Provider!, out var p) ? p * 5 : 0;
-
-            // Composite score: content match (0-1) * 100, + syllable bonus, + preference, + line count tiebreak
-            double composite = contentScore * 100
-                + (hasSyllable ? 50 : 0)
-                + prefBonus
-                + Math.Min(data.LyricsLines.Count, 20) * 0.1;
-
-            var reason = $"Content match: {contentScore:P0}, syllable: {hasSyllable}, pref: +{prefBonus}, lines: {data.LyricsLines.Count}";
-
-            if (composite > bestScore)
-            {
-                bestScore = composite;
-                best = ext;
-                bestReason = reason;
-            }
+            selectionCandidates.Add(new LyricsSelectionCandidate(
+                ext.Provider!,
+                data,
+                contentScore,
+                prefBonus));
         }
 
-        // Fallback: if best result has no syllable sync, promote Musixmatch (even if user-disabled)
-        if (best != null && musixmatchFallback != null)
-        {
-            bool bestHasSyllable = best.Data!.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
-            if (!bestHasSyllable)
-            {
-                best = musixmatchFallback;
-                bestReason = $"Syllable fallback — content match: {musixmatchContentScore:P0}, lines: {musixmatchFallback.Data!.LyricsLines.Count}";
-                _logger?.LogDebug("Promoted Musixmatch as syllable-sync fallback");
-            }
-        }
-
-        if (best?.Data != null)
+        var selection = LyricsProviderSelector.SelectBestExternalResult(selectionCandidates);
+        if (selection != null)
         {
             _logger?.LogDebug("Lyrics from {Provider} for \"{Title}\" ({Reason})",
-                best.Provider, title, bestReason);
+                selection.Provider, title, selection.Reason);
             sw.Stop();
-            CacheLyrics(trackId, best.Data, best.Provider!);
-            return (best.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, best.Provider, bestReason, sw.Elapsed));
+            CacheLyrics(trackId, selection.Data, selection.Provider);
+            return (selection.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, selection.Provider, selection.Reason, sw.Elapsed));
         }
 
         // No external result passed validation — use Spotify directly

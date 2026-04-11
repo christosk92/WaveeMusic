@@ -1,13 +1,17 @@
+using System;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LibraryPage : Page
+public sealed partial class LibraryPage : Page, ITabBarItemContent
 {
     private const int MaxDeferredShowTabAttempts = 3;
 
@@ -23,6 +27,7 @@ public sealed partial class LibraryPage : Page
     private ArtistsLibraryView? _artistsView;
     private LikedSongsView? _likedSongsView;
     private int _deferredShowTabAttempts;
+    private TabItemParameter? _tabItemParameter;
 
     public LibraryPage()
     {
@@ -30,6 +35,10 @@ public sealed partial class LibraryPage : Page
         ViewModel = Ioc.Default.GetRequiredService<LibraryPageViewModel>();
         InitializeComponent();
     }
+
+    public TabItemParameter? TabItemParameter => _tabItemParameter;
+
+    public event EventHandler<TabItemParameter>? ContentChanged;
 
     /// <summary>
     /// Sets the Segmented visual selection without firing SelectionChanged.
@@ -147,6 +156,7 @@ public sealed partial class LibraryPage : Page
 
         UpdateSidebarSelection(selectedItem);
         UpdateCurrentTabTitle(selectedItem);
+        UpdateTabItemParameter(selectedItem);
     }
 
     private static string GetLocalizedTabTitle(SegmentedItem selectedItem, SegmentedItem albumsItem, SegmentedItem artistsItem, SegmentedItem likedSongsItem)
@@ -172,6 +182,25 @@ public sealed partial class LibraryPage : Page
         var currentTab = ShellViewModel.TabInstances[tabIndex];
         currentTab.Header = title;
         currentTab.ToolTipText = title;
+    }
+
+    private void UpdateTabItemParameter(SegmentedItem selectedItem)
+    {
+        var tabKey = selectedItem == ArtistsItem
+            ? "artists"
+            : selectedItem == LikedSongsItem
+                ? "likedsongs"
+                : "albums";
+
+        _tabItemParameter = new TabItemParameter
+        {
+            InitialPageType = typeof(LibraryPage),
+            NavigationParameter = tabKey,
+            Title = GetLocalizedTabTitle(selectedItem, AlbumsItem, ArtistsItem, LikedSongsItem),
+            PageType = NavigationPageType.Library
+        };
+
+        ContentChanged?.Invoke(this, _tabItemParameter);
     }
 
     private void UpdateSidebarSelection(SegmentedItem? selectedItem = null)
@@ -210,6 +239,14 @@ public sealed partial class LibraryPage : Page
                     return;
                 }
             }
+        }
+    }
+
+    public void RefreshWithParameter(object? parameter)
+    {
+        if (parameter is string tabName)
+        {
+            SelectTab(tabName);
         }
     }
 }

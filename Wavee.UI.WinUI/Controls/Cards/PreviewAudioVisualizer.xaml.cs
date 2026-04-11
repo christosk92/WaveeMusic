@@ -14,18 +14,43 @@ public sealed partial class PreviewAudioVisualizer : UserControl
     public const int VisibleBarCount = 24;
     private const int WaveSampleCount = 120;
 
+    // Shared band mapping (used by PushLevels before signal extraction)
     private readonly float[] _targetLevels = new float[VisibleBarCount];
-    private readonly float[] _renderedLevels = new float[VisibleBarCount];
     private readonly float[] _mappedLevels = new float[VisibleBarCount];
     private readonly float[] _spatialLevels = new float[VisibleBarCount];
 
+    // Per-signal envelope arrays (target and rendered)
+    private readonly float[] _vocalEnvelope = new float[VisibleBarCount];
+    private readonly float[] _vocalEnvelopeRendered = new float[VisibleBarCount];
+    private readonly float[] _bassEnvelope = new float[VisibleBarCount];
+    private readonly float[] _bassEnvelopeRendered = new float[VisibleBarCount];
+    private readonly float[] _airEnvelope = new float[VisibleBarCount];
+    private readonly float[] _airEnvelopeRendered = new float[VisibleBarCount];
+
+    // Previous-frame bands for transient detection (AirDetail)
+    private readonly float[] _previousBands = new float[VisibleBarCount];
+
+    // Per-signal scalar targets and rendered values
+    private float _vocalTarget, _vocalRendered;
+    private float _bassTarget, _bassRendered;
+    private float _airTarget, _airRendered;
+
+    // Per-signal phase accumulators
+    private float _vocalPrimaryPhase, _vocalSecondaryPhase;
+    private float _bassPrimaryPhase, _bassSecondaryPhase;
+    private float _airPrimaryPhase, _airSecondaryPhase;
+
     private bool _isActive;
+    private bool _isPending;
     private bool _isRenderingSubscribed;
     private int _framesSincePush = 999;
     private Color _cachedBarColor = Colors.Transparent;
     private Color _cachedTrackColor = Colors.Transparent;
-    private float _primaryPhase;
-    private float _secondaryPhase;
+
+    // Signal extraction weights (static, allocated once)
+    private static readonly float[] BassWeights = { 0.4f, 0.5f, 0.7f, 0.9f, 1.0f, 1.0f, 0.85f, 0.7f };
+    private static readonly float[] VocalWeights = { 0.3f, 0.5f, 0.7f, 0.85f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.9f, 0.7f, 0.4f };
+    private static readonly float[] AirWeights = { 0.7f, 0.9f, 1.0f, 1.0f, 0.85f, 0.6f };
 
     public static readonly DependencyProperty BarColorProperty =
         DependencyProperty.Register(nameof(BarColor), typeof(Color), typeof(PreviewAudioVisualizer),
@@ -60,7 +85,18 @@ public sealed partial class PreviewAudioVisualizer : UserControl
     {
         _isActive = isActive;
 
-        if (!isActive)
+        if (!isActive && !_isPending)
+            Reset();
+
+        UpdateRenderingSubscription();
+        VisualizerCanvas?.Invalidate();
+    }
+
+    public void SetPending(bool isPending)
+    {
+        _isPending = isPending;
+
+        if (!isPending && !_isActive)
             Reset();
 
         UpdateRenderingSubscription();
@@ -111,19 +147,124 @@ public sealed partial class PreviewAudioVisualizer : UserControl
             _targetLevels[i] = Math.Clamp((left * 0.14f) + (center * 0.72f) + (right * 0.14f), 0f, 1f);
         }
 
+        ExtractSignals(_targetLevels);
+
         _framesSincePush = 0;
+        VisualizerCanvas?.Invalidate();
+    }
+
+    private void ExtractSignals(float[] bands)
+    {
+        // --- BassBody: bands 0-7 (~50-350 Hz) ---
+        float bassRaw = 0f;
+        float bassWeightSum = 0f;
+        for (int i = 0; i <= 7; i++)
+        {
+            bassRaw += bands[i] * BassWeights[i];
+            bassWeightSum += BassWeights[i];
+        }
+        bassRaw /= bassWeightSum;
+        _bassTarget = bassRaw;
+
+        // Stretch bands 0-7 across 24-slot envelope
+        for (int i = 0; i < VisibleBarCount; i++)
+        {
+            float t = i / (float)(VisibleBarCount - 1);
+            float srcPos = t * 7f;
+            int srcIdx = Math.Clamp((int)srcPos, 0, 6);
+            float frac = srcPos - srcIdx;
+            _bassEnvelope[i] = Lerp(bands[srcIdx], bands[Math.Min(srcIdx + 1, 7)], frac);
+        }
+
+        // --- VocalPresence: bands 7-18 (~250 Hz - 4.5 kHz) ---
+        float vocalRaw = 0f;
+        float vocalWeightSum = 0f;
+        for (int i = 7; i <= 18; i++)
+        {
+            vocalRaw += bands[i] * VocalWeights[i - 7];
+            vocalWeightSum += VocalWeights[i - 7];
+        }
+        vocalRaw /= vocalWeightSum;
+
+        // Relative-energy suppression
+        float bassEnergy = AverageRange(bands, 0, 6);
+        float airEnergy = AverageRange(bands, 19, 5);
+        float vocalEnergy = AverageRange(bands, 9, 9);
+        float dominanceRatio = vocalEnergy / MathF.Max(0.01f, (bassEnergy + airEnergy) * 0.5f);
+        float vocalBoost = Math.Clamp(dominanceRatio - 0.6f, 0f, 1.2f) / 1.2f;
+        vocalRaw *= 0.7f + (vocalBoost * 0.3f);
+        _vocalTarget = vocalRaw;
+
+        // Stretch bands 7-18 across 24-slot envelope
+        for (int i = 0; i < VisibleBarCount; i++)
+        {
+            float t = i / (float)(VisibleBarCount - 1);
+            float srcPos = t * 11f;
+            int srcIdx = Math.Clamp((int)srcPos, 0, 10);
+            float frac = srcPos - srcIdx;
+            _vocalEnvelope[i] = Lerp(bands[7 + srcIdx], bands[7 + Math.Min(srcIdx + 1, 11)], frac);
+        }
+
+        // --- AirDetail: bands 18-23 (~4.5-10 kHz) with transient emphasis ---
+        float airRaw = 0f;
+        float airWeightSum = 0f;
+        for (int i = 18; i <= 23; i++)
+        {
+            airRaw += bands[i] * AirWeights[i - 18];
+            airWeightSum += AirWeights[i - 18];
+        }
+        airRaw /= airWeightSum;
+
+        // Transient emphasis from frame-to-frame spectral change
+        float transientSum = 0f;
+        for (int i = 18; i <= 23; i++)
+        {
+            float delta = MathF.Max(0f, bands[i] - _previousBands[i]);
+            transientSum += delta;
+        }
+        float transientBoost = Math.Clamp(transientSum * 2.5f, 0f, 0.4f);
+        airRaw = Math.Clamp(airRaw + transientBoost, 0f, 1f);
+        _airTarget = airRaw;
+
+        // Stretch bands 18-23 across 24-slot envelope
+        for (int i = 0; i < VisibleBarCount; i++)
+        {
+            float t = i / (float)(VisibleBarCount - 1);
+            float srcPos = t * 5f;
+            int srcIdx = Math.Clamp((int)srcPos, 0, 4);
+            float frac = srcPos - srcIdx;
+            _airEnvelope[i] = Lerp(bands[18 + srcIdx], bands[18 + Math.Min(srcIdx + 1, 5)], frac);
+        }
+
+        // Store for next frame's transient detection
+        Array.Copy(bands, _previousBands, VisibleBarCount);
+    }
+
+    public void Complete()
+    {
+        _framesSincePush = Math.Max(_framesSincePush, 3);
         VisualizerCanvas?.Invalidate();
     }
 
     public void Reset()
     {
         Array.Clear(_targetLevels);
-        Array.Clear(_renderedLevels);
         Array.Clear(_mappedLevels);
         Array.Clear(_spatialLevels);
+        Array.Clear(_vocalEnvelope);
+        Array.Clear(_vocalEnvelopeRendered);
+        Array.Clear(_bassEnvelope);
+        Array.Clear(_bassEnvelopeRendered);
+        Array.Clear(_airEnvelope);
+        Array.Clear(_airEnvelopeRendered);
+        Array.Clear(_previousBands);
+        _vocalTarget = 0f; _vocalRendered = 0f;
+        _bassTarget = 0f; _bassRendered = 0f;
+        _airTarget = 0f; _airRendered = 0f;
+        _vocalPrimaryPhase = 0f; _vocalSecondaryPhase = 0f;
+        _bassPrimaryPhase = 0f; _bassSecondaryPhase = 0f;
+        _airPrimaryPhase = 0f; _airSecondaryPhase = 0f;
         _framesSincePush = 999;
-        _primaryPhase = 0f;
-        _secondaryPhase = 0f;
         VisualizerCanvas?.Invalidate();
     }
 
@@ -159,7 +300,7 @@ public sealed partial class PreviewAudioVisualizer : UserControl
 
     private void UpdateRenderingSubscription()
     {
-        if (!IsLoaded || !_isActive)
+        if (!IsLoaded || (!_isActive && !_isPending))
         {
             UnsubscribeRendering();
             return;
@@ -183,25 +324,84 @@ public sealed partial class PreviewAudioVisualizer : UserControl
 
     private void CompositionTarget_Rendering(object? sender, object e)
     {
+        if (!IsLoaded || Visibility != Visibility.Visible)
+            return;
+
         _framesSincePush++;
-        var overallEnergy = 0f;
 
-        for (int i = 0; i < VisibleBarCount; i++)
+        if (_isPending && !_isActive)
         {
-            if (_framesSincePush > 2)
-                _targetLevels[i] *= 0.84f;
+            var phase = (float)(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 4000) / 4000f;
+            for (int i = 0; i < VisibleBarCount; i++)
+            {
+                var position = i / (float)Math.Max(1, VisibleBarCount - 1);
+                var pulse = 0.5f + (0.5f * MathF.Sin((position * 4.6f * Tau) + (phase * Tau * 1.7f)));
+                var sway = 0.5f + (0.5f * MathF.Sin((position * 1.8f * Tau) - (phase * Tau * 1.2f)));
+                var level = 0.12f + (pulse * 0.06f) + (sway * 0.04f);
+                _vocalEnvelope[i] = level;
+                _bassEnvelope[i] = level * 0.82f;
+                _airEnvelope[i] = level * 0.68f;
+            }
 
-            var targetEnvelope = _targetLevels[i];
-            var smoothing = targetEnvelope > _renderedLevels[i] ? 0.52f : 0.3f;
-            _renderedLevels[i] += (targetEnvelope - _renderedLevels[i]) * smoothing;
-            _renderedLevels[i] = Math.Clamp(_renderedLevels[i], 0f, 1f);
-            overallEnergy += _renderedLevels[i];
+            _vocalTarget = 0.18f;
+            _bassTarget = 0.14f;
+            _airTarget = 0.1f;
+            _framesSincePush = 0;
+        }
+        else if (_framesSincePush > 2)
+        {
+            _vocalTarget *= 0.86f;
+            _bassTarget *= 0.90f;
+            _airTarget *= 0.78f;
+            for (int i = 0; i < VisibleBarCount; i++)
+            {
+                _vocalEnvelope[i] *= 0.86f;
+                _bassEnvelope[i] *= 0.90f;
+                _airEnvelope[i] *= 0.78f;
+            }
         }
 
-        overallEnergy /= VisibleBarCount;
-        var motionStep = MathF.Max(0f, overallEnergy - 0.01f);
-        _primaryPhase = WrapPhase(_primaryPhase + (motionStep * 0.12f));
-        _secondaryPhase = WrapPhase(_secondaryPhase + (motionStep * 0.068f));
+        // Smooth scalar values with per-signal asymmetric alphas
+        float vocalAlpha = _vocalTarget > _vocalRendered ? 0.48f : 0.25f;
+        _vocalRendered += (_vocalTarget - _vocalRendered) * vocalAlpha;
+        _vocalRendered = Math.Clamp(_vocalRendered, 0f, 1f);
+
+        float bassAlpha = _bassTarget > _bassRendered ? 0.30f : 0.12f;
+        _bassRendered += (_bassTarget - _bassRendered) * bassAlpha;
+        _bassRendered = Math.Clamp(_bassRendered, 0f, 1f);
+
+        float airAlpha = _airTarget > _airRendered ? 0.65f : 0.40f;
+        _airRendered += (_airTarget - _airRendered) * airAlpha;
+        _airRendered = Math.Clamp(_airRendered, 0f, 1f);
+
+        // Smooth envelope arrays
+        for (int i = 0; i < VisibleBarCount; i++)
+        {
+            float va = _vocalEnvelope[i] > _vocalEnvelopeRendered[i] ? 0.48f : 0.25f;
+            _vocalEnvelopeRendered[i] += (_vocalEnvelope[i] - _vocalEnvelopeRendered[i]) * va;
+            _vocalEnvelopeRendered[i] = Math.Clamp(_vocalEnvelopeRendered[i], 0f, 1f);
+
+            float ba = _bassEnvelope[i] > _bassEnvelopeRendered[i] ? 0.30f : 0.12f;
+            _bassEnvelopeRendered[i] += (_bassEnvelope[i] - _bassEnvelopeRendered[i]) * ba;
+            _bassEnvelopeRendered[i] = Math.Clamp(_bassEnvelopeRendered[i], 0f, 1f);
+
+            float aa = _airEnvelope[i] > _airEnvelopeRendered[i] ? 0.65f : 0.40f;
+            _airEnvelopeRendered[i] += (_airEnvelope[i] - _airEnvelopeRendered[i]) * aa;
+            _airEnvelopeRendered[i] = Math.Clamp(_airEnvelopeRendered[i], 0f, 1f);
+        }
+
+        // Per-signal phase accumulation
+        float bassMotion = MathF.Max(0f, _bassRendered - 0.03f);
+        _bassPrimaryPhase = WrapPhase(_bassPrimaryPhase + (bassMotion * 0.045f));
+        _bassSecondaryPhase = WrapPhase(_bassSecondaryPhase + (bassMotion * 0.025f));
+
+        float vocalMotion = MathF.Max(0f, _vocalRendered - 0.035f);
+        _vocalPrimaryPhase = WrapPhase(_vocalPrimaryPhase + (vocalMotion * 0.072f));
+        _vocalSecondaryPhase = WrapPhase(_vocalSecondaryPhase + (vocalMotion * 0.04f));
+
+        float airMotion = MathF.Max(0f, _airRendered - 0.025f);
+        _airPrimaryPhase = WrapPhase(_airPrimaryPhase + (airMotion * 0.11f));
+        _airSecondaryPhase = WrapPhase(_airSecondaryPhase + (airMotion * 0.065f));
 
         VisualizerCanvas?.Invalidate();
     }
@@ -225,99 +425,127 @@ public sealed partial class PreviewAudioVisualizer : UserControl
         var centerY = height * 0.58f;
         var sideInset = MathF.Max(6f, width * 0.02f);
         var drawableWidth = MathF.Max(8f, width - (sideInset * 2f));
-        var overallEnergy = AverageRange(_renderedLevels, 0, VisibleBarCount);
-        var lowEnergy = AverageRange(_renderedLevels, 0, Math.Max(1, VisibleBarCount / 3));
-        var midEnergy = AverageRange(_renderedLevels, VisibleBarCount / 4, Math.Max(1, VisibleBarCount / 2));
-        var highEnergy = AverageRange(_renderedLevels, VisibleBarCount / 2, VisibleBarCount - (VisibleBarCount / 2));
-        var maxAmplitude = MathF.Max(12f, height * (0.24f + (overallEnergy * 0.16f)));
 
-        DrawWaveGlow(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0f, 1.04f, WithAlpha(softGlowColor, 34), 7.5f);
-        DrawWaveGlow(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0.72f, 0.7f, WithAlpha(softGlowColor, 24), 4.75f);
-        DrawWaveGlow(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, -0.94f, -0.56f, WithAlpha(softGlowColor, 16), 3f);
+        var overallEnergy = (_vocalRendered + _bassRendered + _airRendered) / 3f;
+        var safeAmplitude = MathF.Max(8f, MathF.Min(centerY - 10f, (height - centerY) - 10f));
+        var targetAmplitude = MathF.Max(10f, height * (0.13f + (overallEnergy * 0.11f)));
+        var maxAmplitude = MathF.Min(safeAmplitude, targetAmplitude);
 
+        // Precompute per-signal cycle counts
+        float vocalPrimaryCycles = 1.1f + (_vocalRendered * 0.8f);
+        float vocalSecondaryCycles = 2.4f + (_vocalRendered * 1.0f);
+        float vocalTertiaryCycles = 4.8f + (_vocalRendered * 1.2f);
+
+        float bassPrimaryCycles = 0.8f + (_bassRendered * 0.6f);
+        float bassSecondaryCycles = 1.6f + (_bassRendered * 0.7f);
+        float bassTertiaryCycles = 3.2f + (_bassRendered * 0.9f);
+
+        float airPrimaryCycles = 1.5f + (_airRendered * 1.3f);
+        float airSecondaryCycles = 3.5f + (_airRendered * 1.8f);
+        float airTertiaryCycles = 7.0f + (_airRendered * 2.5f);
+
+        // Glow layers (back to front: air, bass, vocal)
+        DrawSignalWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude,
+            _airRendered, airPrimaryCycles, airSecondaryCycles, airTertiaryCycles,
+            _airPrimaryPhase, _airSecondaryPhase, 0.52f, _airEnvelopeRendered,
+            WithAlpha(softGlowColor, 16), 3f);
+
+        DrawSignalWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude,
+            _bassRendered, bassPrimaryCycles, bassSecondaryCycles, bassTertiaryCycles,
+            _bassPrimaryPhase, _bassSecondaryPhase, 0.78f, _bassEnvelopeRendered,
+            WithAlpha(softGlowColor, 24), 5f);
+
+        DrawSignalWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude,
+            _vocalRendered, vocalPrimaryCycles, vocalSecondaryCycles, vocalTertiaryCycles,
+            _vocalPrimaryPhase, _vocalSecondaryPhase, 1.0f, _vocalEnvelopeRendered,
+            WithAlpha(softGlowColor, 34), 7.5f);
+
+        // Horizon line
         ds.DrawLine(sideInset, centerY, sideInset + drawableWidth, centerY, horizonColor, 1f);
 
-        DrawWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0.72f, 0.7f, WithAlpha(Blend(baseColor, glowColor, 0.58f), 84), 1.08f);
-        DrawWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, -0.94f, -0.56f, WithAlpha(Blend(baseColor, glowColor, 0.52f), 62), 1f);
-        DrawWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, 0f, 1.04f, WithAlpha(glowColor, 236), 1.82f);
+        // Signal lines (back to front: air, bass, vocal)
+        DrawSignalWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude,
+            _airRendered, airPrimaryCycles, airSecondaryCycles, airTertiaryCycles,
+            _airPrimaryPhase, _airSecondaryPhase, 0.52f, _airEnvelopeRendered,
+            WithAlpha(Blend(baseColor, glowColor, 0.52f), 62), 0.9f);
+
+        DrawSignalWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude,
+            _bassRendered, bassPrimaryCycles, bassSecondaryCycles, bassTertiaryCycles,
+            _bassPrimaryPhase, _bassSecondaryPhase, 0.78f, _bassEnvelopeRendered,
+            WithAlpha(Blend(baseColor, glowColor, 0.58f), 84), 1.2f);
+
+        DrawSignalWaveLine(ds, sideInset, drawableWidth, centerY, maxAmplitude,
+            _vocalRendered, vocalPrimaryCycles, vocalSecondaryCycles, vocalTertiaryCycles,
+            _vocalPrimaryPhase, _vocalSecondaryPhase, 1.0f, _vocalEnvelopeRendered,
+            WithAlpha(glowColor, 236), 1.82f);
     }
 
-    private void DrawWaveGlow(
+    private void DrawSignalWaveLine(
         Microsoft.Graphics.Canvas.CanvasDrawingSession ds,
         float startX,
         float width,
         float centerY,
         float amplitude,
-        float overallEnergy,
-        float lowEnergy,
-        float midEnergy,
-        float highEnergy,
-        float phaseOffset,
+        float signalLevel,
+        float primaryCycles,
+        float secondaryCycles,
+        float tertiaryCycles,
+        float primaryPhase,
+        float secondaryPhase,
         float amplitudeScale,
+        float[] envelope,
         Color color,
         float strokeWidth)
     {
         if (strokeWidth <= 0f || color.A == 0)
             return;
 
-        DrawWaveLine(ds, startX, width, centerY, amplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, phaseOffset, amplitudeScale, color, strokeWidth);
-    }
-
-    private void DrawWaveLine(
-        Microsoft.Graphics.Canvas.CanvasDrawingSession ds,
-        float startX,
-        float width,
-        float centerY,
-        float amplitude,
-        float overallEnergy,
-        float lowEnergy,
-        float midEnergy,
-        float highEnergy,
-        float phaseOffset,
-        float amplitudeScale,
-        Color color,
-        float strokeWidth)
-    {
         var previousX = startX;
-        var previousY = ComputeWaveY(0f, centerY, amplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, phaseOffset, amplitudeScale);
+        var previousY = ComputeSignalWaveY(0f, centerY, amplitude, signalLevel,
+            primaryCycles, secondaryCycles, tertiaryCycles,
+            primaryPhase, secondaryPhase, amplitudeScale, envelope);
 
         for (int sampleIndex = 1; sampleIndex < WaveSampleCount; sampleIndex++)
         {
             var t = sampleIndex / (float)(WaveSampleCount - 1);
             var x = startX + (width * t);
-            var y = ComputeWaveY(t, centerY, amplitude, overallEnergy, lowEnergy, midEnergy, highEnergy, phaseOffset, amplitudeScale);
+            var y = ComputeSignalWaveY(t, centerY, amplitude, signalLevel,
+                primaryCycles, secondaryCycles, tertiaryCycles,
+                primaryPhase, secondaryPhase, amplitudeScale, envelope);
             ds.DrawLine(previousX, previousY, x, y, color, strokeWidth);
             previousX = x;
             previousY = y;
         }
     }
 
-    private float ComputeWaveY(
+    private static float ComputeSignalWaveY(
         float t,
         float centerY,
         float amplitude,
-        float overallEnergy,
-        float lowEnergy,
-        float midEnergy,
-        float highEnergy,
-        float phaseOffset,
-        float amplitudeScale)
+        float signalLevel,
+        float primaryCycles,
+        float secondaryCycles,
+        float tertiaryCycles,
+        float primaryPhase,
+        float secondaryPhase,
+        float amplitudeScale,
+        float[] envelope)
     {
-        var sampledLevel = Math.Clamp(SampleCatmullRom(_renderedLevels, t), 0f, 1f);
-        var ambientFloor = overallEnergy <= 0.02f
+        var sampledLevel = Math.Clamp(SampleCatmullRom(envelope, t), 0f, 1f);
+        var ambientFloor = signalLevel <= 0.02f
             ? 0f
-            : (0.006f + (overallEnergy * 0.018f) + (t * 0.003f));
-        var envelope = Math.Clamp((sampledLevel * 0.97f) + ambientFloor, 0f, 1f);
+            : (0.002f + (signalLevel * 0.008f));
+        var env = Math.Clamp((sampledLevel * 0.94f) + ambientFloor, 0f, 1f);
         var focus = MathF.Pow(Math.Clamp(MathF.Sin(t * MathF.PI), 0f, 1f), 0.78f);
-        var liveEnvelope = MathF.Pow(envelope, 0.95f) * focus;
-        var primaryCycles = 1.05f + (lowEnergy * 0.92f);
-        var secondaryCycles = 2.2f + (midEnergy * 1.15f);
-        var tertiaryCycles = 5.1f + (highEnergy * 1.7f);
-        var primary = MathF.Sin((t * primaryCycles * Tau) + _primaryPhase + phaseOffset);
-        var secondary = 0.4f * MathF.Sin((t * secondaryCycles * Tau) - (_secondaryPhase * 1.08f) + (phaseOffset * 0.68f));
-        var tertiary = 0.16f * MathF.Sin((t * tertiaryCycles * Tau) + (_primaryPhase * 0.55f) - (phaseOffset * 0.42f));
-        var motion = primary + secondary + tertiary;
-        var displacement = amplitude * amplitudeScale * liveEnvelope * motion * (0.92f + (overallEnergy * 0.2f));
+        var liveEnvelope = MathF.Pow(env, 0.95f) * focus;
+
+        var primary = MathF.Sin((t * primaryCycles * Tau) + primaryPhase);
+        var secondary = 0.4f * MathF.Sin((t * secondaryCycles * Tau) - (secondaryPhase * 1.08f));
+        var tertiary = 0.16f * MathF.Sin((t * tertiaryCycles * Tau) + (primaryPhase * 0.55f));
+        var motion = MathF.Tanh((primary + secondary + tertiary) * 0.82f);
+
+        var displacement = amplitude * amplitudeScale * liveEnvelope * motion
+                           * (0.82f + (signalLevel * 0.12f));
         return centerY - displacement;
     }
 
@@ -405,6 +633,9 @@ public sealed partial class PreviewAudioVisualizer : UserControl
 
         return Math.Clamp(interpolated, 0f, 1f);
     }
+
+    private static float Lerp(float a, float b, float t)
+        => a + ((b - a) * t);
 
     private static float WrapPhase(float phase)
     {

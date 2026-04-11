@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Session;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -417,6 +418,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             CurrentPage = 0;
             NotifyPaginationChanged();
+        }
+        catch (SessionException)
+        {
+            HasError = true;
+            ErrorMessage = "Connecting to Spotify…";
         }
         catch (Exception ex)
         {

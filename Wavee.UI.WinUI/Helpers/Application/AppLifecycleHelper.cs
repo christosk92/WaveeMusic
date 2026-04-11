@@ -55,6 +55,15 @@ public static class AppLifecycleHelper
     public static IHost ConfigureHost()
     {
         _uiDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+#if DEBUG
+        const Serilog.Events.LogEventLevel appMinimumLogLevel = Serilog.Events.LogEventLevel.Debug;
+        const Serilog.Events.LogEventLevel inMemoryMinimumLogLevel = Serilog.Events.LogEventLevel.Debug;
+        const LogLevel hostMinimumLogLevel = LogLevel.Debug;
+#else
+        const Serilog.Events.LogEventLevel appMinimumLogLevel = Serilog.Events.LogEventLevel.Information;
+        const Serilog.Events.LogEventLevel inMemoryMinimumLogLevel = Serilog.Events.LogEventLevel.Warning;
+        const LogLevel hostMinimumLogLevel = LogLevel.Information;
+#endif
 
         var rxuiInstance = RxAppBuilder.CreateReactiveUIBuilder()
             .WithWinUI() // Register WinUI platform services
@@ -66,7 +75,7 @@ public static class AppLifecycleHelper
         Directory.CreateDirectory(AppPaths.LogsDirectory);
 
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
+            .MinimumLevel.Is(appMinimumLogLevel)
             .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Information)
             .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Information)
             .WriteTo.Debug()
@@ -78,8 +87,8 @@ public static class AppLifecycleHelper
                 fileSizeLimitBytes: 10 * 1024 * 1024,
                 shared: true,
                 flushToDiskInterval: TimeSpan.FromSeconds(1),
-                restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Debug)
-            .WriteTo.Sink(inMemorySink)
+                restrictedToMinimumLevel: appMinimumLogLevel)
+            .WriteTo.Sink(inMemorySink, restrictedToMinimumLevel: inMemoryMinimumLogLevel)
             .Enrich.FromLogContext()
             .CreateLogger();
 
@@ -101,7 +110,7 @@ public static class AppLifecycleHelper
             .ConfigureLogging(logging => logging
                 .ClearProviders()
                 .AddSerilog(Log.Logger, dispose: false)
-                .SetMinimumLevel(LogLevel.Debug))
+                .SetMinimumLevel(hostMinimumLogLevel))
             .ConfigureServices(services => services
                 // Wavee Core services — capacities driven by the caching profile
                 .AddWaveeCache(opts =>
@@ -191,6 +200,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<Wavee.Controls.Lyrics.Services.LocalizationService.ILocalizationService, Wavee.Controls.Lyrics.Services.LocalizationService.LocalizationService>()
                 .AddSingleton<IAppLocalizationService, AppLocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
+                .AddSingleton<IShellSessionService, ShellSessionService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
                 .AddSingleton<Services.HomeResponseParserFactory>()
@@ -207,7 +217,10 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton(sp => new Services.ImageCacheService(cacheCapacities.ImageCacheMaxSize))
                 .AddSingleton<Services.PreviewAudioVisualizationCoordinator>()
-                .AddSingleton<Services.PreviewAudioGraphService>()
+                .AddSingleton<Services.IPreviewAudioPlaybackEngine, Services.PreviewAudioGraphService>()
+                .AddSingleton<Services.PreviewAudioGraphService>(sp => (Services.PreviewAudioGraphService)sp.GetRequiredService<Services.IPreviewAudioPlaybackEngine>())
+                .AddSingleton<Services.ICardPreviewPlaybackCoordinator, Services.CardPreviewPlaybackCoordinator>()
+                .AddSingleton<Services.ISharedCardCanvasPreviewService, Services.SharedCardCanvasPreviewService>()
                 // Shared now-playing highlight observer. Subscribes to NowPlayingChangedMessage
                 // once; ContentCard instances subscribe to its C# event instead of registering
                 // individually with WeakReferenceMessenger. Big savings during HomePage realization.

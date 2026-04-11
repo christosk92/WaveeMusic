@@ -68,6 +68,13 @@
                             <Color x:Key="HomeBaselineCardHeroShadowTopColor">#26000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowMidColor">#09000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowBottomColor">#A6000000</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightStartColor">#56FFFFFF</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightMidColor">#16FFFFFF</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightEndColor">#00FFFFFF</Color>
+                            <Color x:Key="RightPanelBackgroundShadowTopColor">#18000000</Color>
+                            <Color x:Key="RightPanelBackgroundShadowMidColor">#08000000</Color>
+                            <Color x:Key="RightPanelBackgroundShadowBottomColor">#B6000000</Color>
+                            <SolidColorBrush x:Key="RightPanelBackgroundNonDetailsDimBrush" Color="#300A0C10"/>
                             <Color x:Key="ArtistHeroFallbackGlowStartColor">#30FFFFFF</Color>
                             <Color x:Key="ArtistHeroFallbackGlowMidColor">#141DB954</Color>
                             <Color x:Key="ArtistHeroFallbackGlowEndColor">#001DB954</Color>
@@ -119,6 +126,13 @@
                             <Color x:Key="HomeBaselineCardHeroShadowTopColor">#26000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowMidColor">#09000000</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowBottomColor">#A6000000</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightStartColor">#58FFFFFF</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightMidColor">#16FFFFFF</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightEndColor">#00FFFFFF</Color>
+                            <Color x:Key="RightPanelBackgroundShadowTopColor">#22000000</Color>
+                            <Color x:Key="RightPanelBackgroundShadowMidColor">#0A000000</Color>
+                            <Color x:Key="RightPanelBackgroundShadowBottomColor">#C4000000</Color>
+                            <SolidColorBrush x:Key="RightPanelBackgroundNonDetailsDimBrush" Color="#3A090B11"/>
                             <Color x:Key="ArtistHeroFallbackGlowStartColor">#36FFFFFF</Color>
                             <Color x:Key="ArtistHeroFallbackGlowMidColor">#181DB954</Color>
                             <Color x:Key="ArtistHeroFallbackGlowEndColor">#001DB954</Color>
@@ -169,6 +183,13 @@
                             <Color x:Key="HomeBaselineCardHeroShadowTopColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowMidColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="HomeBaselineCardHeroShadowBottomColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightStartColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightMidColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="RightPanelBackgroundHighlightEndColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="RightPanelBackgroundShadowTopColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="RightPanelBackgroundShadowMidColor">{StaticResource SystemColorWindowColor}</Color>
+                            <Color x:Key="RightPanelBackgroundShadowBottomColor">{StaticResource SystemColorWindowColor}</Color>
+                            <SolidColorBrush x:Key="RightPanelBackgroundNonDetailsDimBrush" Color="{StaticResource SystemColorWindowColor}"/>
                             <Color x:Key="ArtistHeroFallbackGlowStartColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="ArtistHeroFallbackGlowMidColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="ArtistHeroFallbackGlowEndColor">{StaticResource SystemColorWindowColor}</Color>

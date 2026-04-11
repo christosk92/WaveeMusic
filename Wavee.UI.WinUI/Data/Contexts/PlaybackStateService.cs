@@ -393,6 +393,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             return;
 
         _lastColorImageUrl = imageUrl;
+        CurrentAlbumArtColor = null;
 
         // Cancel any previous color extraction
         _colorCts?.Cancel();

@@ -1597,6 +1597,9 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Update_CheckFailed" xml:space="preserve">
     <value>업데이트 확인에 실패했습니다. 연결을 확인하세요</value>
   </data>
+  <data name="Retry" xml:space="preserve">
+    <value>다시 시도</value>
+  </data>
   <data name="Connect_LoadingPlaylists" xml:space="preserve">
     <value>플레이리스트를 불러오는 중...</value>
   </data>

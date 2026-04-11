@@ -36,7 +36,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenHome(bool openInNewTab = false)
     {
-        Navigate(typeof(HomePage), null, "Home", new SymbolIconSource { Symbol = Symbol.Home }, openInNewTab);
+        Navigate(typeof(HomePage), null, "Home", CreateIconSource(typeof(HomePage), null), openInNewTab);
     }
 
     /// <summary>
@@ -44,7 +44,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenNewTab()
     {
-        Navigate(typeof(StartPage), null, "New Tab", new SymbolIconSource { Symbol = Symbol.Add }, openInNewTab: true);
+        Navigate(typeof(StartPage), null, "New Tab", CreateIconSource(typeof(StartPage), null), openInNewTab: true);
     }
 
     /// <summary>
@@ -52,7 +52,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenArtist(object parameter, string artistName, bool openInNewTab = false)
     {
-        Navigate(typeof(ArtistPage), parameter, artistName, new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
+        Navigate(typeof(ArtistPage), parameter, artistName, CreateIconSource(typeof(ArtistPage), parameter), openInNewTab);
     }
 
     /// <summary>
@@ -60,7 +60,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenAlbum(object parameter, string albumName, bool openInNewTab = false)
     {
-        Navigate(typeof(AlbumPage), parameter, albumName, new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
+        Navigate(typeof(AlbumPage), parameter, albumName, CreateIconSource(typeof(AlbumPage), parameter), openInNewTab);
     }
 
     /// <summary>
@@ -68,7 +68,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenSearch(string? query = null, bool openInNewTab = false)
     {
-        Navigate(typeof(SearchPage), query, "Search", new SymbolIconSource { Symbol = Symbol.Find }, openInNewTab);
+        Navigate(typeof(SearchPage), query, "Search", CreateIconSource(typeof(SearchPage), query), openInNewTab);
     }
 
     /// <summary>
@@ -76,7 +76,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenLibrary(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), null, AppLocalization.GetString("Shell_SidebarYourLibrary"), new SymbolIconSource { Symbol = Symbol.Library }, openInNewTab);
+        Navigate(typeof(LibraryPage), null, AppLocalization.GetString("Shell_SidebarYourLibrary"), CreateIconSource(typeof(LibraryPage), null), openInNewTab);
     }
 
     /// <summary>
@@ -84,7 +84,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenPlaylist(object parameter, string playlistName, bool openInNewTab = false)
     {
-        Navigate(typeof(PlaylistPage), parameter, playlistName, new SymbolIconSource { Symbol = Symbol.MusicInfo }, openInNewTab);
+        Navigate(typeof(PlaylistPage), parameter, playlistName, CreateIconSource(typeof(PlaylistPage), parameter), openInNewTab);
     }
 
     /// <summary>
@@ -92,12 +92,12 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenConcert(object parameter, string concertName, bool openInNewTab = false)
     {
-        Navigate(typeof(ConcertPage), parameter, concertName, new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
+        Navigate(typeof(ConcertPage), parameter, concertName, CreateIconSource(typeof(ConcertPage), parameter), openInNewTab);
     }
 
     public static void OpenAlbums(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), "albums", AppLocalization.GetString("Shell_SidebarAlbums"), new SymbolIconSource { Symbol = Symbol.Audio }, openInNewTab);
+        Navigate(typeof(LibraryPage), "albums", AppLocalization.GetString("Shell_SidebarAlbums"), CreateIconSource(typeof(LibraryPage), "albums"), openInNewTab);
     }
 
     /// <summary>
@@ -105,7 +105,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenArtists(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), "artists", AppLocalization.GetString("Shell_SidebarArtists"), new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
+        Navigate(typeof(LibraryPage), "artists", AppLocalization.GetString("Shell_SidebarArtists"), CreateIconSource(typeof(LibraryPage), "artists"), openInNewTab);
     }
 
     /// <summary>
@@ -113,7 +113,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenLikedSongs(bool openInNewTab = false)
     {
-        Navigate(typeof(LibraryPage), "likedsongs", AppLocalization.GetString("Shell_SidebarLikedSongs"), new SymbolIconSource { Symbol = Symbol.Like }, openInNewTab);
+        Navigate(typeof(LibraryPage), "likedsongs", AppLocalization.GetString("Shell_SidebarLikedSongs"), CreateIconSource(typeof(LibraryPage), "likedsongs"), openInNewTab);
     }
 
     /// <summary>
@@ -121,7 +121,7 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenProfile(bool openInNewTab = false)
     {
-        Navigate(typeof(ProfilePage), null, "Profile", new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
+        Navigate(typeof(ProfilePage), null, "Profile", CreateIconSource(typeof(ProfilePage), null), openInNewTab);
     }
 
     /// <summary>
@@ -150,17 +150,17 @@ public static class NavigationHelpers
 
     public static void OpenDebug(bool openInNewTab = false)
     {
-        Navigate(typeof(DebugPage), null, "Debug", new SymbolIconSource { Symbol = Symbol.Repair }, openInNewTab);
+        Navigate(typeof(DebugPage), null, "Debug", CreateIconSource(typeof(DebugPage), null), openInNewTab);
     }
 
     public static void OpenSettings(bool openInNewTab = false)
     {
-        Navigate(typeof(SettingsPage), null, "Settings", new SymbolIconSource { Symbol = Symbol.Setting }, openInNewTab);
+        Navigate(typeof(SettingsPage), null, "Settings", CreateIconSource(typeof(SettingsPage), null), openInNewTab);
     }
 
     public static void OpenFeedback(bool openInNewTab = false)
     {
-        Navigate(typeof(FeedbackPage), null, "Feedback", new SymbolIconSource { Symbol = Symbol.Comment }, openInNewTab);
+        Navigate(typeof(FeedbackPage), null, "Feedback", CreateIconSource(typeof(FeedbackPage), null), openInNewTab);
     }
 
     private static void Navigate(Type pageType, object? parameter, string header, IconSource icon, bool openInNewTab)
@@ -215,16 +215,110 @@ public static class NavigationHelpers
 
     private static void AddNewTab(Type pageType, object? parameter, string header, IconSource icon)
     {
+        var tab = CreateTab(pageType, parameter, header, icon);
+        ShellViewModel.TabInstances.Add(tab);
+        _shellViewModel!.SelectTab(ShellViewModel.TabInstances.Count - 1);
+    }
+
+    public static TabBarItem CreateTab(
+        Type pageType,
+        object? parameter,
+        string header,
+        IconSource? icon = null,
+        bool isPinned = false,
+        bool isCompact = false)
+    {
         var tab = new TabBarItem
         {
             Header = header,
-            IconSource = icon,
-            ToolTipText = header
+            IconSource = icon ?? CreateIconSource(pageType, parameter),
+            ToolTipText = header,
+            IsPinned = isPinned,
+            IsCompact = isCompact
         };
 
         tab.Navigate(pageType, parameter);
-        ShellViewModel.TabInstances.Add(tab);
-        _shellViewModel!.SelectTab(ShellViewModel.TabInstances.Count - 1);
+        return tab;
+    }
+
+    public static IconSource CreateIconSource(Type pageType, object? parameter)
+    {
+        if (pageType == typeof(HomePage))
+            return new SymbolIconSource { Symbol = Symbol.Home };
+
+        if (pageType == typeof(StartPage))
+            return new SymbolIconSource { Symbol = Symbol.Add };
+
+        if (pageType == typeof(SearchPage))
+            return new SymbolIconSource { Symbol = Symbol.Find };
+
+        if (pageType == typeof(ArtistPage) || pageType == typeof(ProfilePage))
+            return new SymbolIconSource { Symbol = Symbol.Contact };
+
+        if (pageType == typeof(AlbumPage) || pageType == typeof(ConcertPage))
+            return new SymbolIconSource { Symbol = Symbol.Audio };
+
+        if (pageType == typeof(PlaylistPage))
+            return new SymbolIconSource { Symbol = Symbol.MusicInfo };
+
+        if (pageType == typeof(SettingsPage))
+            return new SymbolIconSource { Symbol = Symbol.Setting };
+
+        if (pageType == typeof(DebugPage))
+            return new SymbolIconSource { Symbol = Symbol.Repair };
+
+        if (pageType == typeof(FeedbackPage))
+            return new SymbolIconSource { Symbol = Symbol.Comment };
+
+        if (pageType == typeof(LibraryPage))
+        {
+            return parameter switch
+            {
+                "albums" => new SymbolIconSource { Symbol = Symbol.Audio },
+                "artists" => new SymbolIconSource { Symbol = Symbol.Contact },
+                "likedsongs" => new SymbolIconSource { Symbol = Symbol.Like },
+                _ => new SymbolIconSource { Symbol = Symbol.Library }
+            };
+        }
+
+        return new SymbolIconSource { Symbol = Symbol.Document };
+    }
+
+    public static string GetDefaultHeader(Type pageType, object? parameter)
+    {
+        if (pageType == typeof(HomePage))
+            return "Home";
+
+        if (pageType == typeof(StartPage))
+            return "New Tab";
+
+        if (pageType == typeof(SearchPage))
+            return "Search";
+
+        if (pageType == typeof(ProfilePage))
+            return "Profile";
+
+        if (pageType == typeof(SettingsPage))
+            return "Settings";
+
+        if (pageType == typeof(DebugPage))
+            return "Debug";
+
+        if (pageType == typeof(FeedbackPage))
+            return "Feedback";
+
+        if (pageType == typeof(LibraryPage))
+        {
+            return parameter switch
+            {
+                "albums" => AppLocalization.GetString("Shell_SidebarAlbums"),
+                "artists" => AppLocalization.GetString("Shell_SidebarArtists"),
+                "likedsongs" => AppLocalization.GetString("Shell_SidebarLikedSongs"),
+                _ => AppLocalization.GetString("Shell_SidebarYourLibrary")
+            };
+        }
+
+        return pageType.Name.Replace("Page", "");
     }
 
     // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph

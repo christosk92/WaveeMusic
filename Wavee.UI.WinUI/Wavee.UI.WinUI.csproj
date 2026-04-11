@@ -85,6 +85,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<InternalsVisibleTo Include="Wavee.Tests" />
 		<!-- Wavee core integration -->
 		<ProjectReference Include="..\Wavee\Wavee.csproj" />
 		<!-- Lyrics rendering control -->

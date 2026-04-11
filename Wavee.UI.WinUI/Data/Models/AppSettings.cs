@@ -22,6 +22,9 @@ public sealed class AppSettings
     public string? LastOpenedTab { get; set; }
     public Dictionary<string, Dictionary<string, double>> ColumnWidths { get; set; } = new();
     public HomeSectionSettings HomeSettings { get; set; } = new();
+    public ShellSessionState ShellSession { get; set; } = new();
+    public bool AskBeforeClosingTabs { get; set; } = true;
+    public CloseTabsBehavior CloseTabsBehavior { get; set; } = CloseTabsBehavior.Save;
 
     // ── Playback behavior ──
 

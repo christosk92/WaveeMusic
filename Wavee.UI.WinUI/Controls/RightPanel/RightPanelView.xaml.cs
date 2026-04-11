@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Controls;
@@ -22,6 +23,9 @@ using System.Numerics;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
+using Microsoft.Graphics.Canvas.Text;
+using Microsoft.Graphics.DirectX;
+using Microsoft.Graphics.Canvas.UI.Composition;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml.Hosting;
@@ -29,6 +33,8 @@ using Windows.Foundation;
 using Windows.UI;
 using Microsoft.UI;
 using Microsoft.UI.Xaml.Media.Animation;
+using Wavee.Core.Http;
+using Wavee.Core.Http.Pathfinder;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
 
@@ -36,6 +42,10 @@ public sealed partial class RightPanelView : UserControl
 {
     private const double MinPanelWidth = 200;
     private const double MaxPanelWidth = 500;
+    private const float AlbumArtBlurAmount = 32f;
+    private const float AlbumArtSaturationAmount = 0.88f;
+    private const float CanvasSaturationAmount = 0.82f;
+    private const int BlurredAlbumArtRenderTolerancePx = 36;
 
     private bool _draggingResizer;
     private double _preManipulationWidth;
@@ -46,9 +56,6 @@ public sealed partial class RightPanelView : UserControl
     private bool _lyricsTreeLoaded;
     private bool _detailsTreeLoaded;
 
-    // Re-entrancy guard for Segmented SelectionChanged → SelectedMode sync.
-    private bool _suppressTabSelectionChanged;
-
     // Details integration
     private TrackDetailsViewModel? _detailsVm;
 
@@ -58,16 +65,60 @@ public sealed partial class RightPanelView : UserControl
     private DispatcherQueueTimer? _scrollResetTimer;
     private double _lastCanvasPositionMs = -1;
     private bool _lyricsInitialized;
+    private bool _pendingCanvasLayoutRetry;
     private readonly ThemeColorService? _themeColors;
     private readonly ILyricsService? _lyricsService;
+    private readonly IColorService? _colorService;
     private readonly ISettingsService? _settingsService;
     private bool _themeColorsSubscribed;
+    private readonly List<CompositionObject> _backgroundOverlayCompositionObjects = [];
+    private ContainerVisual? _backgroundOverlayContainer;
+    private Compositor? _backgroundOverlayCompositor;
+    private CompositionColorBrush? _backgroundTintBrush;
+    private CompositionColorBrush? _backgroundNonDetailsDimBrush;
+    private CompositionLinearGradientBrush? _backgroundHighlightBrush;
+    private CompositionColorGradientStop? _backgroundHighlightStartStop;
+    private CompositionColorGradientStop? _backgroundHighlightMidStop;
+    private CompositionColorGradientStop? _backgroundHighlightEndStop;
+    private CompositionLinearGradientBrush? _backgroundScrimBrush;
+    private CompositionColorGradientStop? _backgroundScrimTopStop;
+    private CompositionColorGradientStop? _backgroundScrimMidStop;
+    private CompositionColorGradientStop? _backgroundScrimBottomStop;
+    private CompositionLinearGradientBrush? _backgroundBottomBlendBrush;
+    private CompositionColorGradientStop? _backgroundBottomBlendTopStop;
+    private CompositionColorGradientStop? _backgroundBottomBlendMidStop;
+    private CompositionColorGradientStop? _backgroundBottomBlendLowerMidStop;
+    private CompositionColorGradientStop? _backgroundBottomBlendBottomStop;
+    private SpriteVisual? _backgroundTintVisual;
+    private SpriteVisual? _backgroundHighlightVisual;
+    private SpriteVisual? _backgroundScrimVisual;
+    private SpriteVisual? _backgroundNonDetailsDimVisual;
+    private SpriteVisual? _backgroundBottomBlendVisual;
+    private readonly List<CompositionObject> _detailsLyricsCompositionObjects = [];
+    private ContainerVisual? _detailsLyricsContainerVisual;
+    private SpriteVisual? _detailsLyricsTextVisual;
+    private SpriteVisual? _detailsLyricsCursorVisual;
+    private CompositionSurfaceBrush? _detailsLyricsTextBrush;
+    private CompositionColorBrush? _detailsLyricsCursorBrush;
+    private CompositionGraphicsDevice? _detailsLyricsGraphicsDevice;
+    private CompositionDrawingSurface? _detailsLyricsDrawingSurface;
+    private CanvasDevice? _detailsLyricsCanvasDevice;
+    private CanvasTextLayout? _detailsLyricsTextLayout;
+    private CanvasTextLayoutRegion[]? _detailsLyricsCharacterRegions;
+    private string? _detailsLyricsLayoutText;
+    private float _detailsLyricsLayoutWidth;
+    private float _detailsLyricsLayoutHeight;
+    private bool _detailsLyricsRenderSubscribed;
+    private CancellationTokenSource? _backgroundTintCts;
+    private string? _backgroundTintImageUrl;
+    private ExtractedColor? _backgroundTintExtractedColor;
 
     public RightPanelView()
     {
         InitializeComponent();
         _themeColors = Ioc.Default.GetService<ThemeColorService>();
         _lyricsService = Ioc.Default.GetService<ILyricsService>();
+        _colorService = Ioc.Default.GetService<IColorService>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         _detailsVm = Ioc.Default.GetService<TrackDetailsViewModel>();
@@ -92,12 +143,25 @@ public sealed partial class RightPanelView : UserControl
         ActualThemeChanged += OnActualThemeChanged;
         SizeChanged += OnPanelSizeChanged;
         UpdateCanvasClearColor();
+        UpdateBackgroundChrome();
+        RefreshBackgroundTint();
+        UpdatePanelBackgroundState();
+        UpdateTabHeaderVisualState();
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (SelectedMode == RightPanelMode.Lyrics)
             UpdateCanvasLayout();
+
+        UpdateBackgroundChrome();
+
+        if (_activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt
+            && _blurredAlbumArtImageSource != null
+            && NeedsBlurredAlbumArtRerender())
+        {
+            SetupBlurredAlbumArt();
+        }
     }
 
     private void RightPanelView_Unloaded(object sender, RoutedEventArgs e)
@@ -120,6 +184,9 @@ public sealed partial class RightPanelView : UserControl
         }
         TeardownCanvasBackground();
         TeardownBlurredAlbumArt();
+        CancelBackgroundTintRefresh();
+        TeardownBackgroundOverlayComposition();
+        TeardownDetailsLyricsComposition();
         _canvasDevice?.Dispose();
         _canvasDevice = null;
         TeardownDetailsLyricsSnippet();
@@ -131,6 +198,8 @@ public sealed partial class RightPanelView : UserControl
         {
             UpdateCanvasClearColor();
             UpdateLyricsPaletteForTheme();
+            UpdateBackgroundChrome();
+            UpdateTabHeaderVisualState();
         });
     }
 
@@ -138,6 +207,8 @@ public sealed partial class RightPanelView : UserControl
     {
         UpdateCanvasClearColor();
         UpdateLyricsPaletteForTheme();
+        UpdateBackgroundChrome();
+        UpdateTabHeaderVisualState();
     }
 
     private void UpdateLyricsPaletteForTheme()
@@ -226,12 +297,24 @@ public sealed partial class RightPanelView : UserControl
         if (e.PropertyName is nameof(IPlaybackStateService.IsPlaying))
             UpdateTimerState();
 
-        // Update blurred album art when album art changes
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
+                           or nameof(IPlaybackStateService.CurrentArtistId))
+        {
+            // Track changes arrive before fresh details/canvas metadata, so immediately
+            // fall back to the album-art treatment until the details VM resolves again.
+            ResetBackgroundTint();
+            ApplyDetailsBackground(null, false);
+            UpdateBackgroundChrome();
+        }
+
+        // Update the shared media treatment when playback visuals change.
         if (e.PropertyName is nameof(IPlaybackStateService.CurrentAlbumArtLarge)
                            or nameof(IPlaybackStateService.CurrentAlbumArt))
         {
-            if (SelectedMode == RightPanelMode.Details
-                && _activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt)
+            RefreshBackgroundTint();
+            UpdateBackgroundChrome();
+
+            if (_activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt)
             {
                 SetupBlurredAlbumArt();
             }
@@ -298,6 +381,7 @@ public sealed partial class RightPanelView : UserControl
 
         // NowPlayingCanvas is parent-level, always safe.
         NowPlayingCanvas.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBackgroundMediaVisibility();
 
         if (!showCanvas)
         {
@@ -519,15 +603,13 @@ public sealed partial class RightPanelView : UserControl
         var h = RootGrid.ActualHeight;
 
         // If layout hasn't measured the grid yet (common when we're called from
-        // ApplyCurrentLyricsState right as the panel/tab becomes visible), force
-        // a measure+arrange pass right now so we can read actual sizes synchronously.
-        // Without this, the call bails and the canvas never receives valid lyrics dimensions,
-        // and SetLyricsData ends up flowing through to the engine with a zero rect.
+        // ApplyCurrentLyricsState right as the panel/tab becomes visible), retry on the
+        // dispatcher after the current layout pass instead of forcing UpdateLayout().
+        // Re-entering layout from here can trigger layout cycles and fail-fast exits.
         if (w <= 0 || h <= 0)
         {
-            RootGrid.UpdateLayout();
-            w = RootGrid.ActualWidth;
-            h = RootGrid.ActualHeight;
+            ScheduleCanvasLayoutRetry();
+            return;
         }
 
         // Final fallback: use the control's explicit Width if layout still hasn't resolved.
@@ -539,6 +621,7 @@ public sealed partial class RightPanelView : UserControl
 
         if (w <= 0 || h <= 0)
         {
+            ScheduleCanvasLayoutRetry();
 #if DEBUG
             System.Diagnostics.Debug.WriteLine(
                 $"[RightPanel] UpdateCanvasLayout BAILED rootW={RootGrid.ActualWidth} rootH={RootGrid.ActualHeight} " +
@@ -547,7 +630,9 @@ public sealed partial class RightPanelView : UserControl
             return;
         }
 
-        // Canvas spans the entire root; offset lyrics to the content area below tabs.
+        _pendingCanvasLayoutRetry = false;
+
+        // Canvas spans the entire root; reserve the tab rail at the bottom.
         var resizerW = PanelResizer.ActualWidth;
         var tabH = TabHeader.ActualHeight;
         const double padLeft = 12, padRight = 12, padBottom = 12;
@@ -556,7 +641,7 @@ public sealed partial class RightPanelView : UserControl
         var lyricsH = h - tabH - padBottom;
 
         NowPlayingCanvas.LyricsStartX = resizerW + padLeft;
-        NowPlayingCanvas.LyricsStartY = tabH;
+        NowPlayingCanvas.LyricsStartY = 0;
         NowPlayingCanvas.LyricsWidth = lyricsW > 0 ? lyricsW : w;
         NowPlayingCanvas.LyricsHeight = lyricsH > 0 ? lyricsH : h;
         NowPlayingCanvas.LyricsOpacity = 1;
@@ -568,6 +653,23 @@ public sealed partial class RightPanelView : UserControl
             $"lyrics={NowPlayingCanvas.LyricsWidth:F0}x{NowPlayingCanvas.LyricsHeight:F0} " +
             $"start=({NowPlayingCanvas.LyricsStartX:F0},{NowPlayingCanvas.LyricsStartY:F0})");
 #endif
+    }
+
+    private void ScheduleCanvasLayoutRetry()
+    {
+        if (_pendingCanvasLayoutRetry || DispatcherQueue == null)
+            return;
+
+        _pendingCanvasLayoutRetry = true;
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            _pendingCanvasLayoutRetry = false;
+
+            if (!IsLoaded)
+                return;
+
+            UpdateCanvasLayout();
+        });
     }
 
     private void UpdateCanvasClearColor()
@@ -599,7 +701,506 @@ public sealed partial class RightPanelView : UserControl
         NowPlayingCanvas.SetClearColor(color);
     }
 
-    
+    private void UpdatePanelBackgroundState()
+    {
+        var hasDetailsData = _detailsVm?.HasData == true;
+        ApplyDetailsBackground(
+            hasDetailsData ? _detailsVm?.CanvasUrl : null,
+            hasDetailsData && _detailsVm?.HasCanvas == true);
+    }
+
+    private void UpdateBackgroundChrome()
+    {
+        EnsureBackgroundOverlayComposition();
+
+        if (_backgroundTintBrush == null
+            || _backgroundNonDetailsDimBrush == null
+            || _backgroundHighlightStartStop == null
+            || _backgroundHighlightMidStop == null
+            || _backgroundHighlightEndStop == null
+            || _backgroundScrimTopStop == null
+            || _backgroundScrimMidStop == null
+            || _backgroundScrimBottomStop == null
+            || _backgroundBottomBlendTopStop == null
+            || _backgroundBottomBlendMidStop == null
+            || _backgroundBottomBlendLowerMidStop == null
+            || _backgroundBottomBlendBottomStop == null)
+        {
+            return;
+        }
+
+        var tintColor = GetBackgroundTintColor();
+        var surfaceColor = GetPanelSurfaceColor();
+        var blendColor = BlendColors(
+            surfaceColor,
+            tintColor,
+            ActualTheme == ElementTheme.Light ? 0.18f : 0.28f);
+        var bottomColor = Darken(
+            blendColor,
+            ActualTheme == ElementTheme.Light ? 0.08f : 0.22f);
+
+        _backgroundTintBrush.Color = tintColor;
+        _backgroundNonDetailsDimBrush.Color = ResolveThemeColor(
+            "RightPanelBackgroundNonDetailsDimBrush",
+            ActualTheme == ElementTheme.Light
+                ? Color.FromArgb(255, 10, 12, 16)
+                : Color.FromArgb(255, 9, 11, 17));
+
+        _backgroundHighlightStartStop.Color = ResolveThemeColor(
+            "RightPanelBackgroundHighlightStartColor",
+            Color.FromArgb(86, 255, 255, 255));
+        _backgroundHighlightMidStop.Color = ResolveThemeColor(
+            "RightPanelBackgroundHighlightMidColor",
+            Color.FromArgb(22, 255, 255, 255));
+        _backgroundHighlightEndStop.Color = ResolveThemeColor(
+            "RightPanelBackgroundHighlightEndColor",
+            Color.FromArgb(0, 255, 255, 255));
+
+        _backgroundScrimTopStop.Color = ResolveThemeColor(
+            "RightPanelBackgroundShadowTopColor",
+            Color.FromArgb(24, 0, 0, 0));
+        _backgroundScrimMidStop.Color = ResolveThemeColor(
+            "RightPanelBackgroundShadowMidColor",
+            Color.FromArgb(8, 0, 0, 0));
+        _backgroundScrimBottomStop.Color = ResolveThemeColor(
+            "RightPanelBackgroundShadowBottomColor",
+            Color.FromArgb(182, 0, 0, 0));
+
+        _backgroundBottomBlendTopStop.Color = Color.FromArgb(0, bottomColor.R, bottomColor.G, bottomColor.B);
+        _backgroundBottomBlendMidStop.Color = Color.FromArgb(20, bottomColor.R, bottomColor.G, bottomColor.B);
+        _backgroundBottomBlendLowerMidStop.Color = Color.FromArgb(86, bottomColor.R, bottomColor.G, bottomColor.B);
+        _backgroundBottomBlendBottomStop.Color = Color.FromArgb(255, bottomColor.R, bottomColor.G, bottomColor.B);
+        UpdateBackgroundOverlayState();
+    }
+
+    private void UpdateBackgroundOverlayState()
+    {
+        if (_backgroundOverlayContainer == null)
+            return;
+
+        var isDetails = SelectedMode == RightPanelMode.Details;
+        var isLyricsCanvasVisible = SelectedMode == RightPanelMode.Lyrics
+                                    && NowPlayingCanvas.Visibility == Visibility.Visible;
+
+        if (_backgroundTintVisual != null)
+            _backgroundTintVisual.Opacity = isDetails ? 0.14f : isLyricsCanvasVisible ? 0.12f : 0.18f;
+        if (_backgroundHighlightVisual != null)
+            _backgroundHighlightVisual.Opacity = isDetails ? 0.76f : 0.62f;
+        if (_backgroundScrimVisual != null)
+            _backgroundScrimVisual.Opacity = isDetails ? 0.84f : 0.96f;
+        if (_backgroundBottomBlendVisual != null)
+            _backgroundBottomBlendVisual.Opacity = isDetails ? 0.96f : 1.0f;
+        if (_backgroundNonDetailsDimVisual != null)
+            _backgroundNonDetailsDimVisual.Opacity = isDetails ? 0f : isLyricsCanvasVisible ? 0.16f : 0.26f;
+    }
+
+    private void UpdateBackgroundMediaVisibility()
+    {
+        if (DetailsCanvasImage == null || BackgroundOverlayHost == null)
+            return;
+
+        var hasMedia = HasResolvedBackgroundSource();
+        var isDetails = SelectedMode == RightPanelMode.Details;
+        var lyricsCanvasOwnsSurface = SelectedMode == RightPanelMode.Lyrics
+                                      && NowPlayingCanvas.Visibility == Visibility.Visible;
+        var showMedia = hasMedia && !lyricsCanvasOwnsSurface;
+        var showChrome = _activeBackgroundMode != DetailsBackgroundMode.None
+                         && (isDetails || showMedia || lyricsCanvasOwnsSurface);
+
+        DetailsCanvasImage.Visibility = showMedia ? Visibility.Visible : Visibility.Collapsed;
+        BackgroundOverlayHost.Visibility = showChrome ? Visibility.Visible : Visibility.Collapsed;
+
+        EnsureBackgroundOverlayComposition();
+        if (_backgroundOverlayContainer != null)
+            _backgroundOverlayContainer.Opacity = showChrome ? 1f : 0f;
+
+        if (_canvasMediaPlayer != null)
+        {
+            if (_activeBackgroundMode == DetailsBackgroundMode.Canvas && hasMedia)
+                _canvasMediaPlayer.Play();
+            else
+                _canvasMediaPlayer.Pause();
+        }
+
+        UpdateBackgroundOverlayState();
+    }
+
+    private void EnsureBackgroundOverlayComposition()
+    {
+        if (_backgroundOverlayContainer != null || BackgroundOverlayHost == null)
+            return;
+
+        var hostVisual = ElementCompositionPreview.GetElementVisual(BackgroundOverlayHost);
+        _backgroundOverlayCompositor = hostVisual.Compositor;
+
+        _backgroundOverlayContainer = TrackCompositionObject(_backgroundOverlayCompositor.CreateContainerVisual());
+        _backgroundOverlayContainer.RelativeSizeAdjustment = Vector2.One;
+        _backgroundOverlayContainer.Opacity = 0f;
+
+        _backgroundTintBrush = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorBrush(Colors.Transparent));
+        _backgroundTintVisual = TrackCompositionObject(_backgroundOverlayCompositor.CreateSpriteVisual());
+        _backgroundTintVisual.Brush = _backgroundTintBrush;
+        _backgroundTintVisual.RelativeSizeAdjustment = Vector2.One;
+        _backgroundOverlayContainer.Children.InsertAtBottom(_backgroundTintVisual);
+
+        _backgroundHighlightBrush = TrackCompositionObject(_backgroundOverlayCompositor.CreateLinearGradientBrush());
+        _backgroundHighlightBrush.StartPoint = new Vector2(0.08f, 0f);
+        _backgroundHighlightBrush.EndPoint = new Vector2(0.82f, 0.5f);
+        _backgroundHighlightStartStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0f, Colors.Transparent));
+        _backgroundHighlightMidStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0.44f, Colors.Transparent));
+        _backgroundHighlightEndStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(1f, Colors.Transparent));
+        _backgroundHighlightBrush.ColorStops.Add(_backgroundHighlightStartStop);
+        _backgroundHighlightBrush.ColorStops.Add(_backgroundHighlightMidStop);
+        _backgroundHighlightBrush.ColorStops.Add(_backgroundHighlightEndStop);
+        _backgroundHighlightVisual = TrackCompositionObject(_backgroundOverlayCompositor.CreateSpriteVisual());
+        _backgroundHighlightVisual.Brush = _backgroundHighlightBrush;
+        _backgroundHighlightVisual.RelativeSizeAdjustment = Vector2.One;
+        _backgroundOverlayContainer.Children.InsertAtTop(_backgroundHighlightVisual);
+
+        _backgroundScrimBrush = TrackCompositionObject(_backgroundOverlayCompositor.CreateLinearGradientBrush());
+        _backgroundScrimBrush.StartPoint = new Vector2(0.5f, 0f);
+        _backgroundScrimBrush.EndPoint = new Vector2(0.5f, 1f);
+        _backgroundScrimTopStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0f, Colors.Transparent));
+        _backgroundScrimMidStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0.42f, Colors.Transparent));
+        _backgroundScrimBottomStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(1f, Colors.Transparent));
+        _backgroundScrimBrush.ColorStops.Add(_backgroundScrimTopStop);
+        _backgroundScrimBrush.ColorStops.Add(_backgroundScrimMidStop);
+        _backgroundScrimBrush.ColorStops.Add(_backgroundScrimBottomStop);
+        _backgroundScrimVisual = TrackCompositionObject(_backgroundOverlayCompositor.CreateSpriteVisual());
+        _backgroundScrimVisual.Brush = _backgroundScrimBrush;
+        _backgroundScrimVisual.RelativeSizeAdjustment = Vector2.One;
+        _backgroundOverlayContainer.Children.InsertAtTop(_backgroundScrimVisual);
+
+        _backgroundNonDetailsDimBrush = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorBrush(Colors.Transparent));
+        _backgroundNonDetailsDimVisual = TrackCompositionObject(_backgroundOverlayCompositor.CreateSpriteVisual());
+        _backgroundNonDetailsDimVisual.Brush = _backgroundNonDetailsDimBrush;
+        _backgroundNonDetailsDimVisual.RelativeSizeAdjustment = Vector2.One;
+        _backgroundOverlayContainer.Children.InsertAtTop(_backgroundNonDetailsDimVisual);
+
+        _backgroundBottomBlendBrush = TrackCompositionObject(_backgroundOverlayCompositor.CreateLinearGradientBrush());
+        _backgroundBottomBlendBrush.StartPoint = new Vector2(0.5f, 0f);
+        _backgroundBottomBlendBrush.EndPoint = new Vector2(0.5f, 1f);
+        _backgroundBottomBlendTopStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0f, Colors.Transparent));
+        _backgroundBottomBlendMidStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0.18f, Colors.Transparent));
+        _backgroundBottomBlendLowerMidStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0.62f, Colors.Transparent));
+        _backgroundBottomBlendBottomStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(1f, Colors.Transparent));
+        _backgroundBottomBlendBrush.ColorStops.Add(_backgroundBottomBlendTopStop);
+        _backgroundBottomBlendBrush.ColorStops.Add(_backgroundBottomBlendMidStop);
+        _backgroundBottomBlendBrush.ColorStops.Add(_backgroundBottomBlendLowerMidStop);
+        _backgroundBottomBlendBrush.ColorStops.Add(_backgroundBottomBlendBottomStop);
+        _backgroundBottomBlendVisual = TrackCompositionObject(_backgroundOverlayCompositor.CreateSpriteVisual());
+        _backgroundBottomBlendVisual.Brush = _backgroundBottomBlendBrush;
+        _backgroundBottomBlendVisual.RelativeSizeAdjustment = new Vector2(1f, 0.42f);
+        _backgroundBottomBlendVisual.RelativeOffsetAdjustment = new Vector3(0f, 0.58f, 0f);
+        _backgroundOverlayContainer.Children.InsertAtTop(_backgroundBottomBlendVisual);
+
+        ElementCompositionPreview.SetElementChildVisual(BackgroundOverlayHost, _backgroundOverlayContainer);
+    }
+
+    private void TeardownBackgroundOverlayComposition()
+    {
+        if (BackgroundOverlayHost != null)
+            ElementCompositionPreview.SetElementChildVisual(BackgroundOverlayHost, null);
+
+        for (int i = _backgroundOverlayCompositionObjects.Count - 1; i >= 0; i--)
+            _backgroundOverlayCompositionObjects[i].Dispose();
+        _backgroundOverlayCompositionObjects.Clear();
+
+        _backgroundOverlayContainer = null;
+        _backgroundOverlayCompositor = null;
+        _backgroundTintBrush = null;
+        _backgroundNonDetailsDimBrush = null;
+        _backgroundHighlightBrush = null;
+        _backgroundHighlightStartStop = null;
+        _backgroundHighlightMidStop = null;
+        _backgroundHighlightEndStop = null;
+        _backgroundScrimBrush = null;
+        _backgroundScrimTopStop = null;
+        _backgroundScrimMidStop = null;
+        _backgroundScrimBottomStop = null;
+        _backgroundBottomBlendBrush = null;
+        _backgroundBottomBlendTopStop = null;
+        _backgroundBottomBlendMidStop = null;
+        _backgroundBottomBlendLowerMidStop = null;
+        _backgroundBottomBlendBottomStop = null;
+        _backgroundTintVisual = null;
+        _backgroundHighlightVisual = null;
+        _backgroundScrimVisual = null;
+        _backgroundNonDetailsDimVisual = null;
+        _backgroundBottomBlendVisual = null;
+    }
+
+    private T TrackCompositionObject<T>(T compositionObject) where T : CompositionObject
+    {
+        _backgroundOverlayCompositionObjects.Add(compositionObject);
+        return compositionObject;
+    }
+
+    private bool HasResolvedBackgroundSource()
+    {
+        return _activeBackgroundMode switch
+        {
+            DetailsBackgroundMode.None => false,
+            DetailsBackgroundMode.BlurredAlbumArt => _blurredAlbumArtImageSource != null,
+            DetailsBackgroundMode.Canvas => _canvasImageSource != null && _canvasMediaPlayer != null,
+            _ => false
+        };
+    }
+
+    private bool NeedsBlurredAlbumArtRerender()
+    {
+        var targetWidth = Math.Max(1, (int)RootGrid.ActualWidth / 2);
+        var targetHeight = Math.Max(1, (int)RootGrid.ActualHeight / 2);
+
+        return Math.Abs(targetWidth - _blurredAlbumArtRenderWidth) > BlurredAlbumArtRenderTolerancePx
+               || Math.Abs(targetHeight - _blurredAlbumArtRenderHeight) > BlurredAlbumArtRenderTolerancePx;
+    }
+
+    private string? GetBackgroundTintHex()
+    {
+        if (_backgroundTintExtractedColor != null)
+        {
+            var isLightTheme = ActualTheme == ElementTheme.Light;
+            return isLightTheme
+                ? _backgroundTintExtractedColor.DarkHex ?? _backgroundTintExtractedColor.RawHex
+                : _backgroundTintExtractedColor.LightHex ?? _backgroundTintExtractedColor.RawHex;
+        }
+
+        return null;
+    }
+
+    private void RefreshBackgroundTint()
+    {
+        var imageUrl = GetCurrentAlbumArtUrl();
+        if (string.IsNullOrEmpty(imageUrl))
+        {
+            ResetBackgroundTint();
+            return;
+        }
+
+        if (string.Equals(_backgroundTintImageUrl, imageUrl, StringComparison.Ordinal)
+            && _backgroundTintExtractedColor != null)
+        {
+            UpdateBackgroundChrome();
+            return;
+        }
+
+        CancelBackgroundTintRefresh();
+        _backgroundTintImageUrl = imageUrl;
+        _backgroundTintExtractedColor = null;
+        UpdateBackgroundChrome();
+
+        if (_colorService == null)
+            return;
+
+        _backgroundTintCts = new CancellationTokenSource();
+        _ = LoadBackgroundTintAsync(imageUrl, _backgroundTintCts.Token);
+    }
+
+    private async Task LoadBackgroundTintAsync(string imageUrl, CancellationToken ct)
+    {
+        try
+        {
+            var extracted = await _colorService!.GetColorAsync(imageUrl, ct);
+            if (ct.IsCancellationRequested)
+                return;
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (ct.IsCancellationRequested
+                    || !string.Equals(_backgroundTintImageUrl, imageUrl, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _backgroundTintExtractedColor = extracted;
+                UpdateBackgroundChrome();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RightPanel] Background tint extraction failed: {ex.Message}");
+        }
+    }
+
+    private string? GetCurrentAlbumArtUrl()
+    {
+        return SpotifyImageHelper.ToHttpsUrl(
+            _lyricsVm?.PlaybackState.CurrentAlbumArtLarge
+            ?? _lyricsVm?.PlaybackState.CurrentAlbumArt);
+    }
+
+    private void ResetBackgroundTint()
+    {
+        CancelBackgroundTintRefresh();
+        _backgroundTintImageUrl = null;
+        _backgroundTintExtractedColor = null;
+        UpdateBackgroundChrome();
+    }
+
+    private void CancelBackgroundTintRefresh()
+    {
+        _backgroundTintCts?.Cancel();
+        _backgroundTintCts?.Dispose();
+        _backgroundTintCts = null;
+    }
+
+    private Color GetBackgroundTintColor()
+    {
+        var albumHex = GetBackgroundTintHex();
+        if (TryParseHexColor(albumHex, out var albumColor))
+            return albumColor;
+
+        if (_themeColors?.AccentFill is SolidColorBrush accentBrush)
+            return accentBrush.Color;
+
+        return ActualTheme == ElementTheme.Light
+            ? Color.FromArgb(255, 110, 132, 148)
+            : Color.FromArgb(255, 84, 116, 140);
+    }
+
+    private Color GetPanelSurfaceColor()
+    {
+        if (_themeColors?.CardBackgroundSecondary is SolidColorBrush secondaryBrush)
+            return secondaryBrush.Color;
+
+        if (Application.Current.Resources.TryGetValue("CardBackgroundFillColorSecondaryBrush", out var brushObj)
+            && brushObj is SolidColorBrush themeBrush)
+        {
+            return themeBrush.Color;
+        }
+
+        return ActualTheme == ElementTheme.Light
+            ? Color.FromArgb(255, 245, 245, 245)
+            : Color.FromArgb(255, 30, 30, 30);
+    }
+
+    private Color ResolveThemeColor(string resourceKey, Color fallback)
+    {
+        var themeKey = ActualTheme switch
+        {
+            ElementTheme.Light => "Light",
+            ElementTheme.Dark => "Dark",
+            _ => "Default"
+        };
+
+        if (TryResolveColorFromResources(Application.Current.Resources, resourceKey, themeKey, out var color))
+            return color;
+
+        return fallback;
+    }
+
+    private static bool TryResolveColorFromResources(
+        ResourceDictionary resources,
+        string resourceKey,
+        string themeKey,
+        out Color color)
+    {
+        if (TryResolveColorFromDictionary(resources, resourceKey, out color))
+            return true;
+
+        if (resources.ThemeDictionaries.TryGetValue(themeKey, out var themed)
+            && themed is ResourceDictionary themedDict
+            && TryResolveColorFromDictionary(themedDict, resourceKey, out color))
+        {
+            return true;
+        }
+
+        if (themeKey != "Default"
+            && resources.ThemeDictionaries.TryGetValue("Default", out var fallbackThemed)
+            && fallbackThemed is ResourceDictionary fallbackDict
+            && TryResolveColorFromDictionary(fallbackDict, resourceKey, out color))
+        {
+            return true;
+        }
+
+        foreach (var merged in resources.MergedDictionaries)
+        {
+            if (TryResolveColorFromResources(merged, resourceKey, themeKey, out color))
+                return true;
+        }
+
+        color = Colors.Transparent;
+        return false;
+    }
+
+    private static bool TryResolveColorFromDictionary(
+        ResourceDictionary dictionary,
+        string resourceKey,
+        out Color color)
+    {
+        if (dictionary.TryGetValue(resourceKey, out var value))
+        {
+            switch (value)
+            {
+                case Color c:
+                    color = c;
+                    return true;
+                case SolidColorBrush brush:
+                    color = brush.Color;
+                    return true;
+            }
+        }
+
+        color = Colors.Transparent;
+        return false;
+    }
+
+    private static Color BlendColors(Color baseColor, Color overlayColor, float overlayWeight)
+    {
+        overlayWeight = Math.Clamp(overlayWeight, 0f, 1f);
+        var baseWeight = 1f - overlayWeight;
+
+        return Color.FromArgb(
+            255,
+            (byte)Math.Clamp((baseColor.R * baseWeight) + (overlayColor.R * overlayWeight), 0, 255),
+            (byte)Math.Clamp((baseColor.G * baseWeight) + (overlayColor.G * overlayWeight), 0, 255),
+            (byte)Math.Clamp((baseColor.B * baseWeight) + (overlayColor.B * overlayWeight), 0, 255));
+    }
+
+    private static Color Darken(Color color, float amount)
+    {
+        amount = Math.Clamp(amount, 0f, 1f);
+        var scale = 1f - amount;
+        return Color.FromArgb(
+            255,
+            (byte)Math.Clamp(color.R * scale, 0, 255),
+            (byte)Math.Clamp(color.G * scale, 0, 255),
+            (byte)Math.Clamp(color.B * scale, 0, 255));
+    }
+
+    private static bool TryParseHexColor(string? hex, out Color color)
+    {
+        color = Colors.Transparent;
+        if (string.IsNullOrWhiteSpace(hex))
+            return false;
+
+        var normalized = hex.Trim().TrimStart('#');
+        if (normalized.Length == 6
+            && byte.TryParse(normalized[..2], System.Globalization.NumberStyles.HexNumber, null, out var r)
+            && byte.TryParse(normalized[2..4], System.Globalization.NumberStyles.HexNumber, null, out var g)
+            && byte.TryParse(normalized[4..6], System.Globalization.NumberStyles.HexNumber, null, out var b))
+        {
+            color = Color.FromArgb(255, r, g, b);
+            return true;
+        }
+
+        if (normalized.Length == 8
+            && byte.TryParse(normalized[..2], System.Globalization.NumberStyles.HexNumber, null, out var a)
+            && byte.TryParse(normalized[2..4], System.Globalization.NumberStyles.HexNumber, null, out var r8)
+            && byte.TryParse(normalized[4..6], System.Globalization.NumberStyles.HexNumber, null, out var g8)
+            && byte.TryParse(normalized[6..8], System.Globalization.NumberStyles.HexNumber, null, out var b8))
+        {
+            color = Color.FromArgb(a, r8, g8, b8);
+            return true;
+        }
+
+        return false;
+    }
+
 
     // ── Tab / visibility management ──
 
@@ -620,23 +1221,11 @@ public sealed partial class RightPanelView : UserControl
         if (DetailsContent != null)
             DetailsContent.Visibility = SelectedMode == RightPanelMode.Details ? Visibility.Visible : Visibility.Collapsed;
 
-        // Background — only visible on Details tab
-        if (SelectedMode != RightPanelMode.Details)
-        {
-            DetailsCanvasImage.Visibility = Visibility.Collapsed;
-            _canvasMediaPlayer?.Pause();
-        }
-        else if (_activeBackgroundMode == DetailsBackgroundMode.Canvas
-                 && _currentCanvasUrl != null && _canvasMediaPlayer != null)
-        {
-            DetailsCanvasImage.Visibility = Visibility.Visible;
-            _canvasMediaPlayer.Play();
-        }
-        else if (_activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt
-                 && _currentAlbumArtUrl != null)
-        {
-            DetailsCanvasImage.Visibility = Visibility.Visible;
-        }
+        UpdatePanelBackgroundState();
+
+        // Background is now shared across the right panel, with Details remaining
+        // slightly more immersive via layout rather than exclusive visibility.
+        UpdateBackgroundMediaVisibility();
 
         // Canvas mode: push content to bottom so video is visible
         ApplyCanvasLayout();
@@ -645,29 +1234,16 @@ public sealed partial class RightPanelView : UserControl
         if (SelectedMode != RightPanelMode.Details)
         {
             _detailsLyricsTimer?.Stop();
+            DetachDetailsLyricsRenderLoop();
             CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
             _canvasLyricsActive = false;
+            ClearCanvasLyricOverlay();
         }
 
         if (_lyricsInitialized)
             ApplyCurrentLyricsState();
 
-        // Keep the Segmented tab header in sync when SelectedMode changes programmatically
-        // (e.g., DetailsLyricsSnippet tap). Suppress the event to avoid a recursive update.
-        var targetIdx = SelectedMode switch
-        {
-            RightPanelMode.Queue => 0,
-            RightPanelMode.Lyrics => 1,
-            RightPanelMode.FriendsActivity => 2,
-            RightPanelMode.Details => 3,
-            _ => 0
-        };
-        if (TabHeader != null && TabHeader.SelectedIndex != targetIdx)
-        {
-            _suppressTabSelectionChanged = true;
-            try { TabHeader.SelectedIndex = targetIdx; }
-            finally { _suppressTabSelectionChanged = false; }
-        }
+        UpdateTabHeaderVisualState();
 
         // When switching to lyrics tab, ensure we have the latest state
         if (SelectedMode == RightPanelMode.Lyrics && _lyricsInitialized)
@@ -692,21 +1268,69 @@ public sealed partial class RightPanelView : UserControl
         UpdateTimerState();
     }
 
-    // ── Tab header (Segmented) ──
+    // ── Tab header ──
 
-    private void TabHeader_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void TabButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressTabSelectionChanged) return;
-        if (TabHeader?.SelectedIndex is not int idx || idx < 0) return;
+        if (sender is not FrameworkElement element || element.Tag is not string tag)
+            return;
 
-        SelectedMode = idx switch
+        SelectedMode = tag switch
         {
-            0 => RightPanelMode.Queue,
-            1 => RightPanelMode.Lyrics,
-            2 => RightPanelMode.FriendsActivity,
-            3 => RightPanelMode.Details,
+            "Queue" => RightPanelMode.Queue,
+            "Lyrics" => RightPanelMode.Lyrics,
+            "Friends" => RightPanelMode.FriendsActivity,
+            "Details" => RightPanelMode.Details,
             _ => RightPanelMode.Queue
         };
+    }
+
+    private void UpdateTabHeaderVisualState()
+    {
+        if (ActiveTabPill == null)
+            return;
+
+        Grid.SetColumn(ActiveTabPill, GetTabColumn(SelectedMode));
+
+        ApplyTabButtonState(QueueTabButton, SelectedMode == RightPanelMode.Queue);
+        ApplyTabButtonState(LyricsTabButton, SelectedMode == RightPanelMode.Lyrics);
+        ApplyTabButtonState(FriendsTabButton, SelectedMode == RightPanelMode.FriendsActivity);
+        ApplyTabButtonState(DetailsTabButton, SelectedMode == RightPanelMode.Details);
+    }
+
+    private static int GetTabColumn(RightPanelMode mode)
+    {
+        return mode switch
+        {
+            RightPanelMode.Queue => 0,
+            RightPanelMode.Lyrics => 1,
+            RightPanelMode.FriendsActivity => 2,
+            RightPanelMode.Details => 3,
+            _ => 0
+        };
+    }
+
+    private void ApplyTabButtonState(Button? button, bool isActive)
+    {
+        if (button == null)
+            return;
+
+        button.Foreground = new SolidColorBrush(ResolveThemeColor(
+            isActive
+                ? "RightPanelTabActiveForegroundBrush"
+                : "RightPanelTabInactiveForegroundBrush",
+            isActive
+                ? (ActualTheme == ElementTheme.Light
+                    ? Color.FromArgb(255, 8, 19, 26)
+                    : Color.FromArgb(255, 243, 247, 250))
+                : (ActualTheme == ElementTheme.Light
+                    ? Color.FromArgb(158, 49, 66, 77)
+                    : Color.FromArgb(175, 199, 211, 219))));
+        button.Opacity = isActive ? 1.0 : 0.9;
+        button.FontSize = isActive ? 13.8 : 13.3;
+        button.FontWeight = isActive
+            ? Microsoft.UI.Text.FontWeights.SemiBold
+            : Microsoft.UI.Text.FontWeights.SemiBold;
     }
 
     // ── Deferred subtree materialization (x:Load="False") ──
@@ -750,9 +1374,13 @@ public sealed partial class RightPanelView : UserControl
 
     private void OnDetailsVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (SelectedMode != RightPanelMode.Details) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdatePanelBackgroundState();
 
-        DispatcherQueue.TryEnqueue(() => ApplyDetailsState());
+            if (SelectedMode == RightPanelMode.Details)
+                ApplyDetailsState();
+        });
     }
 
     private bool _detailsHadData;
@@ -772,10 +1400,7 @@ public sealed partial class RightPanelView : UserControl
         var hasData = _detailsVm.HasData;
 
         // Background (none / blurred album art / canvas) — update immediately, no delay
-        if (hasData)
-            ApplyDetailsBackground(_detailsVm.CanvasUrl, _detailsVm.HasCanvas);
-        else
-            ApplyDetailsBackground(null, false);
+        UpdatePanelBackgroundState();
 
         if (hasData)
         {
@@ -932,8 +1557,33 @@ public sealed partial class RightPanelView : UserControl
 
     // ── Lyrics snippet (TextBlock-based, synced to playback) ──
 
+    private readonly record struct CanvasLyricPresentation(
+        int PastCharCount,
+        int HeldStartIndex,
+        int HeldCharCount,
+        int ActiveStartIndex,
+        int ActiveVisibleCharCount,
+        int CursorCharIndex,
+        bool ShowCursor,
+        float CursorAdvance,
+        float CursorOpacity,
+        byte PastAlpha,
+        byte HeldAlpha,
+        byte ActiveAlpha);
+
     private DispatcherQueueTimer? _detailsLyricsTimer;
     private int _lastSnippetLineIndex = -1;
+    private const double DetailsSnippetTickMs = 250;
+    private const double CursorBlinkPeriodMs = 520;
+    private const byte PastLyricAlpha = 118;
+    private const byte HeldLyricAlpha = 188;
+    private const byte ActiveLyricAlpha = 238;
+    private const byte CursorLyricAlpha = 220;
+    private const float DetailsOverlayFontSize = 28f;
+    private const float DetailsOverlayMinHeight = 48f;
+    private const float DetailsCursorWidth = 2.5f;
+    private const float DetailsCursorOffsetX = 5f;
+    private const float DetailsCursorTopInset = 3f;
 
     private void SetupDetailsLyricsSnippet()
     {
@@ -943,17 +1593,15 @@ public sealed partial class RightPanelView : UserControl
         UpdateCanvasLyricsVisibility();
         UpdateLyricsSnippetText();
 
-        // Use faster tick rate when canvas overlay is visible (50ms for smooth typing)
-        var interval = _canvasLyricsActive ? 50 : 250;
         if (_detailsLyricsTimer == null)
         {
             _detailsLyricsTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(interval);
+            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(DetailsSnippetTickMs);
             _detailsLyricsTimer.Tick += OnDetailsLyricsTimerTick;
         }
         else
         {
-            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(interval);
+            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(DetailsSnippetTickMs);
         }
         _detailsLyricsTimer.Start();
     }
@@ -962,6 +1610,8 @@ public sealed partial class RightPanelView : UserControl
     {
         _detailsLyricsTimer?.Stop();
         _lastSnippetLineIndex = -1;
+        DetachDetailsLyricsRenderLoop();
+        ClearCanvasLyricOverlay();
         CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
         _canvasLyricsActive = false;
     }
@@ -973,8 +1623,6 @@ public sealed partial class RightPanelView : UserControl
     }
 
     private bool _canvasLyricsActive;
-    private int _lastRevealedSyllableCount;
-    private double _syllableRevealTimeMs;
 
     private void UpdateCanvasLyricsVisibility()
     {
@@ -983,15 +1631,26 @@ public sealed partial class RightPanelView : UserControl
                    && _lyricsVm?.HasLyrics == true;
         _canvasLyricsActive = show;
         CanvasLyricsOverlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-
-        // Adjust timer speed
-        if (_detailsLyricsTimer != null)
-            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(show ? 50 : 250);
+        if (show)
+        {
+            EnsureDetailsLyricsComposition();
+            AttachDetailsLyricsRenderLoop();
+            RenderCurrentCanvasLyricFrame();
+        }
+        else
+        {
+            DetachDetailsLyricsRenderLoop();
+            ClearCanvasLyricOverlay();
+        }
     }
 
     private void UpdateLyricsSnippetText()
     {
-        if (_lyricsVm?.CurrentLyrics?.LyricsLines is not { Count: > 0 } lines) return;
+        if (_lyricsVm?.CurrentLyrics?.LyricsLines is not { Count: > 0 } lines)
+        {
+            ClearCanvasLyricOverlay();
+            return;
+        }
         // DetailsLyricsPrev/Current/Next live inside DetailsContent (x:Load'd).
         if (DetailsContent == null) return;
 
@@ -1017,7 +1676,6 @@ public sealed partial class RightPanelView : UserControl
         if (currentIdx != _lastSnippetLineIndex)
         {
             _lastSnippetLineIndex = currentIdx;
-            _lastRevealedSyllableCount = 0;
 
             var prev = currentIdx > 0 ? lines[currentIdx - 1].PrimaryText : "";
             DetailsLyricsPrev.Text = prev;
@@ -1031,81 +1689,471 @@ public sealed partial class RightPanelView : UserControl
 
         // Update canvas overlay with syllable-by-syllable typing + fade
         if (_canvasLyricsActive)
-            UpdateCanvasOverlaySyllables(currentLine, posMs);
+            RenderCanvasLyricSurface(currentLine, BuildCanvasLyricPresentation(currentLine, posMs));
+        else
+            ClearCanvasLyricOverlay();
     }
 
-    private const double SyllableFadeDurationMs = 180;
-
-    private void UpdateCanvasOverlaySyllables(
-        Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine line, double posMs)
+    private void AttachDetailsLyricsRenderLoop()
     {
-        var syllables = line.PrimarySyllables;
+        if (_detailsLyricsRenderSubscribed)
+            return;
 
-        // If no syllable data, show full line as plain text
-        if (!line.IsPrimaryHasRealSyllableInfo || syllables.Count == 0)
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnDetailsLyricsCompositionRendering;
+        _detailsLyricsRenderSubscribed = true;
+    }
+
+    private void DetachDetailsLyricsRenderLoop()
+    {
+        if (!_detailsLyricsRenderSubscribed)
+            return;
+
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDetailsLyricsCompositionRendering;
+        _detailsLyricsRenderSubscribed = false;
+    }
+
+    private void OnDetailsLyricsCompositionRendering(object? sender, object args)
+    {
+        if (!_canvasLyricsActive || SelectedMode != RightPanelMode.Details)
+            return;
+
+        RenderCurrentCanvasLyricFrame();
+    }
+
+    private void RenderCurrentCanvasLyricFrame()
+    {
+        if (_lyricsVm?.CurrentLyrics?.LyricsLines is not { Count: > 0 } lines)
         {
-            CanvasLyricLine1.Text = line.PrimaryText.ToUpperInvariant();
-            CanvasLyricLine1.Opacity = 0.4;
+            ClearCanvasLyricOverlay();
             return;
         }
 
-        // Count revealed syllables
-        int revealedCount = 0;
-        foreach (var syl in syllables)
+        var posMs = _lyricsVm.GetInterpolatedPosition().TotalMilliseconds;
+        var currentIdx = -1;
+        for (var i = lines.Count - 1; i >= 0; i--)
         {
-            if (syl.StartMs <= posMs) revealedCount++;
-            else break;
-        }
-
-        // Track when a new syllable appears to start the ease-in
-        if (revealedCount > _lastRevealedSyllableCount)
-        {
-            _lastRevealedSyllableCount = revealedCount;
-            _syllableRevealTimeMs = posMs;
-        }
-
-        // Ease-in progress for the newest syllable
-        // Cap fade to syllable duration so fast rap sections don't lag
-        var newestSyl = revealedCount > 0 ? syllables[revealedCount - 1] : null;
-        var syllableDurationMs = newestSyl?.DurationMs ?? 300;
-        var fadeDuration = Math.Min(SyllableFadeDurationMs, Math.Max(syllableDurationMs * 0.8, 40));
-        var fadeElapsed = posMs - _syllableRevealTimeMs;
-        var fadeT = Math.Clamp(fadeElapsed / fadeDuration, 0, 1);
-        var eased = 1.0 - (1.0 - fadeT) * (1.0 - fadeT); // quadratic ease-out
-
-        CanvasLyricLine1.Inlines.Clear();
-        CanvasLyricLine1.Opacity = 1.0;
-
-        var dimBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(102, 255, 255, 255));
-        var brightBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(230, 255, 255, 255));
-
-        for (int i = 0; i < revealedCount; i++)
-        {
-            var syl = syllables[i];
-            var isPlaying = syl.StartMs <= posMs && (syl.EndMs == null || posMs < syl.EndMs);
-            var isNewest = i == revealedCount - 1;
-
-            byte alpha;
-            if (isNewest && fadeT < 1.0)
+            if (lines[i].StartMs <= posMs)
             {
-                // Ease in from 0 to target (bright if playing, dim if already played)
-                var targetAlpha = isPlaying ? (byte)230 : (byte)102;
-                alpha = (byte)(targetAlpha * eased);
+                currentIdx = i;
+                break;
             }
-            else
+        }
+
+        if (currentIdx < 0)
+        {
+            ClearCanvasLyricOverlay();
+            return;
+        }
+
+        var currentLine = lines[currentIdx];
+        RenderCanvasLyricSurface(currentLine, BuildCanvasLyricPresentation(currentLine, posMs));
+    }
+
+    private CanvasLyricPresentation BuildCanvasLyricPresentation(
+        LyricsLine line, double posMs)
+    {
+        var syllables = line.PrimarySyllables;
+        if (!line.IsPrimaryHasRealSyllableInfo || syllables.Count == 0)
+        {
+            var fallbackText = line.PrimaryText ?? "";
+            return new CanvasLyricPresentation(
+                PastCharCount: 0,
+                HeldStartIndex: 0,
+                HeldCharCount: fallbackText.Length,
+                ActiveStartIndex: -1,
+                ActiveVisibleCharCount: 0,
+                CursorCharIndex: Math.Max(-1, fallbackText.Length - 1),
+                ShowCursor: false,
+                CursorAdvance: 1f,
+                CursorOpacity: 0f,
+                PastAlpha: PastLyricAlpha,
+                HeldAlpha: (byte)Math.Round(HeldLyricAlpha * 0.72),
+                ActiveAlpha: ActiveLyricAlpha);
+        }
+
+        var activeIndex = -1;
+        var lastStartedIndex = -1;
+        for (var i = 0; i < syllables.Count; i++)
+        {
+            var syllable = syllables[i];
+            if (syllable.StartMs > posMs)
+                break;
+
+            lastStartedIndex = i;
+            if (syllable.EndMs == null || posMs < syllable.EndMs.Value)
+                activeIndex = i;
+        }
+
+        var heldIndex = activeIndex < 0 ? lastStartedIndex : -1;
+        if (activeIndex < 0 && heldIndex < 0)
+        {
+            return default;
+        }
+
+        var pastCharCount = 0;
+        var heldStartIndex = -1;
+        var heldCharCount = 0;
+        var activeStartIndex = -1;
+        var activeVisibleCharCount = 0;
+        var cursorCharIndex = -1;
+        var cursorAdvance = 1f;
+
+        if (activeIndex >= 0)
+        {
+            var activeSyllable = syllables[activeIndex];
+            pastCharCount = Math.Max(0, activeSyllable.StartIndex);
+            activeStartIndex = activeSyllable.StartIndex;
+            activeVisibleCharCount = GetActiveSyllableCharCount(activeSyllable, posMs);
+            cursorCharIndex = activeVisibleCharCount > 0
+                ? activeStartIndex + activeVisibleCharCount - 1
+                : Math.Max(-1, activeStartIndex - 1);
+            cursorAdvance = GetActiveSyllableCursorAdvance(activeSyllable, posMs, activeVisibleCharCount);
+        }
+        else if (heldIndex >= 0)
+        {
+            var heldSyllable = syllables[heldIndex];
+            pastCharCount = Math.Max(0, heldSyllable.StartIndex);
+            heldStartIndex = heldSyllable.StartIndex;
+            heldCharCount = heldSyllable.Length;
+            cursorCharIndex = heldCharCount > 0
+                ? heldStartIndex + heldCharCount - 1
+                : Math.Max(-1, heldStartIndex - 1);
+            cursorAdvance = 1f;
+        }
+
+        return new CanvasLyricPresentation(
+            PastCharCount: pastCharCount,
+            HeldStartIndex: heldStartIndex,
+            HeldCharCount: heldCharCount,
+            ActiveStartIndex: activeStartIndex,
+            ActiveVisibleCharCount: activeVisibleCharCount,
+            CursorCharIndex: cursorCharIndex,
+            ShowCursor: activeIndex >= 0 || heldIndex >= 0,
+            CursorAdvance: cursorAdvance,
+            CursorOpacity: GetCursorBlinkOpacity(posMs),
+            PastAlpha: PastLyricAlpha,
+            HeldAlpha: HeldLyricAlpha,
+            ActiveAlpha: (byte)Math.Round(ActiveLyricAlpha * GetActiveSyllableIntensity(
+                activeIndex >= 0 ? syllables[activeIndex] : syllables[Math.Max(0, heldIndex)],
+                posMs)));
+    }
+
+    private void RenderCanvasLyricSurface(LyricsLine line, CanvasLyricPresentation presentation)
+    {
+        if (CanvasLyricLineHost == null || !IsLoaded)
+            return;
+
+        var text = (line.PrimaryText ?? string.Empty).ToUpperInvariant();
+        if (text.Length == 0)
+        {
+            ClearCanvasLyricOverlay();
+            return;
+        }
+
+        EnsureDetailsLyricsComposition();
+
+        var availableWidth = (float)Math.Max(
+            120,
+            CanvasLyricLineHost.ActualWidth > 1
+                ? CanvasLyricLineHost.ActualWidth
+                : Math.Max(120, PanelContentGrid?.ActualWidth - 40 ?? RootGrid.ActualWidth - 80));
+        EnsureDetailsLyricsTextLayout(text, availableWidth);
+        if (_detailsLyricsTextLayout == null)
+            return;
+
+        var targetHeight = Math.Max(DetailsOverlayMinHeight, _detailsLyricsLayoutHeight);
+        if (Math.Abs(CanvasLyricLineHost.Height - targetHeight) > 0.5)
+            CanvasLyricLineHost.Height = targetHeight;
+
+        EnsureDetailsLyricsDrawingSurface(
+            Math.Max(1, (int)Math.Ceiling(availableWidth)),
+            Math.Max(1, (int)Math.Ceiling(targetHeight)));
+        UpdateDetailsLyricsCompositionSize();
+
+        if (_detailsLyricsDrawingSurface == null)
+            return;
+
+        using (var ds = CanvasComposition.CreateDrawingSession(_detailsLyricsDrawingSurface))
+        {
+            ds.Clear(Colors.Transparent);
+
+            _detailsLyricsTextLayout.SetColor(0, text.Length, Colors.Transparent);
+
+            if (presentation.PastCharCount > 0)
             {
-                alpha = isPlaying ? (byte)230 : (byte)102;
+                _detailsLyricsTextLayout.SetColor(
+                    0,
+                    Math.Min(presentation.PastCharCount, text.Length),
+                    Windows.UI.Color.FromArgb(presentation.PastAlpha, 255, 255, 255));
             }
 
-            CanvasLyricLine1.Inlines.Add(
-                new Microsoft.UI.Xaml.Documents.Run
-                {
-                    Text = syl.Text.ToUpperInvariant(),
-                    Foreground = alpha == 230 ? brightBrush
-                        : alpha == 102 ? dimBrush
-                        : new SolidColorBrush(Windows.UI.Color.FromArgb(alpha, 255, 255, 255))
-                });
+            if (presentation.HeldStartIndex >= 0 && presentation.HeldCharCount > 0)
+            {
+                _detailsLyricsTextLayout.SetColor(
+                    presentation.HeldStartIndex,
+                    Math.Min(presentation.HeldCharCount, text.Length - presentation.HeldStartIndex),
+                    Windows.UI.Color.FromArgb(presentation.HeldAlpha, 255, 255, 255));
+            }
+
+            if (presentation.ActiveStartIndex >= 0 && presentation.ActiveVisibleCharCount > 0)
+            {
+                _detailsLyricsTextLayout.SetColor(
+                    presentation.ActiveStartIndex,
+                    Math.Min(presentation.ActiveVisibleCharCount, text.Length - presentation.ActiveStartIndex),
+                    Windows.UI.Color.FromArgb(presentation.ActiveAlpha, 255, 255, 255));
+            }
+
+            ds.DrawTextLayout(_detailsLyricsTextLayout, Vector2.Zero, Colors.Transparent);
         }
+
+        UpdateDetailsLyricsCursor(presentation);
+        if (_detailsLyricsTextVisual != null)
+            _detailsLyricsTextVisual.Opacity = 1f;
+    }
+
+    private void EnsureDetailsLyricsComposition()
+    {
+        if (CanvasLyricLineHost == null)
+            return;
+
+        var hostVisual = ElementCompositionPreview.GetElementVisual(CanvasLyricLineHost);
+        var compositor = hostVisual.Compositor;
+
+        if (_detailsLyricsContainerVisual != null && _detailsLyricsGraphicsDevice != null)
+        {
+            UpdateDetailsLyricsCompositionSize();
+            return;
+        }
+
+        _detailsLyricsCanvasDevice ??= new CanvasDevice();
+        _detailsLyricsGraphicsDevice = CanvasComposition.CreateCompositionGraphicsDevice(compositor, _detailsLyricsCanvasDevice);
+
+        _detailsLyricsContainerVisual = TrackDetailsLyricsCompositionObject(compositor.CreateContainerVisual());
+
+        _detailsLyricsTextBrush = TrackDetailsLyricsCompositionObject(compositor.CreateSurfaceBrush());
+        _detailsLyricsTextBrush.Stretch = CompositionStretch.None;
+
+        _detailsLyricsTextVisual = TrackDetailsLyricsCompositionObject(compositor.CreateSpriteVisual());
+        _detailsLyricsTextVisual.Brush = _detailsLyricsTextBrush;
+
+        _detailsLyricsCursorBrush = TrackDetailsLyricsCompositionObject(
+            compositor.CreateColorBrush(Windows.UI.Color.FromArgb(CursorLyricAlpha, 255, 255, 255)));
+        _detailsLyricsCursorVisual = TrackDetailsLyricsCompositionObject(compositor.CreateSpriteVisual());
+        _detailsLyricsCursorVisual.Brush = _detailsLyricsCursorBrush;
+        _detailsLyricsCursorVisual.Opacity = 0f;
+
+        _detailsLyricsContainerVisual.Children.InsertAtBottom(_detailsLyricsTextVisual);
+        _detailsLyricsContainerVisual.Children.InsertAtTop(_detailsLyricsCursorVisual);
+
+        ElementCompositionPreview.SetElementChildVisual(CanvasLyricLineHost, _detailsLyricsContainerVisual);
+        UpdateDetailsLyricsCompositionSize();
+    }
+
+    private void EnsureDetailsLyricsTextLayout(string text, float maxWidth)
+    {
+        if (_detailsLyricsCanvasDevice == null)
+            return;
+
+        if (_detailsLyricsTextLayout != null
+            && string.Equals(_detailsLyricsLayoutText, text, StringComparison.Ordinal)
+            && Math.Abs(_detailsLyricsLayoutWidth - maxWidth) < 1f)
+        {
+            return;
+        }
+
+        _detailsLyricsTextLayout?.Dispose();
+
+        var format = new CanvasTextFormat
+        {
+            FontSize = DetailsOverlayFontSize,
+            FontWeight = new Windows.UI.Text.FontWeight { Weight = 900 },
+            HorizontalAlignment = CanvasHorizontalAlignment.Left,
+            VerticalAlignment = CanvasVerticalAlignment.Top,
+            WordWrapping = CanvasWordWrapping.Wrap
+        };
+
+        _detailsLyricsTextLayout = new CanvasTextLayout(
+            _detailsLyricsCanvasDevice,
+            text,
+            format,
+            maxWidth,
+            2000f)
+        {
+            Options = CanvasDrawTextOptions.NoPixelSnap
+        };
+        _detailsLyricsCharacterRegions = _detailsLyricsTextLayout.GetCharacterRegions(0, text.Length);
+        _detailsLyricsLayoutText = text;
+        _detailsLyricsLayoutWidth = maxWidth;
+        _detailsLyricsLayoutHeight = Math.Max((float)_detailsLyricsTextLayout.LayoutBounds.Height, DetailsOverlayMinHeight);
+    }
+
+    private void EnsureDetailsLyricsDrawingSurface(int width, int height)
+    {
+        if (_detailsLyricsGraphicsDevice == null)
+            return;
+
+        var targetSize = new Size(width, height);
+        if (_detailsLyricsDrawingSurface == null)
+        {
+            _detailsLyricsDrawingSurface = _detailsLyricsGraphicsDevice.CreateDrawingSurface(
+                targetSize,
+                DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                DirectXAlphaMode.Premultiplied);
+            if (_detailsLyricsTextBrush != null)
+                _detailsLyricsTextBrush.Surface = _detailsLyricsDrawingSurface;
+            return;
+        }
+
+        CanvasComposition.Resize(_detailsLyricsDrawingSurface, targetSize);
+    }
+
+    private void UpdateDetailsLyricsCompositionSize()
+    {
+        if (CanvasLyricLineHost == null || _detailsLyricsContainerVisual == null)
+            return;
+
+        var width = Math.Max(1f, (float)(CanvasLyricLineHost.ActualWidth > 1 ? CanvasLyricLineHost.ActualWidth : _detailsLyricsLayoutWidth));
+        var height = Math.Max(DetailsOverlayMinHeight, (float)CanvasLyricLineHost.Height);
+        var size = new Vector2(width, height);
+
+        _detailsLyricsContainerVisual.Size = size;
+        if (_detailsLyricsTextVisual != null)
+            _detailsLyricsTextVisual.Size = size;
+    }
+
+    private void ClearCanvasLyricOverlay()
+    {
+        if (_detailsLyricsCursorVisual != null)
+            _detailsLyricsCursorVisual.Opacity = 0f;
+        if (_detailsLyricsTextVisual != null)
+            _detailsLyricsTextVisual.Opacity = 0f;
+        if (_detailsLyricsDrawingSurface != null)
+        {
+            using var ds = CanvasComposition.CreateDrawingSession(_detailsLyricsDrawingSurface);
+            ds.Clear(Colors.Transparent);
+        }
+    }
+
+    private void UpdateDetailsLyricsCursor(CanvasLyricPresentation presentation)
+    {
+        if (_detailsLyricsCursorVisual == null || _detailsLyricsCharacterRegions == null)
+            return;
+
+        if (!presentation.ShowCursor
+            || presentation.CursorCharIndex < 0
+            || presentation.CursorCharIndex >= _detailsLyricsCharacterRegions.Length)
+        {
+            _detailsLyricsCursorVisual.Opacity = 0f;
+            return;
+        }
+
+        var region = _detailsLyricsCharacterRegions[presentation.CursorCharIndex];
+        var bounds = region.LayoutBounds;
+        var cursorAdvance = Math.Clamp(presentation.CursorAdvance, 0f, 1f);
+        _detailsLyricsCursorVisual.Offset = new Vector3(
+            (float)(bounds.X + (bounds.Width * cursorAdvance) + DetailsCursorOffsetX),
+            (float)(bounds.Y + DetailsCursorTopInset),
+            0f);
+        _detailsLyricsCursorVisual.Size = new Vector2(
+            DetailsCursorWidth,
+            (float)Math.Max(14f, bounds.Height - (DetailsCursorTopInset * 2)));
+        _detailsLyricsCursorVisual.Opacity = presentation.CursorOpacity;
+    }
+
+    private T TrackDetailsLyricsCompositionObject<T>(T compositionObject) where T : CompositionObject
+    {
+        _detailsLyricsCompositionObjects.Add(compositionObject);
+        return compositionObject;
+    }
+
+    private void TeardownDetailsLyricsComposition()
+    {
+        DetachDetailsLyricsRenderLoop();
+
+        if (CanvasLyricLineHost != null)
+            ElementCompositionPreview.SetElementChildVisual(CanvasLyricLineHost, null);
+
+        _detailsLyricsTextLayout?.Dispose();
+        _detailsLyricsTextLayout = null;
+        _detailsLyricsCharacterRegions = null;
+        _detailsLyricsLayoutText = null;
+        _detailsLyricsLayoutWidth = 0;
+        _detailsLyricsLayoutHeight = 0;
+        _detailsLyricsDrawingSurface = null;
+        _detailsLyricsGraphicsDevice = null;
+
+        for (int i = _detailsLyricsCompositionObjects.Count - 1; i >= 0; i--)
+            _detailsLyricsCompositionObjects[i].Dispose();
+        _detailsLyricsCompositionObjects.Clear();
+
+        _detailsLyricsContainerVisual = null;
+        _detailsLyricsTextVisual = null;
+        _detailsLyricsCursorVisual = null;
+        _detailsLyricsTextBrush = null;
+        _detailsLyricsCursorBrush = null;
+
+        _detailsLyricsCanvasDevice?.Dispose();
+        _detailsLyricsCanvasDevice = null;
+    }
+
+    private void CanvasLyricLineHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!_canvasLyricsActive)
+            return;
+
+        if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) < 1
+            && Math.Abs(e.NewSize.Height - e.PreviousSize.Height) < 1)
+        {
+            return;
+        }
+
+        _detailsLyricsTextLayout?.Dispose();
+        _detailsLyricsTextLayout = null;
+        _detailsLyricsCharacterRegions = null;
+        _detailsLyricsLayoutText = null;
+        _detailsLyricsLayoutWidth = 0;
+        _detailsLyricsLayoutHeight = 0;
+        RenderCurrentCanvasLyricFrame();
+    }
+
+    private static int GetActiveSyllableCharCount(BaseLyrics syllable, double posMs)
+    {
+        var text = syllable.Text ?? "";
+        if (text.Length == 0)
+            return 0;
+
+        var durationMs = Math.Max(60, syllable.DurationMs > 0 ? syllable.DurationMs : 220);
+        var progress = Math.Clamp((posMs - syllable.StartMs) / durationMs, 0, 1);
+        var eased = 1.0 - Math.Pow(1.0 - progress, 1.7);
+        return Math.Clamp((int)Math.Ceiling(text.Length * eased), 1, text.Length);
+    }
+
+    private static double GetActiveSyllableIntensity(BaseLyrics syllable, double posMs)
+    {
+        var durationMs = Math.Max(60, syllable.DurationMs > 0 ? syllable.DurationMs : 220);
+        var progress = Math.Clamp((posMs - syllable.StartMs) / durationMs, 0, 1);
+        return 0.55 + 0.45 * (1.0 - Math.Pow(1.0 - progress, 2.0));
+    }
+
+    private static float GetActiveSyllableCursorAdvance(BaseLyrics syllable, double posMs, int visibleCharCount)
+    {
+        var text = syllable.Text ?? "";
+        if (text.Length == 0 || visibleCharCount <= 0)
+            return 1f;
+
+        var durationMs = Math.Max(60, syllable.DurationMs > 0 ? syllable.DurationMs : 220);
+        var linearProgress = Math.Clamp((posMs - syllable.StartMs) / durationMs, 0, 1);
+        var charProgress = linearProgress * text.Length;
+        var visibleStart = Math.Max(0, visibleCharCount - 1);
+        var cursorAdvance = charProgress - visibleStart;
+        return (float)Math.Clamp(cursorAdvance, 0.15, 1.0);
+    }
+
+    private static float GetCursorBlinkOpacity(double posMs)
+    {
+        var phase = (posMs % CursorBlinkPeriodMs) / CursorBlinkPeriodMs;
+        var pulse = 0.5 + (0.5 * Math.Sin(phase * Math.PI * 2));
+        return (float)(0.25 + (0.75 * pulse));
     }
 
     // ── Credits collapse/expand ──
@@ -1200,8 +2248,7 @@ public sealed partial class RightPanelView : UserControl
                 _ = _settingsService?.SaveAsync();
 
                 // Re-apply background with the new mode
-                if (_detailsVm != null)
-                    ApplyDetailsBackground(_detailsVm.CanvasUrl, _detailsVm.HasCanvas);
+                UpdatePanelBackgroundState();
             },
             HasCanvas = _detailsVm?.HasCanvas ?? false,
             CurrentBackgroundMode = _activeBackgroundMode,
@@ -1242,10 +2289,11 @@ public sealed partial class RightPanelView : UserControl
     private string? _currentAlbumArtUrl;
     private CanvasDevice? _canvasDevice;
     private CanvasRenderTarget? _canvasFrameTarget;
-    private const float AlbumArtBlurAmount = 40f;
     private CanvasImageSource? _canvasImageSource;
     private CanvasImageSource? _blurredAlbumArtImageSource;
     private int _detailsBackgroundGeneration;
+    private int _blurredAlbumArtRenderWidth;
+    private int _blurredAlbumArtRenderHeight;
     private DetailsBackgroundMode _activeBackgroundMode;
 
     private DetailsBackgroundMode GetSettingsBackgroundMode()
@@ -1264,8 +2312,11 @@ public sealed partial class RightPanelView : UserControl
     {
         var mode = GetSettingsBackgroundMode();
 
-        // Fall back to blurred album art when Canvas is selected but track has no canvas
-        if (mode == DetailsBackgroundMode.Canvas && !hasCanvas)
+        // The Details tab should always show a visual background:
+        // prefer canvas when available, otherwise fall back to blurred album art.
+        if (SelectedMode == RightPanelMode.Details)
+            mode = hasCanvas ? DetailsBackgroundMode.Canvas : DetailsBackgroundMode.BlurredAlbumArt;
+        else if (mode == DetailsBackgroundMode.Canvas)
             mode = DetailsBackgroundMode.BlurredAlbumArt;
 
         _activeBackgroundMode = mode;
@@ -1276,7 +2327,6 @@ public sealed partial class RightPanelView : UserControl
             case DetailsBackgroundMode.None:
                 TeardownCanvasBackground();
                 TeardownBlurredAlbumArt();
-                DetailsCanvasImage.Visibility = Visibility.Collapsed;
                 break;
 
             case DetailsBackgroundMode.BlurredAlbumArt:
@@ -1290,6 +2340,8 @@ public sealed partial class RightPanelView : UserControl
                 break;
         }
 
+        UpdateBackgroundChrome();
+        UpdateBackgroundMediaVisibility();
         ApplyCanvasLayout();
     }
 
@@ -1305,12 +2357,16 @@ public sealed partial class RightPanelView : UserControl
         if (string.IsNullOrEmpty(albumArt))
         {
             TeardownBlurredAlbumArt();
-            DetailsCanvasImage.Visibility = Visibility.Collapsed;
             return;
         }
 
-        if (albumArt == _currentAlbumArtUrl && DetailsCanvasImage.Visibility == Visibility.Visible)
+        if (albumArt == _currentAlbumArtUrl
+            && _blurredAlbumArtImageSource != null
+            && !NeedsBlurredAlbumArtRerender())
+        {
+            UpdateBackgroundMediaVisibility();
             return;
+        }
 
         _currentAlbumArtUrl = albumArt;
         _canvasDevice ??= new CanvasDevice();
@@ -1339,23 +2395,27 @@ public sealed partial class RightPanelView : UserControl
                     var offsetX = (w - scaledW) / 2f;
                     var offsetY = (h - scaledH) / 2f;
 
-                    var scaled = new Microsoft.Graphics.Canvas.Effects.ScaleEffect
+                    using var scaled = new Microsoft.Graphics.Canvas.Effects.ScaleEffect
                     {
                         Source = bitmap,
                         Scale = new System.Numerics.Vector2(scale, scale),
                         CenterPoint = System.Numerics.Vector2.Zero
                     };
 
-                    var blur = new Microsoft.Graphics.Canvas.Effects.GaussianBlurEffect
+                    using var blur = new Microsoft.Graphics.Canvas.Effects.GaussianBlurEffect
                     {
                         Source = scaled,
                         BlurAmount = AlbumArtBlurAmount,
                         BorderMode = Microsoft.Graphics.Canvas.Effects.EffectBorderMode.Hard
                     };
 
-                    ds.DrawImage(blur, new System.Numerics.Vector2(offsetX, offsetY));
-                    blur.Dispose();
-                    scaled.Dispose();
+                    using var saturation = new SaturationEffect
+                    {
+                        Source = blur,
+                        Saturation = AlbumArtSaturationAmount
+                    };
+
+                    ds.DrawImage(saturation, new System.Numerics.Vector2(offsetX, offsetY));
                 }
 
                 // Verify we're still in blurred album art mode and same URL
@@ -1369,7 +2429,9 @@ public sealed partial class RightPanelView : UserControl
 
                 ReplaceBlurredAlbumArtSource(imageSource);
                 DetailsCanvasImage.Source = imageSource;
-                DetailsCanvasImage.Visibility = Visibility.Visible;
+                _blurredAlbumArtRenderWidth = w;
+                _blurredAlbumArtRenderHeight = h;
+                UpdateBackgroundMediaVisibility();
             }
             catch
             {
@@ -1380,7 +2442,7 @@ public sealed partial class RightPanelView : UserControl
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[RightPanel] SetupBlurredAlbumArt failed: {ex.Message}");
-            DetailsCanvasImage.Visibility = Visibility.Collapsed;
+            UpdateBackgroundMediaVisibility();
         }
     }
 
@@ -1388,9 +2450,12 @@ public sealed partial class RightPanelView : UserControl
     {
         _detailsBackgroundGeneration++;
         _currentAlbumArtUrl = null;
+        _blurredAlbumArtRenderWidth = 0;
+        _blurredAlbumArtRenderHeight = 0;
         if (ReferenceEquals(DetailsCanvasImage.Source, _blurredAlbumArtImageSource))
             DetailsCanvasImage.Source = null;
         DisposeCanvasImageSource(ref _blurredAlbumArtImageSource);
+        UpdateBackgroundMediaVisibility();
     }
 
     private void ReplaceBlurredAlbumArtSource(CanvasImageSource imageSource)
@@ -1554,7 +2619,6 @@ public sealed partial class RightPanelView : UserControl
         if (string.IsNullOrEmpty(url))
         {
             TeardownCanvasBackground();
-            DetailsCanvasImage.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -1574,7 +2638,7 @@ public sealed partial class RightPanelView : UserControl
         _canvasMediaPlayer.VideoFrameAvailable += OnCanvasVideoFrameAvailable;
         _canvasMediaPlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(url));
 
-        DetailsCanvasImage.Visibility = Visibility.Visible;
+        UpdateBackgroundMediaVisibility();
         _canvasMediaPlayer.Play();
     }
 
@@ -1588,13 +2652,19 @@ public sealed partial class RightPanelView : UserControl
             var h = Math.Max(1, (int)RootGrid.ActualHeight);
             if (w <= 0 || h <= 0) return;
 
+            var naturalW = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoWidth ?? 0u);
+            var naturalH = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoHeight ?? 0u);
+            var sourceW = Math.Max(1, naturalW > 0 ? naturalW : w);
+            var sourceH = Math.Max(1, naturalH > 0 ? naturalH : h);
+
             try
             {
-                // Create or resize the render target for video frames
-                if (_canvasFrameTarget == null || _canvasFrameTarget.SizeInPixels.Width != w || _canvasFrameTarget.SizeInPixels.Height != h)
+                // Keep the frame target at the video's native size when available,
+                // then scale/crop into the panel like UniformToFill.
+                if (_canvasFrameTarget == null || _canvasFrameTarget.SizeInPixels.Width != sourceW || _canvasFrameTarget.SizeInPixels.Height != sourceH)
                 {
                     _canvasFrameTarget?.Dispose();
-                    _canvasFrameTarget = new CanvasRenderTarget(_canvasDevice, w, h, 96);
+                    _canvasFrameTarget = new CanvasRenderTarget(_canvasDevice, sourceW, sourceH, 96);
                 }
 
                 _canvasMediaPlayer.CopyFrameToVideoSurface(_canvasFrameTarget);
@@ -1609,9 +2679,28 @@ public sealed partial class RightPanelView : UserControl
                     DetailsCanvasImage.Source = _canvasImageSource;
                 }
 
-                // Draw frame directly (no blur)
                 using var ds = _canvasImageSource.CreateDrawingSession(Colors.Transparent);
-                ds.DrawImage(_canvasFrameTarget);
+                using var saturation = new SaturationEffect
+                {
+                    Source = _canvasFrameTarget,
+                    Saturation = CanvasSaturationAmount
+                };
+
+                var scaleX = (float)w / sourceW;
+                var scaleY = (float)h / sourceH;
+                var scale = Math.Max(scaleX, scaleY);
+                var offsetX = (w - (sourceW * scale)) / 2f;
+                var offsetY = (h - (sourceH * scale)) / 2f;
+
+                using var scaled = new ScaleEffect
+                {
+                    Source = saturation,
+                    Scale = new Vector2(scale, scale),
+                    CenterPoint = Vector2.Zero
+                };
+
+                ds.DrawImage(scaled, new Vector2(offsetX, offsetY));
+                UpdateBackgroundMediaVisibility();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -1653,6 +2742,7 @@ public sealed partial class RightPanelView : UserControl
         // Keep _canvasDevice alive for reuse
 
         _currentCanvasUrl = null;
+        UpdateBackgroundMediaVisibility();
     }
 
     private static void DisposeCanvasImageSource(CanvasImageSource? source)

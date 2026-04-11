@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
@@ -36,6 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Wavee\Wavee.csproj" />
+    <ProjectReference Include="..\Wavee.UI.WinUI\Wavee.UI.WinUI.csproj" />
   </ItemGroup>
 
 </Project>

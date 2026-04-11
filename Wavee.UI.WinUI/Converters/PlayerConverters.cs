@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Services;
 
@@ -158,7 +159,12 @@ public sealed class StringToImageSourceConverter : IValueConverter
         var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 200;
 
         _cache ??= Ioc.Default.GetService<ImageCacheService>();
-        return _cache?.GetOrCreate(uri, decodeSize);
+        return _cache?.GetOrCreate(uri, decodeSize)
+               ?? new BitmapImage(new Uri(uri))
+               {
+                   DecodePixelWidth = decodeSize,
+                   DecodePixelType = DecodePixelType.Logical
+               };
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

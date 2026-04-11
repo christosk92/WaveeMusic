@@ -23,7 +23,67 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <SolidColorBrush x:Key="DetailsCardBrush" Color="#66000000"/>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <AcrylicBrush x:Key="DetailsCardBrush"
+                                  
+                                  TintColor="#F7F7F7"
+                                  TintOpacity="0.42"
+                                  TintLuminosityOpacity="0.88"
+                                  FallbackColor="#EEF4F7FA"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailBackgroundBrush" Color="#6EF4F7FA"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailBorderBrush" Color="#1A0F1720"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailShadowBrush" Color="#08000000"/>
+                    <SolidColorBrush x:Key="RightPanelTabRowMaskBrush" Color="#EAF2F6F8"/>
+                    <SolidColorBrush x:Key="RightPanelTabActivePillBrush" Color="#F8FCFD"/>
+                    <SolidColorBrush x:Key="RightPanelTabActiveBorderBrush" Color="#22000000"/>
+                    <SolidColorBrush x:Key="RightPanelTabActiveForegroundBrush" Color="#FF08131A"/>
+                    <SolidColorBrush x:Key="RightPanelTabInactiveForegroundBrush" Color="#9E31424D"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <AcrylicBrush x:Key="DetailsCardBrush"
+                                  TintColor="#10161C"
+                                  TintOpacity="0.38"
+                                  TintLuminosityOpacity="0.76"
+                                  FallbackColor="#CC10161C"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailBackgroundBrush" Color="#66141B22"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailBorderBrush" Color="#16FFFFFF"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailShadowBrush" Color="#12000000"/>
+                    <SolidColorBrush x:Key="RightPanelTabRowMaskBrush" Color="#E1172028"/>
+                    <SolidColorBrush x:Key="RightPanelTabActivePillBrush" Color="#FF27343E"/>
+                    <SolidColorBrush x:Key="RightPanelTabActiveBorderBrush" Color="#1CFFFFFF"/>
+                    <SolidColorBrush x:Key="RightPanelTabActiveForegroundBrush" Color="#FFF3F7FA"/>
+                    <SolidColorBrush x:Key="RightPanelTabInactiveForegroundBrush" Color="#AFC7D3DB"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <AcrylicBrush x:Key="DetailsCardBrush"
+                                  TintColor="#10161C"
+                                  TintOpacity="0.38"
+                                  TintLuminosityOpacity="0.76"
+                                  FallbackColor="#CC10161C"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailBackgroundBrush" Color="#66141B22"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailBorderBrush" Color="#16FFFFFF"/>
+                    <SolidColorBrush x:Key="RightPanelTabRailShadowBrush" Color="#12000000"/>
+                    <SolidColorBrush x:Key="RightPanelTabRowMaskBrush" Color="#E1172028"/>
+                    <SolidColorBrush x:Key="RightPanelTabActivePillBrush" Color="#FF27343E"/>
+                    <SolidColorBrush x:Key="RightPanelTabActiveBorderBrush" Color="#1CFFFFFF"/>
+                    <SolidColorBrush x:Key="RightPanelTabActiveForegroundBrush" Color="#FFF3F7FA"/>
+                    <SolidColorBrush x:Key="RightPanelTabInactiveForegroundBrush" Color="#AFC7D3DB"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <Style x:Key="RightPanelTabButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{ThemeResource RightPanelTabInactiveForegroundBrush}"/>
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="CornerRadius" Value="13"/>
+                <Setter Property="MinHeight" Value="36"/>
+                <Setter Property="FontSize" Value="13.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -53,24 +113,26 @@
                Stretch="UniformToFill"
                Visibility="Collapsed"/>
 
-        <!-- Lyrics overlay on canvas — large uppercase text at top-left with typing effect -->
-        <StackPanel x:Name="CanvasLyricsOverlay"
-                    Grid.Column="1"
-                    VerticalAlignment="Top"
-                    HorizontalAlignment="Left"
-                    Margin="20,56,20,0"
-                    Spacing="8"
-                    Visibility="Collapsed"
-                    IsHitTestVisible="False">
-            <TextBlock x:Name="CanvasLyricLine1"
-                       FontSize="28"
-                       FontWeight="Black"
-                       CharacterSpacing="80"
-                       Foreground="White"
-                       Opacity="0.4"
-                       TextWrapping="WrapWholeWords"
-                       MaxLines="10"/>
-        </StackPanel>
+        <!-- Shared media chrome for all right-panel tabs (composition visual injected in code-behind) -->
+        <Grid x:Name="BackgroundOverlayHost"
+              Grid.ColumnSpan="2"
+              Visibility="Collapsed"
+              IsHitTestVisible="False"/>
+
+        <!-- Lyrics overlay on canvas — composition-backed text surface -->
+        <Grid x:Name="CanvasLyricsOverlay"
+              Grid.Column="1"
+              VerticalAlignment="Top"
+              HorizontalAlignment="Stretch"
+              Margin="20,56,20,0"
+              Visibility="Collapsed"
+              IsHitTestVisible="False">
+            <Grid x:Name="CanvasLyricLineHost"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Top"
+                  Height="64"
+                  SizeChanged="CanvasLyricLineHost_SizeChanged"/>
+        </Grid>
 
         <!-- Resize gripper -->
         <Border
@@ -92,29 +154,81 @@
             DoubleTapped="Resizer_DoubleTapped"/>
 
         <!-- Panel content -->
-        <Grid x:Name="PanelContentGrid" Grid.Column="1" Margin="0,0,0,0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>  <!-- Tab header -->
-                <RowDefinition Height="*"/>     <!-- Content -->
-            </Grid.RowDefinitions>
+            <Grid x:Name="PanelContentGrid" Grid.Column="1" Margin="0,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>     <!-- Content -->
+                    <RowDefinition Height="Auto"/>  <!-- Tab header -->
+                </Grid.RowDefinitions>
 
-            <!-- Tab header — Pivot-style Segmented switcher -->
-            <controls:Segmented
-                x:Name="TabHeader"
-                Grid.Row="0"
-                Margin="12,8,12,4"
-                HorizontalAlignment="Left"
-                SelectedIndex="0"
-                Style="{StaticResource PivotSegmentedStyle}"
-                SelectionChanged="TabHeader_SelectionChanged">
-                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_1" Content="Queue"/>
-                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_2" Content="Lyrics"/>
-                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_3" Content="Friends"/>
-                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_4" Content="Details"/>
-            </controls:Segmented>
+                <!-- Tab header rail -->
+                <Grid x:Name="TabHeader"
+                  Grid.Row="1"
+                  Margin="12,8,12,12"
+                  Height="50"
+                  HorizontalAlignment="Stretch">
+                <Border
+                    Background="{ThemeResource RightPanelTabRowMaskBrush}"
+                    CornerRadius="22"
+                    Margin="-4,-6,-4,-4"/>
+                <Border
+                    Background="{ThemeResource RightPanelTabRailShadowBrush}"
+                    CornerRadius="18"
+                    Margin="0,4,0,0"
+                    Opacity="0.7"/>
+                <Border
+                    Background="{ThemeResource RightPanelTabRailBackgroundBrush}"
+                    BorderBrush="{ThemeResource RightPanelTabRailBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18"/>
+                <Grid Padding="5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-            <!-- Content area -->
-            <Grid Grid.Row="1" Padding="12,0,12,12">
+                    <Border x:Name="ActiveTabPill"
+                            Grid.Column="0"
+                            Margin="2"
+                            CornerRadius="14"
+                            Background="{ThemeResource RightPanelTabActivePillBrush}"
+                            BorderBrush="{ThemeResource RightPanelTabActiveBorderBrush}"
+                            BorderThickness="1"/>
+
+                    <Button x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_1"
+                            x:Name="QueueTabButton"
+                            Grid.Column="0"
+                            Tag="Queue"
+                            Style="{StaticResource RightPanelTabButtonStyle}"
+                            Click="TabButton_Click"
+                            Content="Queue"/>
+                    <Button x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_2"
+                            x:Name="LyricsTabButton"
+                            Grid.Column="1"
+                            Tag="Lyrics"
+                            Style="{StaticResource RightPanelTabButtonStyle}"
+                            Click="TabButton_Click"
+                            Content="Lyrics"/>
+                    <Button x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_3"
+                            x:Name="FriendsTabButton"
+                            Grid.Column="2"
+                            Tag="Friends"
+                            Style="{StaticResource RightPanelTabButtonStyle}"
+                            Click="TabButton_Click"
+                            Content="Friends"/>
+                    <Button x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_4"
+                            x:Name="DetailsTabButton"
+                            Grid.Column="3"
+                            Tag="Details"
+                            Style="{StaticResource RightPanelTabButtonStyle}"
+                            Click="TabButton_Click"
+                            Content="Details"/>
+                </Grid>
+                </Grid>
+
+                <!-- Content area -->
+                <Grid Grid.Row="0" Padding="12,0,12,14">
 
                 <!-- Queue tab (its own UserControl) -->
                 <local:QueueTabView x:Name="QueueContent"/>
@@ -228,7 +342,7 @@
                         <!-- Loading shimmer skeleton -->
                         <StackPanel x:Name="DetailsLoadingShimmer" Spacing="16" Visibility="Collapsed">
                             <!-- Artist header skeleton -->
-                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            <Border Background="{ThemeResource DetailsCardBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1" CornerRadius="8" Padding="12">
                                 <Grid ColumnSpacing="12">
@@ -244,7 +358,7 @@
                                 </Grid>
                             </Border>
                             <!-- Lyrics snippet skeleton -->
-                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            <Border Background="{ThemeResource DetailsCardBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1" CornerRadius="8" Padding="12">
                                 <StackPanel Spacing="8">
@@ -255,7 +369,7 @@
                                 </StackPanel>
                             </Border>
                             <!-- Bio skeleton -->
-                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            <Border Background="{ThemeResource DetailsCardBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1" CornerRadius="8" Padding="12">
                                 <StackPanel Spacing="6">
@@ -266,7 +380,7 @@
                                 </StackPanel>
                             </Border>
                             <!-- Credits skeleton -->
-                            <Border Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            <Border Background="{ThemeResource DetailsCardBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1" CornerRadius="8" Padding="12">
                                 <StackPanel Spacing="8">
@@ -289,7 +403,7 @@
 
                         <!-- Artist header -->
                         <Border x:Name="DetailsArtistHeaderCard"
-                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                Background="{ThemeResource DetailsCardBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">
@@ -343,7 +457,7 @@
 
                         <!-- Lyrics snippet (tap to open Lyrics tab) -->
                         <Border x:Name="DetailsLyricsSnippet"
-                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                Background="{ThemeResource DetailsCardBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 PointerEntered="DetailsLyricsSnippet_PointerEntered"
                                 PointerExited="DetailsLyricsSnippet_PointerExited"
@@ -380,7 +494,7 @@
 
                         <!-- Biography -->
                         <Border x:Name="DetailsBio"
-                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                Background="{ThemeResource DetailsCardBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">
@@ -416,7 +530,7 @@
 
                         <!-- Credits -->
                         <Border x:Name="DetailsCreditsSection"
-                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                Background="{ThemeResource DetailsCardBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">
@@ -496,7 +610,7 @@
 
                         <!-- Concerts -->
                         <Border x:Name="DetailsConcertsSection"
-                                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                                Background="{ThemeResource DetailsCardBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="8" Padding="12"
                                 Visibility="Collapsed">

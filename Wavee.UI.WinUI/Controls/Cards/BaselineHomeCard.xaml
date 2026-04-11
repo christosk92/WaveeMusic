@@ -12,10 +12,8 @@
     mc:Ignorable="d"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Top"
-    PointerEntered="Card_PointerEntered"
-    PointerExited="Card_PointerExited"
-    PointerCanceled="Card_PointerCanceled"
     SizeChanged="BaselineHomeCard_SizeChanged"
+    Loaded="Card_Loaded"
     Unloaded="Card_Unloaded">
 
     <Grid
@@ -24,6 +22,10 @@
         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
         BorderThickness="1"
+        PointerEntered="Card_PointerEntered"
+        PointerExited="Card_PointerExited"
+        PointerCanceled="Card_PointerCanceled"
+        PointerMoved="Card_PointerMoved"
         PointerPressed="CardRoot_PointerPressed"
         RightTapped="CardRoot_RightTapped"
         Tapped="CardRoot_Tapped">
@@ -47,11 +49,8 @@
                     Stretch="UniformToFill"
                     Opacity="0.94"/>
 
-                <MediaPlayerElement
-                    x:Name="CanvasPlayer"
-                    x:Load="False"
-                    AreTransportControlsEnabled="False"
-                    Stretch="UniformToFill"
+                <Grid
+                    x:Name="CanvasPreviewHost"
                     IsHitTestVisible="False"
                     Opacity="0"
                     Visibility="Collapsed"/>
@@ -171,13 +170,25 @@
 
             <Grid
                 x:Name="HoverChrome"
-                x:Load="False"
                 Margin="14"
                 Opacity="0"
                 Visibility="Collapsed"
                 VerticalAlignment="Top">
+                <ProgressBar
+                    x:Name="PreviewPendingProgressBar"
+                    Height="2"
+                    Margin="-18,-14,-18,10"
+                    Minimum="0"
+                    Maximum="100"
+                    Value="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top"
+                    Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
+                    Background="{ThemeResource HomeBaselineCardOverlayChromeBorderBrush}"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"/>
                 <Button
-                    x:Name="PreviewAudioButton"
+                    x:Name="TrackPlayButton"
                     HorizontalAlignment="Right"
                     Width="36"
                     Height="36"
@@ -186,13 +197,22 @@
                     Background="{ThemeResource HomeBaselineCardOverlayChromeBackgroundBrush}"
                     BorderBrush="{ThemeResource HomeBaselineCardOverlayChromeBorderBrush}"
                     BorderThickness="1"
-                    Click="PreviewAudioButton_Click"
+                    Click="TrackPlayButton_Click"
                     Visibility="Collapsed">
-                    <FontIcon
-                        x:Name="PreviewAudioIcon"
-                        Glyph="&#xE198;"
-                        FontSize="15"
-                        Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
+                    <Grid>
+                        <FontIcon
+                            x:Name="TrackPlayButtonIcon"
+                            Glyph="&#xE768;"
+                            FontSize="15"
+                            Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
+                        <ProgressRing
+                            x:Name="PreviewPendingSpinner"
+                            Width="16"
+                            Height="16"
+                            IsActive="False"
+                            Visibility="Collapsed"
+                            Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
+                    </Grid>
                 </Button>
             </Grid>
 
@@ -235,12 +255,53 @@
                     FontSize="13"
                     Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
             </Button>
+
+            <Button
+                x:Name="ContextPlayButton"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,14,14"
+                Width="42"
+                Height="42"
+                CornerRadius="21"
+                Padding="0"
+                Style="{StaticResource AccentButtonStyle}"
+                Click="ContextPlayButton_Click"
+                Visibility="Collapsed">
+                <Grid>
+                    <FontIcon
+                        x:Name="ContextPlayButtonIcon"
+                        Glyph="&#xE768;"
+                        FontSize="18"/>
+                    <ProgressRing
+                        x:Name="ContextPlayButtonSpinner"
+                        Width="20"
+                        Height="20"
+                        IsActive="False"
+                        Visibility="Collapsed"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                </Grid>
+            </Button>
+
+            <Border
+                x:Name="PlayingIndicator"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                Margin="14,0,0,14"
+                Padding="6,3"
+                CornerRadius="6"
+                Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                Visibility="Collapsed">
+                <cards:LottieEqualizer
+                    x:Name="PlayingEqualizer"
+                    IconSize="22"/>
+            </Border>
         </Grid>
 
         <Border
             x:Name="BottomPanel"
             Grid.Row="1"
-            Padding="18,16,18,20"
+            Padding="12,0,12,0"
             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
             <Grid x:Name="BottomContentMotionHost">
                 <Grid RowSpacing="0">
@@ -251,12 +312,6 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Border
-                        Height="1"
-                        Margin="0,0,0,8"
-                        HorizontalAlignment="Stretch"
-                        Background="{ThemeResource HomeBaselineCardDividerBrush}"
-                        CornerRadius="999"/>
 
                     <TextBlock x:Uid="Controls_Cards_BaselineHomeCard__TextBlock_2"
                         x:Name="PreviewEyebrowText"
@@ -293,6 +348,16 @@
                 </Grid>
             </Grid>
         </Border>
+
+        <cards:PendingBorderBeam
+            x:Name="PendingBeam"
+            x:Load="False"
+            Grid.RowSpan="2"
+            Canvas.ZIndex="10"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            CornerRadius="14"
+            BeamThickness="2"/>
 
         <Grid
             x:Name="ShimmerOverlay"

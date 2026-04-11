@@ -16,7 +16,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
+public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private readonly Wavee.Core.Session.ISession? _session;
     private readonly ISettingsService? _settingsService;
@@ -27,6 +27,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _baselineEnrichmentCts;
     private int _baselineEnrichmentVersion;
+    private bool _isDisposed;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -238,12 +239,14 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private void OnRecentlyPlayedItemsChanged()
     {
-        if (_recentlyPlayedService == null) return;
+        if (_isDisposed || _recentlyPlayedService == null) return;
 
         // Must dispatch to UI thread — this event can fire from background threads
         // and ObservableCollection mutations must happen on the UI thread.
         _dispatcherQueue.TryEnqueue(() =>
         {
+            if (_isDisposed) return;
+
             var items = _recentlyPlayedService.Items;
             if (items.Count == 0) return;
 
@@ -994,6 +997,17 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         _baselineEnrichmentCts?.Cancel();
         _baselineEnrichmentCts?.Dispose();
         _baselineEnrichmentCts = null;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_recentlyPlayedService != null)
+            _recentlyPlayedService.ItemsChanged -= OnRecentlyPlayedItemsChanged;
+
+        CancelBaselineEnrichment();
     }
 
     private void BeginBaselineEnrichment()

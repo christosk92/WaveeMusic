@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,10 +16,9 @@ using WinRT;
 
 namespace Wavee.UI.WinUI.Services;
 
-public sealed class PreviewAudioGraphService : IDisposable
+public sealed class PreviewAudioGraphService : IPreviewAudioPlaybackEngine, IDisposable
 {
     private readonly DispatcherQueue _dispatcherQueue;
-    private readonly PreviewAudioVisualizationCoordinator? _loopbackVisualizationCoordinator;
     private readonly ILogger? _logger;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly object _stateGate = new();
@@ -32,9 +32,9 @@ public sealed class PreviewAudioGraphService : IDisposable
     private Action<PreviewVisualizationFrame>? _onFrame;
     private Action? _onCompleted;
     private string? _sessionId;
-    private string? _fallbackVisualizationSessionId;
     private long _frameSequence;
     private long _sessionVersion;
+    private bool _hasLoggedFrameForSession;
 
     public string? CurrentSessionId { get; private set; }
 
@@ -42,20 +42,30 @@ public sealed class PreviewAudioGraphService : IDisposable
         PreviewAudioVisualizationCoordinator? loopbackVisualizationCoordinator = null,
         ILogger<PreviewAudioGraphService>? logger = null)
     {
-        _loopbackVisualizationCoordinator = loopbackVisualizationCoordinator;
+        _ = loopbackVisualizationCoordinator;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     }
 
-    public async Task<bool> StartAsync(
+    [Conditional("DEBUG")]
+    private void TracePreview(string message)
+    {
+        Debug.WriteLine(
+            $"[PreviewAudioGraphService] {message} | " +
+            $"session='{CurrentSessionId ?? "<null>"}' graph={_graph != null} source={_sourceNode != null} " +
+            $"device={_deviceOutputNode != null} fallback={_fallbackPlayer != null}");
+    }
+
+    public async Task<PreviewStartResult> StartAsync(
         string previewUrl,
         Action<PreviewVisualizationFrame> onFrame,
         Action onCompleted,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(previewUrl))
-            return false;
+            return new PreviewStartResult(false, null);
 
+        TracePreview($"StartAsync url='{previewUrl}'");
         await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -69,13 +79,19 @@ public sealed class PreviewAudioGraphService : IDisposable
             _onFrame = onFrame;
             _onCompleted = onCompleted;
             _frameSequence = 0;
+            _hasLoggedFrameForSession = false;
             _analyzer.Reset();
 
             if (await TryStartAudioGraphSessionAsync(previewUrl, ct).ConfigureAwait(false))
-                return true;
+            {
+                TracePreview("StartAsync using AudioGraph");
+                return new PreviewStartResult(true, CurrentSessionId);
+            }
 
-            StartFallbackSession(previewUrl, sessionId);
-            return false;
+            StartFallbackSession(previewUrl);
+            _logger?.LogDebug("Preview audio graph unavailable; running audio-only fallback without visualization for {SessionId}", sessionId);
+            TracePreview("StartAsync using fallback player");
+            return new PreviewStartResult(false, CurrentSessionId);
         }
         finally
         {
@@ -83,9 +99,10 @@ public sealed class PreviewAudioGraphService : IDisposable
         }
     }
 
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken ct = default)
     {
-        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        TracePreview("StopAsync");
+        await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             ++_sessionVersion;
@@ -101,6 +118,7 @@ public sealed class PreviewAudioGraphService : IDisposable
     {
         try
         {
+            TracePreview("TryStartAudioGraphSessionAsync creating graph");
             var settings = new AudioGraphSettings(AudioRenderCategory.Media);
             var graphResult = await AudioGraph.CreateAsync(settings).AsTask(ct).ConfigureAwait(false);
             if (graphResult.Status != AudioGraphCreationStatus.Success || graphResult.Graph == null)
@@ -153,6 +171,7 @@ public sealed class PreviewAudioGraphService : IDisposable
 
             graph.Start();
             sourceResult.Node.Start();
+            TracePreview("TryStartAudioGraphSessionAsync started graph and source");
             return true;
         }
         catch (OperationCanceledException)
@@ -167,28 +186,27 @@ public sealed class PreviewAudioGraphService : IDisposable
         }
     }
 
-    private void StartFallbackSession(string previewUrl, string sessionId)
+    private void StartFallbackSession(string previewUrl)
     {
         try
         {
-            _fallbackPlayer ??= new MediaPlayer
+            if (_fallbackPlayer == null)
             {
-                IsLoopingEnabled = false,
-                IsMuted = false
-            };
+                _fallbackPlayer = new MediaPlayer
+                {
+                    IsLoopingEnabled = false,
+                    IsMuted = false
+                };
+                _fallbackPlayer.MediaOpened += OnFallbackPlayerMediaOpened;
+                _fallbackPlayer.MediaFailed += OnFallbackPlayerMediaFailed;
+                _fallbackPlayer.CurrentStateChanged += OnFallbackPlayerCurrentStateChanged;
+            }
 
             _fallbackPlayer.MediaEnded -= OnFallbackPlayerMediaEnded;
             _fallbackPlayer.MediaEnded += OnFallbackPlayerMediaEnded;
             _fallbackPlayer.Source = MediaSource.CreateFromUri(new Uri(previewUrl));
             _fallbackPlayer.Play();
-
-            _fallbackVisualizationSessionId = _loopbackVisualizationCoordinator?.Activate(
-                previewUrl,
-                frame => DispatchFrame(
-                    sessionId,
-                    frame.Amplitudes,
-                    frame.Completed,
-                    frame.Sequence));
+            TracePreview("StartFallbackSession play");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -200,12 +218,7 @@ public sealed class PreviewAudioGraphService : IDisposable
 
     private void StopCurrentSession_NoLock()
     {
-        var fallbackVisualizationSessionId = _fallbackVisualizationSessionId;
-        _fallbackVisualizationSessionId = null;
-
-        if (!string.IsNullOrWhiteSpace(fallbackVisualizationSessionId))
-            _loopbackVisualizationCoordinator?.Deactivate(fallbackVisualizationSessionId);
-
+        TracePreview("StopCurrentSession_NoLock");
         if (_fallbackPlayer != null)
         {
             try
@@ -258,6 +271,7 @@ public sealed class PreviewAudioGraphService : IDisposable
         _sessionId = null;
         CurrentSessionId = null;
         _frameSequence = 0;
+        _hasLoggedFrameForSession = false;
     }
 
     private void OnGraphQuantumStarted(AudioGraph sender, object args)
@@ -283,6 +297,12 @@ public sealed class PreviewAudioGraphService : IDisposable
             using var frame = frameOutputNode.GetFrame();
             if (!TryAnalyzeFrame(frame, encodingProperties, out var amplitudes))
                 return;
+
+            if (!_hasLoggedFrameForSession)
+            {
+                _hasLoggedFrameForSession = true;
+                TracePreview($"OnGraphQuantumStarted first frame amplitudes={amplitudes.Length}");
+            }
 
             DispatchFrame(sessionId, amplitudes, completed: false, sequence);
         }
@@ -314,6 +334,21 @@ public sealed class PreviewAudioGraphService : IDisposable
             DispatchCompletedFrame();
             await NotifyCompletedAndStopAsync().ConfigureAwait(false);
         });
+    }
+
+    private void OnFallbackPlayerMediaOpened(MediaPlayer sender, object args)
+    {
+        TracePreview($"Fallback MediaOpened state={sender.CurrentState}");
+    }
+
+    private void OnFallbackPlayerMediaFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args)
+    {
+        TracePreview($"Fallback MediaFailed error={args.Error} extended=0x{args.ExtendedErrorCode.HResult:x8}");
+    }
+
+    private void OnFallbackPlayerCurrentStateChanged(MediaPlayer sender, object args)
+    {
+        TracePreview($"Fallback CurrentStateChanged state={sender.CurrentState}");
     }
 
     private void OnGraphUnrecoverableErrorOccurred(AudioGraph sender, AudioGraphUnrecoverableErrorOccurredEventArgs args)
@@ -450,7 +485,13 @@ public sealed class PreviewAudioGraphService : IDisposable
         {
         }
 
-        _fallbackPlayer?.Dispose();
+        if (_fallbackPlayer != null)
+        {
+            _fallbackPlayer.MediaOpened -= OnFallbackPlayerMediaOpened;
+            _fallbackPlayer.MediaFailed -= OnFallbackPlayerMediaFailed;
+            _fallbackPlayer.CurrentStateChanged -= OnFallbackPlayerCurrentStateChanged;
+            _fallbackPlayer.Dispose();
+        }
         _fallbackPlayer = null;
         _lifecycleGate.Dispose();
     }
@@ -484,6 +525,7 @@ public sealed class PreviewAudioGraphService : IDisposable
         private int _writeIndex;
         private int _sampleCount;
         private float _smoothedGain = 1f;
+        private float _rollingPeak = 0.04f;
 
         public void Reset()
         {
@@ -497,6 +539,7 @@ public sealed class PreviewAudioGraphService : IDisposable
             _writeIndex = 0;
             _sampleCount = 0;
             _smoothedGain = 1f;
+            _rollingPeak = 0.04f;
         }
 
         public float[] Process(ReadOnlySpan<float> interleavedSamples, int channelCount, int sampleRate)
@@ -561,20 +604,22 @@ public sealed class PreviewAudioGraphService : IDisposable
                 maxBand = MathF.Max(maxBand, raw);
             }
 
-            var targetGain = maxBand > 0.000001f
-                ? MathF.Min(6.6f, 0.22f / maxBand)
-                : 1f;
-            var gainSmoothing = targetGain > _smoothedGain ? 0.34f : 0.2f;
+            var targetPeak = maxBand > 0.000001f ? maxBand : _rollingPeak;
+            var peakSmoothing = targetPeak > _rollingPeak ? 0.22f : 0.06f;
+            _rollingPeak += (targetPeak - _rollingPeak) * peakSmoothing;
+
+            var targetGain = MathF.Min(8.8f, 0.31f / MathF.Max(_rollingPeak, 0.000001f));
+            var gainSmoothing = targetGain > _smoothedGain ? 0.28f : 0.14f;
             _smoothedGain += (targetGain - _smoothedGain) * gainSmoothing;
 
             for (int bandIndex = 0; bandIndex < BarCount; bandIndex++)
             {
                 var weighted = _rawBands[bandIndex] * _smoothedGain;
                 var db = 20f * MathF.Log10(MathF.Max(weighted, 0.00025f));
-                var normalized = Math.Clamp((db + 58f) / 40f, 0f, 1f);
-                var highBandLift = 0.96f + ((bandIndex / (float)(BarCount - 1)) * 0.12f);
+                var normalized = Math.Clamp((db + 61f) / 30f, 0f, 1f);
+                var highBandLift = 0.94f + ((bandIndex / (float)(BarCount - 1)) * 0.2f);
                 normalized = Math.Clamp(normalized * highBandLift, 0f, 1f);
-                var temporalSmoothing = normalized > _smoothedBands[bandIndex] ? 0.5f : 0.24f;
+                var temporalSmoothing = normalized > _smoothedBands[bandIndex] ? 0.66f : 0.16f;
                 _smoothedBands[bandIndex] += (normalized - _smoothedBands[bandIndex]) * temporalSmoothing;
             }
 
@@ -583,7 +628,7 @@ public sealed class PreviewAudioGraphService : IDisposable
                 var left = bandIndex > 0 ? _smoothedBands[bandIndex - 1] : _smoothedBands[bandIndex];
                 var center = _smoothedBands[bandIndex];
                 var right = bandIndex + 1 < BarCount ? _smoothedBands[bandIndex + 1] : _smoothedBands[bandIndex];
-                _neighborBands[bandIndex] = (left * 0.16f) + (center * 0.68f) + (right * 0.16f);
+                _neighborBands[bandIndex] = (left * 0.08f) + (center * 0.84f) + (right * 0.08f);
             }
 
             for (int bandIndex = 0; bandIndex < BarCount; bandIndex++)
@@ -591,7 +636,7 @@ public sealed class PreviewAudioGraphService : IDisposable
                 var left = bandIndex > 0 ? _neighborBands[bandIndex - 1] : _neighborBands[bandIndex];
                 var center = _neighborBands[bandIndex];
                 var right = bandIndex + 1 < BarCount ? _neighborBands[bandIndex + 1] : _neighborBands[bandIndex];
-                var shaped = (left * 0.09f) + (center * 0.82f) + (right * 0.09f);
+                var shaped = (left * 0.04f) + (center * 0.92f) + (right * 0.04f);
                 _outputBands[bandIndex] = Math.Clamp(shaped, 0f, 1f);
             }
 

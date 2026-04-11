@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -25,7 +26,9 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class AlbumPage : Page, ITabBarItemContent
 {
     private readonly ILogger? _logger;
+    private readonly ISettingsService _settings;
     private LoadedImageSurface? _blurSurface;
+    private bool _isNarrowMode;
     private SpriteVisual? _blurSprite;
 
     // CompositionEffectFactory compiles a pixel shader on creation, which is
@@ -66,6 +69,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         ViewModel = Ioc.Default.GetRequiredService<AlbumViewModel>();
         _logger = Ioc.Default.GetService<ILogger<AlbumPage>>();
+        _settings = Ioc.Default.GetRequiredService<ISettingsService>();
         InitializeComponent();
 
         // Custom columns with compile-time delegate (no reflection)
@@ -239,15 +243,49 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     private void LoadNewContent(object? parameter)
     {
+        string? albumId = null;
+
         if (parameter is ContentNavigationParameter nav)
         {
+            albumId = nav.Uri;
             ViewModel.PrefillFrom(nav);
             _ = ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
         }
-        else if (parameter is string albumId && !string.IsNullOrWhiteSpace(albumId))
+        else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
-            _ = ViewModel.LoadCommand.ExecuteAsync(albumId);
+            albumId = rawId;
+            _ = ViewModel.LoadCommand.ExecuteAsync(rawId);
         }
+
+        if (!string.IsNullOrEmpty(albumId))
+            RestoreAlbumPanelWidth(albumId);
+    }
+
+    private void RestoreAlbumPanelWidth(string albumId)
+    {
+        const double defaultWidth = 280;
+        var key = $"album:{albumId}";
+
+        var width = _settings.Settings.PanelWidths.TryGetValue(key, out var saved)
+            ? saved
+            : defaultWidth;
+
+        width = Math.Clamp(width, 200, 500);
+        LeftPanelColumn.Width = new GridLength(width, GridUnitType.Pixel);
+    }
+
+    private void AlbumArtContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is Border border && e.NewSize.Width > 0)
+            border.Height = e.NewSize.Width;
+    }
+
+    private void AlbumSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
+    {
+        var albumId = ViewModel.AlbumId;
+        if (string.IsNullOrEmpty(albumId)) return;
+
+        _settings.Update(s => s.PanelWidths[$"album:{albumId}"] = e.NewWidth);
     }
 
     // ── Click handlers ──
@@ -317,9 +355,29 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (e.NewSize.Width < 600)
+        var shouldBeNarrow = e.NewSize.Width < 600;
+
+        if (shouldBeNarrow && !_isNarrowMode)
+        {
+            _isNarrowMode = true;
+            LeftPanelColumn.Width = new GridLength(0);
             VisualStateManager.GoToState(this, "NarrowState", true);
-        else
+        }
+        else if (!shouldBeNarrow && _isNarrowMode)
+        {
+            _isNarrowMode = false;
+            var albumId = ViewModel.AlbumId;
+            if (!string.IsNullOrEmpty(albumId))
+                RestoreAlbumPanelWidth(albumId);
+            else
+                LeftPanelColumn.Width = new GridLength(280, GridUnitType.Pixel);
+
             VisualStateManager.GoToState(this, "WideState", true);
+        }
+        else if (!shouldBeNarrow && !_isNarrowMode)
+        {
+            // First SizeChanged fires before any state is set — ensure WideState
+            VisualStateManager.GoToState(this, "WideState", true);
+        }
     }
 }

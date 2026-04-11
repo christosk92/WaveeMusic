@@ -9,7 +9,7 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// A fixed-row grid layout that fills items column-first (top to bottom, then left to right).
 /// Computes column count from available width. Enforces exactly MaxRows rows.
 /// Items beyond MaxRows × columns are arranged off-screen.
-/// Reports computed ColumnCount via a dependency property for pagination.
+/// Reports computed ColumnCount via a deferred event for pagination.
 /// </summary>
 public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
 {
@@ -32,10 +32,6 @@ public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
     public static readonly DependencyProperty ColumnSpacingProperty =
         DependencyProperty.Register(nameof(ColumnSpacing), typeof(double), typeof(ColumnsFirstGridLayout),
             new PropertyMetadata(8.0, OnLayoutPropertyChanged));
-
-    public static readonly DependencyProperty ComputedColumnCountProperty =
-        DependencyProperty.Register(nameof(ComputedColumnCount), typeof(int), typeof(ColumnsFirstGridLayout),
-            new PropertyMetadata(1));
 
     /// <summary>Maximum number of rows (default 3).</summary>
     public int MaxRows
@@ -76,11 +72,7 @@ public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
     /// Read-only computed column count based on available width.
     /// Bind to this from your ViewModel to keep pagination in sync.
     /// </summary>
-    public int ComputedColumnCount
-    {
-        get => (int)GetValue(ComputedColumnCountProperty);
-        private set => SetValue(ComputedColumnCountProperty, value);
-    }
+    public int ComputedColumnCount => _computedColumnCount;
 
     /// <summary>Items visible per page = MaxRows × ComputedColumnCount.</summary>
     public int PageSize => MaxRows * ComputedColumnCount;
@@ -95,6 +87,7 @@ public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
     }
 
     private int _columns;
+    private int _computedColumnCount = 1;
     private double _itemWidth;
 
     protected override Size MeasureOverride(NonVirtualizingLayoutContext context, Size availableSize)
@@ -112,9 +105,9 @@ public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
 
         // Report column count change AFTER layout completes (deferred)
         // Firing during MeasureOverride would cause ItemsSource to change mid-layout → COMException
-        if (ComputedColumnCount != _columns)
+        if (_computedColumnCount != _columns)
         {
-            ComputedColumnCount = _columns;
+            _computedColumnCount = _columns;
             var cols = _columns;
             Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,

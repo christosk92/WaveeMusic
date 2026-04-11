@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -17,6 +18,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
 using Wavee.UI.WinUI.DragDrop;
@@ -35,12 +37,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ISearchService _searchService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly AppModel _appModel;
+    private readonly IShellSessionService _shellSession;
     private readonly ILogger? _logger;
     private readonly IDispatcherService? _dispatcher;
     private readonly Helpers.Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
     private readonly Dictionary<string, CachedSearchSuggestions> _querySuggestionCache = new(StringComparer.OrdinalIgnoreCase);
     private CachedSearchSuggestions? _recentSearchesCache;
     private string _activeSearchText = string.Empty;
+    private bool _restoringTabSession;
 
     private const int MaxCachedSuggestionQueries = 24;
     private static readonly TimeSpan RecentSearchesCacheLifetime = TimeSpan.FromMinutes(5);
@@ -84,6 +88,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private double _sidebarWidth = 280;
+
+    [ObservableProperty]
+    private SidebarDisplayMode _sidebarDisplayMode = SidebarDisplayMode.Expanded;
+
+    [ObservableProperty]
+    private bool _isSidebarPaneOpen;
 
     [ObservableProperty]
     private double _rightPanelWidth = 300;
@@ -145,6 +155,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ISearchService searchService,
         IPlaybackStateService playbackStateService,
         AppModel appModel,
+        IShellSessionService shellSession,
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null)
     {
@@ -154,12 +165,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _searchService = searchService;
         _playbackStateService = playbackStateService;
         _appModel = appModel;
+        _shellSession = shellSession;
         _dispatcher = dispatcher;
         _logger = logger;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
+        _sidebarDisplayMode = appModel.SidebarDisplayMode;
+        _isSidebarPaneOpen = appModel.IsSidebarPaneOpen;
         _rightPanelWidth = appModel.RightPanelWidth;
+        _isRightPanelOpen = appModel.IsRightPanelOpen;
+        _rightPanelMode = appModel.RightPanelMode;
         _selectedTabIndex = appModel.TabStripSelectedIndex;
 
         // Listen for right panel toggle requests from PlayerBar
@@ -197,6 +213,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         });
 
         InitializeSidebarItems();
+        ApplyPersistedSidebarState();
+        TabInstances.CollectionChanged += OnTabInstancesCollectionChanged;
         _ = LoadLibraryDataAsync();
     }
 
@@ -370,6 +388,51 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 }
             }
         ];
+
+        foreach (var group in SidebarItems)
+            group.PropertyChanged += OnSidebarGroupPropertyChanged;
+    }
+
+    private void ApplyPersistedSidebarState()
+    {
+        foreach (var group in SidebarItems)
+        {
+            if (group.Tag is string tag && _shellSession.TryGetSidebarGroupExpansion(tag, out var isExpanded))
+                group.IsExpanded = isExpanded;
+        }
+
+        if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
+            SelectedSidebarItem = FindSidebarItemByTag(selectedTag);
+    }
+
+    private SidebarItemModel? FindSidebarItemByTag(string tag)
+    {
+        foreach (var item in SidebarItems)
+        {
+            if (string.Equals(item.Tag, tag, StringComparison.Ordinal))
+                return item;
+
+            if (item.Children is IEnumerable<SidebarItemModel> children)
+            {
+                var child = children.FirstOrDefault(x => string.Equals(x.Tag, tag, StringComparison.Ordinal));
+                if (child != null)
+                    return child;
+            }
+        }
+
+        return null;
+    }
+
+    private void OnSidebarGroupPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not SidebarItemModel group
+            || e.PropertyName != nameof(SidebarItemModel.IsExpanded)
+            || string.IsNullOrWhiteSpace(group.Tag))
+        {
+            return;
+        }
+
+        _shellSession.UpdateSidebarGroupExpansion(group.Tag!, group.IsExpanded);
     }
 
     private Microsoft.UI.Xaml.FrameworkElement CreatePlaylistsAddButton()
@@ -492,12 +555,108 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                         DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
                     });
                 }
+
+                if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
+                    SelectedSidebarItem = FindSidebarItemByTag(selectedTag);
             }
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to load library data");
             ShowNotification(AppLocalization.GetString("Shell_LoadLibraryFailed"));
+        }
+    }
+
+    private void OnTabInstancesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (var item in e.OldItems.OfType<TabBarItem>())
+                DetachTabHandlers(item);
+        }
+
+        if (e.NewItems != null)
+        {
+            foreach (var item in e.NewItems.OfType<TabBarItem>())
+                AttachTabHandlers(item);
+        }
+
+        PersistTabSession();
+    }
+
+    private void AttachTabHandlers(TabBarItem tab)
+    {
+        tab.PropertyChanged += OnTrackedTabChanged;
+        tab.ContentChanged += OnTrackedTabContentChanged;
+    }
+
+    private void DetachTabHandlers(TabBarItem tab)
+    {
+        tab.PropertyChanged -= OnTrackedTabChanged;
+        tab.ContentChanged -= OnTrackedTabContentChanged;
+    }
+
+    private void OnTrackedTabChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TabBarItem.Header)
+            or nameof(TabBarItem.ToolTipText)
+            or nameof(TabBarItem.IsPinned)
+            or nameof(TabBarItem.IsCompact)
+            or nameof(TabBarItem.IconSource))
+        {
+            PersistTabSession();
+        }
+    }
+
+    private void OnTrackedTabContentChanged(object? sender, TabItemParameter e)
+    {
+        PersistTabSession();
+    }
+
+    public void PersistTabSession()
+    {
+        if (_restoringTabSession)
+            return;
+
+        _shellSession.SaveTabs(TabInstances, SelectedTabIndex);
+    }
+
+    public bool RestorePersistedTabs()
+    {
+        if (TabInstances.Count > 0)
+            return true;
+
+        var restoredTabs = _shellSession.GetRestorableTabs();
+        if (restoredTabs.Count == 0)
+            return false;
+
+        _restoringTabSession = true;
+        try
+        {
+            foreach (var tabState in restoredTabs)
+            {
+                var tab = NavigationHelpers.CreateTab(
+                    tabState.PageType,
+                    tabState.Parameter,
+                    tabState.Header,
+                    NavigationHelpers.CreateIconSource(tabState.PageType, tabState.Parameter),
+                    tabState.IsPinned,
+                    tabState.IsCompact);
+
+                TabInstances.Add(tab);
+            }
+
+            if (TabInstances.Count == 0)
+                return false;
+
+            SelectTab(Math.Clamp(_appModel.TabStripSelectedIndex, 0, TabInstances.Count - 1));
+            UpdateNavigationState();
+            return true;
+        }
+        finally
+        {
+            _restoringTabSession = false;
+            PersistTabSession();
         }
     }
 
@@ -513,6 +672,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
 
         _appModel.TabStripSelectedIndex = newValue;
+        PersistTabSession();
     }
 
     partial void OnSelectedTabItemChanged(TabBarItem? oldValue, TabBarItem? newValue)
@@ -542,6 +702,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel.SidebarWidth = value;
     }
 
+    partial void OnSidebarDisplayModeChanged(SidebarDisplayMode value)
+    {
+        _appModel.SidebarDisplayMode = value;
+    }
+
+    partial void OnIsSidebarPaneOpenChanged(bool value)
+    {
+        _appModel.IsSidebarPaneOpen = value;
+    }
+
     partial void OnRightPanelWidthChanged(double value)
     {
         _appModel.RightPanelWidth = value;
@@ -549,11 +719,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     partial void OnIsRightPanelOpenChanged(bool value)
     {
+        _appModel.IsRightPanelOpen = value;
         WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(value, RightPanelMode));
     }
 
     partial void OnRightPanelModeChanged(RightPanelMode value)
     {
+        _appModel.RightPanelMode = value;
         if (IsRightPanelOpen)
             WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(true, value));
     }
@@ -575,6 +747,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         // Navigation is handled in ShellPage.SidebarControl_ItemInvoked
         // to support modifier keys (Ctrl/middle-click for new tab)
+        _shellSession.UpdateSelectedSidebarTag((value as SidebarItemModel)?.Tag);
     }
 
     public ElementTheme CurrentTheme => _themeService.CurrentTheme;
@@ -802,6 +975,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
         WeakReferenceMessenger.Default.Unregister<ToggleRightPanelMessage>(this);
+        TabInstances.CollectionChanged -= OnTabInstancesCollectionChanged;
+
+        foreach (var tab in TabInstances)
+            DetachTabHandlers(tab);
+
+        foreach (var group in SidebarItems)
+            group.PropertyChanged -= OnSidebarGroupPropertyChanged;
 
         // Cleanup sidebar button handlers
         if (_playlistsSplitButton != null)

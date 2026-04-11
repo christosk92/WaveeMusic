@@ -1,5 +1,6 @@
 using System;
 using System.Runtime;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,6 +9,7 @@ using Wavee.Core.Storage;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Application;
 using Wavee.UI.WinUI.Services;
+using UnhandledExceptionEventArgs = System.UnhandledExceptionEventArgs;
 
 namespace Wavee.UI.WinUI;
 
@@ -22,18 +24,46 @@ public partial class App : Application
         AppLocalization.ApplyLanguageOverride(SettingsService.PeekLanguage());
         InitializeComponent();
         UnhandledException += OnUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnCurrentDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnTaskSchedulerUnobservedTaskException;
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        // Log the actual exception so we can diagnose Release crashes
-        var ex = e.Exception;
-        System.Diagnostics.Debug.WriteLine($"*** UNHANDLED EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-        System.Diagnostics.Debug.WriteLine($"*** Stack: {ex.StackTrace}");
-        if (ex.InnerException != null)
-            System.Diagnostics.Debug.WriteLine($"*** Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}");
+        LogUnhandledException("XamlUnhandledException", e.Exception);
 
-        // Write to a crash log file for Release builds
+        e.Handled = true; // Prevent crash — let the app try to continue
+    }
+
+    private void OnCurrentDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        => LogUnhandledException(
+            $"AppDomainUnhandledException (IsTerminating={e.IsTerminating})",
+            e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "Unknown exception object"));
+
+    private void OnTaskSchedulerUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogUnhandledException("TaskSchedulerUnobservedTaskException", e.Exception);
+        e.SetObserved();
+    }
+
+    private static void LogUnhandledException(string source, Exception ex)
+    {
+        // Keep crash logging allocation-light and resilient: this can run while the process
+        // is already unstable or terminating on a background thread.
+        try
+        {
+            var summary = $"{source}: {ex.GetType().Name}: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"*** {summary}");
+            if (!string.IsNullOrWhiteSpace(ex.StackTrace))
+                System.Diagnostics.Debug.WriteLine($"*** Stack: {ex.StackTrace}");
+            if (ex.InnerException != null)
+                System.Diagnostics.Debug.WriteLine($"*** Inner: {ex.InnerException}");
+        }
+        catch
+        {
+            // Best effort only.
+        }
+
         try
         {
             var crashLog = AppPaths.CrashLogPath;
@@ -44,13 +74,15 @@ public partial class App : Application
                 ? PiiRedactor.Redact(ex.InnerException.ToString())
                 : string.Empty;
 
-            System.IO.File.AppendAllText(crashLog,
-                $"\n[{System.DateTime.UtcNow:O}] {ex.GetType().Name}: {redactedMessage}\n{redactedStack}\n" +
+            System.IO.File.AppendAllText(
+                crashLog,
+                $"\n[{System.DateTime.UtcNow:O}] [{source}] {ex.GetType().Name}: {redactedMessage}\n{redactedStack}\n" +
                 (string.IsNullOrWhiteSpace(redactedInner) ? "" : $"Inner: {redactedInner}\n"));
         }
-        catch { /* best effort */ }
-
-        e.Handled = true; // Prevent crash — let the app try to continue
+        catch
+        {
+            // Best effort only.
+        }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)

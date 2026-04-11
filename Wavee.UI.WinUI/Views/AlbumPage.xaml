@@ -11,6 +11,7 @@
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
+    xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     NavigationCacheMode="Disabled"
     Background="Transparent">
@@ -30,6 +31,7 @@
                         <Setter Target="WideAlbumPanel.Visibility" Value="Collapsed"/>
                         <Setter Target="ShimmerContainer.Visibility" Value="Collapsed"/>
                         <Setter Target="NarrowAlbumHeader.Visibility" Value="Visible"/>
+                        <Setter Target="AlbumSplitter.Visibility" Value="Collapsed"/>
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -41,6 +43,7 @@
         <!-- Two-column layout. TrackListView owns scrolling so row virtualization stays active. -->
         <Grid x:Name="TwoColumnGrid">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="LeftPanelColumn" Width="280" MinWidth="200" MaxWidth="500"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
@@ -66,8 +69,8 @@
 
                     <!-- Left panel (sticky via Composition in code-behind) -->
                     <StackPanel x:Name="WideAlbumPanel" Grid.Column="0"
-                                Padding="16,24" Spacing="14" HorizontalAlignment="Center"
-                                MaxWidth="280" VerticalAlignment="Top"
+                                Padding="16,24" Spacing="14" HorizontalAlignment="Stretch"
+                                VerticalAlignment="Top"
                                 Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
 
                         <Grid MinHeight="20" HorizontalAlignment="Center">
@@ -79,7 +82,9 @@
                                               Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                         </Grid>
 
-                        <Border x:Name="AlbumArtContainer" CornerRadius="8" Width="240" Height="240"
+                        <Border x:Name="AlbumArtContainer" CornerRadius="8"
+                                HorizontalAlignment="Stretch"
+                                SizeChanged="AlbumArtContainer_SizeChanged"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                             <Grid>
                                 <lyrics:ShadowImage
@@ -143,10 +148,16 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Track list + album footer in column 1 -->
+                    <controls1:GridSplitter
+                        x:Name="AlbumSplitter"
+                        Grid.Column="1"
+                        Width="12"
+                        ResizeCompleted="AlbumSplitter_ResizeCompleted"/>
+
+                    <!-- Track list + album footer in column 2 -->
                     <trackList:TrackListView
                         x:Name="TrackList"
-                        Grid.Column="1" VerticalAlignment="Top"
+                        Grid.Column="2" VerticalAlignment="Top"
                         Margin="0,24,0,0"
                         ViewModel="{x:Bind ViewModel, Mode=OneWay}"
                         ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"

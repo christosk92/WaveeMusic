@@ -24,10 +24,12 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class HomePage : Page, ITabBarItemContent
+public sealed partial class HomePage : Page, ITabBarItemContent, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly HomeFeedCache? _cache;
+    private bool _isShimmerContentReleased;
+    private bool _isDisposed;
 
     public HomeViewModel ViewModel { get; }
 
@@ -110,6 +112,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent
 
     private void ShowShimmer()
     {
+        if (_isShimmerContentReleased || ShimmerContainer?.Content == null)
+            return;
+
         _showingContent = false;
         ShimmerContainer.Visibility = Visibility.Visible;
 
@@ -147,16 +152,23 @@ public sealed partial class HomePage : Page, ITabBarItemContent
     private async Task CollapseShimmerAfterDelay()
     {
         await Task.Delay(ShimmerCollapseDelayMs);
-        if (_showingContent)
+        if (_showingContent && ShimmerContainer != null)
+        {
             ShimmerContainer.Visibility = Visibility.Collapsed;
+            if (!_isShimmerContentReleased)
+            {
+                // The first-load skeleton is one of the heaviest retained subtrees on Home.
+                // Release it after content has loaded so a cached Home page doesn't keep the
+                // entire shimmer visual tree resident for the rest of the session.
+                ShimmerContainer.Content = null;
+                _isShimmerContentReleased = true;
+            }
+        }
     }
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
-        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
-        if (_cache != null)
-            _cache.DataRefreshed -= OnCacheDataRefreshed;
+        CleanupSubscriptions();
     }
 
     public void RefreshWithParameter(object? parameter)
@@ -169,6 +181,25 @@ public sealed partial class HomePage : Page, ITabBarItemContent
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        Loaded -= HomePage_Loaded;
+        Unloaded -= HomePage_Unloaded;
+        CleanupSubscriptions();
+        (ViewModel as IDisposable)?.Dispose();
+    }
+
+    private void CleanupSubscriptions()
+    {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
+        if (_cache != null)
+            _cache.DataRefreshed -= OnCacheDataRefreshed;
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──

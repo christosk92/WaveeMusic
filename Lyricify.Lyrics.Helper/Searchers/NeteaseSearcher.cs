@@ -59,7 +59,7 @@ namespace Lyricify.Lyrics.Searchers
                     search.Add(new NeteaseSearchResult(track));
                 }
             }
-            catch(Exception)
+            catch(Exception x)
             {
                 return null;
             }

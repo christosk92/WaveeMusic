@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http;
+using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -41,8 +42,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private int _avatarAnimGen;
 
     private readonly ILogger? _logger;
+    private readonly ISettingsService _settings;
     private bool _showingContent;
     private bool _isNavigatingAway;
+    private bool _heroHeightPersisted;
     private DispatcherQueueTimer? _pinnedItemHoverTimer;
     private DispatcherQueueTimer? _pinnedItemCloseTimer;
     private bool _isPointerOverPinnedItem;
@@ -60,6 +63,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         ViewModel = Ioc.Default.GetRequiredService<ArtistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
+        _settings = Ioc.Default.GetRequiredService<ISettingsService>();
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
@@ -326,9 +330,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Hero height = 45% of page height (min 300)
-        if (HeroGrid != null)
-            HeroGrid.Height = Math.Max(300, e.NewSize.Height * 0.45);
+        // Hero height = 45% of page height (min 200), unless the user has manually resized
+        if (HeroRow != null && !_heroHeightPersisted)
+            HeroRow.Height = new GridLength(Math.Max(200, e.NewSize.Height * 0.45), GridUnitType.Pixel);
 
         // Debounced recompute of expanded panel position
         if (_activeDetailPanel != null && _expandedItem != null)
@@ -487,9 +491,38 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             ViewModel.Initialize(artistId);
         }
 
+        // Restore persisted hero height for this artist
+         var artistI2d = ViewModel.ArtistId;
+        if (!string.IsNullOrEmpty(artistI2d))
+            RestoreHeroHeight(artistI2d);
+
         // Fire-and-forget: page renders shimmer instantly, data populates as it arrives.
         // SetupWatchFeedVideo is called from CrossfadeToContent after data loads.
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
+    }
+
+    private void RestoreHeroHeight(string artistId)
+    {
+        var key = $"artist:{artistId}";
+        if (_settings.Settings.PanelWidths.TryGetValue(key, out var saved))
+        {
+            var height = Math.Clamp(saved, 200, 700);
+            HeroRow.Height = new GridLength(height, GridUnitType.Pixel);
+            _heroHeightPersisted = true;
+        }
+        else
+        {
+            _heroHeightPersisted = false;
+        }
+    }
+
+    private void HeroSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
+    {
+        var artistId = ViewModel.ArtistId;
+        if (string.IsNullOrEmpty(artistId)) return;
+
+        _heroHeightPersisted = true;
+        _settings.Update(s => s.PanelWidths[$"artist:{artistId}"] = e.NewHeight);
     }
 
     private void Release_Click(object sender, RoutedEventArgs e)

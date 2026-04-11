@@ -8,7 +8,9 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Views;
 using WinUIEx;
@@ -30,6 +32,8 @@ public sealed partial class MainWindow : WindowEx
     private DispatcherQueueTimer? _memoryReleaseTimer;
     private bool _alreadyReleasedSinceLastFocus;
     private ILogger? _memoryReleaseLogger;
+    private bool _allowWindowClose;
+    private bool _closeConfirmationInFlight;
 
     private MainWindow()
     {
@@ -41,6 +45,7 @@ public sealed partial class MainWindow : WindowEx
         Activated += OnActivatedForMemoryRelease;
         VisibilityChanged += OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed += OnAppWindowChangedForMemoryRelease;
+        AppWindow.Closing += OnAppWindowClosing;
 
         // Extend content into titlebar
         ExtendsContentIntoTitleBar = true;
@@ -60,6 +65,7 @@ public sealed partial class MainWindow : WindowEx
         Activated -= OnActivatedForMemoryRelease;
         VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
+        AppWindow.Closing -= OnAppWindowClosing;
         if (_memoryReleaseTimer != null)
         {
             _memoryReleaseTimer.Stop();
@@ -76,6 +82,82 @@ public sealed partial class MainWindow : WindowEx
         {
             await settings.SaveAsync();
         }
+    }
+
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_allowWindowClose)
+            return;
+
+        var shellSession = Ioc.Default.GetService<IShellSessionService>();
+        if (shellSession == null)
+            return;
+
+        if (!shellSession.AskBeforeClosingTabs)
+        {
+            ApplyCloseTabsBehavior(shellSession.CloseTabsBehavior);
+            return;
+        }
+
+        args.Cancel = true;
+
+        if (_closeConfirmationInFlight)
+            return;
+
+        _closeConfirmationInFlight = true;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                await ConfirmCloseAsync(shellSession);
+            }
+            finally
+            {
+                _closeConfirmationInFlight = false;
+            }
+        });
+    }
+
+    private async Task ConfirmCloseAsync(IShellSessionService shellSession)
+    {
+        if (RootFrame.XamlRoot == null)
+            return;
+
+        CloseTabsDialogResult result;
+        try
+        {
+            result = await CloseTabsDialog.ShowAsync(RootFrame.XamlRoot, shellSession.AskBeforeClosingTabs);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (result.Choice == CloseTabsDialogChoice.Cancel)
+            return;
+
+        var behavior = result.Choice == CloseTabsDialogChoice.Save
+            ? CloseTabsBehavior.Save
+            : CloseTabsBehavior.Discard;
+
+        shellSession.UpdateClosePreference(result.AlwaysAsk, behavior);
+        ApplyCloseTabsBehavior(behavior);
+
+        _allowWindowClose = true;
+        Close();
+    }
+
+    private static void ApplyCloseTabsBehavior(CloseTabsBehavior behavior)
+    {
+        var shellVm = Ioc.Default.GetService<ViewModels.ShellViewModel>();
+        var shellSession = Ioc.Default.GetService<IShellSessionService>();
+        if (shellSession == null)
+            return;
+
+        if (behavior == CloseTabsBehavior.Save)
+            shellVm?.PersistTabSession();
+        else
+            shellSession.ClearTabs();
     }
 
     // ── Memory release on minimize / lose focus ──────────────────────────
@@ -162,6 +244,7 @@ public sealed partial class MainWindow : WindowEx
         // Load persistent settings
         var settingsService = Ioc.Default.GetRequiredService<ISettingsService>();
         await settingsService.LoadAsync();
+        App.AppModel.InitializeFromSettings();
 
         // Initialize color service (before theme, so brushes are cached early)
         var colorService = Ioc.Default.GetRequiredService<ThemeColorService>();

@@ -48,13 +48,20 @@
                 <EntranceThemeTransition />
             </TransitionCollection>
         </ScrollView.Transitions>
-        <StackPanel>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="HeroRow" Height="300" MinHeight="200" MaxHeight="700"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
             <!-- HERO HEADER -->
             <hero:HeroHeader x:Name="HeroGrid"
+                             Grid.Row="0"
                              ImageUrl="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay}"
                              ColorHex="{x:Bind ViewModel.HeaderHeroColorHex, Mode=OneWay}"
-                             MinHeight="300"
+                             MinHeight="200"
                              InitialScale="1.0"
                              FinalScale="1.05"
                              AnimationDuration="0:0:0.8"
@@ -307,10 +314,18 @@
                 </hero:HeroHeader.OverlayContent>
             </hero:HeroHeader>
 
+            <controls1:GridSplitter
+                x:Name="HeroSplitter"
+                Grid.Row="1"
+                Orientation="Vertical"
+                Height="8"
+                HorizontalAlignment="Stretch"
+                ResizeCompleted="HeroSplitter_ResizeCompleted"/>
+
             <!-- ═══════════════════════════════════════════════ -->
             <!-- SHIMMER LOADING SKELETON (sections below hero)  -->
             <!-- ═══════════════════════════════════════════════ -->
-            <StackPanel x:Name="ShimmerContainer">
+            <StackPanel x:Name="ShimmerContainer" Grid.Row="2">
                 <!-- Top tracks shimmer -->
                 <StackPanel Padding="32,24,32,0" Spacing="12">
                     <controls:Shimmer Width="140" Height="22" HorizontalAlignment="Left"/>
@@ -378,7 +393,7 @@
             <!-- ═══════════════════════════════════════════════ -->
             <!-- CONTENT SECTIONS (fades in after shimmer)       -->
             <!-- ═══════════════════════════════════════════════ -->
-            <StackPanel x:Name="ContentContainer" Padding="32,24,32,32" Spacing="32">
+            <StackPanel x:Name="ContentContainer" Grid.Row="3" Padding="32,24,32,32" Spacing="32">
 
                 <!-- ─── Top Tracks (Apple Music grid style) ─── -->
                 <StackPanel Spacing="12">
@@ -763,6 +778,6 @@
 
             </StackPanel> <!-- ContentContainer -->
 
-        </StackPanel>
+        </Grid>
     </ScrollView>
 </Page>
