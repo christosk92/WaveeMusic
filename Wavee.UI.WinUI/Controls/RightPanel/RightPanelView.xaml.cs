@@ -89,11 +89,17 @@ public sealed partial class RightPanelView : UserControl
     private CompositionColorGradientStop? _backgroundBottomBlendMidStop;
     private CompositionColorGradientStop? _backgroundBottomBlendLowerMidStop;
     private CompositionColorGradientStop? _backgroundBottomBlendBottomStop;
+    private CompositionLinearGradientBrush? _backgroundTopBlendBrush;
+    private CompositionColorGradientStop? _backgroundTopBlendTopStop;
+    private CompositionColorGradientStop? _backgroundTopBlendMidStop;
+    private CompositionColorGradientStop? _backgroundTopBlendLowerMidStop;
+    private CompositionColorGradientStop? _backgroundTopBlendBottomStop;
     private SpriteVisual? _backgroundTintVisual;
     private SpriteVisual? _backgroundHighlightVisual;
     private SpriteVisual? _backgroundScrimVisual;
     private SpriteVisual? _backgroundNonDetailsDimVisual;
     private SpriteVisual? _backgroundBottomBlendVisual;
+    private SpriteVisual? _backgroundTopBlendVisual;
     private readonly List<CompositionObject> _detailsLyricsCompositionObjects = [];
     private ContainerVisual? _detailsLyricsContainerVisual;
     private SpriteVisual? _detailsLyricsTextVisual;
@@ -724,7 +730,11 @@ public sealed partial class RightPanelView : UserControl
             || _backgroundBottomBlendTopStop == null
             || _backgroundBottomBlendMidStop == null
             || _backgroundBottomBlendLowerMidStop == null
-            || _backgroundBottomBlendBottomStop == null)
+            || _backgroundBottomBlendBottomStop == null
+            || _backgroundTopBlendTopStop == null
+            || _backgroundTopBlendMidStop == null
+            || _backgroundTopBlendLowerMidStop == null
+            || _backgroundTopBlendBottomStop == null)
         {
             return;
         }
@@ -770,6 +780,11 @@ public sealed partial class RightPanelView : UserControl
         _backgroundBottomBlendMidStop.Color = Color.FromArgb(20, bottomColor.R, bottomColor.G, bottomColor.B);
         _backgroundBottomBlendLowerMidStop.Color = Color.FromArgb(86, bottomColor.R, bottomColor.G, bottomColor.B);
         _backgroundBottomBlendBottomStop.Color = Color.FromArgb(255, bottomColor.R, bottomColor.G, bottomColor.B);
+
+        _backgroundTopBlendTopStop.Color = Color.FromArgb(255, bottomColor.R, bottomColor.G, bottomColor.B);
+        _backgroundTopBlendMidStop.Color = Color.FromArgb(86, bottomColor.R, bottomColor.G, bottomColor.B);
+        _backgroundTopBlendLowerMidStop.Color = Color.FromArgb(20, bottomColor.R, bottomColor.G, bottomColor.B);
+        _backgroundTopBlendBottomStop.Color = Color.FromArgb(0, bottomColor.R, bottomColor.G, bottomColor.B);
         UpdateBackgroundOverlayState();
     }
 
@@ -790,6 +805,8 @@ public sealed partial class RightPanelView : UserControl
             _backgroundScrimVisual.Opacity = isDetails ? 0.84f : 0.96f;
         if (_backgroundBottomBlendVisual != null)
             _backgroundBottomBlendVisual.Opacity = isDetails ? 0.96f : 1.0f;
+        if (_backgroundTopBlendVisual != null)
+            _backgroundTopBlendVisual.Opacity = isDetails ? 0.96f : 1.0f;
         if (_backgroundNonDetailsDimVisual != null)
             _backgroundNonDetailsDimVisual.Opacity = isDetails ? 0f : isLyricsCanvasVisible ? 0.16f : 0.26f;
     }
@@ -894,6 +911,22 @@ public sealed partial class RightPanelView : UserControl
         _backgroundBottomBlendVisual.RelativeOffsetAdjustment = new Vector3(0f, 0.58f, 0f);
         _backgroundOverlayContainer.Children.InsertAtTop(_backgroundBottomBlendVisual);
 
+        _backgroundTopBlendBrush = TrackCompositionObject(_backgroundOverlayCompositor.CreateLinearGradientBrush());
+        _backgroundTopBlendBrush.StartPoint = new Vector2(0.5f, 0f);
+        _backgroundTopBlendBrush.EndPoint = new Vector2(0.5f, 1f);
+        _backgroundTopBlendTopStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0f, Colors.Transparent));
+        _backgroundTopBlendMidStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0.38f, Colors.Transparent));
+        _backgroundTopBlendLowerMidStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(0.82f, Colors.Transparent));
+        _backgroundTopBlendBottomStop = TrackCompositionObject(_backgroundOverlayCompositor.CreateColorGradientStop(1f, Colors.Transparent));
+        _backgroundTopBlendBrush.ColorStops.Add(_backgroundTopBlendTopStop);
+        _backgroundTopBlendBrush.ColorStops.Add(_backgroundTopBlendMidStop);
+        _backgroundTopBlendBrush.ColorStops.Add(_backgroundTopBlendLowerMidStop);
+        _backgroundTopBlendBrush.ColorStops.Add(_backgroundTopBlendBottomStop);
+        _backgroundTopBlendVisual = TrackCompositionObject(_backgroundOverlayCompositor.CreateSpriteVisual());
+        _backgroundTopBlendVisual.Brush = _backgroundTopBlendBrush;
+        _backgroundTopBlendVisual.RelativeSizeAdjustment = new Vector2(1f, 0.35f);
+        _backgroundOverlayContainer.Children.InsertAtTop(_backgroundTopBlendVisual);
+
         ElementCompositionPreview.SetElementChildVisual(BackgroundOverlayHost, _backgroundOverlayContainer);
     }
 
@@ -923,11 +956,17 @@ public sealed partial class RightPanelView : UserControl
         _backgroundBottomBlendMidStop = null;
         _backgroundBottomBlendLowerMidStop = null;
         _backgroundBottomBlendBottomStop = null;
+        _backgroundTopBlendBrush = null;
+        _backgroundTopBlendTopStop = null;
+        _backgroundTopBlendMidStop = null;
+        _backgroundTopBlendLowerMidStop = null;
+        _backgroundTopBlendBottomStop = null;
         _backgroundTintVisual = null;
         _backgroundHighlightVisual = null;
         _backgroundScrimVisual = null;
         _backgroundNonDetailsDimVisual = null;
         _backgroundBottomBlendVisual = null;
+        _backgroundTopBlendVisual = null;
     }
 
     private T TrackCompositionObject<T>(T compositionObject) where T : CompositionObject

@@ -276,6 +276,17 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
             return;
         }
 
+        if (!await CanStartRequestPlaybackAsync(owner.Request).ConfigureAwait(false))
+        {
+            TraceCoordinator($"StartRequestCoreAsync blocked by CanStartPlayback owner={ownerId} ownerVersion={ownerVersion}");
+            DispatchState(owner.Request, new CardPreviewPlaybackState(
+                IsPending: false,
+                IsPlaying: false,
+                HasVisualization: false,
+                SessionId: null));
+            return;
+        }
+
         if (_activeOwnerId.HasValue)
             await StopActivePreviewCoreAsync(restorePlayback: !keepDuckBetweenSessions).ConfigureAwait(false);
 
@@ -349,6 +360,42 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
 
             startCts?.Dispose();
         }
+    }
+
+    private Task<bool> CanStartRequestPlaybackAsync(CardPreviewRequest request)
+    {
+        if (request.CanStartPlayback == null)
+            return Task.FromResult(true);
+
+        if (_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess)
+            return Task.FromResult(request.CanStartPlayback());
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    tcs.TrySetResult(request.CanStartPlayback());
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Card preview CanStartPlayback callback failed");
+                    tcs.TrySetResult(false);
+                }
+            }))
+        {
+            try
+            {
+                tcs.TrySetResult(request.CanStartPlayback());
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Card preview CanStartPlayback callback failed");
+                tcs.TrySetResult(false);
+            }
+        }
+
+        return tcs.Task;
     }
 
     private void HandlePreviewFrame(

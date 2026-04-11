@@ -18,7 +18,8 @@ public sealed record CardPreviewRequest(
     string PreviewUrl,
     Action<PreviewVisualizationFrame> OnFrame,
     Action<CardPreviewPlaybackState> OnStateChanged,
-    Action OnCompleted);
+    Action OnCompleted,
+    Func<bool>? CanStartPlayback = null);
 
 public readonly record struct CardPreviewPlaybackState(
     bool IsPending,

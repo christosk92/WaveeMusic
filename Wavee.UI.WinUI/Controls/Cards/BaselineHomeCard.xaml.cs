@@ -67,6 +67,7 @@ public sealed partial class BaselineHomeCard : UserControl
     private Storyboard? _previewPendingProgressStoryboard;
     private Windows.Foundation.Point _lastPointerWindowPosition;
     private bool _hasLastPointerWindowPosition;
+    private UIElement? _rootPointerElement;
     private string? _activeCanvasUrl;
     private bool _hasPreviewVisualization;
     private string? _previewVisualizationSessionId;
@@ -128,6 +129,7 @@ public sealed partial class BaselineHomeCard : UserControl
     private void Card_Loaded(object sender, RoutedEventArgs e)
     {
         TraceCard("Loaded");
+        AttachRootPointerHandlers();
 
         if (_highlightService != null)
         {
@@ -251,7 +253,7 @@ public sealed partial class BaselineHomeCard : UserControl
             BitmapImage? heroImage = _imageCache?.GetOrCreate(heroHttpsUrl, HeroImageDecodeSize);
             heroImage ??= new BitmapImage(new Uri(heroHttpsUrl))
             {
-                DecodePixelWidth = HeroImageDecodeSize,
+               // DecodePixelWidth = HeroImageDecodeSize,
                 DecodePixelType = DecodePixelType.Logical
             };
             HeroImage.Source = heroImage;
@@ -358,6 +360,64 @@ public sealed partial class BaselineHomeCard : UserControl
         UpdateLastPointerWindowPosition(e);
     }
 
+    private void AttachRootPointerHandlers()
+    {
+        if (ReferenceEquals(_rootPointerElement, XamlRoot?.Content))
+            return;
+
+        DetachRootPointerHandlers();
+
+        if (XamlRoot?.Content is not UIElement root)
+            return;
+
+        root.PointerMoved += Root_PointerMoved;
+        root.PointerExited += Root_PointerExited;
+        root.PointerCanceled += Root_PointerCanceled;
+        _rootPointerElement = root;
+    }
+
+    private void DetachRootPointerHandlers()
+    {
+        if (_rootPointerElement == null)
+            return;
+
+        _rootPointerElement.PointerMoved -= Root_PointerMoved;
+        _rootPointerElement.PointerExited -= Root_PointerExited;
+        _rootPointerElement.PointerCanceled -= Root_PointerCanceled;
+        _rootPointerElement = null;
+    }
+
+    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        UpdateLastPointerWindowPosition(e);
+
+        if (_isPointerOver && _hasLastPointerWindowPosition && !IsPointWithinCardBounds(_lastPointerWindowPosition))
+        {
+            TraceCard("Root pointer moved outside card -> StopHoverMedia");
+            StopHoverMedia();
+        }
+    }
+
+    private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _hasLastPointerWindowPosition = false;
+        if (_isPointerOver)
+        {
+            TraceCard("Root pointer exited window -> StopHoverMedia");
+            StopHoverMedia();
+        }
+    }
+
+    private void Root_PointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        _hasLastPointerWindowPosition = false;
+        if (_isPointerOver)
+        {
+            TraceCard("Root pointer canceled -> StopHoverMedia");
+            StopHoverMedia();
+        }
+    }
+
     private void QueueHoverEnterActivation(int hoverEnterVersion)
     {
         TraceCard($"QueueHoverEnterActivation hoverEnterVersion={hoverEnterVersion}");
@@ -390,7 +450,7 @@ public sealed partial class BaselineHomeCard : UserControl
         ApplyHoverState();
 
         var hasPreviewAudio = !string.IsNullOrWhiteSpace(GetActiveAudioPreviewUrl());
-        if (hasPreviewAudio)
+        if (hasPreviewAudio && CanStartHoverPlayback())
         {
             TraceCard("ActivateHoverStateIfCurrent scheduling preview audio");
             _ = SchedulePreviewAudioAsync();
@@ -490,6 +550,14 @@ public sealed partial class BaselineHomeCard : UserControl
             Debug.WriteLine($"[BaselineHomeCard] Hover exit suppression check failed: {ex.Message}");
             return false;
         }
+    }
+
+    private bool CanStartHoverPlayback()
+    {
+        if (!_isPointerOver || !IsLoaded)
+            return false;
+
+        return !_hasLastPointerWindowPosition || IsPointWithinCardBounds(_lastPointerWindowPosition);
     }
 
     private void UpdateLastPointerWindowPosition(PointerRoutedEventArgs e)
@@ -1183,7 +1251,8 @@ public sealed partial class BaselineHomeCard : UserControl
             previewUrl,
             OnPreviewVisualizationFrame,
             OnPreviewPlaybackStateChanged,
-            OnPreviewAudioCompleted);
+            OnPreviewAudioCompleted,
+            CanStartHoverPlayback);
     }
 
     private void OnPreviewPlaybackStateChanged(CardPreviewPlaybackState state)
@@ -1475,6 +1544,7 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private void Card_Unloaded(object sender, RoutedEventArgs e)
     {
+        DetachRootPointerHandlers();
         SetSubscribedItem(_subscribedItem, null);
 
         if (_highlightService != null)
