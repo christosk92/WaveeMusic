@@ -555,7 +555,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            // Expected on dispose
+            _logger?.LogDebug("[Download] Background prefetch cancelled for file {FileId}", _fileId.ToBase16());
         }
         catch (Exception ex)
         {

@@ -57,6 +57,11 @@ public interface ILibraryDataService
     Task<IReadOnlyList<LikedSongDto>> GetLikedSongsAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Gets Spotify-provided content filters for the liked songs page.
+    /// </summary>
+    Task<IReadOnlyList<LikedSongsFilterDto>> GetLikedSongFiltersAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Creates a new playlist and returns the created playlist summary.
     /// </summary>
     Task<PlaylistSummaryDto> CreatePlaylistAsync(string name, IReadOnlyList<string>? trackIds = null, CancellationToken ct = default);

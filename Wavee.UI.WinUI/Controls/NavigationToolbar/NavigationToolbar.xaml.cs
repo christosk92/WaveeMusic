@@ -88,6 +88,42 @@ public sealed partial class NavigationToolbar : UserControl
         }
     }
 
+    public static readonly DependencyProperty SearchSuggestionsLoadingProperty =
+        DependencyProperty.Register(nameof(SearchSuggestionsLoading), typeof(bool), typeof(NavigationToolbar),
+            new PropertyMetadata(false, OnSearchSuggestionsLoadingChanged));
+
+    public bool SearchSuggestionsLoading
+    {
+        get => (bool)GetValue(SearchSuggestionsLoadingProperty);
+        set => SetValue(SearchSuggestionsLoadingProperty, value);
+    }
+
+    private static void OnSearchSuggestionsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is NavigationToolbar toolbar)
+        {
+            toolbar.SearchOmnibar.IsLoading = (bool)e.NewValue;
+        }
+    }
+
+    public static readonly DependencyProperty SearchSuggestionsErrorMessageProperty =
+        DependencyProperty.Register(nameof(SearchSuggestionsErrorMessage), typeof(string), typeof(NavigationToolbar),
+            new PropertyMetadata(null, OnSearchSuggestionsErrorMessageChanged));
+
+    public string? SearchSuggestionsErrorMessage
+    {
+        get => (string?)GetValue(SearchSuggestionsErrorMessageProperty);
+        set => SetValue(SearchSuggestionsErrorMessageProperty, value);
+    }
+
+    private static void OnSearchSuggestionsErrorMessageChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is NavigationToolbar toolbar)
+        {
+            toolbar.SearchOmnibar.ErrorMessage = e.NewValue as string;
+        }
+    }
+
     public static readonly DependencyProperty UserDisplayNameProperty =
         DependencyProperty.Register(nameof(UserDisplayName), typeof(string), typeof(NavigationToolbar),
             new PropertyMetadata("User"));
@@ -159,6 +195,7 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, string>? SearchQuerySubmitted;
     public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
     public event TypedEventHandler<NavigationToolbar, Data.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
+    public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SearchRetryRequested;
 
     #endregion
 
@@ -204,6 +241,11 @@ public sealed partial class NavigationToolbar : UserControl
     private void SearchOmnibar_ActionButtonClicked(Omnibar.Omnibar sender, Data.Contracts.SearchSuggestionItem item)
     {
         SearchActionButtonClicked?.Invoke(this, item);
+    }
+
+    private void SearchOmnibar_RetryRequested(Omnibar.Omnibar sender, RoutedEventArgs args)
+    {
+        SearchRetryRequested?.Invoke(this, args);
     }
 
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)

@@ -201,6 +201,8 @@ public sealed partial class TrackItem : UserControl
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
+    private string? _boundCompactImageUrl;
+    private string? _boundRowImageUrl;
 
     #endregion
 
@@ -304,26 +306,7 @@ public sealed partial class TrackItem : UserControl
             CompactVideoLabel.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
             CompactHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
             CompactHeartButton.Visibility = Visibility.Visible;
-
-            var imageUrl = track.ImageUrl;
-            if (!string.IsNullOrEmpty(imageUrl))
-            {
-                var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
-                if (!string.IsNullOrEmpty(httpsUrl))
-                {
-                    _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-                    var cache = _cachedImageCache;
-                    CompactAlbumArt.Source = cache?.GetOrCreate(httpsUrl, 48);
-                }
-                else
-                {
-                    CompactAlbumArt.Source = null;
-                }
-            }
-            else
-            {
-                CompactAlbumArt.Source = null;
-            }
+            ApplyCompactAlbumArt(track.ImageUrl);
         }
         else
         {
@@ -335,7 +318,7 @@ public sealed partial class TrackItem : UserControl
             CompactVideoIcon.Visibility = Visibility.Collapsed;
             CompactVideoLabel.Visibility = Visibility.Collapsed;
             CompactHeartButton.Visibility = Visibility.Collapsed;
-            CompactAlbumArt.Source = null;
+            ApplyCompactAlbumArt(null);
         }
     }
 
@@ -353,33 +336,7 @@ public sealed partial class TrackItem : UserControl
             RowArtistLink.Tag = track.ArtistId;
             RowAlbumLink.Content = track.AlbumName ?? "";
             RowAlbumLink.Tag = track.AlbumId;
-
-            // Album art
-            var imageUrl = track.ImageUrl;
-            if (!string.IsNullOrEmpty(imageUrl))
-            {
-                var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
-                if (!string.IsNullOrEmpty(httpsUrl))
-                {
-                    _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-                    var cache = _cachedImageCache;
-                    RowAlbumArt.Source = cache?.GetOrCreate(httpsUrl, 48);
-                    RowAlbumArt.Visibility = Visibility.Visible;
-                    RowArtPlaceholder.Visibility = Visibility.Collapsed;
-                }
-                else
-                {
-                    RowAlbumArt.Source = null;
-                    RowAlbumArt.Visibility = Visibility.Collapsed;
-                    RowArtPlaceholder.Visibility = Visibility.Visible;
-                }
-            }
-            else
-            {
-                RowAlbumArt.Source = null;
-                RowAlbumArt.Visibility = Visibility.Collapsed;
-                RowArtPlaceholder.Visibility = Visibility.Visible;
-            }
+            ApplyRowAlbumArt(track.ImageUrl);
 
             // Row index
             RowIndexText.Text = (track.OriginalIndex > 0)
@@ -393,9 +350,54 @@ public sealed partial class TrackItem : UserControl
             RowDuration.Text = "";
             RowArtistLink.Content = "";
             RowAlbumLink.Content = "";
-            RowAlbumArt.Source = null;
+            ApplyRowAlbumArt(null);
+        }
+    }
+
+    private void ApplyCompactAlbumArt(string? imageUrl)
+    {
+        _boundCompactImageUrl = imageUrl;
+        CompactAlbumArt.Visibility = Visibility.Visible;
+        CompactAlbumArt.Source = null;
+
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
+        if (string.IsNullOrEmpty(httpsUrl))
+            return;
+
+        _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
+        CompactAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+    }
+
+    private void ApplyRowAlbumArt(string? imageUrl)
+    {
+        _boundRowImageUrl = imageUrl;
+        RowAlbumArt.Source = null;
+
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
+        if (string.IsNullOrEmpty(httpsUrl))
+        {
             RowAlbumArt.Visibility = Visibility.Collapsed;
             RowArtPlaceholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
+        RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        RowAlbumArt.Visibility = Visibility.Visible;
+        RowArtPlaceholder.Visibility = Visibility.Collapsed;
+    }
+
+    private void RebindAlbumArtIfNeeded()
+    {
+        if (Mode == TrackItemDisplayMode.Compact)
+        {
+            if (!string.IsNullOrEmpty(_boundCompactImageUrl) && CompactAlbumArt.Source == null)
+                ApplyCompactAlbumArt(_boundCompactImageUrl);
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(_boundRowImageUrl) && RowAlbumArt.Source == null)
+                ApplyRowAlbumArt(_boundRowImageUrl);
         }
     }
 
@@ -602,6 +604,7 @@ public sealed partial class TrackItem : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        RebindAlbumArtIfNeeded();
         RefreshPlaybackState();
         UpdateOverlayState();
         RefreshLikedState();

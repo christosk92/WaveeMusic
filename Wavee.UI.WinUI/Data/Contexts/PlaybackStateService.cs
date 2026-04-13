@@ -111,24 +111,38 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void Receive(AuthStatusChangedMessage message)
     {
+        _logger?.LogDebug("AuthStatusChanged received: status={Status}, alreadySubscribed={AlreadySubscribed}",
+            message.Value, _stateSubscription != null);
         if (message.Value == AuthStatus.Authenticated)
         {
-            _logger?.LogInformation("Auth status: Authenticated — subscribing to remote playback state");
+            _logger?.LogInformation("Auth status: Authenticated — attempting subscription to PlaybackStateManager.StateChanges");
             _dispatcherQueue.TryEnqueue(TrySubscribeToRemoteState);
         }
     }
 
     // ── Remote state bridge ──
 
+    // How many times we've attempted to subscribe. If this grows without Subscribed appearing in logs,
+    // Session.PlaybackState is chronically null — a subscription race to triage.
+    private int _subscribeAttemptCount;
+
     private void TrySubscribeToRemoteState()
     {
+        var attempt = Interlocked.Increment(ref _subscribeAttemptCount);
+
         // Already subscribed
-        if (_stateSubscription != null) return;
+        if (_stateSubscription != null)
+        {
+            _logger?.LogTrace("TrySubscribeToRemoteState: attempt#{Attempt} — already subscribed, skipping", attempt);
+            return;
+        }
 
         var stateManager = _session.PlaybackState;
         if (stateManager == null)
         {
-            _logger?.LogDebug("PlaybackStateManager not available yet (session not connected)");
+            _logger?.LogWarning(
+                "TrySubscribeToRemoteState: attempt#{Attempt} — PlaybackStateManager is null (session not connected). Remote state bridge NOT yet active. Will retry on next AuthStatusChanged.",
+                attempt);
             return;
         }
 
@@ -137,13 +151,24 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 OnRemoteStateChanged,
                 ex => _logger?.LogError(ex, "Error in remote playback state subscription"));
 
-        _logger?.LogInformation("Subscribed to PlaybackStateManager.StateChanges — remote state bridge active");
+        _logger?.LogInformation(
+            "TrySubscribeToRemoteState: attempt#{Attempt} — SUBSCRIBED to PlaybackStateManager.StateChanges. Remote state bridge active.",
+            attempt);
     }
 
     private void OnRemoteStateChanged(PlaybackState state)
     {
-        _logger?.LogDebug("Remote state update: changes={Changes}, status={Status}, track={Track}",
-            state.Changes, state.Status, state.Track?.Title ?? "<none>");
+        _logger?.LogDebug(
+            "Remote state update: changes={Changes}, source={Source}, status={Status}, track={Track}, pos={Pos}/{Dur}ms, actDev={ActDev}, ourDev={OurDev}, sessionConnected={Conn}",
+            state.Changes,
+            state.Source,
+            state.Status,
+            state.Track?.Title ?? "<none>",
+            state.PositionMs,
+            state.DurationMs,
+            state.ActiveDeviceId ?? "<none>",
+            _session.Config.DeviceId,
+            _session.IsConnected());
 
         _dispatcherQueue.TryEnqueue(() =>
         {
@@ -643,44 +668,101 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _pendingSeekPositionMs = null;
 
         var playing = IsPlaying;
+        _logger?.LogInformation("[Cmd] PlayPause: isPlaying={Was} → optimistic={Next}, track={Track}, pendingSeek={Seek}",
+            playing, !playing, CurrentTrackId ?? "<none>", pendingSeek?.ToString("F0") ?? "<none>");
         IsPlaying = !playing; // optimistic
         if (!playing && CurrentTrackId != null) SetBuffering(CurrentTrackId);
 
         _ = _playbackService.TogglePlayPauseAsync().ContinueWith(t =>
         {
             if (t.IsFaulted)
+            {
+                _logger?.LogError(t.Exception, "[Cmd] PlayPause FAILED — reverting optimistic IsPlaying={Was}", playing);
                 _dispatcherQueue.TryEnqueue(() => { IsPlaying = playing; ClearBuffering(); });
-            else if (!playing && pendingSeek.HasValue)
-                _dispatcherQueue.TryEnqueue(() => Seek(pendingSeek.Value));
+            }
+            else
+            {
+                _logger?.LogDebug("[Cmd] PlayPause accepted by engine/service");
+                if (!playing && pendingSeek.HasValue)
+                    _dispatcherQueue.TryEnqueue(() => Seek(pendingSeek.Value));
+            }
         });
     }
 
-    public void Next() => _ = _playbackService.SkipNextAsync();
+    public void Next()
+    {
+        _logger?.LogInformation("[Cmd] Next: current track={Track}", CurrentTrackId ?? "<none>");
+        _ = _playbackService.SkipNextAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] Next FAILED");
+            else _logger?.LogDebug("[Cmd] Next accepted");
+        });
+    }
 
-    public void Previous() => _ = _playbackService.SkipPreviousAsync();
+    public void Previous()
+    {
+        _logger?.LogInformation("[Cmd] Previous: current track={Track}, pos={Pos}ms", CurrentTrackId ?? "<none>", (long)Position);
+        _ = _playbackService.SkipPreviousAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] Previous FAILED");
+            else _logger?.LogDebug("[Cmd] Previous accepted");
+        });
+    }
 
     public void Seek(double positionMs)
     {
         if (string.IsNullOrEmpty(CurrentTrackId))
+        {
+            _logger?.LogWarning("[Cmd] Seek({Pos}ms) ignored — no track loaded", (long)positionMs);
             return;
+        }
 
         // If not playing, store position for when playback starts
         if (!IsPlaying)
         {
+            _logger?.LogDebug("[Cmd] Seek({Pos}ms) deferred — not playing", (long)positionMs);
             _pendingSeekPositionMs = positionMs;
             Position = positionMs;
             return;
         }
 
+        _logger?.LogInformation("[Cmd] Seek: {From}ms → {To}ms, track={Track}", (long)Position, (long)positionMs, CurrentTrackId);
         _pendingSeekPositionMs = null;
         SetBuffering(CurrentTrackId);
         _ = _playbackService.SeekAsync((long)positionMs)
-            .ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger?.LogError(t.Exception, "[Cmd] Seek FAILED");
+                    ClearBuffering();
+                }
+                else
+                {
+                    _logger?.LogDebug("[Cmd] Seek accepted");
+                }
+            });
     }
 
-    public void SetShuffle(bool shuffle) => _ = _playbackService.SetShuffleAsync(shuffle);
+    public void SetShuffle(bool shuffle)
+    {
+        _logger?.LogInformation("[Cmd] SetShuffle: {Was} → {Next}", IsShuffle, shuffle);
+        _ = _playbackService.SetShuffleAsync(shuffle).ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] SetShuffle FAILED");
+            else _logger?.LogDebug("[Cmd] SetShuffle accepted");
+        });
+    }
 
-    public void SetRepeatMode(RepeatMode mode) => _ = _playbackService.SetRepeatModeAsync(mode);
+    public void SetRepeatMode(RepeatMode mode)
+    {
+        _logger?.LogInformation("[Cmd] SetRepeatMode: {Was} → {Next}", RepeatMode, mode);
+        _ = _playbackService.SetRepeatModeAsync(mode).ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] SetRepeatMode FAILED");
+            else _logger?.LogDebug("[Cmd] SetRepeatMode accepted");
+        });
+    }
 
     // Guard: when true, volume changes are from remote state sync — don't send commands back
     private bool _suppressVolumeCommand;
@@ -709,34 +791,67 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void PlayContext(PlaybackContextInfo context, int startIndex = 0)
     {
+        _logger?.LogInformation("[Cmd] PlayContext: uri={Uri}, startIndex={StartIndex}", context.ContextUri, startIndex);
         SetBuffering(null); // context play — we don't know the track ID yet
         _ = _playbackService.PlayContextAsync(context.ContextUri, new PlayContextOptions { StartIndex = startIndex })
-            .ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted) { _logger?.LogError(t.Exception, "[Cmd] PlayContext FAILED: uri={Uri}", context.ContextUri); ClearBuffering(); }
+                else _logger?.LogDebug("[Cmd] PlayContext accepted: uri={Uri}", context.ContextUri);
+            });
     }
 
     public void PlayTrack(string trackId, PlaybackContextInfo? context = null)
     {
+        _logger?.LogInformation("[Cmd] PlayTrack: trackId={TrackId}, context={Context}", trackId, context?.ContextUri ?? "<none>");
         SetBuffering(trackId);
         if (context != null)
             _ = _playbackService.PlayTrackInContextAsync(trackId, context.ContextUri)
-                .ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted) { _logger?.LogError(t.Exception, "[Cmd] PlayTrack FAILED: trackId={TrackId}", trackId); ClearBuffering(); }
+                    else _logger?.LogDebug("[Cmd] PlayTrack accepted: trackId={TrackId}", trackId);
+                });
         else
             _ = _playbackService.PlayTracksAsync([trackId])
-                .ContinueWith(t => { if (t.IsFaulted) ClearBuffering(); });
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted) { _logger?.LogError(t.Exception, "[Cmd] PlayTrack FAILED: trackId={TrackId}", trackId); ClearBuffering(); }
+                    else _logger?.LogDebug("[Cmd] PlayTrack accepted: trackId={TrackId}", trackId);
+                });
     }
 
-    public void AddToQueue(string trackId) => _ = _playbackService.AddToQueueAsync(trackId);
+    public void AddToQueue(string trackId)
+    {
+        _logger?.LogInformation("[Cmd] AddToQueue: trackId={TrackId}", trackId);
+        _ = _playbackService.AddToQueueAsync(trackId).ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue FAILED: trackId={TrackId}", trackId);
+        });
+    }
 
     public void AddToQueue(IEnumerable<string> trackIds)
     {
         foreach (var trackId in trackIds)
-            _ = _playbackService.AddToQueueAsync(trackId);
+        {
+            _logger?.LogInformation("[Cmd] AddToQueue: trackId={TrackId}", trackId);
+            _ = _playbackService.AddToQueueAsync(trackId).ContinueWith(t =>
+            {
+                if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue FAILED: trackId={TrackId}", trackId);
+            });
+        }
     }
 
     public void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0)
     {
         var trackUris = items.Select(i => i.TrackId).ToList();
-        _ = _playbackService.PlayTracksAsync(trackUris, startIndex);
+        _logger?.LogInformation("[Cmd] LoadQueue: {Count} tracks, startIndex={StartIndex}, context={Context}",
+            trackUris.Count, startIndex, context.ContextUri);
+        _ = _playbackService.PlayTracksAsync(trackUris, startIndex).ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] LoadQueue FAILED: {Count} tracks", trackUris.Count);
+            else _logger?.LogDebug("[Cmd] LoadQueue accepted: {Count} tracks", trackUris.Count);
+        });
     }
 
     // ── Buffering state helpers ──
@@ -745,6 +860,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     private void SetBuffering(string? trackId)
     {
+        _logger?.LogDebug("[UI] SetBuffering: trackId={TrackId}", trackId ?? "<context>");
         // Called from UI thread (button clicks), set synchronously for immediate visual feedback
         if (_dispatcherQueue.HasThreadAccess)
         {
@@ -763,6 +879,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void ClearBuffering()
     {
+        _logger?.LogDebug("[UI] ClearBuffering");
         _dispatcherQueue.TryEnqueue(() =>
         {
             IsBuffering = false;

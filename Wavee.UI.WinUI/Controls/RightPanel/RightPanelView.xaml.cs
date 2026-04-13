@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using System.Numerics;
@@ -35,6 +36,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
 
@@ -42,7 +44,7 @@ public sealed partial class RightPanelView : UserControl
 {
     private const double MinPanelWidth = 200;
     private const double MaxPanelWidth = 500;
-    private const float AlbumArtBlurAmount = 32f;
+    private const float AlbumArtBlurAmount = 20f;
     private const float AlbumArtSaturationAmount = 0.88f;
     private const float CanvasSaturationAmount = 0.82f;
     private const int BlurredAlbumArtRenderTolerancePx = 36;
@@ -70,6 +72,7 @@ public sealed partial class RightPanelView : UserControl
     private readonly ILyricsService? _lyricsService;
     private readonly IColorService? _colorService;
     private readonly ISettingsService? _settingsService;
+    private readonly INotificationService? _notificationService;
     private bool _themeColorsSubscribed;
     private readonly List<CompositionObject> _backgroundOverlayCompositionObjects = [];
     private ContainerVisual? _backgroundOverlayContainer;
@@ -118,6 +121,7 @@ public sealed partial class RightPanelView : UserControl
     private CancellationTokenSource? _backgroundTintCts;
     private string? _backgroundTintImageUrl;
     private ExtractedColor? _backgroundTintExtractedColor;
+    private bool _suppressTabHeaderSelectionChanged;
 
     public RightPanelView()
     {
@@ -126,6 +130,7 @@ public sealed partial class RightPanelView : UserControl
         _lyricsService = Ioc.Default.GetService<ILyricsService>();
         _colorService = Ioc.Default.GetService<IColorService>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
+        _notificationService = Ioc.Default.GetService<INotificationService>();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         _detailsVm = Ioc.Default.GetService<TrackDetailsViewModel>();
         Visibility = Visibility.Collapsed;
@@ -161,13 +166,6 @@ public sealed partial class RightPanelView : UserControl
             UpdateCanvasLayout();
 
         UpdateBackgroundChrome();
-
-        if (_activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt
-            && _blurredAlbumArtImageSource != null
-            && NeedsBlurredAlbumArtRerender())
-        {
-            SetupBlurredAlbumArt();
-        }
     }
 
     private void RightPanelView_Unloaded(object sender, RoutedEventArgs e)
@@ -319,11 +317,6 @@ public sealed partial class RightPanelView : UserControl
         {
             RefreshBackgroundTint();
             UpdateBackgroundChrome();
-
-            if (_activeBackgroundMode == DetailsBackgroundMode.BlurredAlbumArt)
-            {
-                SetupBlurredAlbumArt();
-            }
         }
     }
 
@@ -638,16 +631,17 @@ public sealed partial class RightPanelView : UserControl
 
         _pendingCanvasLayoutRetry = false;
 
-        // Canvas spans the entire root; reserve the tab rail at the bottom.
+        // Canvas spans the entire root; reserve the tab rail at the top.
         var resizerW = PanelResizer.ActualWidth;
         var tabH = TabHeader.ActualHeight;
         const double padLeft = 12, padRight = 12, padBottom = 12;
+        const double topGap = 8;
 
         var lyricsW = w - resizerW - padLeft - padRight;
-        var lyricsH = h - tabH - padBottom;
+        var lyricsH = h - tabH - topGap - padBottom;
 
         NowPlayingCanvas.LyricsStartX = resizerW + padLeft;
-        NowPlayingCanvas.LyricsStartY = 0;
+        NowPlayingCanvas.LyricsStartY = tabH + topGap;
         NowPlayingCanvas.LyricsWidth = lyricsW > 0 ? lyricsW : w;
         NowPlayingCanvas.LyricsHeight = lyricsH > 0 ? lyricsH : h;
         NowPlayingCanvas.LyricsOpacity = 1;
@@ -675,6 +669,15 @@ public sealed partial class RightPanelView : UserControl
                 return;
 
             UpdateCanvasLayout();
+
+            // If layout succeeded and we're in lyrics mode, re-apply lyrics state
+            // so SetLyricsData is called with the now-correct canvas dimensions.
+            // (On first Lyrics tab open, UpdateCanvasLayout bails because the panel
+            // hasn't been measured yet — by the time this deferred callback fires the
+            // layout pass has completed, so we can now push the real dimensions into
+            // the engine and re-hand it the lyrics data.)
+            if (NowPlayingCanvas.LyricsWidth > 0 && SelectedMode == RightPanelMode.Lyrics)
+                ApplyCurrentLyricsState();
         });
     }
 
@@ -713,6 +716,19 @@ public sealed partial class RightPanelView : UserControl
         ApplyDetailsBackground(
             hasDetailsData ? _detailsVm?.CanvasUrl : null,
             hasDetailsData && _detailsVm?.HasCanvas == true);
+        UpdateDetailsCanvasSyncBadge();
+    }
+
+    private void UpdateDetailsCanvasSyncBadge()
+    {
+        if (DetailsCanvasSyncBadge == null)
+            return;
+
+        var show = SelectedMode == RightPanelMode.Details
+                   && _detailsVm?.HasData == true
+                   && _detailsVm.HasPendingCanvasUpdate;
+
+        DetailsCanvasSyncBadge.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateBackgroundChrome()
@@ -744,7 +760,7 @@ public sealed partial class RightPanelView : UserControl
         var blendColor = BlendColors(
             surfaceColor,
             tintColor,
-            ActualTheme == ElementTheme.Light ? 0.18f : 0.28f);
+            ActualTheme == ElementTheme.Light ? 0.32f : 0.44f);
         var bottomColor = Darken(
             blendColor,
             ActualTheme == ElementTheme.Light ? 0.08f : 0.22f);
@@ -774,7 +790,7 @@ public sealed partial class RightPanelView : UserControl
             Color.FromArgb(8, 0, 0, 0));
         _backgroundScrimBottomStop.Color = ResolveThemeColor(
             "RightPanelBackgroundShadowBottomColor",
-            Color.FromArgb(182, 0, 0, 0));
+            Color.FromArgb(110, 0, 0, 0));
 
         _backgroundBottomBlendTopStop.Color = Color.FromArgb(0, bottomColor.R, bottomColor.G, bottomColor.B);
         _backgroundBottomBlendMidStop.Color = Color.FromArgb(20, bottomColor.R, bottomColor.G, bottomColor.B);
@@ -793,22 +809,22 @@ public sealed partial class RightPanelView : UserControl
         if (_backgroundOverlayContainer == null)
             return;
 
-        var isDetails = SelectedMode == RightPanelMode.Details;
-        var isLyricsCanvasVisible = SelectedMode == RightPanelMode.Lyrics
-                                    && NowPlayingCanvas.Visibility == Visibility.Visible;
+        var showDetailsCanvasChrome = SelectedMode == RightPanelMode.Details
+                                      && _activeBackgroundMode == DetailsBackgroundMode.Canvas
+                                      && DetailsCanvasImage.Visibility == Visibility.Visible;
 
         if (_backgroundTintVisual != null)
-            _backgroundTintVisual.Opacity = isDetails ? 0.14f : isLyricsCanvasVisible ? 0.12f : 0.18f;
+            _backgroundTintVisual.Opacity = showDetailsCanvasChrome ? 0.10f : 0f;
         if (_backgroundHighlightVisual != null)
-            _backgroundHighlightVisual.Opacity = isDetails ? 0.76f : 0.62f;
+            _backgroundHighlightVisual.Opacity = showDetailsCanvasChrome ? 0.52f : 0f;
         if (_backgroundScrimVisual != null)
-            _backgroundScrimVisual.Opacity = isDetails ? 0.84f : 0.96f;
+            _backgroundScrimVisual.Opacity = showDetailsCanvasChrome ? 0.74f : 0f;
         if (_backgroundBottomBlendVisual != null)
-            _backgroundBottomBlendVisual.Opacity = isDetails ? 0.96f : 1.0f;
+            _backgroundBottomBlendVisual.Opacity = showDetailsCanvasChrome ? 0.88f : 0f;
         if (_backgroundTopBlendVisual != null)
-            _backgroundTopBlendVisual.Opacity = isDetails ? 0.96f : 1.0f;
+            _backgroundTopBlendVisual.Opacity = showDetailsCanvasChrome ? 0.64f : 0f;
         if (_backgroundNonDetailsDimVisual != null)
-            _backgroundNonDetailsDimVisual.Opacity = isDetails ? 0f : isLyricsCanvasVisible ? 0.16f : 0.26f;
+            _backgroundNonDetailsDimVisual.Opacity = 0f;
     }
 
     private void UpdateBackgroundMediaVisibility()
@@ -818,11 +834,10 @@ public sealed partial class RightPanelView : UserControl
 
         var hasMedia = HasResolvedBackgroundSource();
         var isDetails = SelectedMode == RightPanelMode.Details;
-        var lyricsCanvasOwnsSurface = SelectedMode == RightPanelMode.Lyrics
-                                      && NowPlayingCanvas.Visibility == Visibility.Visible;
-        var showMedia = hasMedia && !lyricsCanvasOwnsSurface;
-        var showChrome = _activeBackgroundMode != DetailsBackgroundMode.None
-                         && (isDetails || showMedia || lyricsCanvasOwnsSurface);
+        var showMedia = isDetails
+                        && _activeBackgroundMode == DetailsBackgroundMode.Canvas
+                        && hasMedia;
+        var showChrome = showMedia;
 
         DetailsCanvasImage.Visibility = showMedia ? Visibility.Visible : Visibility.Collapsed;
         BackgroundOverlayHost.Visibility = showChrome ? Visibility.Visible : Visibility.Collapsed;
@@ -833,7 +848,7 @@ public sealed partial class RightPanelView : UserControl
 
         if (_canvasMediaPlayer != null)
         {
-            if (_activeBackgroundMode == DetailsBackgroundMode.Canvas && hasMedia)
+            if (showMedia)
                 _canvasMediaPlayer.Play();
             else
                 _canvasMediaPlayer.Pause();
@@ -980,19 +995,9 @@ public sealed partial class RightPanelView : UserControl
         return _activeBackgroundMode switch
         {
             DetailsBackgroundMode.None => false,
-            DetailsBackgroundMode.BlurredAlbumArt => _blurredAlbumArtImageSource != null,
             DetailsBackgroundMode.Canvas => _canvasImageSource != null && _canvasMediaPlayer != null,
             _ => false
         };
-    }
-
-    private bool NeedsBlurredAlbumArtRerender()
-    {
-        var targetWidth = Math.Max(1, (int)RootGrid.ActualWidth / 2);
-        var targetHeight = Math.Max(1, (int)RootGrid.ActualHeight / 2);
-
-        return Math.Abs(targetWidth - _blurredAlbumArtRenderWidth) > BlurredAlbumArtRenderTolerancePx
-               || Math.Abs(targetHeight - _blurredAlbumArtRenderHeight) > BlurredAlbumArtRenderTolerancePx;
     }
 
     private string? GetBackgroundTintHex()
@@ -1021,6 +1026,7 @@ public sealed partial class RightPanelView : UserControl
             && _backgroundTintExtractedColor != null)
         {
             UpdateBackgroundChrome();
+            UpdateTabHeaderVisualState();
             return;
         }
 
@@ -1028,6 +1034,7 @@ public sealed partial class RightPanelView : UserControl
         _backgroundTintImageUrl = imageUrl;
         _backgroundTintExtractedColor = null;
         UpdateBackgroundChrome();
+        UpdateTabHeaderVisualState();
 
         if (_colorService == null)
             return;
@@ -1054,6 +1061,7 @@ public sealed partial class RightPanelView : UserControl
 
                 _backgroundTintExtractedColor = extracted;
                 UpdateBackgroundChrome();
+                UpdateTabHeaderVisualState();
             });
         }
         catch (OperationCanceledException)
@@ -1078,6 +1086,7 @@ public sealed partial class RightPanelView : UserControl
         _backgroundTintImageUrl = null;
         _backgroundTintExtractedColor = null;
         UpdateBackgroundChrome();
+        UpdateTabHeaderVisualState();
     }
 
     private void CancelBackgroundTintRefresh()
@@ -1211,6 +1220,11 @@ public sealed partial class RightPanelView : UserControl
             (byte)Math.Clamp(color.B * scale, 0, 255));
     }
 
+    private static Color WithAlpha(Color color, byte alpha)
+    {
+        return Color.FromArgb(alpha, color.R, color.G, color.B);
+    }
+
     private static bool TryParseHexColor(string? hex, out Color color)
     {
         color = Colors.Transparent;
@@ -1309,12 +1323,12 @@ public sealed partial class RightPanelView : UserControl
 
     // ── Tab header ──
 
-    private void TabButton_Click(object sender, RoutedEventArgs e)
+    private void TabHeader_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not FrameworkElement element || element.Tag is not string tag)
+        if (_suppressTabHeaderSelectionChanged || TabHeader?.SelectedItem is not SegmentedItem selectedItem)
             return;
 
-        SelectedMode = tag switch
+        SelectedMode = selectedItem.Tag switch
         {
             "Queue" => RightPanelMode.Queue,
             "Lyrics" => RightPanelMode.Lyrics,
@@ -1326,50 +1340,30 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateTabHeaderVisualState()
     {
-        if (ActiveTabPill == null)
+        if (TabHeader == null)
             return;
 
-        Grid.SetColumn(ActiveTabPill, GetTabColumn(SelectedMode));
-
-        ApplyTabButtonState(QueueTabButton, SelectedMode == RightPanelMode.Queue);
-        ApplyTabButtonState(LyricsTabButton, SelectedMode == RightPanelMode.Lyrics);
-        ApplyTabButtonState(FriendsTabButton, SelectedMode == RightPanelMode.FriendsActivity);
-        ApplyTabButtonState(DetailsTabButton, SelectedMode == RightPanelMode.Details);
-    }
-
-    private static int GetTabColumn(RightPanelMode mode)
-    {
-        return mode switch
+        var targetItem = SelectedMode switch
         {
-            RightPanelMode.Queue => 0,
-            RightPanelMode.Lyrics => 1,
-            RightPanelMode.FriendsActivity => 2,
-            RightPanelMode.Details => 3,
-            _ => 0
+            RightPanelMode.Queue => QueueTabItem,
+            RightPanelMode.Lyrics => LyricsTabItem,
+            RightPanelMode.FriendsActivity => FriendsTabItem,
+            RightPanelMode.Details => DetailsTabItem,
+            _ => QueueTabItem
         };
-    }
 
-    private void ApplyTabButtonState(Button? button, bool isActive)
-    {
-        if (button == null)
+        if (ReferenceEquals(TabHeader.SelectedItem, targetItem))
             return;
 
-        button.Foreground = new SolidColorBrush(ResolveThemeColor(
-            isActive
-                ? "RightPanelTabActiveForegroundBrush"
-                : "RightPanelTabInactiveForegroundBrush",
-            isActive
-                ? (ActualTheme == ElementTheme.Light
-                    ? Color.FromArgb(255, 8, 19, 26)
-                    : Color.FromArgb(255, 243, 247, 250))
-                : (ActualTheme == ElementTheme.Light
-                    ? Color.FromArgb(158, 49, 66, 77)
-                    : Color.FromArgb(175, 199, 211, 219))));
-        button.Opacity = isActive ? 1.0 : 0.9;
-        button.FontSize = isActive ? 13.8 : 13.3;
-        button.FontWeight = isActive
-            ? Microsoft.UI.Text.FontWeights.SemiBold
-            : Microsoft.UI.Text.FontWeights.SemiBold;
+        _suppressTabHeaderSelectionChanged = true;
+        try
+        {
+            TabHeader.SelectedItem = targetItem;
+        }
+        finally
+        {
+            _suppressTabHeaderSelectionChanged = false;
+        }
     }
 
     // ── Deferred subtree materialization (x:Load="False") ──
@@ -1574,7 +1568,186 @@ public sealed partial class RightPanelView : UserControl
         DetailsRelatedVideosSection.Visibility = _detailsVm.HasRelatedVideos
             ? Visibility.Visible : Visibility.Collapsed;
         DetailsRelatedVideosList.ItemsSource = _detailsVm.RelatedVideos;
+        UpdateDetailsCanvasSyncBadge();
 
+    }
+
+    private async void DetailsCanvasSyncBadge_Click(object sender, RoutedEventArgs e)
+        => await ReviewPendingCanvasAsync();
+
+    private async Task ReviewPendingCanvasAsync()
+    {
+        if (_detailsVm == null
+            || !_detailsVm.HasPendingCanvasUpdate
+            || XamlRoot == null)
+        {
+            return;
+        }
+
+        var result = await CanvasSyncReviewDialog.ShowAsync(
+            XamlRoot,
+            _detailsVm.CanvasUrl,
+            _detailsVm.PendingCanvasUrl);
+
+        switch (result)
+        {
+            case CanvasSyncReviewResult.UseNew:
+                await _detailsVm.AcceptPendingCanvasUpdateAsync();
+                break;
+
+            case CanvasSyncReviewResult.KeepCurrent:
+                await _detailsVm.RejectPendingCanvasUpdateAsync();
+                break;
+        }
+
+        RefreshDetailsCanvasUi();
+    }
+
+    private async Task PickManualCanvasFileAsync()
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            picker.FileTypeFilter.Add(".mp4");
+            picker.FileTypeFilter.Add(".webm");
+            picker.FileTypeFilter.Add(".mov");
+            picker.FileTypeFilter.Add(".m4v");
+            picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.VideosLibrary;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, MainWindow.Instance.WindowHandle);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file == null || _detailsVm == null)
+                return;
+
+            await _detailsVm.ImportManualCanvasFileAsync(file.Path);
+            _notificationService?.Show("Custom canvas applied.", NotificationSeverity.Success, TimeSpan.FromSeconds(3));
+            RefreshDetailsCanvasUi();
+        }
+        catch (Exception ex)
+        {
+            _notificationService?.Show(ex.Message, NotificationSeverity.Error, TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private async Task PromptForManualCanvasUrlAsync()
+    {
+        if (XamlRoot == null || _detailsVm == null)
+            return;
+
+        var textBox = new TextBox
+        {
+            PlaceholderText = "https://example.com/canvas.mp4",
+            Text = _detailsVm.IsManualCanvasOverride
+                && Uri.TryCreate(_detailsVm.CanvasUrl, UriKind.Absolute, out var existingUri)
+                && !existingUri.IsFile
+                    ? existingUri.AbsoluteUri
+                    : string.Empty,
+            MinWidth = 420,
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Set canvas URL",
+            PrimaryButtonText = "Apply",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Paste a direct video URL to use as the Details canvas for this track.",
+                        TextWrapping = TextWrapping.WrapWholeWords,
+                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    },
+                    textBox
+                }
+            }
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            await _detailsVm.SetManualCanvasUrlAsync(textBox.Text);
+            _notificationService?.Show("Custom canvas applied.", NotificationSeverity.Success, TimeSpan.FromSeconds(3));
+            RefreshDetailsCanvasUi();
+        }
+        catch (Exception ex)
+        {
+            _notificationService?.Show(ex.Message, NotificationSeverity.Error, TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private async Task ResetCanvasToUpstreamAsync()
+    {
+        if (_detailsVm == null)
+            return;
+
+        try
+        {
+            await _detailsVm.ResetCanvasToUpstreamAsync();
+            _notificationService?.Show("Canvas reset to Spotify.", NotificationSeverity.Success, TimeSpan.FromSeconds(3));
+            RefreshDetailsCanvasUi();
+        }
+        catch (Exception ex)
+        {
+            _notificationService?.Show(ex.Message, NotificationSeverity.Error, TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private void RefreshDetailsCanvasUi()
+    {
+        UpdatePanelBackgroundState();
+        if (SelectedMode == RightPanelMode.Details)
+            ApplyDetailsState();
+    }
+
+    private void AddDetailsCanvasMenuItems(MenuFlyout menu)
+    {
+        if (_detailsVm?.HasData != true)
+            return;
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+
+        var canvasSubMenu = new MenuFlyoutSubItem
+        {
+            Text = _detailsVm.IsManualCanvasOverride ? "Custom canvas" : "Canvas",
+            Icon = new FontIcon { Glyph = "\uE70F" }
+        };
+
+        var chooseFileItem = new MenuFlyoutItem { Text = "Choose file..." };
+        chooseFileItem.Click += async (_, _) => await PickManualCanvasFileAsync();
+        canvasSubMenu.Items.Add(chooseFileItem);
+
+        var setUrlItem = new MenuFlyoutItem { Text = "Set URL..." };
+        setUrlItem.Click += async (_, _) => await PromptForManualCanvasUrlAsync();
+        canvasSubMenu.Items.Add(setUrlItem);
+
+        if (_detailsVm.IsManualCanvasOverride)
+        {
+            canvasSubMenu.Items.Add(new MenuFlyoutSeparator());
+
+            var resetItem = new MenuFlyoutItem { Text = "Reset to Spotify" };
+            resetItem.Click += async (_, _) => await ResetCanvasToUpstreamAsync();
+            canvasSubMenu.Items.Add(resetItem);
+        }
+
+        if (_detailsVm.HasPendingCanvasUpdate)
+        {
+            canvasSubMenu.Items.Add(new MenuFlyoutSeparator());
+
+            var reviewItem = new MenuFlyoutItem { Text = "Review Spotify update..." };
+            reviewItem.Click += async (_, _) => await ReviewPendingCanvasAsync();
+            canvasSubMenu.Items.Add(reviewItem);
+        }
+
+        menu.Items.Add(canvasSubMenu);
     }
 
     private void DetailsLyricsSnippet_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
@@ -1623,6 +1796,7 @@ public sealed partial class RightPanelView : UserControl
     private const float DetailsCursorWidth = 2.5f;
     private const float DetailsCursorOffsetX = 5f;
     private const float DetailsCursorTopInset = 3f;
+    private const float MinVisibleCursorRegionWidth = 0.75f;
 
     private void SetupDetailsLyricsSnippet()
     {
@@ -1666,7 +1840,7 @@ public sealed partial class RightPanelView : UserControl
     private void UpdateCanvasLyricsVisibility()
     {
         var show = SelectedMode == RightPanelMode.Details
-                   && _activeBackgroundMode != DetailsBackgroundMode.None
+                   && _activeBackgroundMode == DetailsBackgroundMode.Canvas
                    && _lyricsVm?.HasLyrics == true;
         _canvasLyricsActive = show;
         CanvasLyricsOverlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
@@ -1867,9 +2041,9 @@ public sealed partial class RightPanelView : UserControl
             ActiveStartIndex: activeStartIndex,
             ActiveVisibleCharCount: activeVisibleCharCount,
             CursorCharIndex: cursorCharIndex,
-            ShowCursor: activeIndex >= 0 || heldIndex >= 0,
+            ShowCursor: activeIndex >= 0,
             CursorAdvance: cursorAdvance,
-            CursorOpacity: GetCursorBlinkOpacity(posMs),
+            CursorOpacity: activeIndex >= 0 ? GetCursorBlinkOpacity(posMs) : 0f,
             PastAlpha: PastLyricAlpha,
             HeldAlpha: HeldLyricAlpha,
             ActiveAlpha: (byte)Math.Round(ActiveLyricAlpha * GetActiveSyllableIntensity(
@@ -2086,7 +2260,14 @@ public sealed partial class RightPanelView : UserControl
             return;
         }
 
-        var region = _detailsLyricsCharacterRegions[presentation.CursorCharIndex];
+        var resolvedIndex = ResolveVisibleCursorRegionIndex(presentation.CursorCharIndex);
+        if (resolvedIndex < 0)
+        {
+            _detailsLyricsCursorVisual.Opacity = 0f;
+            return;
+        }
+
+        var region = _detailsLyricsCharacterRegions[resolvedIndex];
         var bounds = region.LayoutBounds;
         var cursorAdvance = Math.Clamp(presentation.CursorAdvance, 0f, 1f);
         _detailsLyricsCursorVisual.Offset = new Vector3(
@@ -2097,6 +2278,52 @@ public sealed partial class RightPanelView : UserControl
             DetailsCursorWidth,
             (float)Math.Max(14f, bounds.Height - (DetailsCursorTopInset * 2)));
         _detailsLyricsCursorVisual.Opacity = presentation.CursorOpacity;
+    }
+
+    private int ResolveVisibleCursorRegionIndex(int requestedIndex)
+    {
+        if (_detailsLyricsCharacterRegions == null
+            || string.IsNullOrEmpty(_detailsLyricsLayoutText)
+            || requestedIndex < 0
+            || requestedIndex >= _detailsLyricsCharacterRegions.Length)
+        {
+            return -1;
+        }
+
+        if (IsUsableCursorRegion(requestedIndex))
+            return requestedIndex;
+
+        for (var i = requestedIndex - 1; i >= 0; i--)
+        {
+            if (IsUsableCursorRegion(i))
+                return i;
+        }
+
+        for (var i = requestedIndex + 1; i < _detailsLyricsCharacterRegions.Length; i++)
+        {
+            if (IsUsableCursorRegion(i))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private bool IsUsableCursorRegion(int index)
+    {
+        if (_detailsLyricsCharacterRegions == null
+            || string.IsNullOrEmpty(_detailsLyricsLayoutText)
+            || index < 0
+            || index >= _detailsLyricsCharacterRegions.Length
+            || index >= _detailsLyricsLayoutText.Length)
+        {
+            return false;
+        }
+
+        if (char.IsWhiteSpace(_detailsLyricsLayoutText[index]))
+            return false;
+
+        var bounds = _detailsLyricsCharacterRegions[index].LayoutBounds;
+        return bounds.Width >= MinVisibleCursorRegionWidth && bounds.Height > 0;
     }
 
     private T TrackDetailsLyricsCompositionObject<T>(T compositionObject) where T : CompositionObject
@@ -2294,6 +2521,7 @@ public sealed partial class RightPanelView : UserControl
         };
 
         var menu = Track.TrackContextMenu.Create(adapter, options);
+        AddDetailsCanvasMenuItems(menu);
         menu.ShowAt((Microsoft.UI.Xaml.FrameworkElement)sender);
     }
 
@@ -2349,14 +2577,11 @@ public sealed partial class RightPanelView : UserControl
 
     private void ApplyDetailsBackground(string? canvasUrl, bool hasCanvas)
     {
-        var mode = GetSettingsBackgroundMode();
-
-        // The Details tab should always show a visual background:
-        // prefer canvas when available, otherwise fall back to blurred album art.
-        if (SelectedMode == RightPanelMode.Details)
-            mode = hasCanvas ? DetailsBackgroundMode.Canvas : DetailsBackgroundMode.BlurredAlbumArt;
-        else if (mode == DetailsBackgroundMode.Canvas)
-            mode = DetailsBackgroundMode.BlurredAlbumArt;
+        // Right panel background is intentionally simple:
+        // only show canvas media on the Details tab when a canvas source exists.
+        var mode = SelectedMode == RightPanelMode.Details && hasCanvas
+            ? DetailsBackgroundMode.Canvas
+            : DetailsBackgroundMode.None;
 
         _activeBackgroundMode = mode;
         UpdateCanvasLyricsVisibility();
@@ -2366,11 +2591,6 @@ public sealed partial class RightPanelView : UserControl
             case DetailsBackgroundMode.None:
                 TeardownCanvasBackground();
                 TeardownBlurredAlbumArt();
-                break;
-
-            case DetailsBackgroundMode.BlurredAlbumArt:
-                TeardownCanvasBackground();
-                SetupBlurredAlbumArt();
                 break;
 
             case DetailsBackgroundMode.Canvas:
@@ -2400,8 +2620,7 @@ public sealed partial class RightPanelView : UserControl
         }
 
         if (albumArt == _currentAlbumArtUrl
-            && _blurredAlbumArtImageSource != null
-            && !NeedsBlurredAlbumArtRerender())
+            && _blurredAlbumArtImageSource != null)
         {
             UpdateBackgroundMediaVisibility();
             return;

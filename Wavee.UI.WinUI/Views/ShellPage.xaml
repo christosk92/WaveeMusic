@@ -55,12 +55,15 @@
             CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}"
             IsOnHomePage="{x:Bind ViewModel.IsOnHomePage, Mode=OneWay}"
             IsOnProfilePage="{x:Bind ViewModel.IsOnProfilePage, Mode=OneWay}"
+            SearchSuggestionsLoading="{x:Bind ViewModel.IsSearchSuggestionsLoading, Mode=OneWay}"
+            SearchSuggestionsErrorMessage="{x:Bind ViewModel.SearchSuggestionErrorMessage, Mode=OneWay}"
             BackRequested="NavToolbar_BackRequested"
             ForwardRequested="NavToolbar_ForwardRequested"
             HomeRequested="NavToolbar_HomeRequested"
             SearchQuerySubmitted="NavToolbar_SearchQuerySubmitted"
             SearchTextChanged="NavToolbar_SearchTextChanged"
             SearchSuggestionChosen="NavToolbar_SearchSuggestionChosen"
+            SearchRetryRequested="NavToolbar_SearchRetryRequested"
             SearchActionButtonClicked="NavToolbar_SearchActionButtonClicked"
             SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"/>
 

@@ -108,6 +108,14 @@ internal sealed class AudioHostService : IAsyncDisposable
             SendPreviewVisualizationFrameAsync,
             _logger);
 
+        // Pre-seed volume so the first state snapshot carries a real value
+        if (config?.InitialVolumePercent is > 0 and <= 100)
+        {
+            var initialVol = config.InitialVolumePercent / 100f;
+            _ = _engine.SetVolumeAsync(initialVol);
+            _logger.LogInformation("AudioEngine pre-seeded with volume={Vol}%", config.InitialVolumePercent);
+        }
+
         _logger.LogInformation("AudioEngine created");
     }
 
@@ -418,6 +426,7 @@ internal sealed class AudioHostService : IAsyncDisposable
             CanSeek = true,
             Changes = changes,
             Timestamp = state.Timestamp,
+            Volume = state.Volume > 0f ? (uint)Math.Round(state.Volume * 100) : 0,
         };
     }
 

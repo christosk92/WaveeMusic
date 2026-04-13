@@ -140,6 +140,27 @@
                 </Grid>
             </StackPanel>
 
+            <StackPanel x:Name="ErrorPanel"
+                        Grid.Row="1"
+                        Padding="16,14,16,16"
+                        Spacing="10"
+                        Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon Glyph="&#xE783;"
+                              FontSize="16"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ErrorMessageText"
+                               TextWrapping="WrapWholeWords"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                               MaxLines="3"/>
+                </StackPanel>
+                <Button x:Name="RetryButton"
+                        Content="Retry"
+                        HorizontalAlignment="Left"
+                        Click="RetryButton_Click"/>
+            </StackPanel>
+
             <!-- Results list (hidden during shimmer) -->
             <ListView x:Name="ResultsList" Grid.Row="1"
                       MaxHeight="420"

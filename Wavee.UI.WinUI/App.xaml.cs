@@ -16,6 +16,8 @@ namespace Wavee.UI.WinUI;
 public partial class App : Application
 {
     private static IHost? _host;
+    private static readonly SemaphoreSlim _shutdownGate = new(1, 1);
+    private static Task? _shutdownTask;
 
     public static AppModel AppModel { get; private set; } = null!;
 
@@ -137,5 +139,47 @@ public partial class App : Application
                 // Best-effort; if the GC hint fails for any reason we just keep running.
             }
         });
+    }
+
+    internal static Task ShutdownHostAsync()
+    {
+        lock (_shutdownGate)
+        {
+            _shutdownTask ??= ShutdownHostCoreAsync();
+            return _shutdownTask;
+        }
+    }
+
+    private static async Task ShutdownHostCoreAsync()
+    {
+        await _shutdownGate.WaitAsync();
+        try
+        {
+            var host = Interlocked.Exchange(ref _host, null);
+            if (host == null)
+                return;
+
+            try
+            {
+                await host.StopAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex)
+            {
+                LogUnhandledException("HostStopAsync", ex);
+            }
+
+            try
+            {
+                host.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogUnhandledException("HostDispose", ex);
+            }
+        }
+        finally
+        {
+            _shutdownGate.Release();
+        }
     }
 }

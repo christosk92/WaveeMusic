@@ -5,7 +5,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
+    xmlns:search="using:Wavee.UI.WinUI.Controls.Search"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     NavigationCacheMode="Disabled"
@@ -117,76 +122,54 @@
 
             <StackPanel Spacing="10"
                         Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                <Border x:Name="TopResultCard"
-                        Margin="0,0,0,10"
-                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                        BorderThickness="0"
-                        CornerRadius="26"
-                        Padding="22"
-                        Tapped="TopResult_Tapped"
-                        PointerEntered="InteractiveCard_PointerEntered"
-                        PointerExited="InteractiveCard_PointerExited"
-                        Visibility="{x:Bind ViewModel.ShowHeroCard, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Grid ColumnSpacing="20">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="104"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+                <search:SearchResultHeroCard x:Name="TopResultCard"
+                                            
+                                             Margin="0,0,0,10"
+                                             Item="{x:Bind ViewModel.TopResult, Mode=OneWay}"
+                                             Tapped="TopResult_Tapped"
+                                             Visibility="{x:Bind ViewModel.ShowHeroCard, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                        <Grid Width="104" Height="104">
-                            <Border Background="{ThemeResource CardBackgroundFillColorTertiaryBrush}"
-                                    CornerRadius="20"/>
-                            <FontIcon Glyph="{x:Bind ViewModel.TopResult.GetPlaceholderGlyph(), Mode=OneWay}"
-                                      FontSize="28"
-                                      Opacity="0.4"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"/>
-                            <Image Source="{x:Bind ViewModel.TopResult.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=160}"
-                                   Stretch="UniformToFill"
-                                   Width="104"
-                                   Height="104"/>
-                        </Grid>
-
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="10">
-                            <Border Background="{ThemeResource CardBackgroundFillColorTertiaryBrush}"
-                                    CornerRadius="12"
-                                    Padding="9,4"
-                                    HorizontalAlignment="Left">
-                                <TextBlock Text="{x:Bind ViewModel.TopResult.GetTypeTag(), Mode=OneWay}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Border>
-
-                            <TextBlock Text="{x:Bind ViewModel.TopResult.Name, Mode=OneWay}"
-                                       FontSize="38"
-                                       FontWeight="Bold"
-                                       MaxLines="1"
-                                       TextTrimming="CharacterEllipsis"/>
-
-                            <TextBlock Text="{x:Bind ViewModel.TopResult.GetSubtitle(), Mode=OneWay}"
-                                       FontSize="17"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       MaxLines="1"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-
-                        <Border Grid.Column="2"
-                                Width="64"
-                                Height="64"
-                                CornerRadius="32"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                VerticalAlignment="Center"
-                                IsHitTestVisible="False">
-                            <FontIcon Glyph="{x:Bind ViewModel.TopResult.GetActionGlyph(), Mode=OneWay}"
-                                      FontSize="22"
-                                      Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"/>
-                        </Border>
-                    </Grid>
-                </Border>
+                <!--
+                    Horizontal adaptive rows for SearchSectionEntity groups
+                    (e.g. "Featuring JJ Lin" playlists, "Music videos" video tracks).
+                    Reuses the HomePage pattern: ContentCard inside a SingleRowLayout
+                    ItemsRepeater with MinItemWidth=160, MaxItemWidth=200, Spacing=12.
+                    Only visible on the "All" filter — specific filters show section
+                    items inline in the flat list instead.
+                -->
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}"
+                               Margin="0,8,0,0"
+                               Visibility="{x:Bind ViewModel.ShowSections, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="24"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SearchSectionViewModel">
+                            <StackPanel>
+                                <TextBlock Text="{x:Bind Title}"
+                                           Style="{StaticResource SubtitleTextBlockStyle}"
+                                           FontWeight="Bold"
+                                           Margin="0,0,0,12"/>
+                                <ItemsRepeater ItemsSource="{x:Bind Items}">
+                                    <ItemsRepeater.Layout>
+                                        <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="pathfinder:SearchResultItem">
+                                            <cards:ContentCard
+                                                ImageUrl="{x:Bind ImageUrl}"
+                                                Title="{x:Bind Name}"
+                                                Subtitle="{x:Bind DisplaySubtitle}"
+                                                IsCircularImage="False"
+                                                NavigationUri="{x:Bind Uri}"
+                                                NavigationTitle="{x:Bind Name}"/>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
 
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.VisibleResults, Mode=OneWay}"
                                Visibility="{x:Bind ViewModel.HasVisibleResults, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -195,96 +178,17 @@
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="pathfinder:SearchResultItem">
-                            <Border x:Name="ResultRowCard"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    CornerRadius="18"
-                                    Padding="10,8"
-                                    Tag="{x:Bind}"
-                                    Tapped="ResultRow_Tapped"
-                                    PointerEntered="InteractiveCard_PointerEntered"
-                                    PointerExited="InteractiveCard_PointerExited">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="52"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="36"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Grid Width="52" Height="52">
-                                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                                CornerRadius="14"/>
-                                        <FontIcon Glyph="{x:Bind GetPlaceholderGlyph(), Mode=OneWay}"
-                                                  FontSize="17"
-                                                  Opacity="0.32"
-                                                  HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"/>
-                                        <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=64}"
-                                               Stretch="UniformToFill"
-                                               Width="52"
-                                               Height="52"/>
-                                    </Grid>
-
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                        <TextBlock Text="{x:Bind Name}"
-                                                   FontSize="15"
-                                                   FontWeight="SemiBold"
-                                                   MaxLines="1"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{x:Bind GetSubtitle(), Mode=OneWay}"
-                                                   FontSize="12"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                   MaxLines="1"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-
-                                    <Border Grid.Column="2"
-                                            Background="{ThemeResource CardBackgroundFillColorTertiaryBrush}"
-                                            CornerRadius="12"
-                                            Padding="9,4"
-                                            VerticalAlignment="Center"
-                                            Margin="12,0,0,0"
-                                            IsHitTestVisible="False">
-                                        <TextBlock Text="{x:Bind GetTypeTag(), Mode=OneWay}"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                    </Border>
-
-                                    <Border Grid.Column="3"
-                                            Width="28"
-                                            Height="28"
-                                            CornerRadius="14"
-                                            Background="Transparent"
-                                            VerticalAlignment="Center"
-                                            HorizontalAlignment="Right"
-                                            Margin="12,0,0,0"
-                                            IsHitTestVisible="False">
-                                        <FontIcon Glyph="{x:Bind GetActionGlyph(), Mode=OneWay}"
-                                                  FontSize="16"
-                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                  HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"/>
-                                    </Border>
-                                </Grid>
-                            </Border>
+                            <search:SearchResultRowCard Item="{x:Bind}" Tapped="ResultRow_Tapped"/>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
 
-                <StackPanel
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="12"
+                <controls:ErrorStateView
                     Margin="0,40,0,0"
-                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <FontIcon Glyph="&#xE783;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                               HorizontalAlignment="Center"
-                               Style="{StaticResource BodyTextBlockStyle}"
-                               Opacity="0.5"/>
-                </StackPanel>
+                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Title="{x:Bind ViewModel.ErrorTitle, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                    RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 
                 <StackPanel
                     HorizontalAlignment="Center"

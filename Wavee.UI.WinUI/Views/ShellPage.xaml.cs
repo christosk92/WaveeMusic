@@ -1,25 +1,26 @@
-using System;
-using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Windows.Foundation;
-using Windows.Graphics;
-using Windows.System;
+using System;
+using System.ComponentModel;
+using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Helpers.Navigation;
-using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.DragDrop;
-using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
-using CommunityToolkit.Mvvm.Messaging;
+using Wavee.UI.WinUI.ViewModels;
+using Windows.Foundation;
+using Windows.Graphics;
+using Windows.System;
+using Windows.UI.Popups;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -191,9 +192,10 @@ public sealed partial class ShellPage : Page
         if (notificationService != null)
             await notificationService.InvokeActionAsync();
     }
-
-    private void ShellPage_Loaded(object sender, RoutedEventArgs e)
+    private  void ShellPage_Loaded(object sender, RoutedEventArgs e)
     {
+ 
+
         // Only open home tab if no tabs exist (first launch)
         if (ShellViewModel.TabInstances.Count == 0)
         {
@@ -362,6 +364,11 @@ public sealed partial class ShellPage : Page
     private void NavToolbar_SearchSuggestionChosen(NavigationToolbar sender, object item)
     {
         ViewModel.OnSuggestionChosen(item);
+    }
+
+    private void NavToolbar_SearchRetryRequested(NavigationToolbar sender, RoutedEventArgs args)
+    {
+        ViewModel.RetrySearchSuggestions();
     }
 
     private void NavToolbar_SearchActionButtonClicked(NavigationToolbar sender, Data.Contracts.SearchSuggestionItem item)

@@ -48,6 +48,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private string? _username;
     private byte[]? _storedCredential;
     private string? _deviceId;
+    private int _initialVolumePercent;
 
     // ── Resilience configuration ──
     private const int MaxRestartAttempts = 5;
@@ -218,12 +219,14 @@ public sealed class AudioProcessManager : IAsyncDisposable
     /// </summary>
     public async Task<AudioPipelineProxy> StartAsync(
         string username, byte[] storedCredential, string deviceId,
+        int initialVolumePercent = 0,
         CancellationToken ct = default)
     {
         // Cache config for auto-restart (credentials no longer sent to AudioHost)
         _username = username;
         _storedCredential = storedCredential;
         _deviceId = deviceId;
+        _initialVolumePercent = initialVolumePercent;
         _restartCount = 0;
 
         return await LaunchAndConnectAsync(ct);
@@ -307,7 +310,8 @@ public sealed class AudioProcessManager : IAsyncDisposable
         _proxy.PongReceived += () => _lastPongTimestamp = Stopwatch.GetTimestamp();
 
         // Handshake
-        var success = await _proxy.ConfigureAsync(_deviceId!, normalizationEnabled: true, ct: ct);
+        var success = await _proxy.ConfigureAsync(_deviceId!, normalizationEnabled: true,
+            initialVolumePercent: _initialVolumePercent, ct: ct);
         if (!success)
         {
             SetState(AudioProcessState.Failed, "Audio engine handshake failed");

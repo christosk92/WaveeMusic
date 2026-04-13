@@ -85,6 +85,16 @@ public interface IMetadataDatabase : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Bulk-reads cached extension data for many URIs in one connection.
+    /// Includes zero-length blobs (used as a "known absent" negative cache marker).
+    /// Omits URIs that are not present or expired.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, byte[]>> GetExtensionsBulkAsync(
+        IReadOnlyList<string> entityUris,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the etag for cached extension data (for conditional requests).
     /// Returns etag even if data is expired.
     /// </summary>
@@ -343,6 +353,31 @@ public interface IMetadataDatabase : IAsyncDisposable
 
     #endregion
 
+    #region Media Override Operations
+
+    /// <summary>
+    /// Gets the local override/sync state for a media asset.
+    /// </summary>
+    Task<MediaOverrideEntry?> GetMediaOverrideAsync(
+        MediaOverrideAssetType assetType,
+        string entityKey,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Upserts the local override/sync state for a media asset.
+    /// </summary>
+    Task SetMediaOverrideAsync(MediaOverrideEntry entry, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes the local override/sync state for a media asset.
+    /// </summary>
+    Task DeleteMediaOverrideAsync(
+        MediaOverrideAssetType assetType,
+        string entityKey,
+        CancellationToken ct = default);
+
+    #endregion
+
     #region Library Outbox Operations
 
     /// <summary>
@@ -373,6 +408,43 @@ public interface IMetadataDatabase : IAsyncDisposable
 /// Outbox operation type.
 /// </summary>
 public enum LibraryOutboxOperation { Save = 0, Remove = 1 }
+
+/// <summary>
+/// Media asset categories that can be locally overridden and synced.
+/// </summary>
+public enum MediaOverrideAssetType
+{
+    AlbumArt = 1,
+    ArtistImage = 2,
+    ArtistHeroImage = 3,
+    DetailsCanvas = 4,
+}
+
+/// <summary>
+/// Origin of the currently effective local asset snapshot.
+/// </summary>
+public enum MediaOverrideSource
+{
+    None = 0,
+    UpstreamSnapshot = 1,
+    ManualOverride = 2,
+}
+
+/// <summary>
+/// Persisted local state for a media override and its upstream review lifecycle.
+/// </summary>
+public sealed record MediaOverrideEntry
+{
+    public MediaOverrideAssetType AssetType { get; init; }
+    public required string EntityKey { get; init; }
+    public string? EffectiveAssetUrl { get; init; }
+    public MediaOverrideSource EffectiveSource { get; init; }
+    public string? LastSeenUpstreamUrl { get; init; }
+    public string? PendingAssetUrl { get; init; }
+    public string? LastReviewedUpstreamUrl { get; init; }
+    public long CreatedAt { get; init; }
+    public long UpdatedAt { get; init; }
+}
 
 /// <summary>
 /// A pending library operation in the outbox.

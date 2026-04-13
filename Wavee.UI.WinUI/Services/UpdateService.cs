@@ -139,6 +139,21 @@ public sealed class UpdateService : IUpdateService
             request.Headers.UserAgent.ParseAdd($"Wavee/{CurrentVersion}");
 
             var response = await client.SendAsync(request, ct);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // GitHub returns 404 here when the repo has no published releases yet.
+                // Treat that as "no update available" instead of surfacing a startup error.
+                IsUpdateAvailable = false;
+                LatestVersion = null;
+                Changelog = null;
+                ReleaseUrl = null;
+                Status = UpdateStatus.UpToDate;
+                LastChecked = DateTimeOffset.UtcNow;
+                _logger?.LogDebug("Update check skipped because no GitHub releases are published yet");
+                return;
+            }
+
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(ct);

@@ -19,6 +19,7 @@ using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
 using Wavee.UI.WinUI.DragDrop;
@@ -830,6 +831,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private List<SearchSuggestionItem>? _searchSuggestions;
 
+    [ObservableProperty]
+    private bool _isSearchSuggestionsLoading;
+
+    [ObservableProperty]
+    private string? _searchSuggestionErrorMessage;
+
     private sealed record CachedSearchSuggestions(List<SearchSuggestionItem> Items, DateTimeOffset CachedAt);
 
     public void Search(string query)
@@ -853,6 +860,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             if (SelectedTabItem?.ContentFrame?.Content is SearchPage searchPage
                 && !string.IsNullOrWhiteSpace(normalizedText))
             {
+                ClearSearchSuggestionState();
                 await _searchDebouncer.DebounceAsync(async _ =>
                 {
                     await searchPage.ViewModel.LoadAsync(normalizedText);
@@ -864,26 +872,38 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             {
                 // Empty → show recent searches immediately (no debounce)
                 _searchDebouncer.Cancel();
+                SearchSuggestionErrorMessage = null;
 
                 if (TryGetCachedRecentSearches(out var cachedRecents, out var recentCacheIsFresh))
                 {
                     SearchSuggestions = cachedRecents;
+                    IsSearchSuggestionsLoading = false;
                     if (recentCacheIsFresh)
                         return;
 
-                    _ = RefreshRecentSearchesAsync(normalizedText);
+                    _ = RefreshRecentSearchesSafeAsync(normalizedText);
                     return;
                 }
 
+                SearchSuggestions = null;
+                IsSearchSuggestionsLoading = true;
                 await RefreshRecentSearchesAsync(normalizedText);
             }
             else
             {
+                SearchSuggestionErrorMessage = null;
+
                 if (TryGetCachedQuerySuggestions(normalizedText, out var cachedSuggestions, out var queryCacheIsFresh))
                 {
                     SearchSuggestions = cachedSuggestions;
+                    IsSearchSuggestionsLoading = false;
                     if (queryCacheIsFresh)
                         return;
+                }
+                else
+                {
+                    SearchSuggestions = null;
+                    IsSearchSuggestionsLoading = true;
                 }
 
                 // Debounce 300ms before calling API
@@ -893,11 +913,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 });
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogDebug("[Shell] Search suggestion query cancelled for \"{Query}\"", normalizedText);
+        }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to fetch search suggestions");
+            ApplySearchSuggestionFailure(normalizedText, ex);
         }
+    }
+
+    public void RetrySearchSuggestions()
+    {
+        OnSearchTextChanged(_activeSearchText);
     }
 
     public void OnSuggestionChosen(object? item)
@@ -1040,7 +1068,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _recentSearchesCache = new CachedSearchSuggestions(CloneSuggestions(recents), DateTimeOffset.UtcNow);
 
         if (string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+        {
+            SearchSuggestionErrorMessage = null;
+            IsSearchSuggestionsLoading = false;
             SearchSuggestions = CloneSuggestions(recents);
+        }
     }
 
     private async Task RefreshQuerySuggestionsAsync(string querySnapshot, CancellationToken ct)
@@ -1049,7 +1081,26 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         StoreQuerySuggestionCache(querySnapshot, suggestions);
 
         if (string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+        {
+            SearchSuggestionErrorMessage = null;
+            IsSearchSuggestionsLoading = false;
             SearchSuggestions = CloneSuggestions(suggestions);
+        }
+    }
+
+    private async Task RefreshRecentSearchesSafeAsync(string querySnapshot)
+    {
+        try
+        {
+            await RefreshRecentSearchesAsync(querySnapshot);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ApplySearchSuggestionFailure(querySnapshot, ex);
+        }
     }
 
     private void StoreQuerySuggestionCache(string query, List<SearchSuggestionItem> suggestions)
@@ -1070,6 +1121,41 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void InvalidateRecentSearchesCache()
     {
         _recentSearchesCache = null;
+    }
+
+    private void ClearSearchSuggestionState()
+    {
+        _searchDebouncer.Cancel();
+        SearchSuggestionErrorMessage = null;
+        IsSearchSuggestionsLoading = false;
+        SearchSuggestions = null;
+    }
+
+    private void ApplySearchSuggestionFailure(string querySnapshot, Exception ex)
+    {
+        if (!string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+            return;
+
+        _logger?.LogWarning(ex, "Failed to fetch search suggestions");
+        IsSearchSuggestionsLoading = false;
+
+        if (SearchSuggestions is { Count: > 0 } current
+            && DoSuggestionsMatchQuery(current, querySnapshot))
+        {
+            return;
+        }
+
+        SearchSuggestions = null;
+        SearchSuggestionErrorMessage = ErrorMapper.ToUserMessage(ex);
+    }
+
+    private static bool DoSuggestionsMatchQuery(IReadOnlyList<SearchSuggestionItem> items, string queryText)
+    {
+        if (string.IsNullOrWhiteSpace(queryText))
+            return items.All(item => string.IsNullOrWhiteSpace(item.QueryText));
+
+        return items.All(item =>
+            string.Equals(item.QueryText, queryText, StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<SearchSuggestionItem> CloneSuggestions(IEnumerable<SearchSuggestionItem> items)

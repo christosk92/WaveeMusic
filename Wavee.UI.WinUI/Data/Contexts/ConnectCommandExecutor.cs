@@ -96,32 +96,42 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         {
             if (_localEngine != null)
             {
-                _logger?.LogInformation("Routing {Endpoint} to local engine (target={Target})", endpoint, target ?? "none");
+                _logger?.LogInformation("[Executor] {Endpoint}: routing LOCAL (target={Target}, self={Self})",
+                    endpoint, target ?? "<none>", selfId);
 
                 // For play commands: prefer the typed PlayCommand over lossy dict deserialization
                 if (endpoint == "play" && typedPlayCommand != null)
                 {
                     try
                     {
-                        _logger?.LogInformation("Routing play to local AudioPipeline");
+                        _logger?.LogDebug("[Executor] play → typed PlayCommand: context={Context}, track={Track}, index={Index}",
+                            typedPlayCommand.ContextUri ?? "<none>", typedPlayCommand.TrackUri ?? "<none>", typedPlayCommand.SkipToIndex);
                         await Task.Run(async () => await _localEngine.PlayAsync(typedPlayCommand, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+                        _logger?.LogInformation("[Executor] play OK (local engine accepted)");
                         return PlaybackResult.Success();
                     }
                     catch (Exception ex)
                     {
-                        _logger?.LogError(ex, "Local engine failed for play");
+                        _logger?.LogError(ex, "[Executor] play FAILED (local engine threw)");
                         return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
                     }
                 }
 
-                return await RouteToLocalEngineAsync(_localEngine, endpoint, data, ct).ConfigureAwait(false);
+                var localResult = await RouteToLocalEngineAsync(_localEngine, endpoint, data, ct).ConfigureAwait(false);
+                if (localResult.IsSuccess)
+                    _logger?.LogInformation("[Executor] {Endpoint} OK (local engine accepted)", endpoint);
+                else
+                    _logger?.LogWarning("[Executor] {Endpoint} FAILED (local engine): {Error}", endpoint, localResult.ErrorMessage);
+                return localResult;
             }
 
+            _logger?.LogWarning("[Executor] {Endpoint}: no local engine and no active device — command dropped!", endpoint);
             return PlaybackResult.Failure(PlaybackErrorKind.DeviceUnavailable,
                 "No active device and no local playback engine available.");
         }
 
         // Remote: always use dict for JSON serialization
+        _logger?.LogInformation("[Executor] {Endpoint}: routing REMOTE → device={Target}", endpoint, target);
         var waitForAck = ShouldWaitForAck(endpoint);
         var ackTimeout = GetAckTimeout(endpoint);
         var result = await _client.SendCommandAsync(
@@ -132,8 +142,10 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             ackTimeout: ackTimeout,
             ct: ct).ConfigureAwait(false);
 
-        if (!waitForAck)
-            _logger?.LogDebug("Remote command {Endpoint} accepted via HTTP (ack wait bypassed)", endpoint);
+        if (result.IsSuccess)
+            _logger?.LogInformation("[Executor] {Endpoint} OK (remote, waitAck={WaitAck})", endpoint, waitForAck);
+        else
+            _logger?.LogWarning("[Executor] {Endpoint} FAILED (remote, waitAck={WaitAck}): {Error}", endpoint, waitForAck, result.ErrorMessage);
 
         return ToPlaybackResult(result);
     }
@@ -309,6 +321,73 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             switch (endpoint)
             {
                 case "resume":
+                    // If the in-memory queue is unloaded (e.g. fresh app start: AudioHost has not
+                    // started playing yet but PlaybackOrchestrator.PlaybackQueue is empty), seed
+                    // the queue from cluster state so that skip-next/prev work correctly.
+                    if (engine.CurrentState.CurrentIndex < 0)
+                    {
+                        var clusterState = _session.PlaybackState?.CurrentState;
+                        var seedContext  = clusterState?.ContextUri;
+                        var seedTrack    = clusterState?.Track?.Uri;
+                        var seedUid      = clusterState?.Track?.Uid;
+
+                        // Prefer AudioHost's reported position (warm-start), else cluster position
+                        var enginePos = engine.CurrentState.PositionMs;
+                        var seedPos   = enginePos > 0 ? enginePos : (clusterState?.PositionMs ?? 0);
+
+                        if (!string.IsNullOrEmpty(seedContext) && !string.IsNullOrEmpty(seedTrack))
+                        {
+                            _logger?.LogInformation(
+                                "[Executor] resume: queue empty — seeding from cluster: context={Context}, track={Track}, pos={Pos}ms (enginePos={EPos}ms, clusterPos={CPos}ms)",
+                                seedContext, seedTrack, seedPos, enginePos, clusterState?.PositionMs ?? 0);
+
+                            // For "spotify:internal:queue" context, PlaybackOrchestrator's context-resolver
+                            // branch is skipped. We must supply PageTracks so the queue is populated.
+                            List<Wavee.Connect.Commands.PageTrack>? pageTracks = null;
+                            int? skipToIndex = null;
+
+                            if (seedContext == "spotify:internal:queue")
+                            {
+                                // Build a flat track list: prevTracks (oldest first) + current + nextTracks
+                                var prevTracks = clusterState?.PrevTracks ?? [];
+                                var nextTracks = clusterState?.NextTracks ?? [];
+
+                                pageTracks = [];
+                                foreach (var t in prevTracks)
+                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
+
+                                skipToIndex = pageTracks.Count; // current track lands here
+                                pageTracks.Add(new Wavee.Connect.Commands.PageTrack(seedTrack, seedUid ?? ""));
+
+                                foreach (var t in nextTracks)
+                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
+
+                                _logger?.LogInformation(
+                                    "[Executor] resume: built PageTracks for internal queue: prev={Prev}, current=@{Idx}, next={Next}, total={Total}",
+                                    prevTracks.Count, skipToIndex, nextTracks.Count, pageTracks.Count);
+                            }
+
+                            var seedCmd = new Wavee.Connect.Commands.PlayCommand
+                            {
+                                Endpoint       = "play",
+                                Key            = "local/0",
+                                MessageId      = 0,
+                                MessageIdent   = "local",
+                                SenderDeviceId = "",
+                                ContextUri     = seedContext,
+                                TrackUri       = seedTrack,
+                                TrackUid       = seedUid,
+                                PositionMs     = seedPos > 0 ? seedPos : null,
+                                PageTracks     = pageTracks,
+                                SkipToIndex    = skipToIndex,
+                            };
+                            await engine.PlayAsync(seedCmd, ct).ConfigureAwait(false);
+                            break;
+                        }
+
+                        _logger?.LogWarning(
+                            "[Executor] resume: queue empty and no cluster context — falling through to plain ResumeAsync");
+                    }
                     await engine.ResumeAsync(ct).ConfigureAwait(false);
                     break;
                 case "pause":

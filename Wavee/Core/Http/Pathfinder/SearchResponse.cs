@@ -514,10 +514,11 @@ public sealed class SearchResult
                 var track = wrapper.Item?.Data;
                 if (track?.Uri == null) continue;
 
-                var artistNames = track.Artists?.Items?
-                    .Where(a => a.Profile?.Name != null)
-                    .Select(a => a.Profile!.Name!)
-                    .ToList() ?? new List<string>();
+                var trackArtistRefs = track.Artists?.Items?
+                    .Where(a => a.Profile?.Name != null && a.Uri != null)
+                    .ToList() ?? new List<ArtistItem>();
+                var artistNames = trackArtistRefs.Select(a => a.Profile!.Name!).ToList();
+                var artistUris = trackArtistRefs.Select(a => a.Uri!).ToList();
 
                 AddItem(new SearchResultItem
                 {
@@ -525,6 +526,7 @@ public sealed class SearchResult
                     Uri = track.Uri,
                     Name = track.Name ?? "Unknown",
                     ArtistNames = artistNames,
+                    ArtistUris = artistUris,
                     AlbumName = track.AlbumOfTrack?.Name,
                     ImageUrl = track.AlbumOfTrack?.CoverArt?.Sources?.FirstOrDefault()?.Url,
                     DurationMs = track.Duration?.TotalMilliseconds ?? 0
@@ -559,17 +561,19 @@ public sealed class SearchResult
                 var album = wrapper.Data;
                 if (album?.Uri == null || album.TypeName == "PreRelease") continue;
 
-                var artistNames = album.Artists?.Items?
-                    .Where(a => a.Profile?.Name != null)
-                    .Select(a => a.Profile!.Name!)
-                    .ToList() ?? new List<string>();
+                var albumArtistRefs = album.Artists?.Items?
+                    .Where(a => a.Profile?.Name != null && a.Uri != null)
+                    .ToList() ?? new List<ArtistItem>();
+                var albumArtistNames = albumArtistRefs.Select(a => a.Profile!.Name!).ToList();
+                var albumArtistUris = albumArtistRefs.Select(a => a.Uri!).ToList();
 
                 AddItem(new SearchResultItem
                 {
                     Type = SearchResultType.Album,
                     Uri = album.Uri,
                     Name = album.Name ?? "Unknown",
-                    ArtistNames = artistNames,
+                    ArtistNames = albumArtistNames,
+                    ArtistUris = albumArtistUris,
                     ImageUrl = album.CoverArt?.Sources?.FirstOrDefault()?.Url,
                     ReleaseYear = album.Date?.Year,
                     AlbumType = album.Type
@@ -606,6 +610,25 @@ public sealed class SearchResult
                 var topItem = topWrapper.Item;
                 if (topItem?.Data is not JsonElement je) continue;
 
+                // A SearchSectionEntity wraps a group of items (e.g. "Featuring {artist}"
+                // playlists, "Music videos" tracks). Flatten its items into the main list,
+                // tagging each with the section's display label so the UI can group them.
+                if (topItem.TypeName == "SearchSectionEntity")
+                {
+                    var label = GetNestedString(je, "title", "transformedLabel");
+                    if (je.TryGetProperty("items", out var sectionItems)
+                        && sectionItems.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var sectionItem in sectionItems.EnumerateArray())
+                        {
+                            if (!sectionItem.TryGetProperty("__typename", out var stn)) continue;
+                            if (!sectionItem.TryGetProperty("data", out var sdata)) continue;
+                            AddItem(MapSearchItemFromJson(stn.GetString(), sdata, label));
+                        }
+                    }
+                    continue;
+                }
+
                 var mapped = MapSearchItemFromJson(topItem.TypeName, je);
                 AddItem(mapped);
 
@@ -617,7 +640,7 @@ public sealed class SearchResult
         return result;
     }
 
-    private static SearchResultItem? MapSearchItemFromJson(string? typeName, JsonElement data)
+    private static SearchResultItem? MapSearchItemFromJson(string? typeName, JsonElement data, string? sectionLabel = null)
     {
         try
         {
@@ -633,6 +656,7 @@ public sealed class SearchResult
                     Uri = uri,
                     Name = GetNestedString(data, "profile", "name") ?? "Unknown",
                     ImageUrl = GetFirstImageUrl(data, "visuals", "avatarImage"),
+                    SectionLabel = sectionLabel,
                 },
                 "TrackResponseWrapper" => new SearchResultItem
                 {
@@ -640,10 +664,12 @@ public sealed class SearchResult
                     Uri = uri,
                     Name = data.TryGetProperty("name", out var n) ? n.GetString() ?? "Unknown" : "Unknown",
                     ArtistNames = GetArtistNames(data),
+                    ArtistUris = GetArtistUris(data),
                     AlbumName = GetNestedString(data, "albumOfTrack", "name"),
                     ImageUrl = GetFirstImageUrl(data, "albumOfTrack", "coverArt"),
                     DurationMs = data.TryGetProperty("duration", out var d)
-                        && d.TryGetProperty("totalMilliseconds", out var ms) ? ms.GetInt64() : 0
+                        && d.TryGetProperty("totalMilliseconds", out var ms) ? ms.GetInt64() : 0,
+                    SectionLabel = sectionLabel,
                 },
                 "AlbumResponseWrapper" => new SearchResultItem
                 {
@@ -651,10 +677,12 @@ public sealed class SearchResult
                     Uri = uri,
                     Name = data.TryGetProperty("name", out var an) ? an.GetString() ?? "Unknown" : "Unknown",
                     ArtistNames = GetArtistNames(data),
+                    ArtistUris = GetArtistUris(data),
                     ImageUrl = GetFirstImageUrl(data, "coverArt"),
                     ReleaseYear = data.TryGetProperty("date", out var dt)
                         && dt.TryGetProperty("year", out var yr) ? yr.GetInt32() : null,
-                    AlbumType = data.TryGetProperty("type", out var at) ? at.GetString() : null
+                    AlbumType = data.TryGetProperty("type", out var at) ? at.GetString() : null,
+                    SectionLabel = sectionLabel,
                 },
                 "PlaylistResponseWrapper" => new SearchResultItem
                 {
@@ -670,6 +698,7 @@ public sealed class SearchResult
                         && imgItems[0].TryGetProperty("sources", out var srcs)
                         && srcs.GetArrayLength() > 0
                         && srcs[0].TryGetProperty("url", out var pu) ? pu.GetString() : null,
+                    SectionLabel = sectionLabel,
                 },
                 _ => null
             };
@@ -722,6 +751,24 @@ public sealed class SearchResult
         }
         return names;
     }
+
+    private static List<string> GetArtistUris(JsonElement data)
+    {
+        var uris = new List<string>();
+        if (data.TryGetProperty("artists", out var artists)
+            && artists.TryGetProperty("items", out var items))
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.TryGetProperty("uri", out var uriProp))
+                {
+                    var u = uriProp.GetString();
+                    if (u != null) uris.Add(u);
+                }
+            }
+        }
+        return uris;
+    }
 }
 
 /// <summary>
@@ -747,11 +794,12 @@ public enum SearchScope
 public sealed class SearchResultItem
 {
     public SearchResultType Type { get; init; }
-    public required string Uri { get; init; }
-    public required string Name { get; init; }
+    public  string Uri { get; init; }
+    public  string Name { get; init; }
 
     // Track/Album specific
     public List<string>? ArtistNames { get; init; }
+    public List<string>? ArtistUris { get; init; }
     public string? AlbumName { get; init; }
     public long DurationMs { get; init; }
 
@@ -768,6 +816,20 @@ public sealed class SearchResultItem
 
     // Common
     public string? ImageUrl { get; init; }
+
+    /// <summary>
+    /// Non-null when this item came from a <c>SearchSectionEntity</c> top-result group
+    /// (e.g. "Featuring JJ Lin", "Music videos"). The value is the section's display label
+    /// from <c>title.transformedLabel</c>. Null for standalone top-result items.
+    /// </summary>
+    public string? SectionLabel { get; init; }
+
+    /// <summary>
+    /// Computed subtitle suitable for binding in card/row templates.
+    /// Equivalent to <see cref="GetSubtitle"/> but exposed as a property so x:Bind works
+    /// without method-call syntax. Re-evaluated each access — cheap string construction.
+    /// </summary>
+    public string DisplaySubtitle => GetSubtitle();
 
     /// <summary>
     /// Gets a formatted display string for the item.

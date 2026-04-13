@@ -211,7 +211,10 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 "LoadLyricsAsync EXIT title=\"{Title}\" hasLyrics={HasLyrics} lineCount={LineCount} cancelled={Cancelled}",
                 _playbackState.CurrentTrackTitle, HasLyrics, lyrics?.LyricsLines.Count ?? 0, ct.IsCancellationRequested);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogDebug("[Lyrics] Load cancelled for {TrackId}", trackId);
+        }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to load lyrics for {TrackId}", trackId);

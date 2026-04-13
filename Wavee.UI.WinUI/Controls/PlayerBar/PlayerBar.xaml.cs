@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -25,12 +26,17 @@ public sealed partial class PlayerBar : UserControl
     private readonly IPlaybackStateService? _playbackStateService;
     private string? _currentLayoutState;
 
+    private readonly ILogger<PlayerBar>? _logger;
+
     public PlayerBar()
     {
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+        _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger<PlayerBar>();
         InitializeComponent();
+
+        _logger?.LogDebug("[PlayerBar] Constructed — track={Track}, playing={Playing}", ViewModel.TrackTitle ?? "<none>", ViewModel.IsPlaying);
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Unloaded += (_, _) => ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -75,6 +81,7 @@ public sealed partial class PlayerBar : UserControl
             return;
         }
 
+        _logger?.LogDebug("[PlayerBar] Layout state: {From} → {To} (width={Width:F0})", _currentLayoutState ?? "<init>", nextState, width);
         _currentLayoutState = nextState;
         _ = VisualStateManager.GoToState(this, nextState, true);
         ApplyLayoutState(nextState);
@@ -159,6 +166,7 @@ public sealed partial class PlayerBar : UserControl
 
         var uri = $"spotify:track:{trackId}";
         var isLiked = PlayerHeartButton.IsLiked;
+        _logger?.LogInformation("[PlayerBar] Heart clicked: trackId={TrackId}, wasLiked={WasLiked} → {NewLiked}", trackId, isLiked, !isLiked);
         _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, isLiked);
         PlayerHeartButton.IsLiked = !isLiked;
     }
@@ -229,16 +237,22 @@ public sealed partial class PlayerBar : UserControl
 
     private void ProgressSlider_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        _logger?.LogDebug("[PlayerBar] Seek slider pressed: pos={Pos}ms", (long)ViewModel.Position);
         ViewModel.StartSeeking();
     }
 
     private void ProgressSlider_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        _logger?.LogInformation("[PlayerBar] Seek slider released: committing pos={Pos}ms", (long)ViewModel.Position);
         ViewModel.EndSeeking();
     }
 
     private void ProgressSlider_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
-        ViewModel.EndSeeking();
+        if (ViewModel.IsSeeking)
+        {
+            _logger?.LogDebug("[PlayerBar] Seek slider capture lost while seeking: committing pos={Pos}ms", (long)ViewModel.Position);
+            ViewModel.EndSeeking();
+        }
     }
 }

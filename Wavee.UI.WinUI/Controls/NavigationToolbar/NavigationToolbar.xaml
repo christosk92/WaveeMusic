@@ -118,7 +118,8 @@
             QuerySubmitted="SearchOmnibar_QuerySubmitted"
             TextChanged="SearchOmnibar_TextChanged"
             SuggestionChosen="SearchOmnibar_SuggestionChosen"
-            ActionButtonClicked="SearchOmnibar_ActionButtonClicked" />
+            ActionButtonClicked="SearchOmnibar_ActionButtonClicked"
+            RetryRequested="SearchOmnibar_RetryRequested" />
 
         <!-- Right-side actions -->
         <StackPanel

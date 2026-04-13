@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Search.SearchResultRowCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    mc:Ignorable="d">
+
+    <Grid>
+        <Border x:Name="RootBorder"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="18"
+                Padding="10,8">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="52"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="36"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Thumbnail (square clip with overlays for tracks/albums/playlists; PersonPicture for artists) -->
+                <Grid Width="52" Height="52">
+                    <!-- Square thumbnail clip — used for non-artists -->
+                    <Border x:Name="ThumbnailClip"
+                            Width="52" Height="52"
+                            CornerRadius="18"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <Grid>
+                            <FontIcon x:Name="ThumbnailPlaceholderIcon"
+                                      FontSize="17"
+                                      Opacity="0.32"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                            <Image x:Name="ThumbnailImage"
+                                   Stretch="UniformToFill"
+                                   behaviors:ImageFallbackBehavior.HideOnError="True"
+                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+
+                            <!-- Now-playing equalizer overlay -->
+                            <Border x:Name="NowPlayingOverlay"
+                                    Background="#D9000000"
+                                    Visibility="Collapsed">
+                                <cards:LottieEqualizer x:Name="NowPlayingEqualizer"
+                                                       IconSize="22"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                            </Border>
+
+                            <!-- Buffering progress ring -->
+                            <ProgressRing x:Name="BufferingRing"
+                                          Width="24" Height="24"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+
+                            <!-- Hover-revealed play overlay (only used for tracks; click bubbles to host) -->
+                            <Border x:Name="HoverPlayButton"
+                                    Background="#CC000000"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    Visibility="Collapsed"
+                                    Opacity="0"
+                                    IsHitTestVisible="False">
+                                <FontIcon x:Name="HoverPlayIcon"
+                                          Glyph="&#xE768;"
+                                          FontSize="20"
+                                          Foreground="White"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- Circular avatar — used for artists -->
+                    <PersonPicture x:Name="ArtistAvatar"
+                                   Width="52" Height="52"
+                                   Visibility="Collapsed"/>
+                </Grid>
+
+                <!-- Title + subtitle -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                    <TextBlock x:Name="TitleText"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="SubtitleText"
+                               FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <!-- Type pill badge -->
+                <Border Grid.Column="2"
+                        Background="{ThemeResource CardBackgroundFillColorTertiaryBrush}"
+                        CornerRadius="12"
+                        Padding="9,4"
+                        VerticalAlignment="Center"
+                        Margin="12,0,0,0"
+                        IsHitTestVisible="False">
+                    <TextBlock x:Name="TypeTagText"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Border>
+
+                <!-- Trailing action glyph -->
+                <Border Grid.Column="3"
+                        Width="28" Height="28"
+                        CornerRadius="14"
+                        Background="Transparent"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Right"
+                        Margin="12,0,0,0"
+                        IsHitTestVisible="False">
+                    <FontIcon x:Name="ActionIcon"
+                              FontSize="16"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <cards:PendingBorderBeam x:Name="PlaybackPendingBeam"
+                                 x:Load="False"
+                                 Canvas.ZIndex="10"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Stretch"
+                                 CornerRadius="18"
+                                 BeamThickness="2"/>
+    </Grid>
+</UserControl>

@@ -79,6 +79,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
     private readonly Dictionary<string, List<LibraryArtistTopTrackDto>> _mockArtistTopTracks;
     private readonly Dictionary<string, List<LibraryArtistAlbumDto>> _mockArtistAlbums;
     private readonly List<LikedSongDto> _mockLikedSongs;
+    private readonly List<LikedSongsFilterDto> _mockLikedSongFilters;
     private readonly Dictionary<string, List<PlaylistTrackDto>> _mockPlaylistTracks;
 
     public event EventHandler? PlaylistsChanged;
@@ -91,6 +92,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
         (_mockAlbums, _mockAlbumTracks) = GenerateMockAlbums();
         (_mockArtists, _mockArtistTopTracks, _mockArtistAlbums) = GenerateMockArtists(_mockAlbums, _mockAlbumTracks);
         _mockLikedSongs = GenerateMockLikedSongs(_mockAlbums, _mockAlbumTracks);
+        _mockLikedSongFilters = GenerateMockLikedSongFilters();
         _mockPlaylistTracks = GenerateMockPlaylistTracks(_mockPlaylists, _mockAlbums, _mockAlbumTracks);
     }
 
@@ -158,6 +160,11 @@ public sealed class MockLibraryDataService : ILibraryDataService
     public Task<IReadOnlyList<LikedSongDto>> GetLikedSongsAsync(CancellationToken ct = default)
     {
         return Task.FromResult<IReadOnlyList<LikedSongDto>>(_mockLikedSongs);
+    }
+
+    public Task<IReadOnlyList<LikedSongsFilterDto>> GetLikedSongFiltersAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<LikedSongsFilterDto>>(_mockLikedSongFilters);
     }
 
     public Task<PlaylistSummaryDto> CreatePlaylistAsync(string name, IReadOnlyList<string>? trackIds = null, CancellationToken ct = default)
@@ -533,6 +540,17 @@ public sealed class MockLibraryDataService : ILibraryDataService
         var now = DateTime.Now;
         var likedSongs = new List<LikedSongDto>();
         var random = new Random(123); // Fixed seed for consistent data
+        var tagPool = new[]
+        {
+            "pop",
+            "pop rock",
+            "chill",
+            "electronic",
+            "romantic",
+            "soundtrack",
+            "cozy",
+            "emotional"
+        };
 
         foreach (var album in albums)
         {
@@ -557,13 +575,33 @@ public sealed class MockLibraryDataService : ILibraryDataService
                     ImageUrl = album.ImageUrl,
                     Duration = track.Duration,
                     AddedAt = now.AddDays(-random.Next(1, 365)).AddHours(-random.Next(0, 24)),
-                    IsExplicit = track.IsExplicit
+                    IsExplicit = track.IsExplicit,
+                    Tags =
+                    [
+                        tagPool[Math.Abs(track.Title.GetHashCode()) % tagPool.Length],
+                        tagPool[Math.Abs(album.Name.GetHashCode()) % tagPool.Length]
+                    ]
                 });
             }
         }
 
         // Sort by AddedAt descending (most recent first)
         return likedSongs.OrderByDescending(s => s.AddedAt).ToList();
+    }
+
+    private static List<LikedSongsFilterDto> GenerateMockLikedSongFilters()
+    {
+        return
+        [
+            new() { Title = "Pop", Query = "tags contains pop", TagValue = "pop" },
+            new() { Title = "Pop Rock", Query = "tags contains pop rock", TagValue = "pop rock" },
+            new() { Title = "Chill", Query = "tags contains chill", TagValue = "chill" },
+            new() { Title = "Electronic", Query = "tags contains electronic", TagValue = "electronic" },
+            new() { Title = "Romantic", Query = "tags contains romantic", TagValue = "romantic" },
+            new() { Title = "Soundtrack", Query = "tags contains soundtrack", TagValue = "soundtrack" },
+            new() { Title = "Cozy", Query = "tags contains cozy", TagValue = "cozy" },
+            new() { Title = "Emotional", Query = "tags contains emotional", TagValue = "emotional" }
+        ];
     }
 
     private static Dictionary<string, List<PlaylistTrackDto>> GenerateMockPlaylistTracks(

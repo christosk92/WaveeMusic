@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Library.Spotify;
+using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
+using Wavee.Protocol.DescriptorExtension;
+using Wavee.Protocol.ExtendedMetadata;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
@@ -22,7 +25,10 @@ public sealed class LibraryDataService : ILibraryDataService
 {
     private readonly IMetadataDatabase _database;
     private readonly ITrackLikeService _likeService;
+    private readonly ISession _session;
     private readonly ILogger? _logger;
+    private IReadOnlyList<LikedSongsFilterDto> _cachedLikedSongFilters = Array.Empty<LikedSongsFilterDto>();
+    private string? _likedSongFiltersEtag;
 
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
@@ -31,10 +37,12 @@ public sealed class LibraryDataService : ILibraryDataService
         IMetadataDatabase database,
         IMessenger messenger,
         ITrackLikeService likeService,
+        ISession session,
         ILogger<LibraryDataService>? logger = null)
     {
         _database = database;
         _likeService = likeService;
+        _session = session;
         _logger = logger;
 
         // Subscribe to messenger — no dependency on ISpotifyLibraryService
@@ -143,6 +151,16 @@ public sealed class LibraryDataService : ILibraryDataService
     public async Task<IReadOnlyList<LikedSongDto>> GetLikedSongsAsync(CancellationToken ct = default)
     {
         var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Track, 500, 0, ct);
+
+        // Bulk-read cached TRACK_DESCRIPTOR bytes so we can merge real descriptor tags into
+        // the DTOs. Empty blobs are negative-cache markers (tracks Spotify has no descriptors
+        // for) and cause fallback to genre-based tags. Absent entries (never fetched) also
+        // fall back — the fetcher will populate them on the next page-open cycle.
+        var trackUris = entities.Select(e => e.Uri).ToList();
+        var descriptorBytes = await _database
+            .GetExtensionsBulkAsync(trackUris, ExtensionKind.TrackDescriptor, ct)
+            .ConfigureAwait(false);
+
         return entities.Select((e, idx) => new LikedSongDto
         {
             Id = ExtractBareId(e.Uri, "spotify:track:"),
@@ -157,8 +175,41 @@ public sealed class LibraryDataService : ILibraryDataService
             AddedAt = e.AddedAt.HasValue ? e.AddedAt.Value.LocalDateTime : DateTime.Now,
             IsExplicit = false,
             OriginalIndex = idx + 1,
-            IsLiked = true
+            IsLiked = true,
+            Tags = ExtractDescriptorTags(
+                descriptorBytes.TryGetValue(e.Uri, out var bytes) ? bytes : null,
+                e.Genre)
         }).ToList();
+    }
+
+    public async Task<IReadOnlyList<LikedSongsFilterDto>> GetLikedSongFiltersAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _session.SpClient.GetLikedSongsContentFiltersAsync(_likedSongFiltersEtag, ct);
+
+            if (result.IsNotModified)
+                return _cachedLikedSongFilters;
+
+            var filters = result.Filters
+                .Select(LikedSongsFilterDto.FromContentFilter)
+                .ToList();
+
+            _cachedLikedSongFilters = filters;
+            _likedSongFiltersEtag = result.ETag ?? _likedSongFiltersEtag;
+
+            return filters;
+        }
+        catch (SessionException ex)
+        {
+            _logger?.LogDebug(ex, "Skipping liked-songs content filters before session authentication");
+            return _cachedLikedSongFilters;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to load liked-songs content filters");
+            return _cachedLikedSongFilters;
+        }
     }
 
     public Task<PlaylistSummaryDto> CreatePlaylistAsync(string name, IReadOnlyList<string>? trackIds = null, CancellationToken ct = default)
@@ -184,4 +235,57 @@ public sealed class LibraryDataService : ILibraryDataService
 
     private static string ExtractBareId(string uri, string prefix) =>
         uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
+
+    private static IReadOnlyList<string> ExtractTags(string? genre)
+    {
+        if (string.IsNullOrWhiteSpace(genre))
+            return Array.Empty<string>();
+
+        return genre
+            .Split([',', ';', '/', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Returns descriptor tags for a track, falling back to Genre-derived tags when the
+    /// descriptor cache has no data (either never fetched, negative-cached, or parse error).
+    /// Descriptor text is normalized to trimmed lowercase and interned to deduplicate the
+    /// ~200 unique values that repeat across ~10k liked songs.
+    /// </summary>
+    private static IReadOnlyList<string> ExtractDescriptorTags(byte[]? descriptorBytes, string? fallbackGenre)
+    {
+        // Not in cache → try again later once the fetcher populates it.
+        if (descriptorBytes is null)
+            return ExtractTags(fallbackGenre);
+
+        // Negative cache (Spotify has no descriptors for this track) — fall back.
+        if (descriptorBytes.Length == 0)
+            return ExtractTags(fallbackGenre);
+
+        try
+        {
+            var data = ExtensionDescriptorData.Parser.ParseFrom(descriptorBytes);
+            if (data.Descriptors.Count == 0)
+                return ExtractTags(fallbackGenre);
+
+            var tags = new List<string>(data.Descriptors.Count);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var d in data.Descriptors)
+            {
+                var text = d.Text?.Trim();
+                if (string.IsNullOrEmpty(text)) continue;
+                var lower = string.Intern(text.ToLowerInvariant());
+                if (seen.Add(lower))
+                    tags.Add(lower);
+            }
+
+            return tags.Count == 0 ? ExtractTags(fallbackGenre) : tags;
+        }
+        catch
+        {
+            // Corrupt blob — rare, but don't poison the whole liked-songs list. Fall back.
+            return ExtractTags(fallbackGenre);
+        }
+    }
 }

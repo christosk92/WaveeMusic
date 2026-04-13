@@ -54,7 +54,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v6: Added album_tracks_cache table
     // v7: Added library_outbox table
     // v8: Removed FK constraint from spotify_library (decoupled from entities)
-    private const int CurrentSchemaVersion = 9;
+    // v9: Added media_overrides table
+    private const int CurrentSchemaVersion = 10;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -142,6 +143,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS spotify_playlists;
             DROP TABLE IF EXISTS color_cache;
             DROP TABLE IF EXISTS album_tracks_cache;
+            DROP TABLE IF EXISTS lyrics_cache;
+            DROP TABLE IF EXISTS library_outbox;
+            DROP TABLE IF EXISTS media_overrides;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -452,6 +456,26 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         retry_count INTEGER NOT NULL DEFAULT 0,
                         last_error  TEXT,
                         UNIQUE(item_uri)
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS media_overrides (
+                        asset_type                INTEGER NOT NULL,
+                        entity_key                TEXT NOT NULL,
+                        effective_asset_url       TEXT,
+                        effective_source          INTEGER NOT NULL DEFAULT 0,
+                        last_seen_upstream_url    TEXT,
+                        pending_asset_url         TEXT,
+                        last_reviewed_upstream_url TEXT,
+                        created_at                INTEGER NOT NULL,
+                        updated_at                INTEGER NOT NULL,
+                        PRIMARY KEY (asset_type, entity_key)
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -1074,6 +1098,90 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Bulk-reads cached extension data for many URIs in a single SQLite connection.
+    /// Chunks into groups of 500 to stay under SQLite parameter limits.
+    /// Includes zero-length blobs (negative-cache markers). Omits URIs that are missing or expired.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, byte[]>> GetExtensionsBulkAsync(
+        IReadOnlyList<string> entityUris,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, byte[]>(entityUris.Count, StringComparer.Ordinal);
+        if (entityUris.Count == 0) return result;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var kind = (int)extensionKind;
+
+        // Hot-cache pass first — resolves fresh entries without touching SQLite.
+        var missing = new List<string>(entityUris.Count);
+        foreach (var uri in entityUris)
+        {
+            if (string.IsNullOrEmpty(uri)) continue;
+            var cacheKey = GetExtensionCacheKey(uri, extensionKind, _spotifyMetadataLocale);
+            if (_hotCache.TryGetValue(cacheKey, out var hot) && hot.ExpiresAt > now)
+            {
+                result[uri] = hot.Data;
+                continue;
+            }
+            missing.Add(uri);
+        }
+
+        if (missing.Count == 0) return result;
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        const int chunkSize = 500;
+        var useLocalized = HasLocalizedSpotifyMetadata;
+
+        for (int offset = 0; offset < missing.Count; offset += chunkSize)
+        {
+            var take = Math.Min(chunkSize, missing.Count - offset);
+
+            using var cmd = connection.CreateCommand();
+            var sb = new System.Text.StringBuilder();
+            sb.Append(useLocalized
+                ? "SELECT entity_uri, data, etag, expires_at FROM localized_extension_cache WHERE locale = $locale AND extension_kind = $kind AND entity_uri IN ("
+                : "SELECT entity_uri, data, etag, expires_at FROM extension_cache WHERE extension_kind = $kind AND entity_uri IN (");
+
+            for (int i = 0; i < take; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var name = $"$u{i}";
+                sb.Append(name);
+                cmd.Parameters.AddWithValue(name, missing[offset + i]);
+            }
+            sb.Append(");");
+
+            cmd.CommandText = sb.ToString();
+            cmd.Parameters.AddWithValue("$kind", kind);
+            if (useLocalized)
+            {
+                cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+            }
+
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var expiresAt = reader.GetInt64(3);
+                if (expiresAt <= now) continue; // stale row, skip
+
+                var uri = reader.GetString(0);
+                var data = (byte[])reader.GetValue(1);
+                var etag = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+                result[uri] = data;
+
+                var cacheKey = GetExtensionCacheKey(uri, extensionKind, _spotifyMetadataLocale);
+                PromoteToHotCache(cacheKey, data, etag, expiresAt);
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -2489,6 +2597,130 @@ public sealed class MetadataDatabase : IMetadataDatabase
             using var cmd = connection.CreateCommand();
             cmd.CommandText = "DELETE FROM lyrics_cache WHERE track_uri = @uri";
             cmd.Parameters.AddWithValue("@uri", trackUri);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    #endregion
+
+    #region Media Override Operations
+
+    /// <inheritdoc />
+    public async Task<MediaOverrideEntry?> GetMediaOverrideAsync(
+        MediaOverrideAssetType assetType,
+        string entityKey,
+        CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT effective_asset_url,
+                   effective_source,
+                   last_seen_upstream_url,
+                   pending_asset_url,
+                   last_reviewed_upstream_url,
+                   created_at,
+                   updated_at
+            FROM media_overrides
+            WHERE asset_type = @assetType AND entity_key = @entityKey
+            """;
+        cmd.Parameters.AddWithValue("@assetType", (int)assetType);
+        cmd.Parameters.AddWithValue("@entityKey", entityKey);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new MediaOverrideEntry
+        {
+            AssetType = assetType,
+            EntityKey = entityKey,
+            EffectiveAssetUrl = reader.IsDBNull(0) ? null : reader.GetString(0),
+            EffectiveSource = (MediaOverrideSource)reader.GetInt32(1),
+            LastSeenUpstreamUrl = reader.IsDBNull(2) ? null : reader.GetString(2),
+            PendingAssetUrl = reader.IsDBNull(3) ? null : reader.GetString(3),
+            LastReviewedUpstreamUrl = reader.IsDBNull(4) ? null : reader.GetString(4),
+            CreatedAt = reader.GetInt64(5),
+            UpdatedAt = reader.GetInt64(6),
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task SetMediaOverrideAsync(MediaOverrideEntry entry, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO media_overrides (
+                    asset_type,
+                    entity_key,
+                    effective_asset_url,
+                    effective_source,
+                    last_seen_upstream_url,
+                    pending_asset_url,
+                    last_reviewed_upstream_url,
+                    created_at,
+                    updated_at)
+                VALUES (
+                    @assetType,
+                    @entityKey,
+                    @effectiveAssetUrl,
+                    @effectiveSource,
+                    @lastSeenUpstreamUrl,
+                    @pendingAssetUrl,
+                    @lastReviewedUpstreamUrl,
+                    @createdAt,
+                    @updatedAt)
+                """;
+            cmd.Parameters.AddWithValue("@assetType", (int)entry.AssetType);
+            cmd.Parameters.AddWithValue("@entityKey", entry.EntityKey);
+            cmd.Parameters.AddWithValue("@effectiveAssetUrl", (object?)entry.EffectiveAssetUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@effectiveSource", (int)entry.EffectiveSource);
+            cmd.Parameters.AddWithValue("@lastSeenUpstreamUrl", (object?)entry.LastSeenUpstreamUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@pendingAssetUrl", (object?)entry.PendingAssetUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@lastReviewedUpstreamUrl", (object?)entry.LastReviewedUpstreamUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@createdAt", entry.CreatedAt);
+            cmd.Parameters.AddWithValue("@updatedAt", entry.UpdatedAt);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteMediaOverrideAsync(
+        MediaOverrideAssetType assetType,
+        string entityKey,
+        CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                DELETE FROM media_overrides
+                WHERE asset_type = @assetType AND entity_key = @entityKey
+                """;
+            cmd.Parameters.AddWithValue("@assetType", (int)assetType);
+            cmd.Parameters.AddWithValue("@entityKey", entityKey);
 
             await cmd.ExecuteNonQueryAsync(ct);
         }

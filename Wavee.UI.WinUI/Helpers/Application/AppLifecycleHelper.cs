@@ -34,6 +34,7 @@ public static class AppLifecycleHelper
 {
     private static readonly List<IDisposable> _appSubscriptions = [];
     private static Services.TrackMetadataEnricher? _trackMetadataEnricher;
+    private static readonly SemaphoreSlim _playbackTeardownGate = new(1, 1);
     // Captured on UI thread during ConfigureHost, used by background init
     private static Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
 
@@ -201,6 +202,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<IAppLocalizationService, AppLocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IShellSessionService, ShellSessionService>()
+                .AddSingleton<Services.IMediaOverrideService, Services.MediaOverrideService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
                 .AddSingleton<Services.HomeResponseParserFactory>()
@@ -242,6 +244,13 @@ public static class AppLifecycleHelper
                 // Spotify session infrastructure
                 .AddTransient<RetryHandler>()
                 .AddHttpClient("Wavee")
+                    .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.SocketsHttpHandler
+                    {
+                        // Enables Accept-Encoding: gzip, deflate, br on all outgoing requests
+                        // and transparent decompression of responses.
+                        AutomaticDecompression = System.Net.DecompressionMethods.All,
+                        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                    })
                     .AddHttpMessageHandler<RetryHandler>()
                     .Services
                 .AddHttpClient("WaveeAudio")
@@ -298,6 +307,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetRequiredService<ITrackLikeService>(),
+                        sp.GetRequiredService<ISession>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
                 .AddSingleton<ILocationService>(sp =>
                     new Data.Contexts.LocationService(
@@ -324,6 +334,11 @@ public static class AppLifecycleHelper
                 .AddSingleton<ISearchService>(sp =>
                     new Data.Contexts.SearchService(
                         sp.GetRequiredService<ISession>().Pathfinder))
+                .AddSingleton<ITrackDescriptorFetcher>(sp =>
+                    new Data.Contexts.TrackDescriptorFetcher(
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
+                        sp.GetService<ILogger<Data.Contexts.TrackDescriptorFetcher>>()))
 
                 // Lyrics
                 .AddSingleton<ILyricsService>(sp =>
@@ -348,12 +363,17 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<ITrackCreditsService>(),
+                        sp.GetRequiredService<Services.IMediaOverrideService>(),
                         sp.GetService<ILogger<TrackDetailsViewModel>>()))
 
                 // ViewModels
                 .AddSingleton<MainWindowViewModel>()
                 .AddSingleton<ShellViewModel>()
-                .AddSingleton<PlayerBarViewModel>()
+                .AddSingleton<PlayerBarViewModel>(sp =>
+                    new PlayerBarViewModel(
+                        sp.GetRequiredService<IPlaybackStateService>(),
+                        sp.GetService<IConnectivityService>(),
+                        sp.GetService<ILoggerFactory>()))
                 .AddTransient<HomeViewModel>(sp =>
                     new HomeViewModel(
                         sp.GetService<ISession>(),
@@ -515,11 +535,13 @@ public static class AppLifecycleHelper
             };
 
             // Now start the audio process (state/error events are already wired above)
-            logger?.LogInformation("Starting audio process for user {User}", username);
+            var clusterVol = (int)(session.PlaybackState?.CurrentState?.Volume ?? 0);
+            logger?.LogInformation("Starting audio process for user {User}, initialVolume={Vol}%", username, clusterVol);
             var proxy = await _audioProcessManager.StartAsync(
                 username,
                 creds.AuthData,
                 session.Config.DeviceId,
+                initialVolumePercent: clusterVol,
                 CancellationToken.None);
 
             // Create PlaybackOrchestrator — owns queue, track resolution, remote commands
@@ -623,24 +645,42 @@ public static class AppLifecycleHelper
     /// Call on logout to avoid leaking AudioPipeline and subscriptions on re-login.
     /// </summary>
     public static void TeardownPlaybackEngine()
+        => _ = TeardownPlaybackEngineAsync();
+
+    /// <summary>
+    /// Tears down the playback engine and associated resources.
+    /// Await this on app shutdown so background audio/process work finishes before XAML teardown.
+    /// </summary>
+    public static Task TeardownPlaybackEngineAsync()
+        => TeardownPlaybackEngineCoreAsync();
+
+    private static async Task TeardownPlaybackEngineCoreAsync()
     {
-        // Dispose app-level subscriptions (error stream, connection state notifications)
-        foreach (var sub in _appSubscriptions) sub.Dispose();
-        _appSubscriptions.Clear();
-
-        // Clear engine from executor
-        var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
-        executor?.DisableLocalPlayback();
-
-        // Dispose the enricher (unregisters from messenger)
-        _trackMetadataEnricher?.Dispose();
-        _trackMetadataEnricher = null;
-
-        // Stop audio host process if running
-        if (_audioProcessManager != null)
+        await _playbackTeardownGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            _ = _audioProcessManager.DisposeAsync();
-            _audioProcessManager = null;
+            // Dispose app-level subscriptions (error stream, connection state notifications)
+            foreach (var sub in _appSubscriptions) sub.Dispose();
+            _appSubscriptions.Clear();
+
+            // Clear engine from executor
+            var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
+            executor?.DisableLocalPlayback();
+
+            // Dispose the enricher (unregisters from messenger)
+            _trackMetadataEnricher?.Dispose();
+            _trackMetadataEnricher = null;
+
+            // Stop audio host process if running
+            if (_audioProcessManager != null)
+            {
+                await _audioProcessManager.DisposeAsync().ConfigureAwait(false);
+                _audioProcessManager = null;
+            }
+        }
+        finally
+        {
+            _playbackTeardownGate.Release();
         }
     }
 

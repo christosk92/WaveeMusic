@@ -258,14 +258,29 @@ public sealed class DealerClient : IAsyncDisposable
         var replyJson = $"{{\"type\":\"reply\",\"key\":\"{key}\",\"payload\":{{\"success\":{success.ToString().ToLowerInvariant()}}}}}";
 
         await _connection.SendAsync(replyJson, cancellationToken);
-        _logger?.LogTrace("Sent reply for key {Key}: {Result}", key, result);
 
         // Remove from pending requests and cancel timeout (reply sent)
         if (_pendingRequests.TryRemove(key, out var pendingRequest))
         {
+            var elapsedMs = (DateTimeOffset.UtcNow - pendingRequest.Timestamp).TotalMilliseconds;
+            _logger?.LogDebug(
+                "REQUEST reply sent: key={Key}, result={Result}, ident={MessageIdent}, elapsedMs={Elapsed:F0}",
+                key, result, pendingRequest.Request.MessageIdent, elapsedMs);
+
+            if (elapsedMs > 5000)
+            {
+                _logger?.LogWarning(
+                    "REQUEST reply slow: key={Key}, ident={MessageIdent}, elapsedMs={Elapsed:F0} — approaching 10s dealer timeout",
+                    key, pendingRequest.Request.MessageIdent, elapsedMs);
+            }
+
             // Cancel the timeout task to prevent race condition
             pendingRequest.TimeoutCts.Cancel();
             pendingRequest.Dispose();
+        }
+        else
+        {
+            _logger?.LogTrace("Sent reply for key {Key}: {Result} (no pending tracking — may have timed out)", key, result);
         }
     }
 
@@ -450,8 +465,8 @@ public sealed class DealerClient : IAsyncDisposable
                     // Parse and dispatch via AsyncWorker
                     if (Protocol.MessageParser.TryParseRequest(rawBytes.Span, out var request, _logger) && request != null)
                     {
-                        _logger?.LogTrace("Received REQUEST: {MessageIdent} (key: {Key})",
-                            request.MessageIdent, request.Key);
+                        _logger?.LogDebug("REQUEST received: ident={MessageIdent}, key={Key}, pendingCount={PendingCount}",
+                            request.MessageIdent, request.Key, _pendingRequests.Count);
 
                         // Track pending REQUEST with cancellation token for timeout
                         var timeoutCts = new CancellationTokenSource();

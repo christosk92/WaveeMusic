@@ -57,6 +57,7 @@ public sealed partial class Omnibar : Control
         {
             _flyoutPanel.ItemClicked -= FlyoutPanel_ItemClicked;
             _flyoutPanel.ActionClicked -= FlyoutPanel_ActionClicked;
+            _flyoutPanel.RetryRequested -= FlyoutPanel_RetryRequested;
         }
 
         _searchBox = GetTemplateChild("PART_SearchBox") as AutoSuggestBox;
@@ -74,6 +75,7 @@ public sealed partial class Omnibar : Control
         _flyoutPanel = new SearchFlyoutPanel();
         _flyoutPanel.ItemClicked += FlyoutPanel_ItemClicked;
         _flyoutPanel.ActionClicked += FlyoutPanel_ActionClicked;
+        _flyoutPanel.RetryRequested += FlyoutPanel_RetryRequested;
 
         _popup = new Popup
         {
@@ -148,7 +150,7 @@ public sealed partial class Omnibar : Control
     {
         _hasFocus = true;
 
-        if (!TryShowCachedResults())
+        if (!TryShowCurrentState())
         {
             // Show shimmer flyout immediately while data loads
             var isRecent = string.IsNullOrWhiteSpace(_searchBox?.Text);
@@ -181,7 +183,7 @@ public sealed partial class Omnibar : Control
     {
         if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
         {
-            if (!TryShowCachedResults())
+            if (!TryShowCurrentState())
             {
                 // Show shimmer immediately while debounce + API call runs
                 var isRecent = string.IsNullOrWhiteSpace(sender.Text);
@@ -209,6 +211,17 @@ public sealed partial class Omnibar : Control
     {
         // Don't close popup - user might want to queue multiple tracks
         ActionButtonClicked?.Invoke(this, item);
+    }
+
+    private void FlyoutPanel_RetryRequested(object? sender, EventArgs e)
+    {
+        if (_searchBox != null)
+        {
+            _flyoutPanel?.ShowShimmer(string.IsNullOrWhiteSpace(_searchBox.Text));
+            ShowPopup();
+        }
+
+        RetryRequested?.Invoke(this, new RoutedEventArgs());
     }
 
     // ── Popup management ──
@@ -246,31 +259,67 @@ public sealed partial class Omnibar : Control
             _popup.IsOpen = false;
     }
 
-    private void UpdateSearchResults(object? newValue)
+    private void UpdateFlyoutState()
     {
-        if (_flyoutPanel == null) return;
+        if (_flyoutPanel == null || _searchBox == null) return;
 
-        if (newValue is List<SearchSuggestionItem> items && items.Count > 0)
+        if (!string.IsNullOrWhiteSpace(ErrorMessage))
         {
-            var queryText = _searchBox?.Text ?? "";
+            _flyoutPanel.ShowError(ErrorMessage);
+
+            if (_hasFocus)
+                ShowPopup();
+            return;
+        }
+
+        if (SearchResults is List<SearchSuggestionItem> items && items.Count > 0)
+        {
+            var queryText = _searchBox.Text ?? "";
+            if (!DoResultsMatchQuery(items, queryText))
+                return;
+
             var isRecent = string.IsNullOrWhiteSpace(queryText);
             _flyoutPanel.SetItems(items, queryText, isRecent);
 
             if (_hasFocus)
                 ShowPopup();
+            return;
+        }
 
-            // TODO: Apply bold prefix matching on text suggestions
-        }
-        else
+        if (IsLoading)
         {
-            HidePopup();
+            _flyoutPanel.ShowShimmer(string.IsNullOrWhiteSpace(_searchBox.Text));
+
+            if (_hasFocus)
+                ShowPopup();
+            return;
         }
+
+        HidePopup();
     }
 
-    private bool TryShowCachedResults()
+    private bool TryShowCurrentState()
     {
         if (_flyoutPanel == null || _searchBox == null) return false;
-        if (SearchResults is not List<SearchSuggestionItem> items || items.Count == 0) return false;
+
+        if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            _flyoutPanel.ShowError(ErrorMessage);
+            ShowPopup();
+            return true;
+        }
+
+        if (SearchResults is not List<SearchSuggestionItem> items || items.Count == 0)
+        {
+            if (IsLoading)
+            {
+                _flyoutPanel.ShowShimmer(string.IsNullOrWhiteSpace(_searchBox.Text));
+                ShowPopup();
+                return true;
+            }
+
+            return false;
+        }
 
         var queryText = _searchBox.Text ?? string.Empty;
         if (!DoResultsMatchQuery(items, queryText))
@@ -338,7 +387,35 @@ public sealed partial class Omnibar : Control
     {
         if (d is Omnibar omnibar)
         {
-            omnibar.UpdateSearchResults(e.NewValue);
+            omnibar.UpdateFlyoutState();
+        }
+    }
+
+    public static readonly DependencyProperty IsLoadingProperty =
+        DependencyProperty.Register(nameof(IsLoading), typeof(bool), typeof(Omnibar),
+            new PropertyMetadata(false, OnFlyoutStateChanged));
+
+    public bool IsLoading
+    {
+        get => (bool)GetValue(IsLoadingProperty);
+        set => SetValue(IsLoadingProperty, value);
+    }
+
+    public static readonly DependencyProperty ErrorMessageProperty =
+        DependencyProperty.Register(nameof(ErrorMessage), typeof(string), typeof(Omnibar),
+            new PropertyMetadata(null, OnFlyoutStateChanged));
+
+    public string? ErrorMessage
+    {
+        get => (string?)GetValue(ErrorMessageProperty);
+        set => SetValue(ErrorMessageProperty, value);
+    }
+
+    private static void OnFlyoutStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Omnibar omnibar)
+        {
+            omnibar.UpdateFlyoutState();
         }
     }
 
@@ -350,6 +427,7 @@ public sealed partial class Omnibar : Control
     public event TypedEventHandler<Omnibar, OmnibarQuerySubmittedEventArgs>? QuerySubmitted;
     public event TypedEventHandler<Omnibar, OmnibarSuggestionChosenEventArgs>? SuggestionChosen;
     public event TypedEventHandler<Omnibar, SearchSuggestionItem>? ActionButtonClicked;
+    public event TypedEventHandler<Omnibar, RoutedEventArgs>? RetryRequested;
 
     #endregion
 }

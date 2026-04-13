@@ -422,6 +422,10 @@ public sealed class AudioHostConfig
 
     [JsonPropertyName("equalizerBandGains")]
     public double[]? EqualizerBandGains { get; init; }
+
+    /// <summary>Volume (0–100) to pre-seed in the engine before first play. 0 means "not specified".</summary>
+    [JsonPropertyName("initialVolumePercent")]
+    public int InitialVolumePercent { get; init; }
 }
 
 // ── Well-known message types ──

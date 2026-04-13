@@ -1207,6 +1207,99 @@ public sealed class SpClient : ISpClient
             ?? throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty recently-played response");
     }
 
+    /// <inheritdoc />
+    public async Task<LikedSongsContentFiltersResult> GetLikedSongsContentFiltersAsync(
+        string? ifNoneMatch = null,
+        CancellationToken cancellationToken = default)
+    {
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/content-filter/v1/liked-songs?subjective=true&market=from_token";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        var locale = GetEffectiveLocale();
+        if (!string.IsNullOrEmpty(locale))
+        {
+            request.Headers.AcceptLanguage.ParseAdd(locale);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ifNoneMatch))
+        {
+            request.Headers.TryAddWithoutValidation("If-None-Match", ifNoneMatch);
+        }
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token for liked-songs content filters, continuing without");
+            }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        var etag = GetHeaderValue(response, "ETag");
+
+        if (response.StatusCode == HttpStatusCode.NotModified)
+        {
+            _logger?.LogDebug("Liked-songs content filters not modified");
+            return new LikedSongsContentFiltersResult
+            {
+                ETag = etag ?? ifNoneMatch,
+                IsNotModified = true
+            };
+        }
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(
+                    SpClientFailureReason.NotFound,
+                    "Liked-songs content filters endpoint not found");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(
+                    SpClientFailureReason.Unauthorized,
+                    "Access token invalid or expired");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var payload = await JsonSerializer.DeserializeAsync(
+            stream,
+            LikedSongsContentFiltersJsonContext.Default.LikedSongsContentFiltersResponse,
+            cancellationToken);
+
+        if (payload == null)
+        {
+            throw new SpClientException(
+                SpClientFailureReason.InvalidResponse,
+                "Empty liked-songs content-filters response");
+        }
+
+        return new LikedSongsContentFiltersResult
+        {
+            Filters = payload.ContentFilters,
+            ETag = etag,
+            IsNotModified = false
+        };
+    }
+
     /// <summary>
     /// Gets the effective locale for API requests.
     /// </summary>
@@ -1281,5 +1374,18 @@ public sealed class SpClient : ISpClient
             SpClientFailureReason.RequestFailed,
             $"Failed after {MaxRetries} attempts",
             lastException);
+    }
+
+    private static string? GetHeaderValue(HttpResponseMessage response, string headerName)
+    {
+        if (response.Headers.TryGetValues(headerName, out var values))
+        {
+            foreach (var value in values)
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

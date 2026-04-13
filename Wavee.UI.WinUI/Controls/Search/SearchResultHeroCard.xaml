@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Search.SearchResultHeroCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    mc:Ignorable="d">
+
+    <Grid>
+        <Border x:Name="RootBorder"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="26"
+                Padding="22">
+            <Grid>
+                <!--
+                    Rich background layers (Album-inline style, see AlbumDetailPanel).
+                    ColorBackground: solid extracted colour, set via the ColorHex DP.
+                    BleedImageArea: hosts a composition SpriteVisual that renders the item
+                    artwork with a right-aligned UniformToFill stretch + a left→right alpha
+                    gradient so text remains readable. Filled in code-behind.
+                -->
+                <Border x:Name="ColorBackground"
+                        Background="Transparent"
+                        Margin="-22"/>
+                <Border x:Name="BleedImageArea"
+                        Background="Transparent"
+                        Margin="-22"/>
+
+                <Grid ColumnSpacing="20" VerticalAlignment="Bottom">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Hero artwork (square clip with overlays for tracks/albums/playlists; PersonPicture for artists) -->
+                    <Grid Width="140" Height="140">
+                        <Border x:Name="ArtworkClip"
+                            Width="140" Height="140"
+                            CornerRadius="26"
+                            Background="{ThemeResource CardBackgroundFillColorTertiaryBrush}">
+                            <Grid>
+                                <FontIcon x:Name="ArtworkPlaceholderIcon"
+                                      FontSize="28"
+                                      Opacity="0.4"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                                <Image x:Name="ArtworkImage"
+                                   Stretch="UniformToFill"
+                                   behaviors:ImageFallbackBehavior.HideOnError="True"
+                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+
+                                <!-- Now-playing equalizer overlay -->
+                                <Border x:Name="NowPlayingOverlay"
+                                    Background="#D9000000"
+                                    Visibility="Collapsed">
+                                    <cards:LottieEqualizer x:Name="NowPlayingEqualizer"
+                                                       IconSize="40"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                </Border>
+
+                                <!-- Buffering progress ring -->
+                                <ProgressRing x:Name="BufferingRing"
+                                          Width="40" Height="40"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Circular avatar — used for artists -->
+                        <PersonPicture x:Name="ArtistAvatar"
+                                   Width="140" Height="140"
+                                   Visibility="Collapsed"/>
+                    </Grid>
+
+                    <!-- Title block -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="10">
+                        <Border Background="{ThemeResource CardBackgroundFillColorTertiaryBrush}"
+                            CornerRadius="12"
+                            Padding="9,4"
+                            HorizontalAlignment="Left">
+                            <TextBlock x:Name="TypeTagText"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+
+                        <TextBlock x:Name="TitleText"
+                               FontSize="38"
+                               FontWeight="Bold"
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+
+                        <TextBlock x:Name="SubtitleText"
+                               FontSize="17"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- Round accent play button (purely visual; click bubbles to host) -->
+                    <Border x:Name="PlayActionButton"
+                        Grid.Column="2"
+                        Width="64" Height="64"
+                        CornerRadius="32"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False">
+                        <FontIcon x:Name="PlayActionIcon"
+                              FontSize="22"
+                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <cards:PendingBorderBeam x:Name="PlaybackPendingBeam"
+                                 x:Load="False"
+                                 Canvas.ZIndex="10"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Stretch"
+                                 CornerRadius="26"
+                                 BeamThickness="2"/>
+    </Grid>
+</UserControl>

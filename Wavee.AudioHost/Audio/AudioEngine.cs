@@ -98,11 +98,13 @@ public sealed class AudioEngine : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                _logger?.LogDebug("Playback cancelled");
+                _logger?.LogDebug("[AudioEngine] Playback cancelled: {Title} ({Uri})",
+                    cmd.Metadata?.Title ?? "<unknown>", cmd.TrackUri ?? "<none>");
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Playback error");
+                _logger?.LogError(ex, "[AudioEngine] Playback error for {Title} ({Uri})",
+                    cmd.Metadata?.Title ?? "<unknown>", cmd.TrackUri ?? "<none>");
                 _errorSubject.OnNext(new EngineError(ex.Message, ex));
             }
             finally
@@ -131,11 +133,13 @@ public sealed class AudioEngine : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                _logger?.LogDebug("Playback cancelled");
+                _logger?.LogDebug("[AudioEngine] Playback cancelled: {Title} ({Uri})",
+                    cmd.Metadata?.Title ?? "<unknown>", cmd.TrackUri ?? "<none>");
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Playback error");
+                _logger?.LogError(ex, "[AudioEngine] Playback error for {Title} ({Uri})",
+                    cmd.Metadata?.Title ?? "<unknown>", cmd.TrackUri ?? "<none>");
                 _errorSubject.OnNext(new EngineError(ex.Message, ex));
             }
             finally
@@ -150,7 +154,13 @@ public sealed class AudioEngine : IAsyncDisposable
         await _audioSink.PauseAsync();
         lock (_stateLock)
         {
-            _currentState = _currentState with { IsPlaying = false, IsPaused = true };
+            _currentState = _currentState with
+            {
+                IsPlaying = false,
+                IsPaused  = true,
+                PositionMs = _audioSink.PlaybackPositionMs,
+                Timestamp  = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
         }
         PublishState();
     }
@@ -160,7 +170,13 @@ public sealed class AudioEngine : IAsyncDisposable
         await _audioSink.ResumeAsync();
         lock (_stateLock)
         {
-            _currentState = _currentState with { IsPlaying = true, IsPaused = false };
+            _currentState = _currentState with
+            {
+                IsPlaying  = true,
+                IsPaused   = false,
+                PositionMs = _audioSink.PlaybackPositionMs,
+                Timestamp  = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
         }
         PublishState();
     }
@@ -185,6 +201,11 @@ public sealed class AudioEngine : IAsyncDisposable
     public Task SetVolumeAsync(float volume, CancellationToken ct = default)
     {
         if (_volumeProcessor != null) _volumeProcessor.Volume = volume;
+        lock (_stateLock)
+        {
+            _currentState = _currentState with { Volume = volume };
+        }
+        PublishState();
         return Task.CompletedTask;
     }
 
@@ -649,6 +670,8 @@ public sealed record EngineState
     public bool IsPaused { get; init; }
     public bool IsBuffering { get; init; }
     public long Timestamp { get; init; }
+    /// <summary>Current volume level (0.0 = silence, 1.0 = 100%). 0 when not yet set.</summary>
+    public float Volume { get; init; }
 
     public static EngineState Empty => new()
     {

@@ -97,6 +97,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     private long _lastPublisherHealthDroppedCount;
     private long _lastPublisherHealthSentCount;
 
+    // Debounce diagnostics — visibility into the flush ↔ debounce race
+    private long _debounceFiredCount;
+    private long _debounceCancelledCount;
+    private long _flushCancelledPendingCount;
+
+    // Cluster pipeline diagnostics
+    private long _clusterUpdateCount;
+    private long _clusterUpdateSkippedNoChangesCount;
+    private long _clusterUpdateSkippedWeAreActiveCount;
+
     private bool _disposed;
 
     /// <summary>
@@ -307,7 +317,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         // Subscribe to connection ID for publishing
         _connectionIdSubscription = _dealerClient.ConnectionId
             .Where(id => id != null)
-            .Subscribe(id => _connectionId = id);
+            .Subscribe(id =>
+            {
+                var previous = _connectionId;
+                _connectionId = id;
+                _logger?.LogInformation(
+                    "ConnectionId {Transition}: prev={Previous}, next={Next}",
+                    previous == null ? "acquired" : "changed",
+                    previous ?? "<null>",
+                    id);
+            });
 
         // Subscribe to local playback state changes
         _localPlaybackSubscription = _playbackEngine.StateChanges
@@ -361,7 +380,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         // Subscribe to connection ID for publishing
         _connectionIdSubscription = _dealerClient.ConnectionId
             .Where(id => id != null)
-            .Subscribe(id => _connectionId = id);
+            .Subscribe(id =>
+            {
+                var previous = _connectionId;
+                _connectionId = id;
+                _logger?.LogInformation(
+                    "ConnectionId {Transition}: prev={Previous}, next={Next}",
+                    previous == null ? "acquired" : "changed",
+                    previous ?? "<null>",
+                    id);
+            });
 
         // Subscribe to local playback state changes
         _localPlaybackSubscription = _playbackEngine.StateChanges
@@ -385,16 +413,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     private void OnClusterUpdate(DealerMessage message)
     {
+        var clusterSeq = Interlocked.Increment(ref _clusterUpdateCount);
+        var isPutStateResponse = message.Uri.StartsWith("hm://connect-state/v1/put-state-response", StringComparison.OrdinalIgnoreCase);
+        var isSelfEcho = message.Headers != null && message.Headers.TryGetValue("X-Wavee-Echo", out var echoTag) && echoTag == "self";
+
         if (_proxyOnlyMode)
         {
-            _logger?.LogTrace("Ignoring cluster update (proxy-only mode, AudioHost is authoritative)");
+            _logger?.LogTrace("[cluster#{Seq}] Ignoring cluster update (proxy-only mode, AudioHost is authoritative): uri={Uri}, echo={Echo}",
+                clusterSeq, message.Uri, isSelfEcho);
             return;
         }
 
         try
         {
-            _logger?.LogTrace("Received cluster message: uri={Uri}, payloadSize={Size}",
-                message.Uri, message.Payload.Length);
+            _logger?.LogTrace("[cluster#{Seq}] Received cluster message: uri={Uri}, payloadSize={Size}, isPutStateResponse={IsPutStateResponse}, selfEcho={SelfEcho}",
+                clusterSeq, message.Uri, message.Payload.Length, isPutStateResponse, isSelfEcho);
 
             Cluster? cluster = null;
 
@@ -443,9 +476,14 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 _isLocalPlaybackActive &&
                 cluster.ActiveDeviceId == _session?.Config.DeviceId)
             {
-                _logger?.LogTrace("Ignoring cluster update (we are active device)");
+                Interlocked.Increment(ref _clusterUpdateSkippedWeAreActiveCount);
+                _logger?.LogTrace("[cluster#{Seq}] Ignoring cluster update (we are active device): cluster.active={ActiveDevice}, us={DeviceId}, localActive={LocalActive}",
+                    clusterSeq, cluster.ActiveDeviceId, _session?.Config.DeviceId, _isLocalPlaybackActive);
                 return;
             }
+
+            // Snapshot BEFORE applying the new state for diff logging
+            var prevSnapshot = FormatStateSnapshot(_currentState);
 
             // Convert to domain model with change detection
             var newState = PlaybackStateHelpers.ClusterToPlaybackState(cluster, _currentState, _logger);
@@ -453,14 +491,18 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             // Only update if something actually changed
             if (newState.Changes == Connect.StateChanges.None)
             {
-                _logger?.LogTrace("No changes detected, skipping update");
+                Interlocked.Increment(ref _clusterUpdateSkippedNoChangesCount);
+                _logger?.LogTrace("[cluster#{Seq}] No changes detected, skipping update (state={State})", clusterSeq, prevSnapshot);
                 return;
             }
 
-            _logger?.LogDebug("Playback state changed (cluster): changes={Changes}, track={Track}, status={Status}",
+            _logger?.LogDebug(
+                "[cluster#{Seq}] State transition (cluster): changes={Changes}{EchoTag} prev=[{Prev}] next=[{Next}]",
+                clusterSeq,
                 newState.Changes,
-                newState.Track?.Title ?? "<none>",
-                newState.Status);
+                isSelfEcho ? " [self-echo]" : string.Empty,
+                prevSnapshot,
+                FormatStateSnapshot(newState));
 
             // If another device became active in bidirectional mode, stop local playback immediately
             if (IsBidirectional &&
@@ -514,9 +556,20 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     {
         try
         {
-            _logger?.LogTrace("Received local playback state: track={Track}, isPlaying={IsPlaying}",
+            _logger?.LogTrace(
+                "Received local playback state: track={Track}, pos={Pos}ms/{Dur}ms, isPlaying={IsPlaying}, isPaused={IsPaused}, isBuffering={IsBuffering}, source={Source}, activeDev={ActiveDev}, upstreamChanges={UpstreamChanges}",
                 localState.TrackUri ?? "<none>",
-                localState.IsPlaying);
+                localState.PositionMs,
+                localState.DurationMs,
+                localState.IsPlaying,
+                localState.IsPaused,
+                localState.IsBuffering,
+                localState.Source,
+                localState.ActiveDeviceId ?? "<none>",
+                localState.UpstreamChanges);
+
+            // Snapshot BEFORE applying the new state for diff logging
+            var prevSnapshot = FormatStateSnapshot(_currentState);
 
             // Convert to domain model
             var newState = PlaybackStateHelpers.LocalToPlaybackState(
@@ -527,7 +580,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             // Only update if something actually changed
             if (newState.Changes == Connect.StateChanges.None)
             {
-                _logger?.LogTrace("No changes detected in local state, skipping update");
+                _logger?.LogTrace("No changes detected in local state, skipping update (state={State})", prevSnapshot);
                 return;
             }
 
@@ -541,10 +594,13 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 return;
             }
 
-            _logger?.LogDebug("Playback state changed (local): changes={Changes}, track={Track}, status={Status}",
+            _logger?.LogDebug(
+                "State transition (local): changes={Changes} prev=[{Prev}] next=[{Next}] localActive={LocalActive} playbackStartedAt={PlaybackStartedAt}",
                 newState.Changes,
-                newState.Track?.Title ?? "<none>",
-                newState.Status);
+                prevSnapshot,
+                FormatStateSnapshot(newState),
+                _isLocalPlaybackActive,
+                _playbackStartedAt);
 
             // Reset playback started timestamp on track change or stop
             if (newState.Changes.HasFlag(Connect.StateChanges.Track) ||
@@ -583,7 +639,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
                 if (isPositionOnlyChange && isInfiniteStream)
                 {
-                    _logger?.LogTrace("Skipping Spotify update for position-only change on infinite stream");
+                    _logger?.LogTrace("Publish decision: SKIP (position-only on infinite stream) changes={Changes}", newState.Changes);
                 }
                 else
                 {
@@ -596,11 +652,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
                     if (isCritical)
                     {
+                        _logger?.LogDebug("Publish decision: FLUSH (critical) changes={Changes}", newState.Changes);
                         FlushAndPublishState(newState);
+                    }
+                    else
+                    {
+                        _logger?.LogTrace("Publish decision: SKIP (non-critical, position handled by timestamp delta) changes={Changes}", newState.Changes);
                     }
                     // Position-only: don't publish to Spotify at all.
                     // Spotify calculates position from timestamp + elapsed.
                 }
+            }
+            else
+            {
+                _logger?.LogTrace("Publish decision: SKIP (localActive={LocalActive}, isLocalSource={IsLocalSource})",
+                    _isLocalPlaybackActive, isLocalSource);
             }
 
             _logger?.LogTrace("Local state update published to subscribers");
@@ -617,13 +683,33 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     private void FlushAndPublishState(PlaybackState state)
     {
+        PlaybackState? cancelled = null;
         lock (_debounceLock)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
-            _debounceCts = null;
-            _pendingState = null;
+            if (_debounceCts != null)
+            {
+                cancelled = _pendingState;
+                Interlocked.Increment(ref _flushCancelledPendingCount);
+                _debounceCts.Cancel();
+                _debounceCts.Dispose();
+                _debounceCts = null;
+                _pendingState = null;
+            }
         }
+
+        if (cancelled != null)
+        {
+            _logger?.LogDebug(
+                "Flush cancelled pending debounce: cancelledState=[{Cancelled}] newState=[{New}] (flushCancelledTotal={Total})",
+                FormatStateSnapshot(cancelled),
+                FormatStateSnapshot(state),
+                Interlocked.Read(ref _flushCancelledPendingCount));
+        }
+        else
+        {
+            _logger?.LogTrace("Flush (no pending debounce): state=[{State}]", FormatStateSnapshot(state));
+        }
+
         PublishLocalState(state);
     }
 
@@ -633,13 +719,26 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     private void DebouncedPublishState(PlaybackState state)
     {
+        bool resetExisting;
         lock (_debounceLock)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
+            resetExisting = _debounceCts != null;
+            if (resetExisting)
+            {
+                Interlocked.Increment(ref _debounceCancelledCount);
+                _debounceCts!.Cancel();
+                _debounceCts.Dispose();
+            }
             _pendingState = state;
             _debounceCts = new CancellationTokenSource();
             var token = _debounceCts.Token;
+
+            _logger?.LogTrace(
+                "Debounce {Action}: state=[{State}] windowMs={DebounceMs} (debounceCancelledTotal={Cancelled})",
+                resetExisting ? "RESET" : "START",
+                FormatStateSnapshot(state),
+                DebounceMs,
+                Interlocked.Read(ref _debounceCancelledCount));
 
             _ = Task.Delay(DebounceMs, token).ContinueWith(_ =>
             {
@@ -650,7 +749,13 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                     _pendingState = null;
                 }
                 if (toPublish != null)
+                {
+                    Interlocked.Increment(ref _debounceFiredCount);
+                    _logger?.LogTrace("Debounce FIRE: publishing state=[{State}] (debounceFiredTotal={Fired})",
+                        FormatStateSnapshot(toPublish),
+                        Interlocked.Read(ref _debounceFiredCount));
                     PublishLocalState(toPublish);
+                }
             }, TaskContinuationOptions.OnlyOnRanToCompletion);
         }
     }
@@ -662,7 +767,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     {
         if (_connectionId == null)
         {
-            _logger?.LogTrace("Cannot publish state: connection ID not available");
+            _logger?.LogWarning(
+                "DROPPED PutState: connection ID not available yet — state will NOT reach Spotify. state=[{State}], localActive={LocalActive}",
+                FormatStateSnapshot(state),
+                _isLocalPlaybackActive);
             return;
         }
 
@@ -679,8 +787,14 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             // Convert domain model to protobuf (pass deviceId for play_origin)
             var playerState = PlaybackStateHelpers.ToPlayerState(state, _session!.Config.DeviceId);
 
-            // Build device info (reuse from DeviceStateManager pattern)
-            var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(_session.Config);
+            // Build device info — pass through the volume we have in the domain model.
+            // state.Volume is carried forward from the last cluster update (LocalToPlaybackState
+            // line 336-338 preserves prev.Volume when local engine doesn't report volume).
+            // If still 0, fall back to the Spotify default (max).
+            var deviceVolume = state.Volume > 0
+                ? (int)state.Volume
+                : ConnectStateHelpers.MaxVolume;
+            var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(_session.Config, volume: deviceVolume);
 
             // Calculate how long we've been playing
             var hasBeenPlayingForMs = _playbackStartedAt > 0 ? now - _playbackStartedAt : 0;
@@ -703,21 +817,33 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 HasBeenPlayingForMs = hasBeenPlayingForMs
             };
 
-            _logger?.LogTrace("Submitting state publish: messageId={MessageId}, connectionId={ConnectionId}, startedAt={StartedAt}",
-                request.MessageId, _connectionId, _playbackStartedAt);
+            _logger?.LogDebug(
+                "PutState SUBMIT: corrId={MessageId}, connId={ConnectionId}, track={Track}, pos={Pos}ms/{Dur}ms, isActive={IsActive}, reason={Reason}, startedAt={StartedAt}, hasBeenPlayingFor={HasBeenPlayingFor}ms",
+                request.MessageId,
+                _connectionId,
+                request.Device?.PlayerState?.Track?.Uri ?? "<none>",
+                request.Device?.PlayerState?.Position ?? 0,
+                state.DurationMs,
+                request.IsActive,
+                request.PutStateReason,
+                _playbackStartedAt,
+                hasBeenPlayingForMs);
 
             // Drop stale updates when the publish queue is saturated.
             // For playback state, freshest update is more important than every intermediate tick.
             if (_statePublisher != null && !_statePublisher.TrySubmit(request))
             {
                 Interlocked.Increment(ref _publishDroppedCount);
-                _logger?.LogTrace(
-                    "Dropping PutState update because publisher queue is full (messageId={MessageId})",
-                    request.MessageId);
+                _logger?.LogWarning(
+                    "DROPPED PutState: publisher queue is full — state will NOT reach Spotify. corrId={MessageId}, droppedTotal={Total}, state=[{State}]",
+                    request.MessageId,
+                    Interlocked.Read(ref _publishDroppedCount),
+                    FormatStateSnapshot(state));
             }
             else if (_statePublisher != null)
             {
                 Interlocked.Increment(ref _publishSubmittedCount);
+                _logger?.LogTrace("PutState queued: corrId={MessageId}, queueDepth={Depth}", request.MessageId, _statePublisher.PendingCount);
             }
 
             MaybeLogPublisherHealth();
@@ -733,13 +859,22 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     private async ValueTask PublishStateAsync(PutStateRequest request)
     {
+        var startTicks = Environment.TickCount64;
         try
         {
             if (_connectionId == null || _spClient == null || _session == null)
+            {
+                _logger?.LogWarning(
+                    "PutState SEND skipped: corrId={MessageId}, connId={ConnId}, spClient={Sp}, session={Sess}",
+                    request.MessageId,
+                    _connectionId ?? "<null>",
+                    _spClient != null,
+                    _session != null);
                 return;
+            }
 
             _logger?.LogDebug(
-                "PutState: messageId={MessageId}, reason={Reason}, active={IsActive}, track={TrackUri}, position={Position}",
+                "PutState SEND start: corrId={MessageId}, reason={Reason}, active={IsActive}, track={TrackUri}, position={Position}",
                 request.MessageId,
                 request.PutStateReason,
                 request.IsActive,
@@ -751,7 +886,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 _logger.LogTrace("PutState → {Json}", Google.Protobuf.JsonFormatter.Default.Format(request));
             }
 
-            await _spClient.PutConnectStateAsync(
+            var responseBytes = await _spClient.PutConnectStateAsync(
                 _session.Config.DeviceId,
                 _connectionId,
                 request,
@@ -760,12 +895,41 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             Interlocked.Increment(ref _publishSentCount);
             MaybeLogPublisherHealth();
 
-            _logger?.LogTrace("State published successfully");
+            var elapsedMs = Environment.TickCount64 - startTicks;
+            _logger?.LogDebug(
+                "PutState SEND ok: corrId={MessageId}, elapsedMs={Elapsed}, responseBytes={Bytes} (response IS DROPPED — not re-injected via this path)",
+                request.MessageId,
+                elapsedMs,
+                responseBytes?.Length ?? 0);
+
+            if (elapsedMs > 2000)
+            {
+                _logger?.LogWarning(
+                    "PutState SEND slow: corrId={MessageId} took {Elapsed}ms — server latency or network issue",
+                    request.MessageId,
+                    elapsedMs);
+            }
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to publish playback state");
+            var elapsedMs = Environment.TickCount64 - startTicks;
+            _logger?.LogError(ex,
+                "PutState SEND FAILED: corrId={MessageId}, elapsedMs={Elapsed}, reason={Reason}, track={TrackUri}",
+                request.MessageId,
+                elapsedMs,
+                request.PutStateReason,
+                request.Device?.PlayerState?.Track?.Uri);
         }
+    }
+
+    /// <summary>
+    /// One-line snapshot of a PlaybackState for log diffs. Keep terse — this shows up a lot.
+    /// </summary>
+    private static string FormatStateSnapshot(PlaybackState state)
+    {
+        if (state == null) return "<null>";
+        var track = state.Track?.Uri ?? "<none>";
+        return $"src={state.Source},status={state.Status},track={track},pos={state.PositionMs}/{state.DurationMs}ms,idx={state.CurrentIndex},actDev={state.ActiveDeviceId ?? "<none>"},ctx={state.ContextUri ?? "<none>"},shf={state.Options.Shuffling},rep={(state.Options.RepeatingTrack ? "T" : state.Options.RepeatingContext ? "C" : "O")},vol={state.Volume},ts={state.Timestamp}";
     }
 
     /// <summary>
@@ -800,14 +964,20 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         var queueDepth = _statePublisher?.PendingCount ?? 0;
 
         _logger.LogInformation(
-            "PutState health: queueDepth={QueueDepth}, submitted={Submitted} ({SubmittedRate:F1}/min), sent={Sent} ({SentRate:F1}/min), dropped={Dropped} ({DroppedRate:F1}/min)",
+            "PutState health: queueDepth={QueueDepth}, submitted={Submitted} ({SubmittedRate:F1}/min), sent={Sent} ({SentRate:F1}/min), dropped={Dropped} ({DroppedRate:F1}/min), debounceFired={DebounceFired}, debounceCancelled={DebounceCancelled}, flushCancelledPending={FlushCancelled}, clusterUpdates={ClusterUpdates}, clusterSkippedNoChange={SkippedNoChange}, clusterSkippedActive={SkippedActive}",
             queueDepth,
             submitted,
             submittedPerMin,
             sent,
             sentPerMin,
             dropped,
-            droppedPerMin);
+            droppedPerMin,
+            Interlocked.Read(ref _debounceFiredCount),
+            Interlocked.Read(ref _debounceCancelledCount),
+            Interlocked.Read(ref _flushCancelledPendingCount),
+            Interlocked.Read(ref _clusterUpdateCount),
+            Interlocked.Read(ref _clusterUpdateSkippedNoChangesCount),
+            Interlocked.Read(ref _clusterUpdateSkippedWeAreActiveCount));
     }
 
     /// <summary>

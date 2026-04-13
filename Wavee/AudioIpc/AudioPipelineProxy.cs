@@ -35,6 +35,14 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     private long _messagesSent;
     private long _lastStateUpdateTimestamp;
 
+    // Per-message monotonic sequence assigned on receipt (not the remote-side sequence).
+    // Use this in logs to detect out-of-order apply, dropped updates, or stale reads.
+    private long _receiveSequence;
+    // State-update specific counters — helps spot bursts and detect lost messages.
+    private long _stateUpdatesReceived;
+    private long _stateUpdatesOutOfOrder;
+    private long _lastStateUpdateRemoteTimestamp;
+
     /// <summary>Last measured round-trip time in milliseconds.</summary>
     public double LastRttMs { get; private set; }
 
@@ -108,12 +116,14 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     /// <summary>
     /// Sends configuration to the audio process and waits for the Ready message.
     /// </summary>
-    public async Task<bool> ConfigureAsync(string deviceId, bool normalizationEnabled = true, CancellationToken ct = default)
+    public async Task<bool> ConfigureAsync(string deviceId, bool normalizationEnabled = true,
+        int initialVolumePercent = 0, CancellationToken ct = default)
     {
         var config = new AudioHostConfig
         {
             DeviceId = deviceId,
             NormalizationEnabled = normalizationEnabled,
+            InitialVolumePercent = initialVolumePercent,
         };
         var configJson = IpcPayloadHelper.SerializeToUtf8(config);
         await _transport.SendAsync(IpcMessageTypes.Configure, configJson, ct: ct);
@@ -232,40 +242,42 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     private async Task SendCommandAsync<T>(string type, T payload, CancellationToken ct)
     {
+        var id = Interlocked.Increment(ref _nextRequestId);
         try
         {
-            var id = Interlocked.Increment(ref _nextRequestId);
             Interlocked.Increment(ref _messagesSent);
             var payloadBytes = IpcPayloadHelper.SerializeToUtf8(payload);
+            _logger?.LogTrace("IPC send: type={Type}, id={Id}, bytes={Bytes}", type, id, payloadBytes.Length);
             await _transport.SendAsync(type, payloadBytes, id, ct);
         }
         catch (OperationCanceledException)
         {
-            _logger?.LogWarning("IPC send timed out for {Type}", type);
+            _logger?.LogWarning("IPC send TIMEOUT: type={Type}, id={Id}", type, id);
         }
         catch (IOException ex)
         {
-            _logger?.LogWarning(ex, "IPC send failed for {Type} — pipe broken", type);
+            _logger?.LogWarning(ex, "IPC send FAILED (pipe broken): type={Type}, id={Id}", type, id);
         }
     }
 
     private async Task SendSimpleCommandAsync(string type, CancellationToken ct)
     {
+        var id = Interlocked.Increment(ref _nextRequestId);
         try
         {
-            var id = Interlocked.Increment(ref _nextRequestId);
             Interlocked.Increment(ref _messagesSent);
             if (type == IpcMessageTypes.Ping)
                 _lastPingSentTimestamp = Stopwatch.GetTimestamp();
+            _logger?.LogTrace("IPC send (simple): type={Type}, id={Id}", type, id);
             await _transport.SendAsync(type, id, ct);
         }
         catch (OperationCanceledException)
         {
-            _logger?.LogWarning("IPC send timed out for {Type}", type);
+            _logger?.LogWarning("IPC send TIMEOUT: type={Type}, id={Id}", type, id);
         }
         catch (IOException ex)
         {
-            _logger?.LogWarning(ex, "IPC send failed for {Type} — pipe broken", type);
+            _logger?.LogWarning(ex, "IPC send FAILED (pipe broken): type={Type}, id={Id}", type, id);
         }
     }
 
@@ -310,22 +322,57 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         }
 
         IsConnected = false;
-        _logger?.LogDebug("AudioPipelineProxy receive loop ended");
+        _logger?.LogWarning(
+            "AudioPipelineProxy receive loop ended: messagesReceived={Received}, stateUpdatesReceived={StateUpdates}, outOfOrder={OutOfOrder}, lastFreshness={FreshnessMs:F0}ms",
+            Interlocked.Read(ref _messagesReceived),
+            Interlocked.Read(ref _stateUpdatesReceived),
+            Interlocked.Read(ref _stateUpdatesOutOfOrder),
+            StateFreshnessMs);
         Disconnected?.Invoke("Audio pipe connection lost");
     }
 
     private void HandleIncomingMessage(IpcMessage msg)
     {
         Interlocked.Increment(ref _messagesReceived);
+        var recvSeq = Interlocked.Increment(ref _receiveSequence);
 
         switch (msg.Type)
         {
             case IpcMessageTypes.StateUpdate:
             {
                 var snapshot = IpcPayloadHelper.Deserialize<PlaybackStateSnapshot>(msg);
-                if (snapshot == null) break;
+                if (snapshot == null)
+                {
+                    _logger?.LogWarning("[ipc#{Seq}] StateUpdate payload failed to deserialize", recvSeq);
+                    break;
+                }
 
+                // Track freshness gap — interval between consecutive StateUpdates.
+                // Large gaps mean the AudioHost went silent; rapid gaps mean chattiness.
+                var previousRecvTicks = _lastStateUpdateTimestamp;
                 _lastStateUpdateTimestamp = Stopwatch.GetTimestamp();
+                var intervalMs = previousRecvTicks == 0
+                    ? 0
+                    : Stopwatch.GetElapsedTime(previousRecvTicks, _lastStateUpdateTimestamp).TotalMilliseconds;
+
+                var stateSeq = Interlocked.Increment(ref _stateUpdatesReceived);
+
+                // Remote-side timestamp regression = out-of-order apply risk.
+                var prevRemote = _lastStateUpdateRemoteTimestamp;
+                if (snapshot.Timestamp > 0 && prevRemote > snapshot.Timestamp)
+                {
+                    var outOfOrder = Interlocked.Increment(ref _stateUpdatesOutOfOrder);
+                    _logger?.LogWarning(
+                        "[ipc#{Seq} state#{StateSeq}] OUT-OF-ORDER StateUpdate: prevTs={Prev} newTs={New} regressionMs={Reg} track={Track} outOfOrderTotal={Total}",
+                        recvSeq, stateSeq, prevRemote, snapshot.Timestamp, prevRemote - snapshot.Timestamp, snapshot.TrackUri ?? "<none>", outOfOrder);
+                }
+                _lastStateUpdateRemoteTimestamp = snapshot.Timestamp;
+
+                _logger?.LogTrace(
+                    "[ipc#{Seq} state#{StateSeq}] StateUpdate: src={Src}, track={Track}, pos={Pos}/{Dur}ms, playing={Playing}, buffering={Buffering}, changes={Changes}, remoteTs={RemoteTs}, intervalMs={Interval:F0}",
+                    recvSeq, stateSeq, snapshot.Source, snapshot.TrackUri ?? "<none>", snapshot.PositionMs, snapshot.DurationMs,
+                    snapshot.IsPlaying, snapshot.IsBuffering, snapshot.Changes, snapshot.Timestamp, intervalMs);
+
                 UnderrunCount = snapshot.UnderrunCount;
 
                 var state = new LocalPlaybackState

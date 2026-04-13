@@ -120,6 +120,10 @@ public sealed class ExtractedColorService : IColorService
                     }
                 }
             }
+            catch (OperationCanceledException ex)
+            {
+                _logger?.LogDebug(ex, "Extracted color fetch canceled for {Count} images", missing.Count);
+            }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Failed to fetch extracted colors for {Count} images", missing.Count);

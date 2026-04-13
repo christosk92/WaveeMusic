@@ -1,12 +1,18 @@
+using System;
+using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.WinUI.Controls.Search;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -14,15 +20,72 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class SearchPage : Page
 {
-    private readonly Services.ThemeColorService? _themeColors;
-
     public SearchViewModel ViewModel { get; }
+
+    private readonly IColorService? _colorService;
+    private readonly ILogger? _logger;
+
+    // Bumped on every TopResult change so late color-fetch results can be dropped
+    // (the user may have typed more while the previous fetch was in flight).
+    private int _colorRequestVersion;
 
     public SearchPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<SearchViewModel>();
-        _themeColors = Ioc.Default.GetService<Services.ThemeColorService>();
+        _colorService = Ioc.Default.GetService<IColorService>();
+        _logger = Ioc.Default.GetService<ILogger<SearchPage>>();
         InitializeComponent();
+
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SearchViewModel.TopResult))
+        {
+            _ = FetchAndApplyTopResultColorAsync(ViewModel.TopResult);
+        }
+    }
+
+    private async System.Threading.Tasks.Task FetchAndApplyTopResultColorAsync(SearchResultItem? item)
+    {
+        var requestVersion = Interlocked.Increment(ref _colorRequestVersion);
+
+        // Clear immediately so a stale color doesn't linger on top of the new hero.
+        TopResultCard.ColorHex = null;
+
+        if (item == null || _colorService == null || string.IsNullOrEmpty(item.ImageUrl))
+            return;
+
+        var imageUrl = SpotifyImageHelper.ToHttpsUrl(item.ImageUrl);
+        if (string.IsNullOrEmpty(imageUrl)) return;
+
+        try
+        {
+            var color = await _colorService.GetColorAsync(imageUrl);
+            if (color == null) return;
+
+            // Drop stale results — the user moved on to a new top result while we waited.
+            if (requestVersion != _colorRequestVersion) return;
+
+            var isDark = ActualTheme == ElementTheme.Dark;
+            var hex = isDark
+                ? color.DarkHex ?? color.RawHex
+                : color.LightHex ?? color.RawHex;
+
+            if (!string.IsNullOrEmpty(hex))
+                TopResultCard.ColorHex = hex;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch top-result accent color for {Uri}", item.Uri);
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -57,7 +120,7 @@ public sealed partial class SearchPage : Page
 
     private void ResultRow_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (sender is FrameworkElement element && element.Tag is SearchResultItem item)
+        if (sender is SearchResultRowCard card && card.Item is { } item)
             ExecuteResult(item);
     }
 
@@ -82,26 +145,6 @@ public sealed partial class SearchPage : Page
             case SearchResultType.Playlist:
                 NavigationHelpers.OpenPlaylist(item.Uri, item.Name);
                 break;
-        }
-    }
-
-    private void InteractiveCard_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is Border border)
-        {
-            border.Background = _themeColors?.CardBackgroundSecondary ??
-                                (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
-        }
-    }
-
-    private void InteractiveCard_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is Border border)
-        {
-            border.Background = ReferenceEquals(border, TopResultCard)
-                ? _themeColors?.CardBackgroundSecondary ??
-                  (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
-                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
     }
 }

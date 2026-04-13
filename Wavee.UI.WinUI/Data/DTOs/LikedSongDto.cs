@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Data.DTOs;
@@ -23,6 +24,7 @@ public sealed record LikedSongDto : ITrackItem
     public int OriginalIndex { get; init; }
     public bool IsLoaded => true;
     public bool IsLiked { get; set; } = true; // Always true — it's in the liked songs list
+    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Duration formatted as m:ss or h:mm:ss

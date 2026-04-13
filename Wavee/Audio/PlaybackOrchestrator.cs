@@ -109,11 +109,35 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         }
     }
 
-    public Task PauseAsync(CancellationToken ct = default) => _proxy.PauseAsync(ct);
-    public Task ResumeAsync(CancellationToken ct = default) => _proxy.ResumeAsync(ct);
-    public Task StopAsync(CancellationToken ct = default) => _proxy.StopAsync(ct);
-    public Task SeekAsync(long positionMs, CancellationToken ct = default) => _proxy.SeekAsync(positionMs, ct);
-    public Task SetVolumeAsync(float volume, CancellationToken ct = default) => _proxy.SetVolumeAsync(volume, ct);
+    public Task PauseAsync(CancellationToken ct = default)
+    {
+        _logger?.LogInformation("Orchestrator: PauseAsync → forwarding to proxy");
+        return _proxy.PauseAsync(ct);
+    }
+
+    public Task ResumeAsync(CancellationToken ct = default)
+    {
+        _logger?.LogInformation("Orchestrator: ResumeAsync → forwarding to proxy");
+        return _proxy.ResumeAsync(ct);
+    }
+
+    public Task StopAsync(CancellationToken ct = default)
+    {
+        _logger?.LogInformation("Orchestrator: StopAsync → forwarding to proxy");
+        return _proxy.StopAsync(ct);
+    }
+
+    public Task SeekAsync(long positionMs, CancellationToken ct = default)
+    {
+        _logger?.LogInformation("Orchestrator: SeekAsync({Pos}ms) → forwarding to proxy", positionMs);
+        return _proxy.SeekAsync(positionMs, ct);
+    }
+
+    public Task SetVolumeAsync(float volume, CancellationToken ct = default)
+    {
+        _logger?.LogDebug("Orchestrator: SetVolumeAsync({Volume:P0}) → forwarding to proxy", volume);
+        return _proxy.SetVolumeAsync(volume, ct);
+    }
 
     public async Task SkipNextAsync(CancellationToken ct = default)
     {
@@ -272,27 +296,77 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 
     private void SubscribeToRemoteCommands(ConnectCommandHandler? handler)
     {
-        if (handler == null) return;
+        if (handler == null)
+        {
+            _logger?.LogWarning("Orchestrator: no ConnectCommandHandler — remote commands will NOT be handled");
+            return;
+        }
+
+        _logger?.LogInformation("Orchestrator: subscribing to remote commands from ConnectCommandHandler");
 
         _subs.Add(handler.PlayCommands.Subscribe(cmd =>
         {
-            _logger?.LogInformation("Remote: play {Context}/{Track}", cmd.ContextUri, cmd.TrackUri);
+            _logger?.LogInformation("Remote cmd: play context={Context}, track={Track}, index={Index}, sender={Sender}",
+                cmd.ContextUri ?? "<none>", cmd.TrackUri ?? "<none>", cmd.SkipToIndex, cmd.SenderDeviceId ?? "<none>");
             _ = PlayAsync(cmd);
         }));
-        _subs.Add(handler.PauseCommands.Subscribe(cmd => { _ = PauseAsync(); }));
-        _subs.Add(handler.ResumeCommands.Subscribe(cmd => { _ = ResumeAsync(); }));
-        _subs.Add(handler.SeekCommands.Subscribe(cmd => { _ = SeekAsync(cmd.PositionMs); }));
-        _subs.Add(handler.SkipNextCommands.Subscribe(cmd => { _ = SkipNextAsync(); }));
-        _subs.Add(handler.SkipPrevCommands.Subscribe(cmd => { _ = SkipPreviousAsync(); }));
-        _subs.Add(handler.ShuffleCommands.Subscribe(cmd => { _ = SetShuffleAsync(cmd.Enabled); }));
-        _subs.Add(handler.RepeatContextCommands.Subscribe(cmd => { _ = SetRepeatContextAsync(cmd.Enabled); }));
-        _subs.Add(handler.RepeatTrackCommands.Subscribe(cmd => { _ = SetRepeatTrackAsync(cmd.Enabled); }));
+        _subs.Add(handler.PauseCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: pause (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
+            _ = PauseAsync();
+        }));
+        _subs.Add(handler.ResumeCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: resume (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
+            _ = ResumeAsync();
+        }));
+        _subs.Add(handler.SeekCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: seek → {Pos}ms (sender={Sender})", cmd.PositionMs, cmd.SenderDeviceId ?? "<none>");
+            _ = SeekAsync(cmd.PositionMs);
+        }));
+        _subs.Add(handler.SkipNextCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: skip_next (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
+            _ = SkipNextAsync();
+        }));
+        _subs.Add(handler.SkipPrevCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: skip_prev (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
+            _ = SkipPreviousAsync();
+        }));
+        _subs.Add(handler.ShuffleCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: shuffle={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
+            _ = SetShuffleAsync(cmd.Enabled);
+        }));
+        _subs.Add(handler.RepeatContextCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: repeat_context={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
+            _ = SetRepeatContextAsync(cmd.Enabled);
+        }));
+        _subs.Add(handler.RepeatTrackCommands.Subscribe(cmd =>
+        {
+            _logger?.LogInformation("Remote cmd: repeat_track={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
+            _ = SetRepeatTrackAsync(cmd.Enabled);
+        }));
     }
 
     // ── State ──
 
     private void OnProxyStateChanged(LocalPlaybackState engineState)
     {
+        var prev = _stateSubject.Value;
+
+        // Log significant state transitions
+        if (prev.TrackUri != engineState.TrackUri)
+            _logger?.LogInformation("Orchestrator: track changed: {From} → {To}", prev.TrackUri ?? "<none>", engineState.TrackUri ?? "<none>");
+        if (prev.IsPlaying != engineState.IsPlaying)
+            _logger?.LogInformation("Orchestrator: IsPlaying changed: {From} → {To} (track={Track}, pos={Pos}ms)",
+                prev.IsPlaying, engineState.IsPlaying, engineState.TrackUri ?? "<none>", engineState.PositionMs);
+        if (prev.IsBuffering != engineState.IsBuffering)
+            _logger?.LogDebug("Orchestrator: IsBuffering changed: {From} → {To}", prev.IsBuffering, engineState.IsBuffering);
+
         // Enrich engine state with queue info
         var enriched = engineState with
         {

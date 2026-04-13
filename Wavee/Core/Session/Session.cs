@@ -84,6 +84,9 @@ public sealed class Session : ISession, IAsyncDisposable
     // Clock synchronization
     private SpotifyClockService? _clockService;
 
+    // Pathfinder client (cached — one instance per session)
+    private PathfinderClient? _pathfinderClient;
+
     // Event subsystem
     private EventService? _eventService;
 
@@ -458,9 +461,10 @@ public sealed class Session : ISession, IAsyncDisposable
     /// Access tokens are obtained automatically via login5.
     /// </remarks>
     /// <returns>PathfinderClient instance.</returns>
-    public IPathfinderClient Pathfinder => new PathfinderClient(
+    public IPathfinderClient Pathfinder => _pathfinderClient ??= new PathfinderClient(
         this,
         _httpClient,
+        clientTokenManager: _clientTokenManager,
         logger: _logger);
 
     /// <summary>
@@ -657,18 +661,13 @@ public sealed class Session : ISession, IAsyncDisposable
         {
             _logger?.LogDebug("Access token expired or missing, refreshing via login5");
 
-            var userData = _data.GetUserData();
-            if (userData == null)
-                throw new SessionException(
-                    SessionFailureReason.Disposed,
-                    "Session not authenticated");
+            // If the session hasn't finished authenticating yet (startup race), wait
+            // rather than throwing immediately — the caller already has a valid
+            // CancellationToken so this is bounded by the caller's timeout.
+            await _data.WaitForAuthAsync(cancellationToken);
 
-            // Get stored credentials from session
-            var storedCredentials = _data.GetStoredCredentials();
-            if (storedCredentials == null)
-                throw new SessionException(
-                    SessionFailureReason.Disposed,
-                    "No stored credentials available");
+            var userData = _data.GetUserData()!;
+            var storedCredentials = _data.GetStoredCredentials()!;
 
             // Exchange for access token via login5
             var login5 = _data.GetLogin5Client();

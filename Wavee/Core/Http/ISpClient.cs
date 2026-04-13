@@ -307,4 +307,15 @@ public interface ISpClient
         string userId,
         int limit = 50,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches Spotify-provided content filter chips for the current user's liked songs.
+    /// Supports conditional requests via ETag / If-None-Match.
+    /// </summary>
+    /// <param name="ifNoneMatch">Optional prior ETag value to send as If-None-Match.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Typed filter list with ETag metadata and 304 state.</returns>
+    Task<LikedSongsContentFiltersResult> GetLikedSongsContentFiltersAsync(
+        string? ifNoneMatch = null,
+        CancellationToken cancellationToken = default);
 }

@@ -56,11 +56,11 @@
 
     <Grid>
         <ScrollView VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="0" Padding="0,0,0,16">
+            <StackPanel Spacing="0" Padding="0,8,0,16">
 
                 <!-- Now Playing -->
                 <Grid x:Name="NowPlayingSection" Visibility="Collapsed" Margin="0,0,0,4">
-                    <Grid Padding="8,8" ColumnSpacing="10" Height="60"
+                    <Grid Padding="8,8" ColumnSpacing="10" MinHeight="60"
                           CornerRadius="6"
                           Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                         <Grid.ColumnDefinitions>

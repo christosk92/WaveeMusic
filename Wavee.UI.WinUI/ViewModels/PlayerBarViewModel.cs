@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI.Controls;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
@@ -24,6 +25,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
     private readonly IPlaybackStateService _playbackStateService;
     private readonly IConnectivityService? _connectivityService;
+    private readonly ILogger? _logger;
     private bool _disposed;
     private DispatcherTimer? _positionTimer;
     private DateTime _lastServicePositionUpdate = DateTime.UtcNow;
@@ -164,15 +166,19 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private double _previousVolume = 50;
 
     public PlayerBarViewModel(IPlaybackStateService playbackStateService,
-                              IConnectivityService? connectivityService = null)
+                              IConnectivityService? connectivityService = null,
+                              ILoggerFactory? loggerFactory = null)
     {
         _playbackStateService = playbackStateService;
         _connectivityService = connectivityService;
+        _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
         _navigateToArtistCommand = new RelayCommand<string?>(NavigateToArtist);
 
         // Sync initial state
         SyncFromService();
+        _logger?.LogDebug("PlayerBarViewModel init: track={Track}, playing={Playing}, pos={Pos}/{Dur}ms, vol={Vol}, shuffle={Shuffle}, repeat={Repeat}",
+            _trackTitle ?? "<none>", _isPlaying, _position, _duration, _volume, _isShuffle, _repeatMode);
 
         // Subscribe to service changes
         _playbackStateService.PropertyChanged += OnPlaybackServicePropertyChanged;
@@ -241,16 +247,24 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         switch (e.PropertyName)
         {
             case nameof(IPlaybackStateService.IsPlaying):
-                IsPlaying = _playbackStateService.IsPlaying;
+                var newPlaying = _playbackStateService.IsPlaying;
+                _logger?.LogDebug("[PlayerBar] IsPlaying → {Value} (was {Old})", newPlaying, IsPlaying);
+                IsPlaying = newPlaying;
                 break;
             case nameof(IPlaybackStateService.IsBuffering):
-                IsBuffering = _playbackStateService.IsBuffering;
+                var newBuf = _playbackStateService.IsBuffering;
+                _logger?.LogDebug("[PlayerBar] IsBuffering → {Value}", newBuf);
+                IsBuffering = newBuf;
                 break;
             case nameof(IPlaybackStateService.CurrentTrackId):
-                HasTrack = !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId);
+                var newTrackId = _playbackStateService.CurrentTrackId;
+                var hasTrack = !string.IsNullOrEmpty(newTrackId);
+                _logger?.LogDebug("[PlayerBar] CurrentTrackId → {TrackId} (hasTrack={HasTrack})", newTrackId ?? "<none>", hasTrack);
+                HasTrack = hasTrack;
                 break;
             case nameof(IPlaybackStateService.CurrentTrackTitle):
                 TrackTitle = _playbackStateService.CurrentTrackTitle;
+                _logger?.LogDebug("[PlayerBar] TrackTitle → {Title}", TrackTitle ?? "<none>");
                 break;
             case nameof(IPlaybackStateService.CurrentArtistName):
                 ArtistName = _playbackStateService.CurrentArtistName;
@@ -286,21 +300,33 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                     _lastServicePosition = Position;
                     _lastServicePositionUpdate = DateTime.UtcNow;
                 }
+                else
+                {
+                    _logger?.LogTrace("[PlayerBar] Position update suppressed — user is seeking");
+                }
                 break;
             case nameof(IPlaybackStateService.Duration):
-                Duration = _playbackStateService.Duration;
+                var newDur = _playbackStateService.Duration;
+                _logger?.LogDebug("[PlayerBar] Duration → {Dur}ms", newDur);
+                Duration = newDur;
                 break;
             case nameof(IPlaybackStateService.Volume):
                 Volume = _playbackStateService.Volume;
                 break;
             case nameof(IPlaybackStateService.IsShuffle):
-                IsShuffle = _playbackStateService.IsShuffle;
+                var newShuffle = _playbackStateService.IsShuffle;
+                _logger?.LogDebug("[PlayerBar] IsShuffle → {Value}", newShuffle);
+                IsShuffle = newShuffle;
                 break;
             case nameof(IPlaybackStateService.RepeatMode):
-                RepeatMode = _playbackStateService.RepeatMode;
+                var newRepeat = _playbackStateService.RepeatMode;
+                _logger?.LogDebug("[PlayerBar] RepeatMode → {Value}", newRepeat);
+                RepeatMode = newRepeat;
                 break;
             case nameof(IPlaybackStateService.IsPlayingRemotely):
-                IsPlayingRemotely = _playbackStateService.IsPlayingRemotely;
+                var newRemote = _playbackStateService.IsPlayingRemotely;
+                _logger?.LogDebug("[PlayerBar] IsPlayingRemotely → {Value}, device={Device}", newRemote, _playbackStateService.ActiveDeviceName ?? "<none>");
+                IsPlayingRemotely = newRemote;
                 break;
             case nameof(IPlaybackStateService.ActiveDeviceName):
                 ActiveDeviceName = _playbackStateService.ActiveDeviceName;
@@ -343,10 +369,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (value)
         {
+            _logger?.LogDebug("[PlayerBar] IsPlaying=true — starting position interpolation timer");
             _positionTimer?.Start();
         }
         else
         {
+            _logger?.LogDebug("[PlayerBar] IsPlaying=false — stopping position interpolation timer");
             _positionTimer?.Stop();
         }
     }
@@ -379,21 +407,26 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (!HasTrack)
         {
+            _logger?.LogWarning("[PlayerBar] PlayPause ignored — no track loaded");
             return;
         }
 
+        _logger?.LogInformation("[PlayerBar] PlayPause clicked: isPlaying={IsPlaying}, track={Track}, pos={Pos}ms",
+            IsPlaying, TrackTitle ?? "<none>", (long)Position);
         _playbackStateService.PlayPause();
     }
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void Previous()
     {
+        _logger?.LogInformation("[PlayerBar] Previous clicked: pos={Pos}ms, track={Track}", (long)Position, TrackTitle ?? "<none>");
         _playbackStateService.Previous();
     }
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void Next()
     {
+        _logger?.LogInformation("[PlayerBar] Next clicked: track={Track}", TrackTitle ?? "<none>");
         _playbackStateService.Next();
     }
 
@@ -402,6 +435,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         // Skip back 10 seconds
         var newPos = Math.Max(0, Position - 10000);
+        _logger?.LogInformation("[PlayerBar] SkipBackward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
         _playbackStateService.Seek(newPos);
     }
 
@@ -410,13 +444,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         // Skip forward 30 seconds
         var newPos = Math.Min(Duration, Position + 30000);
+        _logger?.LogInformation("[PlayerBar] SkipForward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
         _playbackStateService.Seek(newPos);
     }
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void ToggleShuffle()
     {
-        _playbackStateService.SetShuffle(!IsShuffle);
+        var next = !IsShuffle;
+        _logger?.LogInformation("[PlayerBar] ToggleShuffle: {From} → {To}", IsShuffle, next);
+        _playbackStateService.SetShuffle(next);
     }
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
@@ -430,6 +467,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             RepeatMode.Track => RepeatMode.Off,
             _ => RepeatMode.Off
         };
+        _logger?.LogInformation("[PlayerBar] ToggleRepeat: {From} → {To}", RepeatMode, next);
         _playbackStateService.SetRepeatMode(next);
     }
 
@@ -501,6 +539,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// </summary>
     public void EndSeeking()
     {
+        _logger?.LogInformation("[PlayerBar] Seek committed: {Pos}ms / {Dur}ms", (long)Position, (long)Duration);
         IsSeeking = false;
         _playbackStateService.Seek(Position);
     }

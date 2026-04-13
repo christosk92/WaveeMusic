@@ -25,6 +25,7 @@ public sealed class PathfinderClient : IPathfinderClient
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
     private readonly ILogger? _logger;
+    private readonly ClientTokenManager? _clientTokenManager;
 
     /// <summary>
     /// Creates a new PathfinderClient.
@@ -32,11 +33,13 @@ public sealed class PathfinderClient : IPathfinderClient
     /// <param name="session">Active Spotify session for obtaining access tokens.</param>
     /// <param name="httpClient">HTTP client for making requests.</param>
     /// <param name="baseUrl">Base URL for the Pathfinder API (default: https://api-partner.spotify.com).</param>
+    /// <param name="clientTokenManager">Optional client token manager for the client-token header.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
-    public PathfinderClient(
+    internal PathfinderClient(
         ISession session,
         HttpClient httpClient,
         string? baseUrl = null,
+        ClientTokenManager? clientTokenManager = null,
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -45,6 +48,7 @@ public sealed class PathfinderClient : IPathfinderClient
         _session = session;
         _httpClient = httpClient;
         _baseUrl = baseUrl ?? DefaultBaseUrl;
+        _clientTokenManager = clientTokenManager;
         _logger = logger;
     }
 
@@ -101,6 +105,20 @@ public sealed class PathfinderClient : IPathfinderClient
             httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", "1.2.88.95.gb1d21cbd");
             httpRequest.Headers.TryAddWithoutValidation("origin", "https://open.spotify.com");
             httpRequest.Headers.TryAddWithoutValidation("referer", "https://open.spotify.com/");
+        }
+        // Add client-token header (required by Spotify's Pathfinder API)
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(ct);
+                if (!string.IsNullOrEmpty(clientToken))
+                    httpRequest.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token for Pathfinder, continuing without");
+            }
         }
         httpRequest.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 

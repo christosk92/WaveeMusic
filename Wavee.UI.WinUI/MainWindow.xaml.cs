@@ -76,11 +76,22 @@ public sealed partial class MainWindow : WindowEx
         var shellVm = Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
         shellVm?.Cleanup();
 
-        // Force save settings on exit
-        var settings = Ioc.Default.GetService<ISettingsService>();
-        if (settings is not null)
+        try
         {
-            await settings.SaveAsync();
+            await Helpers.Application.AppLifecycleHelper.TeardownPlaybackEngineAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Playback teardown failed during window close: {ex}");
+        }
+
+        try
+        {
+            await App.ShutdownHostAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Host shutdown failed during window close: {ex}");
         }
     }
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net.Http;
 using Wavee.Core.Http;
 using Wavee.UI.WinUI.Data.Models;
@@ -17,10 +18,14 @@ public static class ErrorMapper
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound } => AppLocalization.GetString("Error_ContentNotFound"),
         HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } => AppLocalization.GetString("Error_TooManyRequestsMoment"),
         HttpRequestException => AppLocalization.GetString("Error_NetworkCheckConnection"),
+        TimeoutException => AppLocalization.GetString("Error_GenericTryAgain"),
+        IOException => AppLocalization.GetString("Error_NetworkCheckConnection"),
         OperationCanceledException => AppLocalization.GetString("Error_RequestCancelled"),
         SpClientException { Reason: SpClientFailureReason.Unauthorized } => AppLocalization.GetString("Error_SessionExpiredReconnect"),
         SpClientException { Reason: SpClientFailureReason.NotFound } => AppLocalization.GetString("Error_ContentNotFound"),
         SpClientException { Reason: SpClientFailureReason.RateLimited } => AppLocalization.GetString("Error_TooManyRequestsWait"),
+        SpClientException { Reason: SpClientFailureReason.RequestFailed } => AppLocalization.GetString("Error_NetworkCheckConnection"),
+        SpClientException { Reason: SpClientFailureReason.ServerError } => AppLocalization.GetString("Error_GenericTryAgain"),
         SpClientException => AppLocalization.GetString("Error_GenericTryAgain"),
         _ => AppLocalization.GetString("Error_Unexpected")
     };

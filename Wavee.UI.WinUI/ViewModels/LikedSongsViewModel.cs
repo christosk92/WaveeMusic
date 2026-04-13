@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -25,13 +26,19 @@ public enum LikedSongsSortColumn { Title, Artist, Album, AddedAt }
 /// <summary>
 /// ViewModel for the Liked Songs page with imperative filtering and sorting.
 /// </summary>
-public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListViewModel
+public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
+    private readonly ITrackDescriptorFetcher _descriptorFetcher;
     private readonly ILogger? _logger;
+    private readonly DispatcherQueue _dispatcherQueue;
+    private bool _disposed;
 
     private List<LikedSongDto> _allSongs = [];
+    // Cached result of GetLikedSongFiltersAsync so we can re-run BuildFilterChips after
+    // descriptor enrichment without re-fetching the server-side filter list.
+    private IReadOnlyList<LikedSongsFilterDto> _cachedFilters = Array.Empty<LikedSongsFilterDto>();
     private readonly DispatcherTimer _searchDebounceTimer;
 
     [ObservableProperty]
@@ -45,6 +52,15 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
     [ObservableProperty]
     private bool _isLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFilterChipsOrShimmer))]
+    private bool _isTagsLoading;
+
+    // Source of truth for which filter chip is currently selected.
+    // Bound TwoWay to TokenView.SelectedItem. Property-changed hook triggers re-filtering.
+    [ObservableProperty]
+    private LikedSongsFilterChipViewModel? _selectedFilterChip;
 
     [ObservableProperty]
     private bool _hasError;
@@ -68,6 +84,12 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
 
     public ObservableCollection<LikedSongDto> FilteredSongs { get; } = [];
+    public ObservableCollection<LikedSongsFilterChipViewModel> FilterChips { get; } = [];
+    public bool HasFilterChips => FilterChips.Count > 0;
+
+    // Drives visibility of the chip-row container in XAML. The row should also be visible
+    // while the shimmer is showing — so the layout doesn't pop in when chips arrive.
+    public bool HasFilterChipsOrShimmer => HasFilterChips || IsTagsLoading;
 
     private IEnumerable<LikedSongDto> SelectedTracks => SelectedItems.OfType<LikedSongDto>();
 
@@ -85,11 +107,17 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
-    public LikedSongsViewModel(ILibraryDataService libraryDataService, IPlaybackStateService playbackStateService, ILogger<LikedSongsViewModel>? logger = null)
+    public LikedSongsViewModel(
+        ILibraryDataService libraryDataService,
+        IPlaybackStateService playbackStateService,
+        ITrackDescriptorFetcher descriptorFetcher,
+        ILogger<LikedSongsViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
+        _descriptorFetcher = descriptorFetcher;
         _logger = logger;
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _searchDebounceTimer.Tick += (_, _) =>
@@ -97,6 +125,27 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             _searchDebounceTimer.Stop();
             ApplyFilterAndSort();
         };
+
+        _libraryDataService.DataChanged += OnLibraryDataChanged;
+        _descriptorFetcher.FetchCompleted += OnDescriptorFetchCompleted;
+    }
+
+    private void OnDescriptorFetchCompleted(object? sender, EventArgs e)
+    {
+        // Dispatcher-marshal and re-run LoadAsync so LibraryDataService re-reads the freshly
+        // populated extension_cache and DTOs come back with real descriptor tags.
+        _dispatcherQueue.TryEnqueue(async () =>
+        {
+            if (_disposed) return;
+            try
+            {
+                await LoadAsync();
+            }
+            finally
+            {
+                IsTagsLoading = false;
+            }
+        });
     }
 
     partial void OnSearchQueryChanged(string value)
@@ -120,6 +169,11 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         ApplyFilterAndSort();
     }
 
+    partial void OnSelectedFilterChipChanged(LikedSongsFilterChipViewModel? oldValue, LikedSongsFilterChipViewModel? newValue)
+    {
+        ApplyFilterAndSort();
+    }
+
     partial void OnSelectedItemsChanged(IReadOnlyList<object> value)
     {
         PlaySelectedCommand.NotifyCanExecuteChanged();
@@ -133,6 +187,12 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     {
         var query = SearchQuery?.Trim();
         IEnumerable<LikedSongDto> filtered = _allSongs;
+        var selectedChip = SelectedFilterChip;
+
+        if (selectedChip is { IsAllChip: false, Filter: { } selectedFilter })
+        {
+            filtered = filtered.Where(song => MatchesFilter(song, selectedFilter));
+        }
 
         if (!string.IsNullOrEmpty(query))
         {
@@ -140,6 +200,11 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
                 s.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 s.ArtistName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 s.AlbumName.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+            if (selectedChip?.Filter is { } searchFilter)
+            {
+                filtered = filtered.Where(song => MatchesFilter(song, searchFilter));
+            }
         }
 
         var sorted = (CurrentSortColumn, IsSortDescending) switch
@@ -173,6 +238,61 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         return $"{ts.Minutes} min";
     }
 
+    private void BuildFilterChips(IReadOnlyList<LikedSongsFilterDto> filters)
+    {
+        // Preserve user's selected chip across rebuild. When descriptor enrichment finishes
+        // and we reshape the chip list, the previously selected chip should stay selected if
+        // it still matches at least one song; otherwise we fall back to "All".
+        var previouslySelectedQuery = SelectedFilterChip?.Filter?.Query;
+
+        FilterChips.Clear();
+
+        var matchingFilters = filters
+            .Where(static filter => filter.IsSupported)
+            .Where(filter => _allSongs.Any(song => MatchesFilter(song, filter)))
+            .ToList();
+
+        if (matchingFilters.Count == 0)
+        {
+            SelectedFilterChip = null;
+            OnPropertyChanged(nameof(HasFilterChips));
+            OnPropertyChanged(nameof(HasFilterChipsOrShimmer));
+            ApplyFilterAndSort();
+            return;
+        }
+
+        var allChip = new LikedSongsFilterChipViewModel
+        {
+            Label = "All",
+            IsAllChip = true
+        };
+        FilterChips.Add(allChip);
+
+        LikedSongsFilterChipViewModel? restoredChip = null;
+        foreach (var filter in matchingFilters)
+        {
+            var chip = new LikedSongsFilterChipViewModel
+            {
+                Label = filter.Title,
+                Filter = filter
+            };
+            if (previouslySelectedQuery != null &&
+                string.Equals(previouslySelectedQuery, filter.Query, StringComparison.Ordinal))
+            {
+                restoredChip = chip;
+            }
+            FilterChips.Add(chip);
+        }
+
+        // Set selection AFTER populating FilterChips so TwoWay binding to TokenView.SelectedItem
+        // resolves against the final collection. Setting SelectedFilterChip triggers
+        // OnSelectedFilterChipChanged → ApplyFilterAndSort, so we don't call it again below.
+        SelectedFilterChip = restoredChip ?? allChip;
+
+        OnPropertyChanged(nameof(HasFilterChips));
+        OnPropertyChanged(nameof(HasFilterChipsOrShimmer));
+    }
+
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -185,15 +305,23 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         {
             var songsTask = _libraryDataService.GetLikedSongsAsync();
             var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
+            var filtersTask = _libraryDataService.GetLikedSongFiltersAsync();
 
-            await Task.WhenAll(songsTask, playlistsTask);
+            await Task.WhenAll(songsTask, playlistsTask, filtersTask);
 
             var songs = await songsTask;
             _allSongs = songs.Select((s, i) => s with { OriginalIndex = i + 1 }).ToList();
+            _cachedFilters = await filtersTask;
             UpdateAggregates();
+            BuildFilterChips(_cachedFilters);
             ApplyFilterAndSort();
 
             Playlists = await playlistsTask;
+
+            // Kick off async descriptor enrichment. On first open (no cached tags anywhere)
+            // we show the shimmer; on subsequent opens the tags are already present so we
+            // run the fetcher silently to refresh any stale entries.
+            TryTriggerDescriptorFetch();
         }
         catch (Exception ex)
         {
@@ -205,6 +333,34 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         {
             IsLoading = false;
         }
+    }
+
+    private void TryTriggerDescriptorFetch()
+    {
+        if (_allSongs.Count == 0) return;
+
+        var hasAnyCachedTags = _allSongs.Any(s => s.Tags.Count > 0);
+        if (!hasAnyCachedTags)
+        {
+            IsTagsLoading = true;
+        }
+
+        var uris = _allSongs.Select(s => s.Uri).ToList();
+
+        // Fire-and-forget: fetcher internally serializes concurrent calls and raises
+        // FetchCompleted when done. OnDescriptorFetchCompleted handles the follow-up.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _descriptorFetcher.EnqueueAsync(uris);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Descriptor enrichment failed");
+                _dispatcherQueue.TryEnqueue(() => IsTagsLoading = false);
+            }
+        });
     }
 
     [RelayCommand]
@@ -314,6 +470,74 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         if (playlist == null || !HasSelection) return;
     }
 
+    [RelayCommand]
+    private void SelectFilterChip(LikedSongsFilterChipViewModel? chip)
+    {
+        if (chip == null || !FilterChips.Contains(chip))
+            return;
+
+        SelectedFilterChip = chip;
+    }
+
+    private static bool MatchesFilter(LikedSongDto song, LikedSongsFilterDto filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter.TagValue) || song.Tags.Count == 0)
+            return false;
+
+        var normalizedFilter = NormalizeTag(filter.TagValue);
+        if (string.IsNullOrEmpty(normalizedFilter))
+            return false;
+
+        return song.Tags.Any(tag => NormalizeTag(tag).Contains(normalizedFilter, StringComparison.Ordinal));
+    }
+
+    private static string NormalizeTag(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var builder = new StringBuilder(value.Length);
+        var previousWasSpace = false;
+
+        foreach (var ch in value)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(char.ToLowerInvariant(ch));
+                previousWasSpace = false;
+            }
+            else if (!previousWasSpace)
+            {
+                builder.Append(' ');
+                previousWasSpace = true;
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private void OnLibraryDataChanged(object? sender, EventArgs e)
+    {
+        _dispatcherQueue.TryEnqueue(async () =>
+        {
+            if (_disposed || IsLoading)
+                return;
+
+            await LoadAsync();
+        });
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _descriptorFetcher.FetchCompleted -= OnDescriptorFetchCompleted;
+        _searchDebounceTimer.Stop();
+    }
+
     #region Explicit ITrackListViewModel ICommand Implementation
 
     ICommand ITrackListViewModel.SortByCommand => SortByCommand;
@@ -325,4 +549,13 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 
     #endregion
+}
+
+public sealed class LikedSongsFilterChipViewModel
+{
+    public string Label { get; init; } = "";
+
+    public bool IsAllChip { get; init; }
+
+    public LikedSongsFilterDto? Filter { get; init; }
 }

@@ -165,13 +165,14 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
                 return;
             }
 
-            _logger?.LogDebug("Parsed command: {Endpoint} (MessageId: {MessageId})",
-                command.Endpoint, command.MessageId);
+            _logger?.LogDebug("Parsed command: {Endpoint} key={Key} messageId={MessageId} sender={Sender}",
+                command.Endpoint, command.Key, command.MessageId, command.SenderDeviceId ?? "<none>");
 
             // Queue command for async processing
             if (!_commandWorker.TrySubmit(command))
             {
-                _logger?.LogWarning("Command queue full, dropping command: {Endpoint}", command.Endpoint);
+                _logger?.LogWarning("Command queue FULL, DROPPING command: endpoint={Endpoint}, key={Key} — will reply UpstreamError",
+                    command.Endpoint, command.Key);
                 _ = SendReplyAsync(request.Key, RequestResult.UpstreamError);
             }
         }

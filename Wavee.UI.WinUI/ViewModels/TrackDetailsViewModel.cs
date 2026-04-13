@@ -27,6 +27,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     private readonly IPlaybackStateService _playbackState;
     private readonly IPathfinderClient _pathfinder;
     private readonly ITrackCreditsService _creditsService;
+    private readonly IMediaOverrideService _mediaOverrideService;
     private readonly ILogger? _logger;
 
     private string? _loadedTrackId;
@@ -95,10 +96,28 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     private string? _canvasUrl;
 
     [ObservableProperty]
+    private string? _upstreamCanvasUrl;
+
+    [ObservableProperty]
+    private string? _pendingCanvasUrl;
+
+    [ObservableProperty]
     private string? _canvasType;
 
     [ObservableProperty]
     private bool _hasCanvas;
+
+    [ObservableProperty]
+    private bool _hasPendingCanvasUpdate;
+
+    [ObservableProperty]
+    private bool _isUsingCanvasSnapshot;
+
+    [ObservableProperty]
+    private bool _isManualCanvasOverride;
+
+    [ObservableProperty]
+    private string? _currentTrackUri;
 
     // ── Related Videos section ──
 
@@ -114,11 +133,13 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         IPlaybackStateService playbackState,
         IPathfinderClient pathfinder,
         ITrackCreditsService creditsService,
+        IMediaOverrideService mediaOverrideService,
         ILogger<TrackDetailsViewModel>? logger = null)
     {
         _playbackState = playbackState;
         _pathfinder = pathfinder;
         _creditsService = creditsService;
+        _mediaOverrideService = mediaOverrideService;
         _logger = logger;
 
         _playbackState.PropertyChanged += OnPlaybackStateChanged;
@@ -187,11 +208,14 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
             await Task.WhenAll(npvTask, creditsTask);
             if (ct.IsCancellationRequested) return;
 
-            MapResponse(npvTask.Result);
+            await MapResponseAsync(npvTask.Result, trackUri, ct);
             MapCredits(creditsTask.Result);
             HasData = true;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogDebug("[TrackDetails] Load cancelled for {TrackId}", trackId);
+        }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to load details for track {TrackId}", trackId);
@@ -204,7 +228,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         }
     }
 
-    private void MapResponse(NpvArtistResponse response)
+    private async Task MapResponseAsync(NpvArtistResponse response, string trackUri, CancellationToken ct)
     {
         var artist = response.Data?.ArtistUnion;
         var track = response.Data?.TrackUnion;
@@ -229,9 +253,8 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         // Credits + record label are now set by MapCredits() from the dedicated service
 
         // ── Canvas ──
-        CanvasUrl = track?.Canvas?.Url;
         CanvasType = track?.Canvas?.Type;
-        HasCanvas = !string.IsNullOrEmpty(CanvasUrl);
+        await ApplyCanvasOverrideStateAsync(trackUri, track?.Canvas?.Url, ct);
 
         // ── Concerts ──
         var concertList = new ObservableCollection<ConcertVm>();
@@ -276,6 +299,87 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         HasRelatedVideos = RelatedVideos.Count > 0;
     }
 
+    private async Task ApplyCanvasOverrideStateAsync(string trackUri, string? upstreamCanvasUrl, CancellationToken ct)
+    {
+        var resolved = await _mediaOverrideService.ResolveTrackCanvasAsync(trackUri, upstreamCanvasUrl, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        ApplyResolvedCanvasState(trackUri, resolved);
+    }
+
+    private void ApplyResolvedCanvasState(string trackUri, ResolvedMediaOverrideResult resolved)
+    {
+        CurrentTrackUri = trackUri;
+        UpstreamCanvasUrl = resolved.UpstreamAssetUrl;
+        PendingCanvasUrl = resolved.PendingAssetUrl;
+        HasPendingCanvasUpdate = resolved.HasPendingUpdate;
+        IsUsingCanvasSnapshot = resolved.IsUsingLocalSnapshot;
+        IsManualCanvasOverride = resolved.IsManualOverride;
+        CanvasUrl = resolved.EffectiveAssetUrl;
+        HasCanvas = !string.IsNullOrEmpty(CanvasUrl);
+    }
+
+    public async Task SetManualCanvasUrlAsync(string canvasUrl, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentTrackUri))
+            return;
+
+        var resolved = await _mediaOverrideService.SetManualTrackCanvasUrlAsync(CurrentTrackUri, canvasUrl, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        ApplyResolvedCanvasState(CurrentTrackUri, resolved);
+    }
+
+    public async Task ImportManualCanvasFileAsync(string sourceFilePath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentTrackUri))
+            return;
+
+        var resolved = await _mediaOverrideService.ImportManualTrackCanvasFileAsync(CurrentTrackUri, sourceFilePath, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        ApplyResolvedCanvasState(CurrentTrackUri, resolved);
+    }
+
+    public async Task ResetCanvasToUpstreamAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentTrackUri))
+            return;
+
+        var resolved = await _mediaOverrideService.ResetTrackCanvasToUpstreamAsync(CurrentTrackUri, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        ApplyResolvedCanvasState(CurrentTrackUri, resolved);
+    }
+
+    public async Task AcceptPendingCanvasUpdateAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentTrackUri))
+            return;
+
+        var resolved = await _mediaOverrideService.AcceptPendingTrackCanvasUpdateAsync(CurrentTrackUri, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        ApplyResolvedCanvasState(CurrentTrackUri, resolved);
+    }
+
+    public async Task RejectPendingCanvasUpdateAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentTrackUri))
+            return;
+
+        var resolved = await _mediaOverrideService.RejectPendingTrackCanvasUpdateAsync(CurrentTrackUri, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        ApplyResolvedCanvasState(CurrentTrackUri, resolved);
+    }
+
     private void MapCredits(TrackCreditsResult credits)
     {
         var groups = new ObservableCollection<CreditGroupVm>();
@@ -313,7 +417,13 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         CreditGroups = [];
         RecordLabel = null;
         CanvasUrl = null;
+        UpstreamCanvasUrl = null;
+        PendingCanvasUrl = null;
+        CurrentTrackUri = null;
         HasCanvas = false;
+        HasPendingCanvasUpdate = false;
+        IsUsingCanvasSnapshot = false;
+        IsManualCanvasOverride = false;
         Concerts = [];
         HasConcerts = false;
         RelatedVideos = [];

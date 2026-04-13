@@ -217,24 +217,32 @@ public sealed class DeviceStateManager : IAsyncDisposable
             _logger?.LogTrace("PUT state request: deviceId={DeviceId}, connectionId={ConnectionId}, reason={Reason}, messageId={MessageId}, volume={Volume}, isActive={IsActive}",
                 _session.Config.DeviceId, _connectionId, reason, request.MessageId, _deviceInfo.Volume, _isActive);
 
+            var sendStart = Environment.TickCount64;
             var responseBody = await _spClient.PutConnectStateAsync(
                 _session.Config.DeviceId,
                 _connectionId,
                 request,
                 cancellationToken);
+            var sendElapsedMs = Environment.TickCount64 - sendStart;
 
-            _logger?.LogTrace("PUT state succeeded");
+            _logger?.LogDebug("PUT state send ok: corrId={MessageId}, reason={Reason}, elapsedMs={Elapsed}, responseBytes={Bytes}",
+                request.MessageId, reason, sendElapsedMs, responseBody.Length);
 
             // Process the response - Spotify returns a Cluster protobuf (not ClusterUpdate)
             if (responseBody.Length > 0)
             {
-                _logger?.LogDebug("Processing PUT state response ({Size} bytes)", responseBody.Length);
+                _logger?.LogDebug("Processing PUT state response (re-injecting as synthetic cluster update): corrId={MessageId}, {Size} bytes", request.MessageId, responseBody.Length);
 
                 // Create a DealerMessage from the response to feed into PlaybackStateManager
+                // Tag it as self-originated so downstream logging can distinguish echoes from real cluster updates.
                 var dealerMessage = new DealerMessage
                 {
                     Uri = "hm://connect-state/v1/put-state-response",
-                    Headers = new Dictionary<string, string>(),
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["X-Wavee-Echo"] = "self",
+                        ["X-Wavee-Corr"] = request.MessageId.ToString(),
+                    },
                     Payload = responseBody
                 };
 
@@ -242,7 +250,7 @@ public sealed class DeviceStateManager : IAsyncDisposable
                 // This will trigger PlaybackStateManager's PUT state response handler
                 await _dealerClient.SubmitMessageAsync(dealerMessage);
 
-                _logger?.LogTrace("PUT state response processed");
+                _logger?.LogTrace("PUT state response re-injected: corrId={MessageId}", request.MessageId);
             }
         }
         catch (Exception ex)

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.IO.Compression;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
@@ -8,6 +9,7 @@ using Wavee.Core.Storage;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
+using ZstdSharp;
 
 namespace Wavee.Core.Http;
 
@@ -21,10 +23,16 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
     private readonly IMetadataDatabase _database;
+    private readonly ClientTokenManager _clientTokenManager;
     private readonly ILogger? _logger;
 
     private const int MaxRetries = 3;
     private const long DefaultTtlSeconds = 3600; // 1 hour fallback
+    private const string ExtendedMetadataContentType = "application/protobuf";
+    private const string DesktopAppPlatform = "Win32_x86_64";
+    private const string DesktopAppVersion = "128600502";
+    private const string DesktopUserAgent = "Spotify/128600502 Win32_x86_64/Windows 10 (10.0.26200; x64; AppX)";
+    private const string MetadataClientFeatureId = "collection";
 
     /// <summary>
     /// Creates a new ExtendedMetadataClient.
@@ -47,6 +55,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         _httpClient = httpClient;
         _database = database;
         _logger = logger;
+        _clientTokenManager = new ClientTokenManager(httpClient, session.Config, logger);
     }
 
     private string GetBaseUrl()
@@ -279,18 +288,13 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         var url = $"{GetBaseUrl()}/extended-metadata/v0/extended-metadata";
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
-        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-protobuf"));
-        httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
-        var locale = GetEffectiveLocale();
-        if (!string.IsNullOrEmpty(locale))
-        {
-            httpRequest.Headers.AcceptLanguage.ParseAdd(locale);
-        }
+        httpRequest.Version = HttpVersion.Version11;
+        httpRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        await AddExtendedMetadataHeadersAsync(httpRequest, accessToken.Token, cancellationToken);
 
         var protobufBytes = request.ToByteArray();
         httpRequest.Content = new ByteArrayContent(protobufBytes);
-        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(ExtendedMetadataContentType);
 
         _logger?.LogDebug("POST extended-metadata: {Count} entities, country={Country}, catalogue={Catalogue}",
             requestList.Count, countryCode, catalogue);
@@ -315,7 +319,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         httpResponse.EnsureSuccessStatusCode();
 
-        var responseBytes = await httpResponse.Content.ReadAsByteArrayAsync(cancellationToken);
+        var responseBytes = await ReadResponseBytesAsync(httpResponse, cancellationToken);
         var response = BatchedExtensionResponse.Parser.ParseFrom(responseBytes);
 
         _logger?.LogDebug("Extended metadata response: {Count} extension arrays", response.ExtendedMetadata.Count);
@@ -324,6 +328,38 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         await CacheResponseAsync(response, cancellationToken);
 
         return response;
+    }
+
+    internal static async Task<byte[]> ReadResponseBytesAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+
+        await using var baseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var decodedStream = CreateDecodedStream(baseStream, response.Content.Headers.ContentEncoding);
+        using var buffer = new MemoryStream();
+        await decodedStream.CopyToAsync(buffer, cancellationToken);
+        return buffer.ToArray();
+    }
+
+    private static Stream CreateDecodedStream(Stream baseStream, ICollection<string> encodings)
+    {
+        Stream current = baseStream;
+
+        foreach (var encoding in encodings.Reverse())
+        {
+            current = encoding.Trim().ToLowerInvariant() switch
+            {
+                "gzip" => new GZipStream(current, CompressionMode.Decompress, leaveOpen: false),
+                "deflate" => new DeflateStream(current, CompressionMode.Decompress, leaveOpen: false),
+                "br" => new BrotliStream(current, CompressionMode.Decompress, leaveOpen: false),
+                "zstd" => new DecompressionStream(current),
+                _ => current
+            };
+        }
+
+        return current;
     }
 
     private string? GetEffectiveLocale()
@@ -336,6 +372,55 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         var userData = _session.GetUserData();
         return userData?.PreferredLocale;
+    }
+
+    private async Task AddExtendedMetadataHeadersAsync(
+        HttpRequestMessage request,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ExtendedMetadataContentType));
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("deflate"));
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("br"));
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("zstd"));
+        request.Headers.Connection.Add("keep-alive");
+        request.Headers.TryAddWithoutValidation("Accept-Language", GetMetadataRequestLanguage());
+        request.Headers.TryAddWithoutValidation("App-Platform", DesktopAppPlatform);
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", DesktopAppVersion);
+        request.Headers.TryAddWithoutValidation("client-feature-id", MetadataClientFeatureId);
+        request.Headers.TryAddWithoutValidation("Origin", GetBaseUrl());
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+        request.Headers.TryAddWithoutValidation("User-Agent", DesktopUserAgent);
+
+        try
+        {
+            var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(clientToken))
+            {
+                request.Headers.TryAddWithoutValidation("client-token", clientToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to get client token for extended metadata request, continuing without");
+        }
+    }
+
+    private string GetMetadataRequestLanguage()
+    {
+        var locale = GetEffectiveLocale();
+        if (string.IsNullOrWhiteSpace(locale))
+        {
+            return "en";
+        }
+
+        var separatorIndex = locale.IndexOfAny(['-', '_']);
+        var language = separatorIndex > 0 ? locale[..separatorIndex] : locale;
+        return language.ToLowerInvariant();
     }
 
     private async Task CacheResponseAsync(BatchedExtensionResponse response, CancellationToken cancellationToken)
@@ -405,6 +490,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         string? albumUri = null;
         int? releaseYear = null;
         string? imageUrl = null;
+        string? tags = track.Tags.Count > 0 ? string.Join(", ", track.Tags) : null;
 
         if (track.Album != null)
         {
@@ -443,6 +529,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             discNumber: track.DiscNumber,
             releaseYear: releaseYear,
             imageUrl: imageUrl,
+            genre: tags,
             cancellationToken: cancellationToken);
     }
 

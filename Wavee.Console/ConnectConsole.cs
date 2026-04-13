@@ -7,6 +7,7 @@ using Wavee.Connect;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Connection;
 using Wavee.Audio;
+using Wavee.AudioHost.Audio;
 using Wavee.Connect.Protocol;
 using Wavee.Core.DependencyInjection;
 using Wavee.Core.Http;
@@ -1629,7 +1630,6 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 
         if (_audioPipeline != null)
         {
-            _audioPipeline.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _audioPipeline = null;
         }
 
@@ -1659,7 +1659,6 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
 
         if (_audioPipeline != null)
         {
-            await _audioPipeline.DisposeAsync();
             _audioPipeline = null;
         }
 

@@ -15,6 +15,7 @@ public sealed partial class SearchFlyoutPanel : UserControl
 
     public event EventHandler<SearchSuggestionItem>? ItemClicked;
     public event EventHandler<SearchSuggestionItem>? ActionClicked;
+    public event EventHandler? RetryRequested;
 
     public SearchFlyoutPanel()
     {
@@ -91,6 +92,7 @@ public sealed partial class SearchFlyoutPanel : UserControl
 
         HeaderText.Visibility = isRecentSearches ? Visibility.Visible : Visibility.Collapsed;
         ShimmerPanel.Visibility = Visibility.Visible;
+        ErrorPanel.Visibility = Visibility.Collapsed;
         // Fade (don't collapse) so containers survive. Next SetItems will restore opacity.
         ResultsList.Opacity = 0;
         ResultsList.IsHitTestVisible = false;
@@ -106,11 +108,22 @@ public sealed partial class SearchFlyoutPanel : UserControl
         _queryText = queryText;
         HeaderText.Visibility = isRecentSearches ? Visibility.Visible : Visibility.Collapsed;
         ShimmerPanel.Visibility = Visibility.Collapsed;
+        ErrorPanel.Visibility = Visibility.Collapsed;
         ResultsList.Opacity = 1;
         ResultsList.IsHitTestVisible = true;
         ResultsList.Visibility = Visibility.Visible;
         ResultsList.ItemsSource = items;
         ResetSelection();
+    }
+
+    public void ShowError(string message)
+    {
+        HeaderText.Visibility = Visibility.Collapsed;
+        ShimmerPanel.Visibility = Visibility.Collapsed;
+        ErrorPanel.Visibility = Visibility.Visible;
+        ErrorMessageText.Text = message;
+        ResultsList.Opacity = 0;
+        ResultsList.IsHitTestVisible = false;
     }
 
     private void ResultsList_ItemClick(object sender, ItemClickEventArgs e)
@@ -123,6 +136,11 @@ public sealed partial class SearchFlyoutPanel : UserControl
     {
         if (sender is Button btn && btn.DataContext is SearchSuggestionItem item)
             ActionClicked?.Invoke(this, item);
+    }
+
+    private void RetryButton_Click(object sender, RoutedEventArgs e)
+    {
+        RetryRequested?.Invoke(this, EventArgs.Empty);
     }
 
     // Called after the ListView renders items to apply bold matching on text suggestions

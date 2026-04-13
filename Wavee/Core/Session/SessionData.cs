@@ -37,6 +37,12 @@ internal sealed class SessionData : IDisposable
     private readonly TaskCompletionSource<string> _countryCodeTcs = new();
     private readonly TaskCompletionSource<AccountType> _accountTypeTcs = new();
 
+    // Signals that both UserData and StoredCredentials are set — i.e. the session
+    // is fully authenticated and access tokens can be obtained. Any caller that
+    // arrives before auth completes will await this instead of throwing immediately.
+    private readonly TaskCompletionSource<bool> _authReadyTcs =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     // Lazy managers (initialized on first access)
     private readonly Lazy<object> _mercury;      // TODO: Replace with MercuryManager
     private readonly Lazy<object> _channel;      // TODO: Replace with ChannelManager
@@ -194,6 +200,8 @@ internal sealed class SessionData : IDisposable
 
     /// <summary>
     /// Sets the stored credentials after successful authentication.
+    /// This is the last step of ConnectAsync, so it signals that the session
+    /// is fully ready for access-token requests.
     /// </summary>
     public void SetStoredCredentials(Credentials credentials)
     {
@@ -208,7 +216,17 @@ internal sealed class SessionData : IDisposable
         {
             _lock.ExitWriteLock();
         }
+
+        // Signal auth-ready outside the write-lock so continuations don't deadlock.
+        _authReadyTcs.TrySetResult(true);
     }
+
+    /// <summary>
+    /// Waits until the session is fully authenticated (UserData + StoredCredentials set).
+    /// Returns immediately if already authenticated.
+    /// </summary>
+    public Task WaitForAuthAsync(CancellationToken ct) =>
+        _authReadyTcs.Task.WaitAsync(ct);
 
     /// <summary>
     /// Gets the stored credentials (or null if not authenticated).
