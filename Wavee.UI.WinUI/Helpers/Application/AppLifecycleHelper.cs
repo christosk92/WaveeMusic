@@ -598,27 +598,42 @@ public static class AppLifecycleHelper
                 });
             };
 
-            // Surface errors via notifications
+            // Surface errors via notifications and activity feed
             var notificationService = Ioc.Default.GetService<INotificationService>();
-            if (notificationService != null)
+            var activityService = Ioc.Default.GetService<IActivityService>();
             {
                 var dispatcher = _uiDispatcher;
                 var errorSub = proxy.Errors.Subscribe(error =>
                 {
                     var message = error.ErrorType switch
                     {
-                        PlaybackErrorType.AudioDeviceUnavailable => "Audio device unavailable.",
+                        PlaybackErrorType.AudioDeviceUnavailable => error.Message,
                         PlaybackErrorType.TrackUnavailable => "Track unavailable (Premium required?).",
                         PlaybackErrorType.NetworkError => "Network error during playback.",
                         _ => error.Message
                     };
+                    var (title, iconGlyph) = error.ErrorType switch
+                    {
+                        PlaybackErrorType.AudioDeviceUnavailable => ("Audio device error", "\uE7F3"),
+                        PlaybackErrorType.TrackUnavailable => ("Track unavailable", "\uE774"),
+                        PlaybackErrorType.NetworkError => ("Network error", "\uE774"),
+                        _ => ("Playback error", "\uE783")
+                    };
                     dispatcher?.TryEnqueue(() =>
-                        notificationService.Show(new Data.Models.NotificationInfo
+                    {
+                        notificationService?.Show(new Data.Models.NotificationInfo
                         {
                             Message = message,
                             Severity = Data.Models.NotificationSeverity.Error,
                             AutoDismissAfter = TimeSpan.FromSeconds(5)
-                        }));
+                        });
+                        activityService?.Post(
+                            category: "playback",
+                            title: title,
+                            iconGlyph: iconGlyph,
+                            status: Data.Models.ActivityStatus.Failed,
+                            message: message);
+                    });
                 });
                 _appSubscriptions.Add(errorSub);
             }

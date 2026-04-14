@@ -183,13 +183,19 @@ public static class PlaybackStateHelpers
         string? activeDeviceName = null;
         uint volume = 0;
         bool isVolumeRestricted = false;
+        Core.Session.DeviceType activeDeviceType = Core.Session.DeviceType.Computer;
         if (!string.IsNullOrEmpty(cluster.ActiveDeviceId) &&
             cluster.Device.TryGetValue(cluster.ActiveDeviceId, out var activeDeviceInfo))
         {
             activeDeviceName = activeDeviceInfo.Name;
             volume = activeDeviceInfo.Volume;
             isVolumeRestricted = activeDeviceInfo.Capabilities?.DisableVolume ?? false;
+            activeDeviceType = (Core.Session.DeviceType)(int)activeDeviceInfo.DeviceType;
         }
+
+        // Build the list of Spotify Connect devices visible in this cluster.
+        // Consumers filter out the local device themselves when presenting the UI.
+        var availableConnectDevices = ExtractConnectDevices(cluster);
 
         // Extract rich queue tracks from cluster state
         logger?.LogDebug("ClusterToPlaybackState: ps null={PsNull}, ps.PrevTracks={PrevCount}, ps.NextTracks={NextCount}",
@@ -234,6 +240,8 @@ public static class PlaybackStateHelpers
             // Always from cluster
             ActiveDeviceId = cluster.ActiveDeviceId,
             ActiveDeviceName = activeDeviceName,
+            ActiveDeviceType = activeDeviceType,
+            AvailableConnectDevices = availableConnectDevices,
             Volume = volume,
             IsVolumeRestricted = isVolumeRestricted,
             Timestamp = cluster.ChangedTimestampMs,
@@ -254,6 +262,26 @@ public static class PlaybackStateHelpers
     public static PlaybackState ClusterToPlaybackState(ClusterUpdate clusterUpdate, PlaybackState? previousState, ILogger? logger = null)
     {
         return ClusterToPlaybackState(clusterUpdate.Cluster, previousState, logger);
+    }
+
+    /// <summary>
+    /// Extracts the list of Spotify Connect devices visible in a cluster snapshot.
+    /// Exposed so <see cref="PlaybackStateManager"/> can propagate device-list changes
+    /// independently of the rest of the playback state (which is often suppressed when
+    /// the local engine is the authoritative source).
+    /// </summary>
+    public static IReadOnlyList<ConnectDevice> ExtractConnectDevices(Cluster cluster)
+    {
+        var list = new List<ConnectDevice>(cluster.Device.Count);
+        foreach (var kvp in cluster.Device)
+        {
+            list.Add(new ConnectDevice(
+                DeviceId: kvp.Key,
+                Name: kvp.Value.Name ?? string.Empty,
+                Type: (Core.Session.DeviceType)(int)kvp.Value.DeviceType,
+                IsActive: kvp.Key == cluster.ActiveDeviceId));
+        }
+        return list;
     }
 
     /// <summary>
@@ -333,6 +361,8 @@ public static class PlaybackStateHelpers
                 ? localState.ActiveDeviceId
                 : activeDeviceId,
             ActiveDeviceName = localState.ActiveDeviceName ?? prev.ActiveDeviceName,
+            ActiveAudioDeviceName = localState.ActiveAudioDeviceName ?? prev.ActiveAudioDeviceName,
+            AvailableAudioDevices = localState.AvailableAudioDevices ?? prev.AvailableAudioDevices,
             Volume = localState.Volume != 0 || prev.Volume == 0
                 ? localState.Volume
                 : prev.Volume,
@@ -744,8 +774,10 @@ public static class PlaybackStateHelpers
             previous.Options.RepeatingTrack != current.Options.RepeatingTrack)
             changes |= StateChanges.Options;
 
-        // Active device changed
-        if (previous.ActiveDeviceId != current.ActiveDeviceId)
+        // Active device changed (id, type, or the visible device list)
+        if (previous.ActiveDeviceId != current.ActiveDeviceId ||
+            previous.ActiveDeviceType != current.ActiveDeviceType ||
+            previous.AvailableConnectDevices.Count != current.AvailableConnectDevices.Count)
             changes |= StateChanges.ActiveDevice;
 
         // Source changed (cluster → local or vice versa)

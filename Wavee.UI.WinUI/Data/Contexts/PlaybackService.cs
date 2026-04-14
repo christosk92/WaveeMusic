@@ -213,6 +213,9 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     public Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct)
         => ExecuteWithRetryAsync(c => _executor.TransferPlaybackAsync(deviceId, startPlaying, c), nameof(TransferPlaybackAsync), ct, maxRetries: 1);
 
+    public Task<PlaybackResult> SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.SwitchAudioOutputAsync(deviceIndex, c), nameof(SwitchAudioOutputAsync), ct, maxRetries: 0);
+
     // ── Retry engine ──
 
     private async Task<PlaybackResult> ExecuteWithRetryAsync(

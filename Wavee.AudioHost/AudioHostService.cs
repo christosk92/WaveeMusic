@@ -23,6 +23,7 @@ internal sealed class AudioHostService : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
 
     private AudioEngine? _engine;
+    private IAudioSink? _sink;
     private IpcPipeTransport? _transport;
     private IDisposable? _stateSubscription;
     private IDisposable? _errorSubscription;
@@ -30,6 +31,17 @@ internal sealed class AudioHostService : IAsyncDisposable
     private EngineState? _lastSentState;
     private BassDecoder? _bassDecoder;
     private PreviewAnalysisService? _previewAnalysisService;
+
+    // Cached audio device state — re-sent in snapshot only when it changes, avoiding
+    // IPC spam on every position tick.
+    private string? _lastSentAudioDeviceName;
+
+    // Windows CoreAudio endpoint change watcher + debouncer. Multiple events arrive
+    // in bursts during a Bluetooth connect (added, default-changed, property-changed),
+    // so we collapse them to a single refresh ~300ms after the last event.
+    private WindowsAudioDeviceWatcher? _deviceWatcher;
+    private Timer? _deviceRefreshDebounceTimer;
+    private readonly object _deviceRefreshLock = new();
 
     public AudioHostService(string pipeName, ILogger logger)
     {
@@ -91,6 +103,7 @@ internal sealed class AudioHostService : IAsyncDisposable
     private void InitializeEngine(AudioHostConfig? config)
     {
         var sink = AudioSinkFactory.CreateDefault(_logger);
+        _sink = sink;
         var decoderRegistry = CreateDecoderRegistry();
         var volumeProcessor = new VolumeProcessor();
         if (sink is PortAudioSink portAudioSink)
@@ -107,6 +120,15 @@ internal sealed class AudioHostService : IAsyncDisposable
             _bassDecoder ?? new BassDecoder(_logger),
             SendPreviewVisualizationFrameAsync,
             _logger);
+
+        // Subscribe to Windows CoreAudio endpoint-change notifications so newly plugged
+        // devices (Bluetooth headphones, USB DACs) propagate to the UI automatically,
+        // without requiring the user to open/close the picker.
+        _deviceWatcher = new WindowsAudioDeviceWatcher(_logger);
+        _deviceWatcher.DevicesChanged += OnWindowsAudioDevicesChanged;
+        // When Windows changes the *default* output (e.g. Bluetooth auto-selected),
+        // follow it — refresh PortAudio AND reopen the stream on the new default device.
+        _deviceWatcher.DefaultOutputDeviceChanged += OnWindowsDefaultOutputDeviceChanged;
 
         // Pre-seed volume so the first state snapshot carries a real value
         if (config?.InitialVolumePercent is > 0 and <= 100)
@@ -323,6 +345,62 @@ internal sealed class AudioHostService : IAsyncDisposable
                 await SendOk(msg.Id, ct);
                 break;
             }
+            case IpcMessageTypes.SwitchAudioOutput:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<SwitchAudioOutputCommand>(msg);
+                if (cmd != null && _sink is IDeviceSelectableSink dss)
+                {
+                    try
+                    {
+                        await dss.SwitchToDeviceAsync(cmd.DeviceIndex, ct);
+                        // Force the next state snapshot to re-send the device list
+                        _lastSentAudioDeviceName = null;
+                        await SendOk(msg.Id, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "SwitchAudioOutput failed for index {Index}", cmd.DeviceIndex);
+                        await SendCommandResult(msg.Id, success: false,
+                            errorMessage: $"Could not open audio device (index {cmd.DeviceIndex}): {ex.Message}", ct);
+                    }
+                }
+                else
+                {
+                    await SendOk(msg.Id, ct);
+                }
+                break;
+            }
+            case IpcMessageTypes.RefreshAudioDevices:
+            {
+                if (_sink is IDeviceSelectableSink dss)
+                {
+                    try
+                    {
+                        // Re-scan the system device list (Pa_Terminate + Pa_Initialize).
+                        // May briefly interrupt the stream — this is user-initiated, so the
+                        // small audio gap is acceptable.
+                        dss.RefreshDeviceList();
+
+                        // Force the next state snapshot to re-send the fresh list.
+                        _lastSentAudioDeviceName = null;
+
+                        // Push an immediate state update so the UI picker populates right
+                        // away, rather than waiting for the next engine position tick.
+                        if (_lastSentState != null && _transport != null)
+                        {
+                            var snapshot = MapToSnapshot(_lastSentState);
+                            await _transport.SendAsync(IpcMessageTypes.StateUpdate,
+                                IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "RefreshAudioDevices failed");
+                    }
+                }
+                await SendOk(msg.Id, ct);
+                break;
+            }
             case IpcMessageTypes.Ping:
                 _logger.LogDebug("Ping received");
                 await _transport!.SendAsync(IpcMessageTypes.Pong, msg.Id, ct);
@@ -364,6 +442,18 @@ internal sealed class AudioHostService : IAsyncDisposable
             }), ct: ct);
     }
 
+    private Task SendCommandResult(long requestId, bool success, string? errorMessage, CancellationToken ct)
+    {
+        if (_transport == null) return Task.CompletedTask;
+        return _transport.SendAsync(IpcMessageTypes.CommandResult,
+            IpcPayloadHelper.SerializeToUtf8(new CommandResultMessage
+            {
+                RequestId = requestId,
+                Success = success,
+                ErrorMessage = errorMessage
+            }), ct: ct);
+    }
+
     private Task SendPreviewVisualizationFrameAsync(PreviewVisualizationFrame frame, CancellationToken ct)
     {
         if (_transport == null)
@@ -373,6 +463,105 @@ internal sealed class AudioHostService : IAsyncDisposable
             IpcMessageTypes.PreviewVisualizationFrame,
             IpcPayloadHelper.SerializeToUtf8(frame),
             ct: ct);
+    }
+
+    // ── Windows audio device change handler ──
+
+    private void OnWindowsAudioDevicesChanged()
+    {
+        // Multiple MMDevice events fire in a burst during a Bluetooth connect
+        // (added, state-changed, default-changed). Collapse them with a 300 ms debounce
+        // so we only call Pa_Terminate/Pa_Initialize once per physical device event.
+        _logger.LogDebug("[AudioHost] MMDevice event → debouncing device list refresh (300ms)");
+        lock (_deviceRefreshLock)
+        {
+            _deviceRefreshDebounceTimer?.Dispose();
+            _deviceRefreshDebounceTimer = new Timer(
+                _ => PerformDeviceRefresh(),
+                null,
+                TimeSpan.FromMilliseconds(300),
+                Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void OnWindowsDefaultOutputDeviceChanged()
+    {
+        // Windows changed the system default output (e.g. Bluetooth headphones auto-selected).
+        // Debounce then refresh PortAudio AND switch the stream to the new default device.
+        _logger.LogInformation("[AudioHost] MMDevice: default OUTPUT changed → debouncing FollowDefault switch (300ms)");
+        lock (_deviceRefreshLock)
+        {
+            _deviceRefreshDebounceTimer?.Dispose();
+            _deviceRefreshDebounceTimer = new Timer(
+                _ => _ = PerformDefaultDeviceSwitchAsync(),
+                null,
+                TimeSpan.FromMilliseconds(300),
+                Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private async Task PerformDefaultDeviceSwitchAsync()
+    {
+        if (_sink is not IDeviceSelectableSink dss)
+        {
+            _logger.LogDebug("[AudioHost] PerformDefaultDeviceSwitchAsync: sink is not IDeviceSelectableSink — skipping");
+            return;
+        }
+
+        _logger.LogInformation("[AudioHost] PerformDefaultDeviceSwitchAsync: starting PortAudio reinit + stream follow");
+        try
+        {
+            await dss.SwitchToDefaultDeviceAsync(CancellationToken.None);
+            _logger.LogInformation("[AudioHost] PerformDefaultDeviceSwitchAsync: PortAudio now on new default — pushing state snapshot");
+
+            // Re-send device list to UI now that we've switched.
+            _lastSentAudioDeviceName = null;
+            if (_lastSentState != null && _transport != null)
+            {
+                var snap = MapToSnapshot(_lastSentState);
+                await _transport.SendAsync(IpcMessageTypes.StateUpdate,
+                    IpcPayloadHelper.SerializeToUtf8(snap), ct: CancellationToken.None);
+                _logger.LogDebug("[AudioHost] State snapshot sent after default switch: activeDevice={Device}, deviceCount={Count}",
+                    snap.ActiveAudioDeviceName, snap.AvailableAudioDevices?.Length ?? 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AudioHost] PerformDefaultDeviceSwitchAsync failed");
+        }
+    }
+
+    private void PerformDeviceRefresh()
+    {
+        if (_sink is not IDeviceSelectableSink dss)
+        {
+            _logger.LogDebug("[AudioHost] PerformDeviceRefresh: sink is not IDeviceSelectableSink — skipping");
+            return;
+        }
+
+        _logger.LogInformation("[AudioHost] PerformDeviceRefresh: refreshing PortAudio device list");
+        try
+        {
+            dss.RefreshDeviceList();
+
+            // Force the next snapshot to re-enumerate and re-send the full device list.
+            _lastSentAudioDeviceName = null;
+
+            // Push an immediate state update so the UI picker reflects the new device
+            // without waiting for the next engine position tick.
+            if (_lastSentState != null && _transport != null)
+            {
+                var snap = MapToSnapshot(_lastSentState);
+                _ = _transport.SendAsync(IpcMessageTypes.StateUpdate,
+                    IpcPayloadHelper.SerializeToUtf8(snap), ct: CancellationToken.None);
+                _logger.LogInformation("[AudioHost] PerformDeviceRefresh: snapshot pushed — activeDevice={Device}, deviceCount={Count}",
+                    snap.ActiveAudioDeviceName, snap.AvailableAudioDevices?.Length ?? 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AudioHost] PerformDeviceRefresh failed");
+        }
     }
 
     private PlaybackStateSnapshot MapToSnapshot(EngineState state)
@@ -406,6 +595,18 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         _lastSentState = state;
 
+        // Audio output device info — only re-send the full device list when the active
+        // device changes (plug/unplug, user switch). Always send the current name so the
+        // UI can display it on the first state update.
+        var dss = _sink as IDeviceSelectableSink;
+        string? currentDeviceName = dss?.CurrentDeviceName;
+        AudioOutputDeviceDto[]? availableDevices = null;
+        if (dss != null && currentDeviceName != _lastSentAudioDeviceName)
+        {
+            availableDevices = dss.EnumerateOutputDevices().ToArray();
+            _lastSentAudioDeviceName = currentDeviceName;
+        }
+
         return new PlaybackStateSnapshot
         {
             Source = "local",
@@ -427,6 +628,8 @@ internal sealed class AudioHostService : IAsyncDisposable
             Changes = changes,
             Timestamp = state.Timestamp,
             Volume = state.Volume > 0f ? (uint)Math.Round(state.Volume * 100) : 0,
+            ActiveAudioDeviceName = currentDeviceName,
+            AvailableAudioDevices = availableDevices,
         };
     }
 
@@ -434,6 +637,15 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         _stateSubscription?.Dispose();
         _errorSubscription?.Dispose();
+
+        // Stop the Windows device watcher before tearing down the engine so
+        // no stray PerformDeviceRefresh runs after Pa_Terminate.
+        _deviceWatcher?.Dispose();
+        lock (_deviceRefreshLock)
+        {
+            _deviceRefreshDebounceTimer?.Dispose();
+            _deviceRefreshDebounceTimer = null;
+        }
 
         if (_previewAnalysisService != null)
             await _previewAnalysisService.DisposeAsync();

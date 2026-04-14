@@ -167,9 +167,13 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     private static bool ShouldWaitForAck(string endpoint) => endpoint switch
     {
         // In out-of-process mode the UI dealer stream may not emit timely ack signals,
-        // so waiting here makes controls feel unresponsive.
+        // so waiting here makes controls feel unresponsive. Transfer is included because
+        // the HTTP 200 from /connect-state/v1/connect/transfer is already a server-side
+        // confirmation — the dealer ack is a secondary signal that often doesn't arrive
+        // within the 2.5s window when the target device is slow to pick up the command.
         "play" or "add_to_queue" or "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to"
-            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume" => false,
+            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume"
+            or "transfer" => false,
         _ => true
     };
 
@@ -503,6 +507,33 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     public async Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct)
     {
+        var selfDeviceId = _session.Config.DeviceId;
+        var isSelfTransfer = string.Equals(deviceId, selfDeviceId, StringComparison.Ordinal);
+
+        // Self-transfer ("take over playback on this device") cannot use the Spotify
+        // connect-state transfer endpoint — posting from/self/to/self is rejected with
+        // HTTP 400 by the server when we're not already the active device. Instead,
+        // route through PlaybackStateManager.ResumeAsync with userInitiated=true, which
+        // runs the "ghost resume" path: it reads the current cluster track/context and
+        // starts local playback, implicitly making us the active Connect device.
+        if (isSelfTransfer)
+        {
+            var stateManager = _session.PlaybackState;
+            if (stateManager == null)
+                return PlaybackResult.Failure(PlaybackErrorKind.Unavailable, "Playback state manager not available");
+
+            try
+            {
+                await stateManager.ResumeAsync(userInitiated: true).ConfigureAwait(false);
+                return PlaybackResult.Success();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Self-transfer (ghost resume) failed");
+                return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+            }
+        }
+
         var result = await _client.SendCommandAsync(deviceId, "transfer", new Dictionary<string, object>
         {
             ["options"] = new Dictionary<string, object>
@@ -511,6 +542,44 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             }
         }, waitForAck: ShouldWaitForAck("transfer"), ackTimeout: GetAckTimeout("transfer"), ct: ct).ConfigureAwait(false);
 
+        // If we're transferring playback AWAY from this device to another Spotify device,
+        // stop the local engine. In proxy-only mode the PlaybackStateManager's "another
+        // device became active" handler never fires (cluster updates are suppressed), so
+        // we'd otherwise keep playing alongside the target device.
+        if (result.IsSuccess && _localEngine != null)
+        {
+            try
+            {
+                await _localEngine.StopAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to stop local engine after transferring away");
+            }
+        }
+
         return ToPlaybackResult(result);
+    }
+
+    public async Task<PlaybackResult> SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct)
+    {
+        if (_localEngine == null)
+        {
+            _logger?.LogWarning("[SwitchAudioOutput] Audio engine not available");
+            return PlaybackResult.Failure(PlaybackErrorKind.DeviceUnavailable, "Audio engine not available");
+        }
+
+        _logger?.LogInformation("[SwitchAudioOutput] Switching to device index {DeviceIndex}", deviceIndex);
+        try
+        {
+            await _localEngine.SwitchAudioOutputAsync(deviceIndex, ct).ConfigureAwait(false);
+            _logger?.LogInformation("[SwitchAudioOutput] Device switch IPC sent OK");
+            return PlaybackResult.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[SwitchAudioOutput] IPC call failed for device index {DeviceIndex}", deviceIndex);
+            return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+        }
     }
 }

@@ -16,10 +16,21 @@ public sealed record TransferCommand : ConnectCommand
 
     internal static TransferCommand FromJson(DealerRequest request, JsonElement json)
     {
-        // Parse base64-encoded protobuf
-        var transferStateB64 = json.GetProperty("transfer_state").GetString();
-        var transferStateBytes = Convert.FromBase64String(transferStateB64!);
-        var transferState = TransferState.Parser.ParseFrom(transferStateBytes);
+        // The transfer_state blob is optional — some self-directed or minimal transfer
+        // commands (e.g. dealer echoes of from/self/to/self requests) don't carry it.
+        // Fall back to an empty TransferState so the parser doesn't crash the handler.
+        TransferState transferState;
+        if (json.TryGetProperty("transfer_state", out var tsElement) &&
+            tsElement.ValueKind == JsonValueKind.String)
+        {
+            var transferStateB64 = tsElement.GetString();
+            var transferStateBytes = Convert.FromBase64String(transferStateB64!);
+            transferState = TransferState.Parser.ParseFrom(transferStateBytes);
+        }
+        else
+        {
+            transferState = new TransferState();
+        }
 
         return new TransferCommand
         {

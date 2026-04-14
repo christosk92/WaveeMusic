@@ -1,5 +1,6 @@
 using Wavee.Audio.Queue;
 using Wavee.Connect.Commands;
+using Wavee.Playback.Contracts;
 
 namespace Wavee.Connect;
 
@@ -129,6 +130,12 @@ public interface IPlaybackEngine
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Task completing when volume is set.</returns>
     Task SetVolumeAsync(float volume, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Switches the local audio output device to the one at the given PortAudio device index.
+    /// No-op when there is no local audio engine.
+    /// </summary>
+    Task SwitchAudioOutputAsync(int deviceIndex, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -334,6 +341,21 @@ public sealed record LocalPlaybackState
     /// state arrives via IPC from AudioHost; null for direct engine state).
     /// </summary>
     public StateChanges? UpstreamChanges { get; init; }
+
+    /// <summary>
+    /// Friendly name of the current local Windows audio output device
+    /// (e.g. "Sony WH-1000XM5", "Speakers (Realtek Audio)"). Flows from PortAudio
+    /// in the AudioHost process.
+    /// </summary>
+    public string? ActiveAudioDeviceName { get; init; }
+
+    /// <summary>
+    /// Full list of local audio output devices enumerated by PortAudio.
+    /// Re-sent by AudioHost only when it changes (device plug/unplug, user switch).
+    /// Null when not included in the current snapshot — consumers should preserve
+    /// the most recently seen list.
+    /// </summary>
+    public IReadOnlyList<AudioOutputDeviceDto>? AvailableAudioDevices { get; init; }
 
     /// <summary>
     /// Creates an empty/stopped playback state.

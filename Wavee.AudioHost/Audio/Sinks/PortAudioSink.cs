@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using PortAudioSharp;
 using Wavee.AudioHost.Audio.Abstractions;
 using Wavee.AudioHost.Audio.Processors;
+using Wavee.Playback.Contracts;
 
 namespace Wavee.AudioHost.Audio.Sinks;
 
@@ -10,7 +11,7 @@ namespace Wavee.AudioHost.Audio.Sinks;
 /// Cross-platform audio output using PortAudio.
 /// Supports WASAPI (Windows), CoreAudio (macOS), ALSA (Linux).
 /// </summary>
-public sealed class PortAudioSink : IAudioSink
+public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 {
     private static bool _initialized;
     private static readonly object _initLock = new();
@@ -460,7 +461,7 @@ public sealed class PortAudioSink : IAudioSink
     }
 
     // ================================================================
-    // DEVICE CHANGE DETECTION
+    // DEVICE CHANGE DETECTION & SELECTION
     // ================================================================
 
     /// <summary>
@@ -478,90 +479,591 @@ public sealed class PortAudioSink : IAudioSink
             if (newDeviceIndex == _currentDeviceIndex || newDeviceIndex == PortAudioSharp.PortAudio.NoDevice)
                 return;
 
+            string? oldName = null, newName = null;
+            try { oldName = PortAudioSharp.PortAudio.GetDeviceInfo(_currentDeviceIndex).name; } catch { }
+            try { newName = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex).name; } catch { }
+
             _logger?.LogInformation(
-                "Audio output device changed: {OldDevice} -> {NewDevice}, reinitializing...",
-                _currentDeviceIndex, newDeviceIndex);
+                "[PortAudio] Poll: default device changed — old={OldName} (idx={OldIdx}) → new={NewName} (idx={NewIdx}), switching stream",
+                oldName, _currentDeviceIndex, newName, newDeviceIndex);
 
-            lock (_lock)
-            {
-                if (_disposed || _format == null)
-                    return;
-
-                var wasPlaying = _isPlaying;
-                var format = _format;
-
-                // Save remaining buffer data
-                byte[]? savedData = null;
-                int savedLength = 0;
-                if (_buffer != null && _buffer.Available > 0)
-                {
-                    savedData = new byte[_buffer.Available];
-                    savedLength = _buffer.Read(savedData);
-                }
-
-                // Stop current stream
-                _isPlaying = false;
-                if (_stream != null)
-                {
-                    try { _stream.Abort(); } catch { }
-                    _stream.Dispose();
-                    _stream = null;
-                }
-
-                // Create new stream on the new device
-                _currentDeviceIndex = newDeviceIndex;
-                var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex);
-
-                var outputParams = new StreamParameters
-                {
-                    device = newDeviceIndex,
-                    channelCount = format.Channels,
-                    sampleFormat = format.BitsPerSample switch
-                    {
-                        16 => SampleFormat.Int16,
-                        24 => SampleFormat.Int24,
-                        32 => SampleFormat.Float32,
-                        _ => SampleFormat.Int16
-                    },
-                    suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
-                };
-
-                var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
-                _seekUnmuteThresholdBytes = Math.Max(
-                    format.BytesPerFrame,
-                    (int)(framesPerBuffer * format.BytesPerFrame * 2));
-
-                var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
-                _buffer = new CircularAudioBuffer(bufferCapacity);
-
-                _stream = new PortAudioSharp.Stream(
-                    inParams: null,
-                    outParams: outputParams,
-                    sampleRate: format.SampleRate,
-                    framesPerBuffer: framesPerBuffer,
-                    streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
-                    callback: StreamCallback,
-                    userData: null);
-
-                // Restore saved buffer data
-                if (savedData != null && savedLength > 0)
-                {
-                    _buffer.WriteImmediate(savedData.AsSpan(0, savedLength));
-                }
-
-                // Restart playback if it was playing
-                if (wasPlaying)
-                {
-                    StartPlaybackInternal();
-                }
-
-                _logger?.LogInformation("Audio output device switched successfully to device {DeviceIndex}", newDeviceIndex);
-            }
+            SwitchToDeviceInternal(newDeviceIndex);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to switch audio output device");
+            _logger?.LogError(ex, "[PortAudio] CheckDeviceChange: failed to switch audio output device");
         }
+    }
+
+    /// <summary>
+    /// Core device-switch routine shared by <see cref="CheckDeviceChange"/> and
+    /// explicit user-initiated <see cref="SwitchToDeviceAsync"/> calls.
+    /// Must be called outside the _lock (this method acquires it).
+    /// </summary>
+    private void SwitchToDeviceInternal(int newDeviceIndex)
+    {
+        lock (_lock)
+        {
+            if (_disposed || _format == null)
+                return;
+
+            var wasPlaying = _isPlaying;
+            var format = _format;
+            string? oldName = null, newName = null;
+            try { oldName = PortAudioSharp.PortAudio.GetDeviceInfo(_currentDeviceIndex).name; } catch { }
+
+            _logger?.LogInformation(
+                "[PortAudio] Switching output device: {OldName} (idx={OldIdx}) → idx={NewIdx}",
+                oldName, _currentDeviceIndex, newDeviceIndex);
+
+            // Save remaining buffer data so playback resumes seamlessly
+            byte[]? savedData = null;
+            int savedLength = 0;
+            if (_buffer != null && _buffer.Available > 0)
+            {
+                savedData = new byte[_buffer.Available];
+                savedLength = _buffer.Read(savedData);
+                _logger?.LogDebug("[PortAudio] Saved {Bytes} bytes of buffered PCM for device switch", savedLength);
+            }
+
+            // Stop current stream
+            _isPlaying = false;
+            if (_stream != null)
+            {
+                _logger?.LogDebug("[PortAudio] Aborting existing stream on {OldName}", oldName);
+                try { _stream.Abort(); } catch { }
+                _stream.Dispose();
+                _stream = null;
+            }
+
+            // Create new stream on the new device
+            _currentDeviceIndex = newDeviceIndex;
+            var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex);
+            newName = deviceInfo.name;
+
+            var outputParams = new StreamParameters
+            {
+                device = newDeviceIndex,
+                channelCount = format.Channels,
+                sampleFormat = format.BitsPerSample switch
+                {
+                    16 => SampleFormat.Int16,
+                    24 => SampleFormat.Int24,
+                    32 => SampleFormat.Float32,
+                    _ => SampleFormat.Int16
+                },
+                suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
+            };
+
+            var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
+            _seekUnmuteThresholdBytes = Math.Max(
+                format.BytesPerFrame,
+                (int)(framesPerBuffer * format.BytesPerFrame * 2));
+
+            var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
+            _buffer = new CircularAudioBuffer(bufferCapacity);
+
+            _stream = new PortAudioSharp.Stream(
+                inParams: null,
+                outParams: outputParams,
+                sampleRate: format.SampleRate,
+                framesPerBuffer: framesPerBuffer,
+                streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
+                callback: StreamCallback,
+                userData: null);
+
+            // Restore saved buffer data
+            if (savedData != null && savedLength > 0)
+            {
+                _buffer.WriteImmediate(savedData.AsSpan(0, savedLength));
+            }
+
+            // Restart playback if it was playing
+            if (wasPlaying)
+            {
+                StartPlaybackInternal();
+            }
+
+            _logger?.LogInformation(
+                "[PortAudio] Device switch complete: {NewName} (idx={NewIdx}), wasPlaying={WasPlaying}, restoredBytes={RestoredBytes}",
+                newName, newDeviceIndex, wasPlaying, savedLength);
+        }
+    }
+
+    // ================================================================
+    // IDeviceSelectableSink
+    // ================================================================
+
+    /// <inheritdoc />
+    public string? CurrentDeviceName
+    {
+        get
+        {
+            if (_disposed || !_isInitialized)
+                return null;
+            try
+            {
+                return PortAudioSharp.PortAudio.GetDeviceInfo(_currentDeviceIndex).name;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<AudioOutputDeviceDto> EnumerateOutputDevices()
+    {
+        // Returns whatever PortAudio has cached since the last Pa_Initialize. This is
+        // the "cheap" path — no audio gap. To pick up newly-plugged devices, callers
+        // must first invoke RefreshPortAudioDeviceList() (exposed via the IPC command
+        // "refresh_audio_devices" so the UI can request an explicit rescan on demand).
+        EnsurePortAudioInitialized();
+
+        int wasapiIndex = FindWasapiHostApiIndex();
+        _logger?.LogDebug("[PortAudio] EnumerateOutputDevices: wasapiHostApi={WasapiIdx}, totalDevices={Total}",
+            wasapiIndex, PortAudioSharp.PortAudio.DeviceCount);
+
+        var defaultIndex = PortAudioSharp.PortAudio.DefaultOutputDevice;
+        var count = PortAudioSharp.PortAudio.DeviceCount;
+        var list = new List<AudioOutputDeviceDto>(count);
+        for (int i = 0; i < count; i++)
+        {
+            DeviceInfo info;
+            try
+            {
+                info = PortAudioSharp.PortAudio.GetDeviceInfo(i);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (info.maxOutputChannels <= 0)
+                continue;
+
+            // Filter to WASAPI host API only — PortAudio otherwise surfaces the same
+            // physical endpoint multiple times (MME, DirectSound, WDM-KS variants) plus
+            // meta devices like "Microsoft Sound Mapper" and "Primary Sound Driver" that
+            // don't match what the user sees in Windows Sound settings.
+            if (wasapiIndex >= 0)
+            {
+                int hostApiIndex = TryGetDeviceHostApi(i);
+                if (hostApiIndex != wasapiIndex) continue;
+            }
+            else
+            {
+                // Fallback: name-based filter if we couldn't detect WASAPI index
+                var name = info.name ?? string.Empty;
+                if (name.Contains("Sound Mapper", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("Primary Sound Driver", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith("()")
+                    || name.Contains("\\System32\\drivers\\", StringComparison.OrdinalIgnoreCase))
+                    continue;
+            }
+
+            var dto = new AudioOutputDeviceDto
+            {
+                DeviceIndex = i,
+                Name = info.name ?? $"Device {i}",
+                IsDefault = i == defaultIndex
+            };
+            _logger?.LogDebug("[PortAudio] Enumerated device: {Name} (idx={Idx}, isDefault={IsDefault})",
+                dto.Name, dto.DeviceIndex, dto.IsDefault);
+            list.Add(dto);
+        }
+        _logger?.LogDebug("[PortAudio] EnumerateOutputDevices result: {Count} WASAPI devices", list.Count);
+        return list;
+    }
+
+    /// <summary>
+    /// Terminates and re-initializes PortAudio so it enumerates the live device set
+    /// (necessary for PortAudio to pick up newly-plugged devices like Bluetooth headphones).
+    ///
+    /// If a stream is currently open, this saves its buffered PCM + format, tears the
+    /// stream down, re-inits PortAudio, re-resolves the current device by name (indexes
+    /// change across a re-init), and re-opens the stream on the matching device. The
+    /// buffered PCM is restored so there's only a brief gap (~50-100ms) in playback.
+    /// </summary>
+    private void RefreshPortAudioDeviceList()
+    {
+        lock (_lock)
+        {
+            if (_disposed || !_initialized)
+                return;
+
+            // Snapshot stream state (if any) before tearing down.
+            var hadStream = _stream != null;
+            var savedFormat = _format;
+            var savedDeviceName = hadStream ? CurrentDeviceName : null;
+            var wasPlaying = hadStream && _isPlaying;
+            byte[]? savedData = null;
+            int savedLen = 0;
+
+            _logger?.LogInformation(
+                "[PortAudio] RefreshDeviceList: hadStream={HadStream}, currentDevice={Device}, wasPlaying={WasPlaying}",
+                hadStream, savedDeviceName, wasPlaying);
+
+            if (hadStream)
+            {
+                if (_buffer != null && _buffer.Available > 0)
+                {
+                    savedData = new byte[_buffer.Available];
+                    savedLen = _buffer.Read(savedData);
+                    _logger?.LogDebug("[PortAudio] Saved {Bytes} bytes of buffered PCM before Pa_Terminate", savedLen);
+                }
+
+                _isPlaying = false;
+                try { _stream!.Abort(); } catch { }
+                try { _stream!.Dispose(); } catch { }
+                _stream = null;
+            }
+
+            // Cycle PortAudio so it re-scans the system audio devices.
+            _logger?.LogDebug("[PortAudio] Calling Pa_Terminate...");
+            try { PortAudioSharp.PortAudio.Terminate(); } catch { }
+            _logger?.LogDebug("[PortAudio] Calling Pa_Initialize...");
+            try
+            {
+                PortAudioSharp.PortAudio.Initialize();
+                _initialized = true;
+                _logger?.LogDebug("[PortAudio] Pa_Initialize OK — device count={Count}", PortAudioSharp.PortAudio.DeviceCount);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[PortAudio] Pa_Initialize failed");
+                _initialized = false;
+                return;
+            }
+
+            if (!hadStream || savedFormat == null)
+            {
+                _logger?.LogDebug("[PortAudio] No stream to reopen after refresh (hadStream={HadStream})", hadStream);
+                return;
+            }
+
+            // Find the new index of the device we were playing on (indexes change on re-init).
+            var newIndex = FindDeviceIndexByName(savedDeviceName)
+                           ?? PortAudioSharp.PortAudio.DefaultOutputDevice;
+            if (newIndex == PortAudioSharp.PortAudio.NoDevice)
+            {
+                _logger?.LogWarning("[PortAudio] No output device available after Pa re-init; cannot reopen stream");
+                return;
+            }
+
+            string? reopenName = null;
+            try { reopenName = PortAudioSharp.PortAudio.GetDeviceInfo(newIndex).name; } catch { }
+            _logger?.LogInformation(
+                "[PortAudio] Reopening stream on {DeviceName} (idx={Idx}), wasPlaying={WasPlaying}",
+                reopenName, newIndex, wasPlaying);
+
+            try
+            {
+                ReopenStreamOnDevice(newIndex, savedFormat, savedData, savedLen, wasPlaying);
+                _logger?.LogInformation("[PortAudio] Stream reopened successfully on {DeviceName}", reopenName);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[PortAudio] Failed to reopen stream after device refresh");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Best-effort lookup of a PortAudio device index by its friendly name.
+    /// </summary>
+    private static int? FindDeviceIndexByName(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return null;
+        try
+        {
+            var count = PortAudioSharp.PortAudio.DeviceCount;
+            for (int i = 0; i < count; i++)
+            {
+                try
+                {
+                    var info = PortAudioSharp.PortAudio.GetDeviceInfo(i);
+                    if (info.maxOutputChannels > 0 &&
+                        string.Equals(info.name, name, StringComparison.Ordinal))
+                        return i;
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>
+    /// Creates a new PortAudio stream on the given device index, reusing the provided
+    /// format and restoring any previously-buffered PCM so playback continues seamlessly.
+    /// </summary>
+    private void ReopenStreamOnDevice(
+        int deviceIndex,
+        AudioFormat format,
+        byte[]? savedData,
+        int savedLen,
+        bool wasPlaying)
+    {
+        _currentDeviceIndex = deviceIndex;
+        var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(deviceIndex);
+        _logger?.LogDebug(
+            "[PortAudio] ReopenStreamOnDevice: {DeviceName} (idx={Idx}), {Rate}Hz {Channels}ch {Bits}bit, savedBytes={SavedBytes}, wasPlaying={WasPlaying}",
+            deviceInfo.name, deviceIndex, format.SampleRate, format.Channels, format.BitsPerSample, savedLen, wasPlaying);
+
+        var outputParams = new StreamParameters
+        {
+            device = deviceIndex,
+            channelCount = format.Channels,
+            sampleFormat = format.BitsPerSample switch
+            {
+                16 => SampleFormat.Int16,
+                24 => SampleFormat.Int24,
+                32 => SampleFormat.Float32,
+                _ => SampleFormat.Int16
+            },
+            suggestedLatency = Math.Max(deviceInfo.defaultHighOutputLatency, 0.3)
+        };
+
+        var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
+        _seekUnmuteThresholdBytes = Math.Max(
+            format.BytesPerFrame,
+            (int)(framesPerBuffer * format.BytesPerFrame * 2));
+
+        var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
+        _buffer = new CircularAudioBuffer(bufferCapacity);
+
+        _stream = new PortAudioSharp.Stream(
+            inParams: null,
+            outParams: outputParams,
+            sampleRate: format.SampleRate,
+            framesPerBuffer: framesPerBuffer,
+            streamFlags: StreamFlags.PrimeOutputBuffersUsingStreamCallback,
+            callback: StreamCallback,
+            userData: null);
+
+        if (savedData != null && savedLen > 0)
+            _buffer.WriteImmediate(savedData.AsSpan(0, savedLen));
+
+        if (wasPlaying)
+            StartPlaybackInternal();
+    }
+
+    // ── Native PortAudio host-API interop ──
+    //
+    // PortAudioSharp2 only wraps device-level APIs. For host-API filtering we P/Invoke
+    // the native portaudio.dll directly. The enum values match the PortAudio C header
+    // (paWASAPI = 13 on recent builds).
+
+    private const int PaHostApiTypeWasapi = 13;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PaHostApiInfoNative
+    {
+        public int structVersion;
+        public int type;
+        public IntPtr name; // const char*
+        public int deviceCount;
+        public int defaultInputDevice;
+        public int defaultOutputDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PaDeviceInfoNative
+    {
+        public int structVersion;
+        public IntPtr name;
+        public int hostApi;
+        public int maxInputChannels;
+        public int maxOutputChannels;
+        public double defaultLowInputLatency;
+        public double defaultLowOutputLatency;
+        public double defaultHighInputLatency;
+        public double defaultHighOutputLatency;
+        public double defaultSampleRate;
+    }
+
+    [DllImport("portaudio", EntryPoint = "Pa_GetHostApiCount")]
+    private static extern int Pa_GetHostApiCount();
+
+    [DllImport("portaudio", EntryPoint = "Pa_GetHostApiInfo")]
+    private static extern IntPtr Pa_GetHostApiInfo(int hostApi);
+
+    [DllImport("portaudio", EntryPoint = "Pa_GetDeviceInfo")]
+    private static extern IntPtr Pa_GetDeviceInfo(int device);
+
+    private static int FindWasapiHostApiIndex()
+    {
+        try
+        {
+            int count = Pa_GetHostApiCount();
+            for (int i = 0; i < count; i++)
+            {
+                var ptr = Pa_GetHostApiInfo(i);
+                if (ptr == IntPtr.Zero) continue;
+                var info = Marshal.PtrToStructure<PaHostApiInfoNative>(ptr);
+                if (info.type == PaHostApiTypeWasapi) return i;
+            }
+        }
+        catch
+        {
+        }
+        return -1;
+    }
+
+    private static int TryGetDeviceHostApi(int deviceIndex)
+    {
+        try
+        {
+            var ptr = Pa_GetDeviceInfo(deviceIndex);
+            if (ptr == IntPtr.Zero) return -1;
+            var info = Marshal.PtrToStructure<PaDeviceInfoNative>(ptr);
+            return info.hostApi;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    /// <inheritdoc />
+    public void RefreshDeviceList()
+    {
+        RefreshPortAudioDeviceList();
+    }
+
+    /// <inheritdoc />
+    public Task SwitchToDefaultDeviceAsync(CancellationToken ct = default)
+    {
+        return Task.Run(() =>
+        {
+            try
+            {
+                // Re-init PortAudio so it discovers newly-plugged devices (Bluetooth, USB DAC).
+                // Then reopen the stream on whatever Pa_GetDefaultOutputDevice() returns now.
+                RefreshPortAudioDeviceListAndFollowDefault();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "SwitchToDefaultDeviceAsync failed");
+                throw;
+            }
+        }, ct);
+    }
+
+    /// <summary>
+    /// Variant of <see cref="RefreshPortAudioDeviceList"/> that re-opens the output stream
+    /// on the system default device rather than trying to reattach to the old device by name.
+    /// Used when Windows signals that the system default output changed.
+    /// </summary>
+    private void RefreshPortAudioDeviceListAndFollowDefault()
+    {
+        lock (_lock)
+        {
+            if (_disposed || !_initialized)
+                return;
+
+            var hadStream = _stream != null;
+            var savedFormat = _format;
+            var savedDeviceName = hadStream ? CurrentDeviceName : null;
+            var wasPlaying = hadStream && _isPlaying;
+            byte[]? savedData = null;
+            int savedLen = 0;
+
+            _logger?.LogInformation(
+                "[PortAudio] FollowDefault: Windows default output changed — hadStream={HadStream}, currentDevice={Device}, wasPlaying={WasPlaying}",
+                hadStream, savedDeviceName, wasPlaying);
+
+            if (hadStream)
+            {
+                if (_buffer != null && _buffer.Available > 0)
+                {
+                    savedData = new byte[_buffer.Available];
+                    savedLen = _buffer.Read(savedData);
+                    _logger?.LogDebug("[PortAudio] Saved {Bytes} bytes of buffered PCM before Pa_Terminate", savedLen);
+                }
+
+                _isPlaying = false;
+                _logger?.LogDebug("[PortAudio] Aborting stream on {OldDevice} before Pa_Terminate", savedDeviceName);
+                try { _stream!.Abort(); } catch { }
+                try { _stream!.Dispose(); } catch { }
+                _stream = null;
+            }
+
+            // Cycle PortAudio so it re-scans the system audio devices.
+            _logger?.LogDebug("[PortAudio] Calling Pa_Terminate...");
+            try { PortAudioSharp.PortAudio.Terminate(); } catch { }
+            _logger?.LogDebug("[PortAudio] Calling Pa_Initialize...");
+            try
+            {
+                PortAudioSharp.PortAudio.Initialize();
+                _initialized = true;
+                _logger?.LogDebug("[PortAudio] Pa_Initialize OK — device count={Count}", PortAudioSharp.PortAudio.DeviceCount);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[PortAudio] Pa_Initialize failed — cannot follow new default device");
+                _initialized = false;
+                return;
+            }
+
+            if (!hadStream || savedFormat == null)
+            {
+                _logger?.LogDebug("[PortAudio] No stream to reopen after FollowDefault (hadStream={HadStream})", hadStream);
+                return;
+            }
+
+            // Follow the new system default (not the old device).
+            var newIndex = PortAudioSharp.PortAudio.DefaultOutputDevice;
+            if (newIndex == PortAudioSharp.PortAudio.NoDevice)
+            {
+                _logger?.LogWarning("[PortAudio] Pa_GetDefaultOutputDevice returned NoDevice after re-init; cannot follow new default");
+                return;
+            }
+
+            string? newName = null;
+            try { newName = PortAudioSharp.PortAudio.GetDeviceInfo(newIndex).name; } catch { }
+            _logger?.LogInformation(
+                "[PortAudio] Following new Windows default: {NewName} (idx={NewIdx}), wasPlaying={WasPlaying}",
+                newName, newIndex, wasPlaying);
+
+            try
+            {
+                ReopenStreamOnDevice(newIndex, savedFormat, savedData, savedLen, wasPlaying);
+                _logger?.LogInformation("[PortAudio] Stream successfully reopened on new default device: {NewName}", newName);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[PortAudio] Failed to reopen stream on new default device {NewName}", newName);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public Task SwitchToDeviceAsync(int deviceIndex, CancellationToken ct = default)
+    {
+        if (deviceIndex < 0)
+            throw new ArgumentOutOfRangeException(nameof(deviceIndex));
+
+        if (deviceIndex == _currentDeviceIndex)
+            return Task.CompletedTask;
+
+        // PortAudio device operations must be serialized; do the switch on a worker so we
+        // don't block the caller (IPC command thread).
+        return Task.Run(() =>
+        {
+            try
+            {
+                SwitchToDeviceInternal(deviceIndex);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to switch to device index {DeviceIndex}", deviceIndex);
+                throw;
+            }
+        }, ct);
     }
 
     private void CleanupStream()

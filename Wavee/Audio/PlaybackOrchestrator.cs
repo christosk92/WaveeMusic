@@ -17,6 +17,7 @@ namespace Wavee.Audio;
 public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 {
     private readonly AudioPipelineProxy _proxy;
+
     private readonly TrackResolver _trackResolver;
     private readonly ContextResolver _contextResolver;
     private readonly PlaybackQueue _queue;
@@ -137,6 +138,12 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     {
         _logger?.LogDebug("Orchestrator: SetVolumeAsync({Volume:P0}) → forwarding to proxy", volume);
         return _proxy.SetVolumeAsync(volume, ct);
+    }
+
+    public Task SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct = default)
+    {
+        _logger?.LogInformation("Orchestrator: SwitchAudioOutputAsync(idx={DeviceIndex}) → forwarding to proxy", deviceIndex);
+        return _proxy.SwitchAudioOutputAsync(deviceIndex, ct);
     }
 
     public async Task SkipNextAsync(CancellationToken ct = default)

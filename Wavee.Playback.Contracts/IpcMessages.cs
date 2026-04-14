@@ -189,6 +189,30 @@ public sealed class SetEqualizerCommand
     public double[]? BandGains { get; init; }
 }
 
+/// <summary>
+/// Switch the local PortAudio output device to the one at the given index.
+/// </summary>
+public sealed class SwitchAudioOutputCommand
+{
+    [JsonPropertyName("deviceIndex")]
+    public int DeviceIndex { get; init; }
+}
+
+/// <summary>
+/// Describes a local Windows audio output device enumerated by PortAudio.
+/// </summary>
+public sealed class AudioOutputDeviceDto
+{
+    [JsonPropertyName("deviceIndex")]
+    public int DeviceIndex { get; init; }
+
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+
+    [JsonPropertyName("isDefault")]
+    public bool IsDefault { get; init; }
+}
+
 public sealed class StartPreviewAnalysisCommand
 {
     [JsonPropertyName("sessionId")]
@@ -288,6 +312,20 @@ public sealed class PlaybackStateSnapshot
 
     [JsonPropertyName("underrunCount")]
     public long UnderrunCount { get; init; }
+
+    /// <summary>
+    /// Friendly name of the current local Windows audio output device (from PortAudio).
+    /// Null if the sink is not an <c>IDeviceSelectableSink</c>.
+    /// </summary>
+    [JsonPropertyName("activeAudioDeviceName")]
+    public string? ActiveAudioDeviceName { get; init; }
+
+    /// <summary>
+    /// Full list of local audio output devices, included only when the list changes
+    /// (e.g. device plug/unplug, initial handshake).
+    /// </summary>
+    [JsonPropertyName("availableAudioDevices")]
+    public AudioOutputDeviceDto[]? AvailableAudioDevices { get; init; }
 }
 
 public sealed class PlaybackErrorMessage
@@ -450,6 +488,8 @@ public static class IpcMessageTypes
     public const string SetNormalization = "set_normalization";
     public const string SwitchQuality = "switch_quality";
     public const string SetEqualizer = "set_equalizer";
+    public const string SwitchAudioOutput = "switch_audio_output";
+    public const string RefreshAudioDevices = "refresh_audio_devices";
     public const string StartPreviewAnalysis = "start_preview_analysis";
     public const string StopPreviewAnalysis = "stop_preview_analysis";
     public const string Configure = "configure";
@@ -486,6 +526,9 @@ public static class IpcMessageTypes
 [JsonSerializable(typeof(SetNormalizationCommand))]
 [JsonSerializable(typeof(SwitchQualityCommand))]
 [JsonSerializable(typeof(SetEqualizerCommand))]
+[JsonSerializable(typeof(SwitchAudioOutputCommand))]
+[JsonSerializable(typeof(AudioOutputDeviceDto))]
+[JsonSerializable(typeof(AudioOutputDeviceDto[]))]
 [JsonSerializable(typeof(StartPreviewAnalysisCommand))]
 [JsonSerializable(typeof(StopPreviewAnalysisCommand))]
 [JsonSerializable(typeof(PlaybackStateSnapshot))]

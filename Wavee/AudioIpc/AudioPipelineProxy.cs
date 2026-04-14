@@ -43,6 +43,11 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     private long _stateUpdatesOutOfOrder;
     private long _lastStateUpdateRemoteTimestamp;
 
+    // Audio device info is re-sent sparingly by AudioHost — carry the most recent
+    // values forward so every LocalPlaybackState snapshot includes them.
+    private string? _lastActiveAudioDeviceName;
+    private IReadOnlyList<AudioOutputDeviceDto>? _lastAvailableAudioDevices;
+
     /// <summary>Last measured round-trip time in milliseconds.</summary>
     public double LastRttMs { get; private set; }
 
@@ -219,6 +224,22 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         => SendCommandAsync(IpcMessageTypes.SwitchQuality,
             new SwitchQualityCommand { Quality = quality }, ct);
 
+    /// <summary>
+    /// Switch the local PortAudio output device used by the AudioHost process.
+    /// </summary>
+    public Task SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.SwitchAudioOutput,
+            new SwitchAudioOutputCommand { DeviceIndex = deviceIndex }, ct);
+
+    /// <summary>
+    /// Asks AudioHost to rescan the live system audio device list (Pa_Terminate +
+    /// Pa_Initialize) and push a fresh <c>state_update</c> with the updated list.
+    /// Called by the UI when the user opens the device picker so newly-plugged
+    /// headphones/speakers appear even during ongoing playback.
+    /// </summary>
+    public Task RefreshAudioDevicesAsync(CancellationToken ct = default)
+        => SendSimpleCommandAsync(IpcMessageTypes.RefreshAudioDevices, ct);
+
     public Task ShutdownAsync(CancellationToken ct = default)
         => SendSimpleCommandAsync(IpcMessageTypes.Shutdown, ct);
 
@@ -375,6 +396,13 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
                 UnderrunCount = snapshot.UnderrunCount;
 
+                // Persist audio device info across snapshots — AudioHost only re-sends the
+                // device list when it changes, so we carry it forward from the last update.
+                if (!string.IsNullOrEmpty(snapshot.ActiveAudioDeviceName))
+                    _lastActiveAudioDeviceName = snapshot.ActiveAudioDeviceName;
+                if (snapshot.AvailableAudioDevices is { Length: > 0 })
+                    _lastAvailableAudioDevices = snapshot.AvailableAudioDevices;
+
                 var state = new LocalPlaybackState
                 {
                     Source = ParseStateSource(snapshot.Source),
@@ -403,6 +431,8 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                     CanSeek = snapshot.CanSeek,
                     Timestamp = snapshot.Timestamp,
                     UpstreamChanges = (StateChanges)snapshot.Changes,
+                    ActiveAudioDeviceName = _lastActiveAudioDeviceName,
+                    AvailableAudioDevices = _lastAvailableAudioDevices,
                 };
                 _stateSubject.OnNext(state);
                 break;
@@ -421,7 +451,10 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                 var result = IpcPayloadHelper.Deserialize<CommandResultMessage>(msg);
                 if (result is { Success: false })
                 {
-                    _logger?.LogWarning("Command {Id} failed: {Error}", result.RequestId, result.ErrorMessage);
+                    var errMsg = result.ErrorMessage ?? "Audio host command failed";
+                    _logger?.LogWarning("Command {Id} failed: {Error}", result.RequestId, errMsg);
+                    _errorSubject.OnNext(new PlaybackError(
+                        PlaybackErrorType.AudioDeviceUnavailable, errMsg));
                 }
                 break;
             }

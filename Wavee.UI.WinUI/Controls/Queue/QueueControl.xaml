@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Queue"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:shimmer="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
@@ -12,89 +13,193 @@
     <UserControl.Resources>
         <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
 
-        <!-- Shared track row template with shimmer loading state -->
+        <!-- Shared track row template with always-visible drag handle on the right. -->
         <DataTemplate x:Key="TrackTemplate" x:DataType="local:QueueDisplayItem">
-            <Grid Padding="4,4" ColumnSpacing="10" Height="48">
+            <Grid x:Name="TrackRoot"
+                  Padding="6,6"
+                  ColumnSpacing="12"
+                  Height="52"
+                  CornerRadius="4"
+                  Background="Transparent"
+                  Opacity="{x:Bind VisualOpacity, Mode=OneTime}"
+                  PointerEntered="TrackRow_PointerEntered"
+                  PointerExited="TrackRow_PointerExited">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="40"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Album art or shimmer -->
-                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="4"
+                <Border Grid.Column="0" Width="40" Height="40" CornerRadius="4"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Image Stretch="UniformToFill"
                            Visibility="{x:Bind IsLoaded, Mode=OneTime}"
-                           Source="{x:Bind ImageUrl, Mode=OneTime, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=36}"/>
+                           Source="{x:Bind ImageUrl, Mode=OneTime, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=40}"/>
                 </Border>
-                <shimmer:Shimmer Grid.Column="0" Width="36" Height="36"
+                <shimmer:Shimmer Grid.Column="0" Width="40" Height="40"
                                  Visibility="{x:Bind IsShimmer, Mode=OneTime}"/>
 
-                <!-- Title/artist or shimmer -->
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1"
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"
                             Visibility="{x:Bind IsLoaded, Mode=OneTime}">
-                    <TextBlock Text="{x:Bind Title, Mode=OneTime}" FontSize="13"
-                               MaxLines="1" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}" FontSize="11"
+                    <TextBlock Text="{x:Bind Title, Mode=OneTime}"
+                               FontSize="13"
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}"
+                               FontSize="11"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               MaxLines="1" TextTrimming="CharacterEllipsis"/>
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"
                             Visibility="{x:Bind IsShimmer, Mode=OneTime}">
                     <shimmer:Shimmer Width="160" Height="12" HorizontalAlignment="Left"/>
-                    <shimmer:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
+                    <shimmer:Shimmer Width="110" Height="10" HorizontalAlignment="Left"/>
                 </StackPanel>
 
-                <FontIcon Grid.Column="2" Glyph="{x:Bind BadgeGlyph, Mode=OneTime}" FontSize="12"
+                <!-- Hamburger drag handle — always visible, hand cursor on hover (set in code-behind via Loaded). -->
+                <FontIcon x:Name="DragHandle"
+                          Grid.Column="2"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          Glyph="&#xE700;"
+                          FontSize="14"
+                          Margin="4,0,4,0"
                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                           VerticalAlignment="Center"
-                          Visibility="{x:Bind HasBadge, Mode=OneTime}"/>
+                          Loaded="DragHandle_Loaded"/>
             </Grid>
         </DataTemplate>
     </UserControl.Resources>
 
     <Grid>
-        <ScrollView VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="0" Padding="0,8,0,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-                <!-- Now Playing -->
-                <Grid x:Name="NowPlayingSection" Visibility="Collapsed" Margin="0,0,0,4">
-                    <Grid Padding="8,8" ColumnSpacing="10" MinHeight="60"
-                          CornerRadius="6"
-                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+        <!-- Pinned controls row — default ToggleButton chrome with a pill corner radius. -->
+        <StackPanel Grid.Row="0"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="6"
+                    Margin="0,10,0,12">
+            <ToggleButton x:Name="ShuffleButton"
+                          Width="42" Height="34"
+                          MinWidth="42" MinHeight="34"
+                          Padding="0"
+                          CornerRadius="17"
+                          ToolTipService.ToolTip="Shuffle"
+                          Click="ShuffleButton_Click">
+                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          Glyph="&#xE8B1;" FontSize="14"/>
+            </ToggleButton>
+
+            <ToggleButton x:Name="RepeatButton"
+                          Width="42" Height="34"
+                          MinWidth="42" MinHeight="34"
+                          Padding="0"
+                          CornerRadius="17"
+                          ToolTipService.ToolTip="Repeat"
+                          Click="RepeatButton_Click">
+                <FontIcon x:Name="RepeatGlyph"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          Glyph="&#xE8EE;" FontSize="14"/>
+            </ToggleButton>
+
+            <ToggleButton x:Name="InfiniteButton"
+                          Width="42" Height="34"
+                          MinWidth="42" MinHeight="34"
+                          Padding="0"
+                          CornerRadius="17"
+                          ToolTipService.ToolTip="Autoplay"
+                          Click="InfiniteButton_Click">
+                <TextBlock Text="&#x221E;"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           LineHeight="18"
+                           VerticalAlignment="Center"
+                           Margin="0,-3,0,0"/>
+            </ToggleButton>
+
+            <ToggleButton x:Name="CrossfadeButton"
+                          Width="42" Height="34"
+                          MinWidth="42" MinHeight="34"
+                          Padding="0"
+                          CornerRadius="17"
+                          ToolTipService.ToolTip="Crossfade"
+                          Click="CrossfadeButton_Click">
+                <TextBlock Text="&#x21CC;"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+            </ToggleButton>
+        </StackPanel>
+
+        <!-- Scrolling content -->
+        <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="0" Padding="0,0,0,160">
+
+                <!-- Now Playing card -->
+                <Border x:Name="NowPlayingCard"
+                        Visibility="Collapsed"
+                        CornerRadius="4"
+                        Margin="0,0,0,12"
+                        Padding="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <Grid ColumnSpacing="12" MinHeight="48">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="48"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" Width="40" Height="40" CornerRadius="4"
+                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="4"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                             <Image x:Name="NowPlayingArt" Stretch="UniformToFill"/>
                         </Border>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="Controls_Queue_QueueControl__TextBlock_1" Text="Now Playing" FontSize="10"
-                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                            <TextBlock x:Name="NowPlayingTitle" FontSize="13" FontWeight="SemiBold"
-                                       MaxLines="1" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock x:Name="NowPlayingArtist" FontSize="11"
+                            <TextBlock x:Name="NowPlayingTitle"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       FontSize="14"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="NowPlayingArtist"
+                                       FontSize="12"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       MaxLines="1" TextTrimming="CharacterEllipsis"/>
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
 
-                        <FontIcon Grid.Column="2" Glyph="&#xE995;" FontSize="16"
-                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}"
-                                  VerticalAlignment="Center" Margin="8,0"/>
+                        <cards:LottieEqualizer Grid.Column="2"
+                                               x:Name="NowPlayingEqualizer"
+                                               IsActive="True"
+                                               IconSize="16"
+                                               VerticalAlignment="Center"
+                                               Margin="4,0,4,0"/>
                     </Grid>
-                </Grid>
+                </Border>
 
-                <!-- User Queue section -->
+                <!-- User queue section -->
                 <StackPanel x:Name="UserQueueSection" Visibility="Collapsed" Spacing="0">
-                    <TextBlock x:Name="UserQueueHeader"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"
-                               Margin="0,12,0,4"/>
+                    <Grid Margin="2,8,2,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="UserQueueHeaderLabel"
+                                   Text="Queue"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
+                        <HyperlinkButton Grid.Column="1"
+                                         x:Name="ClearQueueButton"
+                                         Content="Clear"
+                                         FontSize="12"
+                                         Padding="6,2"
+                                         Click="ClearQueueButton_Click"/>
+                    </Grid>
                     <ItemsRepeater x:Name="UserQueueRepeater"
                                    ItemTemplate="{StaticResource TrackTemplate}">
                         <ItemsRepeater.Layout>
@@ -103,12 +208,30 @@
                     </ItemsRepeater>
                 </StackPanel>
 
-                <!-- Next up / autoplay section -->
+                <!-- Next up section -->
                 <StackPanel x:Name="NextUpSection" Visibility="Collapsed" Spacing="0">
                     <TextBlock x:Name="NextUpHeader"
+                               Text="Next up"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
-                               Margin="0,12,0,4"/>
+                               Margin="2,14,2,4"/>
                     <ItemsRepeater x:Name="NextUpRepeater"
+                                   ItemTemplate="{StaticResource TrackTemplate}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="0"/>
+                        </ItemsRepeater.Layout>
+                    </ItemsRepeater>
+                </StackPanel>
+
+                <!-- Autoplay section (progressively dimmed) -->
+                <StackPanel x:Name="AutoPlaySection" Visibility="Collapsed" Spacing="0">
+                    <StackPanel x:Name="AutoPlayHeader" Margin="2,14,2,4" Spacing="1">
+                        <TextBlock Text="Autoplay"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock Text="Similar music will keep playing"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                    </StackPanel>
+                    <ItemsRepeater x:Name="AutoPlayRepeater"
                                    ItemTemplate="{StaticResource TrackTemplate}">
                         <ItemsRepeater.Layout>
                             <StackLayout Spacing="0"/>
@@ -119,10 +242,10 @@
                 <!-- Delimiter -->
                 <StackPanel x:Name="DelimiterSection" Visibility="Collapsed"
                             HorizontalAlignment="Center" Spacing="4" Margin="0,16,0,4">
-                    <FontIcon Glyph="&#xE71A;" FontSize="18"
+                    <FontIcon Glyph="&#xE71A;" FontSize="16"
                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                               HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="DelimiterText" FontSize="12"
+                    <TextBlock x:Name="DelimiterText" FontSize="11"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
@@ -139,6 +262,7 @@
                    Visibility="Collapsed"
                    VerticalAlignment="Center"
                    HorizontalAlignment="Center"
+                   Grid.RowSpan="2"
                    Margin="16"/>
     </Grid>
 </UserControl>

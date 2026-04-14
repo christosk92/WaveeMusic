@@ -68,6 +68,14 @@ public interface IPlaybackService : INotifyPropertyChanged
         bool startPlaying = true,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Switch the local Windows audio output device used by the AudioHost process.
+    /// </summary>
+    /// <param name="deviceIndex">PortAudio device index from <c>AudioOutputDeviceDto</c>.</param>
+    Task<PlaybackResult> SwitchAudioOutputAsync(
+        int deviceIndex,
+        CancellationToken ct = default);
+
     // ── Observable state ──
 
     /// <summary>True while a play command is buffering/loading.</summary>

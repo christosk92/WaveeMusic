@@ -8,9 +8,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
+using Wavee.AudioIpc;
 using Wavee.Connect;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
+using Wavee.Playback.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
@@ -71,6 +73,11 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private int _queuePosition;
     [ObservableProperty] private bool _isPlayingRemotely;
     [ObservableProperty] private string? _activeDeviceName;
+    [ObservableProperty] private DeviceType _activeDeviceType = DeviceType.Computer;
+    [ObservableProperty] private IReadOnlyList<ConnectDevice> _availableConnectDevices = [];
+    [ObservableProperty] private string? _activeAudioDeviceName;
+    [ObservableProperty] private IReadOnlyList<AudioOutputDeviceDto> _availableAudioDevices = [];
+    [ObservableProperty] private bool _isAudioEngineAvailable = true;
     [ObservableProperty] private bool _isVolumeRestricted;
     [ObservableProperty] private bool _isBuffering;
     [ObservableProperty] private string? _bufferingTrackId;
@@ -317,8 +324,24 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                                    && !string.IsNullOrEmpty(state.ActiveDeviceName);
                     IsPlayingRemotely = isRemote;
                     ActiveDeviceName = isRemote ? state.ActiveDeviceName : null;
-                    _logger?.LogDebug("UI bridge: remote={IsRemote}, device={DeviceName} ({DeviceId})",
-                        isRemote, state.ActiveDeviceName, state.ActiveDeviceId);
+                    ActiveDeviceType = state.ActiveDeviceType;
+                    AvailableConnectDevices = state.AvailableConnectDevices;
+                    _logger?.LogDebug("UI bridge: remote={IsRemote}, device={DeviceName} ({DeviceId}) type={DeviceType} connectDevices={Count}",
+                        isRemote, state.ActiveDeviceName, state.ActiveDeviceId, state.ActiveDeviceType, state.AvailableConnectDevices.Count);
+                }
+
+                // Local audio output device info flows through LocalPlaybackState and
+                // is forwarded here on every state update so the right panel can subscribe
+                // via INotifyPropertyChanged.
+                if (state.ActiveAudioDeviceName != null &&
+                    !string.Equals(state.ActiveAudioDeviceName, ActiveAudioDeviceName, StringComparison.Ordinal))
+                {
+                    ActiveAudioDeviceName = state.ActiveAudioDeviceName;
+                }
+                if (state.AvailableAudioDevices is { Count: > 0 } &&
+                    !ReferenceEquals(state.AvailableAudioDevices, AvailableAudioDevices))
+                {
+                    AvailableAudioDevices = state.AvailableAudioDevices;
                 }
 
                 // Volume (convert 0-65535 → 0-100 for UI)

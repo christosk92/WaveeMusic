@@ -205,12 +205,20 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
 
                     if (isLayoutChanged || isPrimaryPlayingLineChanged || isMouseScrollingChanged)
                     {
-                        line.YOffsetTransition.SetInterpolator(canvasYScrollTransition.Interpolator);
-                        line.YOffsetTransition.SetDuration(yScrollDuration);
-                        line.YOffsetTransition.SetDelay(yScrollDelay);
-                        // 设计之初是当 isLayoutChanged 为真时 jumpTo
-                        // 但考虑到动画视觉，强制使用动画
-                        line.YOffsetTransition.Start(targetYScrollOffset);
+                        if (isLayoutChanged)
+                        {
+                            // Snap immediately on layout changes (resize, lyrics load).
+                            // Animating from YOffset=0 (freshly created RenderLyricsLine)
+                            // causes lines to fly in from the wrong position.
+                            line.YOffsetTransition.JumpTo(targetYScrollOffset);
+                        }
+                        else
+                        {
+                            line.YOffsetTransition.SetInterpolator(canvasYScrollTransition.Interpolator);
+                            line.YOffsetTransition.SetDuration(yScrollDuration);
+                            line.YOffsetTransition.SetDelay(yScrollDelay);
+                            line.YOffsetTransition.Start(targetYScrollOffset);
+                        }
                     }
                 }
 

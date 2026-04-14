@@ -417,44 +417,36 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         var isPutStateResponse = message.Uri.StartsWith("hm://connect-state/v1/put-state-response", StringComparison.OrdinalIgnoreCase);
         var isSelfEcho = message.Headers != null && message.Headers.TryGetValue("X-Wavee-Echo", out var echoTag) && echoTag == "self";
 
+        _logger?.LogTrace("[cluster#{Seq}] Received cluster message: uri={Uri}, payloadSize={Size}, isPutStateResponse={IsPutStateResponse}, selfEcho={SelfEcho}",
+            clusterSeq, message.Uri, message.Payload.Length, isPutStateResponse, isSelfEcho);
+
+        // Parse the cluster proto BEFORE any suppression logic — even in suppressed
+        // modes we still want to propagate the Spotify Connect device roster to the UI.
+        Cluster? cluster;
+        try
+        {
+            if (!TryParseClusterMessage(message, isPutStateResponse, out cluster) || cluster == null)
+                return;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to parse cluster update");
+            return;
+        }
+
+        // Always propagate the Connect device roster — orthogonal to local playback state.
+        TryEmitConnectDeviceUpdate(cluster, clusterSeq);
+
+        // Proxy-only mode: AudioHost owns playback state, so skip the full state merge.
         if (_proxyOnlyMode)
         {
-            _logger?.LogTrace("[cluster#{Seq}] Ignoring cluster update (proxy-only mode, AudioHost is authoritative): uri={Uri}, echo={Echo}",
+            _logger?.LogTrace("[cluster#{Seq}] Ignoring cluster playback state (proxy-only mode, AudioHost is authoritative): uri={Uri}, echo={Echo}",
                 clusterSeq, message.Uri, isSelfEcho);
             return;
         }
 
         try
         {
-            _logger?.LogTrace("[cluster#{Seq}] Received cluster message: uri={Uri}, payloadSize={Size}, isPutStateResponse={IsPutStateResponse}, selfEcho={SelfEcho}",
-                clusterSeq, message.Uri, message.Payload.Length, isPutStateResponse, isSelfEcho);
-
-            Cluster? cluster = null;
-
-            // Try parsing as Cluster first (PUT state responses)
-            if (message.Uri.StartsWith("hm://connect-state/v1/put-state-response", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!PlaybackStateHelpers.TryParseCluster(message, out cluster) || cluster == null)
-                {
-                    _logger?.LogWarning("Failed to parse Cluster from PUT state response");
-                    return;
-                }
-                _logger?.LogTrace("Cluster parsed from PUT state response: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
-                    cluster.ActiveDeviceId, cluster.PlayerState != null);
-            }
-            // Otherwise try parsing as ClusterUpdate (dealer messages)
-            else
-            {
-                if (!PlaybackStateHelpers.TryParseClusterUpdate(message, out var clusterUpdate) || clusterUpdate == null)
-                {
-                    _logger?.LogWarning("Failed to parse ClusterUpdate from dealer message");
-                    return;
-                }
-                cluster = clusterUpdate.Cluster;
-                _logger?.LogTrace("ClusterUpdate parsed: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
-                    cluster.ActiveDeviceId, cluster.PlayerState != null);
-            }
-
             // Avoid expensive protobuf JSON serialization unless trace logging is enabled.
             if (cluster.PlayerState != null)
             {
@@ -546,6 +538,79 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         {
             _logger?.LogError(ex, "Failed to process cluster update");
         }
+    }
+
+    /// <summary>
+    /// Parses a dealer message as either a Cluster (PUT state response) or a ClusterUpdate
+    /// (regular dealer message) and returns the underlying <see cref="Cluster"/> protobuf.
+    /// </summary>
+    private bool TryParseClusterMessage(DealerMessage message, bool isPutStateResponse, out Cluster? cluster)
+    {
+        cluster = null;
+
+        if (isPutStateResponse)
+        {
+            if (!PlaybackStateHelpers.TryParseCluster(message, out cluster) || cluster == null)
+            {
+                _logger?.LogWarning("Failed to parse Cluster from PUT state response");
+                return false;
+            }
+            _logger?.LogTrace("Cluster parsed from PUT state response: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
+                cluster.ActiveDeviceId, cluster.PlayerState != null);
+            return true;
+        }
+
+        if (!PlaybackStateHelpers.TryParseClusterUpdate(message, out var clusterUpdate) || clusterUpdate == null)
+        {
+            _logger?.LogWarning("Failed to parse ClusterUpdate from dealer message");
+            return false;
+        }
+        cluster = clusterUpdate.Cluster;
+        _logger?.LogTrace("ClusterUpdate parsed: activeDevice={ActiveDevice}, hasPlayerState={HasPlayerState}",
+            cluster.ActiveDeviceId, cluster.PlayerState != null);
+        return true;
+    }
+
+    /// <summary>
+    /// Emits a minimal "devices-only" state update if the Spotify Connect device roster
+    /// has changed. This runs on every cluster update regardless of suppression mode,
+    /// so the UI can track remote devices even when the main playback-state update is
+    /// skipped (proxy-only mode, we-are-active mode).
+    /// </summary>
+    private void TryEmitConnectDeviceUpdate(Cluster cluster, long clusterSeq)
+    {
+        var newDevices = PlaybackStateHelpers.ExtractConnectDevices(cluster);
+        if (DeviceListsEquivalent(_currentState.AvailableConnectDevices, newDevices))
+            return;
+
+        var devicesState = _currentState with
+        {
+            AvailableConnectDevices = newDevices,
+            Changes = Connect.StateChanges.ActiveDevice,
+        };
+        _currentState = devicesState;
+        _stateSubject.OnNext(devicesState);
+        _logger?.LogDebug("[cluster#{Seq}] Emitted Connect device list update: {Count} devices",
+            clusterSeq, newDevices.Count);
+    }
+
+    private static bool DeviceListsEquivalent(
+        IReadOnlyList<ConnectDevice> a,
+        IReadOnlyList<ConnectDevice> b)
+    {
+        if (a.Count != b.Count) return false;
+        // Protobuf MapField iteration order is not guaranteed stable across updates,
+        // so compare by id instead of by position.
+        var byId = new Dictionary<string, ConnectDevice>(a.Count, StringComparer.Ordinal);
+        foreach (var d in a) byId[d.DeviceId] = d;
+        foreach (var d in b)
+        {
+            if (!byId.TryGetValue(d.DeviceId, out var prev)) return false;
+            if (prev.IsActive != d.IsActive) return false;
+            if (prev.Type != d.Type) return false;
+            if (!string.Equals(prev.Name, d.Name, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
     /// <summary>

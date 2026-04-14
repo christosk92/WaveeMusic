@@ -1,5 +1,8 @@
 using System.Collections.Generic;
 using System.ComponentModel;
+using Wavee.Connect;
+using Wavee.Core.Session;
+using Wavee.Playback.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 
@@ -55,6 +58,33 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// Display name of the active Spotify device, if remote.
     /// </summary>
     string? ActiveDeviceName { get; }
+
+    /// <summary>
+    /// Device type of the active Spotify Connect device (when remote) or Computer locally.
+    /// Drives the icon shown in the output-device card.
+    /// </summary>
+    DeviceType ActiveDeviceType { get; }
+
+    /// <summary>
+    /// All Spotify Connect devices visible in the user's cluster (this device + others).
+    /// </summary>
+    IReadOnlyList<ConnectDevice> AvailableConnectDevices { get; }
+
+    /// <summary>
+    /// Friendly name of the current local Windows audio output device (from PortAudio via AudioHost).
+    /// Null until the first state update from the audio engine arrives.
+    /// </summary>
+    string? ActiveAudioDeviceName { get; }
+
+    /// <summary>
+    /// Full list of local Windows audio output devices enumerated by PortAudio.
+    /// </summary>
+    IReadOnlyList<AudioOutputDeviceDto> AvailableAudioDevices { get; }
+
+    /// <summary>
+    /// True when the AudioHost IPC pipe is connected and the audio engine is responsive.
+    /// </summary>
+    bool IsAudioEngineAvailable { get; }
     double Position { get; set; }
     double Duration { get; }
     double Volume { get; set; }

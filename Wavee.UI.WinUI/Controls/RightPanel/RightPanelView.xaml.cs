@@ -77,6 +77,16 @@ public sealed partial class RightPanelView : UserControl
     private readonly List<CompositionObject> _backgroundOverlayCompositionObjects = [];
     private ContainerVisual? _backgroundOverlayContainer;
     private Compositor? _backgroundOverlayCompositor;
+
+    // ── Tab content bottom fade (shared across all right-panel tabs) ──
+    private readonly List<CompositionObject> _tabFadeCompositionObjects = [];
+    private Compositor? _tabFadeCompositor;
+    private SpriteVisual? _tabFadeVisual;
+    private CompositionLinearGradientBrush? _tabFadeBrush;
+    private CompositionColorGradientStop? _tabFadeStop0;
+    private CompositionColorGradientStop? _tabFadeStop1;
+    private CompositionColorGradientStop? _tabFadeStop2;
+    private CompositionColorGradientStop? _tabFadeStop3;
     private CompositionColorBrush? _backgroundTintBrush;
     private CompositionColorBrush? _backgroundNonDetailsDimBrush;
     private CompositionLinearGradientBrush? _backgroundHighlightBrush;
@@ -154,6 +164,7 @@ public sealed partial class RightPanelView : UserControl
         ActualThemeChanged += OnActualThemeChanged;
         SizeChanged += OnPanelSizeChanged;
         UpdateCanvasClearColor();
+        EnsureTabContentFadeComposition();
         UpdateBackgroundChrome();
         RefreshBackgroundTint();
         UpdatePanelBackgroundState();
@@ -190,6 +201,7 @@ public sealed partial class RightPanelView : UserControl
         TeardownBlurredAlbumArt();
         CancelBackgroundTintRefresh();
         TeardownBackgroundOverlayComposition();
+        TeardownTabContentFadeComposition();
         TeardownDetailsLyricsComposition();
         _canvasDevice?.Dispose();
         _canvasDevice = null;
@@ -201,6 +213,7 @@ public sealed partial class RightPanelView : UserControl
         DispatcherQueue.TryEnqueue(() =>
         {
             UpdateCanvasClearColor();
+            UpdateTabContentFadeColor();
             UpdateLyricsPaletteForTheme();
             UpdateBackgroundChrome();
             UpdateTabHeaderVisualState();
@@ -210,6 +223,7 @@ public sealed partial class RightPanelView : UserControl
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
         UpdateCanvasClearColor();
+        UpdateTabContentFadeColor();
         UpdateLyricsPaletteForTheme();
         UpdateBackgroundChrome();
         UpdateTabHeaderVisualState();
@@ -990,6 +1004,113 @@ public sealed partial class RightPanelView : UserControl
         return compositionObject;
     }
 
+    // ── Tab content bottom fade ──
+    // A single composition-backed vertical gradient that overlays all right-panel tabs
+    // and fades the scrolling content into the panel background, so the last row bleeds
+    // cleanly into the player bar below.
+
+    private T TrackTabFade<T>(T obj) where T : CompositionObject
+    {
+        _tabFadeCompositionObjects.Add(obj);
+        return obj;
+    }
+
+    private void EnsureTabContentFadeComposition()
+    {
+        if (_tabFadeVisual != null || TabContentFadeHost == null)
+            return;
+
+        var hostVisual = ElementCompositionPreview.GetElementVisual(TabContentFadeHost);
+        _tabFadeCompositor = hostVisual.Compositor;
+
+        _tabFadeBrush = TrackTabFade(_tabFadeCompositor.CreateLinearGradientBrush());
+        _tabFadeBrush.StartPoint = new Vector2(0.5f, 0f);
+        _tabFadeBrush.EndPoint   = new Vector2(0.5f, 1f);
+
+        // 4-stop gradient — same cadence as _backgroundBottomBlendBrush for visual consistency.
+        _tabFadeStop0 = TrackTabFade(_tabFadeCompositor.CreateColorGradientStop(0.00f, Colors.Transparent));
+        _tabFadeStop1 = TrackTabFade(_tabFadeCompositor.CreateColorGradientStop(0.35f, Colors.Transparent));
+        _tabFadeStop2 = TrackTabFade(_tabFadeCompositor.CreateColorGradientStop(0.72f, Colors.Transparent));
+        _tabFadeStop3 = TrackTabFade(_tabFadeCompositor.CreateColorGradientStop(1.00f, Colors.Transparent));
+        _tabFadeBrush.ColorStops.Add(_tabFadeStop0);
+        _tabFadeBrush.ColorStops.Add(_tabFadeStop1);
+        _tabFadeBrush.ColorStops.Add(_tabFadeStop2);
+        _tabFadeBrush.ColorStops.Add(_tabFadeStop3);
+
+        _tabFadeVisual = TrackTabFade(_tabFadeCompositor.CreateSpriteVisual());
+        _tabFadeVisual.Brush = _tabFadeBrush;
+        _tabFadeVisual.RelativeSizeAdjustment = Vector2.One;
+
+        ElementCompositionPreview.SetElementChildVisual(TabContentFadeHost, _tabFadeVisual);
+
+        UpdateTabContentFadeColor();
+    }
+
+    private void UpdateTabContentFadeColor()
+    {
+        if (_tabFadeStop0 == null || _tabFadeStop1 == null
+            || _tabFadeStop2 == null || _tabFadeStop3 == null)
+            return;
+
+        var target = ResolveTabFadeTargetColor();
+
+        // Carry the target RGB on every stop so the gradient interpolation stays
+        // in the correct hue rather than fading through neutral gray.
+        _tabFadeStop0.Color = Color.FromArgb(  0, target.R, target.G, target.B);
+        _tabFadeStop1.Color = Color.FromArgb( 40, target.R, target.G, target.B);
+        _tabFadeStop2.Color = Color.FromArgb(190, target.R, target.G, target.B);
+        _tabFadeStop3.Color = Color.FromArgb(255, target.R, target.G, target.B);
+    }
+
+    private Windows.UI.Color ResolveTabFadeTargetColor()
+    {
+        // Mirror UpdateCanvasClearColor() so the fade's terminal colour matches the
+        // panel's effective background in both themes.
+        var cardColor = (_themeColors?.CardBackground as SolidColorBrush)?.Color;
+
+        Windows.UI.Color baseColor;
+        if (Application.Current.Resources.TryGetValue("SolidBackgroundFillColorBase", out var baseObj)
+            && baseObj is Windows.UI.Color resolved)
+        {
+            baseColor = resolved;
+        }
+        else
+        {
+            baseColor = ActualTheme == ElementTheme.Light
+                ? Color.FromArgb(255, 243, 243, 243)
+                : Color.FromArgb(255,  32,  32,  32);
+        }
+
+        if (cardColor is { } card && card.A > 0)
+        {
+            float a = card.A / 255f;
+            return Color.FromArgb(255,
+                (byte)(card.R * a + baseColor.R * (1 - a)),
+                (byte)(card.G * a + baseColor.G * (1 - a)),
+                (byte)(card.B * a + baseColor.B * (1 - a)));
+        }
+
+        return baseColor;
+    }
+
+    private void TeardownTabContentFadeComposition()
+    {
+        if (TabContentFadeHost != null)
+            ElementCompositionPreview.SetElementChildVisual(TabContentFadeHost, null);
+
+        for (int i = _tabFadeCompositionObjects.Count - 1; i >= 0; i--)
+            _tabFadeCompositionObjects[i].Dispose();
+        _tabFadeCompositionObjects.Clear();
+
+        _tabFadeCompositor = null;
+        _tabFadeBrush = null;
+        _tabFadeStop0 = null;
+        _tabFadeStop1 = null;
+        _tabFadeStop2 = null;
+        _tabFadeStop3 = null;
+        _tabFadeVisual = null;
+    }
+
     private bool HasResolvedBackgroundSource()
     {
         return _activeBackgroundMode switch
@@ -1384,7 +1505,10 @@ public sealed partial class RightPanelView : UserControl
         // Wheel handler attaches directly to DetailsContent — must wait until the
         // subtree exists to register it. Before this point there's nothing to handle.
         if (_detailsTreeLoaded)
+        {
             RegisterDetailsWheelHandler();
+            InitializeOutputDeviceCard();
+        }
     }
 
     // ── Details panel binding ──
@@ -2729,6 +2853,30 @@ public sealed partial class RightPanelView : UserControl
 
     // ── Canvas layout (push content to bottom so video is visible) ──
 
+    /// <summary>
+    /// How much vertical space to reserve below the canvas for the "always-visible"
+    /// bottom cards (artist header + output device card, with their 16px spacing).
+    /// Falls back to a sensible default when the cards haven't measured yet.
+    /// </summary>
+    private double GetCanvasBottomReservedHeight()
+    {
+        const double StackPanelSpacing = 16;
+        const double Padding = 12;
+
+        double artistHeight = DetailsArtistHeaderCard?.Visibility == Visibility.Visible
+            ? (DetailsArtistHeaderCard.ActualHeight > 0 ? DetailsArtistHeaderCard.ActualHeight : 84)
+            : 0;
+
+        double deviceHeight = DetailsOutputDeviceCard?.Visibility == Visibility.Visible
+            ? (DetailsOutputDeviceCard.ActualHeight > 0 ? DetailsOutputDeviceCard.ActualHeight : 68)
+            : 0;
+
+        if (artistHeight == 0 && deviceHeight == 0) return 120;
+
+        double spacing = (artistHeight > 0 && deviceHeight > 0) ? StackPanelSpacing : 0;
+        return artistHeight + deviceHeight + spacing + Padding;
+    }
+
     private void ApplyCanvasLayout(bool animate = true)
     {
         if (DetailsCanvasSpacer == null) return;
@@ -2736,8 +2884,9 @@ public sealed partial class RightPanelView : UserControl
         var isCanvas = _activeBackgroundMode == DetailsBackgroundMode.Canvas
                        && SelectedMode == RightPanelMode.Details;
 
+        var reservedBelow = GetCanvasBottomReservedHeight();
         var targetHeight = isCanvas
-            ? Math.Max(0, DetailsContent.ActualHeight - 120)
+            ? Math.Max(0, DetailsContent.ActualHeight - reservedBelow)
             : 0d;
 
         if (!animate || !IsLoaded)
@@ -2774,9 +2923,46 @@ public sealed partial class RightPanelView : UserControl
             && SelectedMode == RightPanelMode.Details
             && DetailsCanvasSpacer != null)
         {
-            DetailsCanvasSpacer.Height = Math.Max(0, DetailsContent.ActualHeight - 120);
+            DetailsCanvasSpacer.Height = Math.Max(0, DetailsContent.ActualHeight - GetCanvasBottomReservedHeight());
         }
 
+    }
+
+    /// <summary>
+    /// Invoked on the first wheel-scroll down while canvas is visible. Collapses the
+    /// canvas spacer by exactly the height of the output device card (plus a small
+    /// padding), so the card slides up from behind the canvas and is anchored at the
+    /// top of the content area. The canvas itself remains visible above it.
+    /// </summary>
+    private void AnchorOutputDeviceCardOnScroll()
+    {
+        if (DetailsCanvasSpacer == null || DetailsOutputDeviceCard == null) return;
+
+        // Card hasn't measured yet → fall back to a sensible default.
+        var cardHeight = DetailsOutputDeviceCard.ActualHeight > 0
+            ? DetailsOutputDeviceCard.ActualHeight
+            : 68;
+
+        // 16 accounts for the StackPanel.Spacing between cards.
+        var collapseBy = cardHeight + 16;
+        var current = DetailsCanvasSpacer.Height;
+        var target = Math.Max(0, current - collapseBy);
+        if (Math.Abs(current - target) < 1) return;
+
+        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        var da = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = current,
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(320),
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+                { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut },
+            EnableDependentAnimation = true
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(da, DetailsCanvasSpacer);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(da, "Height");
+        storyboard.Children.Add(da);
+        storyboard.Begin();
     }
 
     // ── Card-by-card paging for Details ──
@@ -2803,10 +2989,10 @@ public sealed partial class RightPanelView : UserControl
     {
         var all = new FrameworkElement[]
         {
-            DetailsArtistHeaderCard, DetailsLyricsSnippet, DetailsBio,
+            DetailsArtistHeaderCard, DetailsOutputDeviceCard, DetailsLyricsSnippet, DetailsBio,
             DetailsCreditsSection, DetailsConcertsSection, DetailsRelatedVideosSection
         };
-        return all.Where(c => c.Visibility == Visibility.Visible).ToArray();
+        return all.Where(c => c != null && c.Visibility == Visibility.Visible).ToArray();
     }
 
     private void DetailsContent_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
@@ -2816,6 +3002,24 @@ public sealed partial class RightPanelView : UserControl
         var props = e.GetCurrentPoint(DetailsContent).Properties;
         var delta = props.MouseWheelDelta;
         if (delta == 0) return;
+
+        // When a canvas is visible, the DetailsCanvasSpacer pushes all cards below the fold
+        // (by ~ DetailsContent.ActualHeight - 120). On the first scroll down from rest, collapse
+        // enough of that spacer to reveal the output device card so it "hooks" onto the
+        // canvas area rather than staying hidden. Subsequent scrolls fall through to the
+        // normal card-paging logic below.
+        if (delta < 0
+            && _activeBackgroundMode == DetailsBackgroundMode.Canvas
+            && DetailsCanvasSpacer != null
+            && DetailsOutputDeviceCard != null
+            && DetailsOutputDeviceCard.Visibility == Visibility.Visible
+            && DetailsContent.VerticalOffset < 1
+            && DetailsCanvasSpacer.Height > 0)
+        {
+            AnchorOutputDeviceCardOnScroll();
+            e.Handled = true;
+            return;
+        }
 
         var cards = GetVisibleDetailsCards();
         if (cards.Length == 0) return;

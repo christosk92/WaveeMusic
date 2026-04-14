@@ -1,6 +1,21 @@
 using Wavee.Audio.Queue;
+using Wavee.Core.Session;
+using Wavee.Playback.Contracts;
 
 namespace Wavee.Connect;
+
+/// <summary>
+/// Lightweight snapshot of a Spotify Connect device as seen in the cluster.
+/// </summary>
+/// <param name="DeviceId">Spotify device identifier.</param>
+/// <param name="Name">Human-readable device name (e.g. "Living Room Speaker").</param>
+/// <param name="Type">Device type (computer, smartphone, speaker, TV, etc.).</param>
+/// <param name="IsActive">True if this is the currently active device in the cluster.</param>
+public sealed record ConnectDevice(
+    string DeviceId,
+    string Name,
+    DeviceType Type,
+    bool IsActive);
 
 /// <summary>
 /// Unified playback state model combining cluster updates and local playback.
@@ -97,6 +112,30 @@ public sealed record PlaybackState
     /// Display name of the active device (e.g. "iPhone", "Living Room Speaker").
     /// </summary>
     public string? ActiveDeviceName { get; init; }
+
+    /// <summary>
+    /// Device type of the currently active Spotify Connect device (computer, smartphone,
+    /// speaker, TV, etc.). Defaults to <see cref="DeviceType.Computer"/> when no remote
+    /// device is active.
+    /// </summary>
+    public DeviceType ActiveDeviceType { get; init; } = DeviceType.Computer;
+
+    /// <summary>
+    /// Full list of Spotify Connect devices visible in the user's cluster.
+    /// Includes the local device as well as any other phones, speakers, TVs, etc.
+    /// </summary>
+    public IReadOnlyList<ConnectDevice> AvailableConnectDevices { get; init; } = [];
+
+    /// <summary>
+    /// Friendly name of the current local Windows audio output device (e.g. "Sony WH-1000XM5").
+    /// Flows from PortAudio in the AudioHost process and is only meaningful when playing locally.
+    /// </summary>
+    public string? ActiveAudioDeviceName { get; init; }
+
+    /// <summary>
+    /// Full list of local audio output devices enumerated by PortAudio in the AudioHost process.
+    /// </summary>
+    public IReadOnlyList<AudioOutputDeviceDto> AvailableAudioDevices { get; init; } = [];
 
     /// <summary>
     /// Volume level from active device (0-65535 Spotify scale).
