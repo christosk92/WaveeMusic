@@ -20,12 +20,13 @@ public enum AlbumsLibraryStage
     Details
 }
 
-public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackListViewModel
+public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IAlbumService _albumService;
     private readonly ITrackLikeService? _likeService;
     private readonly DispatcherQueue _dispatcherQueue;
+    private bool _disposed;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -328,8 +329,14 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     private void OnSaveStateChanged()
     {
+        if (_disposed)
+            return;
+
         _dispatcherQueue.TryEnqueue(async () =>
         {
+            if (_disposed)
+                return;
+
             using var _p = Services.UiOperationProfiler.Instance?.Profile("AlbumLibrarySyncUI");
             if (_likeService == null) return;
 
@@ -485,5 +492,16 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
         AddToPlaylistCommand.NotifyCanExecuteChanged();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
     }
 }

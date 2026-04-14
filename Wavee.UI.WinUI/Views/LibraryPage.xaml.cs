@@ -11,7 +11,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LibraryPage : Page, ITabBarItemContent
+public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
 {
     private const int MaxDeferredShowTabAttempts = 3;
 
@@ -28,6 +28,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent
     private LikedSongsView? _likedSongsView;
     private int _deferredShowTabAttempts;
     private TabItemParameter? _tabItemParameter;
+    private bool _disposed;
 
     public LibraryPage()
     {
@@ -248,5 +249,33 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent
         {
             SelectTab(tabName);
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
+        ContentHost.Content = null;
+
+        DisposeIfNeeded(ref _albumsView);
+        DisposeIfNeeded(ref _artistsView);
+        DisposeIfNeeded(ref _likedSongsView);
+
+        ViewModel.Dispose();
+        ContentChanged = null;
+        _tabItemParameter = null;
+    }
+
+    private static void DisposeIfNeeded<T>(ref T? value)
+        where T : class
+    {
+        if (value is IDisposable disposable)
+            disposable.Dispose();
+
+        value = null;
     }
 }

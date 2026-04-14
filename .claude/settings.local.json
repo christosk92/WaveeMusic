@@ -47,7 +47,22 @@
       "Bash(grep:*)",
       "Bash(cat)",
       "Read(//tmp/**)",
-      "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -File perf-traces/_tmp_inspect.ps1 -AnalysisDir \"perf-traces/analysis-baseline-after-bde-20260409-194700\")"
+      "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -File perf-traces/_tmp_inspect.ps1 -AnalysisDir \"perf-traces/analysis-baseline-after-bde-20260409-194700\")",
+      "Read(//c/Users/ckara/AppData/Local/Microsoft/Windows/**)",
+      "Read(//c/ProgramData/Microsoft/Windows/WER//**)",
+      "Read(//c/Program Files \\(x86\\)/Windows Kits/10/Debuggers//**)",
+      "Read(//c/Program Files/WindowsApps//**)",
+      "Read(//c/Program Files/**)",
+      "Bash(dotnet --list-runtimes)",
+      "Read(//c/Program Files \\(x86\\)/Windows Kits/**)",
+      "Read(//c/Program Files \\(x86\\)/Windows Kits/10/Debuggers/**)",
+      "Bash(winget --version)",
+      "Bash(winget search:*)",
+      "Bash(ls *.sln*)",
+      "Bash(ls Wavee.UI.WinUI/*.csproj)",
+      "Bash(git stash:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

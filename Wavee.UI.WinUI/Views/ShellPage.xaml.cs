@@ -38,6 +38,7 @@ public sealed partial class ShellPage : Page
     public ShellViewModel ViewModel { get; }
     private InputNonClientPointerSource? _nonClientSource;
     private DragStateService? _dragStateService;
+    private long _sidebarOpenPaneLengthCallbackToken = -1;
 
     private Services.UiHealthMonitor? _uiHealthMonitor;
     private Controls.Diagnostics.UiHealthOverlay? _uiHealthOverlay;
@@ -130,6 +131,13 @@ public sealed partial class ShellPage : Page
         TitleBarGrid.Loaded -= TitleBarGrid_Loaded;
         TabControl.SizeChanged -= TabControl_SizeChanged;
         SidebarControl.ItemDropped -= SidebarControl_ItemDropped;
+        if (_sidebarOpenPaneLengthCallbackToken != -1)
+        {
+            SidebarControl.UnregisterPropertyChangedCallback(
+                SidebarView.OpenPaneLengthProperty,
+                _sidebarOpenPaneLengthCallbackToken);
+            _sidebarOpenPaneLengthCallbackToken = -1;
+        }
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -222,8 +230,12 @@ public sealed partial class ShellPage : Page
 
         // Keep expanded album art square when sidebar is resized
         UpdateExpandedArtSize();
-        SidebarControl.RegisterPropertyChangedCallback(
-            SidebarView.OpenPaneLengthProperty, (s, dp) => UpdateExpandedArtSize());
+        if (_sidebarOpenPaneLengthCallbackToken == -1)
+        {
+            _sidebarOpenPaneLengthCallbackToken = SidebarControl.RegisterPropertyChangedCallback(
+                SidebarView.OpenPaneLengthProperty,
+                (s, dp) => UpdateExpandedArtSize());
+        }
 
         // Unsubscribe to avoid duplicate calls
         Loaded -= ShellPage_Loaded;

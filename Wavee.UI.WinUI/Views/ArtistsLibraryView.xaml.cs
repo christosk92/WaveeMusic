@@ -11,10 +11,11 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ArtistsLibraryView : UserControl
+public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 {
     private const double NarrowLayoutBreakpoint = 800;
     private bool _hasInitializedLayoutMode;
+    private bool _disposed;
 
     public ArtistsLibraryViewModel ViewModel { get; }
 
@@ -211,5 +212,16 @@ public sealed partial class ArtistsLibraryView : UserControl
                 ArtistsView.Select(index);
             }
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        Loaded -= OnLoaded;
+        SizeChanged -= OnSizeChanged;
     }
 }

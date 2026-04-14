@@ -1,9 +1,8 @@
 using System;
 using System.Runtime.CompilerServices;
-using CommunityToolkit.WinUI.Animations;
-using CommunityToolkit.WinUI.Animations.Expressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Wavee.UI.WinUI.Behaviors;
@@ -155,23 +154,14 @@ public static class ImageFallbackBehavior
 
             // When source changes, prepare for fade by setting opacity to 0
             // Only do this if there's a new source (not when clearing)
-            if (image.Source is BitmapImage bitmapImage)
+            if (image.Source is BitmapImage)
             {
                 image.Opacity = 0;
-
-                // Apply decode pixel size if set
                 ApplyDecodePixelSize(image);
-
-                // If PixelWidth > 0, the image is already decoded (cached) — fade in now.
-                // Otherwise let the Image.ImageOpened handler above do the fade. Do not
-                // subscribe lambdas directly to BitmapImage.ImageOpened/ImageFailed here:
-                // shared cached BitmapImage instances outlive recycled Image controls, and
-                // a lambda that captures "image" creates a long-lived root from the cache
-                // back into the visual tree.
-                if (bitmapImage.PixelWidth > 0)
-                {
-                    AnimateFadeIn(image);
-                }
+                // The fade is started by Image_FadeIn when ImageOpened fires. We must NOT
+                // call AnimateFadeIn synchronously here: starting a Storyboard from inside
+                // a Source DP changed callback reenters the XAML property system and
+                // fail-fasts dcompi.dll under virtualized scrolling load.
             }
             else if (image.Source != null)
             {
@@ -212,7 +202,10 @@ public static class ImageFallbackBehavior
     {
         if (sender is Image image)
         {
-            AnimateFadeIn(image);
+            // Defer to the next dispatcher tick so any in-flight visual tree mutations
+            // (the right panel rebuilding its chrome on track change is the worst case)
+            // settle before we touch the Composition Visual.
+            image.DispatcherQueue?.TryEnqueue(() => AnimateFadeIn(image));
         }
     }
 
@@ -231,15 +224,42 @@ public static class ImageFallbackBehavior
 
     private static void AnimateFadeIn(Image image)
     {
-        // Use Community Toolkit AnimationBuilder for smooth fade-in
-        // Use FrameworkLayer.Xaml to match the image.Opacity = 0 we set earlier
-        AnimationBuilder.Create()
-            .Opacity(
-                from: 0,
-                to: 1,
-                duration: TimeSpan.FromMilliseconds(200),
-                layer: FrameworkLayer.Xaml)
-            .Start(image);
+        // Element must be attached to a XamlRoot before we touch its Composition Visual.
+        // If it isn't yet, hook Loaded once and retry from there.
+        if (!image.IsLoaded || image.XamlRoot is null)
+        {
+            void OnLoaded(object sender, RoutedEventArgs e)
+            {
+                image.Loaded -= OnLoaded;
+                AnimateFadeIn(image);
+            }
+            image.Loaded += OnLoaded;
+            return;
+        }
+
+        // Reset the XAML Opacity (set to 0 in OnSourceChangedForFade). The visible fade
+        // is driven by animating the underlying Composition Visual.Opacity directly.
+        image.Opacity = 1;
+
+        // Hand-rolled Composition animation rather than CommunityToolkit AnimationBuilder.
+        // AnimationBuilder.Start() unconditionally calls
+        // ElementCompositionPreview.SetIsTranslationEnabled(target, true) as part of its
+        // setup, even for an Opacity-only animation. On WinAppSDK 2.0-preview2 / ARM64,
+        // that call fail-fasts dcompi.dll when the compositor is busy with concurrent
+        // work (e.g. the right panel's gradient/Win2D chrome rebuilding on track change).
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(image);
+            var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(0f, 0f);
+            animation.InsertKeyFrame(1f, 1f);
+            animation.Duration = TimeSpan.FromMilliseconds(200);
+            visual.StartAnimation("Opacity", animation);
+        }
+        catch
+        {
+            // Image is already at Opacity=1 above, so it stays visible without the fade.
+        }
     }
 
     #endregion

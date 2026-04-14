@@ -123,39 +123,25 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
             return _activeLease;
         }
 
-        TeardownOnUi();
-
         var lease = new CanvasPreviewLease(Interlocked.Increment(ref _nextLeaseId), host, canvasUrl);
 
         try
         {
-            // Use element-owned Source instead of external SetMediaPlayer.
-            // This lets MediaPlayerElement manage its own internal SwapChainPanel,
-            // which is the only reliable rendering path in WinUI 3.
-            var source = MediaSource.CreateFromUri(new Uri(canvasUrl));
+            EnsurePlayerElementOnUi();
 
-            _playerElement = new MediaPlayerElement
-            {
-                AreTransportControlsEnabled = false,
-                AutoPlay = true,
-                IsHitTestVisible = false,
-                Stretch = Stretch.UniformToFill,
-                Source = source
-            };
+            if (_playerElement?.Parent is Panel currentParent && !ReferenceEquals(currentParent, host))
+                currentParent.Children.Remove(_playerElement);
 
-            // Add to visual tree
-            host.Children.Insert(0, _playerElement);
+            if (!ReferenceEquals(_playerElement?.Parent, host))
+                host.Children.Insert(0, _playerElement!);
 
-            // Configure the auto-created internal player
-            _currentPlayer = _playerElement.MediaPlayer;
-            if (_currentPlayer != null)
-            {
-                _currentPlayer.IsLoopingEnabled = true;
-                _currentPlayer.IsMuted = true;
-                _currentPlayer.MediaOpened += OnMediaPlayerMediaOpened;
-                _currentPlayer.MediaFailed += OnMediaPlayerMediaFailed;
-                _currentPlayer.CurrentStateChanged += OnMediaPlayerCurrentStateChanged;
-            }
+            var shouldReloadSource =
+                !string.Equals(_activeLease?.CanvasUrl, canvasUrl, StringComparison.Ordinal) ||
+                _playerElement?.Source == null;
+            if (shouldReloadSource && _playerElement != null)
+                _playerElement.Source = MediaSource.CreateFromUri(new Uri(canvasUrl));
+
+            _currentPlayer?.Play();
 
             _activeHost = host;
             _activeLease = lease;
@@ -185,17 +171,12 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
         {
             try
             {
-                _currentPlayer.MediaOpened -= OnMediaPlayerMediaOpened;
-                _currentPlayer.MediaFailed -= OnMediaPlayerMediaFailed;
-                _currentPlayer.CurrentStateChanged -= OnMediaPlayerCurrentStateChanged;
                 _currentPlayer.Pause();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 _logger?.LogDebug(ex, "Failed to stop canvas preview player");
             }
-
-            _currentPlayer = null;
         }
 
         if (_playerElement != null)
@@ -215,9 +196,55 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
             }
         }
 
-        _playerElement = null;
         _activeLease = null;
         _activeHost = null;
+    }
+
+    private void EnsurePlayerElementOnUi()
+    {
+        if (_playerElement != null && _currentPlayer != null)
+            return;
+
+        _playerElement = new MediaPlayerElement
+        {
+            AreTransportControlsEnabled = false,
+            AutoPlay = true,
+            IsHitTestVisible = false,
+            Stretch = Stretch.UniformToFill
+        };
+
+        _currentPlayer = _playerElement.MediaPlayer;
+        if (_currentPlayer == null)
+            return;
+
+        _currentPlayer.IsLoopingEnabled = true;
+        _currentPlayer.IsMuted = true;
+        _currentPlayer.MediaOpened += OnMediaPlayerMediaOpened;
+        _currentPlayer.MediaFailed += OnMediaPlayerMediaFailed;
+        _currentPlayer.CurrentStateChanged += OnMediaPlayerCurrentStateChanged;
+    }
+
+    private void DisposePlayerElementOnUi()
+    {
+        TeardownOnUi();
+
+        if (_currentPlayer != null)
+        {
+            try
+            {
+                _currentPlayer.MediaOpened -= OnMediaPlayerMediaOpened;
+                _currentPlayer.MediaFailed -= OnMediaPlayerMediaFailed;
+                _currentPlayer.CurrentStateChanged -= OnMediaPlayerCurrentStateChanged;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                _logger?.LogDebug(ex, "Failed to detach canvas preview player handlers");
+            }
+
+            _currentPlayer = null;
+        }
+
+        _playerElement = null;
     }
 
     private void OnMediaPlayerMediaOpened(MediaPlayer sender, object args)
@@ -292,7 +319,7 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
         try
         {
             _gate.Wait();
-            RunOnUiAsync(TeardownOnUi, CancellationToken.None).GetAwaiter().GetResult();
+            RunOnUiAsync(DisposePlayerElementOnUi, CancellationToken.None).GetAwaiter().GetResult();
         }
         catch
         {

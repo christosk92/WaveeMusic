@@ -313,11 +313,16 @@ public sealed partial class RightPanelView : UserControl
     private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(IPlaybackStateService.IsPlaying))
+        {
             UpdateTimerState();
+            UpdateDetailsLyricsUpdateMode();
+        }
 
         if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
                            or nameof(IPlaybackStateService.CurrentArtistId))
         {
+            _lastDetailsSnippetUpdateTickMs = -1;
+            _lastSnippetLineIndex = -1;
             // Track changes arrive before fresh details/canvas metadata, so immediately
             // fall back to the album-art treatment until the details VM resolves again.
             ResetBackgroundTint();
@@ -467,18 +472,19 @@ public sealed partial class RightPanelView : UserControl
                         && _lyricsVm.CurrentLyrics != null;
 
         // Realtime updates are only needed while playback is progressing.
-        var shouldRunTimer = canRender && _lyricsVm.PlaybackState.IsPlaying;
+        var shouldRunPositionTimer = canRender && _lyricsVm.PlaybackState.IsPlaying;
+        var shouldRunSharedTimer = shouldRunPositionTimer || ShouldRunDetailsLyricsSharedTimer();
 
         // Keep rendering active only for realtime playback or direct user interaction.
         var isInteracting = NowPlayingCanvas.IsMouseInLyricsArea
                             || NowPlayingCanvas.IsMousePressing
                             || NowPlayingCanvas.IsMouseScrolling;
-        var shouldRender = canRender && (shouldRunTimer || isInteracting);
+        var shouldRender = canRender && (shouldRunPositionTimer || isInteracting);
 
         NowPlayingCanvas.SetRenderingActive(shouldRender);
         NowPlayingCanvas.SetIsPlaying(canRender && _lyricsVm.PlaybackState.IsPlaying);
 
-        if (shouldRunTimer)
+        if (shouldRunSharedTimer)
             _positionTimer?.Start();
         else
             _positionTimer?.Stop();
@@ -489,26 +495,49 @@ public sealed partial class RightPanelView : UserControl
             NowPlayingCanvas.SetIsPlaying(false);
             _lastCanvasPositionMs = -1;
         }
-        else if (!shouldRunTimer)
+        else if (!shouldRunPositionTimer)
         {
             NowPlayingCanvas.SetIsPlaying(false);
             _lastCanvasPositionMs = -1;
         }
+
+        if (!ShouldRunDetailsLyricsSharedTimer())
+            _lastDetailsSnippetUpdateTickMs = -1;
     }
 
     private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
     {
         if (_lyricsVm == null) return;
 
-        var position = _lyricsVm.GetInterpolatedPosition();
-        var positionMs = position.TotalMilliseconds;
+        if (SelectedMode == RightPanelMode.Lyrics
+            && Visibility == Visibility.Visible
+            && _lyricsVm.HasLyrics
+            && _lyricsVm.CurrentLyrics != null
+            && _lyricsVm.PlaybackState.IsPlaying)
+        {
+            var position = _lyricsVm.GetInterpolatedPosition();
+            var positionMs = position.TotalMilliseconds;
 
-        // Skip tiny deltas to avoid unnecessary DP churn every tick.
-        if (_lastCanvasPositionMs >= 0 && Math.Abs(positionMs - _lastCanvasPositionMs) < 35)
+            // Skip tiny deltas to avoid unnecessary DP churn every tick.
+            if (_lastCanvasPositionMs < 0 || Math.Abs(positionMs - _lastCanvasPositionMs) >= 35)
+            {
+                _lastCanvasPositionMs = positionMs;
+                NowPlayingCanvas.SetPosition(position);
+            }
+        }
+
+        if (!ShouldRunDetailsLyricsSharedTimer())
             return;
 
-        _lastCanvasPositionMs = positionMs;
-        NowPlayingCanvas.SetPosition(position);
+        var tickMs = Environment.TickCount64;
+        if (_lastDetailsSnippetUpdateTickMs >= 0
+            && tickMs - _lastDetailsSnippetUpdateTickMs < DetailsSnippetTickMs)
+        {
+            return;
+        }
+
+        _lastDetailsSnippetUpdateTickMs = tickMs;
+        UpdateLyricsSnippetText();
     }
 
     // ── Seek ──
@@ -1407,11 +1436,14 @@ public sealed partial class RightPanelView : UserControl
         // Details lyrics snippet timer — stop when not on Details tab
         if (SelectedMode != RightPanelMode.Details)
         {
-            _detailsLyricsTimer?.Stop();
             DetachDetailsLyricsRenderLoop();
             CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
             _canvasLyricsActive = false;
             ClearCanvasLyricOverlay();
+        }
+        else
+        {
+            UpdateDetailsLyricsUpdateMode();
         }
 
         if (_lyricsInitialized)
@@ -1907,7 +1939,7 @@ public sealed partial class RightPanelView : UserControl
         byte HeldAlpha,
         byte ActiveAlpha);
 
-    private DispatcherQueueTimer? _detailsLyricsTimer;
+    private long _lastDetailsSnippetUpdateTickMs = -1;
     private int _lastSnippetLineIndex = -1;
     private const double DetailsSnippetTickMs = 250;
     private const double CursorBlinkPeriodMs = 520;
@@ -1929,34 +1961,18 @@ public sealed partial class RightPanelView : UserControl
         // Update immediately
         UpdateCanvasLyricsVisibility();
         UpdateLyricsSnippetText();
-
-        if (_detailsLyricsTimer == null)
-        {
-            _detailsLyricsTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(DetailsSnippetTickMs);
-            _detailsLyricsTimer.Tick += OnDetailsLyricsTimerTick;
-        }
-        else
-        {
-            _detailsLyricsTimer.Interval = TimeSpan.FromMilliseconds(DetailsSnippetTickMs);
-        }
-        _detailsLyricsTimer.Start();
+        _lastDetailsSnippetUpdateTickMs = -1;
+        UpdateDetailsLyricsUpdateMode();
     }
 
     private void TeardownDetailsLyricsSnippet()
     {
-        _detailsLyricsTimer?.Stop();
+        _lastDetailsSnippetUpdateTickMs = -1;
         _lastSnippetLineIndex = -1;
         DetachDetailsLyricsRenderLoop();
         ClearCanvasLyricOverlay();
         CanvasLyricsOverlay.Visibility = Visibility.Collapsed;
         _canvasLyricsActive = false;
-    }
-
-    private void OnDetailsLyricsTimerTick(DispatcherQueueTimer sender, object args)
-    {
-        if (SelectedMode != RightPanelMode.Details) return;
-        UpdateLyricsSnippetText();
     }
 
     private bool _canvasLyricsActive;
@@ -1971,17 +1987,22 @@ public sealed partial class RightPanelView : UserControl
         if (show)
         {
             EnsureDetailsLyricsComposition();
-            AttachDetailsLyricsRenderLoop();
-            RenderCurrentCanvasLyricFrame();
+            UpdateDetailsLyricsPresentation(renderCanvasOverlay: true);
         }
         else
         {
-            DetachDetailsLyricsRenderLoop();
             ClearCanvasLyricOverlay();
         }
+
+        UpdateDetailsLyricsUpdateMode();
     }
 
     private void UpdateLyricsSnippetText()
+    {
+        UpdateDetailsLyricsPresentation(renderCanvasOverlay: _canvasLyricsActive && !ShouldRunDetailsLyricsRenderLoop());
+    }
+
+    private void UpdateDetailsLyricsPresentation(bool renderCanvasOverlay)
     {
         if (_lyricsVm?.CurrentLyrics?.LyricsLines is not { Count: > 0 } lines)
         {
@@ -1992,18 +2013,7 @@ public sealed partial class RightPanelView : UserControl
         if (DetailsContent == null) return;
 
         var posMs = _lyricsVm.GetInterpolatedPosition().TotalMilliseconds;
-
-        // Find the current line based on playback position
-        var currentIdx = -1;
-        for (var i = lines.Count - 1; i >= 0; i--)
-        {
-            if (lines[i].StartMs <= posMs)
-            {
-                currentIdx = i;
-                break;
-            }
-        }
-
+        var currentIdx = FindCurrentLyricLineIndex(lines, posMs);
         if (currentIdx < 0) currentIdx = 0;
 
         var currentLine = lines[currentIdx];
@@ -2024,9 +2034,12 @@ public sealed partial class RightPanelView : UserControl
                 ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        // Update canvas overlay with syllable-by-syllable typing + fade
-        if (_canvasLyricsActive)
+        if (renderCanvasOverlay && _canvasLyricsActive)
             RenderCanvasLyricSurface(currentLine, BuildCanvasLyricPresentation(currentLine, posMs));
+        else if (_canvasLyricsActive)
+        {
+            return;
+        }
         else
             ClearCanvasLyricOverlay();
     }
@@ -2054,36 +2067,83 @@ public sealed partial class RightPanelView : UserControl
         if (!_canvasLyricsActive || SelectedMode != RightPanelMode.Details)
             return;
 
-        RenderCurrentCanvasLyricFrame();
+        UpdateDetailsLyricsPresentation(renderCanvasOverlay: true);
     }
 
-    private void RenderCurrentCanvasLyricFrame()
+    private void UpdateDetailsLyricsUpdateMode()
     {
-        if (_lyricsVm?.CurrentLyrics?.LyricsLines is not { Count: > 0 } lines)
+        if (_lyricsVm?.HasLyrics != true || _lyricsVm.CurrentLyrics == null || SelectedMode != RightPanelMode.Details)
         {
-            ClearCanvasLyricOverlay();
+            DetachDetailsLyricsRenderLoop();
+            _lastDetailsSnippetUpdateTickMs = -1;
+            UpdateTimerState();
             return;
         }
 
-        var posMs = _lyricsVm.GetInterpolatedPosition().TotalMilliseconds;
-        var currentIdx = -1;
-        for (var i = lines.Count - 1; i >= 0; i--)
+        var shouldRunRenderLoop = ShouldRunDetailsLyricsRenderLoop();
+        if (shouldRunRenderLoop)
         {
-            if (lines[i].StartMs <= posMs)
+            AttachDetailsLyricsRenderLoop();
+            _lastDetailsSnippetUpdateTickMs = -1;
+            UpdateTimerState();
+            return;
+        }
+
+        DetachDetailsLyricsRenderLoop();
+        UpdateTimerState();
+    }
+
+    private bool ShouldRunDetailsLyricsRenderLoop()
+    {
+        return _canvasLyricsActive
+            && SelectedMode == RightPanelMode.Details
+            && _lyricsVm?.PlaybackState.IsPlaying == true;
+    }
+
+    private bool ShouldRunDetailsLyricsSharedTimer()
+    {
+        return SelectedMode == RightPanelMode.Details
+            && Visibility == Visibility.Visible
+            && _lyricsVm?.HasLyrics == true
+            && _lyricsVm.CurrentLyrics != null
+            && !ShouldRunDetailsLyricsRenderLoop();
+    }
+
+    private int FindCurrentLyricLineIndex(IReadOnlyList<LyricsLine> lines, double posMs)
+    {
+        if (lines.Count == 0)
+            return -1;
+
+        if (_lastSnippetLineIndex >= 0 && _lastSnippetLineIndex < lines.Count)
+        {
+            var index = _lastSnippetLineIndex;
+            while (index + 1 < lines.Count && lines[index + 1].StartMs <= posMs)
+                index++;
+
+            while (index >= 0 && lines[index].StartMs > posMs)
+                index--;
+
+            return index;
+        }
+
+        var low = 0;
+        var high = lines.Count - 1;
+        var result = -1;
+        while (low <= high)
+        {
+            var mid = low + ((high - low) / 2);
+            if (lines[mid].StartMs <= posMs)
             {
-                currentIdx = i;
-                break;
+                result = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
             }
         }
 
-        if (currentIdx < 0)
-        {
-            ClearCanvasLyricOverlay();
-            return;
-        }
-
-        var currentLine = lines[currentIdx];
-        RenderCanvasLyricSurface(currentLine, BuildCanvasLyricPresentation(currentLine, posMs));
+        return result;
     }
 
     private CanvasLyricPresentation BuildCanvasLyricPresentation(
@@ -2503,7 +2563,7 @@ public sealed partial class RightPanelView : UserControl
         _detailsLyricsLayoutText = null;
         _detailsLyricsLayoutWidth = 0;
         _detailsLyricsLayoutHeight = 0;
-        RenderCurrentCanvasLyricFrame();
+        UpdateDetailsLyricsPresentation(renderCanvasOverlay: _canvasLyricsActive);
     }
 
     private static int GetActiveSyllableCharCount(BaseLyrics syllable, double posMs)
@@ -2683,6 +2743,9 @@ public sealed partial class RightPanelView : UserControl
     private CanvasImageSource? _canvasImageSource;
     private CanvasImageSource? _blurredAlbumArtImageSource;
     private int _detailsBackgroundGeneration;
+    private readonly object _canvasFrameRenderGate = new();
+    private bool _canvasFrameRenderQueued;
+    private bool _canvasFramePending;
     private int _blurredAlbumArtRenderWidth;
     private int _blurredAlbumArtRenderHeight;
     private DetailsBackgroundMode _activeBackgroundMode;
@@ -3088,6 +3151,7 @@ public sealed partial class RightPanelView : UserControl
 
         TeardownCanvasBackground();
         _currentCanvasUrl = url;
+        ResetCanvasFrameScheduling();
 
         _canvasDevice ??= new CanvasDevice();
 
@@ -3106,87 +3170,13 @@ public sealed partial class RightPanelView : UserControl
 
     private void OnCanvasVideoFrameAvailable(Windows.Media.Playback.MediaPlayer sender, object args)
     {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (_canvasMediaPlayer == null || _canvasDevice == null) return;
-
-            var w = Math.Max(1, (int)RootGrid.ActualWidth);
-            var h = Math.Max(1, (int)RootGrid.ActualHeight);
-            if (w <= 0 || h <= 0) return;
-
-            var naturalW = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoWidth ?? 0u);
-            var naturalH = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoHeight ?? 0u);
-            var sourceW = Math.Max(1, naturalW > 0 ? naturalW : w);
-            var sourceH = Math.Max(1, naturalH > 0 ? naturalH : h);
-
-            try
-            {
-                // Keep the frame target at the video's native size when available,
-                // then scale/crop into the panel like UniformToFill.
-                if (_canvasFrameTarget == null || _canvasFrameTarget.SizeInPixels.Width != sourceW || _canvasFrameTarget.SizeInPixels.Height != sourceH)
-                {
-                    _canvasFrameTarget?.Dispose();
-                    _canvasFrameTarget = new CanvasRenderTarget(_canvasDevice, sourceW, sourceH, 96);
-                }
-
-                _canvasMediaPlayer.CopyFrameToVideoSurface(_canvasFrameTarget);
-
-                // Create or resize the image source
-                if (_canvasImageSource == null || _canvasImageSource.SizeInPixels.Width != w || _canvasImageSource.SizeInPixels.Height != h)
-                {
-                    if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
-                        DetailsCanvasImage.Source = null;
-                    DisposeCanvasImageSource(ref _canvasImageSource);
-                    _canvasImageSource = new CanvasImageSource(_canvasDevice, w, h, 96);
-                    DetailsCanvasImage.Source = _canvasImageSource;
-                }
-
-                using var ds = _canvasImageSource.CreateDrawingSession(Colors.Transparent);
-                using var saturation = new SaturationEffect
-                {
-                    Source = _canvasFrameTarget,
-                    Saturation = CanvasSaturationAmount
-                };
-
-                var scaleX = (float)w / sourceW;
-                var scaleY = (float)h / sourceH;
-                var scale = Math.Max(scaleX, scaleY);
-                var offsetX = (w - (sourceW * scale)) / 2f;
-                var offsetY = (h - (sourceH * scale)) / 2f;
-
-                using var scaled = new ScaleEffect
-                {
-                    Source = saturation,
-                    Scale = new Vector2(scale, scale),
-                    CenterPoint = Vector2.Zero
-                };
-
-                ds.DrawImage(scaled, new Vector2(offsetX, offsetY));
-                UpdateBackgroundMediaVisibility();
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                // Device lost or resource failure — recreate everything
-                _canvasDevice?.Dispose();
-                _canvasDevice = null;
-                _canvasFrameTarget?.Dispose();
-                _canvasFrameTarget = null;
-                if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
-                    DetailsCanvasImage.Source = null;
-                DisposeCanvasImageSource(ref _canvasImageSource);
-
-                // Force re-setup on next call
-                var url = _currentCanvasUrl;
-                _currentCanvasUrl = null;
-                if (!string.IsNullOrEmpty(url))
-                    SetupCanvasBackground(url);
-            }
-        });
+        QueueCanvasFrameRender();
     }
 
     private void TeardownCanvasBackground()
     {
         _detailsBackgroundGeneration++;
+        ResetCanvasFrameScheduling();
         if (_canvasMediaPlayer != null)
         {
             _canvasMediaPlayer.VideoFrameAvailable -= OnCanvasVideoFrameAvailable;
@@ -3205,6 +3195,146 @@ public sealed partial class RightPanelView : UserControl
 
         _currentCanvasUrl = null;
         UpdateBackgroundMediaVisibility();
+    }
+
+    private void QueueCanvasFrameRender()
+    {
+        var shouldQueue = false;
+
+        lock (_canvasFrameRenderGate)
+        {
+            _canvasFramePending = true;
+            if (!_canvasFrameRenderQueued)
+            {
+                _canvasFrameRenderQueued = true;
+                shouldQueue = true;
+            }
+        }
+
+        if (!shouldQueue)
+            return;
+
+        if (!DispatcherQueue.TryEnqueue(ProcessCanvasFrameRender))
+            ResetCanvasFrameScheduling();
+    }
+
+    private void ProcessCanvasFrameRender()
+    {
+        var requeue = false;
+
+        try
+        {
+            lock (_canvasFrameRenderGate)
+            {
+                _canvasFramePending = false;
+            }
+
+            RenderCanvasFrame();
+        }
+        finally
+        {
+            lock (_canvasFrameRenderGate)
+            {
+                if (_canvasFramePending)
+                {
+                    requeue = true;
+                }
+                else
+                {
+                    _canvasFrameRenderQueued = false;
+                }
+            }
+
+            if (requeue && !DispatcherQueue.TryEnqueue(ProcessCanvasFrameRender))
+                ResetCanvasFrameScheduling();
+        }
+    }
+
+    private void RenderCanvasFrame()
+    {
+        if (_canvasMediaPlayer == null || _canvasDevice == null)
+            return;
+
+        var w = Math.Max(1, (int)RootGrid.ActualWidth);
+        var h = Math.Max(1, (int)RootGrid.ActualHeight);
+        if (w <= 0 || h <= 0)
+            return;
+
+        var naturalW = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoWidth ?? 0u);
+        var naturalH = (int)(_canvasMediaPlayer.PlaybackSession?.NaturalVideoHeight ?? 0u);
+        var sourceW = Math.Max(1, naturalW > 0 ? naturalW : w);
+        var sourceH = Math.Max(1, naturalH > 0 ? naturalH : h);
+
+        try
+        {
+            // Hold at most one UI-thread render task at a time and drop intermediate
+            // frames when the dispatcher is behind, instead of queueing unbounded work.
+            if (_canvasFrameTarget == null || _canvasFrameTarget.SizeInPixels.Width != sourceW || _canvasFrameTarget.SizeInPixels.Height != sourceH)
+            {
+                _canvasFrameTarget?.Dispose();
+                _canvasFrameTarget = new CanvasRenderTarget(_canvasDevice, sourceW, sourceH, 96);
+            }
+
+            _canvasMediaPlayer.CopyFrameToVideoSurface(_canvasFrameTarget);
+
+            if (_canvasImageSource == null || _canvasImageSource.SizeInPixels.Width != w || _canvasImageSource.SizeInPixels.Height != h)
+            {
+                if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
+                    DetailsCanvasImage.Source = null;
+                DisposeCanvasImageSource(ref _canvasImageSource);
+                _canvasImageSource = new CanvasImageSource(_canvasDevice, w, h, 96);
+                DetailsCanvasImage.Source = _canvasImageSource;
+            }
+
+            using var ds = _canvasImageSource.CreateDrawingSession(Colors.Transparent);
+            using var saturation = new SaturationEffect
+            {
+                Source = _canvasFrameTarget,
+                Saturation = CanvasSaturationAmount
+            };
+
+            var scaleX = (float)w / sourceW;
+            var scaleY = (float)h / sourceH;
+            var scale = Math.Max(scaleX, scaleY);
+            var offsetX = (w - (sourceW * scale)) / 2f;
+            var offsetY = (h - (sourceH * scale)) / 2f;
+
+            using var scaled = new ScaleEffect
+            {
+                Source = saturation,
+                Scale = new Vector2(scale, scale),
+                CenterPoint = Vector2.Zero
+            };
+
+            ds.DrawImage(scaled, new Vector2(offsetX, offsetY));
+            UpdateBackgroundMediaVisibility();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            ResetCanvasFrameScheduling();
+
+            _canvasDevice?.Dispose();
+            _canvasDevice = null;
+            _canvasFrameTarget?.Dispose();
+            _canvasFrameTarget = null;
+            if (ReferenceEquals(DetailsCanvasImage.Source, _canvasImageSource))
+                DetailsCanvasImage.Source = null;
+            DisposeCanvasImageSource(ref _canvasImageSource);
+
+            var url = _currentCanvasUrl;
+            _currentCanvasUrl = null;
+            if (!string.IsNullOrEmpty(url))
+                SetupCanvasBackground(url);
+        }
+    }
+
+    private void ResetCanvasFrameScheduling()
+    {
+        lock (_canvasFrameRenderGate)
+        {
+            _canvasFramePending = false;
+            _canvasFrameRenderQueued = false;
+        }
     }
 
     private static void DisposeCanvasImageSource(CanvasImageSource? source)

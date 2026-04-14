@@ -96,7 +96,6 @@ public sealed partial class BaselineHomeCard : UserControl
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         _highlightService = Ioc.Default.GetService<NowPlayingHighlightService>();
         InitializeComponent();
-        EffectiveViewportChanged += Card_EffectiveViewportChanged;
     }
 
     [Conditional("DEBUG")]
@@ -729,12 +728,6 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (ReferenceEquals(s_activeCard, this))
             s_activeCard = null;
-    }
-
-    private void Card_EffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
-    {
-        // PointerExited / PointerCanceled already own hover teardown.
-        // Effective viewport changes have been too noisy during first-hover layout work.
     }
 
     private async Task CollapseHoverChromeAsync()

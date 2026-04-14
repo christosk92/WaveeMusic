@@ -43,6 +43,7 @@ public sealed partial class PreviewAudioVisualizer : UserControl
     private bool _isActive;
     private bool _isPending;
     private bool _isRenderingSubscribed;
+    private readonly long _visibilityPropertyChangedToken;
     private int _framesSincePush = 999;
     private Color _cachedBarColor = Colors.Transparent;
     private Color _cachedTrackColor = Colors.Transparent;
@@ -78,6 +79,7 @@ public sealed partial class PreviewAudioVisualizer : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         SizeChanged += OnSizeChanged;
+        _visibilityPropertyChangedToken = RegisterPropertyChangedCallback(VisibilityProperty, OnVisibilityChanged);
         Reset();
     }
 
@@ -298,9 +300,16 @@ public sealed partial class PreviewAudioVisualizer : UserControl
         VisualizerCanvas?.Invalidate();
     }
 
+    private void OnVisibilityChanged(DependencyObject sender, DependencyProperty dp)
+    {
+        UpdateRenderingSubscription();
+        if (Visibility == Visibility.Visible)
+            VisualizerCanvas?.Invalidate();
+    }
+
     private void UpdateRenderingSubscription()
     {
-        if (!IsLoaded || (!_isActive && !_isPending))
+        if (!IsLoaded || Visibility != Visibility.Visible || (!_isActive && !_isPending))
         {
             UnsubscribeRendering();
             return;
