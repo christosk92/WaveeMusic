@@ -27,8 +27,9 @@ public static class TrackStateBehavior
     private const string PlayingState = "Playing";
     private const string PausedState = "Paused";
 
-    // Global element registry — tracks all elements with TrackId set
-    private static readonly List<WeakReference<FrameworkElement>> _trackedElements = [];
+    // Global element registry — indexed by track ID so state changes touch only affected rows.
+    private static readonly Dictionary<string, List<WeakReference<FrameworkElement>>> _elementsByTrackId
+        = new(StringComparer.Ordinal);
     private static IPlaybackStateService? _playbackStateService;
     private static bool _subscribedToPlayback;
     private static string? _currentTrackId;
@@ -70,27 +71,27 @@ public static class TrackStateBehavior
     {
         if (d is not FrameworkElement element) return;
 
-        if (e.OldValue != null)
+        if (e.OldValue is string oldTrackId)
         {
             element.PointerEntered -= OnPointerEntered;
             element.PointerExited -= OnPointerExited;
             element.Loaded -= OnLoaded;
             element.Unloaded -= OnUnloaded;
-            RemoveFromRegistry(element);
+            RemoveFromRegistry(element, oldTrackId);
         }
 
-        if (e.NewValue != null)
+        if (e.NewValue is string newTrackId)
         {
             element.PointerEntered += OnPointerEntered;
             element.PointerExited += OnPointerExited;
             element.Loaded += OnLoaded;
             element.Unloaded += OnUnloaded;
-            AddToRegistry(element);
+            AddToRegistry(element, newTrackId);
             EnsurePlaybackSubscription();
 
             if (element.IsLoaded)
             {
-                ApplyPlaybackState(element, (string)e.NewValue);
+                ApplyPlaybackState(element, newTrackId);
             }
         }
     }
@@ -178,7 +179,7 @@ public static class TrackStateBehavior
     private static void OnUnloaded(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement element)
-            RemoveFromRegistry(element);
+            RemoveFromRegistry(element, GetTrackId(element));
     }
 
     private static void OnPointerEntered(object sender, PointerRoutedEventArgs e)
@@ -230,37 +231,53 @@ public static class TrackStateBehavior
     {
         if (sender is not IPlaybackStateService service) return;
 
-        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId) or nameof(IPlaybackStateService.IsPlaying)
-            or nameof(IPlaybackStateService.IsBuffering) or nameof(IPlaybackStateService.BufferingTrackId))
+        switch (e.PropertyName)
         {
-            _currentTrackId = service.CurrentTrackId;
-            _isPlaying = service.IsPlaying;
-            _isBuffering = service.IsBuffering;
-            _bufferingTrackId = service.BufferingTrackId;
-            UpdateAllTrackedElements();
-            PlaybackStateChanged?.Invoke();
+            case nameof(IPlaybackStateService.CurrentTrackId):
+            {
+                var oldTrackId = _currentTrackId;
+                _currentTrackId = service.CurrentTrackId;
+                UpdateBucket(oldTrackId);
+                if (!string.Equals(_currentTrackId, oldTrackId, StringComparison.Ordinal))
+                    UpdateBucket(_currentTrackId);
+                PlaybackStateChanged?.Invoke();
+                break;
+            }
+            case nameof(IPlaybackStateService.IsPlaying):
+                _isPlaying = service.IsPlaying;
+                UpdateBucket(_currentTrackId);
+                PlaybackStateChanged?.Invoke();
+                break;
+            case nameof(IPlaybackStateService.IsBuffering):
+                _isBuffering = service.IsBuffering;
+                PlaybackStateChanged?.Invoke();
+                break;
+            case nameof(IPlaybackStateService.BufferingTrackId):
+                _bufferingTrackId = service.BufferingTrackId;
+                PlaybackStateChanged?.Invoke();
+                break;
         }
     }
 
     /// <summary>
-    /// Updates playback state on all registered elements.
-    /// Called when CurrentTrackId or IsPlaying changes globally.
+    /// Updates every live element in a single track-ID bucket. Cleans dead weak refs along the way.
     /// </summary>
-    private static void UpdateAllTrackedElements()
+    private static void UpdateBucket(string? trackId)
     {
-        // Clean up dead references and update live ones
-        for (int i = _trackedElements.Count - 1; i >= 0; i--)
+        if (trackId == null || !_elementsByTrackId.TryGetValue(trackId, out var bucket)) return;
+
+        for (int i = bucket.Count - 1; i >= 0; i--)
         {
-            if (!_trackedElements[i].TryGetTarget(out var element))
+            if (!bucket[i].TryGetTarget(out var element))
             {
-                _trackedElements.RemoveAt(i);
+                bucket.RemoveAt(i);
                 continue;
             }
-
-            var trackId = GetTrackId(element);
-            if (trackId != null)
-                ApplyPlaybackState(element, trackId);
+            ApplyPlaybackState(element, trackId);
         }
+
+        if (bucket.Count == 0)
+            _elementsByTrackId.Remove(trackId);
     }
 
     /// <summary>
@@ -298,36 +315,47 @@ public static class TrackStateBehavior
 
     #region Element Registry
 
-    private static void AddToRegistry(FrameworkElement element)
+    private static void AddToRegistry(FrameworkElement element, string trackId)
     {
-        // Avoid duplicates
-        for (int i = _trackedElements.Count - 1; i >= 0; i--)
+        if (!_elementsByTrackId.TryGetValue(trackId, out var bucket))
         {
-            if (!_trackedElements[i].TryGetTarget(out var existing))
+            bucket = new List<WeakReference<FrameworkElement>>(1);
+            _elementsByTrackId[trackId] = bucket;
+        }
+
+        for (int i = bucket.Count - 1; i >= 0; i--)
+        {
+            if (!bucket[i].TryGetTarget(out var existing))
             {
-                _trackedElements.RemoveAt(i);
+                bucket.RemoveAt(i);
                 continue;
             }
             if (ReferenceEquals(existing, element)) return;
         }
-        _trackedElements.Add(new WeakReference<FrameworkElement>(element));
+
+        bucket.Add(new WeakReference<FrameworkElement>(element));
     }
 
-    private static void RemoveFromRegistry(FrameworkElement element)
+    private static void RemoveFromRegistry(FrameworkElement element, string? trackId)
     {
-        for (int i = _trackedElements.Count - 1; i >= 0; i--)
+        if (trackId == null || !_elementsByTrackId.TryGetValue(trackId, out var bucket)) return;
+
+        for (int i = bucket.Count - 1; i >= 0; i--)
         {
-            if (!_trackedElements[i].TryGetTarget(out var existing))
+            if (!bucket[i].TryGetTarget(out var existing))
             {
-                _trackedElements.RemoveAt(i);
+                bucket.RemoveAt(i);
                 continue;
             }
             if (ReferenceEquals(existing, element))
             {
-                _trackedElements.RemoveAt(i);
-                return;
+                bucket.RemoveAt(i);
+                break;
             }
         }
+
+        if (bucket.Count == 0)
+            _elementsByTrackId.Remove(trackId);
     }
 
     #endregion

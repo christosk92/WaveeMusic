@@ -34,9 +34,8 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
     private long _bytesPlayedSinceBase;
     private double _bytesPerMs; // cached for callback performance
 
-    // Device change monitoring
+    // Current PortAudio device index (mutated by explicit user switches via SwitchToDeviceAsync)
     private int _currentDeviceIndex;
-    private Timer? _deviceCheckTimer;
 
     // Optional final-stage processor applied after the circular buffer is read,
     // so user volume changes are not delayed by already-buffered PCM.
@@ -182,9 +181,6 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
             _samplesPlayed = 0;
             _basePositionMs = 0;
             Interlocked.Exchange(ref _bytesPlayedSinceBase, 0);
-
-            // Start device change monitoring (check every 2 seconds)
-            _deviceCheckTimer = new Timer(CheckDeviceChange, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
             _logger?.LogDebug(
                 "Initialized PortAudio sink: {SampleRate}Hz, {Channels}ch, {BitsPerSample}bit, buffer={BufferMs}ms, device={DeviceIndex}",
@@ -465,39 +461,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
     // ================================================================
 
     /// <summary>
-    /// Periodically checks if the default output device has changed (e.g., Bluetooth connected).
-    /// If so, reinitializes the PortAudio stream on the new device.
-    /// </summary>
-    private void CheckDeviceChange(object? state)
-    {
-        if (_disposed || !_isInitialized || _format == null)
-            return;
-
-        try
-        {
-            var newDeviceIndex = PortAudioSharp.PortAudio.DefaultOutputDevice;
-            if (newDeviceIndex == _currentDeviceIndex || newDeviceIndex == PortAudioSharp.PortAudio.NoDevice)
-                return;
-
-            string? oldName = null, newName = null;
-            try { oldName = PortAudioSharp.PortAudio.GetDeviceInfo(_currentDeviceIndex).name; } catch { }
-            try { newName = PortAudioSharp.PortAudio.GetDeviceInfo(newDeviceIndex).name; } catch { }
-
-            _logger?.LogInformation(
-                "[PortAudio] Poll: default device changed — old={OldName} (idx={OldIdx}) → new={NewName} (idx={NewIdx}), switching stream",
-                oldName, _currentDeviceIndex, newName, newDeviceIndex);
-
-            SwitchToDeviceInternal(newDeviceIndex);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "[PortAudio] CheckDeviceChange: failed to switch audio output device");
-        }
-    }
-
-    /// <summary>
-    /// Core device-switch routine shared by <see cref="CheckDeviceChange"/> and
-    /// explicit user-initiated <see cref="SwitchToDeviceAsync"/> calls.
+    /// Core device-switch routine used by explicit user-initiated <see cref="SwitchToDeviceAsync"/> calls.
     /// Must be called outside the _lock (this method acquires it).
     /// </summary>
     private void SwitchToDeviceInternal(int newDeviceIndex)
@@ -1068,10 +1032,6 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 
     private void CleanupStream()
     {
-        // Stop device monitoring
-        _deviceCheckTimer?.Dispose();
-        _deviceCheckTimer = null;
-
         if (_stream != null)
         {
             if (_isPlaying)

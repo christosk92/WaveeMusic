@@ -1,3 +1,4 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -8,10 +9,11 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumsLibraryView : UserControl
+public sealed partial class AlbumsLibraryView : UserControl, IDisposable
 {
     private const double NarrowLayoutBreakpoint = 650;
     private bool _hasInitializedLayoutMode;
+    private bool _disposed;
 
     public int[] NarrowShimmerPlaceholders { get; } = [1, 2, 3, 4, 5, 6];
     public AlbumsLibraryViewModel ViewModel { get; }
@@ -79,5 +81,15 @@ public sealed partial class AlbumsLibraryView : UserControl
         {
             ViewModel.ShowAlbumsRoot();
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        Loaded -= OnLoaded;
+        SizeChanged -= OnSizeChanged;
     }
 }

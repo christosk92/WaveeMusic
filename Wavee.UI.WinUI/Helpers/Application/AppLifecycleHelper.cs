@@ -218,7 +218,6 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.ProfileCache>()
                 .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
                 .AddSingleton(sp => new Services.ImageCacheService(cacheCapacities.ImageCacheMaxSize))
-                .AddSingleton<Services.PreviewAudioVisualizationCoordinator>()
                 .AddSingleton<Services.IPreviewAudioPlaybackEngine, Services.PreviewAudioGraphService>()
                 .AddSingleton<Services.PreviewAudioGraphService>(sp => (Services.PreviewAudioGraphService)sp.GetRequiredService<Services.IPreviewAudioPlaybackEngine>())
                 .AddSingleton<Services.ICardPreviewPlaybackCoordinator, Services.CardPreviewPlaybackCoordinator>()

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.UI.Xaml.Controls;
@@ -7,9 +8,10 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LikedSongsView : UserControl
+public sealed partial class LikedSongsView : UserControl, IDisposable
 {
     public LikedSongsViewModel ViewModel { get; }
+    private bool _disposed;
 
     public LikedSongsView(LikedSongsViewModel viewModel)
     {
@@ -49,5 +51,14 @@ public sealed partial class LikedSongsView : UserControl
     private void TrackList_NewPlaylistRequested(object? sender, IReadOnlyList<string> trackIds)
     {
         NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: trackIds.ToList());
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        TrackList.DateAddedFormatter = null;
     }
 }

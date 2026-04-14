@@ -38,11 +38,8 @@ public sealed class PreviewAudioGraphService : IPreviewAudioPlaybackEngine, IDis
 
     public string? CurrentSessionId { get; private set; }
 
-    public PreviewAudioGraphService(
-        PreviewAudioVisualizationCoordinator? loopbackVisualizationCoordinator = null,
-        ILogger<PreviewAudioGraphService>? logger = null)
+    public PreviewAudioGraphService(ILogger<PreviewAudioGraphService>? logger = null)
     {
-        _ = loopbackVisualizationCoordinator;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     }
@@ -400,10 +397,10 @@ public sealed class PreviewAudioGraphService : IPreviewAudioPlaybackEngine, IDis
         if (sessionId == null)
             return;
 
-        DispatchFrame(sessionId, [], completed: true, sequence);
+        DispatchFrame(sessionId, Array.Empty<float>(), completed: true, sequence);
     }
 
-    private void DispatchFrame(string sessionId, ReadOnlySpan<float> amplitudes, bool completed, long sequence)
+    private void DispatchFrame(string sessionId, float[] amplitudes, bool completed, long sequence)
     {
         Action<PreviewVisualizationFrame>? onFrame;
 
@@ -418,13 +415,12 @@ public sealed class PreviewAudioGraphService : IPreviewAudioPlaybackEngine, IDis
         if (onFrame == null)
             return;
 
-        var payload = amplitudes.ToArray();
         _dispatcherQueue.TryEnqueue(() => onFrame(new PreviewVisualizationFrame
         {
             SessionId = sessionId,
             Sequence = sequence,
             Completed = completed,
-            Amplitudes = payload
+            Amplitudes = amplitudes
         }));
     }
 
