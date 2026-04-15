@@ -1,4 +1,4 @@
-namespace Wavee.UI.WinUI.Data.Enums;
+namespace Wavee.UI.Enums;
 
 /// <summary>
 /// Repeat mode enum for player controls.

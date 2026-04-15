@@ -1,6 +1,4 @@
-using System;
-
-namespace Wavee.UI.WinUI.Data.Models;
+namespace Wavee.UI.Models;
 
 /// <summary>
 /// Result of a playback command execution.

@@ -1,4 +1,4 @@
-namespace Wavee.UI.WinUI.Data.Models;
+namespace Wavee.UI.Models;
 
 /// <summary>
 /// Represents a playback error event for observable error streams and notifications.

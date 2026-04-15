@@ -170,6 +170,7 @@
                         ShowAlbumArtColumn="False"
                         ShowDateAddedColumn="False"
                         ShowArtistColumn="False"
+                        PlaceholderColorHex="{x:Bind ViewModel.ColorHex, Mode=OneWay}"
                         RemoveActionLabel="Remove from library"
                         ArtistClicked="TrackList_ArtistClicked"
                         NewPlaylistRequested="TrackList_NewPlaylistRequested">

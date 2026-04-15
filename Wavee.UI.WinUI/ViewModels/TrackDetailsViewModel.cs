@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Services;
 

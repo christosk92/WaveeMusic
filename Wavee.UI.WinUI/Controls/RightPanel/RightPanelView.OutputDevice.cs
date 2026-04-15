@@ -16,6 +16,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Connect;
 using Wavee.Core.Session;
 using Wavee.Playback.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Data.Contracts;
 

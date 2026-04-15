@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Windows.Foundation;
 using Windows.UI;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Services;
 
@@ -332,7 +333,7 @@ public sealed partial class ContentCard : UserControl
 
     private void ApplyHighlightFromPlaybackStateService()
     {
-        var ps = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
+        var ps = Ioc.Default.GetService<IPlaybackStateService>();
         if (ps == null) return;
         ApplyHighlight(ps.CurrentContext?.ContextUri, ps.IsPlaying);
     }
@@ -734,9 +735,9 @@ public sealed partial class ContentCard : UserControl
     {
         PlayRequested?.Invoke(this, EventArgs.Empty);
 
-        var playback = Ioc.Default.GetService<Data.Contracts.IPlaybackService>();
+        var playback = Ioc.Default.GetService<IPlaybackService>();
         if (playback == null) return;
-        var playbackState = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
+        var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
 
         try
         {
@@ -989,7 +990,7 @@ public sealed partial class ContentCard : UserControl
             if (_isPlaybackPending && _playbackPendingVersion == version)
             {
                 SetPlaybackPending(false);
-                Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>()?.ClearBuffering();
+                Ioc.Default.GetService<IPlaybackStateService>()?.ClearBuffering();
             }
         });
     }

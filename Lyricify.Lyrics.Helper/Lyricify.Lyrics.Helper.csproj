@@ -19,7 +19,7 @@
 		<IncludeSymbols>true</IncludeSymbols>
 		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 		<EmbedUntrackedSources>true</EmbedUntrackedSources>
-		<Platforms>AnyCPU;ARM64</Platforms>
+		<Platforms>AnyCPU;ARM64;x64</Platforms>
 	</PropertyGroup>
 
 	<PropertyGroup>

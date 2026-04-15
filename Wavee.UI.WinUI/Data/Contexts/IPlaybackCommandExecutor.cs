@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Contexts;

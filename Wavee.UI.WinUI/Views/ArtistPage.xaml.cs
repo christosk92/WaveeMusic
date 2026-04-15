@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.TabBar;

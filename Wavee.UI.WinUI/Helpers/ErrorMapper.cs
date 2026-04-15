@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net.Http;
 using Wavee.Core.Http;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
 

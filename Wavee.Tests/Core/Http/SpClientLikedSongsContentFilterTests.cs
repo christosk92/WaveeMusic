@@ -33,6 +33,9 @@ public class SpClientLikedSongsContentFilterTests
                 ItExpr.IsAny<CancellationToken>())
             .Callback<HttpRequestMessage, CancellationToken>((request, _) => capturedRequest = request)
             .ReturnsAsync(response);
+        // HttpClient.Dispose() propagates to the handler; Strict mocks require every
+        // invocation to be set up explicitly.
+        handler.Protected().Setup("Dispose", ItExpr.IsAny<bool>());
 
         using var httpClient = new HttpClient(handler.Object);
         var session = new MockSession();

@@ -12,6 +12,7 @@ using Windows.Media.Core;
 using Windows.Media.MediaProperties;
 using Windows.Media.Playback;
 using Windows.Media.Render;
+using Wavee.UI.Services;
 using WinRT;
 
 namespace Wavee.UI.WinUI.Services;

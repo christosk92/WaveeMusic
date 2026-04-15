@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
-using Wavee.UI.WinUI.Data.Enums;
-using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.Enums;
+using Wavee.UI.Models;
 
-namespace Wavee.UI.WinUI.Data.Contracts;
+namespace Wavee.UI.Contracts;
 
 /// <summary>
 /// Generic playback command interface.

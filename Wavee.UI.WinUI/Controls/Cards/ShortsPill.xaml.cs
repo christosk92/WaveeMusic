@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
@@ -104,7 +105,7 @@ public sealed partial class ShortsPill : UserControl
 
     private void SyncInitialPlaybackState()
     {
-        var ps = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
+        var ps = Ioc.Default.GetService<IPlaybackStateService>();
         if (ps == null) return;
         ApplyPlaybackSnapshot(ps.CurrentContext?.ContextUri, ps.IsPlaying);
     }
@@ -220,9 +221,9 @@ public sealed partial class ShortsPill : UserControl
 
     private async void PlayButton_Click(object sender, RoutedEventArgs e)
     {
-        var playback = Ioc.Default.GetService<Data.Contracts.IPlaybackService>();
+        var playback = Ioc.Default.GetService<IPlaybackService>();
         if (playback == null) return;
-        var playbackState = Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>();
+        var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
 
         try
         {
@@ -459,7 +460,7 @@ public sealed partial class ShortsPill : UserControl
             if (_isPlaybackPending && _playbackPendingVersion == version)
             {
                 SetPlaybackPending(false);
-                Ioc.Default.GetService<Data.Contracts.IPlaybackStateService>()?.ClearBuffering();
+                Ioc.Default.GetService<IPlaybackStateService>()?.ClearBuffering();
             }
         });
     }

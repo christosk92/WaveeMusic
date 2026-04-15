@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Playback.Contracts;
 
-namespace Wavee.UI.WinUI.Services;
+namespace Wavee.UI.Services;
 
 public interface IPreviewAudioPlaybackEngine
 {

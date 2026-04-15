@@ -1,8 +1,8 @@
 using FluentAssertions;
 using Wavee.Controls.Lyrics.Models.Lyrics;
-using Wavee.UI.WinUI.Services;
+using Wavee.UI.Services;
 
-namespace Wavee.Tests.UI;
+namespace Wavee.UI.Tests.Services;
 
 public sealed class LyricsProviderSelectorTests
 {

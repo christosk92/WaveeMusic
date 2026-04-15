@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using Wavee.Core.Session;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
@@ -79,8 +80,8 @@ public sealed class PlaybackBufferingChangedMessage(bool isBuffering)
 /// <summary>
 /// Sent when a playback command encounters an error.
 /// </summary>
-public sealed class PlaybackErrorOccurredMessage(Models.PlaybackErrorEvent error)
-    : ValueChangedMessage<Models.PlaybackErrorEvent>(error);
+public sealed class PlaybackErrorOccurredMessage(PlaybackErrorEvent error)
+    : ValueChangedMessage<PlaybackErrorEvent>(error);
 
 /// <summary>
 /// Sent when the active playback device changes.

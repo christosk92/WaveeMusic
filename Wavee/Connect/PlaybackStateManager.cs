@@ -696,7 +696,13 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             _currentState = newState;
             _stateSubject.OnNext(newState);
 
-            // Publish to Spotify (skip position-only changes for infinite streams)
+            // Publish to Spotify. The DetectChanges helper already filters out natural
+            // position progression (via the nominalDelta threshold in DetectChanges), so a
+            // StateChanges.Position flag here means a real seek, which the server needs to
+            // know about. Options/Volume/Queue are also user-intent changes that must be
+            // published. Only genuine "position-only on an infinite stream" (e.g. live
+            // radio) can be skipped, because for infinite streams Spotify has no duration
+            // to compute against.
             if (_isLocalPlaybackActive && isLocalSource)
             {
                 var isPositionOnlyChange = newState.Changes == Connect.StateChanges.Position;
@@ -709,7 +715,9 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 else
                 {
                     // Critical changes (track, status, device, context) flush immediately.
-                    // Position-only changes are debounced to reduce PutState flooding.
+                    // Other meaningful changes (seek, shuffle/repeat, volume, queue) also
+                    // need to reach Spotify — otherwise remote UIs and other devices stay
+                    // out of sync with what's happening locally.
                     var isCritical = newState.Changes.HasFlag(Connect.StateChanges.Track)
                         || newState.Changes.HasFlag(Connect.StateChanges.Status)
                         || newState.Changes.HasFlag(Connect.StateChanges.ActiveDevice)
@@ -722,10 +730,9 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                     }
                     else
                     {
-                        _logger?.LogTrace("Publish decision: SKIP (non-critical, position handled by timestamp delta) changes={Changes}", newState.Changes);
+                        _logger?.LogDebug("Publish decision: FLUSH (non-critical meaningful) changes={Changes}", newState.Changes);
+                        FlushAndPublishState(newState);
                     }
-                    // Position-only: don't publish to Spotify at all.
-                    // Spotify calculates position from timestamp + elapsed.
                 }
             }
             else

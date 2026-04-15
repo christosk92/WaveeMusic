@@ -43,6 +43,9 @@ public class ExtendedMetadataClientRequestHeadersTests
 
                 throw new InvalidOperationException($"Unexpected request URI: {uri}");
             });
+        // HttpClient.Dispose() propagates to the handler; Strict mocks require every
+        // invocation to be set up explicitly.
+        handler.Protected().Setup("Dispose", ItExpr.IsAny<bool>());
 
         using var httpClient = new HttpClient(handler.Object);
         var database = new Mock<IMetadataDatabase>(MockBehavior.Strict);
@@ -81,7 +84,7 @@ public class ExtendedMetadataClientRequestHeadersTests
         capturedMetadataRequest.AcceptEncodings
             .Should().Contain(["gzip", "deflate", "br", "zstd"]);
         capturedMetadataRequest.ConnectionValues.Should().Contain("keep-alive");
-        capturedMetadataRequest.GetSingleHeaderValue("User-Agent")
+        capturedMetadataRequest.UserAgent
             .Should().Be("Spotify/128600502 Win32_x86_64/Windows 10 (10.0.26200; x64; AppX)");
 
         capturedMetadataRequest.GetSingleHeaderValue("Accept-Language").Should().Be("en");
@@ -164,6 +167,7 @@ public class ExtendedMetadataClientRequestHeadersTests
         IReadOnlyList<string> AcceptEncodings,
         IReadOnlyList<string> ConnectionValues,
         Dictionary<string, string[]> HeaderValues,
+        string? UserAgent,
         string? ContentType)
     {
         public static CapturedRequestSnapshot From(HttpRequestMessage request)
@@ -181,6 +185,14 @@ public class ExtendedMetadataClientRequestHeadersTests
                 }
             }
 
+            // User-Agent is surfaced via request.Headers.UserAgent (typed ProductInfoHeaderValue
+            // list), which ToString()s into the correct space-joined form. Header value
+            // enumeration splits each product into its own list entry, so we must use the
+            // typed accessor for a faithful round-trip.
+            var userAgent = request.Headers.UserAgent.Count > 0
+                ? string.Join(" ", request.Headers.UserAgent.Select(v => v.ToString()))
+                : null;
+
             return new CapturedRequestSnapshot(
                 request.Method,
                 request.Version,
@@ -191,6 +203,7 @@ public class ExtendedMetadataClientRequestHeadersTests
                 request.Headers.AcceptEncoding.Select(x => x.Value ?? string.Empty).ToArray(),
                 request.Headers.Connection.ToArray(),
                 headerValues,
+                userAgent,
                 request.Content?.Headers.ContentType?.MediaType);
         }
 

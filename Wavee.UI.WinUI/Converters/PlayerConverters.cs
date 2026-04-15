@@ -2,6 +2,7 @@ using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.Enums;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Services;
 

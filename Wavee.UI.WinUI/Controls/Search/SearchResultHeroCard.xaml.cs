@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;

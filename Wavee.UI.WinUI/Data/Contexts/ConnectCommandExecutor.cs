@@ -9,6 +9,7 @@ using Wavee.Connect;
 using Wavee.Audio.Queue;
 using Wavee.Core.Session;
 using Wavee.Core.Audio;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 

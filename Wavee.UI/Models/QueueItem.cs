@@ -1,6 +1,6 @@
 using Wavee.Audio.Queue;
 
-namespace Wavee.UI.WinUI.Data.Models;
+namespace Wavee.UI.Models;
 
 /// <summary>
 /// Represents a single item in the playback queue.

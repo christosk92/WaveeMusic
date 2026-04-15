@@ -23,17 +23,22 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
-using Wavee.UI.WinUI.Services.Data;
+using Wavee.UI.WinUI.Data;
 using Wavee.UI.WinUI.ViewModels;
 using System.Collections.Generic;
 using Serilog;
 using Serilog.Extensions.Logging;
+using Wavee.Controls.Lyrics.Services.LocalizationService;
+using Wavee.UI.Contracts;
+using Wavee.UI.Services;
+using Wavee.UI.WinUI.Services.Data;
+
 namespace Wavee.UI.WinUI.Helpers.Application;
 
 public static class AppLifecycleHelper
 {
     private static readonly List<IDisposable> _appSubscriptions = [];
-    private static Services.TrackMetadataEnricher? _trackMetadataEnricher;
+    private static TrackMetadataEnricher? _trackMetadataEnricher;
     private static readonly SemaphoreSlim _playbackTeardownGate = new(1, 1);
     // Captured on UI thread during ConfigureHost, used by background init
     private static Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcher;
@@ -72,7 +77,7 @@ public static class AppLifecycleHelper
             .BuildApp();
 
         // Create the InMemorySink early so Serilog can write to it from the start
-        var inMemorySink = new Services.InMemorySink(_uiDispatcher);
+        var inMemorySink = new InMemorySink(_uiDispatcher);
         Directory.CreateDirectory(AppPaths.LogsDirectory);
 
         Log.Logger = new LoggerConfiguration()
@@ -170,7 +175,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMessenger>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<ILogger<PlaybackStateService>>(),
-                        sp.GetService<Services.IHomeFeedCache>()))
+                        sp.GetService<IHomeFeedCache>()))
                 .AddSingleton<IAuthState, AuthStateService>()
                 .AddSingleton<IConnectivityService>(sp =>
                     new ConnectivityService(
@@ -194,43 +199,47 @@ public static class AppLifecycleHelper
 
                 // Dispatcher abstraction
                 .AddSingleton<IDispatcherService>(sp =>
-                    new Services.DispatcherService(
+                    new DispatcherService(
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
 
                 // App services
-                .AddSingleton<Wavee.Controls.Lyrics.Services.LocalizationService.ILocalizationService, Wavee.Controls.Lyrics.Services.LocalizationService.LocalizationService>()
+                .AddSingleton<ILocalizationService, LocalizationService>()
                 .AddSingleton<IAppLocalizationService, AppLocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IShellSessionService, ShellSessionService>()
-                .AddSingleton<Services.IMediaOverrideService, Services.MediaOverrideService>()
+                .AddSingleton<IMediaOverrideService, MediaOverrideService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
-                .AddSingleton<Services.HomeResponseParserFactory>()
-                .AddSingleton<Services.HomeFeedCache>()
-                .AddSingleton<Services.IHomeFeedCache>(sp => sp.GetRequiredService<Services.HomeFeedCache>())
-                .AddSingleton<Services.RecentlyPlayedService>(sp =>
-                    new Services.RecentlyPlayedService(
+                .AddSingleton<HomeResponseParserFactory>()
+                .AddSingleton<HomeFeedCache>()
+                .AddSingleton<IHomeFeedCache>(sp => sp.GetRequiredService<HomeFeedCache>())
+                .AddSingleton<RecentlyPlayedService>(sp =>
+                    new RecentlyPlayedService(
                         sp.GetRequiredService<ISession>(),
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetRequiredService<IMessenger>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
-                        sp.GetService<ILogger<Services.RecentlyPlayedService>>()))
-                .AddSingleton<Services.ProfileCache>()
-                .AddSingleton<Services.IProfileCache>(sp => sp.GetRequiredService<Services.ProfileCache>())
-                .AddSingleton(sp => new Services.ImageCacheService(cacheCapacities.ImageCacheMaxSize))
-                .AddSingleton<Services.IPreviewAudioPlaybackEngine, Services.PreviewAudioGraphService>()
-                .AddSingleton<Services.PreviewAudioGraphService>(sp => (Services.PreviewAudioGraphService)sp.GetRequiredService<Services.IPreviewAudioPlaybackEngine>())
-                .AddSingleton<Services.ICardPreviewPlaybackCoordinator, Services.CardPreviewPlaybackCoordinator>()
-                .AddSingleton<Services.ISharedCardCanvasPreviewService, Services.SharedCardCanvasPreviewService>()
+                        sp.GetService<ILogger<RecentlyPlayedService>>()))
+                .AddSingleton<ProfileCache>()
+                .AddSingleton<IProfileCache>(sp => sp.GetRequiredService<ProfileCache>())
+                .AddSingleton(sp => new ImageCacheService(cacheCapacities.ImageCacheMaxSize))
+                .AddSingleton<IPreviewAudioPlaybackEngine, PreviewAudioGraphService>()
+                .AddSingleton<PreviewAudioGraphService>(sp => (PreviewAudioGraphService)sp.GetRequiredService<IPreviewAudioPlaybackEngine>())
+                // IUiDispatcher abstraction: lets services in the plain-C# Wavee.UI library marshal
+                // callbacks onto the UI thread without depending on Microsoft.UI.Dispatching.
+                .AddSingleton<Wavee.UI.Threading.IUiDispatcher>(sp =>
+                    new DispatcherQueueUiDispatcher(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
+                .AddSingleton<ICardPreviewPlaybackCoordinator, CardPreviewPlaybackCoordinator>()
+                .AddSingleton<ISharedCardCanvasPreviewService, SharedCardCanvasPreviewService>()
                 // Shared now-playing highlight observer. Subscribes to NowPlayingChangedMessage
                 // once; ContentCard instances subscribe to its C# event instead of registering
                 // individually with WeakReferenceMessenger. Big savings during HomePage realization.
-                .AddSingleton(sp => new Services.NowPlayingHighlightService(sp.GetRequiredService<IMessenger>()))
+                .AddSingleton(sp => new NowPlayingHighlightService(sp.GetRequiredService<IMessenger>()))
                 .AddSingleton(sp =>
                 {
-                    var profiler = new Services.UiOperationProfiler(
-                        sp.GetService<ILogger<Services.UiOperationProfiler>>());
-                    Services.UiOperationProfiler.Instance = profiler;
+                    var profiler = new UiOperationProfiler(
+                        sp.GetService<ILogger<UiOperationProfiler>>());
+                    UiOperationProfiler.Instance = profiler;
                     return profiler;
                 })
                 .AddSingleton(inMemorySink)
@@ -239,6 +248,13 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetService<ILogger<Wavee.Core.Http.ExtractedColorService>>()))
+                // UI-oriented batched color-hint service for virtualized track rows.
+                // Wraps IColorService with request dedupe + debounce-window batching so
+                // scroll bursts across hundreds of tracks coalesce into a few backend calls.
+                .AddSingleton<Wavee.UI.Services.ITrackColorHintService>(sp =>
+                    new Wavee.UI.Services.TrackColorHintService(
+                        sp.GetRequiredService<Wavee.Core.Http.IColorService>(),
+                        logger: sp.GetService<ILogger<Wavee.UI.Services.TrackColorHintService>>()))
 
                 // Spotify session infrastructure
                 .AddTransient<RetryHandler>()
@@ -276,13 +292,13 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("Wavee"),
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<ILogger<Wavee.Core.Http.ExtendedMetadataClient>>()))
-                .AddTransient<Services.TrackMetadataEnricher>(sp =>
-                    new Services.TrackMetadataEnricher(
+                .AddTransient<TrackMetadataEnricher>(sp =>
+                    new TrackMetadataEnricher(
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetRequiredService<Wavee.Core.Storage.ICacheService>(),
                         sp.GetRequiredService<ISession>().SpClient,
                         sp.GetRequiredService<IMessenger>(),
-                        sp.GetService<ILogger<Services.TrackMetadataEnricher>>()))
+                        sp.GetService<ILogger<TrackMetadataEnricher>>()))
                 .AddSingleton<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(sp =>
                 {
                     var session = sp.GetRequiredService<ISession>();
@@ -341,11 +357,11 @@ public static class AppLifecycleHelper
 
                 // Lyrics
                 .AddSingleton<ILyricsService>(sp =>
-                    new Services.LyricsService(
+                    new LyricsService(
                         sp.GetRequiredService<ISession>(),
                         sp.GetService<IMetadataDatabase>(),
                         sp.GetService<ISettingsService>(),
-                        sp.GetService<ILogger<Services.LyricsService>>(),
+                        sp.GetService<ILogger<LyricsService>>(),
                         cacheCapacities.LyricsMemoryCacheCapacity))
                 .AddSingleton<LyricsViewModel>(sp =>
                     new LyricsViewModel(
@@ -362,7 +378,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<ITrackCreditsService>(),
-                        sp.GetRequiredService<Services.IMediaOverrideService>(),
+                        sp.GetRequiredService<IMediaOverrideService>(),
                         sp.GetService<ILogger<TrackDetailsViewModel>>()))
 
                 // ViewModels
@@ -377,9 +393,9 @@ public static class AppLifecycleHelper
                     new HomeViewModel(
                         sp.GetService<ISession>(),
                         sp.GetService<ISettingsService>(),
-                        sp.GetService<Services.HomeFeedCache>(),
-                        sp.GetService<Services.RecentlyPlayedService>(),
-                        sp.GetService<Services.HomeResponseParserFactory>(),
+                        sp.GetService<HomeFeedCache>(),
+                        sp.GetService<RecentlyPlayedService>(),
+                        sp.GetService<HomeResponseParserFactory>(),
                         sp.GetService<ILogger<HomeViewModel>>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
@@ -391,7 +407,7 @@ public static class AppLifecycleHelper
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>(sp =>
                     new ProfileViewModel(
-                        sp.GetService<Services.ProfileCache>(),
+                        sp.GetService<ProfileCache>(),
                         sp.GetService<Session>(),
                         sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<ProfileViewModel>>()))
@@ -406,7 +422,7 @@ public static class AppLifecycleHelper
                     new FeedbackViewModel(
                         sp.GetRequiredService<IFeedbackService>(),
                         sp.GetRequiredService<ISettingsService>(),
-                        sp.GetRequiredService<Services.InMemorySink>(),
+                        sp.GetRequiredService<InMemorySink>(),
                         sp.GetService<ILogger<FeedbackViewModel>>()))
                 .AddHttpClient<IFeedbackService, FeedbackService>(client =>
                 {
@@ -419,7 +435,7 @@ public static class AppLifecycleHelper
                     new SettingsViewModel(
                         sp.GetRequiredService<ISettingsService>(),
                         sp.GetRequiredService<IThemeService>(),
-                        sp.GetRequiredService<Services.InMemorySink>(),
+                        sp.GetRequiredService<InMemorySink>(),
                         sp.GetService<IAudioPipelineControl>(),
                         sp.GetService<ISession>(),
                         sp.GetRequiredService<IUpdateService>(),
@@ -472,7 +488,7 @@ public static class AppLifecycleHelper
             }
 
             // Wire up state change notifications BEFORE starting (so failures are visible)
-            var profiler = Services.UiOperationProfiler.Instance;
+            var profiler = UiOperationProfiler.Instance;
             var notifDispatcher = _uiDispatcher;
             Guid? audioActivityId = null;
 
@@ -714,7 +730,7 @@ public static class AppLifecycleHelper
 
             // Resolve a fresh enricher instance from DI (transient) and keep it for this session.
             _trackMetadataEnricher?.Dispose();
-            _trackMetadataEnricher = Ioc.Default.GetService<Services.TrackMetadataEnricher>();
+            _trackMetadataEnricher = Ioc.Default.GetService<TrackMetadataEnricher>();
         }
         catch (Exception ex)
         {

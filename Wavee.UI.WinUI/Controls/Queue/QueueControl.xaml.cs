@@ -11,6 +11,8 @@ using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Audio.Queue;
+using Wavee.UI.Contracts;
+using Wavee.UI.Enums;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;

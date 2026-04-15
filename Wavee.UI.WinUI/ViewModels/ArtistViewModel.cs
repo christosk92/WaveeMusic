@@ -10,6 +10,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Session;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -705,7 +707,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (string.IsNullOrEmpty(ArtistId)) return;
         var result = await _playbackService.PlayContextAsync(
             ArtistId,
-            new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
+            new PlayContextOptions { PlayOriginFeature = "artist_page" });
         if (!result.IsSuccess)
             _logger?.LogWarning("PlayTopTracks failed: {Error}", result.ErrorMessage);
     }
@@ -729,7 +731,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         else
         {
             await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
-                new Data.Models.PlayContextOptions { PlayOriginFeature = "artist_page" });
+                new PlayContextOptions { PlayOriginFeature = "artist_page" });
         }
     }
 

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Messaging;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Data.Contexts;

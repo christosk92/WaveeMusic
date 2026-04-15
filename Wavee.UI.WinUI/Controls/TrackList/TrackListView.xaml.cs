@@ -458,6 +458,47 @@ public sealed partial class TrackListView : UserControl
         DependencyProperty.Register(nameof(CustomColumns), typeof(IList<TrackListColumnDefinition>), typeof(TrackListView),
             new PropertyMetadata(null));
 
+    public string? PlaceholderColorHex
+    {
+        get => (string?)GetValue(PlaceholderColorHexProperty);
+        set => SetValue(PlaceholderColorHexProperty, value);
+    }
+
+    public static readonly DependencyProperty PlaceholderColorHexProperty =
+        DependencyProperty.Register(nameof(PlaceholderColorHex), typeof(string), typeof(TrackListView),
+            new PropertyMetadata(null, OnPlaceholderColorHexChanged));
+
+    /// <summary>
+    /// When true, each realized TrackItem resolves its own per-track placeholder color
+    /// via <see cref="Wavee.UI.Services.ITrackColorHintService"/>. Use this for track lists
+    /// that span multiple albums (liked songs, playlists, search) where a single
+    /// <see cref="PlaceholderColorHex"/> wouldn't be meaningful.
+    /// </summary>
+    public bool UseImageColorHint
+    {
+        get => (bool)GetValue(UseImageColorHintProperty);
+        set => SetValue(UseImageColorHintProperty, value);
+    }
+
+    public static readonly DependencyProperty UseImageColorHintProperty =
+        DependencyProperty.Register(nameof(UseImageColorHint), typeof(bool), typeof(TrackListView),
+            new PropertyMetadata(false));
+
+    private static void OnPlaceholderColorHexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var view = (TrackListView)d;
+        var hex = e.NewValue as string;
+        if (view.InternalListView?.Items == null) return;
+        foreach (var item in view.InternalListView.Items)
+        {
+            if (view.InternalListView.ContainerFromItem(item) is ListViewItem lvi
+                && lvi.ContentTemplateRoot is TrackItem ti)
+            {
+                ti.PlaceholderColorHex = hex;
+            }
+        }
+    }
+
 
     #endregion
 
@@ -735,6 +776,8 @@ public sealed partial class TrackListView : UserControl
             trackItem.ShowDateAdded = ShowDateAddedColumn;
             trackItem.IsCompactRow = IsCompact;
             trackItem.RowIndex = args.ItemIndex + 1;
+            trackItem.PlaceholderColorHex = PlaceholderColorHex;
+            trackItem.UseImageColorHint = UseImageColorHint;
 
             // Wire up commands from ViewModel, or fall back to raising TrackClicked event
             trackItem.PlayCommand = ViewModel?.PlayTrackCommand ?? _trackClickedCommand;

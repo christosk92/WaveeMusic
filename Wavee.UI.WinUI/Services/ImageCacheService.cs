@@ -104,7 +104,6 @@ public sealed class ImageCacheService
         if (decodePixelSize > 0)
         {
             bitmap.DecodePixelWidth = decodePixelSize;
-            bitmap.DecodePixelHeight = decodePixelSize;
         }
         bitmap.UriSource = new Uri(uri);
 

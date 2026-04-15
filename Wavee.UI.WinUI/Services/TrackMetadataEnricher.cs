@@ -10,6 +10,7 @@ using Wavee.Core.Http;
 using Wavee.Core.Storage;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;

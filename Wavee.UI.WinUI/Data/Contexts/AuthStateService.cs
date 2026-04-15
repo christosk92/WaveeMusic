@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Authentication;
 using Wavee.Core.Session;
 using Wavee.OAuth;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;

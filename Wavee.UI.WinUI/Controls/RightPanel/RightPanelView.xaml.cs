@@ -36,6 +36,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;

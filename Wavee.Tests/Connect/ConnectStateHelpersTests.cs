@@ -250,7 +250,9 @@ public sealed class ConnectStateHelpersTests
 
         // Assert
         capabilities.SupportsRename.Should().BeFalse("rename not currently supported");
-        capabilities.NeedsFullPlayerState.Should().BeFalse("does not need full player state");
+        // NeedsFullPlayerState flipped to true in c560f0a (queue enrichment feature) so
+        // cluster updates carry the full player state needed to patch the enriched queue.
+        capabilities.NeedsFullPlayerState.Should().BeTrue("queue enrichment pipeline needs the full player state in cluster updates");
     }
 
     [Fact]

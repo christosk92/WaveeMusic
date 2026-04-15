@@ -96,7 +96,11 @@ internal class MockSession : ISession
 
     public ISpClient SpClient => throw new NotImplementedException("Mock does not support SpClient");
 
-    public SpotifyClockService Clock => throw new NotImplementedException("Mock does not support Clock");
+    // A real SpotifyClockService instance (not Started, so it just reads local time + an
+    // offset of 0). Tests that call Clock.NowMs get the local Unix-ms timestamp, which is
+    // what PlaybackStateManager needs for PutState timestamps.
+    private SpotifyClockService? _clock;
+    public SpotifyClockService Clock => _clock ??= new SpotifyClockService(spClient: null!);
 
     public IObservable<SessionConnectionState> ConnectionState =>
         Observable.Return(SessionConnectionState.Connected);

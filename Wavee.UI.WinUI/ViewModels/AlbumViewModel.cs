@@ -8,6 +8,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using ReactiveUI;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
@@ -42,6 +44,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private string _albumId = "";
     private string _albumName = "";
     private string? _albumImageUrl;
+    private string? _colorHex;
     private string _artistId = "";
     private string _artistName = "";
     private int _year;
@@ -97,6 +100,16 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     {
         get => _albumImageUrl;
         private set => this.RaiseAndSetIfChanged(ref _albumImageUrl, value);
+    }
+
+    /// <summary>
+    /// Extracted dark color from the album cover art, as a hex string.
+    /// Used as a tint for track placeholder backgrounds while album art loads.
+    /// </summary>
+    public string? ColorHex
+    {
+        get => _colorHex;
+        private set => this.RaiseAndSetIfChanged(ref _colorHex, value);
     }
 
     /// <summary>
@@ -465,6 +478,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 AlbumName = detail.Name;
             if (!string.IsNullOrEmpty(detail.CoverArtUrl) && string.IsNullOrEmpty(AlbumImageUrl))
                 AlbumImageUrl = detail.CoverArtUrl;
+            ColorHex = detail.ColorDarkHex;
             var firstArtist = detail.Artists.FirstOrDefault();
             if (firstArtist != null)
             {

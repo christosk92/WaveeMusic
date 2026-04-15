@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 
-namespace Wavee.UI.WinUI.Services;
+namespace Wavee.UI.Services;
 
 internal sealed record LyricsSelectionCandidate(
     string Provider,

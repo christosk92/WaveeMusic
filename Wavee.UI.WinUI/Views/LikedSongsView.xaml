@@ -22,6 +22,7 @@
             ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"
             ShowDateAddedColumn="True"
+            UseImageColorHint="True"
             RemoveActionLabel="Remove from Liked"
             ArtistClicked="TrackList_ArtistClicked"
             AlbumClicked="TrackList_AlbumClicked"

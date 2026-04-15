@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Microsoft.UI;
 using Windows.UI;
+using Wavee.UI.Contracts;
 using ColorHelper = Wavee.Controls.Lyrics.Helper.ColorHelper;
 
 namespace Wavee.UI.WinUI.ViewModels;

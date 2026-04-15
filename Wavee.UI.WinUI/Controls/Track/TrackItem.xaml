@@ -33,11 +33,17 @@
 
             <!-- Album art stack (art + now-playing overlay + hover play button) -->
             <Grid Grid.Column="0" Width="48" Height="48">
-                <Border CornerRadius="4"
+                <Border x:Name="CompactAlbumArtBorder" CornerRadius="4"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Image x:Name="CompactAlbumArt" Stretch="UniformToFill"
-                           behaviors:ImageFallbackBehavior.HideOnError="True"
-                           behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+                    <Grid>
+                        <FontIcon x:Name="CompactArtPlaceholder"
+                                  Glyph="&#xE8D6;" FontSize="18" Opacity="0.35"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Image x:Name="CompactAlbumArt" Stretch="UniformToFill"
+                               behaviors:ImageFallbackBehavior.HideOnError="True"
+                               behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+                    </Grid>
                 </Border>
 
                 <Border x:Name="CompactNowPlaying" CornerRadius="4"
@@ -174,7 +180,7 @@
                                            Width="28" Height="28" Visibility="Collapsed"/>
 
                     <!-- Album thumbnail (34x34) -->
-                    <Border Grid.Column="2" Width="34" Height="34" CornerRadius="4"
+                    <Border x:Name="RowAlbumArtBorder" Grid.Column="2" Width="34" Height="34" CornerRadius="4"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <Grid>
                             <FontIcon x:Name="RowArtPlaceholder" Glyph="&#xE8D6;" FontSize="16" Opacity="0.3"

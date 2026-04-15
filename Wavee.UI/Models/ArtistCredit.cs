@@ -1,4 +1,4 @@
-namespace Wavee.UI.WinUI.Data.Models;
+namespace Wavee.UI.Models;
 
 /// <summary>
 /// A single artist credit (name + optional URI for navigation).

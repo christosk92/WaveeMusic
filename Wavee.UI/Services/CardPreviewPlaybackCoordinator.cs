@@ -5,11 +5,11 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.UI.Dispatching;
 using Wavee.Playback.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
+using Wavee.UI.Threading;
 
-namespace Wavee.UI.WinUI.Services;
+namespace Wavee.UI.Services;
 
 public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordinator, IDisposable
 {
@@ -21,7 +21,7 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
     private readonly IPreviewAudioPlaybackEngine _engine;
     private readonly IPlaybackService? _playbackService;
     private readonly IPlaybackStateService? _playbackStateService;
-    private readonly DispatcherQueue? _dispatcherQueue;
+    private readonly IUiDispatcher? _dispatcher;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger? _logger;
     private readonly TimeSpan _hoverDelay;
@@ -50,7 +50,7 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
         IPlaybackService? playbackService = null,
         IPlaybackStateService? playbackStateService = null,
         TimeProvider? timeProvider = null,
-        DispatcherQueue? dispatcherQueue = null,
+        IUiDispatcher? dispatcher = null,
         ILogger<CardPreviewPlaybackCoordinator>? logger = null,
         TimeSpan? hoverDelay = null,
         TimeSpan? completionRestoreGraceDelay = null,
@@ -61,7 +61,7 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
         _playbackService = playbackService;
         _playbackStateService = playbackStateService;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _dispatcherQueue = dispatcherQueue ?? DispatcherQueue.GetForCurrentThread();
+        _dispatcher = dispatcher;
         _logger = logger;
         _hoverDelay = hoverDelay ?? TimeSpan.FromMilliseconds(1000);
         _completionRestoreGraceDelay = completionRestoreGraceDelay ?? TimeSpan.FromMilliseconds(350);
@@ -333,6 +333,19 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
                 _activeOwnerVersion = 0;
                 _activeSessionVersion++;
             }
+
+            // Propagate cancellation to the engine so any partially-acquired resources
+            // (network streams, audio graph nodes, etc.) are released. StopAsync is
+            // expected to be idempotent and safe to call even when the engine never
+            // finished starting.
+            try
+            {
+                await _engine.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception stopEx)
+            {
+                _logger?.LogDebug(stopEx, "Engine stop after start-cancel failed for owner {OwnerId}", ownerId);
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -367,11 +380,11 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
         if (request.CanStartPlayback == null)
             return Task.FromResult(true);
 
-        if (_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess)
+        if (_dispatcher == null || _dispatcher.HasThreadAccess)
             return Task.FromResult(request.CanStartPlayback());
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_dispatcherQueue.TryEnqueue(() =>
+        if (!_dispatcher.TryEnqueue(() =>
             {
                 try
                 {
@@ -711,13 +724,13 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
 
     private void Dispatch(Action action)
     {
-        if (_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess)
+        if (_dispatcher == null || _dispatcher.HasThreadAccess)
         {
             action();
             return;
         }
 
-        if (!_dispatcherQueue.TryEnqueue(() =>
+        if (!_dispatcher.TryEnqueue(() =>
             {
                 try
                 {

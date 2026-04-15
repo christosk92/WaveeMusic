@@ -26,6 +26,7 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;

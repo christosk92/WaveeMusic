@@ -1,12 +1,14 @@
 using System.ComponentModel;
 using FluentAssertions;
+using Wavee.Connect;
+using Wavee.Core.Session;
 using Wavee.Playback.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.Enums;
-using Wavee.UI.WinUI.Data.Models;
-using Wavee.UI.WinUI.Services;
+using Wavee.UI.Contracts;
+using Wavee.UI.Enums;
+using Wavee.UI.Models;
+using Wavee.UI.Services;
 
-namespace Wavee.Tests.UI;
+namespace Wavee.UI.Tests.Services;
 
 public sealed class CardPreviewPlaybackCoordinatorTests
 {
@@ -390,6 +392,9 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying = true, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
+        public Task<PlaybackResult> SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct = default)
+            => Task.FromResult(PlaybackResult.Success());
+
         public void ClearVolumeCalls()
         {
             SetVolumeCalls.Clear();
@@ -451,6 +456,21 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         }
 
         public string? ActiveDeviceName => null;
+
+        // When the fake is playing locally (the default for these tests), ActiveDeviceType
+        // is Computer. When IsPlayingRemotely is flipped, we surface a Speaker type so callers
+        // that branch on device type see a non-local value. Kept derived so there's no
+        // second piece of state to keep in sync.
+        public DeviceType ActiveDeviceType => _isPlayingRemotely ? DeviceType.Speaker : DeviceType.Computer;
+
+        // The fake does not model Spotify Connect discovery.
+        public IReadOnlyList<ConnectDevice> AvailableConnectDevices { get; } = [];
+
+        // The fake simulates a working local audio engine.
+        public string? ActiveAudioDeviceName => "Fake Audio Device";
+        public IReadOnlyList<AudioOutputDeviceDto> AvailableAudioDevices { get; } = [];
+        public bool IsAudioEngineAvailable => true;
+
         public double Position { get; set; }
         public double Duration => 0;
 

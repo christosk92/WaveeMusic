@@ -1,4 +1,4 @@
-namespace Wavee.UI.WinUI.Data.Models;
+namespace Wavee.UI.Models;
 
 /// <summary>
 /// Describes what is currently being played (the playback context).

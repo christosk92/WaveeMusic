@@ -306,4 +306,10 @@ internal sealed class MockPlaybackEngine : IPlaybackEngine
         CommandsReceived.Add($"Volume:{volume}");
         return Task.CompletedTask;
     }
+
+    public Task SwitchAudioOutputAsync(int deviceIndex, CancellationToken cancellationToken = default)
+    {
+        CommandsReceived.Add($"SwitchAudioOutput:{deviceIndex}");
+        return Task.CompletedTask;
+    }
 }

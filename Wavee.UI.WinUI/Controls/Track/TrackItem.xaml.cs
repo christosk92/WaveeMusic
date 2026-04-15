@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
@@ -94,6 +95,14 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty IsCompactRowProperty =
         DependencyProperty.Register(nameof(IsCompactRow), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(false, OnIsCompactRowChanged));
+
+    public static readonly DependencyProperty PlaceholderColorHexProperty =
+        DependencyProperty.Register(nameof(PlaceholderColorHex), typeof(string), typeof(TrackItem),
+            new PropertyMetadata(null, (d, e) => ((TrackItem)d).ApplyPlaceholderColor(e.NewValue as string)));
+
+    public static readonly DependencyProperty UseImageColorHintProperty =
+        DependencyProperty.Register(nameof(UseImageColorHint), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, (d, _) => ((TrackItem)d).ResolveImageColorHint()));
 
     public ITrackItem? Track
     {
@@ -179,6 +188,18 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(IsCompactRowProperty, value);
     }
 
+    public string? PlaceholderColorHex
+    {
+        get => (string?)GetValue(PlaceholderColorHexProperty);
+        set => SetValue(PlaceholderColorHexProperty, value);
+    }
+
+    public bool UseImageColorHint
+    {
+        get => (bool)GetValue(UseImageColorHintProperty);
+        set => SetValue(UseImageColorHintProperty, value);
+    }
+
     #endregion
 
     #region Events
@@ -196,6 +217,7 @@ public sealed partial class TrackItem : UserControl
     private readonly Data.Contracts.ITrackLikeService? _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
     private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
     private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+    private readonly Wavee.UI.Services.ITrackColorHintService? _colorHintService = Ioc.Default.GetService<Wavee.UI.Services.ITrackColorHintService>();
     private static ISettingsService? _cachedSettingsService;
     private static ImageCacheService? _cachedImageCache;
     private bool _isThisTrackPlaying;
@@ -203,6 +225,11 @@ public sealed partial class TrackItem : UserControl
     private bool _isBuffering;
     private string? _boundCompactImageUrl;
     private string? _boundRowImageUrl;
+
+    // Guards against stale color-hint applies after a virtualized row is recycled.
+    // Incremented on every ResolveImageColorHint invocation; an awaiting continuation
+    // only applies its result if this counter hasn't advanced since it started.
+    private int _colorHintVersion;
 
     #endregion
 
@@ -276,6 +303,7 @@ public sealed partial class TrackItem : UserControl
         item.ResetHoverVisualState();
         item.StopPendingBeam();
         item.BindTrackData();
+        item.ResolveImageColorHint();
         item.RefreshPlaybackState();
         item.UpdateOverlayState();
     }
@@ -381,10 +409,112 @@ public sealed partial class TrackItem : UserControl
             return;
         }
 
+        // Placeholder stays visible behind the image; the image fades in on top
+        // (FadeInOnLoad) and fully covers the icon once opaque.
+        RowArtPlaceholder.Visibility = Visibility.Visible;
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
         RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
         RowAlbumArt.Visibility = Visibility.Visible;
-        RowArtPlaceholder.Visibility = Visibility.Collapsed;
+    }
+
+    private void ApplyPlaceholderColor(string? hex)
+    {
+        var fallback = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+        if (string.IsNullOrEmpty(hex))
+        {
+            if (CompactAlbumArtBorder != null) CompactAlbumArtBorder.Background = fallback;
+            if (RowAlbumArtBorder != null) RowAlbumArtBorder.Background = fallback;
+            return;
+        }
+
+        var color = ParseHexColor(hex);
+        if (CompactAlbumArtBorder != null)
+            CompactAlbumArtBorder.Background = new SolidColorBrush(color) { Opacity = 0.3 };
+        if (RowAlbumArtBorder != null)
+            RowAlbumArtBorder.Background = new SolidColorBrush(color) { Opacity = 0.3 };
+    }
+
+    /// <summary>
+    /// When <see cref="UseImageColorHint"/> is true and no explicit
+    /// <see cref="PlaceholderColorHex"/> was provided, resolves the per-track dominant
+    /// color via <see cref="ITrackColorHintService"/> and applies it as the placeholder
+    /// tint. Safe across virtualized-row recycling: each invocation bumps a version
+    /// counter and the async continuation only applies its result if the row is still
+    /// bound to the same track image.
+    /// </summary>
+    private void ResolveImageColorHint()
+    {
+        // Explicit PlaceholderColorHex wins — if a page set it (e.g. an album page
+        // using a single album tint), don't override with a per-track hint.
+        if (!string.IsNullOrEmpty(PlaceholderColorHex)) return;
+        if (!UseImageColorHint) return;
+        if (_colorHintService == null) return;
+
+        var rawUrl = Track?.ImageUrl;
+        if (string.IsNullOrWhiteSpace(rawUrl))
+        {
+            ApplyPlaceholderColor(null);
+            return;
+        }
+
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(rawUrl);
+        if (string.IsNullOrWhiteSpace(httpsUrl))
+        {
+            ApplyPlaceholderColor(null);
+            return;
+        }
+
+        var version = System.Threading.Interlocked.Increment(ref _colorHintVersion);
+
+        // Fast path: synchronous cache hit — apply inline, no async hop.
+        if (_colorHintService.TryGet(httpsUrl, out var cachedHex))
+        {
+            ApplyPlaceholderColor(cachedHex);
+            return;
+        }
+
+        // Apply neutral immediately so the row doesn't flash a stale previous color
+        // while the background worker resolves this URL's color.
+        ApplyPlaceholderColor(null);
+
+        _ = ResolveImageColorHintAsync(httpsUrl, version);
+    }
+
+    private async Task ResolveImageColorHintAsync(string httpsUrl, int version)
+    {
+        try
+        {
+            var hex = await _colorHintService!.GetOrResolveAsync(httpsUrl).ConfigureAwait(true);
+            // Row recycled to a different track while we were waiting: drop the result.
+            if (_colorHintVersion != version) return;
+            ApplyPlaceholderColor(hex);
+        }
+        catch (OperationCanceledException)
+        {
+            // Row was unloaded or cancelled — fine, nothing to do.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Color-hint resolution failed for {Url}", httpsUrl);
+        }
+    }
+
+    private static Windows.UI.Color ParseHexColor(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return hex.Length switch
+        {
+            6 => Windows.UI.Color.FromArgb(255,
+                Convert.ToByte(hex[..2], 16),
+                Convert.ToByte(hex[2..4], 16),
+                Convert.ToByte(hex[4..6], 16)),
+            8 => Windows.UI.Color.FromArgb(
+                Convert.ToByte(hex[..2], 16),
+                Convert.ToByte(hex[2..4], 16),
+                Convert.ToByte(hex[4..6], 16),
+                Convert.ToByte(hex[6..8], 16)),
+            _ => Windows.UI.Color.FromArgb(255, 128, 128, 128)
+        };
     }
 
     private void RebindAlbumArtIfNeeded()

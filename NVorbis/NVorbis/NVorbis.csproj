@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <Description>A fully managed implementation of a Xiph.org Foundation Ogg Vorbis decoder.</Description>
-    <Platforms>AnyCPU;ARM64</Platforms>
+    <Platforms>AnyCPU;ARM64;x64</Platforms>
   </PropertyGroup>
 
 </Project>

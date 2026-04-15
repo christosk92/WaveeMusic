@@ -31,7 +31,11 @@ internal static class ConnectCommandTestHelpers
     }
 
     /// <summary>
-    /// Creates a dealer request for a play command.
+    /// Creates a dealer request for a play command in the nested shape that
+    /// <see cref="Wavee.Connect.Commands.PlayCommand.FromJson"/> expects:
+    /// context URI under <c>context.uri</c>; track URI / seek position / player-option overrides
+    /// under <c>options.skip_to.track_uri</c>, <c>options.seek_to</c>, and
+    /// <c>options.player_options_override.*</c>.
     /// </summary>
     public static DealerRequest CreatePlayCommandRequest(
         int messageId,
@@ -47,25 +51,32 @@ internal static class ConnectCommandTestHelpers
         var command = new Dictionary<string, object?>();
 
         if (contextUri != null)
-            command["context_uri"] = contextUri;
+            command["context"] = new Dictionary<string, object?> { ["uri"] = contextUri };
 
+        var options = new Dictionary<string, object?>();
+
+        var skipTo = new Dictionary<string, object?>();
         if (trackUri != null)
-            command["track"] = new { uri = trackUri };
+            skipTo["track_uri"] = trackUri;
+        if (skipToIndex.HasValue)
+            skipTo["track_index"] = skipToIndex.Value;
+        if (skipTo.Count > 0)
+            options["skip_to"] = skipTo;
 
         if (seekTo.HasValue)
-            command["seek_to"] = seekTo.Value;
-
-        if (skipToIndex.HasValue)
-            command["skip_to"] = new { track_index = skipToIndex.Value };
+            options["seek_to"] = seekTo.Value;
 
         if (shuffling.HasValue || repeatingContext.HasValue || repeatingTrack.HasValue)
         {
-            var options = new Dictionary<string, bool>();
-            if (shuffling.HasValue) options["shuffling_context"] = shuffling.Value;
-            if (repeatingContext.HasValue) options["repeating_context"] = repeatingContext.Value;
-            if (repeatingTrack.HasValue) options["repeating_track"] = repeatingTrack.Value;
-            command["options"] = options;
+            var playerOptsOverride = new Dictionary<string, bool>();
+            if (shuffling.HasValue) playerOptsOverride["shuffling_context"] = shuffling.Value;
+            if (repeatingContext.HasValue) playerOptsOverride["repeating_context"] = repeatingContext.Value;
+            if (repeatingTrack.HasValue) playerOptsOverride["repeating_track"] = repeatingTrack.Value;
+            options["player_options_override"] = playerOptsOverride;
         }
+
+        if (options.Count > 0)
+            command["options"] = options;
 
         var json = JsonSerializer.Serialize(command);
         return MockCommandSource.CreateRequestFromJson(

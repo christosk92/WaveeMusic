@@ -1,13 +1,11 @@
-using System.Collections.Generic;
 using System.ComponentModel;
 using Wavee.Connect;
 using Wavee.Core.Session;
 using Wavee.Playback.Contracts;
-using Wavee.UI.WinUI.Data.Enums;
-using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.Enums;
+using Wavee.UI.Models;
 
-
-namespace Wavee.UI.WinUI.Data.Contracts;
+namespace Wavee.UI.Contracts;
 
 /// <summary>
 /// Centralized playback state. Wraps <see cref="Contexts.IPlayerContext"/> and adds

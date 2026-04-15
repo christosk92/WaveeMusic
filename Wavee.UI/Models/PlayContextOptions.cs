@@ -1,4 +1,4 @@
-namespace Wavee.UI.WinUI.Data.Models;
+namespace Wavee.UI.Models;
 
 /// <summary>
 /// Options for starting playback within a context (album, playlist, artist, etc.).

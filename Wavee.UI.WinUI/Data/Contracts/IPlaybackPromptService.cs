@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
