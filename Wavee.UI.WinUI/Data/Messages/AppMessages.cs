@@ -153,6 +153,12 @@ public sealed class LibrarySyncFailedMessage(string error)
 public sealed class LibraryDataChangedMessage;
 
 /// <summary>
+/// Sent to request an immediate library sync (e.g. when the local DB appears empty).
+/// LibrarySyncOrchestrator handles this; no-ops if a sync is already in progress.
+/// </summary>
+public sealed class RequestLibrarySyncMessage;
+
+/// <summary>
 /// Sent when playlists specifically change.
 /// </summary>
 public sealed class PlaylistsChangedMessage;

@@ -26,6 +26,7 @@ public sealed class LibraryDataService : ILibraryDataService
     private readonly IMetadataDatabase _database;
     private readonly ITrackLikeService _likeService;
     private readonly ISession _session;
+    private readonly IMessenger _messenger;
     private readonly ILogger? _logger;
     private IReadOnlyList<LikedSongsFilterDto> _cachedLikedSongFilters = Array.Empty<LikedSongsFilterDto>();
     private string? _likedSongFiltersEtag;
@@ -43,6 +44,7 @@ public sealed class LibraryDataService : ILibraryDataService
         _database = database;
         _likeService = likeService;
         _session = session;
+        _messenger = messenger;
         _logger = logger;
 
         // Subscribe to messenger — no dependency on ISpotifyLibraryService
@@ -287,5 +289,11 @@ public sealed class LibraryDataService : ILibraryDataService
             // Corrupt blob — rare, but don't poison the whole liked-songs list. Fall back.
             return ExtractTags(fallbackGenre);
         }
+    }
+
+    public void RequestSyncIfEmpty()
+    {
+        _logger?.LogDebug("RequestSyncIfEmpty — sending RequestLibrarySyncMessage");
+        _messenger.Send(new RequestLibrarySyncMessage());
     }
 }

@@ -482,7 +482,7 @@ public sealed partial class TrackListView : UserControl
 
     public static readonly DependencyProperty UseImageColorHintProperty =
         DependencyProperty.Register(nameof(UseImageColorHint), typeof(bool), typeof(TrackListView),
-            new PropertyMetadata(false));
+            new PropertyMetadata(true));
 
     private static void OnPlaceholderColorHexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

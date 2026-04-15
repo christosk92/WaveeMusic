@@ -54,7 +54,14 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             }
         });
 
-        _logger?.LogDebug("LibrarySyncOrchestrator registered for AuthStatusChangedMessage");
+        // React to explicit sync requests (e.g. Liked Songs page detecting an empty local DB)
+        messenger.Register<RequestLibrarySyncMessage>(this, (_, _) =>
+        {
+            _logger?.LogInformation("RequestLibrarySyncMessage received — triggering library sync");
+            _ = RunSyncAsync(); // non-blocking: SemaphoreSlim guard skips if already running
+        });
+
+        _logger?.LogDebug("LibrarySyncOrchestrator registered for AuthStatusChangedMessage and RequestLibrarySyncMessage");
     }
 
     private async Task RunSyncAsync()

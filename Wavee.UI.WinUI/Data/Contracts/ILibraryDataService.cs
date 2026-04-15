@@ -91,4 +91,11 @@ public interface ILibraryDataService
     /// Subscribe to refresh UI (sidebar badges, library pages, etc.).
     /// </summary>
     event EventHandler? DataChanged;
+
+    /// <summary>
+    /// Requests a full library sync when local data appears to be missing.
+    /// No-ops if a sync is already in progress. The DataChanged event fires
+    /// when the sync completes so callers do not need to poll.
+    /// </summary>
+    void RequestSyncIfEmpty();
 }

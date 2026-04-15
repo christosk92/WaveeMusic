@@ -102,7 +102,7 @@ public sealed partial class TrackItem : UserControl
 
     public static readonly DependencyProperty UseImageColorHintProperty =
         DependencyProperty.Register(nameof(UseImageColorHint), typeof(bool), typeof(TrackItem),
-            new PropertyMetadata(false, (d, _) => ((TrackItem)d).ResolveImageColorHint()));
+            new PropertyMetadata(true, (d, _) => ((TrackItem)d).ResolveImageColorHint()));
 
     public ITrackItem? Track
     {

@@ -84,6 +84,10 @@ public sealed class MockLibraryDataService : ILibraryDataService
 
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
+    public void RequestSyncIfEmpty()
+    {
+        throw new NotImplementedException();
+    }
 
     public MockLibraryDataService()
     {

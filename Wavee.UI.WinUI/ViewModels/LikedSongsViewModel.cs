@@ -36,6 +36,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
+    private bool _syncAlreadyRequested;
 
     private List<LikedSongDto> _allSongs = [];
     // Cached result of GetLikedSongFiltersAsync so we can re-run BuildFilterChips after
@@ -313,6 +314,16 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
             var songs = await songsTask;
             _allSongs = songs.Select((s, i) => s with { OriginalIndex = i + 1 }).ToList();
+
+            // If local DB is empty and we haven't already triggered a sync this session,
+            // request one now. DataChanged will fire when sync completes → LoadAsync re-runs.
+            if (_allSongs.Count == 0 && !_syncAlreadyRequested)
+            {
+                _syncAlreadyRequested = true;
+                _logger?.LogInformation("Liked songs list is empty — requesting library sync");
+                _libraryDataService.RequestSyncIfEmpty();
+            }
+
             _cachedFilters = await filtersTask;
             UpdateAggregates();
             BuildFilterChips(_cachedFilters);
