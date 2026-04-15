@@ -549,6 +549,12 @@ public static class AppLifecycleHelper
                 });
             };
 
+            // Audio cache directory: shared between this process (to check HasCompleteFile)
+            // and AudioHost (to write new downloads and read cached files).
+            var audioCacheDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Wavee", "AudioCache");
+
             // Now start the audio process (state/error events are already wired above)
             var clusterVol = (int)(session.PlaybackState?.CurrentState?.Volume ?? 0);
             logger?.LogInformation("Starting audio process for user {User}, initialVolume={Vol}%", username, clusterVol);
@@ -557,6 +563,7 @@ public static class AppLifecycleHelper
                 creds.AuthData,
                 session.Config.DeviceId,
                 initialVolumePercent: clusterVol,
+                audioCacheDirectory: audioCacheDirectory,
                 CancellationToken.None);
 
             // Create PlaybackOrchestrator — owns queue, track resolution, remote commands
@@ -571,7 +578,8 @@ public static class AppLifecycleHelper
             var trackResolver = new Wavee.Audio.TrackResolver(
                 session, spClient, headFileClient, httpClient,
                 Wavee.Core.Audio.AudioQuality.VeryHigh,
-                extMetadataClient, logger);
+                extMetadataClient, cacheService, logger,
+                audioCacheDirectory: audioCacheDirectory);
 
             Wavee.Audio.ContextResolver? contextResolver = null;
             if (metadataDb != null && extMetadataClient != null && cacheService != null)

@@ -22,6 +22,11 @@ public sealed class AudioEngine : IAsyncDisposable
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
 
+    // Audio cache directory — passed to LazyProgressiveDownloader so it can:
+    //   a) Persist newly downloaded tracks for future cache hits
+    //   b) Open locally cached files when LocalCacheFileId is set in DeferredResult
+    private readonly string? _audioCacheDirectory;
+
     // Volume/EQ shortcuts
     private readonly VolumeProcessor? _volumeProcessor;
     private readonly EqualizerProcessor? _userEq;
@@ -49,13 +54,18 @@ public sealed class AudioEngine : IAsyncDisposable
         AudioProcessingChain processingChain,
         HttpClient httpClient,
         VolumeProcessor? volumeProcessor = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        string? audioCacheDirectory = null)
     {
         _audioSink = audioSink ?? throw new ArgumentNullException(nameof(audioSink));
         _decoderRegistry = decoderRegistry ?? throw new ArgumentNullException(nameof(decoderRegistry));
         _processingChain = processingChain ?? throw new ArgumentNullException(nameof(processingChain));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger;
+        _audioCacheDirectory = audioCacheDirectory;
+
+        if (audioCacheDirectory != null)
+            Wavee.Playback.Contracts.AudioFileCache.EnsureDirectoryExists(audioCacheDirectory);
 
         _stateSubject = new BehaviorSubject<EngineState>(_currentState);
 
@@ -274,7 +284,8 @@ public sealed class AudioEngine : IAsyncDisposable
             deferredTask,
             _httpClient,
             fileId,
-            _logger);
+            _logger,
+            _audioCacheDirectory);
 
         // Read normalization from head data if available
         if (cmd.NormalizationGain.HasValue)

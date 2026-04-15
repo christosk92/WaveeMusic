@@ -730,8 +730,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                     }
                     else
                     {
-                        _logger?.LogDebug("Publish decision: FLUSH (non-critical meaningful) changes={Changes}", newState.Changes);
-                        FlushAndPublishState(newState);
+                        // Non-critical changes (seek, shuffle/repeat, volume) — debounce so
+                        // rapid bursts of position or options updates collapse into one PUT.
+                        _logger?.LogDebug("Publish decision: DEBOUNCE (non-critical) changes={Changes}", newState.Changes);
+                        DebouncedPublishState(newState);
                     }
                 }
             }

@@ -19,9 +19,22 @@ public sealed class TrackResolution
     /// <summary>Audio key — completes asynchronously after head data is sent.</summary>
     public required Task<byte[]> AudioKeyTask { get; init; }
 
-    /// <summary>CDN URL — completes asynchronously after head data is sent.</summary>
+    /// <summary>CDN URL — completes asynchronously after head data is sent. Empty string when using local cache.</summary>
     public required Task<string> CdnUrlTask { get; init; }
 
-    /// <summary>File size — completes asynchronously (via HTTP HEAD on CDN URL).</summary>
+    /// <summary>File size — completes asynchronously (via HTTP HEAD on CDN URL, or from disk for cache hits).</summary>
     public required Task<long> FileSizeTask { get; init; }
+
+    /// <summary>
+    /// Spotify audio file ID (40-char hex). Always set. Used by AudioHost to persist the download
+    /// and by TrackResolver to detect subsequent cache hits.
+    /// </summary>
+    public string? SpotifyFileId { get; init; }
+
+    /// <summary>
+    /// When non-null, the audio file is fully cached on disk at
+    /// <c>$audioCacheDirectory/audio/$LocalCacheFileId.enc</c>.
+    /// AudioHost reads from local disk instead of downloading from CDN.
+    /// </summary>
+    public string? LocalCacheFileId { get; init; }
 }

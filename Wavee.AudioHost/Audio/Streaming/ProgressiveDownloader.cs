@@ -27,6 +27,10 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     private readonly AudioFetchParams _params;
     private readonly ILogger? _logger;
 
+    // Optional persistent cache: when set, the fully downloaded file is copied here
+    // so future plays can bypass CDN resolution entirely.
+    private readonly string? _persistCachePath;
+
     private readonly RangeSet _downloadedRanges = new();
     private readonly FileStream _tempFile;
     private readonly string _tempFilePath;
@@ -70,6 +74,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     /// <param name="headData">Optional head file data for instant start.</param>
     /// <param name="params">Fetch parameters.</param>
     /// <param name="logger">Optional logger.</param>
+    /// <param name="persistCachePath">
+    /// When set, the fully downloaded file is written here so future plays can skip CDN resolution.
+    /// </param>
     public ProgressiveDownloader(
         HttpClient httpClient,
         string cdnUrl,
@@ -77,7 +84,8 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         FileId fileId,
         byte[]? headData = null,
         AudioFetchParams? @params = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        string? persistCachePath = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(cdnUrl);
@@ -90,6 +98,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _fileId = fileId;
         _params = @params ?? AudioFetchParams.Default;
         _logger = logger;
+        _persistCachePath = persistCachePath;
 
         // Create a unique temp file per downloader instance.
         // Reusing only fileId in the name can collide when old playback is still disposing
@@ -529,6 +538,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                     if (gaps.Count == 0)
                     {
                         _logger?.LogDebug("Background download complete for file {FileId}", _fileId.ToBase16());
+                        // Persist to audio cache so future plays skip CDN resolution
+                        if (_persistCachePath != null)
+                            _ = PersistToCacheAsync(_persistCachePath, CancellationToken.None);
                         break;
                     }
 
@@ -574,6 +586,37 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
         // If no gap after position, wrap around to the first gap
         return gaps[0];
+    }
+
+    /// <summary>
+    /// Copies the fully downloaded temp file to the persistent cache path.
+    /// Fire-and-forget: if it fails we just lose the cache benefit for this session.
+    /// </summary>
+    private async Task PersistToCacheAsync(string cachePath, CancellationToken ct)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(cachePath);
+            if (dir != null && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            // Read temp file from start and write to cache path atomically via a temp swap
+            var swapPath = cachePath + ".tmp";
+            _tempFile.Seek(0, SeekOrigin.Begin);
+            await using (var dest = new FileStream(swapPath, FileMode.Create, FileAccess.Write,
+                FileShare.None, 4096, useAsync: true))
+            {
+                await _tempFile.CopyToAsync(dest, ct);
+            }
+            File.Move(swapPath, cachePath, overwrite: true);
+
+            _logger?.LogInformation("Audio file {FileId} persisted to cache ({Bytes} bytes)",
+                _fileId.ToBase16(), _fileSize);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to persist audio cache for {FileId}", _fileId.ToBase16());
+        }
     }
 
     #endregion

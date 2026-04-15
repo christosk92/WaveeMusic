@@ -154,14 +154,18 @@ public static class ImageFallbackBehavior
 
             // When source changes, prepare for fade by setting opacity to 0
             // Only do this if there's a new source (not when clearing)
-            if (image.Source is BitmapImage)
+            if (image.Source is BitmapImage bmp)
             {
                 image.Opacity = 0;
                 ApplyDecodePixelSize(image);
-                // The fade is started by Image_FadeIn when ImageOpened fires. We must NOT
-                // call AnimateFadeIn synchronously here: starting a Storyboard from inside
-                // a Source DP changed callback reenters the XAML property system and
-                // fail-fasts dcompi.dll under virtualized scrolling load.
+                // If the BitmapImage is already fully decoded (cache hit), WinUI will NOT
+                // re-fire ImageOpened on this Image control — so Image_FadeIn never runs
+                // and the image stays at Opacity=0 forever. Detect this and dispatch the
+                // fade manually on the next tick (dispatched, not synchronous, to avoid
+                // reentering the XAML property system from inside a DP-changed callback).
+                if (bmp.PixelWidth > 0)
+                    image.DispatcherQueue?.TryEnqueue(() => AnimateFadeIn(image));
+                // For in-flight downloads, ImageOpened fires normally → Image_FadeIn handles it.
             }
             else if (image.Source != null)
             {

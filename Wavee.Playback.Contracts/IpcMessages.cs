@@ -423,14 +423,30 @@ public sealed class DeferredResolvedCommand
     [JsonPropertyName("deferredId")]
     public required string DeferredId { get; init; }
 
+    /// <summary>CDN URL — null when reading from local audio cache.</summary>
     [JsonPropertyName("cdnUrl")]
-    public required string CdnUrl { get; init; }
+    public string? CdnUrl { get; init; }
 
     [JsonPropertyName("audioKey")]
     public required string AudioKey { get; init; }
 
     [JsonPropertyName("fileSize")]
     public long FileSize { get; init; }
+
+    /// <summary>
+    /// Spotify file ID (40-char hex). Sent with every deferred command so AudioHost
+    /// can persist the download to the audio cache keyed by the real file ID.
+    /// </summary>
+    [JsonPropertyName("spotifyFileId")]
+    public string? SpotifyFileId { get; init; }
+
+    /// <summary>
+    /// Set when the audio file is already fully cached on disk.
+    /// AudioHost reads from <c>$cacheDir/audio/$LocalCacheFileId.enc</c>
+    /// instead of downloading from CDN.
+    /// </summary>
+    [JsonPropertyName("localCacheFileId")]
+    public string? LocalCacheFileId { get; init; }
 }
 
 // ── Startup handshake ──
@@ -464,6 +480,14 @@ public sealed class AudioHostConfig
     /// <summary>Volume (0–100) to pre-seed in the engine before first play. 0 means "not specified".</summary>
     [JsonPropertyName("initialVolumePercent")]
     public int InitialVolumePercent { get; init; }
+
+    /// <summary>
+    /// Directory where persistent audio cache files are stored.
+    /// AudioHost writes fully downloaded tracks here so future plays skip CDN resolution.
+    /// Null means caching is disabled.
+    /// </summary>
+    [JsonPropertyName("audioCacheDirectory")]
+    public string? AudioCacheDirectory { get; init; }
 }
 
 // ── Well-known message types ──

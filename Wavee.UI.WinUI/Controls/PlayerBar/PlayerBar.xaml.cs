@@ -174,7 +174,16 @@ public sealed partial class PlayerBar : UserControl
 
     private void ApplyTintColor(string? hexColor)
     {
-        if (string.IsNullOrEmpty(hexColor) || PlayerBarTintBrush == null) return;
+        if (string.IsNullOrEmpty(hexColor))
+        {
+            // Reset album art host to default theme background
+            var defaultBrush = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            if (AlbumArtHost != null) AlbumArtHost.Background = defaultBrush;
+            if (NarrowAlbumArtHost != null) NarrowAlbumArtHost.Background = defaultBrush;
+            return;
+        }
+
+        if (PlayerBarTintBrush == null) return;
 
         try
         {
@@ -184,7 +193,15 @@ public sealed partial class PlayerBar : UserControl
                 var r = Convert.ToByte(hex[..2], 16);
                 var g = Convert.ToByte(hex[2..4], 16);
                 var b = Convert.ToByte(hex[4..6], 16);
-                PlayerBarTintBrush.TintColor = Windows.UI.Color.FromArgb(255, r, g, b);
+                var color = Windows.UI.Color.FromArgb(255, r, g, b);
+                PlayerBarTintBrush.TintColor = color;
+
+                // Color the album art thumbnail placeholder with the album's dominant color
+                // at reduced opacity so it looks like a tinted background (not a solid block).
+                var placeholderColor = Windows.UI.Color.FromArgb(100, r, g, b);
+                var placeholderBrush = new SolidColorBrush(placeholderColor);
+                if (AlbumArtHost != null) AlbumArtHost.Background = placeholderBrush;
+                if (NarrowAlbumArtHost != null) NarrowAlbumArtHost.Background = placeholderBrush;
             }
         }
         catch

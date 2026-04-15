@@ -115,7 +115,8 @@ internal sealed class AudioHostService : IAsyncDisposable
             volumeProcessor);
         var httpClient = new HttpClient();
 
-        _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, volumeProcessor, _logger);
+        _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, volumeProcessor, _logger,
+            audioCacheDirectory: config?.AudioCacheDirectory);
         _previewAnalysisService = new PreviewAnalysisService(
             _bassDecoder ?? new BassDecoder(_logger),
             SendPreviewVisualizationFrameAsync,
@@ -295,8 +296,18 @@ internal sealed class AudioHostService : IAsyncDisposable
                 if (cmd != null)
                 {
                     var audioKey = Convert.FromBase64String(cmd.AudioKey);
-                    _deferredRegistry.Complete(cmd.DeferredId, cmd.CdnUrl, audioKey, cmd.FileSize);
-                    _logger.LogInformation("Deferred resolved: {Id} → CDN ready", cmd.DeferredId);
+                    if (!string.IsNullOrEmpty(cmd.LocalCacheFileId))
+                    {
+                        _deferredRegistry.CompleteFromCache(cmd.DeferredId, audioKey, cmd.FileSize, cmd.LocalCacheFileId);
+                        _logger.LogInformation("Deferred resolved: {Id} → local cache ({FileId})",
+                            cmd.DeferredId, cmd.LocalCacheFileId);
+                    }
+                    else
+                    {
+                        _deferredRegistry.Complete(cmd.DeferredId, cmd.CdnUrl ?? "", audioKey, cmd.FileSize,
+                            spotifyFileId: cmd.SpotifyFileId);
+                        _logger.LogInformation("Deferred resolved: {Id} → CDN ready", cmd.DeferredId);
+                    }
                 }
                 await SendOk(msg.Id, ct);
                 break;
@@ -588,10 +599,6 @@ internal sealed class AudioHostService : IAsyncDisposable
         {
             changes |= 2; // First update
         }
-
-        // Guarantee non-zero so PlaybackStateManager doesn't skip
-        // Use a "no-op" position flag — PSM checks for None specifically
-        if (changes == 0) changes = 2;
 
         _lastSentState = state;
 

@@ -21,12 +21,18 @@ public sealed class LazyProgressiveDownloader : Stream
     private readonly FileId _fileId;
     private readonly ILogger? _logger;
 
+    // Optional audio cache directory. When the deferred result carries a LocalCacheFileId,
+    // we open the cached file from here instead of downloading from CDN.
+    private readonly string? _audioCacheDirectory;
+
     private long _position;
     private long _fileSize;
     private bool _fileSizeKnown;
 
     // CDN resources - created once by eager background init
     private ProgressiveDownloader? _cdnDownloader;
+    // Used when reading from a local cached file (no CDN needed)
+    private Stream? _cachedFileStream;
     private AudioDecryptStream? _decryptStream;
     private volatile bool _cdnInitialized;
     private Task? _eagerInitTask;
@@ -52,12 +58,17 @@ public sealed class LazyProgressiveDownloader : Stream
     /// <param name="httpClient">HTTP client for CDN requests.</param>
     /// <param name="fileId">File ID for the audio file.</param>
     /// <param name="logger">Optional logger.</param>
+    /// <param name="audioCacheDirectory">
+    /// Directory where persistent audio cache files live. When the deferred result sets
+    /// <c>LocalCacheFileId</c>, the file is opened from here instead of CDN.
+    /// </param>
     public LazyProgressiveDownloader(
         byte[] headData,
         Task<DeferredResult> deferredTask,
         HttpClient httpClient,
         FileId fileId,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        string? audioCacheDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(headData);
         ArgumentNullException.ThrowIfNull(deferredTask);
@@ -68,6 +79,7 @@ public sealed class LazyProgressiveDownloader : Stream
         _httpClient = httpClient;
         _fileId = fileId;
         _logger = logger;
+        _audioCacheDirectory = audioCacheDirectory;
 
         // Estimate initial size from head data - will update when CDN initialized
         _fileSize = headData.Length;
@@ -247,46 +259,67 @@ public sealed class LazyProgressiveDownloader : Stream
 
     private async Task InitializeCdnResourcesAsync(CancellationToken cancellationToken)
     {
-        _logger?.LogDebug("Initializing CDN resources (head data exhausted at position {Position})", _position);
+        _logger?.LogDebug("Initializing audio resources (head data exhausted at position {Position})", _position);
 
-        // Wait for the deferred resolution (CDN URL + audio key + file size)
+        // Wait for the deferred resolution
         var deferred = await _deferredTask;
 
-        var cdnUrl = deferred.CdnUrl;
         var audioKey = deferred.AudioKey;
         _fileSize = deferred.FileSize;
         _fileSizeKnown = true;
 
-        _logger?.LogDebug("CDN resolved: URL ready, file size = {FileSize}", _fileSize);
+        if (!string.IsNullOrEmpty(deferred.LocalCacheFileId) && _audioCacheDirectory != null)
+        {
+            // ── Local cache path ────────────────────────────────────────────────────
+            // The file is fully on disk — no CDN download needed.
+            var cachePath = Path.Combine(_audioCacheDirectory, "audio", deferred.LocalCacheFileId + ".enc");
+            _logger?.LogInformation("Using local cache for {FileId} ({Bytes} bytes)", deferred.LocalCacheFileId, _fileSize);
 
-        // Create progressive downloader with head data already included
-        _cdnDownloader = new ProgressiveDownloader(
-            _httpClient,
-            cdnUrl,
-            _fileSize,
-            _fileId,
-            _headData,
-            logger: _logger);
+            _cachedFileStream = new FileStream(cachePath, FileMode.Open, FileAccess.Read,
+                FileShare.Read, 4096, FileOptions.SequentialScan);
 
-        // Forward events
-        _cdnDownloader.BufferStateChanged += status => BufferStateChanged?.Invoke(status);
-        _cdnDownloader.DownloadError += error => DownloadError?.Invoke(error);
+            _decryptStream = new AudioDecryptStream(audioKey, _cachedFileStream, decryptionStartOffset: 0);
+        }
+        else
+        {
+            // ── CDN download path ───────────────────────────────────────────────────
+            var cdnUrl = deferred.CdnUrl;
+            _logger?.LogDebug("CDN resolved: URL ready, file size = {FileSize}", _fileSize);
 
-        // Start background download of entire file
-        _cdnDownloader.StartBackgroundDownload();
+            // Compute persistent cache path if we know the Spotify file ID
+            string? persistCachePath = null;
+            if (!string.IsNullOrEmpty(deferred.SpotifyFileId) && _audioCacheDirectory != null)
+                persistCachePath = Path.Combine(_audioCacheDirectory, "audio", deferred.SpotifyFileId + ".enc");
 
-        // Wrap with decryption (skip head data which is already decrypted)
-        _decryptStream = new AudioDecryptStream(
-            audioKey,
-            _cdnDownloader,
-            decryptionStartOffset: _headData.Length);
+            _cdnDownloader = new ProgressiveDownloader(
+                _httpClient,
+                cdnUrl!,
+                _fileSize,
+                _fileId,
+                _headData,
+                logger: _logger,
+                persistCachePath: persistCachePath);
+
+            // Forward events
+            _cdnDownloader.BufferStateChanged += status => BufferStateChanged?.Invoke(status);
+            _cdnDownloader.DownloadError += error => DownloadError?.Invoke(error);
+
+            // Start background download of entire file
+            _cdnDownloader.StartBackgroundDownload();
+
+            // Wrap with decryption (skip head data which is already decrypted)
+            _decryptStream = new AudioDecryptStream(
+                audioKey,
+                _cdnDownloader,
+                decryptionStartOffset: _headData.Length);
+        }
 
         // Sync position
         _decryptStream.Position = _position;
 
         _cdnInitialized = true;
 
-        _logger?.LogInformation("CDN initialized - continuing playback from position {Position}", _position);
+        _logger?.LogInformation("Audio source initialized - continuing playback from position {Position}", _position);
     }
 
     #endregion
@@ -362,6 +395,7 @@ public sealed class LazyProgressiveDownloader : Stream
             _disposeCts.Dispose();
             _decryptStream?.Dispose();
             _cdnDownloader?.Dispose();
+            _cachedFileStream?.Dispose();
             // init lock removed — eager task handles sync
         }
 
@@ -382,6 +416,9 @@ public sealed class LazyProgressiveDownloader : Stream
 
         if (_cdnDownloader != null)
             await _cdnDownloader.DisposeAsync();
+
+        if (_cachedFileStream != null)
+            await _cachedFileStream.DisposeAsync();
 
         _disposed = true;
 

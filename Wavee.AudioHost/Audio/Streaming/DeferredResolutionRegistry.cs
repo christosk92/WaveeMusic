@@ -24,11 +24,26 @@ public sealed class DeferredResolutionRegistry
     /// <summary>
     /// Completes a deferred resolution with CDN URL + audio key.
     /// </summary>
-    public bool Complete(string id, string cdnUrl, byte[] audioKey, long fileSize)
+    public bool Complete(string id, string cdnUrl, byte[] audioKey, long fileSize,
+        string? spotifyFileId = null)
     {
         if (_pending.TryRemove(id, out var tcs))
         {
-            tcs.SetResult(new DeferredResult(cdnUrl, audioKey, fileSize));
+            tcs.SetResult(new DeferredResult(cdnUrl, audioKey, fileSize, spotifyFileId, null));
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Completes a deferred resolution using a locally cached file instead of CDN.
+    /// AudioHost will read from <c>$cacheDir/audio/$localCacheFileId.enc</c>.
+    /// </summary>
+    public bool CompleteFromCache(string id, byte[] audioKey, long fileSize, string localCacheFileId)
+    {
+        if (_pending.TryRemove(id, out var tcs))
+        {
+            tcs.SetResult(new DeferredResult("", audioKey, fileSize, localCacheFileId, localCacheFileId));
             return true;
         }
         return false;
@@ -59,4 +74,14 @@ public sealed class DeferredResolutionRegistry
 /// <summary>
 /// Result of a deferred CDN resolution.
 /// </summary>
-public sealed record DeferredResult(string CdnUrl, byte[] AudioKey, long FileSize);
+/// <param name="CdnUrl">CDN URL; empty string when reading from local cache.</param>
+/// <param name="AudioKey">Decryption key (always required).</param>
+/// <param name="FileSize">Total encrypted file size in bytes.</param>
+/// <param name="SpotifyFileId">Spotify file ID (40-char hex) for persistent caching. Null if not provided.</param>
+/// <param name="LocalCacheFileId">When non-null, read from <c>$cacheDir/audio/$LocalCacheFileId.enc</c> instead of CDN.</param>
+public sealed record DeferredResult(
+    string CdnUrl,
+    byte[] AudioKey,
+    long FileSize,
+    string? SpotifyFileId,
+    string? LocalCacheFileId);

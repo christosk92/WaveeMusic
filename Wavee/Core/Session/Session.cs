@@ -43,6 +43,7 @@ public sealed class Session : ISession, IAsyncDisposable
     private readonly ILogger? _logger;
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
 
     // Packet dispatcher
     private readonly Channel<(byte command, byte[] payload)> _sendQueue;
@@ -654,11 +655,23 @@ public sealed class Session : ISession, IAsyncDisposable
     /// <exception cref="Login5Exception">Thrown if token refresh fails.</exception>
     public async Task<AccessToken> GetAccessTokenAsync(CancellationToken cancellationToken = default)
     {
+        // Fast path: valid token already cached — no lock needed.
         var token = _data.GetAccessToken();
+        if (token != null && !token.ShouldRefresh())
+            return token;
 
-        // Check if we need to refresh
-        if (token == null || token.ShouldRefresh())
+        // Serialize concurrent refresh attempts so only one login5 call runs at a time.
+        // The double-check inside the lock handles the "thundering herd" at startup where
+        // SpClient, DealerClient, ClockService, etc. all call GetAccessTokenAsync
+        // simultaneously and would otherwise each trigger a separate login5 flow.
+        await _tokenRefreshLock.WaitAsync(cancellationToken);
+        try
         {
+            // Double-check: another caller may have refreshed while we waited.
+            token = _data.GetAccessToken();
+            if (token != null && !token.ShouldRefresh())
+                return token;
+
             _logger?.LogDebug("Access token expired or missing, refreshing via login5");
 
             // If the session hasn't finished authenticating yet (startup race), wait
@@ -666,7 +679,6 @@ public sealed class Session : ISession, IAsyncDisposable
             // CancellationToken so this is bounded by the caller's timeout.
             await _data.WaitForAuthAsync(cancellationToken);
 
-            var userData = _data.GetUserData()!;
             var storedCredentials = _data.GetStoredCredentials()!;
 
             // Exchange for access token via login5
@@ -674,11 +686,15 @@ public sealed class Session : ISession, IAsyncDisposable
             token = await login5.GetAccessTokenAsync(
                 storedCredentials.Username!,
                 storedCredentials.AuthData,
-                clientToken: null, // TODO: Add ClientToken manager when implementing SpClient
+                clientToken: null,
                 cancellationToken);
 
             _data.SetAccessToken(token);
             _logger?.LogInformation("Access token refreshed (expires {ExpiresAt})", token.ExpiresAt);
+        }
+        finally
+        {
+            _tokenRefreshLock.Release();
         }
 
         return token;

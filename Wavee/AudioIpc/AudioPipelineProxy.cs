@@ -122,13 +122,14 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     /// Sends configuration to the audio process and waits for the Ready message.
     /// </summary>
     public async Task<bool> ConfigureAsync(string deviceId, bool normalizationEnabled = true,
-        int initialVolumePercent = 0, CancellationToken ct = default)
+        int initialVolumePercent = 0, string? audioCacheDirectory = null, CancellationToken ct = default)
     {
         var config = new AudioHostConfig
         {
             DeviceId = deviceId,
             NormalizationEnabled = normalizationEnabled,
             InitialVolumePercent = initialVolumePercent,
+            AudioCacheDirectory = audioCacheDirectory,
         };
         var configJson = IpcPayloadHelper.SerializeToUtf8(config);
         await _transport.SendAsync(IpcMessageTypes.Configure, configJson, ct: ct);
@@ -167,14 +168,33 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     /// <summary>
     /// Completes the deferred CDN resolution so AudioHost can continue from CDN after head data.
+    /// Pass <paramref name="spotifyFileId"/> so AudioHost can persist the download to the audio cache.
     /// </summary>
-    public Task SendDeferredResolvedAsync(string deferredId, string cdnUrl, byte[] audioKey, long fileSize, CancellationToken ct = default)
+    public Task SendDeferredResolvedAsync(string deferredId, string cdnUrl, byte[] audioKey, long fileSize,
+        string? spotifyFileId = null, CancellationToken ct = default)
         => SendCommandAsync(IpcMessageTypes.DeferredResolved, new DeferredResolvedCommand
         {
             DeferredId = deferredId,
             CdnUrl = cdnUrl,
             AudioKey = Convert.ToBase64String(audioKey),
-            FileSize = fileSize
+            FileSize = fileSize,
+            SpotifyFileId = spotifyFileId,
+        }, ct);
+
+    /// <summary>
+    /// Completes the deferred resolution using a locally cached file.
+    /// AudioHost reads from <c>$cacheDir/audio/$localCacheFileId.enc</c> instead of CDN.
+    /// </summary>
+    public Task SendDeferredCachedAsync(string deferredId, string localCacheFileId, byte[] audioKey, long fileSize,
+        CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.DeferredResolved, new DeferredResolvedCommand
+        {
+            DeferredId = deferredId,
+            CdnUrl = null,
+            AudioKey = Convert.ToBase64String(audioKey),
+            FileSize = fileSize,
+            SpotifyFileId = localCacheFileId,
+            LocalCacheFileId = localCacheFileId,
         }, ct);
 
     public Task PauseAsync(CancellationToken cancellationToken = default)

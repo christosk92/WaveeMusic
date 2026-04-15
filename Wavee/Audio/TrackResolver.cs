@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
+using Wavee.Core.Storage;
 using Wavee.Playback.Contracts;
+using Wavee.Protocol.Storage;
 using Wavee.Protocol.Metadata;
 
 namespace Wavee.Audio;
@@ -14,13 +16,25 @@ namespace Wavee.Audio;
 /// </summary>
 public sealed class TrackResolver
 {
+    // CDN token URLs expire after ~1 hour on Spotify's side; cache them for 30 minutes
+    // to avoid re-fetching on rapid replays while staying well within expiry.
+    private static readonly TimeSpan CdnUrlCacheTtl = TimeSpan.FromMinutes(30);
+
     private readonly Session _session;
     private readonly SpClient _spClient;
     private readonly HeadFileClient _headFileClient;
     private readonly IExtendedMetadataClient? _extendedMetadataClient;
+    private readonly ICacheService? _cacheService;
     private readonly HttpClient _httpClient;
     private AudioQuality _preferredQuality;
     private readonly ILogger? _logger;
+
+    /// <summary>
+    /// Directory where AudioHost persists fully downloaded tracks.
+    /// When set, TrackResolver checks here before making CDN and head-file requests —
+    /// if a track is already fully cached, both network calls are skipped entirely.
+    /// </summary>
+    private readonly string? _audioCacheDirectory;
 
     public TrackResolver(
         Session session,
@@ -29,7 +43,9 @@ public sealed class TrackResolver
         HttpClient httpClient,
         AudioQuality preferredQuality = AudioQuality.VeryHigh,
         IExtendedMetadataClient? extendedMetadataClient = null,
-        ILogger? logger = null)
+        ICacheService? cacheService = null,
+        ILogger? logger = null,
+        string? audioCacheDirectory = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
@@ -37,7 +53,60 @@ public sealed class TrackResolver
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _preferredQuality = preferredQuality;
         _extendedMetadataClient = extendedMetadataClient;
+        _cacheService = cacheService;
         _logger = logger;
+        _audioCacheDirectory = audioCacheDirectory;
+    }
+
+    /// <summary>
+    /// Fetches head data from cache or network. Head data is safe to cache permanently
+    /// — the CDN serves it with max-age=315360000 (10 years) and file IDs never change.
+    /// </summary>
+    private async Task<byte[]?> GetHeadDataAsync(FileId fileId, CancellationToken ct)
+    {
+        if (_cacheService != null)
+        {
+            var cached = await _cacheService.GetHeadDataAsync(fileId, ct);
+            if (cached != null)
+            {
+                _logger?.LogDebug("Head data cache HIT for {FileId}", fileId.ToBase16());
+                return cached;
+            }
+        }
+
+        var data = await _headFileClient.TryFetchHeadAsync(fileId, ct);
+
+        if (data != null && _cacheService != null)
+            await _cacheService.SetHeadDataAsync(fileId, data, ct);
+
+        return data;
+    }
+
+    /// <summary>
+    /// Resolves CDN URL from cache or spclient. CDN tokens expire in ~1 hour so we
+    /// cache with a 30-minute TTL to avoid refetching on rapid replays.
+    /// </summary>
+    private async Task<StorageResolveResponse> GetCdnUrlAsync(FileId fileId, CancellationToken ct)
+    {
+        if (_cacheService != null)
+        {
+            var cached = await _cacheService.GetCdnUrlAsync(fileId, ct);
+            if (cached != null)
+            {
+                _logger?.LogDebug("CDN URL cache HIT for {FileId}", fileId.ToBase16());
+                // Re-wrap as a StorageResolveResponse so callers don't need to change
+                var cachedResponse = new StorageResolveResponse();
+                cachedResponse.Cdnurl.Add(cached.Url);
+                return cachedResponse;
+            }
+        }
+
+        var response = await _spClient.ResolveAudioStorageAsync(fileId, ct);
+
+        if (response.Cdnurl.Count > 0 && _cacheService != null)
+            await _cacheService.SetCdnUrlAsync(fileId, response.Cdnurl[0], CdnUrlCacheTtl, ct);
+
+        return response;
     }
 
     public void SetPreferredQuality(AudioQuality quality) => _preferredQuality = quality;
@@ -73,12 +142,44 @@ public sealed class TrackResolver
             : trackId;
 
         var fileId = FileId.FromBytes(selectedFile.FileId.Span);
+        var fileIdHex = fileId.ToBase16();
         var audioFormat = MapToAudioFileFormat(selectedFile.Format);
 
+        // ── Cache short-circuit ────────────────────────────────────────────────────
+        // If the full encrypted audio file is already on disk, skip both the CDN
+        // storage-resolve call AND the head-file fetch. We still need the audio key
+        // (decryption happens at playback time regardless of source).
+        if (_audioCacheDirectory != null && AudioFileCache.IsCached(_audioCacheDirectory, fileIdHex))
+        {
+            _logger?.LogInformation("Cache HIT for {FileId} — skipping CDN and head fetch", fileIdHex);
+
+            var cachedFileSize = AudioFileCache.GetCachedFileSize(_audioCacheDirectory, fileIdHex);
+            var keyTaskCached = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct));
+            var metadata = BuildMetadataDto(uri, track, NormalizationData.Default);
+
+            return new TrackResolution
+            {
+                TrackUri = uri,
+                Codec = GetCodecName(audioFormat),
+                BitrateKbps = audioFormat.GetBitrate(),
+                HeadData = null,
+                Normalization = NormalizationData.Default,
+                Metadata = metadata,
+                DurationMs = track.Duration,
+                AudioKeyTask = keyTaskCached,
+                CdnUrlTask = Task.FromResult(""),  // not used
+                FileSizeTask = Task.FromResult(cachedFileSize),
+                SpotifyFileId = fileIdHex,
+                LocalCacheFileId = fileIdHex,
+            };
+        }
+
+        // ── Normal (CDN) path ──────────────────────────────────────────────────────
+
         // Start all three in parallel — head file awaited first for instant start
-        var headTask = _headFileClient.TryFetchHeadAsync(fileId, ct);
+        var headTask = GetHeadDataAsync(fileId, ct);
         var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct));
-        var cdnTask = Task.Run(() => _spClient.ResolveAudioStorageAsync(fileId, ct));
+        var cdnTask = Task.Run(() => GetCdnUrlAsync(fileId, ct));
 
         // Wait only for head file
         var headData = await headTask;
@@ -87,7 +188,7 @@ public sealed class TrackResolver
             ? ReadNormalizationFromHeadData(headData)
             : NormalizationData.Default;
 
-        var metadata = BuildMetadataDto(uri, track, normalization);
+        var trackMetadata = BuildMetadataDto(uri, track, normalization);
 
         // CDN URL and audio key complete asynchronously
         var cdnUrlTask = Task.Run(async () =>
@@ -115,11 +216,12 @@ public sealed class TrackResolver
             BitrateKbps = audioFormat.GetBitrate(),
             HeadData = headData,
             Normalization = normalization,
-            Metadata = metadata,
+            Metadata = trackMetadata,
             DurationMs = track.Duration,
             AudioKeyTask = keyTask,
             CdnUrlTask = cdnUrlTask,
             FileSizeTask = fileSizeTask,
+            SpotifyFileId = fileIdHex,
         };
     }
 
@@ -146,9 +248,9 @@ public sealed class TrackResolver
         var audioFormat = MapToAudioFileFormat(selectedFile.Format);
 
         // 4. Parallel fetches: head file + audio key + CDN URL
-        var headTask = _headFileClient.TryFetchHeadAsync(fileId, ct);
+        var headTask = GetHeadDataAsync(fileId, ct);
         var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct));
-        var cdnTask = Task.Run(() => _spClient.ResolveAudioStorageAsync(fileId, ct));
+        var cdnTask = Task.Run(() => GetCdnUrlAsync(fileId, ct));
 
         // Wait for head (for normalization) and the other two
         var headData = await headTask;
@@ -208,9 +310,9 @@ public sealed class TrackResolver
         var audioFormat = MapToAudioFileFormat(selectedFile.Format);
 
         // Parallel fetches
-        var headTask = _headFileClient.TryFetchHeadAsync(fileId, ct);
+        var headTask = GetHeadDataAsync(fileId, ct);
         var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, ct));
-        var cdnTask = Task.Run(() => _spClient.ResolveAudioStorageAsync(fileId, ct));
+        var cdnTask = Task.Run(() => GetCdnUrlAsync(fileId, ct));
 
         var headData = await headTask;
         await Task.WhenAll(keyTask, cdnTask);
