@@ -329,48 +329,66 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         {
             _logger?.LogInformation("Remote cmd: play context={Context}, track={Track}, index={Index}, sender={Sender}",
                 cmd.ContextUri ?? "<none>", cmd.TrackUri ?? "<none>", cmd.SkipToIndex, cmd.SenderDeviceId ?? "<none>");
-            _ = PlayAsync(cmd);
+            FireAndLog(PlayAsync(cmd), "play");
         }));
         _subs.Add(handler.PauseCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: pause (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
-            _ = PauseAsync();
+            FireAndLog(PauseAsync(), "pause");
         }));
         _subs.Add(handler.ResumeCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: resume (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
-            _ = ResumeAsync();
+            FireAndLog(ResumeAsync(), "resume");
         }));
         _subs.Add(handler.SeekCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: seek → {Pos}ms (sender={Sender})", cmd.PositionMs, cmd.SenderDeviceId ?? "<none>");
-            _ = SeekAsync(cmd.PositionMs);
+            FireAndLog(SeekAsync(cmd.PositionMs), "seek");
         }));
         _subs.Add(handler.SkipNextCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: skip_next (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
-            _ = SkipNextAsync();
+            FireAndLog(SkipNextAsync(), "skip_next");
         }));
         _subs.Add(handler.SkipPrevCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: skip_prev (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
-            _ = SkipPreviousAsync();
+            FireAndLog(SkipPreviousAsync(), "skip_prev");
         }));
         _subs.Add(handler.ShuffleCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: shuffle={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
-            _ = SetShuffleAsync(cmd.Enabled);
+            FireAndLog(SetShuffleAsync(cmd.Enabled), "shuffle");
         }));
         _subs.Add(handler.RepeatContextCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: repeat_context={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
-            _ = SetRepeatContextAsync(cmd.Enabled);
+            FireAndLog(SetRepeatContextAsync(cmd.Enabled), "repeat_context");
         }));
         _subs.Add(handler.RepeatTrackCommands.Subscribe(cmd =>
         {
             _logger?.LogInformation("Remote cmd: repeat_track={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
-            _ = SetRepeatTrackAsync(cmd.Enabled);
+            FireAndLog(SetRepeatTrackAsync(cmd.Enabled), "repeat_track");
         }));
+    }
+
+    /// <summary>
+    /// Bare <c>_ = SomeAsync()</c> swallows faults silently (the Task is GC'd
+    /// before TaskScheduler.UnobservedTaskException sees it). Route all
+    /// fire-and-forget remote commands through this so failures land in the log
+    /// with a label.
+    /// </summary>
+    private void FireAndLog(System.Threading.Tasks.Task task, string label)
+    {
+        if (task.IsCompletedSuccessfully) return;
+        _ = task.ContinueWith(t =>
+            {
+                if (t.Exception != null)
+                    _logger?.LogError(t.Exception.GetBaseException(), "Orchestrator command '{Label}' failed", label);
+            },
+            System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted
+            | System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously);
     }
 
     // ── State ──
@@ -388,7 +406,26 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         if (prev.IsBuffering != engineState.IsBuffering)
             _logger?.LogDebug("Orchestrator: IsBuffering changed: {From} → {To}", prev.IsBuffering, engineState.IsBuffering);
 
-        // Enrich engine state with queue info
+        // Enrich engine state with queue info — fetch each list once and reuse it
+        // for both the typed projection and the IQueueItem cast. The previous code
+        // called GetPrevTracks/GetNextTracks twice each, so every state push (which
+        // can fire several times per second during normal playback) re-enumerated
+        // the queue 4× and allocated 4 lists.
+        var prevTracks = _queue.GetPrevTracks();
+        var nextTracks = _queue.GetNextTracks();
+        var prevRefs = new List<TrackReference>(prevTracks.Count);
+        for (int i = 0; i < prevTracks.Count; i++)
+        {
+            var t = prevTracks[i];
+            prevRefs.Add(new TrackReference(t.Uri, t.Uid ?? "", t.AlbumUri, t.ArtistUri, t.IsUserQueued));
+        }
+        var nextRefs = new List<TrackReference>(nextTracks.Count);
+        for (int i = 0; i < nextTracks.Count; i++)
+        {
+            var t = nextTracks[i];
+            nextRefs.Add(new TrackReference(t.Uri, t.Uid ?? "", t.AlbumUri, t.ArtistUri, t.IsUserQueued));
+        }
+
         var enriched = engineState with
         {
             ContextUri = _queue.ContextUri ?? engineState.ContextUri,
@@ -396,14 +433,10 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
             RepeatingContext = _repeatContext,
             RepeatingTrack = _repeatTrack,
             CurrentIndex = _queue.CurrentIndex,
-            PrevTracks = _queue.GetPrevTracks()
-                .Select(t => new TrackReference(t.Uri, t.Uid ?? "", t.AlbumUri, t.ArtistUri, t.IsUserQueued))
-                .ToList(),
-            NextTracks = _queue.GetNextTracks()
-                .Select(t => new TrackReference(t.Uri, t.Uid ?? "", t.AlbumUri, t.ArtistUri, t.IsUserQueued))
-                .ToList(),
-            PrevQueueItems = _queue.GetPrevTracks().Cast<IQueueItem>().ToList(),
-            NextQueueItems = _queue.GetNextTracks().Cast<IQueueItem>().ToList(),
+            PrevTracks = prevRefs,
+            NextTracks = nextRefs,
+            PrevQueueItems = prevTracks.Cast<IQueueItem>().ToList(),
+            NextQueueItems = nextTracks.Cast<IQueueItem>().ToList(),
             QueueRevision = _queue.GetQueueRevision(),
         };
         _stateSubject.OnNext(enriched);

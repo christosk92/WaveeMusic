@@ -64,7 +64,11 @@ public sealed class BufferedHttpStream : Stream
     /// <inheritdoc/>
     public override int Read(byte[] buffer, int offset, int count)
     {
-        return ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
+        // Vorbis decoder calls Stream.Read sync. Run on the pool to escape any
+        // SynchronizationContext the caller may carry — ReadAsync awaits without
+        // ConfigureAwait(false) (sync context could deadlock the GetResult below).
+        return Task.Run(() => ReadAsync(buffer, offset, count, CancellationToken.None))
+            .GetAwaiter().GetResult();
     }
 
     /// <inheritdoc/>
@@ -82,7 +86,7 @@ public sealed class BufferedHttpStream : Stream
             // Refill buffer if empty
             if (_bufferPosition >= _bufferLength)
             {
-                await RefillBufferAsync(cancellationToken);
+                await RefillBufferAsync(cancellationToken).ConfigureAwait(false);
                 if (_bufferLength == 0)
                     break; // End of stream
             }
@@ -108,7 +112,7 @@ public sealed class BufferedHttpStream : Stream
                 _bytesUntilMetadata -= toRead;
                 if (_bytesUntilMetadata <= 0)
                 {
-                    await ReadAndProcessMetadataAsync(cancellationToken);
+                    await ReadAndProcessMetadataAsync(cancellationToken).ConfigureAwait(false);
                     _bytesUntilMetadata = _icyMetaInt;
                 }
             }

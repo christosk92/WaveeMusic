@@ -54,6 +54,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private string? _lastColorImageUrl;
     private double? _pendingSeekPositionMs;
     private long _lastPositionLogAtMs;
+    // Seek-in-flight guard: between the moment Seek() is sent and the moment the
+    // cluster echoes back a position near the target, the AudioHost continues to
+    // emit position updates for the *old* playhead. Without this sentinel those
+    // stale positions race-overwrite Position and the slider visibly bounces.
+    private CancellationTokenSource? _seekConfirmationCts;
+    private const double SeekConfirmedToleranceMs = 2000;
+    private const int SeekConfirmationTimeoutMs = 3000;
 
     // ── State properties ──
 
@@ -290,7 +297,36 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         }
                     }
 
-                    Position = calculatedPos;
+                    // Seek-in-flight: until the cluster echoes a position close to the
+                    // commanded target, the AudioHost keeps emitting the *old* playhead.
+                    // Accepting those would yank the slider back to where the user was
+                    // before the seek (the "bouncing" bug).
+                    var seekTarget = _pendingSeekPositionMs;
+                    if (seekTarget.HasValue)
+                    {
+                        if (Math.Abs(calculatedPos - seekTarget.Value) <= SeekConfirmedToleranceMs)
+                        {
+                            // Cluster confirmed the new position — accept and clear.
+                            _pendingSeekPositionMs = null;
+                            _seekConfirmationCts?.Cancel();
+                            _seekConfirmationCts?.Dispose();
+                            _seekConfirmationCts = null;
+                            Position = calculatedPos;
+                        }
+                        // else: stale pre-seek frame still in the pipe; drop it.
+                    }
+                    else
+                    {
+                        // The PlayerBar interpolates position locally between authoritative
+                        // updates. Suppress sub-250ms drift corrections — they fight the
+                        // interpolator, retrigger PropertyChanged, and re-render bindings
+                        // without the user noticing the change.
+                        var posDelta = Math.Abs(calculatedPos - Position);
+                        if (posDelta >= 250 || !IsPlaying)
+                        {
+                            Position = calculatedPos;
+                        }
+                    }
 
                     // Update duration here too — it may change when local engine
                     // starts playing a ghost track (cluster had duration=0)
@@ -769,7 +805,31 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         }
 
         _logger?.LogInformation("[Cmd] Seek: {From}ms → {To}ms, track={Track}", (long)Position, (long)positionMs, CurrentTrackId);
-        _pendingSeekPositionMs = null;
+        // Optimistic UI: jump the slider to the user's target immediately. The
+        // sentinel below tells the cluster handler to drop stale pre-seek frames
+        // until a frame near the target arrives (= seek confirmed).
+        Position = positionMs;
+        _pendingSeekPositionMs = positionMs;
+        _seekConfirmationCts?.Cancel();
+        _seekConfirmationCts?.Dispose();
+        _seekConfirmationCts = new CancellationTokenSource();
+        var timeoutToken = _seekConfirmationCts.Token;
+        _ = Task.Delay(SeekConfirmationTimeoutMs, timeoutToken).ContinueWith(t =>
+        {
+            // If the cluster never echoed our target (network/AudioHost stall),
+            // give up on suppression so the slider isn't stuck on a stale value.
+            if (!t.IsCanceled)
+            {
+                _dispatcherQueue.TryEnqueue(() =>
+                {
+                    if (_pendingSeekPositionMs.HasValue)
+                    {
+                        _logger?.LogWarning("[Cmd] Seek confirmation timed out after {Ms}ms — releasing suppression", SeekConfirmationTimeoutMs);
+                        _pendingSeekPositionMs = null;
+                    }
+                });
+            }
+        }, TaskScheduler.Default);
         SetBuffering(CurrentTrackId);
         _ = _playbackService.SeekAsync((long)positionMs)
             .ContinueWith(t =>
@@ -932,6 +992,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     public void Dispose()
     {
         _stateSubscription?.Dispose();
+        _seekConfirmationCts?.Cancel();
+        _seekConfirmationCts?.Dispose();
+        _seekConfirmationCts = null;
         _messenger.UnregisterAll(this);
     }
 }

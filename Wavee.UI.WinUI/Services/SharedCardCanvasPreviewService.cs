@@ -341,24 +341,32 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
 
     public void Dispose()
     {
+        // Never block the caller (often the UI thread): a sync Wait() on _gate
+        // combined with GetAwaiter().GetResult() on a UI dispatch would deadlock
+        // when the gate is held by an in-flight Acquire/Release that is itself
+        // waiting on the UI dispatcher.
+        var gateAcquired = _gate.Wait(0);
         try
         {
-            _gate.Wait();
-            RunOnUiAsync(DisposePlayerElementOnUi, CancellationToken.None).GetAwaiter().GetResult();
+            if (_dispatcherQueue.HasThreadAccess)
+            {
+                DisposePlayerElementOnUi();
+            }
+            else
+            {
+                _dispatcherQueue.TryEnqueue(DisposePlayerElementOnUi);
+            }
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            _logger?.LogDebug(ex, "Shared canvas preview dispose dispatch failed");
         }
         finally
         {
-            try
+            if (gateAcquired)
             {
-                _gate.Release();
+                try { _gate.Release(); } catch { }
             }
-            catch
-            {
-            }
-
             _gate.Dispose();
         }
     }

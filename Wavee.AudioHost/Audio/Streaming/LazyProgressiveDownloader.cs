@@ -246,8 +246,18 @@ public sealed class LazyProgressiveDownloader : Stream
     private void EnsureCdnInitialized()
     {
         if (_cdnInitialized) return;
-        // Just wait for the single eager init task — never init independently
-        _eagerInitTask?.GetAwaiter().GetResult();
+        // Sync wait — Stream.Read forces it. Run on the pool to escape any
+        // SynchronizationContext the caller carries; otherwise GetResult on
+        // an awaitable that posts continuations to the captured context will
+        // deadlock the calling thread.
+        var t = _eagerInitTask;
+        if (t == null) return;
+        if (t.IsCompleted)
+        {
+            t.GetAwaiter().GetResult();
+            return;
+        }
+        Task.Run(() => t).GetAwaiter().GetResult();
     }
 
     private async Task EnsureCdnInitializedAsync(CancellationToken cancellationToken)
@@ -371,6 +381,13 @@ public sealed class LazyProgressiveDownloader : Stream
             _logger?.LogDebug("Prefetched {Length} bytes at position {Position}", length, bytePosition);
         }
     }
+
+    /// <summary>
+    /// Forwards a seek notification to the CDN downloader so it cancels in-flight
+    /// prefetch for the old read horizon. Pre-CDN (still serving head data) it's
+    /// a no-op — there's nothing in flight to cancel.
+    /// </summary>
+    public void NotifySeek() => _cdnDownloader?.NotifySeek();
 
     #endregion
 

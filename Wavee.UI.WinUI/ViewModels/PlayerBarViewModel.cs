@@ -357,14 +357,28 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         }
     }
 
+    private int _lastFormattedPositionSec = -1;
+    private int _lastFormattedDurationSec = -1;
+
     partial void OnPositionChanged(double value)
     {
+        // Position fires 4×/sec from the timer plus ~2×/sec from the service. Skip
+        // the string format and Text-binding update unless the displayed second
+        // actually changed.
+        var sec = (int)(value / 1000d);
+        if (sec == _lastFormattedPositionSec) return;
+        _lastFormattedPositionSec = sec;
         PositionText = FormatTime(value);
     }
 
     partial void OnDurationChanged(double value)
     {
-        DurationText = FormatTime(value);
+        var sec = (int)(value / 1000d);
+        if (sec != _lastFormattedDurationSec)
+        {
+            _lastFormattedDurationSec = sec;
+            DurationText = FormatTime(value);
+        }
         OnPropertyChanged(nameof(SliderMaximum));
     }
 

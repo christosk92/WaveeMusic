@@ -303,9 +303,6 @@
                             Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
                             IsThumbToolTipEnabled="False"
                             Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                            PointerPressed="ProgressSlider_PointerPressed"
-                            PointerReleased="ProgressSlider_PointerReleased"
-                            PointerCaptureLost="ProgressSlider_PointerCaptureLost"
                             Style="{StaticResource PlayerProgressSliderStyle}" />
                     </Grid>
 
@@ -843,6 +840,7 @@
                         Margin="8,0,8,4" />
 
                     <Slider
+                        x:Name="CompactProgressSlider"
                         Grid.Row="1"
                         Grid.Column="1"
                         Grid.ColumnSpan="2"
@@ -852,9 +850,6 @@
                         Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
                         IsThumbToolTipEnabled="False"
                         Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                        PointerPressed="ProgressSlider_PointerPressed"
-                        PointerReleased="ProgressSlider_PointerReleased"
-                        PointerCaptureLost="ProgressSlider_PointerCaptureLost"
                         Style="{StaticResource PlayerProgressSliderStyle}" />
 
                     <TextBlock

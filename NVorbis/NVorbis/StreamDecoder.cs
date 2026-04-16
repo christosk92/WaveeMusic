@@ -365,6 +365,17 @@ namespace NVorbis
 
                 // we read out the valid samples from the previous packet
                 var copyLen = Math.Min((tgt - idx) / _channels, _prevPacketEnd - _prevPacketStart);
+                // After SeekTo applies rollForward (line ~626) _prevPacketStart can land
+                // past the end of _prevPacketBuf when the seek target is deep into the
+                // second packet — the buffer was only sized for the first packet's window.
+                // Without this bound, ClippingCopyBuffer would index past the channel
+                // array and throw IndexOutOfRangeException, killing playback.
+                if (copyLen > 0 && _prevPacketBuf != null && _prevPacketBuf.Length > 0)
+                {
+                    var maxFromBuffer = _prevPacketBuf[0].Length - _prevPacketStart;
+                    if (maxFromBuffer < copyLen)
+                        copyLen = maxFromBuffer;
+                }
                 if (copyLen > 0)
                 {
                     if (ClipSamples)
@@ -375,6 +386,12 @@ namespace NVorbis
                     {
                         idx += CopyBuffer(buffer, idx, copyLen);
                     }
+                }
+                else if (_prevPacketEnd - _prevPacketStart > 0)
+                {
+                    // Buffer exhausted before the logical packet end — force a packet
+                    // advance so we don't spin re-clamping to 0.
+                    _prevPacketStart = _prevPacketEnd;
                 }
             }
 

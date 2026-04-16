@@ -7,15 +7,18 @@ public sealed record AudioFetchParams
 {
     /// <summary>
     /// Minimum size of each HTTP range request in bytes.
-    /// Default: 64KB
+    /// 64 KB matches librespot's MINIMUM_DOWNLOAD_SIZE — small enough that a
+    /// post-seek fetch resumes audio quickly (~16 ms wire time on a healthy
+    /// link, large enough to cover NVorbis pre-roll of 2 packets ≈ 8–32 KB).
     /// </summary>
-    public int MinimumChunkSize { get; init; } = 256 * 1024;
+    public int MinimumChunkSize { get; init; } = 64 * 1024;
 
     /// <summary>
     /// Maximum size of each HTTP range request in bytes.
-    /// Default: 512KB
+    /// Capped at 256 KB so a single seek wastes at most one chunk of bytes
+    /// when cancellation lands mid-flight.
     /// </summary>
-    public int MaximumChunkSize { get; init; } = 512 * 1024;
+    public int MaximumChunkSize { get; init; } = 256 * 1024;
 
     /// <summary>
     /// Bytes to prefetch before playback starts (for instant start).
@@ -25,9 +28,11 @@ public sealed record AudioFetchParams
 
     /// <summary>
     /// Seconds of audio to keep buffered ahead during playback.
-    /// Default: 15 seconds (ensures data is pre-downloaded before decode needs it)
+    /// 5 s mirrors librespot's during-playback default. Combined with the
+    /// 10 s MinBufferAhead floor below it gives ~10 s of jitter tolerance
+    /// without the 15 s post-seek fetch storm the older value caused.
     /// </summary>
-    public TimeSpan ReadAheadDuration { get; init; } = TimeSpan.FromSeconds(15);
+    public TimeSpan ReadAheadDuration { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Maximum number of retries for failed HTTP requests.

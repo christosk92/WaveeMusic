@@ -226,14 +226,21 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
     {
         base.OnNavigatedTo(e);
 
-        if (e.Parameter is ContentNavigationParameter nav)
+        try
         {
-            ViewModel.Title = nav.Title;
-            await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
+            if (e.Parameter is ContentNavigationParameter nav)
+            {
+                ViewModel.Title = nav.Title;
+                await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
+            }
+            else if (e.Parameter is string uri)
+            {
+                await ViewModel.LoadCommand.ExecuteAsync(uri);
+            }
         }
-        else if (e.Parameter is string uri)
+        catch (Exception ex)
         {
-            await ViewModel.LoadCommand.ExecuteAsync(uri);
+            System.Diagnostics.Debug.WriteLine($"[ConcertPage] OnNavigatedTo failed: {ex}");
         }
     }
 

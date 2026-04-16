@@ -53,6 +53,23 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     // Background download state
     private Task? _backgroundDownloadTask;
     private CancellationTokenSource? _backgroundDownloadCts;
+    // Cancellable independently of the loop itself: NotifySeek() rotates this CTS
+    // so any in-flight prefetch FetchRangeAsync aborts mid-request, freeing the
+    // loop to re-plan against the new _position. Without this, a seek triggers
+    // both the old read-ahead burst (~600 KB still completing) AND a new burst
+    // for the new position — the 3 MB pile-up we used to see in the log.
+    private CancellationTokenSource? _backgroundFetchCts;
+    private readonly object _fetchCtsLock = new();
+
+    // Wall-clock tick (Environment.TickCount64) at which the post-seek "random
+    // access" recovery window expires. Inside the window the background loop
+    // shrinks both the read-ahead horizon and the per-chunk fetch size — just
+    // enough to satisfy the unmute threshold + NVorbis pre-roll, then idles.
+    // After the window ends it returns to the full ReadAheadDuration target.
+    // Mirrors librespot's mode switch: random-access fetches near the seek,
+    // then back to streaming-mode prefetch once playback is stable.
+    private long _postSeekRecoveryUntilTick;
+    private const int PostSeekRecoveryMs = 2000;
 
     /// <summary>
     /// Raised when buffer state changes.
@@ -485,6 +502,10 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             return; // Already running
 
         _backgroundDownloadCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+        lock (_fetchCtsLock)
+        {
+            _backgroundFetchCts = CancellationTokenSource.CreateLinkedTokenSource(_backgroundDownloadCts.Token);
+        }
         _backgroundDownloadTask = BackgroundDownloadLoopAsync(_backgroundDownloadCts.Token);
         _logger?.LogDebug("Started background download for file {FileId}", _fileId.ToBase16());
     }
@@ -497,22 +518,75 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _backgroundDownloadCts?.Cancel();
         _backgroundDownloadCts?.Dispose();
         _backgroundDownloadCts = null;
+        lock (_fetchCtsLock)
+        {
+            _backgroundFetchCts?.Dispose();
+            _backgroundFetchCts = null;
+        }
         _backgroundDownloadTask = null;
+    }
+
+    /// <summary>
+    /// Tells the downloader the read pointer just jumped (e.g. user seek), so any
+    /// in-flight prefetch for the *old* read horizon should be aborted. The loop
+    /// itself stays alive and re-plans its next chunk against the new
+    /// <c>_position</c>. Safe to call repeatedly (e.g. rapid slider drag).
+    /// </summary>
+    public void NotifySeek()
+    {
+        CancellationTokenSource? toCancel;
+        lock (_fetchCtsLock)
+        {
+            if (_backgroundDownloadCts == null) return; // not running
+            toCancel = _backgroundFetchCts;
+            _backgroundFetchCts = CancellationTokenSource.CreateLinkedTokenSource(_backgroundDownloadCts.Token);
+        }
+        // Enter random-access mode for ~2 s. The loop will only fetch one
+        // MinimumChunkSize ahead during this window, so we don't pile a
+        // full-buffer prefetch burst on top of the decoder pre-roll the user
+        // is actually waiting on.
+        Volatile.Write(ref _postSeekRecoveryUntilTick, Environment.TickCount64 + PostSeekRecoveryMs);
+        if (toCancel != null)
+        {
+            try { toCancel.Cancel(); } catch (ObjectDisposedException) { }
+            toCancel.Dispose();
+            _logger?.LogDebug("[Download] Seek: cancelled in-flight prefetch for file {FileId}", _fileId.ToBase16());
+        }
     }
 
     // Approximate bytes-per-second for OGG Vorbis 320 kbps (typical format).
     // Used to convert ReadAheadDuration to a byte budget.
     private const int EstimatedBytesPerSecond = 40_000; // ~320 kbps
 
-    private async Task BackgroundDownloadLoopAsync(CancellationToken cancellationToken)
+    private async Task BackgroundDownloadLoopAsync(CancellationToken loopToken)
     {
         try
         {
-            while (!cancellationToken.IsCancellationRequested && !IsFullyDownloaded)
+            while (!loopToken.IsCancellationRequested && !IsFullyDownloaded)
             {
+                // Snapshot the seek-cancellable fetch token. NotifySeek() may rotate
+                // _backgroundFetchCts at any time; each loop iteration uses the
+                // current token so a seek interrupts the in-flight FetchRangeAsync
+                // and the next iteration plans against the new _position.
+                CancellationToken fetchToken;
+                lock (_fetchCtsLock)
+                {
+                    fetchToken = _backgroundFetchCts?.Token ?? loopToken;
+                }
+
                 // Check how much is already buffered ahead of current playback position
                 var bufferedAhead = _downloadedRanges.ContainedLengthFrom(_position);
                 var readAheadBytes = (long)(_params.ReadAheadDuration.TotalSeconds * EstimatedBytesPerSecond);
+
+                // Random-access mode: shrink the horizon to one MinimumChunkSize
+                // until the post-seek window expires. The decoder pre-roll + sink
+                // unmute threshold are both well under one chunk, so the user gets
+                // their audio back ASAP without us racing to refill the full buffer.
+                var inRandomAccess = Environment.TickCount64 < Volatile.Read(ref _postSeekRecoveryUntilTick);
+                if (inRandomAccess)
+                {
+                    readAheadBytes = _params.MinimumChunkSize;
+                }
 
                 if (bufferedAhead >= readAheadBytes)
                 {
@@ -520,8 +594,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                     // Wake up when playback advances (consumes buffer) or after 500ms.
                     try
                     {
-                        await Task.Delay(500, cancellationToken);
+                        await Task.Delay(500, fetchToken);
                     }
+                    catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
                     catch (OperationCanceledException) { break; }
                     continue;
                 }
@@ -548,18 +623,24 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                     // Download remaining gaps at a relaxed pace.
                     var gap = FindNextGapFromPosition(_position, gaps);
                     var chunkEnd = Math.Min(gap.Start + _params.MaximumChunkSize, gap.End);
-                    await FetchRangeAsync(gap.Start, chunkEnd, cancellationToken);
+                    try { await FetchRangeAsync(gap.Start, chunkEnd, fetchToken); }
+                    catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
 
                     // Throttle: no rush since playback buffer is healthy
-                    try { await Task.Delay(200, cancellationToken); }
+                    try { await Task.Delay(200, fetchToken); }
+                    catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
                     catch (OperationCanceledException) { break; }
                     continue;
                 }
 
-                // Download the next gap in the read-ahead window
+                // Download the next gap in the read-ahead window. In random-access
+                // mode use the small chunk size so the wait-for-bytes is short and
+                // we don't grab a 256 KB payload only to discard it on the next seek.
                 var nextGap = gaps[0]; // Already ordered by position
-                var end = Math.Min(nextGap.Start + _params.MaximumChunkSize, nextGap.End);
-                await FetchRangeAsync(nextGap.Start, end, cancellationToken);
+                var chunkCap = inRandomAccess ? _params.MinimumChunkSize : _params.MaximumChunkSize;
+                var end = Math.Min(nextGap.Start + chunkCap, nextGap.End);
+                try { await FetchRangeAsync(nextGap.Start, end, fetchToken); }
+                catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
 
                 // Brief yield to let playback thread process data
                 await Task.Yield();
@@ -641,6 +722,11 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             // Stop background download first
             _backgroundDownloadCts?.Cancel();
             _backgroundDownloadCts?.Dispose();
+            lock (_fetchCtsLock)
+            {
+                _backgroundFetchCts?.Dispose();
+                _backgroundFetchCts = null;
+            }
 
             _disposeCts.Cancel();
             _disposeCts.Dispose();
@@ -675,6 +761,11 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         {
             await _backgroundDownloadCts.CancelAsync();
             _backgroundDownloadCts.Dispose();
+        }
+        lock (_fetchCtsLock)
+        {
+            _backgroundFetchCts?.Dispose();
+            _backgroundFetchCts = null;
         }
 
         await _disposeCts.CancelAsync();

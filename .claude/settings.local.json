@@ -62,7 +62,8 @@
       "Bash(ls Wavee.UI.WinUI/*.csproj)",
       "Bash(git stash:*)",
       "Bash(git add:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "WebFetch(domain:docs.rs)"
     ]
   }
 }

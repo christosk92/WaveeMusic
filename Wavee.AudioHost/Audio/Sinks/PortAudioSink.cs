@@ -91,13 +91,17 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 
     public void SetRealtimeVolumeProcessor(VolumeProcessor? processor)
     {
+        AudioFormat? formatToInit;
         lock (_lock)
         {
             _realtimeVolumeProcessor = processor;
-            var format = _format;
-            if (processor != null && format != null)
-                processor.InitializeAsync(format).GetAwaiter().GetResult();
+            formatToInit = _format;
         }
+        // Init outside the lock — InitializeAsync may await on a continuation that
+        // needs to re-enter _lock (e.g. through a callback), which would deadlock
+        // if we held it across the GetResult below.
+        if (processor != null && formatToInit != null)
+            Task.Run(() => processor.InitializeAsync(formatToInit)).GetAwaiter().GetResult();
     }
 
     private void EnsurePortAudioInitialized()
@@ -119,6 +123,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        VolumeProcessor? processorToInit;
         lock (_lock)
         {
             // Clean up any existing stream
@@ -126,7 +131,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 
             _format = format;
             _bytesPerMs = format.BytesPerSecond / 1000.0;
-            _realtimeVolumeProcessor?.InitializeAsync(format, cancellationToken).GetAwaiter().GetResult();
+            processorToInit = _realtimeVolumeProcessor;
 
             // Calculate buffer size in bytes (2x requested for safety margin)
             var bufferBytes = format.BytesPerSecond * bufferSizeMs * 2 / 1000;
@@ -185,6 +190,13 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
             _logger?.LogDebug(
                 "Initialized PortAudio sink: {SampleRate}Hz, {Channels}ch, {BitsPerSample}bit, buffer={BufferMs}ms, device={DeviceIndex}",
                 format.SampleRate, format.Channels, format.BitsPerSample, bufferSizeMs, deviceIndex);
+        }
+
+        // Init the volume processor outside the lock — its InitializeAsync may
+        // await on a continuation that needs to re-enter _lock through a callback.
+        if (processorToInit != null)
+        {
+            return Task.Run(() => processorToInit.InitializeAsync(format, cancellationToken), cancellationToken);
         }
 
         return Task.CompletedTask;

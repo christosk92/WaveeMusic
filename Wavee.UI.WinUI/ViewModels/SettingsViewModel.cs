@@ -1237,7 +1237,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _logger?.LogInformation("Equalizer preset changed to: {Preset}", presetName);
     }
 
-    private CancellationTokenSource? _eqRefreshCts;
+    // Single timer reused across all band changes — preset switch fires 10 band
+    // updates and the prior implementation allocated a CTS + Task + continuation
+    // per call. A Change()-able Timer just resets the deadline with no allocation.
+    private System.Threading.Timer? _eqDebounceTimer;
 
     private void OnBandGainChanged(int bandIndex, double gainDb)
     {
@@ -1247,13 +1250,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
                 s.EqualizerBandGains[bandIndex] = gainDb;
         });
 
-        // Debounce — preset changes fire 10 band updates,
-        // wait 50ms for them all to settle before sending once
-        _eqRefreshCts?.Cancel();
-        _eqRefreshCts = new CancellationTokenSource();
-        var token = _eqRefreshCts.Token;
-        _ = Task.Delay(50, token).ContinueWith(_ => SendEqToAudioHost(),
-            TaskContinuationOptions.OnlyOnRanToCompletion);
+        // Lazily create on first use; subsequent calls just reset the deadline.
+        var timer = _eqDebounceTimer ??= new System.Threading.Timer(
+            _ => SendEqToAudioHost(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+        timer.Change(50, System.Threading.Timeout.Infinite);
     }
 
     [RelayCommand]
@@ -1288,9 +1288,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         StopAudioDiagnostics();
 
-        _eqRefreshCts?.Cancel();
-        _eqRefreshCts?.Dispose();
-        _eqRefreshCts = null;
+        _eqDebounceTimer?.Dispose();
+        _eqDebounceTimer = null;
 
         foreach (var band in EqBands)
             band.GainChanged -= OnBandGainChanged;

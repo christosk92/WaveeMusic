@@ -357,6 +357,10 @@ public sealed class AudioEngine : IAsyncDisposable
                 lastPublishMs = seekTarget.Value;
                 // Decoder seeks via VorbisReader.TimePosition on next ReadSamples call
                 decoder.SeekTo(seekTarget.Value);
+                // Tell the downloader to abort the prefetch burst it queued for the
+                // *old* read horizon. Without this, those fetches finish in parallel
+                // with the new horizon's fetches — the 3 MB pile-up bug.
+                lazyStream.NotifySeek();
 
                 // Seek should be visible to UI/Connect immediately, not after interval tick.
                 lock (_stateLock)

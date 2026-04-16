@@ -46,6 +46,12 @@ public static class AppLifecycleHelper
     // Out-of-process audio mode
     private static Wavee.AudioIpc.AudioProcessManager? _audioProcessManager;
 
+    // Held so we can -= on teardown. Without these the lambdas would still be
+    // collectible once _audioProcessManager is nulled, but explicit unsubscribe
+    // also stops handlers from firing during the dispose race window.
+    private static Action<Wavee.AudioIpc.AudioProcessState, string>? _audioStateChangedHandler;
+    private static Action<Wavee.AudioIpc.AudioPipelineProxy>? _audioProxyRestartedHandler;
+
     /// <summary>
     /// The active audio process manager (null if using in-process audio).
     /// Exposed for diagnostics UI.
@@ -492,7 +498,7 @@ public static class AppLifecycleHelper
             var notifDispatcher = _uiDispatcher;
             Guid? audioActivityId = null;
 
-            _audioProcessManager.StateChanged += (state, message) =>
+            _audioStateChangedHandler = (state, message) =>
             {
                 logger?.LogInformation("Audio process: {State} — {Message}", state, message);
                 notifDispatcher?.TryEnqueue(() =>
@@ -548,6 +554,7 @@ public static class AppLifecycleHelper
                     }
                 });
             };
+            _audioProcessManager.StateChanged += _audioStateChangedHandler;
 
             // Audio cache directory: shared between this process (to check HasCompleteFile)
             // and AudioHost (to write new downloads and read cached files).
@@ -606,7 +613,7 @@ public static class AppLifecycleHelper
             profiler?.SetAudioUnderrunProvider(() => proxy.UnderrunCount);
 
             // Re-wire on auto-restart (variables are now in scope for the closure)
-            _audioProcessManager.ProxyRestarted += newProxy =>
+            _audioProxyRestartedHandler = newProxy =>
             {
                 var notifDisp = _uiDispatcher;
                 notifDisp?.TryEnqueue(() =>
@@ -620,6 +627,7 @@ public static class AppLifecycleHelper
                     profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
                 });
             };
+            _audioProcessManager.ProxyRestarted += _audioProxyRestartedHandler;
 
             // Surface errors via notifications and activity feed
             var notificationService = Ioc.Default.GetService<INotificationService>();
@@ -712,6 +720,16 @@ public static class AppLifecycleHelper
             // Stop audio host process if running
             if (_audioProcessManager != null)
             {
+                if (_audioStateChangedHandler != null)
+                {
+                    _audioProcessManager.StateChanged -= _audioStateChangedHandler;
+                    _audioStateChangedHandler = null;
+                }
+                if (_audioProxyRestartedHandler != null)
+                {
+                    _audioProcessManager.ProxyRestarted -= _audioProxyRestartedHandler;
+                    _audioProxyRestartedHandler = null;
+                }
                 await _audioProcessManager.DisposeAsync().ConfigureAwait(false);
                 _audioProcessManager = null;
             }

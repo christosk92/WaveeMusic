@@ -62,6 +62,22 @@ public sealed partial class PlayerBar : UserControl
     private void OnPlayerBarLoaded(object sender, RoutedEventArgs e)
     {
         UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : ActualWidth);
+
+        // The Slider's inner Thumb captures pointer events and marks them handled,
+        // so the Slider's own PointerPressed/Released routed events never bubble up
+        // to the XAML attribute handlers when the user grabs the thumb (the most
+        // common drag path). Without handledEventsToo, IsSeeking stays false during
+        // the drag and the interpolation timer keeps overwriting Position.
+        var pressed = new PointerEventHandler(ProgressSlider_PointerPressed);
+        var released = new PointerEventHandler(ProgressSlider_PointerReleased);
+        var captureLost = new PointerEventHandler(ProgressSlider_PointerCaptureLost);
+        foreach (var slider in new[] { WideProgressSlider, CompactProgressSlider })
+        {
+            if (slider == null) continue;
+            slider.AddHandler(UIElement.PointerPressedEvent, pressed, handledEventsToo: true);
+            slider.AddHandler(UIElement.PointerReleasedEvent, released, handledEventsToo: true);
+            slider.AddHandler(UIElement.PointerCaptureLostEvent, captureLost, handledEventsToo: true);
+        }
     }
 
     private void OnPlayerBarSizeChanged(object sender, SizeChangedEventArgs e)
