@@ -652,19 +652,18 @@ public sealed class PlaybackQueue : IDisposable
 
     private void RequestMoreTracks()
     {
-        // Fire on thread pool to avoid blocking under lock
-        Task.Run(() =>
+        // Callers invoke this outside the queue lock, so emit synchronously — using
+        // Task.Run here could deliver signals out of order relative to state changes.
+        // Subscribers that want to offload work can compose ObserveOn downstream.
+        try
         {
-            try
-            {
-                _needsMoreTracks.OnNext(Unit.Default);
-                _logger?.LogDebug("NeedsMoreTracks signal sent");
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error sending NeedsMoreTracks signal");
-            }
-        });
+            _needsMoreTracks.OnNext(Unit.Default);
+            _logger?.LogDebug("NeedsMoreTracks signal sent");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error sending NeedsMoreTracks signal");
+        }
     }
 
     private void NotifyStateChanged()
@@ -685,18 +684,17 @@ public sealed class PlaybackQueue : IDisposable
             );
         }
 
-        // Fire on thread pool to avoid blocking
-        Task.Run(() =>
+        // Emit synchronously after the lock is released. Task.Run here would let
+        // snapshots arrive out of order on the thread pool, making the UI flicker
+        // between stale/fresh states for rapid successive mutations.
+        try
         {
-            try
-            {
-                _stateChanged.OnNext(snapshot);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error sending state change notification");
-            }
-        });
+            _stateChanged.OnNext(snapshot);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error sending state change notification");
+        }
     }
 
     private IReadOnlyList<QueueTrack> GetUpcomingTracksInternal(int count)

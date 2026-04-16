@@ -34,23 +34,23 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class NowPlayingHighlightService
 {
-    private (string? ContextUri, bool IsPlaying) _current;
+    private (string? ContextUri, string? AlbumUri, bool IsPlaying) _current;
     private readonly object _lock = new();
 
     /// <summary>
     /// Snapshot of the current highlight state. Safe to read from any thread.
     /// </summary>
-    public (string? ContextUri, bool IsPlaying) Current
+    public (string? ContextUri, string? AlbumUri, bool IsPlaying) Current
     {
         get { lock (_lock) return _current; }
     }
 
     /// <summary>
     /// Fires when the highlight state changes. Handlers receive the new
-    /// (contextUri, isPlaying) tuple. Subscribers MUST unsubscribe when they
-    /// leave the visual tree — this is a strong event.
+    /// (contextUri, albumUri, isPlaying) tuple. Subscribers MUST unsubscribe when
+    /// they leave the visual tree — this is a strong event.
     /// </summary>
-    public event Action<string?, bool>? CurrentChanged;
+    public event Action<string?, string?, bool>? CurrentChanged;
 
     public NowPlayingHighlightService(IMessenger messenger)
     {
@@ -64,12 +64,12 @@ public sealed class NowPlayingHighlightService
 
     private void OnMessengerUpdate(NowPlayingChangedMessage msg)
     {
-        (string? ContextUri, bool IsPlaying) snapshot;
+        (string? ContextUri, string? AlbumUri, bool IsPlaying) snapshot;
         lock (_lock)
         {
             _current = msg.Value;
             snapshot = _current;
         }
-        CurrentChanged?.Invoke(snapshot.ContextUri, snapshot.IsPlaying);
+        CurrentChanged?.Invoke(snapshot.ContextUri, snapshot.AlbumUri, snapshot.IsPlaying);
     }
 }

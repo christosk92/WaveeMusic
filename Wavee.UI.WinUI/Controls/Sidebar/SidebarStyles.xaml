@@ -118,13 +118,25 @@
 									TextWrapping="NoWrap" />
 
 								<!--  Badge  -->
-								<InfoBadge
-									x:Name="ItemBadge"
+								<!--
+									The badge lives inside a host so the Compact VisualState can collapse the
+									whole column cleanly. In WinUI 3 a local Visibility binding outranks a
+									VisualState setter targeting the same property, so the original
+									Visibility="{Binding BadgeCount, ...}" on the InfoBadge itself left
+									stale badges visible in the narrow sidebar. The host has NO binding —
+									only the VisualState touches its Visibility — while the null-check
+									binding stays on the inner InfoBadge, which the VS never targets.
+								-->
+								<Grid
+									x:Name="ItemBadgeHost"
 									Grid.Column="3"
 									Margin="0,0,4,0"
-									VerticalAlignment="Center"
-									Value="{Binding BadgeCount, Mode=OneWay}"
-									Visibility="{Binding BadgeCount, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}" />
+									VerticalAlignment="Center">
+									<InfoBadge
+										x:Name="ItemBadge"
+										Value="{Binding BadgeCount, Mode=OneWay}"
+										Visibility="{Binding BadgeCount, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}" />
+								</Grid>
 
 								<!--  Decorator  -->
 								<ContentPresenter
@@ -506,7 +518,7 @@
 										<Setter Target="ItemDecoratorPresenter.Width" Value="0" />
 										<Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
 										<Setter Target="ChildrenPresenter.Visibility" Value="Collapsed" />
-										<Setter Target="ItemBadge.Visibility" Value="Collapsed" />
+										<Setter Target="ItemBadgeHost.Visibility" Value="Collapsed" />
 										<!-- Center icon in compact mode -->
 										<Setter Target="IconPresenter.Margin" Value="0" />
 										<Setter Target="IconPresenter.(Grid.Column)" Value="0" />

@@ -246,8 +246,8 @@ public sealed partial class ContentCard : UserControl
         {
             _highlightService.CurrentChanged += OnHighlightServiceChanged;
             // Apply the current snapshot immediately so newly-realized cards reflect playback state.
-            var (uri, playing) = _highlightService.Current;
-            ApplyHighlight(uri, playing);
+            var (contextUri, albumUri, playing) = _highlightService.Current;
+            ApplyHighlight(contextUri, albumUri, playing);
         }
         SyncInitialPlaybackState();
     }
@@ -287,17 +287,22 @@ public sealed partial class ContentCard : UserControl
 
     // ── Now-playing self-management (via shared NowPlayingHighlightService) ──
 
-    private void OnHighlightServiceChanged(string? contextUri, bool playing)
-        => ApplyHighlight(contextUri, playing);
+    private void OnHighlightServiceChanged(string? contextUri, string? albumUri, bool playing)
+        => ApplyHighlight(contextUri, albumUri, playing);
 
-    private void ApplyHighlight(string? contextUri, bool playing)
+    private void ApplyHighlight(string? contextUri, string? albumUri, bool playing)
     {
         // Do the cheap string comparison BEFORE scheduling a dispatcher callback.
         // This avoids queuing 20-50 TryEnqueue calls when only 0-1 cards actually match.
         var navUri = NavigationUri; // read once — safe, DependencyProperty reads are thread-safe for strings
-        var isMatch = !string.IsNullOrEmpty(contextUri)
-            && !string.IsNullOrEmpty(navUri)
-            && string.Equals(navUri, contextUri, StringComparison.OrdinalIgnoreCase);
+        // Match on context OR album URI — so an album card lights up whenever the
+        // currently-playing track belongs to that album, not only when playback
+        // was launched from the album itself.
+        var isMatch = !string.IsNullOrEmpty(navUri)
+            && ((!string.IsNullOrEmpty(contextUri)
+                 && string.Equals(navUri, contextUri, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(albumUri)
+                    && string.Equals(navUri, albumUri, StringComparison.OrdinalIgnoreCase)));
 
         // Only dispatch if state actually changed
         var wasPlaying = IsPlaying;
@@ -323,8 +328,8 @@ public sealed partial class ContentCard : UserControl
     {
         if (_highlightService != null)
         {
-            var (contextUri, playing) = _highlightService.Current;
-            ApplyHighlight(contextUri, playing);
+            var (contextUri, albumUri, playing) = _highlightService.Current;
+            ApplyHighlight(contextUri, albumUri, playing);
             return;
         }
 
@@ -335,7 +340,7 @@ public sealed partial class ContentCard : UserControl
     {
         var ps = Ioc.Default.GetService<IPlaybackStateService>();
         if (ps == null) return;
-        ApplyHighlight(ps.CurrentContext?.ContextUri, ps.IsPlaying);
+        ApplyHighlight(ps.CurrentContext?.ContextUri, ps.CurrentAlbumId, ps.IsPlaying);
     }
 
     // ── Property changed callbacks ──
@@ -406,6 +411,14 @@ public sealed partial class ContentCard : UserControl
         // Only touch circle placeholder if the circle subtree has been realized.
         if (CirclePlaceholderIcon != null)
             CirclePlaceholderIcon.Visibility = Visibility.Visible;
+
+        // Clear any previous bitmap on every load. Without this, a recycled
+        // ItemsRepeater container whose new item has no ImageUrl (e.g. Liked Songs,
+        // or any item using a spotify:mosaic: URI that ToHttpsUrl can't resolve)
+        // would keep showing the previous item's bitmap.
+        SquareImage.Source = null;
+        if (CircleImageBrush != null)
+            CircleImageBrush.ImageSource = null;
 
         if (string.IsNullOrEmpty(url)) return;
 

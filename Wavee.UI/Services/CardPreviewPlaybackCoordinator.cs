@@ -176,9 +176,11 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
             owner.Version++;
             CancelCompletionRestore_NoLock();
 
+            var clearedPending = false;
             if (_pendingOwnerId == ownerId)
             {
                 CancelPendingHover_NoLock();
+                clearedPending = true;
                 if (owner.Request != null)
                 {
                     DispatchState(owner.Request, new CardPreviewPlaybackState(
@@ -190,7 +192,17 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
             }
 
             if (_activeOwnerId == ownerId)
+            {
                 await StopActivePreviewCoreAsync(restorePlayback: true).ConfigureAwait(false);
+            }
+            else if (clearedPending)
+            {
+                // Covers the case where an earlier active owner already ducked and was
+                // torn down while this owner sat pending — StopActivePreviewCoreAsync
+                // would have bailed out of restoring because a pending owner existed.
+                // Now that the pending is gone, try to restore.
+                await RestorePlaybackIfIdleAsync().ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -212,11 +224,21 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
 
             CancelCompletionRestore_NoLock();
 
+            var clearedPending = false;
             if (_pendingOwnerId == ownerId)
+            {
                 CancelPendingHover_NoLock();
+                clearedPending = true;
+            }
 
             if (_activeOwnerId == ownerId)
+            {
                 await StopActivePreviewCoreAsync(restorePlayback: true, notifyState: false).ConfigureAwait(false);
+            }
+            else if (clearedPending)
+            {
+                await RestorePlaybackIfIdleAsync().ConfigureAwait(false);
+            }
 
             _owners.Remove(ownerId);
         }
@@ -346,6 +368,12 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
             {
                 _logger?.LogDebug(stopEx, "Engine stop after start-cancel failed for owner {OwnerId}", ownerId);
             }
+
+            // Ducking may have already lowered the user's volume before the start was
+            // cancelled. Without restoring here the caller's volume stays pinned at the
+            // duck target (15%) forever — the outer CancelOwner skips its restore path
+            // because we already cleared _activeOwnerId above.
+            await RestorePlaybackIfIdleAsync().ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -678,7 +706,22 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
             if (_isDisposed || !_isDucked || CanDuckPlayback())
                 return;
 
-            ClearDuckState_NoLock();
+            // Capability flipped while ducked (e.g., user paused, or playback transferred
+            // to a remote device). If we can still drive local volume, restore the user's
+            // prior level so they don't resume at the duck target. Otherwise just drop
+            // duck state — the remote/restricted path owns volume now.
+            if (_hasRestoreVolume && CanRestorePlayback() && _playbackService != null)
+            {
+                var restoreVolume = _restoreVolumePercent;
+                _duckVersion++;
+                _isDucked = false;
+                _hasRestoreVolume = false;
+                await SetPreviewVolumeAsync(restoreVolume, CancellationToken.None).ConfigureAwait(false);
+            }
+            else
+            {
+                ClearDuckState_NoLock();
+            }
         }
         finally
         {
@@ -688,10 +731,22 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
 
     private async Task HandlePlaybackVolumeChangedAsync()
     {
+        // Drop events that echo our own fade-step writes. FadeVolumeAsync drives
+        // _playbackService.SetVolumeAsync multiple times in quick succession; the
+        // PropertyChanged events for each step can arrive after _lastRequestedPreviewVolume
+        // has already advanced, tricking the delta check into treating the echo as
+        // user intent. _isApplyingPreviewVolume is the authoritative self-write flag.
+        if (_isApplyingPreviewVolume)
+            return;
+
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
             if (_isDisposed || !_isDucked || _playbackStateService == null)
+                return;
+
+            // Re-check inside the gate — a fade may have started while we waited.
+            if (_isApplyingPreviewVolume)
                 return;
 
             var currentVolume = ClampVolumePercent(_playbackStateService.Volume);
@@ -811,10 +866,12 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
 
     private bool CanRestorePlayback()
     {
+        // Intentionally does NOT check IsPlaying. The user's volume preference must be
+        // restored regardless of whether playback is currently running — otherwise a
+        // pause during hover leaves them pinned at the 15% duck target when they resume.
         return _playbackStateService != null &&
                !_playbackStateService.IsPlayingRemotely &&
-               !_playbackStateService.IsVolumeRestricted &&
-               _playbackStateService.IsPlaying;
+               !_playbackStateService.IsVolumeRestricted;
     }
 
     private void ClearDuckState_NoLock()
@@ -860,7 +917,12 @@ public sealed class CardPreviewPlaybackCoordinator : ICardPreviewPlaybackCoordin
 
         try
         {
-            _engine.StopAsync().GetAwaiter().GetResult();
+            // Bounded wait: if the engine is hung (audio process unresponsive),
+            // we must not stall UI shutdown indefinitely.
+            if (!_engine.StopAsync().Wait(TimeSpan.FromSeconds(2)))
+            {
+                _logger?.LogWarning("Preview engine StopAsync did not complete within 2s on Dispose");
+            }
         }
         catch
         {

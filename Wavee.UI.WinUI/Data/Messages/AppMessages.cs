@@ -28,11 +28,14 @@ public sealed class PlaybackContextChangedMessage(PlaybackContextInfo? context)
     : ValueChangedMessage<PlaybackContextInfo?>(context);
 
 /// <summary>
-/// Unified now-playing message carrying both context URI and play/pause state.
-/// Cards subscribe to this directly to self-manage their playing indicator.
+/// Unified now-playing message carrying the context URI, the currently-playing
+/// track's album URI, and play/pause state. Cards match on either URI —
+/// ContextUri catches "played from this album/playlist"; AlbumUri catches "the
+/// track happens to belong to this album even though the user launched it from
+/// a playlist/search/queue/radio context".
 /// </summary>
-public sealed class NowPlayingChangedMessage(string? contextUri, bool isPlaying)
-    : ValueChangedMessage<(string? ContextUri, bool IsPlaying)>((contextUri, isPlaying));
+public sealed class NowPlayingChangedMessage(string? contextUri, string? albumUri, bool isPlaying)
+    : ValueChangedMessage<(string? ContextUri, string? AlbumUri, bool IsPlaying)>((contextUri, albumUri, isPlaying));
 
 // --- Auth Messages ---
 

@@ -228,14 +228,20 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
             _logger?.LogDebug("Queue enrichment: fetching metadata for {Count} tracks", trackUris.Count);
 
-            // Check cache first
+            // Check cache first. Treat an entry with no ImageUrl as incomplete —
+            // it was likely populated by a path that stored only title/artist
+            // (bare playback, TrackReference) without running the TrackV4
+            // extension fetch that carries album cover art. Without this, the
+            // queue shows enriched titles but empty artwork placeholders forever,
+            // because the enricher considers any entry "done" once it exists.
             var cached = await _cacheService.GetTracksAsync(trackUris, CancellationToken.None);
-            var uncached = trackUris.Where(u => !cached.ContainsKey(u)).ToList();
+            var uncached = trackUris.Where(u =>
+                !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
 
-            // Batch-fetch uncached
+            // Batch-fetch uncached (or incomplete)
             if (uncached.Count > 0)
             {
-                _logger?.LogDebug("Queue enrichment: {CachedCount} cached, {UncachedCount} need fetch",
+                _logger?.LogDebug("Queue enrichment: {CachedCount} cached, {UncachedCount} need fetch (missing or incomplete)",
                     cached.Count, uncached.Count);
 
                 const int batchSize = 500;

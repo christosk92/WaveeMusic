@@ -210,7 +210,10 @@ public sealed class ArtistService : IArtistService
                 Id = track.Id ?? item.Uid ?? $"track-{results.Count + 1}",
                 Title = track.Name,
                 Uri = track.Uri,
-                AlbumImageUrl = track.AlbumOfTrack?.CoverArt?.Sources?.FirstOrDefault()?.Url,
+                // Use LastOrDefault — the Sources list is ordered ascending by resolution,
+                // and the first source can be a tiny/missing variant for some tracks.
+                // Matches the pattern used elsewhere for release and related-artist images.
+                AlbumImageUrl = track.AlbumOfTrack?.CoverArt?.Sources?.LastOrDefault()?.Url,
                 AlbumUri = track.AlbumOfTrack?.Uri,
                 AlbumName = track.AlbumOfTrack?.Name,
                 Duration = TimeSpan.FromMilliseconds(track.Duration?.TotalMilliseconds ?? 0),

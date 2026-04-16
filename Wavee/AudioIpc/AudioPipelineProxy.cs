@@ -399,13 +399,16 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                 var stateSeq = Interlocked.Increment(ref _stateUpdatesReceived);
 
                 // Remote-side timestamp regression = out-of-order apply risk.
+                // Drop the stale snapshot — applying it would overwrite fresher state
+                // that already reached subscribers.
                 var prevRemote = _lastStateUpdateRemoteTimestamp;
                 if (snapshot.Timestamp > 0 && prevRemote > snapshot.Timestamp)
                 {
                     var outOfOrder = Interlocked.Increment(ref _stateUpdatesOutOfOrder);
                     _logger?.LogWarning(
-                        "[ipc#{Seq} state#{StateSeq}] OUT-OF-ORDER StateUpdate: prevTs={Prev} newTs={New} regressionMs={Reg} track={Track} outOfOrderTotal={Total}",
+                        "[ipc#{Seq} state#{StateSeq}] DROPPED out-of-order StateUpdate: prevTs={Prev} newTs={New} regressionMs={Reg} track={Track} outOfOrderTotal={Total}",
                         recvSeq, stateSeq, prevRemote, snapshot.Timestamp, prevRemote - snapshot.Timestamp, snapshot.TrackUri ?? "<none>", outOfOrder);
+                    break;
                 }
                 _lastStateUpdateRemoteTimestamp = snapshot.Timestamp;
 

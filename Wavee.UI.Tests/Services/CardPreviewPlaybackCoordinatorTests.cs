@@ -79,6 +79,75 @@ public sealed class CardPreviewPlaybackCoordinatorTests
     }
 
     [Fact]
+    public async Task CancelOwner_DuringEngineStartup_RestoresDuckedVolume()
+    {
+        var state = new FakePlaybackStateService { IsPlaying = true, Volume = 55 };
+        var playback = new FakePlaybackService(state);
+        var engine = new FakePreviewAudioPlaybackEngine
+        {
+            StartGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        using var coordinator = CreateCoordinator(engine, playback, state, hoverDelayMs: 10);
+        var ownerId = Guid.NewGuid();
+
+        await coordinator.ScheduleHover(CreateRequest(ownerId, "https://example.com/startup.mp3", new PreviewProbe()));
+        await WaitForConditionAsync(() => engine.StartCalls == 1 && state.Volume == 15);
+
+        // The start is stuck waiting on the gate; cancelling now hits the
+        // OperationCanceledException path inside StartRequestCoreAsync.
+        await coordinator.CancelOwner(ownerId);
+        engine.StartGate.TrySetResult();
+
+        await WaitForConditionAsync(() => state.Volume == 55);
+        playback.SetVolumeCalls.Should().Contain(55);
+    }
+
+    [Fact]
+    public async Task PausePlayback_WhilePreviewDucked_RestoresUserVolume()
+    {
+        var state = new FakePlaybackStateService { IsPlaying = true, Volume = 64 };
+        var playback = new FakePlaybackService(state);
+        var engine = new FakePreviewAudioPlaybackEngine();
+        using var coordinator = CreateCoordinator(engine, playback, state);
+        var ownerId = Guid.NewGuid();
+
+        await coordinator.StartImmediate(CreateRequest(ownerId, "https://example.com/preview.mp3", new PreviewProbe()));
+        await WaitForConditionAsync(() => state.Volume == 15);
+
+        // User pauses the main transport while a preview is ducked. Previously this
+        // dropped duck state without restoring the volume, so when playback resumed
+        // the user was pinned at 15% until they manually changed the volume.
+        state.IsPlaying = false;
+
+        await WaitForConditionAsync(() => state.Volume == 64);
+    }
+
+    [Fact]
+    public async Task CancelPending_WhileDuckedFromPriorOwner_RestoresVolume()
+    {
+        var state = new FakePlaybackStateService { IsPlaying = true, Volume = 70 };
+        var playback = new FakePlaybackService(state);
+        var engine = new FakePreviewAudioPlaybackEngine();
+        using var coordinator = CreateCoordinator(engine, playback, state, hoverDelayMs: 500);
+        var ownerA = Guid.NewGuid();
+        var ownerB = Guid.NewGuid();
+
+        await coordinator.StartImmediate(CreateRequest(ownerA, "https://example.com/a.mp3", new PreviewProbe()));
+        await WaitForConditionAsync(() => state.Volume == 15);
+
+        // B becomes pending while A is still the active session. Tearing down A now
+        // must keep the duck state alive because B is on deck.
+        await coordinator.ScheduleHover(CreateRequest(ownerB, "https://example.com/b.mp3", new PreviewProbe()));
+        await coordinator.CancelOwner(ownerA);
+        state.Volume.Should().Be(15);
+
+        // Cancel B before its hover delay fires. The coordinator has no active or
+        // pending owner now — the user's volume must come back.
+        await coordinator.CancelOwner(ownerB);
+        await WaitForConditionAsync(() => state.Volume == 70);
+    }
+
+    [Fact]
     public async Task StartImmediate_BypassesHoverDelay()
     {
         var state = new FakePlaybackStateService { IsPlaying = true, Volume = 72 };

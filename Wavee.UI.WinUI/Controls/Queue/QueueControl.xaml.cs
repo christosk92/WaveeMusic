@@ -47,6 +47,10 @@ public sealed partial class QueueControl : UserControl
     private readonly IPlaybackStateService? _playbackService;
     private readonly ImageCacheService? _imageCache;
     private readonly ILogger? _logger;
+    // Coalesce bursts of PropertyChanged (up to 7 per state batch) into a single
+    // Refresh on the UI thread. Each Refresh re-materializes ~80 ItemsRepeater
+    // containers; not deduping caused a 697ms flush on every playback transition.
+    private bool _refreshQueued;
 
     public QueueControl()
     {
@@ -75,7 +79,13 @@ public sealed partial class QueueControl : UserControl
             or nameof(IPlaybackStateService.IsShuffle)
             or nameof(IPlaybackStateService.RepeatMode))
         {
-            DispatcherQueue.TryEnqueue(Refresh);
+            if (_refreshQueued) return;
+            _refreshQueued = true;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _refreshQueued = false;
+                Refresh();
+            });
         }
     }
 

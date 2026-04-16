@@ -32,9 +32,21 @@
 
                 <Border Grid.Column="0" Width="40" Height="40" CornerRadius="4"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Image Stretch="UniformToFill"
-                           Visibility="{x:Bind IsLoaded, Mode=OneTime}"
-                           Source="{x:Bind ImageUrl, Mode=OneTime, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=40}"/>
+                    <Grid>
+                        <!-- Music-note placeholder sits behind the image; the image covers
+                             it once it loads. When ImageUrl is null (queue track wasn't
+                             enriched), this is what the user sees instead of an empty tile. -->
+                        <FontIcon Glyph="&#xE8D6;"
+                                  FontSize="18"
+                                  Opacity="0.4"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="{x:Bind IsLoaded, Mode=OneTime}"/>
+                        <Image Stretch="UniformToFill"
+                               Visibility="{x:Bind IsLoaded, Mode=OneTime}"
+                               Source="{x:Bind ImageUrl, Mode=OneTime, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=40}"/>
+                    </Grid>
                 </Border>
                 <shimmer:Shimmer Grid.Column="0" Width="40" Height="40"
                                  Visibility="{x:Bind IsShimmer, Mode=OneTime}"/>

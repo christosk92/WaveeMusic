@@ -40,7 +40,35 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
             $"hasElement={_playerElement != null}");
     }
 
-    public Task EnsureInitializedAsync(CancellationToken ct = default) => Task.CompletedTask;
+    private int _initialized;
+
+    // Eagerly create the shared MediaPlayerElement so the first hover doesn't pay
+    // the 100–300ms MediaFoundation + DirectX surface setup cost on the UI thread.
+    // Without this, the first pointer-exit while a preview is mid-start visibly
+    // hangs the UI — the in-flight creation is still saturating the dispatcher
+    // queue when the exit animations + teardown try to run. Subsequent exits are
+    // fast because the element already exists.
+    public async Task EnsureInitializedAsync(CancellationToken ct = default)
+    {
+        if (Interlocked.Exchange(ref _initialized, 1) == 1)
+            return;
+
+        try
+        {
+            await RunOnUiAsync(() =>
+            {
+                EnsurePlayerElementOnUi();
+                TraceCanvas("EnsureInitializedAsync warmed player element");
+            }, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Warmup is best-effort. If it fails, AcquireOnUi will create the
+            // element on first use (paying the original latency cost).
+            Interlocked.Exchange(ref _initialized, 0);
+            _logger?.LogDebug(ex, "Shared canvas preview warmup failed");
+        }
+    }
 
     public async Task<CanvasPreviewLease?> AcquireAsync(Panel host, string canvasUrl, CancellationToken ct = default)
     {
@@ -179,22 +207,19 @@ public sealed class SharedCardCanvasPreviewService : ISharedCardCanvasPreviewSer
             }
         }
 
-        if (_playerElement != null)
-        {
-            if (_playerElement.Parent is Panel parent)
-                parent.Children.Remove(_playerElement);
-
-            // Null the source to release the media — do NOT Dispose the internal
-            // MediaPlayer, it's owned by the element and will crash if disposed externally.
-            try
-            {
-                _playerElement.Source = null;
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                _logger?.LogDebug(ex, "Failed to clear canvas preview source");
-            }
-        }
+        // Intentionally DO NOT:
+        // - null _playerElement.Source: the setter synchronously unwinds the
+        //   MediaFoundation source reader on the UI thread (50–200ms stall).
+        // - remove _playerElement from its current Panel: reparenting is also
+        //   a UI-thread cost, and the host's Visibility is Collapsed by the
+        //   caller (BaselineHomeCard.StopCanvasPreview), so the element is
+        //   already invisible. If a different card Acquires next, AcquireOnUi
+        //   reparents in one step. If the same card re-hovers, nothing to do.
+        // Only one MediaPlayerElement exists per app, so leaving it parented
+        // to the last host is safe — the host (a Panel inside a realized card)
+        // holds a single reference and will drop it if the card is unrealized.
+        // (Do NOT Dispose the internal MediaPlayer either — it's owned by the
+        //  element and disposing externally crashes the renderer.)
 
         _activeLease = null;
         _activeHost = null;

@@ -98,8 +98,8 @@ public sealed partial class ShortsPill : UserControl
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            var (contextUri, playing) = msg.Value;
-            ApplyPlaybackSnapshot(contextUri, playing);
+            var (contextUri, albumUri, playing) = msg.Value;
+            ApplyPlaybackSnapshot(contextUri, albumUri, playing);
         });
     }
 
@@ -107,15 +107,19 @@ public sealed partial class ShortsPill : UserControl
     {
         var ps = Ioc.Default.GetService<IPlaybackStateService>();
         if (ps == null) return;
-        ApplyPlaybackSnapshot(ps.CurrentContext?.ContextUri, ps.IsPlaying);
+        ApplyPlaybackSnapshot(ps.CurrentContext?.ContextUri, ps.CurrentAlbumId, ps.IsPlaying);
     }
 
-    private void ApplyPlaybackSnapshot(string? contextUri, bool playing)
+    private void ApplyPlaybackSnapshot(string? contextUri, string? albumUri, bool playing)
     {
         var uri = Item?.Uri;
-        var isMatch = !string.IsNullOrEmpty(contextUri)
-            && !string.IsNullOrEmpty(uri)
-            && string.Equals(uri, contextUri, StringComparison.OrdinalIgnoreCase);
+        // Pill represents an item — match on its own URI against either the
+        // playback context or the currently-playing track's album URI.
+        var isMatch = !string.IsNullOrEmpty(uri)
+            && ((!string.IsNullOrEmpty(contextUri)
+                 && string.Equals(uri, contextUri, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(albumUri)
+                    && string.Equals(uri, albumUri, StringComparison.OrdinalIgnoreCase)));
         if (isMatch && playing)
             _isPointerOver = false;
 

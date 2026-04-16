@@ -47,29 +47,35 @@
              analogous win for ItemsRepeater comes from virtualizing the inner layout
              (see step A in the plan — rewriting SingleRowLayout) and from batching
              the outer collection population (already landed via PopulateSectionsChunkedAsync). -->
+        <!-- Mode=OneWay is required: HomeFeedCache.ApplyDiff mutates item Title/ImageUrl
+             in-place after a refresh (see UpdateItemInPlace). Default x:Bind mode is OneTime,
+             which captures only the value at template instantiation — so cached items that
+             later get enriched (e.g., Title arriving via fresh fetch, ImageUrl changing from
+             a stale URL) would keep rendering their original placeholder (null title =
+             empty "Unknown"-looking card, stale image, etc.). -->
         <DataTemplate x:Key="PlaylistCardTemplate" x:DataType="vm:HomeSectionItem">
             <cards:ContentCard
-                ImageUrl="{x:Bind ImageUrl}"
-                Title="{x:Bind Title}"
-                Subtitle="{x:Bind Subtitle}"
-                PlaceholderColorHex="{x:Bind ColorHex}"
+                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                Title="{x:Bind Title, Mode=OneWay}"
+                Subtitle="{x:Bind Subtitle, Mode=OneWay}"
+                PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
                 IsCircularImage="False"
-                NavigationUri="{x:Bind Uri}"
-                NavigationTitle="{x:Bind Title}"/>
+                NavigationUri="{x:Bind Uri, Mode=OneWay}"
+                NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
         </DataTemplate>
 
         <!-- Artist card: circular image, centered text -->
         <DataTemplate x:Key="ArtistCardTemplate" x:DataType="vm:HomeSectionItem">
             <cards:ContentCard
-                ImageUrl="{x:Bind ImageUrl}"
-                Title="{x:Bind Title}"
-                Subtitle="{x:Bind Subtitle}"
-                PlaceholderColorHex="{x:Bind ColorHex}"
+                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                Title="{x:Bind Title, Mode=OneWay}"
+                Subtitle="{x:Bind Subtitle, Mode=OneWay}"
+                PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
                 PlaceholderGlyph="&#xE77B;"
                 IsCircularImage="True"
                 CenterText="True"
-                NavigationUri="{x:Bind Uri}"
-                NavigationTitle="{x:Bind Title}"/>
+                NavigationUri="{x:Bind Uri, Mode=OneWay}"
+                NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
         </DataTemplate>
 
         <!-- Item template selector for mixed-type sections -->
@@ -95,8 +101,8 @@
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:HomeSectionItem">
                             <cards:ShortsPill
-                                ImageUrl="{x:Bind ImageUrl}"
-                                Title="{x:Bind Title}"
+                                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                Title="{x:Bind Title, Mode=OneWay}"
                                 Item="{x:Bind}"/>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
@@ -187,8 +193,8 @@
                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                     <ItemsRepeater.Layout>
                         <layouts:SafeUniformGridLayout
-                            MinItemWidth="230"
-                            MinItemHeight="340"
+                            MinItemWidth="280"
+                            MinItemHeight="390"
                             MinColumnSpacing="0"
                             MinRowSpacing="0"/>
                     </ItemsRepeater.Layout>

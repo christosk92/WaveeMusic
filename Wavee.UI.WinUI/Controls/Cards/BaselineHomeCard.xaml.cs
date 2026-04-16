@@ -123,8 +123,8 @@ public sealed partial class BaselineHomeCard : UserControl
         card.UpdateFromItem();
         if (card._highlightService != null)
         {
-            var (uri, playing) = card._highlightService.Current;
-            card.ApplyHighlight(uri, playing);
+            var (contextUri, albumUri, playing) = card._highlightService.Current;
+            card.ApplyHighlight(contextUri, albumUri, playing);
         }
     }
 
@@ -136,8 +136,8 @@ public sealed partial class BaselineHomeCard : UserControl
         if (_highlightService != null)
         {
             _highlightService.CurrentChanged += OnHighlightServiceChanged;
-            var (uri, playing) = _highlightService.Current;
-            ApplyHighlight(uri, playing);
+            var (contextUri, albumUri, playing) = _highlightService.Current;
+            ApplyHighlight(contextUri, albumUri, playing);
         }
 
         if (_sharedCanvasPreviewService != null)
@@ -653,18 +653,29 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (deferCanvasTeardown)
         {
-            _ = DispatcherQueue.TryEnqueue(() =>
-            {
-                if (stopVersion != _hoverStopVersion || _isPointerOver)
-                    return;
-
-                StopCanvasPreview();
-            });
+            _ = DeferredStopCanvasPreviewAsync(stopVersion);
         }
         else
         {
             StopCanvasPreview();
         }
+    }
+
+    // The MediaPlayerElement teardown (Source = null) unwinds MediaFoundation on the UI
+    // thread and can visibly stall rapid hover-exit sweeps. Give the exit animations a
+    // window to render, then drop to Low priority so the teardown only runs when the UI
+    // thread is otherwise idle. If the user re-enters the card or a newer stop supersedes
+    // us, the version check skips the teardown entirely.
+    private async Task DeferredStopCanvasPreviewAsync(int stopVersion)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(180));
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (stopVersion != _hoverStopVersion || _isPointerOver)
+                return;
+
+            StopCanvasPreview();
+        });
     }
 
     private void QueueDeferredHoverStateRefresh()
@@ -1311,15 +1322,21 @@ public sealed partial class BaselineHomeCard : UserControl
 
     // ── Now-playing highlight service ──
 
-    private void OnHighlightServiceChanged(string? contextUri, bool playing)
-        => ApplyHighlight(contextUri, playing);
+    private void OnHighlightServiceChanged(string? contextUri, string? albumUri, bool playing)
+        => ApplyHighlight(contextUri, albumUri, playing);
 
-    private void ApplyHighlight(string? contextUri, bool playing)
+    private void ApplyHighlight(string? contextUri, string? albumUri, bool playing)
     {
         var itemUri = Item?.Uri;
-        var isMatch = !string.IsNullOrEmpty(contextUri)
-            && !string.IsNullOrEmpty(itemUri)
-            && string.Equals(itemUri, contextUri, StringComparison.OrdinalIgnoreCase);
+        // Match on either the playback context (e.g. user launched this playlist)
+        // OR the currently-playing track's album URI (catches the case where the
+        // track is from this album but was launched from a different context like
+        // a playlist, search result, or radio).
+        var isMatch = !string.IsNullOrEmpty(itemUri)
+            && ((!string.IsNullOrEmpty(contextUri)
+                 && string.Equals(itemUri, contextUri, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(albumUri)
+                    && string.Equals(itemUri, albumUri, StringComparison.OrdinalIgnoreCase)));
 
         var newPlaying = isMatch && playing;
         var newPaused = isMatch && !playing;

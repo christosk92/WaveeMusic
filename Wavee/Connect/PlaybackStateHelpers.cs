@@ -115,6 +115,14 @@ public static class PlaybackStateHelpers
             var metadata = pt.Metadata;
             var provider = !string.IsNullOrEmpty(pt.Provider) ? pt.Provider : "context";
 
+            // Spotify marks look-ahead queue items (subsequent repeat-context iterations,
+            // autoplay pre-seeds, etc.) with metadata.hidden="true". These are not meant
+            // to be surfaced in the UI — without filtering, a 5-track "internal queue"
+            // balloons to ~80 entries (12 iterations × 6 items w/ delimiters).
+            if (metadata.TryGetValue("hidden", out var hidden)
+                && string.Equals(hidden, "true", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             // Page marker: spotify:meta:page:N
             if (pt.Uri.StartsWith("spotify:meta:page:", StringComparison.Ordinal))
             {

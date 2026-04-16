@@ -190,19 +190,25 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 // First state received after subscribing — BehaviorSubject replays with partial
                 // change flags, so force a full sync to populate all UI properties.
                 //
-                // Also clamp a stale "Playing" status on cold start: the cluster-replayed state
-                // carries whatever the user was last doing in Spotify (often Playing), but on
-                // app launch nothing is actually playing here. Trusting the replayed Playing flag
-                // makes the PlayerBar render the pause icon while the audio pipeline sits idle.
-                // Only the Local state source is authoritative for "are we currently playing";
-                // until a Local state arrives, treat the replay as Paused.
+                // Also clamp a stale "Playing" status on cold start IF no device is actually
+                // driving playback: the cluster-replayed state carries whatever the user was
+                // last doing in Spotify, but on app launch nothing may be playing here. If a
+                // real remote device IS active (e.g. phone/other desktop is playing), we must
+                // preserve Playing so the UI correctly shows "Playing on <device>".
                 if (_isFirstStateUpdate)
                 {
                     _isFirstStateUpdate = false;
-                    var clampedStatus = state.Status == PlaybackStatus.Playing
-                                        && state.Source != StateSource.Local
-                        ? PlaybackStatus.Paused
-                        : state.Status;
+
+                    var ourDeviceId = _session.Config.DeviceId;
+                    var activeDeviceId = state.ActiveDeviceId;
+                    var remoteDeviceIsActive = !string.IsNullOrEmpty(activeDeviceId)
+                                               && !string.Equals(activeDeviceId, ourDeviceId, StringComparison.Ordinal);
+
+                    var shouldClamp = state.Status == PlaybackStatus.Playing
+                                      && state.Source != StateSource.Local
+                                      && !remoteDeviceIsActive;
+
+                    var clampedStatus = shouldClamp ? PlaybackStatus.Paused : state.Status;
                     state = state with
                     {
                         Status = clampedStatus,
@@ -659,7 +665,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         if (_isBatchingStateUpdate)
             _nowPlayingDirty = true;
         else
-            _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, value));
+            _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, CurrentAlbumId, value));
     }
 
     partial void OnCurrentTrackIdChanged(string? value) => _messenger.Send(new TrackChangedMessage(value));
@@ -670,7 +676,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         if (_isBatchingStateUpdate)
             _nowPlayingDirty = true;
         else
-            _messenger.Send(new NowPlayingChangedMessage(value?.ContextUri, IsPlaying));
+            _messenger.Send(new NowPlayingChangedMessage(value?.ContextUri, CurrentAlbumId, IsPlaying));
+    }
+
+    partial void OnCurrentAlbumIdChanged(string? value)
+    {
+        // Track changed to a different album → album cards need to re-check the
+        // "is this my album playing?" predicate. Coalesce inside a batched update.
+        if (_isBatchingStateUpdate)
+            _nowPlayingDirty = true;
+        else
+            _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, value, IsPlaying));
     }
 
     /// <summary>
@@ -681,7 +697,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     {
         if (!_nowPlayingDirty) return;
         _nowPlayingDirty = false;
-        _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, IsPlaying));
+        _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, CurrentAlbumId, IsPlaying));
     }
 
     // ── Commands ──

@@ -67,6 +67,9 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     // State
     private readonly BehaviorSubject<PlaybackState> _stateSubject;
     private PlaybackState _currentState;
+    // Serializes _currentState mutations and _stateSubject.OnNext so concurrent
+    // cluster / local / enrichment updates can't interleave (stale-overwrite race).
+    private readonly object _stateLock = new();
     private bool _isLocalPlaybackActive;
     private bool _proxyOnlyMode;
     private string? _connectionId;
@@ -517,8 +520,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             }
 
             // Update state
-            _currentState = newState;
-            _stateSubject.OnNext(newState);
+            lock (_stateLock)
+            {
+                _currentState = newState;
+                _stateSubject.OnNext(newState);
+            }
 
             // If track metadata is incomplete, fetch from API and re-emit enriched state
             if (newState.Changes.HasFlag(Connect.StateChanges.Track) && _metadataClient != null)
@@ -583,13 +589,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         if (DeviceListsEquivalent(_currentState.AvailableConnectDevices, newDevices))
             return;
 
-        var devicesState = _currentState with
+        lock (_stateLock)
         {
-            AvailableConnectDevices = newDevices,
-            Changes = Connect.StateChanges.ActiveDevice,
-        };
-        _currentState = devicesState;
-        _stateSubject.OnNext(devicesState);
+            // Re-check inside the lock in case the roster was already applied by a
+            // racing update (cluster, local, enrichment).
+            if (DeviceListsEquivalent(_currentState.AvailableConnectDevices, newDevices))
+                return;
+
+            var devicesState = _currentState with
+            {
+                AvailableConnectDevices = newDevices,
+                Changes = Connect.StateChanges.ActiveDevice,
+            };
+            _currentState = devicesState;
+            _stateSubject.OnNext(devicesState);
+        }
         _logger?.LogDebug("[cluster#{Seq}] Emitted Connect device list update: {Count} devices",
             clusterSeq, newDevices.Count);
     }
@@ -693,8 +707,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             }
 
             // Update state
-            _currentState = newState;
-            _stateSubject.OnNext(newState);
+            lock (_stateLock)
+            {
+                _currentState = newState;
+                _stateSubject.OnNext(newState);
+            }
 
             // Publish to Spotify. The DetectChanges helper already filters out natural
             // position progression (via the nominalDelta threshold in DetectChanges), so a
@@ -800,8 +817,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             if (resetExisting)
             {
                 Interlocked.Increment(ref _debounceCancelledCount);
+                // Cancel only — do not Dispose here. Task.Delay/CancellationTokenRegistration
+                // may still be unwinding on another thread and disposing synchronously can
+                // race into ObjectDisposedException. GC will reclaim the CTS once the
+                // cancelled Task.Delay continuation finishes.
                 _debounceCts!.Cancel();
-                _debounceCts.Dispose();
             }
             _pendingState = state;
             _debounceCts = new CancellationTokenSource();
@@ -1060,9 +1080,14 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     private async Task EnrichTrackMetadataAsync(string trackUri)
     {
-        _enrichCts?.Cancel();
-        _enrichCts = new CancellationTokenSource();
-        var ct = _enrichCts.Token;
+        // Atomically swap the shared CTS so this call owns its own lifetime.
+        // Reading _enrichCts.Token later is racy — another call can replace the
+        // field between Cancel and the Token read, and the stale enrichment would
+        // then observe a FRESH token that never gets cancelled.
+        var previousCts = Interlocked.Exchange(ref _enrichCts, new CancellationTokenSource());
+        previousCts?.Cancel();
+        previousCts?.Dispose();
+        var ct = _enrichCts!.Token;
 
         try
         {
@@ -1106,17 +1131,21 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 ImageXLargeUrl = imageXLargeUrl
             };
 
-            // Guard again after building enriched track
-            if (_currentState.Track?.Uri != trackUri) return;
-
-            var enrichedState = _currentState with
+            // Guard + mutation under the shared state lock so a racing cluster /
+            // local update cannot slip between the URI check and the OnNext.
+            lock (_stateLock)
             {
-                Track = enrichedTrack,
-                Changes = Connect.StateChanges.Track
-            };
+                if (_currentState.Track?.Uri != trackUri) return;
 
-            _currentState = enrichedState;
-            _stateSubject.OnNext(enrichedState);
+                var enrichedState = _currentState with
+                {
+                    Track = enrichedTrack,
+                    Changes = Connect.StateChanges.Track
+                };
+
+                _currentState = enrichedState;
+                _stateSubject.OnNext(enrichedState);
+            }
 
             _logger?.LogInformation("Enriched track metadata for {Uri}: title={Title}, artist={Artist}",
                 trackUri, title, artist);
@@ -1159,26 +1188,31 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
         _logger?.LogDebug("Disposing PlaybackStateManager");
 
-        // Unsubscribe from observables
+        // Unsubscribe from observables FIRST so no new updates arrive mid-dispose.
         _clusterSubscription.Dispose();
         _localPlaybackSubscription?.Dispose();
         _connectionIdSubscription?.Dispose();
 
-        // Complete state subject
-        _stateSubject.OnCompleted();
-        _stateSubject.Dispose();
-
-        // Dispose enrichment
+        // Cancel enrichment BEFORE completing the state subject — an in-flight
+        // EnrichTrackMetadataAsync could otherwise call OnNext on a disposed subject.
         _enrichCts?.Cancel();
-        _enrichCts?.Dispose();
 
-        // Dispose debounce
+        // Dispose debounce — same reason: the delayed continuation calls PublishLocalState.
         lock (_debounceLock)
         {
             _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
             _debounceCts = null;
         }
+
+        // Now complete + dispose the subject under the state lock so any racing
+        // emitter sees a closed subject rather than a half-disposed one.
+        lock (_stateLock)
+        {
+            _stateSubject.OnCompleted();
+            _stateSubject.Dispose();
+        }
+
+        _enrichCts?.Dispose();
 
         // Dispose state publisher
         if (_statePublisher != null)
