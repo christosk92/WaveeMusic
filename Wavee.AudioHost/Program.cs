@@ -3,13 +3,16 @@ using Serilog;
 using Wavee.AudioHost;
 using Wavee.AudioHost.NativeDeps;
 
-// Parse arguments: --pipe <name>
+// Parse arguments: --pipe <name> [--verbose]
 var pipeName = "WaveeAudio";
+var verbose = false;
 
-for (int i = 0; i < args.Length - 1; i++)
+for (int i = 0; i < args.Length; i++)
 {
-    if (args[i] == "--pipe")
+    if (args[i] == "--pipe" && i + 1 < args.Length)
         pipeName = args[++i];
+    else if (args[i] == "--verbose")
+        verbose = true;
 }
 
 // Configure Serilog for the audio process
@@ -17,14 +20,23 @@ var logPath = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
     "Wavee", "Logs", "audiohost-.log");
 
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
+var loggerCfg = new LoggerConfiguration();
+if (verbose)
+    loggerCfg = loggerCfg.MinimumLevel.Verbose();
+else
+    loggerCfg = loggerCfg.MinimumLevel.Information();
+
+const string fileTemplate =
+    "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
+
+Log.Logger = loggerCfg
     .WriteTo.Console()
     .WriteTo.File(
         logPath,
         rollingInterval: Serilog.RollingInterval.Day,
         retainedFileCountLimit: 7,
-        fileSizeLimitBytes: 10 * 1024 * 1024)
+        fileSizeLimitBytes: 10 * 1024 * 1024,
+        outputTemplate: fileTemplate)
     .CreateLogger();
 
 var loggerFactory = LoggerFactory.Create(builder =>

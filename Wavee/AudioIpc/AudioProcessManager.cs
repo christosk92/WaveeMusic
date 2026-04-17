@@ -27,6 +27,13 @@ public enum AudioProcessState
 /// </summary>
 public sealed class AudioProcessManager : IAsyncDisposable
 {
+    /// <summary>
+    /// When true, the audio host process is started with <c>--verbose</c> so its Serilog
+    /// minimum level drops to Verbose. Set by the UI process from the user's settings.
+    /// Picked up on the next StartAsync (process restart required for child to re-read it).
+    /// </summary>
+    public static bool UseVerboseLogging { get; set; }
+
     private readonly ILogger? _logger;
     private readonly string _audioHostPath;
     private readonly CancellationTokenSource _cts = new();
@@ -254,7 +261,9 @@ public sealed class AudioProcessManager : IAsyncDisposable
         var psi = new ProcessStartInfo
         {
             FileName = _audioHostPath,
-            Arguments = $"--pipe {_pipeName}",
+            Arguments = UseVerboseLogging
+                ? $"--pipe {_pipeName} --verbose"
+                : $"--pipe {_pipeName}",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,

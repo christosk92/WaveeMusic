@@ -49,18 +49,27 @@ public sealed class ArtistService : IArtistService
         var headerImageUrl = artist.HeaderImage?.Data?.Sources
             ?.OrderByDescending(s => s.MaxWidth ?? s.Width ?? 0)
             .FirstOrDefault()?.Url;
-        string? heroColorHex = null;
 
-        if (!string.IsNullOrEmpty(headerImageUrl))
+        // Prefer Spotify's pre-extracted palette (matches web player: higherContrast.backgroundBase),
+        // then the avatar's raw color, and finally fall back to a live IColorService extraction.
+        var heroColorHex = artist.VisualIdentity?.WideFullBleedImage?.ExtractedColorSet
+            ?.HigherContrast?.BackgroundBase?.ToHex()
+            ?? artist.Visuals?.AvatarImage?.ExtractedColors?.ColorRaw?.Hex;
+
+        if (string.IsNullOrEmpty(heroColorHex))
         {
-            try
+            var colorSource = artist.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url ?? headerImageUrl;
+            if (!string.IsNullOrEmpty(colorSource))
             {
-                var extracted = await _colorService.GetColorAsync(headerImageUrl, ct).ConfigureAwait(false);
-                heroColorHex = extracted?.RawHex ?? extracted?.DarkHex ?? extracted?.LightHex;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Failed to resolve artist hero color for {ArtistUri}", artistUri);
+                try
+                {
+                    var extracted = await _colorService.GetColorAsync(colorSource, ct).ConfigureAwait(false);
+                    heroColorHex = extracted?.DarkHex ?? extracted?.RawHex ?? extracted?.LightHex;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Failed to resolve artist hero color for {ArtistUri}", artistUri);
+                }
             }
         }
 

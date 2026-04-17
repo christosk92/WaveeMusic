@@ -4,6 +4,28 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf">
 
+    <!-- Horizontal fade-to-background brush for the right edge of a shelf. Shares
+         the 4-stop curve (0, 0.35, 0.72, 1 with alpha 0/40/C0/FF) used by the
+         RightPanelView tab-content fade so both surfaces feel like the same app. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+            <LinearGradientBrush x:Key="ShelfFadeRightBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+                <GradientStop Color="#00202020" Offset="0"/>
+                <GradientStop Color="#40202020" Offset="0.35"/>
+                <GradientStop Color="#C0202020" Offset="0.72"/>
+                <GradientStop Color="#FF202020" Offset="1"/>
+            </LinearGradientBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <LinearGradientBrush x:Key="ShelfFadeRightBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+                <GradientStop Color="#00F3F3F3" Offset="0"/>
+                <GradientStop Color="#40F3F3F3" Offset="0.35"/>
+                <GradientStop Color="#C0F3F3F3" Offset="0.72"/>
+                <GradientStop Color="#FFF3F3F3" Offset="1"/>
+            </LinearGradientBrush>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
     <!-- Chevron button style used by shelf headers (SectionShelf + any page
          that wires its own header to a ShelfScroller). Matches the Fluent card
          surface; greyed out automatically via ICommand.CanExecute. -->

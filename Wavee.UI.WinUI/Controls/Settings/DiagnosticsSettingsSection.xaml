@@ -14,6 +14,15 @@
     <ScrollView VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Hidden">
         <StackPanel Spacing="0" Padding="0,16,0,24">
+            <controls:SettingsCard Margin="0,0,0,12"
+                                   Header="Verbose logging"
+                                   Description="Captures detailed diagnostic output to the rolling log file. Useful for bug reports. Restart the app for the audio engine to pick up the change.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE9D9;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.VerboseLoggingEnabled, Mode=TwoWay}"/>
+            </controls:SettingsCard>
+
             <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_1" Margin="0,0,0,12"
                                        Header="Audio Pipeline"
                                        Description="{x:Bind ViewModel.AudioPipelineMode, Mode=OneWay}">

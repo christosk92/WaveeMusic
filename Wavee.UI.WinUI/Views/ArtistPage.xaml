@@ -57,6 +57,16 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- Page tint wash — gets a LinearGradientBrush derived from HeaderHeroColorHex
+                 so the artist's palette color extends past the hero into the content area.
+                 Fill is assigned from code-behind whenever the hex changes. -->
+            <Rectangle x:Name="PageTintFill"
+                       Grid.Row="0"
+                       Grid.RowSpan="4"
+                       VerticalAlignment="Top"
+                       Height="600"
+                       IsHitTestVisible="False"/>
+
             <!-- HERO HEADER -->
             <hero:HeroHeader x:Name="HeroGrid"
                              Grid.Row="0"

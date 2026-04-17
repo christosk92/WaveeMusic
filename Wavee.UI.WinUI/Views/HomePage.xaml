@@ -171,11 +171,23 @@
                         Visibility="{x:Bind IsDebugVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
-                <shelf:ShelfScroller
-                    x:Name="GenericSectionShelf"
-                    ItemsSource="{x:Bind Items}"
-                    ItemTemplateSelector="{StaticResource HomeItemSelector}"
-                    MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                <!-- Bleed the shelf into the ContentContainer's 24px right padding
+                     so cards run to the viewport edge. The fade overlay on the right
+                     reuses the same curve as RightPanelView's tab-content fade so the
+                     two surfaces read as the same app. -->
+                <Grid Margin="0,0,-24,0">
+                    <shelf:ShelfScroller
+                        x:Name="GenericSectionShelf"
+                        ItemsSource="{x:Bind Items}"
+                        ItemTemplateSelector="{StaticResource HomeItemSelector}"
+                        MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                    <Border
+                        HorizontalAlignment="Right"
+                        Width="96"
+                        IsHitTestVisible="False"
+                        Background="{ThemeResource ShelfFadeRightBrush}"
+                        Visibility="{Binding ElementName=GenericSectionShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </Grid>
             </StackPanel>
         </DataTemplate>
 
@@ -524,8 +536,8 @@
 
         <!-- Content (starts invisible via composition, crossfades in when loaded) -->
         <ScrollView x:Name="ContentContainer" Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                    Margin="0,0,-24,0"
-                    Padding="0,0,24,0"
+                    Margin="0,0,-28,0"
+                    Padding="0,0,0,0"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <ItemsRepeater
                 x:Name="SectionsRepeater"

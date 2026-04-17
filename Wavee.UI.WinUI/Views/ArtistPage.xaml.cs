@@ -80,6 +80,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ContentContainer.Opacity = 0;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         SizeChanged += OnSizeChanged;
+        HeroGrid.SizeChanged += HeroGrid_SizeChanged;
+    }
+
+    private void HeroGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Hero height is user-draggable via HeroSplitter; keep the page tint
+        // aligned so the fade always starts at the hero's bottom edge.
+        UpdatePageTint();
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -106,6 +114,62 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             if (_showingContent)
                 UpdateAvatarLayout(animate: true);
         }
+        else if (e.PropertyName is nameof(ArtistViewModel.HeaderHeroColorHex))
+        {
+            UpdatePageTint();
+        }
+    }
+
+    // Pixels of tint spill past the hero's bottom edge before the wash fully fades.
+    private const double PageTintSpillPx = 320;
+
+    private void UpdatePageTint()
+    {
+        if (PageTintFill == null) return;
+
+        if (!TintColorHelper.TryParseHex(ViewModel.HeaderHeroColorHex, out var parsed))
+        {
+            PageTintFill.Fill = null;
+            return;
+        }
+
+        // Size the rectangle to the current hero height plus a fixed spill tail.
+        // This keeps the fade anchored to the hero's bottom edge even as the
+        // user drags HeroSplitter to resize.
+        double heroH = HeroGrid.ActualHeight > 0 ? HeroGrid.ActualHeight : HeroRow.MinHeight;
+        double totalH = heroH + PageTintSpillPx;
+        PageTintFill.Height = totalH;
+
+        // Relative offsets: full tint through the hero region (hidden behind image),
+        // start fading right at the hero's bottom edge, fully transparent at the tail.
+        double heroBottomOffset = heroH / totalH;
+
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(0, 1)
+        };
+        brush.GradientStops.Add(new GradientStop
+        {
+            Offset = 0.0,
+            Color = Windows.UI.Color.FromArgb(140, parsed.R, parsed.G, parsed.B)
+        });
+        brush.GradientStops.Add(new GradientStop
+        {
+            Offset = heroBottomOffset,
+            Color = Windows.UI.Color.FromArgb(120, parsed.R, parsed.G, parsed.B)
+        });
+        brush.GradientStops.Add(new GradientStop
+        {
+            Offset = Math.Min(1.0, heroBottomOffset + (1.0 - heroBottomOffset) * 0.7),
+            Color = Windows.UI.Color.FromArgb(20, parsed.R, parsed.G, parsed.B)
+        });
+        brush.GradientStops.Add(new GradientStop
+        {
+            Offset = 1.0,
+            Color = Windows.UI.Color.FromArgb(0, parsed.R, parsed.G, parsed.B)
+        });
+        PageTintFill.Fill = brush;
     }
 
     /// <summary>

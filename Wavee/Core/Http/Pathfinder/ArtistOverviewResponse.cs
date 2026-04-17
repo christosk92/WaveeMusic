@@ -39,6 +39,9 @@ public sealed class ArtistUnion
     [JsonPropertyName("headerImage")]
     public ArtistHeaderImage? HeaderImage { get; init; }
 
+    [JsonPropertyName("visualIdentity")]
+    public ArtistVisualIdentity? VisualIdentity { get; init; }
+
     [JsonPropertyName("stats")]
     public ArtistStats? Stats { get; init; }
 
@@ -171,6 +174,60 @@ public sealed class ArtistHeaderImageData
 {
     [JsonPropertyName("sources")]
     public List<ArtistImageSource>? Sources { get; init; }
+}
+
+// ── Visual Identity (palette extracted by Spotify, present on the artist payload) ──
+
+public sealed class ArtistVisualIdentity
+{
+    [JsonPropertyName("wideFullBleedImage")]
+    public ArtistVisualIdentityImage? WideFullBleedImage { get; init; }
+}
+
+public sealed class ArtistVisualIdentityImage
+{
+    [JsonPropertyName("extractedColorSet")]
+    public ArtistExtractedColorSet? ExtractedColorSet { get; init; }
+}
+
+public sealed class ArtistExtractedColorSet
+{
+    [JsonPropertyName("highContrast")]
+    public ArtistExtractedColorPalette? HighContrast { get; init; }
+
+    [JsonPropertyName("higherContrast")]
+    public ArtistExtractedColorPalette? HigherContrast { get; init; }
+
+    [JsonPropertyName("minContrast")]
+    public ArtistExtractedColorPalette? MinContrast { get; init; }
+}
+
+public sealed class ArtistExtractedColorPalette
+{
+    [JsonPropertyName("backgroundBase")]
+    public ArtistRgbaColor? BackgroundBase { get; init; }
+
+    [JsonPropertyName("backgroundTintedBase")]
+    public ArtistRgbaColor? BackgroundTintedBase { get; init; }
+
+    [JsonPropertyName("textBase")]
+    public ArtistRgbaColor? TextBase { get; init; }
+
+    [JsonPropertyName("textBrightAccent")]
+    public ArtistRgbaColor? TextBrightAccent { get; init; }
+
+    [JsonPropertyName("textSubdued")]
+    public ArtistRgbaColor? TextSubdued { get; init; }
+}
+
+public sealed class ArtistRgbaColor
+{
+    [JsonPropertyName("alpha")] public int Alpha { get; init; }
+    [JsonPropertyName("red")]   public int Red   { get; init; }
+    [JsonPropertyName("green")] public int Green { get; init; }
+    [JsonPropertyName("blue")]  public int Blue  { get; init; }
+
+    public string ToHex() => $"#{Red:X2}{Green:X2}{Blue:X2}";
 }
 
 // ── Stats ──
@@ -664,6 +721,11 @@ public sealed class ArtistConcertLocation
 [JsonSerializable(typeof(AoArtistProfile))]
 [JsonSerializable(typeof(AoArtistVisuals))]
 [JsonSerializable(typeof(ArtistHeaderImage))]
+[JsonSerializable(typeof(ArtistVisualIdentity))]
+[JsonSerializable(typeof(ArtistVisualIdentityImage))]
+[JsonSerializable(typeof(ArtistExtractedColorSet))]
+[JsonSerializable(typeof(ArtistExtractedColorPalette))]
+[JsonSerializable(typeof(ArtistRgbaColor))]
 [JsonSerializable(typeof(ArtistStats))]
 [JsonSerializable(typeof(ArtistDiscography))]
 [JsonSerializable(typeof(ArtistRelatedContent))]

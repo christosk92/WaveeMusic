@@ -329,11 +329,11 @@ public sealed partial class HeroHeader : UserControl
             return;
         }
 
-        if (TryParseHexColor(hex, out var parsedColor))
+        if (TintColorHelper.TryParseHex(hex, out var parsedColor))
         {
-            var color = Darken(parsedColor, 0.42);
-            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(30, color.R, color.G, color.B);
-            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(120, color.R, color.G, color.B);
+            var color = TintColorHelper.BrightenForTint(parsedColor);
+            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(60, color.R, color.G, color.B);
+            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(210, color.R, color.G, color.B);
             if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 1f;
         }
         else
@@ -395,49 +395,4 @@ public sealed partial class HeroHeader : UserControl
             header.ApplyColor(e.NewValue as string);
     }
 
-    private static bool TryParseHexColor(string hex, out Windows.UI.Color color)
-    {
-        hex = hex.Trim().TrimStart('#');
-        if (hex.Length == 6)
-        {
-            if (byte.TryParse(hex[0..2], System.Globalization.NumberStyles.HexNumber, null, out var r)
-                && byte.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var g)
-                && byte.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out var b))
-            {
-                color = Windows.UI.Color.FromArgb(255, r, g, b);
-                return true;
-            }
-
-            color = default;
-            return false;
-        }
-
-        if (hex.Length == 8)
-        {
-            if (byte.TryParse(hex[0..2], System.Globalization.NumberStyles.HexNumber, null, out var a)
-                && byte.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var r)
-                && byte.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out var g)
-                && byte.TryParse(hex[6..8], System.Globalization.NumberStyles.HexNumber, null, out var b))
-            {
-                color = Windows.UI.Color.FromArgb(a, r, g, b);
-                return true;
-            }
-
-            color = default;
-            return false;
-        }
-
-        color = default;
-        return false;
-    }
-
-    private static Windows.UI.Color Darken(Windows.UI.Color color, double amount)
-    {
-        amount = Math.Clamp(amount, 0, 1);
-        return Windows.UI.Color.FromArgb(
-            color.A,
-            (byte)Math.Round(color.R * (1 - amount)),
-            (byte)Math.Round(color.G * (1 - amount)),
-            (byte)Math.Round(color.B * (1 - amount)));
-    }
 }

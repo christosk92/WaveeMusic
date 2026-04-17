@@ -360,12 +360,14 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         if (shouldBeNarrow && !_isNarrowMode)
         {
             _isNarrowMode = true;
+            LeftPanelColumn.MinWidth = 0;
             LeftPanelColumn.Width = new GridLength(0);
             VisualStateManager.GoToState(this, "NarrowState", true);
         }
         else if (!shouldBeNarrow && _isNarrowMode)
         {
             _isNarrowMode = false;
+            LeftPanelColumn.MinWidth = 200;
             var albumId = ViewModel.AlbumId;
             if (!string.IsNullOrEmpty(albumId))
                 RestoreAlbumPanelWidth(albumId);

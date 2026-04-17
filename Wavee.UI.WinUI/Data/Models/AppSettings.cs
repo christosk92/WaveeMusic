@@ -151,6 +151,14 @@ public sealed class AppSettings
     /// </summary>
     public bool FeedbackAnonymous { get; set; } = true;
 
+    // ── Diagnostics / Logging ──
+
+    /// <summary>
+    /// When true, the app logs at Verbose level (and the audio process is started with --verbose).
+    /// When false, the app logs at Information level. Off by default to keep production logs small.
+    /// </summary>
+    public bool VerboseLoggingEnabled { get; set; }
+
     // ── Updates ──
 
     /// <summary>

@@ -118,11 +118,12 @@
                 IsHitTestVisible="False"/>
 
             <Grid
-                Margin="16,16,16,86"
+                Margin="16"
                 RowSpacing="12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border
@@ -169,7 +170,7 @@
                         FontSize="26"
                         FontWeight="Black"
                         Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
-                        MaxLines="3"
+                        MaxLines="2"
                         TextTrimming="CharacterEllipsis"/>
                     <TextBlock x:Uid="Controls_Cards_BaselineHomeCard__TextBlock_1"
                         x:Name="TypeText"
@@ -181,6 +182,47 @@
                         MaxLines="1"
                         TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
+
+                <Grid Grid.Row="2">
+                    <Border
+                        x:Name="PlayingIndicator"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        Padding="6,3"
+                        CornerRadius="6"
+                        Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                        Visibility="Collapsed">
+                        <cards:LottieEqualizer
+                            x:Name="PlayingEqualizer"
+                            IconSize="22"/>
+                    </Border>
+
+                    <Button
+                        x:Name="ContextPlayButton"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Width="42"
+                        Height="42"
+                        CornerRadius="21"
+                        Padding="0"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Click="ContextPlayButton_Click"
+                        Visibility="Collapsed">
+                        <Grid>
+                            <FontIcon
+                                x:Name="ContextPlayButtonIcon"
+                                Glyph="&#xE768;"
+                                FontSize="18"/>
+                            <ProgressRing
+                                x:Name="ContextPlayButtonSpinner"
+                                Width="20"
+                                Height="20"
+                                IsActive="False"
+                                Visibility="Collapsed"
+                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                        </Grid>
+                    </Button>
+                </Grid>
             </Grid>
 
             <Grid
@@ -271,46 +313,6 @@
                     Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
             </Button>
 
-            <Button
-                x:Name="ContextPlayButton"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                Margin="0,0,14,14"
-                Width="42"
-                Height="42"
-                CornerRadius="21"
-                Padding="0"
-                Style="{StaticResource AccentButtonStyle}"
-                Click="ContextPlayButton_Click"
-                Visibility="Collapsed">
-                <Grid>
-                    <FontIcon
-                        x:Name="ContextPlayButtonIcon"
-                        Glyph="&#xE768;"
-                        FontSize="18"/>
-                    <ProgressRing
-                        x:Name="ContextPlayButtonSpinner"
-                        Width="20"
-                        Height="20"
-                        IsActive="False"
-                        Visibility="Collapsed"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                </Grid>
-            </Button>
-
-            <Border
-                x:Name="PlayingIndicator"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Bottom"
-                Margin="14,0,0,14"
-                Padding="6,3"
-                CornerRadius="6"
-                Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
-                Visibility="Collapsed">
-                <cards:LottieEqualizer
-                    x:Name="PlayingEqualizer"
-                    IconSize="22"/>
-            </Border>
         </Grid>
 
         <Border

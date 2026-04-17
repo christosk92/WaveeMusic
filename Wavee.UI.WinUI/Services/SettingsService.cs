@@ -72,6 +72,32 @@ public sealed class SettingsService : ISettingsService, IDisposable
         return "system";
     }
 
+    /// <summary>
+    /// Reads ONLY the <c>VerboseLoggingEnabled</c> field. Used by <c>AppLifecycleHelper</c>
+    /// before DI is built so the Serilog level switch can be initialised on first log call.
+    /// Falls back to <c>false</c> on any failure.
+    /// </summary>
+    public static bool PeekVerboseLogging()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return false;
+
+            using var stream = File.OpenRead(SettingsPath);
+            using var doc = JsonDocument.Parse(stream);
+            if (doc.RootElement.TryGetProperty("VerboseLoggingEnabled", out var prop)
+                && (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
+            {
+                return prop.GetBoolean();
+            }
+        }
+        catch
+        {
+            // Any exception falls through to the default.
+        }
+        return false;
+    }
+
     public static string PeekSpotifyMetadataLanguage()
     {
         try

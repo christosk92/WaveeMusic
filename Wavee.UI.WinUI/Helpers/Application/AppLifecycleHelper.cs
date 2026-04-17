@@ -27,6 +27,7 @@ using Wavee.UI.WinUI.Data;
 using Wavee.UI.WinUI.ViewModels;
 using System.Collections.Generic;
 using Serilog;
+using Serilog.Core;
 using Serilog.Extensions.Logging;
 using Wavee.Controls.Lyrics.Services.LocalizationService;
 using Wavee.UI.Contracts;
@@ -59,6 +60,27 @@ public static class AppLifecycleHelper
     public static Wavee.AudioIpc.AudioProcessManager? AudioProcessManager => _audioProcessManager;
 
     /// <summary>
+    /// Serilog level switch driving the file + in-memory sinks. Flipped at runtime by the
+    /// "Verbose logging" toggle in the Diagnostics settings — no app restart required.
+    /// Initialised in <see cref="ConfigureHost"/>.
+    /// </summary>
+    public static LoggingLevelSwitch LogLevelSwitch { get; } = new(Serilog.Events.LogEventLevel.Information);
+
+    /// <summary>
+    /// Apply a verbose-logging change at runtime. Flips the Serilog level switch and tells
+    /// the audio process to do the same on its next restart (live forwarding could be added
+    /// over IPC later).
+    /// </summary>
+    public static void SetVerboseLogging(bool enabled)
+    {
+        LogLevelSwitch.MinimumLevel = enabled
+            ? Serilog.Events.LogEventLevel.Verbose
+            : Serilog.Events.LogEventLevel.Information;
+        Wavee.AudioIpc.AudioProcessManager.UseVerboseLogging = enabled;
+        Log.Information("Verbose logging {State}", enabled ? "ENABLED" : "DISABLED");
+    }
+
+    /// <summary>
     /// Set to true to use a separate audio process for GC isolation.
     /// When false (default), the AudioPipeline runs in-process as before.
     /// </summary>
@@ -67,15 +89,26 @@ public static class AppLifecycleHelper
     public static IHost ConfigureHost()
     {
         _uiDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+        // Initial switch level: Verbose if user opted in (or DEBUG build), otherwise Information.
+        // The switch is mutable at runtime — see SetVerboseLogging.
+        var verboseEnabled = SettingsService.PeekVerboseLogging();
 #if DEBUG
-        const Serilog.Events.LogEventLevel appMinimumLogLevel = Serilog.Events.LogEventLevel.Debug;
-        const Serilog.Events.LogEventLevel inMemoryMinimumLogLevel = Serilog.Events.LogEventLevel.Debug;
-        const LogLevel hostMinimumLogLevel = LogLevel.Debug;
+        LogLevelSwitch.MinimumLevel = Serilog.Events.LogEventLevel.Debug;
 #else
-        const Serilog.Events.LogEventLevel appMinimumLogLevel = Serilog.Events.LogEventLevel.Information;
-        const Serilog.Events.LogEventLevel inMemoryMinimumLogLevel = Serilog.Events.LogEventLevel.Warning;
-        const LogLevel hostMinimumLogLevel = LogLevel.Information;
+        LogLevelSwitch.MinimumLevel = verboseEnabled
+            ? Serilog.Events.LogEventLevel.Verbose
+            : Serilog.Events.LogEventLevel.Information;
 #endif
+        // Microsoft/System are noisy at Information; keep them at Warning unless verbose mode is on.
+        var noisyOverride = verboseEnabled
+            ? Serilog.Events.LogEventLevel.Information
+            : Serilog.Events.LogEventLevel.Warning;
+        // Microsoft.Extensions.Logging passes EVERYTHING to Serilog; Serilog's own switch is the gate.
+        const LogLevel hostMinimumLogLevel = LogLevel.Trace;
+
+        // Propagate to the audio process so its CLI flag matches at first launch.
+        Wavee.AudioIpc.AudioProcessManager.UseVerboseLogging = verboseEnabled;
 
         var rxuiInstance = RxAppBuilder.CreateReactiveUIBuilder()
             .WithWinUI() // Register WinUI platform services
@@ -86,10 +119,15 @@ public static class AppLifecycleHelper
         var inMemorySink = new InMemorySink(_uiDispatcher);
         Directory.CreateDirectory(AppPaths.LogsDirectory);
 
+        // Output template includes SourceContext so log files identify the originating class —
+        // a small but huge readability win for production debugging.
+        const string fileOutputTemplate =
+            "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
+
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Is(appMinimumLogLevel)
-            .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Information)
-            .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Information)
+            .MinimumLevel.ControlledBy(LogLevelSwitch)
+            .MinimumLevel.Override("Microsoft", noisyOverride)
+            .MinimumLevel.Override("System", noisyOverride)
             .WriteTo.Debug()
             .WriteTo.File(
                 path: AppPaths.RollingLogFilePath,
@@ -99,10 +137,13 @@ public static class AppLifecycleHelper
                 fileSizeLimitBytes: 10 * 1024 * 1024,
                 shared: true,
                 flushToDiskInterval: TimeSpan.FromSeconds(1),
-                restrictedToMinimumLevel: appMinimumLogLevel)
-            .WriteTo.Sink(inMemorySink, restrictedToMinimumLevel: inMemoryMinimumLogLevel)
+                outputTemplate: fileOutputTemplate)
+            .WriteTo.Sink(inMemorySink)
             .Enrich.FromLogContext()
             .CreateLogger();
+
+        Log.Information("Logger initialised — minLevel={Level}, verbose={Verbose}",
+            LogLevelSwitch.MinimumLevel, verboseEnabled);
 
         // Read the caching profile BEFORE the DI container is built. Cache services
         // are singletons constructed at container build time, so we need their capacities

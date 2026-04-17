@@ -324,9 +324,10 @@ public sealed partial class RightPanelView : UserControl
         {
             _lastDetailsSnippetUpdateTickMs = -1;
             _lastSnippetLineIndex = -1;
-            // Track changes arrive before fresh details/canvas metadata, so immediately
-            // fall back to the album-art treatment until the details VM resolves again.
-            ResetBackgroundTint();
+            // Track changes arrive AFTER CurrentAlbumArt updates (see PlaybackStateService),
+            // so the in-flight color extraction kicked off by the AlbumArt change is still
+            // racing here. Don't reset the tint state — that would cancel the extraction and
+            // strand the panel on the fallback color. Just clear the canvas treatment.
             ApplyDetailsBackground(null, false);
             UpdateBackgroundChrome();
         }

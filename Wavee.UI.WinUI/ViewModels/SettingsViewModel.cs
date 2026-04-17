@@ -540,6 +540,24 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _pipelineControl?.SetNormalizationEnabled(value);
     }
 
+    // ── Verbose logging ──
+
+    /// <summary>
+    /// When on, drops the Serilog minimum level to Verbose for the UI process and starts the
+    /// audio process with --verbose on its next launch. Persisted to settings.json.
+    /// </summary>
+    public bool VerboseLoggingEnabled
+    {
+        get => _settingsService.Settings.VerboseLoggingEnabled;
+        set
+        {
+            if (_settingsService.Settings.VerboseLoggingEnabled == value) return;
+            _settingsService.Update(s => s.VerboseLoggingEnabled = value);
+            AppLifecycleHelper.SetVerboseLogging(value);
+            OnPropertyChanged();
+        }
+    }
+
     // ── Lyrics sources ──
 
     private static readonly (string Name, string Description)[] DefaultLyricsSources =
