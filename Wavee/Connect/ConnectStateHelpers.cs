@@ -34,9 +34,11 @@ public static class ConnectStateHelpers
     public static DeviceInfo CreateDeviceInfo(
         SessionConfig config,
         int volume = MaxVolume / 2,
-        int volumeSteps = DefaultVolumeSteps)
+        int volumeSteps = DefaultVolumeSteps,
+        string? audioOutputDeviceName = null,
+        AudioOutputDeviceType audioOutputDeviceType = AudioOutputDeviceType.UnknownAudioOutputDeviceType)
     {
-        return new DeviceInfo
+        var info = new DeviceInfo
         {
             CanPlay = true,
             Volume = (uint)Math.Clamp(volume, 0, MaxVolume),
@@ -48,6 +50,20 @@ public static class ConnectStateHelpers
             SpircVersion = SpircVersion,
             Capabilities = CreateDefaultCapabilities(volumeSteps)
         };
+
+        // audio_output_device_info — Spotify desktop emits this on every DeviceInfo
+        // so remote "Connect to" sheets can show the speaker/headphone we're routing
+        // to. Populate when we know the current PortAudio-selected device.
+        if (!string.IsNullOrEmpty(audioOutputDeviceName))
+        {
+            info.AudioOutputDeviceInfo = new AudioOutputDeviceInfo
+            {
+                DeviceName = audioOutputDeviceName,
+                AudioOutputDeviceType = audioOutputDeviceType
+            };
+        }
+
+        return info;
     }
 
     /// <summary>

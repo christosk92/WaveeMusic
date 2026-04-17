@@ -47,10 +47,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private CachedSearchSuggestions? _recentSearchesCache;
     private string _activeSearchText = string.Empty;
     private bool _restoringTabSession;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _tabSleepTimer;
+    private DateTimeOffset _lastTabSleepMemoryReleaseUtc = DateTimeOffset.MinValue;
 
     private const int MaxCachedSuggestionQueries = 24;
     private static readonly TimeSpan RecentSearchesCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan QuerySuggestionsCacheLifetime = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan TabSleepTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan TabSleepEvaluationInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan TabSleepMemoryReleaseThrottle = TimeSpan.FromSeconds(45);
 
     // UI element references for cleanup
     private Microsoft.UI.Xaml.Controls.SplitButton? _playlistsSplitButton;
@@ -217,6 +222,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         InitializeSidebarItems();
         ApplyPersistedSidebarState();
         TabInstances.CollectionChanged += OnTabInstancesCollectionChanged;
+        InitializeTabSleepTimer();
         _ = LoadLibraryDataAsync();
     }
 
@@ -604,7 +610,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             or nameof(TabBarItem.ToolTipText)
             or nameof(TabBarItem.IsPinned)
             or nameof(TabBarItem.IsCompact)
-            or nameof(TabBarItem.IconSource))
+            or nameof(TabBarItem.IconSource)
+            or nameof(TabBarItem.IsSleeping))
         {
             PersistTabSession();
         }
@@ -670,7 +677,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             TabSwitchDirection = newValue > oldValue ? 1 : (newValue < oldValue ? -1 : 0);
             _previousTabIndex = oldValue;
 
-            SelectedTabItem = TabInstances[newValue];
+            var nextTab = TabInstances[newValue];
+            if (nextTab.IsSleeping)
+                WakeTab(nextTab);
+            else
+                nextTab.MarkActivated();
+
+            SelectedTabItem = nextTab;
         }
 
         _appModel.TabStripSelectedIndex = newValue;
@@ -696,6 +709,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void TabItem_Navigated(object? sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
+        if (sender is TabBarItem tab)
+            tab.MarkActivated();
+
         UpdateNavigationState();
     }
 
@@ -794,6 +810,47 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // DirectComposition both lazy-release and the working set stays elevated until
         // the next gen2 collection many seconds later.
         Services.MemoryReleaseHelper.ReleaseWorkingSet(_logger, "tab-close");
+    }
+
+    public void ToggleTabSleep(TabBarItem? tab)
+    {
+        if (tab == null)
+            return;
+
+        if (tab.IsSleeping)
+        {
+            WakeTab(tab);
+            return;
+        }
+
+        SleepTab(tab);
+    }
+
+    public void SleepTab(TabBarItem? tab)
+    {
+        if (tab == null)
+            return;
+
+        if (ReferenceEquals(tab, SelectedTabItem))
+            return;
+
+        if (!tab.Sleep())
+            return;
+
+        PersistTabSession();
+        MaybeReleaseMemoryAfterTabSleep("tab-sleep");
+    }
+
+    public void WakeTab(TabBarItem? tab)
+    {
+        if (tab == null)
+            return;
+
+        if (!tab.Wake())
+            return;
+
+        PersistTabSession();
+        UpdateNavigationState();
     }
 
     public void GoBack()
@@ -999,6 +1056,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Cleanup()
     {
+        if (_tabSleepTimer != null)
+        {
+            _tabSleepTimer.Stop();
+            _tabSleepTimer.Tick -= TabSleepTimer_Tick;
+            _tabSleepTimer = null;
+        }
+
         _searchDebouncer.Dispose();
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
@@ -1034,6 +1098,54 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <inheritdoc />
     public void Dispose() => Cleanup();
+
+    private void InitializeTabSleepTimer()
+    {
+        var dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (dispatcherQueue == null)
+            return;
+
+        _tabSleepTimer = dispatcherQueue.CreateTimer();
+        _tabSleepTimer.Interval = TabSleepEvaluationInterval;
+        _tabSleepTimer.IsRepeating = true;
+        _tabSleepTimer.Tick += TabSleepTimer_Tick;
+        _tabSleepTimer.Start();
+    }
+
+    private void TabSleepTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var sleptAnyTabs = false;
+
+        for (var i = 0; i < TabInstances.Count; i++)
+        {
+            var tab = TabInstances[i];
+            if (ReferenceEquals(tab, SelectedTabItem) || tab.IsPinned || tab.IsSleeping)
+                continue;
+
+            if (now - tab.LastActivatedAtUtc < TabSleepTimeout)
+                continue;
+
+            if (tab.Sleep())
+                sleptAnyTabs = true;
+        }
+
+        if (!sleptAnyTabs)
+            return;
+
+        PersistTabSession();
+        MaybeReleaseMemoryAfterTabSleep("auto-tab-sleep");
+    }
+
+    private void MaybeReleaseMemoryAfterTabSleep(string reason)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastTabSleepMemoryReleaseUtc < TabSleepMemoryReleaseThrottle)
+            return;
+
+        _lastTabSleepMemoryReleaseUtc = now;
+        Services.MemoryReleaseHelper.ReleaseWorkingSet(_logger, reason);
+    }
 
     private bool TryGetCachedRecentSearches(out List<SearchSuggestionItem> items, out bool isFresh)
     {

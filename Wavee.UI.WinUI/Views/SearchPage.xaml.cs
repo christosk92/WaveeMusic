@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Search;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers;
@@ -18,12 +19,14 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class SearchPage : Page
+public sealed partial class SearchPage : Page, ITabSleepParticipant
 {
     public SearchViewModel ViewModel { get; }
 
     private readonly IColorService? _colorService;
     private readonly ILogger? _logger;
+    private SearchPageSleepState? _pendingSleepState;
+    private bool _sleepFilterRestoreRequested;
 
     // Bumped on every TopResult change so late color-fetch results can be dropped
     // (the user may have typed more while the previous fetch was in flight).
@@ -50,6 +53,16 @@ public sealed partial class SearchPage : Page
         if (e.PropertyName == nameof(SearchViewModel.TopResult))
         {
             _ = FetchAndApplyTopResultColorAsync(ViewModel.TopResult);
+        }
+
+        if (e.PropertyName == nameof(SearchViewModel.SelectedFilter))
+        {
+            UpdateFilterSelection();
+        }
+
+        if (e.PropertyName == nameof(SearchViewModel.IsLoading) && !ViewModel.IsLoading)
+        {
+            TryApplyPendingSleepState();
         }
     }
 
@@ -96,6 +109,9 @@ public sealed partial class SearchPage : Page
         {
             _ = ViewModel.LoadAsync(query);
         }
+
+        UpdateFilterSelection();
+        TryApplyPendingSleepState();
     }
 
     private void FilterChip_Click(object sender, RoutedEventArgs e)
@@ -147,4 +163,63 @@ public sealed partial class SearchPage : Page
                 break;
         }
     }
+
+    public object? CaptureSleepState()
+        => new SearchPageSleepState(
+            ViewModel.Query,
+            ViewModel.SelectedFilter,
+            PageScrollView?.VerticalOffset ?? 0);
+
+    public void RestoreSleepState(object? state)
+    {
+        _pendingSleepState = state as SearchPageSleepState;
+        _sleepFilterRestoreRequested = false;
+        TryApplyPendingSleepState();
+    }
+
+    private void TryApplyPendingSleepState()
+    {
+        if (_pendingSleepState == null || ViewModel.IsLoading || PageScrollView == null)
+            return;
+
+        var state = _pendingSleepState;
+
+        if (!string.IsNullOrWhiteSpace(state.Query)
+            && !string.Equals(ViewModel.Query, state.Query, StringComparison.Ordinal))
+        {
+            _ = ViewModel.LoadAsync(state.Query);
+            return;
+        }
+
+        if (!_sleepFilterRestoreRequested && ViewModel.SelectedFilter != state.SelectedFilter)
+        {
+            _sleepFilterRestoreRequested = true;
+            ViewModel.SelectedFilter = state.SelectedFilter;
+            return;
+        }
+
+        _pendingSleepState = null;
+        _sleepFilterRestoreRequested = false;
+
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => PageScrollView.ScrollTo(0, state.VerticalOffset));
+    }
+
+    private void UpdateFilterSelection()
+    {
+        if (FilterAll == null)
+            return;
+
+        FilterAll.IsChecked = ViewModel.SelectedFilter == SearchFilterType.All;
+        FilterSongs.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Songs;
+        FilterArtists.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Artists;
+        FilterAlbums.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Albums;
+        FilterPlaylists.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Playlists;
+    }
+
+    private sealed record SearchPageSleepState(
+        string? Query,
+        SearchFilterType SelectedFilter,
+        double VerticalOffset);
 }

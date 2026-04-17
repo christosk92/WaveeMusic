@@ -32,13 +32,20 @@
             <DataTemplate x:DataType="local:TabBarItem">
                 <TabViewItem
                     IconSource="{x:Bind IconSource, Mode=OneWay}"
-                    ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind DisplayToolTipText, Mode=OneWay}"
                     Style="{StaticResource TabBarItemStyle}"
                     MaxWidth="{x:Bind CompactWidth, Mode=OneWay}"
+                    Opacity="{x:Bind TabOpacity, Mode=OneWay}"
                     IsClosable="True">
                     <TabViewItem.HeaderTemplate>
                         <DataTemplate x:DataType="local:TabBarItem">
                             <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon
+                                    Glyph="&#xE708;"
+                                    FontSize="11"
+                                    Opacity="0.85"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Visibility="{x:Bind SleepIndicatorVisibility, Mode=OneWay}" />
                                 <FontIcon
                                     Glyph="&#xE718;"
                                     FontSize="12"
@@ -58,6 +65,11 @@
                             <MenuFlyoutItem x:Uid="Controls_TabBar_TabBar__MenuFlyoutItem_1" x:Name="CompactMenuItem" Text="Compact" Click="CompactTab_Click" Tag="{x:Bind}">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE921;"/>
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="SleepMenuItem" Text="Sleep Tab" Click="SleepTab_Click" Tag="{x:Bind}">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE708;"/>
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator/>

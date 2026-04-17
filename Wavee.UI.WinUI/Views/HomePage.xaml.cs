@@ -24,12 +24,13 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class HomePage : Page, ITabBarItemContent, IDisposable
+public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepParticipant, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly HomeFeedCache? _cache;
     private bool _isShimmerContentReleased;
     private bool _isDisposed;
+    private HomePageSleepState? _pendingSleepState;
 
     public HomeViewModel ViewModel { get; }
 
@@ -68,6 +69,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, IDisposable
                 CrossfadeToContent();
             }
         }
+
+        if (e.PropertyName == nameof(ViewModel.IsLoading) && !ViewModel.IsLoading)
+            TryApplyPendingSleepState();
     }
 
     private void OnCacheDataRefreshed(HomeFeedSnapshot snapshot)
@@ -204,12 +208,34 @@ public sealed partial class HomePage : Page, ITabBarItemContent, IDisposable
         (ViewModel as IDisposable)?.Dispose();
     }
 
+    public object? CaptureSleepState()
+        => new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
+
+    public void RestoreSleepState(object? state)
+    {
+        _pendingSleepState = state as HomePageSleepState;
+        TryApplyPendingSleepState();
+    }
+
     private void CleanupSubscriptions()
     {
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         if (_cache != null)
             _cache.DataRefreshed -= OnCacheDataRefreshed;
+    }
+
+    private void TryApplyPendingSleepState()
+    {
+        if (_pendingSleepState == null || ViewModel.IsLoading || ContentContainer == null)
+            return;
+
+        var state = _pendingSleepState;
+        _pendingSleepState = null;
+
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => ContentContainer.ScrollTo(0, state.VerticalOffset));
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──
@@ -520,6 +546,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent, IDisposable
         if (chip != null)
             _ = ViewModel.SelectChipCommand.ExecuteAsync(chip);
     }
+
+    private sealed record HomePageSleepState(double VerticalOffset);
 }
 
 /// <summary>

@@ -61,6 +61,7 @@ public sealed partial class TabBar : UserControl
 
     // Events - just forward to ViewModel, don't handle internally
     public event EventHandler<TabBarItem>? TabCloseRequested;
+    public event EventHandler<TabBarItem>? TabSleepToggleRequested;
     public event EventHandler? AddTabRequested;
 
     private void TabView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -185,6 +186,14 @@ public sealed partial class TabBar : UserControl
                                 compactIcon.Glyph = tab.IsCompact ? "\uE923" : "\uE921"; // Restore : Minimize
                             }
                         }
+                        else if (menuItem.Name == "SleepMenuItem")
+                        {
+                            menuItem.Text = tab.IsSleeping ? "Wake Tab" : "Sleep Tab";
+                            menuItem.IsEnabled = tab.IsSleeping || (TabInstances?.IndexOf(tab) != SelectedIndex);
+
+                            if (menuItem.Icon is FontIcon sleepIcon)
+                                sleepIcon.Glyph = tab.IsSleeping ? "\uE768" : "\uE708";
+                        }
                     }
                 }
             }
@@ -205,6 +214,14 @@ public sealed partial class TabBar : UserControl
         if (sender is MenuFlyoutItem item && item.Tag is TabBarItem tab)
         {
             tab.IsCompact = !tab.IsCompact;
+        }
+    }
+
+    private void SleepTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem item && item.Tag is TabBarItem tab)
+        {
+            TabSleepToggleRequested?.Invoke(this, tab);
         }
     }
 

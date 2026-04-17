@@ -378,7 +378,11 @@ public static class PlaybackStateHelpers
             Timestamp = localState.Timestamp,
             Source = localState.Source ?? StateSource.Local,
             SessionId = sessionId,
-            CanSeek = localState.CanSeek
+            CanSeek = localState.CanSeek,
+            IsSystemInitiated = localState.IsSystemInitiated,
+            ContextDescription = !string.IsNullOrEmpty(localState.ContextDescription)
+                ? localState.ContextDescription
+                : prev.ContextDescription
         };
 
         // The AudioHost supplies UpstreamChanges as a hint derived from its own
@@ -403,13 +407,18 @@ public static class PlaybackStateHelpers
     /// <returns>PlayerState protobuf message.</returns>
     public static PlayerState ToPlayerState(PlaybackState state, string deviceId)
     {
+        var contextUri = state.ContextUri ?? state.Track?.Uri ?? string.Empty;
+
         var playerState = new PlayerState
         {
             Timestamp = state.Timestamp,
             // When no playlist/album context, the track itself is the context
-            ContextUri = state.ContextUri ?? state.Track?.Uri ?? string.Empty,
-            // ContextUrl format: "context://<uri>" (from librespot)
-            ContextUrl = state.ContextUrl ?? string.Empty,
+            ContextUri = contextUri,
+            // context://<uri> — librespot emits this; web player uses it for deep-links.
+            // Prefer engine-supplied ContextUrl, otherwise synthesize from ContextUri.
+            ContextUrl = !string.IsNullOrEmpty(state.ContextUrl)
+                ? state.ContextUrl
+                : (!string.IsNullOrEmpty(contextUri) ? $"context://{contextUri}" : string.Empty),
             Position = state.PositionMs,
             PositionAsOfTimestamp = state.PositionMs,
             Duration = state.DurationMs,
@@ -427,13 +436,16 @@ public static class PlaybackStateHelpers
             PlaybackId = Guid.NewGuid().ToString("N"),  // 32-char hex, new per publish
             SessionId = state.SessionId ?? Guid.NewGuid().ToString("N"),
             QueueRevision = state.QueueRevision ?? string.Empty,
-            IsSystemInitiated = true,
+            // Only true for autoplay rollover / transfer resume. User-initiated play is false.
+            IsSystemInitiated = state.IsSystemInitiated,
 
-            // Play origin - required for Spotify to recognize source
+            // Play origin - required for Spotify to recognize source.
+            // NOTE: omit device_identifier — Spotify desktop doesn't populate it here
+            // (the authoritative device lives in cluster.active_device_id).
             PlayOrigin = new PlayOrigin
             {
-                DeviceIdentifier = deviceId,
-                FeatureIdentifier = "wavee"
+                FeatureIdentifier = "wavee",
+                FeatureVersion = "Wavee/1.0.0.0"
             },
 
             // Context index - actual position in queue
@@ -442,15 +454,21 @@ public static class PlaybackStateHelpers
             // Suppressions - required empty message
             Suppressions = new Suppressions(),
 
-            // CRITICAL: Restrictions control which buttons are enabled on remote devices
+            // Track/player-level restrictions (pause/skip/seek gating).
             Restrictions = BuildRestrictions(state),
-            ContextRestrictions = BuildRestrictions(state),
+            // Context-level disables (DJ lock, ads, radio). Empty by default —
+            // populated only when the engine reports a real context-level constraint.
+            ContextRestrictions = BuildContextRestrictions(state),
 
             Options = new ContextPlayerOptions
             {
                 ShufflingContext = state.Options.Shuffling,
                 RepeatingContext = state.Options.RepeatingContext,
                 RepeatingTrack = state.Options.RepeatingTrack
+                // TODO: ContextPlayerOptions.modes (context_enhancement/media/jam) is a newer
+                // Spotify field not yet in our player.proto. Adding it requires the correct
+                // field number from Spotify's internal proto; picking one blindly risks
+                // breaking server-side parsing. Leave until field numbers can be confirmed.
             },
 
             // Playback quality info (prevents incorrect "Lossless" display on web player)
@@ -462,18 +480,31 @@ public static class PlaybackStateHelpers
                 TargetBitrateAvailable = true,
                 HifiStatus = HiFiStatus.Off                 // Not lossless
             }
+            // TODO: signals / session_command_id / sleep_timer are newer Spotify
+            // fields not present in our player.proto. Adding them requires correct
+            // field numbers from Spotify's internal proto — deferred until verified.
         };
+
+        // context_metadata — parity with what Spotify desktop emits so remote
+        // "Now Playing" cards can show the context subtitle.
+        playerState.ContextMetadata["player.arch"] = "2";
+        playerState.ContextMetadata["mixer_enabled"] = state.MixerEnabled ? "true" : "false";
+        if (!string.IsNullOrEmpty(state.ContextDescription))
+        {
+            playerState.ContextMetadata["context_description"] = state.ContextDescription;
+        }
 
         // Add track if present
         if (state.Track != null)
         {
+            // NOTE: intentionally do NOT set top-level AlbumUri/ArtistUri on ProvidedTrack —
+            // Spotify desktop keeps those only in the metadata map. Some clients
+            // double-read otherwise. Metadata-map population happens below.
             playerState.Track = new ProvidedTrack
             {
                 Uri = state.Track.Uri,
                 Uid = state.Track.Uid ?? string.Empty,
-                Provider = "context",  // Required: indicates track source
-                AlbumUri = state.Track.AlbumUri ?? string.Empty,
-                ArtistUri = state.Track.ArtistUri ?? string.Empty
+                Provider = "context"  // Required: indicates track source
             };
 
             // Add base metadata from state.Track.Metadata
@@ -525,44 +556,99 @@ public static class PlaybackStateHelpers
             meta["actions.skipping_prev_past_track"] = "resume";
         }
 
-        // Add previous tracks (up to 16) - prefer rich queue data
-        foreach (var item in state.PrevQueue.Take(16))
+        // Add previous tracks (up to 16) - prefer rich queue data.
+        // view_index counts down from (currentIndex - 1) to 0 for prev tracks.
         {
-            playerState.PrevTracks.Add(QueueItemToProvidedTrack(item));
+            var prevItems = state.PrevQueue.Take(16).ToList();
+            var viewIndexStart = Math.Max(0, state.CurrentIndex - prevItems.Count);
+            for (var i = 0; i < prevItems.Count; i++)
+            {
+                var pt = QueueItemToProvidedTrack(prevItems[i], contextUri);
+                if (!pt.Metadata.ContainsKey("hidden"))
+                    pt.Metadata["view_index"] = (viewIndexStart + i).ToString();
+                playerState.PrevTracks.Add(pt);
+            }
         }
 
         // Fallback: use thin TrackReference if PrevQueue is empty
         if (playerState.PrevTracks.Count == 0)
         {
-            foreach (var track in state.PrevTracks.Take(16))
+            var thinPrev = state.PrevTracks.Take(16).ToList();
+            var viewIndexStart = Math.Max(0, state.CurrentIndex - thinPrev.Count);
+            for (var i = 0; i < thinPrev.Count; i++)
             {
-                playerState.PrevTracks.Add(new ProvidedTrack
+                var track = thinPrev[i];
+                var pt = new ProvidedTrack
                 {
                     Uri = track.Uri, Uid = track.Uid,
-                    Provider = track.IsUserQueued ? "queue" : "context",
-                    AlbumUri = track.AlbumUri ?? string.Empty, ArtistUri = track.ArtistUri ?? string.Empty
-                });
+                    Provider = track.IsUserQueued ? "queue" : "context"
+                };
+                if (!string.IsNullOrEmpty(track.AlbumUri)) pt.Metadata["album_uri"] = track.AlbumUri;
+                if (!string.IsNullOrEmpty(track.ArtistUri)) pt.Metadata["artist_uri"] = track.ArtistUri;
+                if (!string.IsNullOrEmpty(contextUri))
+                {
+                    pt.Metadata["context_uri"] = contextUri;
+                    pt.Metadata["entity_uri"] = contextUri;
+                }
+                pt.Metadata["track_player"] = "audio";
+                pt.Metadata["iteration"] = "0";
+                pt.Metadata["view_index"] = (viewIndexStart + i).ToString();
+                playerState.PrevTracks.Add(pt);
             }
         }
 
-        // Add next tracks (up to 48) - prefer rich queue data
-        foreach (var item in state.NextQueue.Take(48))
+        // Add next tracks (up to 48) - prefer rich queue data.
+        // view_index continues from (currentIndex + 1) upward.
         {
-            playerState.NextTracks.Add(QueueItemToProvidedTrack(item));
+            var nextItems = state.NextQueue.Take(48).ToList();
+            for (var i = 0; i < nextItems.Count; i++)
+            {
+                var pt = QueueItemToProvidedTrack(nextItems[i], contextUri);
+                if (!pt.Metadata.ContainsKey("hidden"))
+                    pt.Metadata["view_index"] = (state.CurrentIndex + 1 + i).ToString();
+                playerState.NextTracks.Add(pt);
+            }
         }
 
         // Fallback: use thin TrackReference if NextQueue is empty
         if (playerState.NextTracks.Count == 0)
         {
-            foreach (var track in state.NextTracks.Take(48))
+            var thinNext = state.NextTracks.Take(48).ToList();
+            for (var i = 0; i < thinNext.Count; i++)
             {
-                playerState.NextTracks.Add(new ProvidedTrack
+                var track = thinNext[i];
+                var pt = new ProvidedTrack
                 {
                     Uri = track.Uri, Uid = track.Uid,
-                    Provider = track.IsUserQueued ? "queue" : "context",
-                    AlbumUri = track.AlbumUri ?? string.Empty, ArtistUri = track.ArtistUri ?? string.Empty
-                });
+                    Provider = track.IsUserQueued ? "queue" : "context"
+                };
+                if (!string.IsNullOrEmpty(track.AlbumUri)) pt.Metadata["album_uri"] = track.AlbumUri;
+                if (!string.IsNullOrEmpty(track.ArtistUri)) pt.Metadata["artist_uri"] = track.ArtistUri;
+                if (!string.IsNullOrEmpty(contextUri))
+                {
+                    pt.Metadata["context_uri"] = contextUri;
+                    pt.Metadata["entity_uri"] = contextUri;
+                }
+                pt.Metadata["track_player"] = "audio";
+                pt.Metadata["iteration"] = "0";
+                pt.Metadata["view_index"] = (state.CurrentIndex + 1 + i).ToString();
+                playerState.NextTracks.Add(pt);
             }
+        }
+
+        // Pagination hints — Spotify desktop appends hidden spotify:meta:page:N
+        // markers so paged clients know where the queue "cuts." Emit pages 2..64
+        // to match their shape; the existing ExtractQueueItems filter drops these
+        // on ingest so round-trip is stable.
+        for (var page = 2; page <= 64; page++)
+        {
+            playerState.NextTracks.Add(new ProvidedTrack
+            {
+                Uri = $"spotify:meta:page:{page}",
+                Uid = $"page{page}_0",
+                Provider = "context",
+                Metadata = { ["hidden"] = "true", ["iteration"] = "0" }
+            });
         }
 
         return playerState;
@@ -618,9 +704,9 @@ public static class PlaybackStateHelpers
     /// <summary>
     /// Converts any IQueueItem to a ProvidedTrack protobuf.
     /// </summary>
-    private static ProvidedTrack QueueItemToProvidedTrack(IQueueItem item) => item switch
+    private static ProvidedTrack QueueItemToProvidedTrack(IQueueItem item, string? contextUri = null) => item switch
     {
-        QueueTrack track => QueueTrackToProvidedTrack(track),
+        QueueTrack track => QueueTrackToProvidedTrack(track, contextUri),
         QueuePageMarker marker => new ProvidedTrack
         {
             Uri = marker.Uri,
@@ -647,26 +733,43 @@ public static class PlaybackStateHelpers
 
     /// <summary>
     /// Converts a QueueTrack to a ProvidedTrack protobuf with metadata.
+    /// Populates the metadata map richly so remote devices render queue rows
+    /// with title/artist/album/art instead of blanks. Matches the shape Spotify
+    /// desktop emits for prev/next_tracks.
+    /// NOTE: does NOT set top-level AlbumUri/ArtistUri — those live in the map only.
     /// </summary>
-    private static ProvidedTrack QueueTrackToProvidedTrack(QueueTrack track)
+    private static ProvidedTrack QueueTrackToProvidedTrack(QueueTrack track, string? contextUri = null)
     {
         var pt = new ProvidedTrack
         {
             Uri = track.Uri,
             Uid = track.Uid ?? string.Empty,
-            Provider = track.Provider,
-            AlbumUri = track.AlbumUri ?? string.Empty,
-            ArtistUri = track.ArtistUri ?? string.Empty
+            Provider = track.Provider
         };
 
-        if (track.Title != null) pt.Metadata["title"] = track.Title;
-        if (track.Artist != null) pt.Metadata["artist_name"] = track.Artist;
-        if (track.Album != null) pt.Metadata["album_title"] = track.Album;
-        if (track.ImageUrl != null) pt.Metadata["image_url"] = track.ImageUrl;
-        if (track.IsUserQueued) pt.Metadata["is_queued"] = "true";
-        if (track.IsAutoplay) pt.Metadata["autoplay.is_autoplay"] = "true";
+        var meta = pt.Metadata;
+        if (track.Title != null) meta["title"] = track.Title;
+        if (track.Artist != null) meta["artist_name"] = track.Artist;
+        if (track.Album != null) meta["album_title"] = track.Album;
+        if (!string.IsNullOrEmpty(track.AlbumUri)) meta["album_uri"] = track.AlbumUri;
+        if (!string.IsNullOrEmpty(track.ArtistUri)) meta["artist_uri"] = track.ArtistUri;
+        if (!string.IsNullOrEmpty(contextUri))
+        {
+            meta["context_uri"] = contextUri;
+            meta["entity_uri"] = contextUri;
+        }
+        if (track.ImageUrl != null)
+        {
+            meta["image_url"] = track.ImageUrl;
+            meta["image_small_url"] = track.ImageUrl;
+            meta["image_large_url"] = track.ImageUrl;
+            meta["image_xlarge_url"] = track.ImageUrl;
+        }
+        if (track.IsUserQueued) meta["is_queued"] = "true";
+        if (track.IsAutoplay) meta["autoplay.is_autoplay"] = "true";
 
-        pt.Metadata["track_player"] = "audio";
+        meta["track_player"] = "audio";
+        meta["iteration"] = "0";
 
         return pt;
     }
@@ -870,5 +973,21 @@ public static class PlaybackStateHelpers
         }
 
         return restrictions;
+    }
+
+    /// <summary>
+    /// Context-level restrictions — things that can't be changed for the whole
+    /// context (DJ-session lock, ad-break, radio skip caps, pre-roll, etc.).
+    /// Distinct from track/player-level <see cref="BuildRestrictions"/>; those
+    /// gate buttons like pause/resume/skip against the *current* track state.
+    /// Conflating the two (as we used to) made `not_paused` leak into
+    /// context_restrictions and confused remote devices.
+    /// </summary>
+    private static Restrictions BuildContextRestrictions(PlaybackState state)
+    {
+        // Default: no context-level disables. Populate here once the engine
+        // reports DJ/ad/radio state.
+        _ = state;
+        return new Restrictions();
     }
 }

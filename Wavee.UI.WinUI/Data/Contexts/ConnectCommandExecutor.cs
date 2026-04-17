@@ -452,11 +452,24 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         string? contextUri = null;
         string? trackUri = null;
         int? skipToIndex = null;
+        string? contextDescription = null;
         List<Wavee.Connect.Commands.PageTrack>? pageTracks = null;
 
         if (data?.TryGetValue("context", out var ctxObj) == true && ctxObj is Dictionary<string, object> ctx)
         {
             contextUri = ctx.GetValueOrDefault("uri") as string;
+
+            // Optional display name for the context ("Huh Gak", "Discover Weekly", "OK Computer")
+            // — plumbed through to PlayerState.context_metadata["context_description"] so remote
+            // Now Playing cards can show it. Callers populate via context["description"] or
+            // context["metadata"]["context_description"] when they know the name.
+            contextDescription = ctx.GetValueOrDefault("description") as string;
+            if (string.IsNullOrEmpty(contextDescription)
+                && ctx.TryGetValue("metadata", out var metaObj)
+                && metaObj is Dictionary<string, object> metaDict)
+            {
+                contextDescription = metaDict.GetValueOrDefault("context_description") as string;
+            }
 
             // Extract inline tracks from context pages (e.g. PlayTracksAsync embeds them here)
             if (ctx.TryGetValue("pages", out var pagesObj) && pagesObj is System.Collections.IEnumerable pages)
@@ -502,7 +515,8 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             ContextUri = contextUri,
             TrackUri = trackUri,
             SkipToIndex = skipToIndex,
-            PageTracks = pageTracks
+            PageTracks = pageTracks,
+            ContextDescription = contextDescription
         };
     }
 

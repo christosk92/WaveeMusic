@@ -332,6 +332,18 @@ public sealed record LocalPlaybackState
     public string? QueueRevision { get; init; }
 
     /// <summary>
+    /// Human-readable context subtitle (artist name, playlist title, etc.).
+    /// Flows into PlayerState.context_metadata["context_description"].
+    /// </summary>
+    public string? ContextDescription { get; init; }
+
+    /// <summary>
+    /// True when this state change was system-initiated rather than user-initiated
+    /// (autoplay rollover, transfer resume). Default false.
+    /// </summary>
+    public bool IsSystemInitiated { get; init; }
+
+    /// <summary>
     /// Timestamp when this state was captured (Unix milliseconds).
     /// </summary>
     public long Timestamp { get; init; }

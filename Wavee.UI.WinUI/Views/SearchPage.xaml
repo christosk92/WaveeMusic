@@ -16,7 +16,7 @@
     NavigationCacheMode="Disabled"
     Background="Transparent">
 
-    <ScrollView VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical">
+    <ScrollView x:Name="PageScrollView" VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical">
         <StackPanel x:Name="RootPanel" Padding="20,18,20,28" Spacing="0">
 
             <ScrollViewer HorizontalScrollBarVisibility="Hidden"

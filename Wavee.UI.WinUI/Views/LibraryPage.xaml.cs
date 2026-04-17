@@ -11,7 +11,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
+public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepParticipant, IDisposable
 {
     private const int MaxDeferredShowTabAttempts = 3;
 
@@ -29,6 +29,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
     private int _deferredShowTabAttempts;
     private TabItemParameter? _tabItemParameter;
     private bool _disposed;
+    private LibraryPageSleepState? _pendingSleepState;
 
     public LibraryPage()
     {
@@ -102,6 +103,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
 
         SetSelectedItemSilently(itemToSelect);
         ShowTab(itemToSelect);
+        TryApplyPendingSleepState();
     }
 
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -251,6 +253,15 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
         }
     }
 
+    public object? CaptureSleepState()
+        => new LibraryPageSleepState(GetSelectedTabKey());
+
+    public void RestoreSleepState(object? state)
+    {
+        _pendingSleepState = state as LibraryPageSleepState;
+        TryApplyPendingSleepState();
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -270,6 +281,30 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
         _tabItemParameter = null;
     }
 
+    private void TryApplyPendingSleepState()
+    {
+        if (_pendingSleepState == null || !IsLoaded)
+            return;
+
+        var state = _pendingSleepState;
+        _pendingSleepState = null;
+
+        if (!string.IsNullOrWhiteSpace(state.SelectedTabKey))
+            SelectTab(state.SelectedTabKey);
+    }
+
+    private string GetSelectedTabKey()
+    {
+        var selectedItem = LibrarySelectorBar.SelectedItem as SegmentedItem;
+        if (selectedItem == ArtistsItem)
+            return "artists";
+
+        if (selectedItem == LikedSongsItem)
+            return "likedsongs";
+
+        return "albums";
+    }
+
     private static void DisposeIfNeeded<T>(ref T? value)
         where T : class
     {
@@ -278,4 +313,6 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, IDisposable
 
         value = null;
     }
+
+    private sealed record LibraryPageSleepState(string SelectedTabKey);
 }

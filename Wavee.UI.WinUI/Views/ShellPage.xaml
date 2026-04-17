@@ -44,6 +44,7 @@
                 TabInstances="{x:Bind ViewModel.Tabs}"
                 SelectedIndex="{x:Bind ViewModel.SelectedTabIndex, Mode=TwoWay}"
                 TabCloseRequested="TabControl_TabCloseRequested"
+                TabSleepToggleRequested="TabControl_TabSleepToggleRequested"
                 AddTabRequested="TabControl_AddTabRequested"/>
         </Grid>
 

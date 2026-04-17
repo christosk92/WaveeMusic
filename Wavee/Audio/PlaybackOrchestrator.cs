@@ -31,6 +31,14 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     private bool _repeatTrack;
     private bool _disposed;
 
+    // Context subtitle (artist name, playlist title) — set from PlayCommand at
+    // play time, emitted on every subsequent state publish until the next PlayAsync.
+    private string? _currentContextDescription;
+
+    // Latch: set true for auto-advance / transfer-resume / autoplay rollover,
+    // false for user-initiated play. Sticks until the next PlayAsync flips it.
+    private bool _isSystemInitiated;
+
     public PlaybackOrchestrator(
         AudioPipelineProxy proxy,
         TrackResolver trackResolver,
@@ -72,6 +80,13 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         {
             _logger?.LogInformation("Orchestrator: PlayAsync contextUri={Context} trackUri={Track}",
                 command.ContextUri, command.TrackUri);
+
+            // PlayCommand arrives either from user click (local ConnectCommandExecutor)
+            // or from a remote transfer (command handler pipe). Either way, treat the
+            // user as the initiator — the auto-advance path flips the latch back to
+            // true before calling PlayCurrentTrackAsync.
+            _isSystemInitiated = false;
+            _currentContextDescription = command.ContextDescription;
 
             // Build queue from context or explicit track list
             if (!string.IsNullOrEmpty(command.ContextUri) && command.ContextUri != "spotify:internal:queue")
@@ -276,6 +291,10 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     {
         try
         {
+            // Auto-advance (or repeat-track rollover) is system-initiated — flip the
+            // latch so the next publish carries is_system_initiated=true until the
+            // user next calls PlayAsync.
+            _isSystemInitiated = true;
             _logger?.LogInformation("Track finished: {Uri} reason={Reason}", msg.TrackUri, msg.Reason);
 
             if (_repeatTrack)
@@ -438,6 +457,8 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
             PrevQueueItems = prevTracks.Cast<IQueueItem>().ToList(),
             NextQueueItems = nextTracks.Cast<IQueueItem>().ToList(),
             QueueRevision = _queue.GetQueueRevision(),
+            ContextDescription = _currentContextDescription,
+            IsSystemInitiated = _isSystemInitiated,
         };
         _stateSubject.OnNext(enriched);
     }

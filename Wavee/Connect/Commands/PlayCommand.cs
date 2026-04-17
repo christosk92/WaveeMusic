@@ -51,6 +51,15 @@ public sealed record PlayCommand : ConnectCommand
     /// </summary>
     public PlayerOptions? Options { get; init; }
 
+    /// <summary>
+    /// Human-readable subtitle for the context (e.g. artist name, playlist title).
+    /// Flows into PlayerState.context_metadata["context_description"] so remote
+    /// "Now Playing" cards can show it under the track title. Populate from
+    /// the UI or ConnectCommandExecutor when the display name is known — leave
+    /// null if unknown (server won't attempt to resolve it for us).
+    /// </summary>
+    public string? ContextDescription { get; init; }
+
     internal static PlayCommand FromJson(DealerRequest request, JsonElement json)
     {
         // 1. Parse context (context.uri and context.pages)

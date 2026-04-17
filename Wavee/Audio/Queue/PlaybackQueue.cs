@@ -815,12 +815,26 @@ public sealed class PlaybackQueue : IDisposable
     {
         lock (_lock)
         {
-            var hash = new HashCode();
+            // FNV-1a 64-bit over concatenated next-track URIs.
+            // Must be UNSIGNED — Spotify clients treat queue_revision as uint64
+            // for queue-change detection. HashCode.ToHashCode() returns signed int32
+            // which serializes as a negative number on ~50% of inputs and confuses
+            // remote clients' equality checks.
+            const ulong fnvOffset = 14695981039346656037UL;
+            const ulong fnvPrime = 1099511628211UL;
+            var hash = fnvOffset;
             foreach (var track in GetNextTracksInternal())
             {
-                hash.Add(track.Uri);
+                var uri = track.Uri;
+                for (var i = 0; i < uri.Length; i++)
+                {
+                    hash ^= uri[i];
+                    hash *= fnvPrime;
+                }
+                hash ^= (byte)'|';
+                hash *= fnvPrime;
             }
-            return hash.ToHashCode().ToString();
+            return hash.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 

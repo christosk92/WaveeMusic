@@ -181,6 +181,29 @@ public sealed record PlaybackState
     public bool CanSeek { get; init; } = true;
 
     /// <summary>
+    /// True only when playback started without direct user input — e.g. resume after
+    /// session transfer, autoplay rollover. False for user-initiated play. Wire to
+    /// PlayerState.is_system_initiated; always-true confuses remote devices into
+    /// labeling Wavee output as automated/ad playback.
+    /// </summary>
+    public bool IsSystemInitiated { get; init; }
+
+    /// <summary>
+    /// Human-readable subtitle of the current context (e.g. the artist name
+    /// "Huh Gak" when playing from an artist page, the playlist title, etc.).
+    /// Published via PlayerState.context_metadata["context_description"] so remote
+    /// "Now Playing" cards can show the source context under the track title.
+    /// </summary>
+    public string? ContextDescription { get; init; }
+
+    /// <summary>
+    /// Whether the audio engine supports mixing/crossfade. Surfaced via
+    /// PlayerState.context_metadata["mixer_enabled"]. Defaults to false since
+    /// the current pipeline doesn't crossfade.
+    /// </summary>
+    public bool MixerEnabled { get; init; }
+
+    /// <summary>
     /// Creates an empty playback state (no playback).
     /// </summary>
     public static PlaybackState Empty => new()

@@ -888,7 +888,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             var deviceVolume = state.Volume > 0
                 ? (int)state.Volume
                 : ConnectStateHelpers.MaxVolume;
-            var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(_session.Config, volume: deviceVolume);
+            var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(
+                _session.Config,
+                volume: deviceVolume,
+                audioOutputDeviceName: state.ActiveAudioDeviceName);
 
             // Calculate how long we've been playing
             var hasBeenPlayingForMs = _playbackStartedAt > 0 ? now - _playbackStartedAt : 0;

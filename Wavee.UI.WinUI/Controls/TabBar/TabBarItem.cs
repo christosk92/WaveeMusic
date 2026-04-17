@@ -10,6 +10,8 @@ namespace Wavee.UI.WinUI.Controls.TabBar;
 
 public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposable
 {
+    private const int DefaultFrameCacheSize = 5;
+
     public Frame ContentFrame { get; }
 
     public event EventHandler<Microsoft.UI.Xaml.Navigation.NavigationEventArgs>? Navigated;
@@ -20,9 +22,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayHeader))]
+    [NotifyPropertyChangedFor(nameof(DisplayToolTipText))]
     private string? _header;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayToolTipText))]
     private string? _toolTipText;
 
     [ObservableProperty]
@@ -36,6 +40,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     [NotifyPropertyChangedFor(nameof(TabStyle))]
     [NotifyPropertyChangedFor(nameof(CompactWidth))]
     private bool _isCompact;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SleepIndicatorVisibility))]
+    [NotifyPropertyChangedFor(nameof(DisplayToolTipText))]
+    [NotifyPropertyChangedFor(nameof(TabOpacity))]
+    private bool _isSleeping;
 
     /// <summary>
     /// Returns empty string when compact (icon-only), otherwise the header text
@@ -60,8 +70,19 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     /// </summary>
     public Visibility PinIndicatorVisibility => IsPinned ? Visibility.Visible : Visibility.Collapsed;
 
+    public Visibility SleepIndicatorVisibility => IsSleeping ? Visibility.Visible : Visibility.Collapsed;
+
+    public string? DisplayToolTipText => IsSleeping
+        ? $"{(ToolTipText ?? Header ?? "Tab")} (Sleeping)"
+        : ToolTipText ?? Header;
+
+    public double TabOpacity => IsSleeping ? 0.72 : 1.0;
+
     private ITabBarItemContent? _previousContent;
     private const int MaxBackStackSize = 20;
+    private TabSleepSnapshot? _sleepSnapshot;
+    private object? _pendingSleepRestoreState;
+    private Type? _pendingSleepRestorePageType;
 
     // Correlates Start/Stop ETW pairs for a single navigation. Set inside Navigate()
     // (or the NavigationParameter setter) right before ContentFrame.Navigate, read
@@ -72,6 +93,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     private string? _pendingPageName;
 
     private TabItemParameter? _navigationParameter;
+    public DateTimeOffset LastActivatedAtUtc { get; private set; } = DateTimeOffset.UtcNow;
+
     public TabItemParameter? NavigationParameter
     {
         get => _navigationParameter;
@@ -106,7 +129,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         ContentFrame = new Frame
         {
-            CacheSize = 5,
+            CacheSize = DefaultFrameCacheSize,
             IsNavigationStackEnabled = true
         };
         ContentFrame.Navigated += ContentFrame_Navigated;
@@ -120,6 +143,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
     {
+        if (IsSleeping)
+        {
+            DiscardSleepState();
+            ResetFrameForWake();
+        }
+
         // Open the ETW navigation pair for this hop. We emit Navigating unconditionally
         // so every user-perceived navigation gets a row in Navigation_Metrics.csv —
         // including the same-page no-op and the refresh-in-place cases, which are both
@@ -174,6 +203,77 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         //     : new DrillInNavigationTransitionInfo();
         var transition = (NavigationTransitionInfo)new DrillInNavigationTransitionInfo();
         ContentFrame.Navigate(pageType, parameter, transition);
+        MarkActivated();
+    }
+
+    public void MarkActivated() => LastActivatedAtUtc = DateTimeOffset.UtcNow;
+
+    public bool Sleep()
+    {
+        if (IsSleeping || ContentFrame.Content is null)
+            return false;
+
+        object? activePageState = null;
+        var activePageType = ContentFrame.Content.GetType();
+        if (ContentFrame.Content is ITabSleepParticipant sleepParticipant)
+            activePageState = sleepParticipant.CaptureSleepState();
+
+        string? navigationState = null;
+        try
+        {
+            navigationState = ContentFrame.GetNavigationState();
+        }
+        catch
+        {
+            // Best effort: route fallback below still allows waking.
+        }
+
+        _sleepSnapshot = new TabSleepSnapshot(navigationState, activePageType, activePageState);
+        ClearLiveContent();
+        IsSleeping = true;
+        return true;
+    }
+
+    public bool Wake()
+    {
+        if (!IsSleeping)
+            return false;
+
+        ResetFrameForWake();
+        IsSleeping = false;
+
+        var snapshot = _sleepSnapshot;
+        _pendingSleepRestoreState = snapshot?.ActivePageState;
+        _pendingSleepRestorePageType = _pendingSleepRestoreState != null ? snapshot?.ActivePageType : null;
+
+        var restoredFromNavigationState = false;
+        if (!string.IsNullOrWhiteSpace(snapshot?.NavigationState))
+        {
+            try
+            {
+                ContentFrame.SetNavigationState(snapshot.NavigationState);
+                restoredFromNavigationState = true;
+            }
+            catch
+            {
+                restoredFromNavigationState = false;
+            }
+        }
+
+        if (!restoredFromNavigationState && _navigationParameter?.InitialPageType != null)
+        {
+            _pendingNavId = WaveeNavigationEventSource.Log.NextNavId();
+            _pendingPageName = _navigationParameter.InitialPageType.Name;
+            WaveeNavigationEventSource.Log.Navigating(_pendingNavId, _pendingPageName, "WakeFallback");
+            ContentFrame.Navigate(
+                _navigationParameter.InitialPageType,
+                _navigationParameter.NavigationParameter,
+                new DrillInNavigationTransitionInfo());
+        }
+
+        _sleepSnapshot = null;
+        MarkActivated();
+        return true;
     }
 
     private static string? GetParameterUri(object? parameter) => parameter switch
@@ -209,6 +309,16 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         if (TabItemContent != null)
             TabItemContent.ContentChanged += TabItemContent_ContentChanged;
 
+        if (_pendingSleepRestoreState != null
+            && _pendingSleepRestorePageType != null
+            && e.SourcePageType == _pendingSleepRestorePageType
+            && ContentFrame.Content is ITabSleepParticipant sleepParticipant)
+        {
+            sleepParticipant.RestoreSleepState(_pendingSleepRestoreState);
+            _pendingSleepRestoreState = null;
+            _pendingSleepRestorePageType = null;
+        }
+
         // Cap BackStack to prevent unbounded growth
         while (ContentFrame.BackStack.Count > MaxBackStackSize)
             ContentFrame.BackStack.RemoveAt(0);
@@ -223,14 +333,44 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     public void Dispose()
     {
         ContentFrame.Navigated -= ContentFrame_Navigated;
+        DiscardSleepState();
 
-        // Dispose current page
+        ClearLiveContent();
+        ContentFrame.CacheSize = 0;
+    }
+
+    private void ClearLiveContent()
+    {
+        if (_previousContent != null)
+        {
+            _previousContent.ContentChanged -= TabItemContent_ContentChanged;
+            _previousContent = null;
+        }
+
         if (TabItemContent is IDisposable disposable)
             disposable.Dispose();
 
-        // Clear back stack and frame cache so cached pages can be GC'd
         ContentFrame.BackStack.Clear();
+        ContentFrame.ForwardStack.Clear();
         ContentFrame.Content = null;
         ContentFrame.CacheSize = 0;
     }
+
+    private void ResetFrameForWake()
+    {
+        ContentFrame.CacheSize = DefaultFrameCacheSize;
+    }
+
+    private void DiscardSleepState()
+    {
+        _sleepSnapshot = null;
+        _pendingSleepRestoreState = null;
+        _pendingSleepRestorePageType = null;
+        IsSleeping = false;
+    }
+
+    private sealed record TabSleepSnapshot(
+        string? NavigationState,
+        Type? ActivePageType,
+        object? ActivePageState);
 }
