@@ -353,6 +353,37 @@ public interface IMetadataDatabase : IAsyncDisposable
 
     #endregion
 
+    #region Audio Key + Head Data Persistence
+
+    // Both AudioKey (16 bytes) and HeadData (~128 KB) are safe to persist
+    // permanently: FileIds never change their content on Spotify's side, and the
+    // AES key never rotates for a given file. Caching them across restarts cuts
+    // cold-start latency and makes offline playback of previously heard tracks
+    // possible even if the session is briefly offline when the user presses play.
+
+    /// <summary>
+    /// Gets a persisted AudioKey (16-byte AES key) for a FileId, or null if not stored.
+    /// </summary>
+    Task<byte[]?> GetPersistedAudioKeyAsync(string fileIdHex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists an AudioKey. Overwrites any existing entry.
+    /// </summary>
+    Task SetPersistedAudioKeyAsync(string fileIdHex, string? trackUri, byte[] keyBytes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets persisted head file data for a FileId (~128 KB of encrypted audio
+    /// prefix used for instant-start playback), or null if not stored.
+    /// </summary>
+    Task<byte[]?> GetPersistedHeadDataAsync(string fileIdHex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists head file data. Overwrites any existing entry.
+    /// </summary>
+    Task SetPersistedHeadDataAsync(string fileIdHex, byte[] headData, CancellationToken ct = default);
+
+    #endregion
+
     #region Media Override Operations
 
     /// <summary>

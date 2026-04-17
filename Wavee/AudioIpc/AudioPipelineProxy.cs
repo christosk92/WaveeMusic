@@ -412,10 +412,16 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
                 }
                 _lastStateUpdateRemoteTimestamp = snapshot.Timestamp;
 
-                _logger?.LogTrace(
-                    "[ipc#{Seq} state#{StateSeq}] StateUpdate: src={Src}, track={Track}, pos={Pos}/{Dur}ms, playing={Playing}, buffering={Buffering}, changes={Changes}, remoteTs={RemoteTs}, intervalMs={Interval:F0}",
-                    recvSeq, stateSeq, snapshot.Source, snapshot.TrackUri ?? "<none>", snapshot.PositionMs, snapshot.DurationMs,
-                    snapshot.IsPlaying, snapshot.IsBuffering, snapshot.Changes, snapshot.Timestamp, intervalMs);
+                // Suppress the every-2-second "nothing changed" tick — those carry
+                // changes=0 and are just position updates from AudioHost. Only log when
+                // there's a real state transition (track/status/position-jump/etc).
+                if (snapshot.Changes != 0)
+                {
+                    _logger?.LogTrace(
+                        "[ipc#{Seq} state#{StateSeq}] StateUpdate: src={Src}, track={Track}, pos={Pos}/{Dur}ms, playing={Playing}, buffering={Buffering}, changes={Changes}, remoteTs={RemoteTs}, intervalMs={Interval:F0}",
+                        recvSeq, stateSeq, snapshot.Source, snapshot.TrackUri ?? "<none>", snapshot.PositionMs, snapshot.DurationMs,
+                        snapshot.IsPlaying, snapshot.IsBuffering, snapshot.Changes, snapshot.Timestamp, intervalMs);
+                }
 
                 UnderrunCount = snapshot.UnderrunCount;
 

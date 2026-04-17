@@ -257,26 +257,39 @@ public sealed class CacheService : ICacheService, ICleanableCache
 
     #region Audio Key Operations
 
-    public Task<byte[]?> GetAudioKeyAsync(string trackUri, FileId fileId, CancellationToken ct = default)
+    public async Task<byte[]?> GetAudioKeyAsync(string trackUri, FileId fileId, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var key = GetAudioKeyCacheKey(trackUri, fileId);
+        var fileIdHex = fileId.ToBase16();
 
         lock (_auxCacheLock)
         {
             if (_audioKeyCache.TryGetValue(key, out var cached))
             {
-                _logger?.LogTrace("Audio key cache hit: {TrackUri}", trackUri);
-                return Task.FromResult<byte[]?>(cached);
+                _logger?.LogTrace("Audio key hot hit: {TrackUri}", trackUri);
+                return cached;
             }
         }
 
-        // TODO: Check SQLite audio_keys table when implemented
-        return Task.FromResult<byte[]?>(null);
+        // Fall through to SQLite. Keys never change for a given FileId, so on a
+        // hit we promote back to the in-memory dict for O(1) subsequent lookups.
+        var persisted = await _database.GetPersistedAudioKeyAsync(fileIdHex, ct);
+        if (persisted != null)
+        {
+            lock (_auxCacheLock)
+            {
+                _audioKeyCache[key] = persisted;
+            }
+            _logger?.LogDebug("Audio key SQLite hit → promoted to hot: {TrackUri}", trackUri);
+            return persisted;
+        }
+
+        return null;
     }
 
-    public Task SetAudioKeyAsync(string trackUri, FileId fileId, byte[] audioKey, CancellationToken ct = default)
+    public async Task SetAudioKeyAsync(string trackUri, FileId fileId, byte[] audioKey, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -298,9 +311,18 @@ public sealed class CacheService : ICacheService, ICleanableCache
             _audioKeyCache[key] = audioKey;
         }
 
-        // TODO: Persist to SQLite audio_keys table when implemented
+        // Persist through to SQLite so the key survives app restarts.
+        // Keys are small (16 bytes) and never change for a FileId, so the DB
+        // churn is minimal and worth the cold-start win.
+        try
+        {
+            await _database.SetPersistedAudioKeyAsync(fileId.ToBase16(), trackUri, audioKey, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Audio key persist to SQLite failed (in-memory cache still holds it)");
+        }
         _logger?.LogTrace("Set audio key: {TrackUri}", trackUri);
-        return Task.CompletedTask;
     }
 
     #endregion
@@ -380,7 +402,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
 
     #region Head Data Operations
 
-    public Task<byte[]?> GetHeadDataAsync(FileId fileId, CancellationToken ct = default)
+    public async Task<byte[]?> GetHeadDataAsync(FileId fileId, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -390,16 +412,29 @@ public sealed class CacheService : ICacheService, ICleanableCache
         {
             if (_headDataCache.TryGetValue(key, out var cached))
             {
-                _logger?.LogTrace("Head data cache hit: {FileId}", key);
-                return Task.FromResult<byte[]?>(cached);
+                _logger?.LogTrace("Head data hot hit: {FileId}", key);
+                return cached;
             }
         }
 
-        // TODO: Check SQLite head_data table when implemented
-        return Task.FromResult<byte[]?>(null);
+        // SQLite fallback. Head data for a FileId is immutable (CDN serves
+        // max-age=315360000), so a persisted hit is always valid.
+        var persisted = await _database.GetPersistedHeadDataAsync(key, ct);
+        if (persisted != null)
+        {
+            lock (_auxCacheLock)
+            {
+                _headDataCache[key] = persisted;
+            }
+            _logger?.LogDebug("Head data SQLite hit ({Bytes} bytes) → promoted to hot: {FileId}",
+                persisted.Length, key);
+            return persisted;
+        }
+
+        return null;
     }
 
-    public Task SetHeadDataAsync(FileId fileId, byte[] headData, CancellationToken ct = default)
+    public async Task SetHeadDataAsync(FileId fileId, byte[] headData, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -420,9 +455,18 @@ public sealed class CacheService : ICacheService, ICleanableCache
             _headDataCache[key] = headData;
         }
 
-        // TODO: Persist to SQLite head_data table when implemented
+        // Persist to disk. Head blobs are ~128 KB each, so with a reasonable
+        // cache-size target (e.g. 500 tracks = ~64 MB) this is comfortable to
+        // hold permanently. Failure here is non-fatal — memory still has it.
+        try
+        {
+            await _database.SetPersistedHeadDataAsync(key, headData, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Head data persist to SQLite failed (in-memory cache still holds it)");
+        }
         _logger?.LogTrace("Set head data: {FileId}, size={Size}", key, headData.Length);
-        return Task.CompletedTask;
     }
 
     #endregion

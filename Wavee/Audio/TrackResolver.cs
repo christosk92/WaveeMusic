@@ -112,6 +112,64 @@ public sealed class TrackResolver
     public void SetPreferredQuality(AudioQuality quality) => _preferredQuality = quality;
 
     /// <summary>
+    /// Warms the caches (head data, AudioKey, CDN URL) for an upcoming track so the
+    /// real <see cref="ResolveAsync"/> call at track-start is a pure cache hit.
+    /// Call this while the *current* track is still playing (e.g. past 50% or with
+    /// ≤20 s remaining). Safe to call repeatedly — every cache layer already
+    /// deduplicates by FileId. All exceptions are swallowed: prefetch failure must
+    /// never bubble up and break the currently playing track.
+    /// </summary>
+    public async Task PrefetchAsync(string uri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(uri)) return;
+        // Episodes fetch different metadata; keep prefetch scope to tracks for now.
+        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase)) return;
+
+        try
+        {
+            var trackId = SpotifyId.FromUri(uri);
+            var track = await FetchTrackMetadataAsync(uri, trackId, ct).ConfigureAwait(false);
+
+            var (selectedFile, effectiveTrack) = await SelectAudioFileAsync(track, _preferredQuality, ct).ConfigureAwait(false);
+            if (selectedFile == null || effectiveTrack == null) return;
+
+            var effectiveTrackId = effectiveTrack.Gid is { Length: > 0 }
+                ? SpotifyId.FromRaw(effectiveTrack.Gid.Span, SpotifyIdType.Track)
+                : trackId;
+
+            var fileId = FileId.FromBytes(selectedFile.FileId.Span);
+            var fileIdHex = fileId.ToBase16();
+
+            // If the encrypted file is already on disk, skip CDN + head entirely
+            // and only warm the AudioKey (decryption needs it at playback time).
+            if (_audioCacheDirectory != null && AudioFileCache.IsCached(_audioCacheDirectory, fileIdHex))
+            {
+                await _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct).ConfigureAwait(false);
+                _logger?.LogDebug("Prefetch: audio cached on disk, warmed AudioKey only for {Uri}", uri);
+                return;
+            }
+
+            // Fire all three in parallel — each writes to its own cache on completion.
+            // The existing GetHeadDataAsync / RequestAudioKeyAsync / GetCdnUrlAsync
+            // methods all short-circuit on cache hit, so this is a no-op if already warm.
+            var headTask = GetHeadDataAsync(fileId, ct);
+            var keyTask = _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct);
+            var cdnTask = GetCdnUrlAsync(fileId, ct);
+
+            await Task.WhenAll(headTask, keyTask, cdnTask).ConfigureAwait(false);
+            _logger?.LogInformation("Prefetched next track: {Uri} (fileId={FileId})", uri, fileIdHex);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is fine — prefetch is opportunistic.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Prefetch failed for {Uri} (non-fatal, real resolve will retry)", uri);
+        }
+    }
+
+    /// <summary>
     /// Resolves a track URI to a fully resolved track ready for AudioHost.
     /// </summary>
     public async Task<ResolvedTrack> ResolveAsync(string uri, CancellationToken ct = default)

@@ -635,17 +635,27 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     {
         try
         {
-            _logger?.LogTrace(
-                "Received local playback state: track={Track}, pos={Pos}ms/{Dur}ms, isPlaying={IsPlaying}, isPaused={IsPaused}, isBuffering={IsBuffering}, source={Source}, activeDev={ActiveDev}, upstreamChanges={UpstreamChanges}",
-                localState.TrackUri ?? "<none>",
-                localState.PositionMs,
-                localState.DurationMs,
-                localState.IsPlaying,
-                localState.IsPaused,
-                localState.IsBuffering,
-                localState.Source,
-                localState.ActiveDeviceId ?? "<none>",
-                localState.UpstreamChanges);
+            // Only log the full incoming snapshot when upstream thinks something
+            // changed. During steady-state playback AudioHost sends a position tick
+            // every ~2 s with UpstreamChanges=None, and logging every one of those
+            // plus the "no changes detected, skipping" line (three entries per tick)
+            // drowns useful state transitions in noise.
+            var hasUpstreamChanges = localState.UpstreamChanges is not null
+                                     && localState.UpstreamChanges != Connect.StateChanges.None;
+            if (hasUpstreamChanges)
+            {
+                _logger?.LogTrace(
+                    "Received local playback state: track={Track}, pos={Pos}ms/{Dur}ms, isPlaying={IsPlaying}, isPaused={IsPaused}, isBuffering={IsBuffering}, source={Source}, activeDev={ActiveDev}, upstreamChanges={UpstreamChanges}",
+                    localState.TrackUri ?? "<none>",
+                    localState.PositionMs,
+                    localState.DurationMs,
+                    localState.IsPlaying,
+                    localState.IsPaused,
+                    localState.IsBuffering,
+                    localState.Source,
+                    localState.ActiveDeviceId ?? "<none>",
+                    localState.UpstreamChanges);
+            }
 
             // Snapshot BEFORE applying the new state for diff logging
             var prevSnapshot = FormatStateSnapshot(_currentState);
@@ -656,10 +666,11 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 _currentState,
                 _session!.Config.DeviceId);
 
-            // Only update if something actually changed
+            // Only update if something actually changed. No log here — the skip is
+            // the steady-state behavior and the upstream-changes log above already
+            // tells us which ticks were worth considering.
             if (newState.Changes == Connect.StateChanges.None)
             {
-                _logger?.LogTrace("No changes detected in local state, skipping update (state={State})", prevSnapshot);
                 return;
             }
 

@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Wavee.Core;
 using Wavee.Protocol;
 
 namespace Wavee.Core.Connection;
@@ -26,7 +27,6 @@ namespace Wavee.Core.Connection;
 /// </remarks>
 public static class Handshake
 {
-    private const ulong SpotifyVersion = 124200290; // Desktop client version
     private const int ClientNonceSize = 16;
 
     /// <summary>
@@ -113,7 +113,7 @@ public static class Handshake
                 Product = Product.Client,
                 ProductFlags = { ProductFlags.ProductFlagNone },
                 Platform = platform,
-                Version = SpotifyVersion
+                Version = SpotifyClientIdentity.HandshakeBuildVersion
             },
             CryptosuitesSupported = { Cryptosuite.Shannon },
             LoginCryptoHello = new LoginCryptoHelloUnion

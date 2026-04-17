@@ -622,7 +622,23 @@ public static class AppLifecycleHelper
             var metadataDb = Ioc.Default.GetService<IMetadataDatabase>();
             var cacheService = Ioc.Default.GetService<Wavee.Core.Storage.ICacheService>();
 
-            var headFileClient = new Wavee.Core.Audio.HeadFileClient(httpClient, logger);
+            // Wire the disk-backed cache into the session so AudioKeyManager persists
+            // keys to SQLite. Must run before the first RequestAudioKeyAsync (the
+            // session lazily constructs AudioKeyManager on first access) — doing it
+            // here, before TrackResolver / PlaybackOrchestrator touch session.AudioKeys,
+            // gets us in under the wire.
+            if (cacheService != null)
+            {
+                session.SetCacheService(cacheService);
+            }
+
+            // Resolve the head-files URL template lazily from the session so we pick
+            // up the CDN host Spotify hands us in ProductInfo (e.g.
+            // heads-fa-tls13.spotifycdn.com) instead of the legacy hardcoded host.
+            var headFileClient = new Wavee.Core.Audio.HeadFileClient(
+                httpClient,
+                logger,
+                urlTemplateResolver: () => session.UserData?.HeadFilesUrl);
             var trackResolver = new Wavee.Audio.TrackResolver(
                 session, spClient, headFileClient, httpClient,
                 Wavee.Core.Audio.AudioQuality.VeryHigh,
@@ -653,6 +669,77 @@ public static class AppLifecycleHelper
 
             profiler?.SetAudioUnderrunProvider(() => proxy.UnderrunCount);
 
+            // Surface errors via notifications and activity feed. Shared between
+            // proxy errors (decode / device faults from the audio host) and
+            // orchestrator errors (track-resolve / AudioKey timeout failures) —
+            // both ultimately reach the user, so route them through one path.
+            var notificationService = Ioc.Default.GetService<INotificationService>();
+            var activityService = Ioc.Default.GetService<IActivityService>();
+            var errorDispatcher = _uiDispatcher;
+            Action<Wavee.Connect.PlaybackError> showError = error =>
+            {
+                var message = error.ErrorType switch
+                {
+                    PlaybackErrorType.AudioDeviceUnavailable => error.Message,
+                    PlaybackErrorType.TrackUnavailable => "Track unavailable (Premium required?).",
+                    PlaybackErrorType.NetworkError => "Network error during playback.",
+                    PlaybackErrorType.DecodeError => "Couldn't decode this track. Try another.",
+                    _ => string.IsNullOrEmpty(error.Message)
+                        ? "Playback failed. Please try again."
+                        : error.Message
+                };
+                var (title, iconGlyph) = error.ErrorType switch
+                {
+                    PlaybackErrorType.AudioDeviceUnavailable => ("Audio device error", "\uE7F3"),
+                    PlaybackErrorType.TrackUnavailable => ("Track unavailable", "\uE774"),
+                    PlaybackErrorType.NetworkError => ("Network error", "\uE774"),
+                    PlaybackErrorType.DecodeError => ("Decode error", "\uE783"),
+                    _ => ("Playback error", "\uE783")
+                };
+                errorDispatcher?.TryEnqueue(() =>
+                {
+                    notificationService?.Show(new Data.Models.NotificationInfo
+                    {
+                        Message = message,
+                        Severity = Data.Models.NotificationSeverity.Error,
+                        AutoDismissAfter = TimeSpan.FromSeconds(5)
+                    });
+                    activityService?.Post(
+                        category: "playback",
+                        title: title,
+                        iconGlyph: iconGlyph,
+                        status: Data.Models.ActivityStatus.Failed,
+                        message: message);
+                });
+            };
+
+            _appSubscriptions.Add(proxy.Errors.Subscribe(showError));
+            // Orchestrator surfaces its own errors from the resolve pipeline
+            // (e.g. AudioKey timed out after 5 attempts, CDN resolve failed).
+            // Without this subscription the track just silently fails — which is
+            // what the user was hitting on the stuck-audiokey channel.
+            _appSubscriptions.Add(orchestrator.Errors.Subscribe(showError));
+
+            // AudioKey channel sometimes goes silent for a specific FileId while the
+            // rest of the AP socket works fine. AudioKeyManager recovers by
+            // reconnecting after 2 consecutive timeouts (~5 s). That recovery is NOT
+            // an error — playback hasn't failed yet — but the user sees a ~5 s freeze
+            // and should know the app is actively dealing with it. Show a Warning
+            // InfoBar that auto-dismisses well past the reconnect window.
+            EventHandler<Wavee.Core.Audio.AudioKeyRecoveryEventArgs> recoveryStartedHandler = (_, _) =>
+                errorDispatcher?.TryEnqueue(() =>
+                {
+                    notificationService?.Show(new Data.Models.NotificationInfo
+                    {
+                        Message = "Having trouble reaching Spotify — reconnecting, one moment…",
+                        Severity = Data.Models.NotificationSeverity.Warning,
+                        AutoDismissAfter = TimeSpan.FromSeconds(8)
+                    });
+                });
+            session.AudioKeys.RecoveryStarted += recoveryStartedHandler;
+            _appSubscriptions.Add(System.Reactive.Disposables.Disposable.Create(() =>
+                session.AudioKeys.RecoveryStarted -= recoveryStartedHandler));
+
             // Re-wire on auto-restart (variables are now in scope for the closure)
             _audioProxyRestartedHandler = newProxy =>
             {
@@ -666,49 +753,13 @@ public static class AppLifecycleHelper
                     session.PlaybackState?.EnableBidirectionalMode(
                         newOrch, spClient, session, suppressClusterUpdates: false);
                     profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
+                    // New proxy/orchestrator pair → re-subscribe error streams so
+                    // failures after a restart still reach the user.
+                    _appSubscriptions.Add(newProxy.Errors.Subscribe(showError));
+                    _appSubscriptions.Add(newOrch.Errors.Subscribe(showError));
                 });
             };
             _audioProcessManager.ProxyRestarted += _audioProxyRestartedHandler;
-
-            // Surface errors via notifications and activity feed
-            var notificationService = Ioc.Default.GetService<INotificationService>();
-            var activityService = Ioc.Default.GetService<IActivityService>();
-            {
-                var dispatcher = _uiDispatcher;
-                var errorSub = proxy.Errors.Subscribe(error =>
-                {
-                    var message = error.ErrorType switch
-                    {
-                        PlaybackErrorType.AudioDeviceUnavailable => error.Message,
-                        PlaybackErrorType.TrackUnavailable => "Track unavailable (Premium required?).",
-                        PlaybackErrorType.NetworkError => "Network error during playback.",
-                        _ => error.Message
-                    };
-                    var (title, iconGlyph) = error.ErrorType switch
-                    {
-                        PlaybackErrorType.AudioDeviceUnavailable => ("Audio device error", "\uE7F3"),
-                        PlaybackErrorType.TrackUnavailable => ("Track unavailable", "\uE774"),
-                        PlaybackErrorType.NetworkError => ("Network error", "\uE774"),
-                        _ => ("Playback error", "\uE783")
-                    };
-                    dispatcher?.TryEnqueue(() =>
-                    {
-                        notificationService?.Show(new Data.Models.NotificationInfo
-                        {
-                            Message = message,
-                            Severity = Data.Models.NotificationSeverity.Error,
-                            AutoDismissAfter = TimeSpan.FromSeconds(5)
-                        });
-                        activityService?.Post(
-                            category: "playback",
-                            title: title,
-                            iconGlyph: iconGlyph,
-                            status: Data.Models.ActivityStatus.Failed,
-                            message: message);
-                    });
-                });
-                _appSubscriptions.Add(errorSub);
-            }
 
             logger?.LogInformation("Out-of-process audio initialized — PID isolation active");
         }

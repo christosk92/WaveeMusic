@@ -39,6 +39,19 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     // false for user-initiated play. Sticks until the next PlayAsync flips it.
     private bool _isSystemInitiated;
 
+    // Prefetch dedup: remembers which upcoming track URI we've already kicked a
+    // prefetch for during the current track. Reset on track change / play / skip.
+    // Spotify's PortAudio buffer underruns at transitions all trace back to the
+    // AudioKey being requested reactively under HTTP contention; prefetching while
+    // the current track plays avoids the race entirely.
+    private string? _lastPrefetchedTrackUri;
+    private CancellationTokenSource? _prefetchCts;
+
+    // Trigger thresholds. Librespot prefetches when "≈30 s remaining OR past 50 %".
+    // We use the same shape: the earlier of the two fires.
+    private const long PrefetchRemainingMsThreshold = 20_000;
+    private const double PrefetchHalfwayFraction = 0.5;
+
     public PlaybackOrchestrator(
         AudioPipelineProxy proxy,
         TrackResolver trackResolver,
@@ -87,6 +100,7 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
             // true before calling PlayCurrentTrackAsync.
             _isSystemInitiated = false;
             _currentContextDescription = command.ContextDescription;
+            ResetPrefetch();
 
             // Build queue from context or explicit track list
             if (!string.IsNullOrEmpty(command.ContextUri) && command.ContextUri != "spotify:internal:queue")
@@ -166,6 +180,7 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         var next = _queue.MoveNext();
         if (next != null)
         {
+            ResetPrefetch();
             _logger?.LogInformation("Orchestrator: skip next → {Uri}", next.Uri);
             await PlayCurrentTrackAsync(0, ct);
         }
@@ -189,6 +204,7 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         var prev = _queue.MovePrevious();
         if (prev != null)
         {
+            ResetPrefetch();
             _logger?.LogInformation("Orchestrator: skip prev → {Uri}", prev.Uri);
             await PlayCurrentTrackAsync(0, ct);
         }
@@ -461,6 +477,71 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
             IsSystemInitiated = _isSystemInitiated,
         };
         _stateSubject.OnNext(enriched);
+
+        // When the current track changed, throw away any in-flight prefetch for the
+        // *old* successor and let the prefetch dedup fire afresh for the new successor.
+        if (prev.TrackUri != engineState.TrackUri)
+        {
+            ResetPrefetch();
+        }
+
+        MaybeTriggerPrefetch(enriched);
+    }
+
+    /// <summary>
+    /// Fires an AudioKey/head/CDN prefetch for the next track once the current one
+    /// is past its halfway point or within ~20 s of ending. Librespot does the same;
+    /// without it we request the key reactively at track-finish, racing a burst of
+    /// HTTP work and blowing the 5 s timeout under contention.
+    /// </summary>
+    private void MaybeTriggerPrefetch(LocalPlaybackState state)
+    {
+        if (!state.IsPlaying) return;
+        if (_repeatTrack) return;                             // next target = current
+        if (state.DurationMs <= 0) return;                    // unknown duration, can't decide
+        if (_lastPrefetchedTrackUri != null) return;          // already queued for this track
+
+        var remainingMs = state.DurationMs - state.PositionMs;
+        var pastHalf = state.PositionMs >= (long)(state.DurationMs * PrefetchHalfwayFraction);
+        var nearEnd = remainingMs > 0 && remainingMs <= PrefetchRemainingMsThreshold;
+        if (!pastHalf && !nearEnd) return;
+
+        // Peek next — don't advance. Skip hidden markers / delimiters (they come
+        // through QueueTrack only, which is what GetNextTracks returns).
+        var nextTracks = _queue.GetNextTracks();
+        if (nextTracks.Count == 0) return;
+        var target = nextTracks[0];
+        if (string.IsNullOrEmpty(target.Uri)) return;
+
+        _lastPrefetchedTrackUri = target.Uri;
+        var cts = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _prefetchCts, cts);
+        try { prev?.Cancel(); prev?.Dispose(); } catch { /* best effort */ }
+
+        _logger?.LogDebug("Orchestrator: prefetching next track {Uri} (pos={Pos}ms/{Dur}ms)",
+            target.Uri, state.PositionMs, state.DurationMs);
+
+        _ = Task.Run(async () =>
+        {
+            try { await _trackResolver.PrefetchAsync(target.Uri, cts.Token).ConfigureAwait(false); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Prefetch task fault (non-fatal)"); }
+        }, cts.Token);
+    }
+
+    /// <summary>
+    /// Invalidate the current prefetch bookmark so the next state update can
+    /// kick off a fresh prefetch for whatever is now the successor track.
+    /// Also cancels any in-flight prefetch — the network work would be wasted
+    /// if the user skipped or the queue layout changed.
+    /// </summary>
+    private void ResetPrefetch()
+    {
+        _lastPrefetchedTrackUri = null;
+        var cts = Interlocked.Exchange(ref _prefetchCts, null);
+        if (cts != null)
+        {
+            try { cts.Cancel(); cts.Dispose(); } catch { /* best effort */ }
+        }
     }
 
     private void PublishQueueState()
@@ -476,6 +557,7 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        ResetPrefetch();
         _subs.Dispose();
         _stateSubject.Dispose();
         _errorSubject.Dispose();

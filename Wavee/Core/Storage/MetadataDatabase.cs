@@ -123,6 +123,32 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         EnsureLocalizedMetadataTables(connection);
+        EnsureAudioBlobTables(connection);
+    }
+
+    /// <summary>
+    /// Idempotently create the audio_keys and head_data tables on every DB open.
+    /// These were added after the initial schema shipped, so DBs at the current
+    /// schema version won't have them unless we create them additively — same
+    /// pattern as <see cref="EnsureLocalizedMetadataTables"/>.
+    /// </summary>
+    private static void EnsureAudioBlobTables(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS audio_keys (
+                file_id    TEXT PRIMARY KEY NOT NULL,
+                track_uri  TEXT,
+                key_bytes  BLOB NOT NULL,
+                cached_at  INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS head_data (
+                file_id    TEXT PRIMARY KEY NOT NULL,
+                data       BLOB NOT NULL,
+                cached_at  INTEGER NOT NULL
+            );
+            """;
+        cmd.ExecuteNonQuery();
     }
 
     private static void DropAllTables(SqliteConnection connection)
@@ -456,6 +482,41 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         retry_count INTEGER NOT NULL DEFAULT 0,
                         last_error  TEXT,
                         UNIQUE(item_uri)
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // AudioKey persistence — 16-byte AES keys, keyed by FileId (hex).
+            // Keys never rotate for a given file, so caching them permanently is
+            // safe; this lets playback start without a round-trip to the AP after
+            // a restart. trackUri is informational (nullable) — cache lookup is
+            // by file_id, matching how AudioKeyManager looks it up at runtime.
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS audio_keys (
+                        file_id    TEXT PRIMARY KEY NOT NULL,
+                        track_uri  TEXT,
+                        key_bytes  BLOB NOT NULL,
+                        cached_at  INTEGER NOT NULL
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Head data persistence — first ~128 KB of encrypted audio used for
+            // instant-start playback. File IDs never change their contents on
+            // Spotify's side, so this is also safe to keep across restarts.
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS head_data (
+                        file_id    TEXT PRIMARY KEY NOT NULL,
+                        data       BLOB NOT NULL,
+                        cached_at  INTEGER NOT NULL
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -2529,6 +2590,95 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
 
         return null;
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]?> GetPersistedAudioKeyAsync(string fileIdHex, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT key_bytes FROM audio_keys WHERE file_id = @file_id";
+        cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct) && !reader.IsDBNull(0))
+        {
+            return (byte[])reader.GetValue(0);
+        }
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task SetPersistedAudioKeyAsync(string fileIdHex, string? trackUri, byte[] keyBytes, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO audio_keys (file_id, track_uri, key_bytes, cached_at)
+                VALUES (@file_id, @track_uri, @key, @cached)
+                """;
+            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+            cmd.Parameters.AddWithValue("@track_uri", (object?)trackUri ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@key", keyBytes);
+            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]?> GetPersistedHeadDataAsync(string fileIdHex, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT data FROM head_data WHERE file_id = @file_id";
+        cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct) && !reader.IsDBNull(0))
+        {
+            return (byte[])reader.GetValue(0);
+        }
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task SetPersistedHeadDataAsync(string fileIdHex, byte[] headData, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO head_data (file_id, data, cached_at)
+                VALUES (@file_id, @data, @cached)
+                """;
+            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+            cmd.Parameters.AddWithValue("@data", headData);
+            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     #endregion

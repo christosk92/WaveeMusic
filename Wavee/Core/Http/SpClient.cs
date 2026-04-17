@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Wavee.Core;
 using Wavee.Core.Audio;
 using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Session;
@@ -529,9 +530,11 @@ public sealed class SpClient : ISpClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        // Use Android platform which doesn't require client-token
+        // Lyrics endpoint doesn't require client-token when using Android platform.
+        // Keep the Android platform header (lyrics CDN differentiates) but align the
+        // version with current desktop so we're not flagged as a stale mobile build.
         request.Headers.TryAddWithoutValidation("app-platform", "Android");
-        request.Headers.TryAddWithoutValidation("spotify-app-version", "8.9.0");
+        request.Headers.TryAddWithoutValidation("spotify-app-version", SpotifyClientIdentity.AppVersionHeader);
 
         var response = await SendWithRetryAsync(request, cancellationToken);
 

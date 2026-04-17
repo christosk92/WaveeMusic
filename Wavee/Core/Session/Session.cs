@@ -74,6 +74,9 @@ public sealed class Session : ISession, IAsyncDisposable
 
     // Audio subsystem
     private AudioKeyManager? _audioKeyManager;
+    // Optional disk-backed cache injected by the app layer (see SetCacheService).
+    // Flows into AudioKeyManager so AudioKeys can survive app restarts.
+    private Wavee.Core.Storage.ICacheService? _cacheService;
 
     // Keep-alive state machine (set by DispatchLoop, accessed by HandlePacket)
     private KeepAlive? _keepAlive;
@@ -536,10 +539,23 @@ public sealed class Session : ISession, IAsyncDisposable
     {
         get
         {
-            _audioKeyManager ??= new AudioKeyManager(this, _logger);
+            _audioKeyManager ??= new AudioKeyManager(this, _logger, _cacheService);
             return _audioKeyManager;
         }
     }
+
+    /// <summary>
+    /// Injects a disk-backed cache for AudioKey persistence. Call this early —
+    /// before the first track plays — so <see cref="AudioKeys"/> is constructed
+    /// with the cache reference. Calling it after AudioKeys has already been
+    /// accessed is a no-op (the in-process cache stays memory-only).
+    /// </summary>
+    public void SetCacheService(Wavee.Core.Storage.ICacheService cacheService)
+    {
+        _cacheService = cacheService;
+    }
+
+    public UserData UserData => _data.UserData;
 
     /// <summary>
     /// Sets the device active or inactive state for Spotify Connect.
@@ -1050,6 +1066,29 @@ public sealed class Session : ISession, IAsyncDisposable
                     var filterExplicitContent = attributes.TryGetValue("filter-explicit-content", out var filterStr)
                         && filterStr == "1";
 
+                    // client-deprecated = server telling us our BuildInfo.Version is
+                    // older than current desktop. Still serves traffic, but worth
+                    // surfacing — if it starts correlating with breakage we know where
+                    // to look. See SpotifyClientIdentity.HandshakeBuildVersion.
+                    var isClientDeprecated = attributes.TryGetValue("client-deprecated", out var deprecatedStr)
+                        && deprecatedStr == "1";
+                    if (isClientDeprecated)
+                    {
+                        _logger?.LogWarning(
+                            "Spotify flagged this client as deprecated (ProductInfo.client-deprecated=1). " +
+                            "Bump SpotifyClientIdentity.HandshakeBuildVersion when refreshing desktop parity.");
+                    }
+
+                    // loudness-levels = ReplayGain targets for quiet/normal/loud modes.
+                    // Parse here so the audio pipeline can combine with per-track gain.
+                    attributes.TryGetValue("loudness-levels", out var loudnessLevelsRaw);
+                    var loudnessLevels = LoudnessLevels.TryParse(loudnessLevelsRaw);
+                    if (loudnessLevels == null && !string.IsNullOrEmpty(loudnessLevelsRaw))
+                    {
+                        _logger?.LogDebug("Unparsable loudness-levels='{Raw}' — falling back to per-track gain only",
+                            loudnessLevelsRaw);
+                    }
+
                     // Update UserData with ProductInfo fields
                     var currentUserData = _data.GetUserData();
                     if (currentUserData != null)
@@ -1061,10 +1100,13 @@ public sealed class Session : ISession, IAsyncDisposable
                             ImageUrl = imageUrl,
                             FilterExplicitContent = filterExplicitContent,
                             PreferredLocale = preferredLocale,
-                            VideoKeyframeUrl = videoKeyframeUrl
+                            VideoKeyframeUrl = videoKeyframeUrl,
+                            IsClientDeprecated = isClientDeprecated,
+                            LoudnessLevels = loudnessLevels,
                         };
                         _data.SetUserData(updatedUserData);
-                        _logger?.LogDebug("Updated UserData with ProductInfo fields");
+                        _logger?.LogDebug("Updated UserData with ProductInfo fields (deprecated={Deprecated}, loudness={Loudness})",
+                            isClientDeprecated, loudnessLevels != null ? "parsed" : "null");
                     }
 
                     // Set account type TCS for backward compatibility

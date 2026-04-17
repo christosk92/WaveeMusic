@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Wavee.Core;
 using Wavee.Core.Connection;
 using Wavee.Protocol;
 
@@ -196,13 +197,11 @@ internal static class Authenticator
     }
 
     /// <summary>
-    /// Gets the Wavee version string.
+    /// Version string sent in <c>ClientResponseEncrypted</c>. Centralized so it
+    /// tracks handshake / HTTP / device-info values and the server doesn't mark
+    /// us deprecated because one surface lagged.
     /// </summary>
-    private static string GetVersionString()
-    {
-        var version = typeof(Authenticator).Assembly.GetName().Version;
-        return $"Wavee {version?.Major ?? 0}.{version?.Minor ?? 0}";
-    }
+    private static string GetVersionString() => SpotifyClientIdentity.AuthVersionString;
 
     /// <summary>
     /// Maps Spotify error codes to authentication failure reasons.

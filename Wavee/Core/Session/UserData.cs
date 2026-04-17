@@ -66,6 +66,56 @@ public sealed record UserData
     /// Will be null until the ProductInfo packet (0x50) is received.
     /// </summary>
     public string? VideoKeyframeUrl { get; init; }
+
+    /// <summary>
+    /// ReplayGain target levels for the three Spotify "normalisation" modes plus
+    /// default, parsed from the <c>loudness-levels</c> attribute in the
+    /// ProductInfo XML (format <c>"1:-5.0,0.0,3.0:-2.0"</c> — version, then
+    /// quiet/normal/loud triplet, then default). Applied on top of the
+    /// per-track gain in <c>NormalizationData</c> so tracks sit at the target
+    /// loudness librespot / Spotify desktop aim for. Null until ProductInfo
+    /// arrives.
+    /// </summary>
+    public LoudnessLevels? LoudnessLevels { get; init; }
+
+    /// <summary>
+    /// True when the server flagged this client as deprecated via ProductInfo's
+    /// <c>client-deprecated</c> element. Diagnostic only — Spotify still serves
+    /// traffic to deprecated clients for some time, but the flag is worth
+    /// surfacing so we notice when it starts biting.
+    /// </summary>
+    public bool IsClientDeprecated { get; init; }
+}
+
+/// <summary>
+/// ReplayGain target offsets for Spotify's three loudness modes, parsed from
+/// the ProductInfo <c>loudness-levels</c> XML element.
+/// </summary>
+/// <param name="Quiet">Offset (dB) to apply when the user picks "quiet" normalisation.</param>
+/// <param name="Normal">Offset (dB) for "normal" (the default UX choice).</param>
+/// <param name="Loud">Offset (dB) for "loud".</param>
+/// <param name="Default">Fallback offset (dB) when no explicit mode is selected.</param>
+public sealed record LoudnessLevels(double Quiet, double Normal, double Loud, double Default)
+{
+    /// <summary>
+    /// Parses the server's format: <c>{version}:{quiet},{normal},{loud}:{default}</c>.
+    /// Returns null on any parse failure — caller falls back to default gain.
+    /// </summary>
+    public static LoudnessLevels? TryParse(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        // Expected shape: "1:-5.0,0.0,3.0:-2.0"
+        var colonParts = raw.Split(':');
+        if (colonParts.Length < 3) return null;
+        var triplet = colonParts[1].Split(',');
+        if (triplet.Length < 3) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (!double.TryParse(triplet[0], System.Globalization.NumberStyles.Float, inv, out var q)) return null;
+        if (!double.TryParse(triplet[1], System.Globalization.NumberStyles.Float, inv, out var n)) return null;
+        if (!double.TryParse(triplet[2], System.Globalization.NumberStyles.Float, inv, out var l)) return null;
+        if (!double.TryParse(colonParts[2], System.Globalization.NumberStyles.Float, inv, out var d)) return null;
+        return new LoudnessLevels(q, n, l, d);
+    }
 }
 
 /// <summary>

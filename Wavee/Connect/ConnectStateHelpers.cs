@@ -1,3 +1,4 @@
+using Wavee.Core;
 using Wavee.Core.Session;
 using Wavee.Protocol.Player;
 
@@ -8,15 +9,8 @@ namespace Wavee.Connect;
 /// </summary>
 public static class ConnectStateHelpers
 {
-    // Keymaster client ID used for Connect State
+    // Keymaster client ID used for Connect State. Matches what desktop sends.
     private const string KeymasterClientId = "65b708073fc0480ea92a077233ca87bd";
-
-    // SpIRC version string
-    private const string SpircVersion = "3.2.6";
-
-    // Wavee version string
-    private static readonly string WaveeVersion =
-        typeof(ConnectStateHelpers).Assembly.GetName().Version?.ToString() ?? "1.0.0";
 
     // Maximum volume (Spotify uses 0-65535 range)
     public const int MaxVolume = 65535;
@@ -45,9 +39,9 @@ public static class ConnectStateHelpers
             Name = config.DeviceName,
             DeviceId = config.DeviceId,
             DeviceType = MapDeviceType(config.DeviceType),
-            DeviceSoftwareVersion = $"Wavee/{WaveeVersion}",
+            DeviceSoftwareVersion = SpotifyClientIdentity.DeviceSoftwareVersion,
             ClientId = config.ClientId ?? KeymasterClientId,
-            SpircVersion = SpircVersion,
+            SpircVersion = SpotifyClientIdentity.SpircVersion,
             Capabilities = CreateDefaultCapabilities(volumeSteps)
         };
 

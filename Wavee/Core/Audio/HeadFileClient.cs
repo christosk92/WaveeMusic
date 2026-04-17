@@ -16,22 +16,59 @@ namespace Wavee.Core.Audio;
 /// </remarks>
 public sealed class HeadFileClient
 {
-    private const string HeadFilesBaseUrl = "https://heads-fa.spotify.com/head/";
+    /// <summary>
+    /// Fallback URL template used only when the session hasn't yet received a
+    /// <c>head-files-url</c> from ProductInfo. Spotify currently hands out
+    /// <c>https://heads-fa-tls13.spotifycdn.com/head/{file_id}</c> for premium
+    /// accounts; the legacy <c>heads-fa.spotify.com</c> host still resolves
+    /// but is older and may be deprecated ahead of the active CDN.
+    /// </summary>
+    private const string FallbackHeadFilesUrlTemplate = "https://heads-fa.spotify.com/head/{file_id}";
+
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
 
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
 
     /// <summary>
+    /// Delegate that returns the server-provided head-files URL template (from
+    /// <c>UserData.HeadFilesUrl</c>) at request time. Evaluated per call so a
+    /// session that authenticates after the client is constructed picks up the
+    /// real template once ProductInfo arrives.
+    /// </summary>
+    private readonly Func<string?>? _urlTemplateResolver;
+
+    /// <summary>
     /// Creates a new HeadFileClient.
     /// </summary>
     /// <param name="httpClient">HTTP client for requests.</param>
     /// <param name="logger">Optional logger.</param>
-    public HeadFileClient(HttpClient httpClient, ILogger? logger = null)
+    /// <param name="urlTemplateResolver">
+    /// Optional delegate returning the head-files URL template from the session's
+    /// <c>UserData.HeadFilesUrl</c>. When null or the delegate returns null,
+    /// falls back to <see cref="FallbackHeadFilesUrlTemplate"/>. Wire this to
+    /// <c>() =&gt; session.UserData?.HeadFilesUrl</c> so the live CDN host from
+    /// ProductInfo is honoured instead of the hardcoded legacy host.
+    /// </param>
+    public HeadFileClient(
+        HttpClient httpClient,
+        ILogger? logger = null,
+        Func<string?>? urlTemplateResolver = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         _httpClient = httpClient;
         _logger = logger;
+        _urlTemplateResolver = urlTemplateResolver;
+    }
+
+    /// <summary>
+    /// Resolves the URL template to use for the next request. Prefers the
+    /// session-provided <c>head-files-url</c>; falls back to the legacy host.
+    /// </summary>
+    private string ResolveUrlTemplate()
+    {
+        var fromSession = _urlTemplateResolver?.Invoke();
+        return !string.IsNullOrEmpty(fromSession) ? fromSession : FallbackHeadFilesUrlTemplate;
     }
 
     /// <summary>
@@ -47,7 +84,13 @@ public sealed class HeadFileClient
             throw new ArgumentException("FileId is not valid", nameof(fileId));
 
         var fileIdHex = fileId.ToBase16().ToLowerInvariant();
-        var url = HeadFilesBaseUrl + fileIdHex;
+        // ProductInfo delivers the CDN host as a template like
+        // "https://heads-fa-tls13.spotifycdn.com/head/{file_id}". Substitute the
+        // file id into that template; otherwise fall back to the legacy host.
+        var template = ResolveUrlTemplate();
+        var url = template.Contains("{file_id}", StringComparison.Ordinal)
+            ? template.Replace("{file_id}", fileIdHex, StringComparison.Ordinal)
+            : template.TrimEnd('/') + "/" + fileIdHex;
 
         _logger?.LogDebug("Fetching head file for {FileId} from {Url}", fileIdHex, url);
 

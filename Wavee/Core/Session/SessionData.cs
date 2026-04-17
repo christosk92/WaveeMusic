@@ -138,7 +138,10 @@ internal sealed class SessionData : IDisposable
         }
     }
 
+    public UserData UserData => _userData;
+
     /// <summary>
+    /// 
     /// Gets current user data (or null if not authenticated).
     /// </summary>
     public UserData? GetUserData()

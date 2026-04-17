@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
+using Wavee.Core;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Session;
 
@@ -102,7 +103,7 @@ public sealed class PathfinderClient : IPathfinderClient
         httpRequest.Headers.TryAddWithoutValidation("app-platform", useWebPlayer ? "WebPlayer" : "Win32_x86_64");
         if (useWebPlayer)
         {
-            httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", "1.2.88.95.gb1d21cbd");
+            httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", SpotifyClientIdentity.AppVersionHeader);
             httpRequest.Headers.TryAddWithoutValidation("origin", "https://open.spotify.com");
             httpRequest.Headers.TryAddWithoutValidation("referer", "https://open.spotify.com/");
         }

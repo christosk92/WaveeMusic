@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Session;
+using Wavee.Core.Storage;
 
 namespace Wavee.Core.Audio;
 
@@ -18,11 +19,15 @@ namespace Wavee.Core.Audio;
 public sealed class AudioKeyManager : IAsyncDisposable
 {
     /// <summary>
-    /// Timeout for AudioKey requests. Matches librespot's <c>KEY_RESPONSE_TIMEOUT</c>
-    /// (see <c>core/src/audio_key.rs</c>). Going longer does not make a healthy AP
-    /// respond — it only delays the reconnect path the retry loop already triggers.
+    /// Timeout per AudioKey attempt. Set shorter than librespot's 5 s because the
+    /// prefetch path in <c>PlaybackOrchestrator</c> already covers the healthy-but-slow
+    /// case (keys are requested well before they're needed, so a 2-second server delay
+    /// under HTTP fan-out is invisible). What we optimize for here is the *stuck*
+    /// case — when the server silently stops answering 0x0C packets for a specific
+    /// FileId. Two consecutive 2.5 s timeouts gets us into recovery after 5 s instead
+    /// of 10 s.
     /// </summary>
-    private static readonly TimeSpan KeyResponseTimeout = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan KeyResponseTimeout = TimeSpan.FromMilliseconds(2500);
 
     /// <summary>
     /// Maximum number of retry attempts for AudioKey requests.
@@ -43,21 +48,49 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
     private readonly ISession _session;
     private readonly ILogger? _logger;
+    /// <summary>
+    /// Optional disk-backed cache. When supplied, keys survive app restarts
+    /// (ICacheService writes through to SQLite). Otherwise we fall back to
+    /// the in-process dictionary only, matching legacy behaviour.
+    /// </summary>
+    private readonly ICacheService? _cacheService;
     private readonly ConcurrentDictionary<uint, (TaskCompletionSource<byte[]> Tcs, FileId FileId)> _pending = new();
     private readonly ConcurrentDictionary<FileId, byte[]> _keyCache = new();
     private uint _sequence;
     private bool _disposed;
 
     /// <summary>
+    /// Raised right before the AudioKey loop triggers an AP reconnect because the
+    /// key channel has gone silent for a specific FileId. Fires on the AP dispatcher
+    /// thread — UI consumers must marshal to their dispatcher. Distinct from
+    /// <c>IPlaybackEngine.Errors</c>, which represents terminal failure; this is a
+    /// lifecycle hint ("I'm recovering, show a warning") rather than an error.
+    /// </summary>
+    public event EventHandler<AudioKeyRecoveryEventArgs>? RecoveryStarted;
+
+    /// <summary>
+    /// Raised after the recovery reconnect call returns, regardless of outcome.
+    /// Consumers that showed an indeterminate spinner on <see cref="RecoveryStarted"/>
+    /// can dismiss it here. The following retry may still fail — hard failures flow
+    /// through the regular error path.
+    /// </summary>
+    public event EventHandler<AudioKeyRecoveryEventArgs>? RecoveryEnded;
+
+    /// <summary>
     /// Creates a new AudioKeyManager.
     /// </summary>
     /// <param name="session">Active Spotify session.</param>
     /// <param name="logger">Optional logger.</param>
-    public AudioKeyManager(ISession session, ILogger? logger = null)
+    /// <param name="cacheService">
+    /// Optional disk-backed cache for persisting AudioKeys across app restarts.
+    /// When null, keys are only held in process memory (legacy behaviour).
+    /// </param>
+    public AudioKeyManager(ISession session, ILogger? logger = null, ICacheService? cacheService = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         _session = session;
         _logger = logger;
+        _cacheService = cacheService;
     }
 
     /// <summary>
@@ -76,11 +109,36 @@ public sealed class AudioKeyManager : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        // Check cache first
+        // Check in-memory cache first (hot path, O(1))
         if (_keyCache.TryGetValue(fileId, out var cachedKey))
         {
             _logger?.LogDebug("AudioKey cache hit for file {FileId}", fileId.ToBase16());
             return cachedKey;
+        }
+
+        // Disk-backed cache: keys persisted to SQLite by previous sessions stay
+        // valid forever (FileIds are immutable). A hit here saves a round-trip
+        // to the AP and works even if the audio-key channel is currently stuck.
+        if (_cacheService != null)
+        {
+            try
+            {
+                var persisted = await _cacheService.GetAudioKeyAsync(
+                    trackId.ToUri(), fileId, cancellationToken);
+                if (persisted != null)
+                {
+                    _keyCache.TryAdd(fileId, persisted);
+                    _logger?.LogInformation(
+                        "AudioKey disk hit for file {FileId} — skipping AP round-trip",
+                        fileId.ToBase16());
+                    return persisted;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never let cache lookup break the request path.
+                _logger?.LogDebug(ex, "AudioKey disk lookup failed, falling through to AP request");
+            }
         }
 
         if (!_session.IsConnected())
@@ -120,26 +178,46 @@ public sealed class AudioKeyManager : IAsyncDisposable
             }
             catch (TimeoutException ex)
             {
+                // Attempts 1 & 2: retry on the same connection — the timeout is usually
+                // just slow response under HTTP fan-out contention, and reconnecting
+                // there would turn ~1 s of latency into ~5 s of silence.
+                //
+                // Attempt 3 (after two full timeouts): something's wrong with the
+                // audio-key channel specifically — the server has stopped responding
+                // to our 0x0C packets for this FileId while the rest of the socket
+                // still works (PING/PONG, dealer REQUESTs). Reconnecting the AP once
+                // recovers it. Librespot does the equivalent.
                 lastException = ex;
                 _logger?.LogWarning("AudioKey attempt {Attempt}/{Max} timed out", attempt + 1, MaxRetries);
 
-                // On first timeout, try reconnecting to AP (connection may be stale).
-                // Use a separate CTS so user actions (skip, pause) don't cancel the reconnect.
-                if (!reconnectAttempted)
+                if (!reconnectAttempted && attempt + 1 >= 2)
                 {
                     reconnectAttempted = true;
+                    var args = new AudioKeyRecoveryEventArgs(fileId, attempt + 1);
+
+                    // Let the UI put up a "reconnecting…" warning before we spend
+                    // several seconds handshaking.
+                    try { RecoveryStarted?.Invoke(this, args); }
+                    catch (Exception hx) { _logger?.LogDebug(hx, "RecoveryStarted handler threw"); }
+
                     try
                     {
-                        _logger?.LogInformation("AudioKey timeout, attempting AP reconnection");
+                        _logger?.LogInformation(
+                            "AudioKey channel appears stuck after {Attempts} consecutive timeouts, " +
+                            "reconnecting AP to recover", attempt + 1);
                         using var reconnectCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                         await _session.ReconnectApAsync(reconnectCts.Token);
-                        _logger?.LogInformation("AP reconnection successful, retrying AudioKey");
-                        // Continue loop to retry with fresh connection
+                        _logger?.LogInformation("AP reconnection successful, retrying AudioKey on fresh socket");
                     }
                     catch (Exception reconnectEx)
                     {
-                        _logger?.LogWarning(reconnectEx, "AP reconnection failed, continuing with retries");
-                        // Continue with normal retries
+                        _logger?.LogWarning(reconnectEx,
+                            "AP reconnection failed, continuing with same-connection retries");
+                    }
+                    finally
+                    {
+                        try { RecoveryEnded?.Invoke(this, args); }
+                        catch (Exception hx) { _logger?.LogDebug(hx, "RecoveryEnded handler threw"); }
                     }
                 }
             }
@@ -288,8 +366,36 @@ public sealed class AudioKeyManager : IAsyncDisposable
                 // Extract 16-byte key
                 var key = payload.Slice(4, 16).ToArray();
 
-                // Cache the key for future use
+                // Cache the key for future use (in-memory + disk through CacheService)
                 _keyCache.TryAdd(fileId, key);
+
+                if (_cacheService != null)
+                {
+                    // Fire-and-forget disk write. Failure here must not block the
+                    // decryption path — in-memory cache still holds the key for
+                    // the current session.
+                    // trackUri is unknown in this context (request dispatch is
+                    // per-FileId). CacheService uses trackUri for its hot-cache
+                    // lookup key but the DB lookup is by FileId, so a placeholder
+                    // works — subsequent GetAudioKey calls keyed by trackUri will
+                    // hit the DB even if the hot-cache entry is absent.
+                    var keyCopy = key;
+                    var fileIdCopy = fileId;
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _cacheService.SetAudioKeyAsync(
+                                trackUri: $"spotify:track:{fileIdCopy.ToBase16()}",
+                                fileId: fileIdCopy,
+                                key: keyCopy).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogDebug(ex, "AudioKey disk write failed (non-fatal)");
+                        }
+                    });
+                }
 
                 _logger?.LogDebug("Received AudioKey: seq={Seq}, cached for file {FileId}", seq, fileId.ToBase16());
                 tcs.TrySetResult(key);
@@ -432,6 +538,13 @@ public sealed class AudioKeyException : Exception
         Reason = reason;
     }
 }
+
+/// <summary>
+/// Payload for <see cref="AudioKeyManager.RecoveryStarted"/> / <see cref="AudioKeyManager.RecoveryEnded"/>.
+/// </summary>
+/// <param name="FileId">The file whose key request triggered the recovery.</param>
+/// <param name="AttemptsBeforeRecovery">How many consecutive timeouts preceded the recovery (always ≥ 2 today).</param>
+public sealed record AudioKeyRecoveryEventArgs(FileId FileId, int AttemptsBeforeRecovery);
 
 /// <summary>
 /// Reasons for AudioKey request failure.
