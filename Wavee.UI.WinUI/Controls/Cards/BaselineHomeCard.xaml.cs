@@ -28,7 +28,6 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class BaselineHomeCard : UserControl
 {
-    private const double CardAspectRatio = 230d / 340d;
     private const int HeroImageDecodeSize = 240;
     private const int ThumbImageDecodeSize = 96;
     private const int MaxDeferredHoverStateRefreshAttempts = 4;
@@ -55,7 +54,6 @@ public sealed partial class BaselineHomeCard : UserControl
     private bool _isPointerOver;
     private bool _isPreviewAudioPending;
     private bool _isPreviewAudioPlaying;
-    private bool _isApplyingResponsiveSize;
     private bool _isHoverStateRefreshQueued;
     private int _deferredHoverStateRefreshAttempts;
     private int _previewTrackIndex;
@@ -1574,36 +1572,6 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (ReferenceEquals(s_activeCard, this))
             s_activeCard = null;
-    }
-
-    private void BaselineHomeCard_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (_isApplyingResponsiveSize)
-            return;
-
-        _isApplyingResponsiveSize = true;
-        if (!DispatcherQueue.TryEnqueue(() =>
-        {
-            try
-            {
-                var width = ActualWidth > 0 ? ActualWidth : e.NewSize.Width;
-                if (width <= 0)
-                    return;
-
-                var targetHeight = width / CardAspectRatio;
-                if (!double.IsNaN(Height) && Math.Abs(Height - targetHeight) < 1)
-                    return;
-
-                Height = targetHeight;
-            }
-            finally
-            {
-                _isApplyingResponsiveSize = false;
-            }
-        }))
-        {
-            _isApplyingResponsiveSize = false;
-        }
     }
 
     private void EnsureHoverChromeRealized()

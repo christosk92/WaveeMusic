@@ -12,6 +12,7 @@
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     mc:Ignorable="d"
     NavigationCacheMode="Disabled"
     Background="Transparent">
@@ -251,14 +252,31 @@
                                 <!-- More by artist -->
                                 <StackPanel x:Name="MoreByArtistSection" Margin="16,32,16,24" Spacing="12"
                                             Visibility="{x:Bind ViewModel.HasMoreByArtist, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">
-                                        <Run x:Uid="Views_AlbumPage__Run_5" Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
-                                    </TextBlock>
-                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.MoreByArtist, Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <StackLayout Orientation="Horizontal" Spacing="12"/>
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Style="{StaticResource SubtitleTextBlockStyle}"
+                                                   VerticalAlignment="Center">
+                                            <Run x:Uid="Views_AlbumPage__Run_5" Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                    Visibility="{x:Bind MoreByArtistShelf.HasOverflow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                    Command="{x:Bind MoreByArtistShelf.PageLeftCommand, Mode=OneTime}">
+                                                <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                            </Button>
+                                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                    Command="{x:Bind MoreByArtistShelf.PageRightCommand, Mode=OneTime}">
+                                                <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                    <shelf:ShelfScroller x:Name="MoreByArtistShelf"
+                                                         ItemsSource="{x:Bind ViewModel.MoreByArtist, Mode=OneWay}"
+                                                         MinItemWidth="160" Spacing="12">
+                                        <shelf:ShelfScroller.ItemTemplate>
                                             <DataTemplate x:DataType="contracts:AlbumRelatedResult">
                                                 <cards:ContentCard
                                                     Width="160"
@@ -269,8 +287,8 @@
                                                     NavigationUri="{x:Bind Uri}"
                                                     CardClick="RelatedAlbum_Click"/>
                                             </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
+                                        </shelf:ShelfScroller.ItemTemplate>
+                                    </shelf:ShelfScroller>
                                 </StackPanel>
 
                                 <!-- Merch -->

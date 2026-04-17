@@ -170,6 +170,9 @@ public sealed class ShellSessionService : IShellSessionService
     private static ShellSessionState GetOrCreateState(AppSettings settings)
     {
         settings.ShellSession ??= new ShellSessionState();
+        settings.ShellSession.Layout ??= new ShellLayoutState();
+        settings.ShellSession.SidebarGroups ??= [];
+        settings.ShellSession.Tabs ??= [];
 
         if (!settings.ShellSession.Initialized)
         {

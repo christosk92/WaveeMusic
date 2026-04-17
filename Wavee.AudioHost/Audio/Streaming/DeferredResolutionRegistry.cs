@@ -7,17 +7,39 @@ namespace Wavee.AudioHost.Audio.Streaming;
 /// then sends CDN URL + audio key later. AudioHost's LazyProgressiveDownloader
 /// awaits the deferred task to seamlessly continue from CDN.
 /// </summary>
+/// <remarks>
+/// Each entry has a server-side timeout: if the UI process never sends the
+/// deferred result (crash, IPC stall, upstream audio-key timeout after the head
+/// was already shipped), the awaiting downloader fails fast instead of waiting
+/// forever. 60 s is sized to cover the worst-case audio-key retry budget
+/// (~21 s) plus CDN URL resolution, with headroom for slow networks.
+/// </remarks>
 public sealed class DeferredResolutionRegistry
 {
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<DeferredResult>> _pending = new();
+    /// <summary>
+    /// Maximum time to wait for the UI process to send the deferred resolution.
+    /// </summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
+
+    private readonly ConcurrentDictionary<string, Entry> _pending = new();
 
     /// <summary>
     /// Creates a deferred resolution slot and returns the task to await.
+    /// The returned task will fault with <see cref="DeferredResolutionTimeoutException"/>
+    /// if neither <see cref="Complete"/> nor <see cref="CompleteFromCache"/> is called
+    /// within <paramref name="timeout"/> (default 60 s).
     /// </summary>
-    public Task<DeferredResult> CreateDeferred(string id)
+    public Task<DeferredResult> CreateDeferred(string id, TimeSpan? timeout = null)
     {
         var tcs = new TaskCompletionSource<DeferredResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[id] = tcs;
+        var cts = new CancellationTokenSource(timeout ?? DefaultTimeout);
+        var registration = cts.Token.Register(static state =>
+        {
+            var (tcs, id) = ((TaskCompletionSource<DeferredResult>, string))state!;
+            tcs.TrySetException(new DeferredResolutionTimeoutException(id));
+        }, (tcs, id));
+
+        _pending[id] = new Entry(tcs, cts, registration);
         return tcs.Task;
     }
 
@@ -27,9 +49,10 @@ public sealed class DeferredResolutionRegistry
     public bool Complete(string id, string cdnUrl, byte[] audioKey, long fileSize,
         string? spotifyFileId = null)
     {
-        if (_pending.TryRemove(id, out var tcs))
+        if (_pending.TryRemove(id, out var entry))
         {
-            tcs.SetResult(new DeferredResult(cdnUrl, audioKey, fileSize, spotifyFileId, null));
+            entry.Dispose();
+            entry.Tcs.TrySetResult(new DeferredResult(cdnUrl, audioKey, fileSize, spotifyFileId, null));
             return true;
         }
         return false;
@@ -41,9 +64,10 @@ public sealed class DeferredResolutionRegistry
     /// </summary>
     public bool CompleteFromCache(string id, byte[] audioKey, long fileSize, string localCacheFileId)
     {
-        if (_pending.TryRemove(id, out var tcs))
+        if (_pending.TryRemove(id, out var entry))
         {
-            tcs.SetResult(new DeferredResult("", audioKey, fileSize, localCacheFileId, localCacheFileId));
+            entry.Dispose();
+            entry.Tcs.TrySetResult(new DeferredResult("", audioKey, fileSize, localCacheFileId, localCacheFileId));
             return true;
         }
         return false;
@@ -54,8 +78,11 @@ public sealed class DeferredResolutionRegistry
     /// </summary>
     public void Cancel(string id)
     {
-        if (_pending.TryRemove(id, out var tcs))
-            tcs.TrySetCanceled();
+        if (_pending.TryRemove(id, out var entry))
+        {
+            entry.Dispose();
+            entry.Tcs.TrySetCanceled();
+        }
     }
 
     /// <summary>
@@ -65,9 +92,39 @@ public sealed class DeferredResolutionRegistry
     {
         foreach (var kvp in _pending)
         {
-            if (_pending.TryRemove(kvp.Key, out var tcs))
-                tcs.TrySetCanceled();
+            if (_pending.TryRemove(kvp.Key, out var entry))
+            {
+                entry.Dispose();
+                entry.Tcs.TrySetCanceled();
+            }
         }
+    }
+
+    private sealed record Entry(
+        TaskCompletionSource<DeferredResult> Tcs,
+        CancellationTokenSource Cts,
+        CancellationTokenRegistration Registration)
+    {
+        public void Dispose()
+        {
+            Registration.Dispose();
+            Cts.Dispose();
+        }
+    }
+}
+
+/// <summary>
+/// Thrown when the UI process fails to send the deferred CDN resolution
+/// (audio key + URL) within the registry's timeout.
+/// </summary>
+public sealed class DeferredResolutionTimeoutException : Exception
+{
+    public string DeferredId { get; }
+
+    public DeferredResolutionTimeoutException(string deferredId)
+        : base($"Deferred CDN resolution for '{deferredId}' timed out")
+    {
+        DeferredId = deferredId;
     }
 }
 

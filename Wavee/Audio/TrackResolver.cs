@@ -154,7 +154,7 @@ public sealed class TrackResolver
             _logger?.LogInformation("Cache HIT for {FileId} — skipping CDN and head fetch", fileIdHex);
 
             var cachedFileSize = AudioFileCache.GetCachedFileSize(_audioCacheDirectory, fileIdHex);
-            var keyTaskCached = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct));
+            var keyTaskCached = _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct);
             var metadata = BuildMetadataDto(uri, track, NormalizationData.Default);
 
             return new TrackResolution
@@ -178,8 +178,8 @@ public sealed class TrackResolver
 
         // Start all three in parallel — head file awaited first for instant start
         var headTask = GetHeadDataAsync(fileId, ct);
-        var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct));
-        var cdnTask = Task.Run(() => GetCdnUrlAsync(fileId, ct));
+        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct);
+        var cdnTask = GetCdnUrlAsync(fileId, ct);
 
         // Wait only for head file
         var headData = await headTask;
@@ -249,8 +249,8 @@ public sealed class TrackResolver
 
         // 4. Parallel fetches: head file + audio key + CDN URL
         var headTask = GetHeadDataAsync(fileId, ct);
-        var keyTask = Task.Run(() => _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct));
-        var cdnTask = Task.Run(() => GetCdnUrlAsync(fileId, ct));
+        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(effectiveTrackId, fileId, ct);
+        var cdnTask = GetCdnUrlAsync(fileId, ct);
 
         // Wait for head (for normalization) and the other two
         var headData = await headTask;

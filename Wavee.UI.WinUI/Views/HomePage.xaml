@@ -13,6 +13,7 @@
     xmlns:local="using:Wavee.UI.WinUI.Views" 
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -124,6 +125,7 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Header entity avatar (e.g. "More like X" sections) -->
@@ -147,21 +149,33 @@
                             FontWeight="Bold"/>
                     </StackPanel>
 
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                VerticalAlignment="Center"
+                                Margin="0,0,8,0"
+                                Visibility="{Binding ElementName=GenericSectionShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                Command="{Binding ElementName=GenericSectionShelf, Path=PageLeftCommand}">
+                            <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                        </Button>
+                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                Command="{Binding ElementName=GenericSectionShelf, Path=PageRightCommand}">
+                            <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                        </Button>
+                    </StackPanel>
+
                     <Button
-                        Grid.Column="2"
+                        Grid.Column="3"
                         Style="{StaticResource HomeSectionDebugButtonStyle}"
                         Tag="{x:Bind}"
                         Click="HomeSectionDebugButton_Click"
                         Visibility="{x:Bind IsDebugVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
-                <ItemsRepeater
+                <shelf:ShelfScroller
+                    x:Name="GenericSectionShelf"
                     ItemsSource="{x:Bind Items}"
-                    ItemTemplate="{StaticResource HomeItemSelector}">
-                    <ItemsRepeater.Layout>
-                        <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
-                    </ItemsRepeater.Layout>
-                </ItemsRepeater>
+                    ItemTemplateSelector="{StaticResource HomeItemSelector}"
+                    MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
             </StackPanel>
         </DataTemplate>
 
@@ -179,7 +193,6 @@
                         Text="{x:Bind Title}"
                         Style="{StaticResource SubtitleTextBlockStyle}"
                         FontWeight="Bold"
-                        Opacity="0"
                         VerticalAlignment="Center"/>
 
                     <Button
@@ -193,24 +206,17 @@
                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                     <ItemsRepeater.Layout>
                         <layouts:SafeUniformGridLayout
-                            MinItemWidth="280"
-                            MinItemHeight="390"
-                            MinColumnSpacing="0"
-                            MinRowSpacing="0"/>
+                            MinItemWidth="220"
+                            MaxItemWidth="290"
+                            MinItemHeight="325"
+                            MinColumnSpacing="12"
+                            MinRowSpacing="16"
+                            RealizeAllItems="True"
+                            ItemAspectRatio="0.6764705882352941"/>
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:HomeSectionItem">
-                            <Border Padding="10,8,10,12">
-                                <StackPanel Spacing="8">
-                                    <TextBlock
-                                    Text="{x:Bind BaselineGroupTitle}"
-                                    Style="{StaticResource SubtitleTextBlockStyle}"
-                                    FontWeight="Bold"
-                                    MaxLines="1"
-                                    TextTrimming="CharacterEllipsis"/>
-                                    <cards:BaselineHomeCard Item="{x:Bind}"/>
-                                </StackPanel>
-                            </Border>
+                            <cards:BaselineHomeCard Item="{x:Bind}"/>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
@@ -525,7 +531,7 @@
                 x:Name="SectionsRepeater"
                 ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
                 <ItemsRepeater.Layout>
-                    <StackLayout Spacing="0"/>
+                    <layouts:SectionStackLayout Spacing="0"/>
                 </ItemsRepeater.Layout>
             </ItemsRepeater>
         </ScrollView>

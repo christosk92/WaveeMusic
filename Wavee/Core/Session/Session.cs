@@ -915,6 +915,17 @@ public sealed class Session : ISession, IAsyncDisposable
             await DisconnectInternalAsync();
             OnDisconnected();
         }
+        catch (ApCodecException ex)
+        {
+            // MAC verification failure or malformed frame — the shannon stream is no
+            // longer trustworthy, but the AP itself may be fine. Tear down, then fire
+            // a background reconnect so audio-key requests can resume instead of
+            // leaving the session in a permanently disconnected state.
+            _logger?.LogCritical(ex, "AP codec fault; triggering automatic reconnect");
+            await DisconnectInternalAsync();
+            OnDisconnected();
+            TriggerBackgroundReconnect("codec fault");
+        }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Packet dispatcher failed");
@@ -1305,6 +1316,28 @@ public sealed class Session : ISession, IAsyncDisposable
     private void OnDisconnected()
     {
         Disconnected?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Fires a fire-and-forget AP reconnect on a pool thread. Used by dispatcher
+    /// fault paths that cannot call <see cref="ReconnectApAsync"/> inline because
+    /// <c>ReconnectApAsync</c> cancels and awaits the dispatch task itself.
+    /// </summary>
+    private void TriggerBackgroundReconnect(string reason)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                await ReconnectApAsync(cts.Token);
+                _logger?.LogInformation("Background AP reconnect succeeded after {Reason}", reason);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Background AP reconnect failed after {Reason}", reason);
+            }
+        });
     }
 
     /// <summary>

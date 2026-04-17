@@ -43,7 +43,7 @@ public sealed partial class AppModel : ObservableObject
 
     public void InitializeFromSettings()
     {
-        var layout = _shellSession.GetLayoutSnapshot();
+        var layout = _shellSession?.GetLayoutSnapshot() ?? new ShellLayoutState();
 
         _isHydrating = true;
         try

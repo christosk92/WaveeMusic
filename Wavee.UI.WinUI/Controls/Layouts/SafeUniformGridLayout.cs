@@ -10,7 +10,12 @@ namespace Wavee.UI.WinUI.Controls.Layouts;
 /// </summary>
 public sealed class SafeUniformGridLayout : VirtualizingLayout
 {
-    private const int RealizationBufferRows = 1;
+    // Number of rows to keep realized beyond the viewport top/bottom. Heavy item
+    // templates (BaselineHomeCard in particular — hero image, preview pipeline,
+    // hover chrome) take noticeable time to re-instantiate on recycle. A buffer of
+    // ~2 rows is enough to cover typical scroll velocity without the user seeing
+    // cards pop in.
+    private const int RealizationBufferRows = 2;
 
     public static readonly DependencyProperty MinItemWidthProperty =
         DependencyProperty.Register(nameof(MinItemWidth), typeof(double), typeof(SafeUniformGridLayout),
@@ -27,6 +32,37 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
     public static readonly DependencyProperty MinRowSpacingProperty =
         DependencyProperty.Register(nameof(MinRowSpacing), typeof(double), typeof(SafeUniformGridLayout),
             new PropertyMetadata(0.0, OnPropertyChanged));
+
+    /// <summary>
+    /// Width-to-height ratio for items. When set (&gt; 0) the layout derives item
+    /// height as <c>itemWidth / ItemAspectRatio</c>, clamped to <see cref="MinItemHeight"/>
+    /// as a floor. Default 0 disables the aspect lock and falls back to measuring
+    /// children for their desired height (legacy behaviour).
+    /// </summary>
+    /// <remarks>
+    /// Deriving height deterministically prevents the measure-pass oscillation that
+    /// happens when children adjust their own <c>Height</c> from <c>SizeChanged</c>.
+    /// Pair with <see cref="MinItemHeight"/> as a floor for short children.
+    /// </remarks>
+    public static readonly DependencyProperty ItemAspectRatioProperty =
+        DependencyProperty.Register(nameof(ItemAspectRatio), typeof(double), typeof(SafeUniformGridLayout),
+            new PropertyMetadata(0.0, OnPropertyChanged));
+
+    /// <summary>
+    /// Upper bound on item width. Extra horizontal space beyond
+    /// <c>columnCount * MaxItemWidth</c> becomes empty gutter rather than stretching
+    /// items. Without this, a single-column viewport blows items up to the full
+    /// viewport width — combined with <see cref="ItemAspectRatio"/> that produces
+    /// oversized cards. Default <see cref="double.PositiveInfinity"/> preserves the
+    /// legacy stretch-to-fill behaviour.
+    /// </summary>
+    public static readonly DependencyProperty MaxItemWidthProperty =
+        DependencyProperty.Register(nameof(MaxItemWidth), typeof(double), typeof(SafeUniformGridLayout),
+            new PropertyMetadata(double.PositiveInfinity, OnPropertyChanged));
+
+    public static readonly DependencyProperty RealizeAllItemsProperty =
+        DependencyProperty.Register(nameof(RealizeAllItems), typeof(bool), typeof(SafeUniformGridLayout),
+            new PropertyMetadata(false, OnPropertyChanged));
 
     public double MinItemWidth
     {
@@ -50,6 +86,24 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
     {
         get => (double)GetValue(MinRowSpacingProperty);
         set => SetValue(MinRowSpacingProperty, value);
+    }
+
+    public double ItemAspectRatio
+    {
+        get => (double)GetValue(ItemAspectRatioProperty);
+        set => SetValue(ItemAspectRatioProperty, value);
+    }
+
+    public double MaxItemWidth
+    {
+        get => (double)GetValue(MaxItemWidthProperty);
+        set => SetValue(MaxItemWidthProperty, value);
+    }
+
+    public bool RealizeAllItems
+    {
+        get => (bool)GetValue(RealizeAllItemsProperty);
+        set => SetValue(RealizeAllItemsProperty, value);
     }
 
     private int _columnCount = 1;
@@ -88,27 +142,54 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
             _columnCount = Math.Min(_columnCount, count);
             _itemWidth = Math.Max(1, (width - ((_columnCount - 1) * columnSpacing)) / _columnCount);
 
+            // Clamp to MaxItemWidth when set — extra viewport space becomes empty
+            // gutter at the right edge rather than stretching items. Prevents
+            // 280-wide cards ballooning to 536 wide on narrow windows.
+            var maxWidth = MaxItemWidth;
+            if (maxWidth > 0 && !double.IsInfinity(maxWidth) && !double.IsNaN(maxWidth) && _itemWidth > maxWidth)
+                _itemWidth = maxWidth;
+
             var fallbackHeight = GetSafePositive(MinItemHeight, _itemWidth);
-            var estimatedItemHeight = Math.Max(fallbackHeight, _itemHeight);
+            var aspectRatio = ItemAspectRatio;
+            var useAspect = aspectRatio > 0 && !double.IsInfinity(aspectRatio) && !double.IsNaN(aspectRatio);
+
+            // Deterministic height when ItemAspectRatio is set: derived purely from
+            // item width + floor, independent of child DesiredSize. This removes the
+            // "child adjusts Height in SizeChanged → _itemHeight oscillates" loop.
+            _itemHeight = useAspect
+                ? Math.Max(fallbackHeight, _itemWidth / aspectRatio)
+                : Math.Max(fallbackHeight, _itemHeight);
+
             var rows = Math.Max(1, (int)Math.Ceiling(count / (double)_columnCount));
-            var (firstRow, lastRow) = GetRealizedRowRange(context.RealizationRect, rows, estimatedItemHeight, rowSpacing);
+            var (firstRow, lastRow) = RealizeAllItems
+                ? (0, rows - 1)
+                : GetRealizedRowRange(context.RealizationRect, rows, _itemHeight, rowSpacing);
 
             _firstRealizedIndex = Math.Min(count - 1, firstRow * _columnCount);
             _lastRealizedIndex = Math.Min(count - 1, ((lastRow + 1) * _columnCount) - 1);
 
-            var measureSize = new Size(_itemWidth, double.PositiveInfinity);
-            var measuredHeight = 0d;
+            // Measure children at the computed row size. When aspect is in play, this
+            // is the FINAL height (finite) so the child can lay out correctly first pass.
+            var childMeasureSize = useAspect
+                ? new Size(_itemWidth, _itemHeight)
+                : new Size(_itemWidth, double.PositiveInfinity);
 
+            double maxChildHeight = 0d;
             for (var i = _firstRealizedIndex; i <= _lastRealizedIndex; i++)
             {
                 var child = context.GetOrCreateElementAt(i);
-                child.Measure(measureSize);
-                var desiredHeight = child.DesiredSize.Height;
-                if (!double.IsNaN(desiredHeight) && !double.IsInfinity(desiredHeight) && desiredHeight > 0)
-                    measuredHeight = Math.Max(measuredHeight, desiredHeight);
+                child.Measure(childMeasureSize);
+                if (!useAspect)
+                {
+                    var desiredHeight = child.DesiredSize.Height;
+                    if (!double.IsNaN(desiredHeight) && !double.IsInfinity(desiredHeight) && desiredHeight > 0)
+                        maxChildHeight = Math.Max(maxChildHeight, desiredHeight);
+                }
             }
 
-            _itemHeight = Math.Max(fallbackHeight, measuredHeight);
+            if (!useAspect)
+                _itemHeight = Math.Max(fallbackHeight, maxChildHeight);
+
             var totalHeight = rows * _itemHeight + Math.Max(0, rows - 1) * rowSpacing;
 
             _lastSize = new Size(width, totalHeight);
@@ -139,7 +220,10 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
                 var child = context.GetOrCreateElementAt(i);
                 var column = i % columns;
                 var row = i / columns;
-                var x = column * (itemWidth + columnSpacing);
+                var itemsInRow = Math.Min(columns, count - (row * columns));
+                var rowWidth = itemsInRow * itemWidth + Math.Max(0, itemsInRow - 1) * columnSpacing;
+                var rowOffset = Math.Max(0, (finalSize.Width - rowWidth) / 2);
+                var x = rowOffset + column * (itemWidth + columnSpacing);
                 var y = row * (itemHeight + rowSpacing);
                 child.Arrange(new Rect(x, y, itemWidth, itemHeight));
             }

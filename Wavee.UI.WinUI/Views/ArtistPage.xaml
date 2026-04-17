@@ -15,8 +15,9 @@
     xmlns:trackBehaviors="using:Wavee.UI.WinUI.Controls.Track.Behaviors"
     xmlns:hero="using:Wavee.UI.WinUI.Controls.HeroHeader"
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
-    xmlns:albumDetail="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel" 
+    xmlns:albumDetail="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -626,7 +627,11 @@
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.CompilationsTotalCount, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock FontWeight="Bold" FontSize="20">
                                 <Run x:Uid="Views_ArtistPage__Run_11" Text="Compilations"/>
                                 <Run Text=" · " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -637,23 +642,24 @@
                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                              VerticalAlignment="Center"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
-                            <Button Background="Transparent" BorderThickness="0" Padding="8,6">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                    Visibility="{x:Bind CompilationsShelf.HasOverflow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                    Command="{x:Bind CompilationsShelf.PageLeftCommand, Mode=OneTime}">
                                 <FontIcon Glyph="&#xE76B;" FontSize="12"/>
                             </Button>
-                            <Button Background="Transparent" BorderThickness="0" Padding="8,6">
+                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                    Command="{x:Bind CompilationsShelf.PageRightCommand, Mode=OneTime}">
                                 <FontIcon Glyph="&#xE76C;" FontSize="12"/>
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <!-- Horizontal single-row list -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Compilations, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <layouts:SingleRowLayout MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
-                        </ItemsRepeater.Layout>
-                        <ItemsRepeater.ItemTemplate>
+                    <shelf:ShelfScroller x:Name="CompilationsShelf"
+                                         ItemsSource="{x:Bind ViewModel.Compilations, Mode=OneWay}"
+                                         MinItemWidth="160" MaxItemWidth="200" Spacing="12">
+                        <shelf:ShelfScroller.ItemTemplate>
                             <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                <Grid>
+                                <Grid Width="160">
                                     <!-- Loaded: real card -->
                                     <cards:ContentCard
                                         Visibility="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -671,8 +677,8 @@
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
+                        </shelf:ShelfScroller.ItemTemplate>
+                    </shelf:ShelfScroller>
                     <controls1:ErrorStateView x:Uid="Views_ArtistPage__ErrorStateView_13"
                         Visibility="{x:Bind ViewModel.HasCompilationsError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         Title="Couldn't load all compilations"
@@ -745,27 +751,25 @@
                 </StackPanel>
 
                 <!-- ─── Related Artists ─── -->
-                <StackPanel Spacing="12">
-                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_16" Text="Fans Also Like" FontWeight="Bold" FontSize="20"/>
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RelatedArtists, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <layouts:SingleRowLayout MinItemWidth="140" Spacing="12"/>
-                        </ItemsRepeater.Layout>
-                        <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="vm:RelatedArtistVm">
-                                <cards:ContentCard
-                                    ImageUrl="{x:Bind ImageUrl}"
-                                    Title="{x:Bind Name}"
-                                    Subtitle="Artist"
-                                    PlaceholderGlyph="&#xE77B;"
-                                    IsCircularImage="True"
-                                    CenterText="True"
-                                    NavigationUri="{x:Bind Uri}"
-                                    NavigationTitle="{x:Bind Name}"/>
-                            </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
-                </StackPanel>
+                <shelf:SectionShelf x:Uid="Views_ArtistPage__SectionShelf_FansAlsoLike"
+                                    Title="Fans Also Like"
+                                    ItemsSource="{x:Bind ViewModel.RelatedArtists, Mode=OneWay}"
+                                    MinItemWidth="140">
+                    <shelf:SectionShelf.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RelatedArtistVm">
+                            <cards:ContentCard
+                                Width="140"
+                                ImageUrl="{x:Bind ImageUrl}"
+                                Title="{x:Bind Name}"
+                                Subtitle="Artist"
+                                PlaceholderGlyph="&#xE77B;"
+                                IsCircularImage="True"
+                                CenterText="True"
+                                NavigationUri="{x:Bind Uri}"
+                                NavigationTitle="{x:Bind Name}"/>
+                        </DataTemplate>
+                    </shelf:SectionShelf.ItemTemplate>
+                </shelf:SectionShelf>
 
                 <!-- ─── Biography ─── -->
                 <StackPanel Spacing="8"

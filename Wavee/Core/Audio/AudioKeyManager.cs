@@ -18,9 +18,11 @@ namespace Wavee.Core.Audio;
 public sealed class AudioKeyManager : IAsyncDisposable
 {
     /// <summary>
-    /// Timeout for AudioKey requests.
+    /// Timeout for AudioKey requests. Matches librespot's <c>KEY_RESPONSE_TIMEOUT</c>
+    /// (see <c>core/src/audio_key.rs</c>). Going longer does not make a healthy AP
+    /// respond — it only delays the reconnect path the retry loop already triggers.
     /// </summary>
-    private static readonly TimeSpan KeyResponseTimeout = TimeSpan.FromMilliseconds(3000);
+    private static readonly TimeSpan KeyResponseTimeout = TimeSpan.FromMilliseconds(1500);
 
     /// <summary>
     /// Maximum number of retry attempts for AudioKey requests.
@@ -99,7 +101,22 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
             try
             {
-                return await RequestAudioKeyInternalAsync(trackId, fileId, cancellationToken);
+                return await RequestAudioKeyInternalAsync(trackId, fileId, attempt, cancellationToken);
+            }
+            catch (AudioKeyException ex) when (ex.Reason == AudioKeyFailureReason.KeyError && !IsTransient(ex.ErrorCode))
+            {
+                // Permanent error (e.g. 0x0001 entitlement denial). Do not retry; surface fast.
+                _logger?.LogWarning(
+                    "AudioKey permanent error code=0x{Code:X4}, not retrying",
+                    ex.ErrorCode ?? 0);
+                throw;
+            }
+            catch (AudioKeyException ex) when (ex.Reason == AudioKeyFailureReason.KeyError && IsTransient(ex.ErrorCode))
+            {
+                lastException = ex;
+                _logger?.LogWarning(
+                    "AudioKey transient error code=0x{Code:X4} (attempt {Attempt}/{Max}), retrying",
+                    ex.ErrorCode ?? 0, attempt + 1, MaxRetries);
             }
             catch (TimeoutException ex)
             {
@@ -135,11 +152,25 @@ public sealed class AudioKeyManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Classifies an AudioKey error code as transient (worth retrying) or permanent.
+    /// Librespot does not decode these bytes; community reading of issue #1348 treats
+    /// 0x0002 as a transient AP backend failure (HTTP 502 upstream) and 0x0001 as an
+    /// entitlement denial (region / device / account tier) that will not succeed on retry.
+    /// Default to permanent for unknown codes — we can relax once logs give us data.
+    /// </summary>
+    private static bool IsTransient(ushort? errorCode) => errorCode switch
+    {
+        0x0002 => true,
+        _ => false,
+    };
+
+    /// <summary>
     /// Internal single-attempt AudioKey request.
     /// </summary>
     private async Task<byte[]> RequestAudioKeyInternalAsync(
         SpotifyId trackId,
         FileId fileId,
+        int attempt,
         CancellationToken cancellationToken)
     {
         // Generate sequence number
@@ -154,16 +185,16 @@ public sealed class AudioKeyManager : IAsyncDisposable
             throw new AudioKeyException(AudioKeyFailureReason.InternalError, "Failed to register pending request");
         }
 
-        _logger?.LogDebug("Registered pending AudioKey request: seq={Seq}, pending count={Count}",
-            seq, _pending.Count);
+        var startedUtc = DateTime.UtcNow;
 
         try
         {
             // Build and send request packet
             await SendKeyRequestAsync(seq, trackId, fileId, cancellationToken);
 
-            _logger?.LogDebug("Sent AudioKey request: seq={Seq}, track={TrackId}, file={FileId}",
-                seq, trackId.ToBase62(), fileId.ToBase16());
+            _logger?.LogInformation(
+                "AudioKey request sent: seq={Seq} attempt={Attempt}/{Max} trackId={TrackId} fileId={FileId} pending={Pending}",
+                seq, attempt + 1, MaxRetries, trackId.ToBase62(), fileId.ToBase16(), _pending.Count);
 
             // Wait for response with timeout
             using var timeoutCts = new CancellationTokenSource(KeyResponseTimeout);
@@ -172,11 +203,18 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
             try
             {
-                return await tcs.Task.WaitAsync(linkedCts.Token);
+                var key = await tcs.Task.WaitAsync(linkedCts.Token);
+                _logger?.LogInformation(
+                    "AudioKey received: seq={Seq} fileId={FileId} elapsedMs={ElapsedMs}",
+                    seq, fileId.ToBase16(), (int)(DateTime.UtcNow - startedUtc).TotalMilliseconds);
+                return key;
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
             {
-                _logger?.LogError("AudioKey request timeout: seq={Seq}", seq);
+                _logger?.LogError(
+                    "AudioKey timeout: seq={Seq} fileId={FileId} attempt={Attempt}/{Max} elapsedMs={ElapsedMs} pending={Pending}",
+                    seq, fileId.ToBase16(), attempt + 1, MaxRetries,
+                    (int)(DateTime.UtcNow - startedUtc).TotalMilliseconds, _pending.Count);
                 throw new TimeoutException($"AudioKey response timeout after {KeyResponseTimeout.TotalMilliseconds}ms");
             }
         }
@@ -214,8 +252,23 @@ public sealed class AudioKeyManager : IAsyncDisposable
 
         if (!_pending.TryRemove(seq, out var pending))
         {
-            _logger?.LogWarning("Received AudioKey response for unknown sequence: {Seq} (not in pending list of {Count} items)",
-                seq, _pending.Count);
+            // Snapshot outstanding seqs so we can see whether a reconnect
+            // wiped them (empty) or the seq truly doesn't belong to us (skew).
+            uint minSeq = 0, maxSeq = 0;
+            var count = 0;
+            foreach (var kvp in _pending)
+            {
+                if (count == 0) { minSeq = kvp.Key; maxSeq = kvp.Key; }
+                else
+                {
+                    if (kvp.Key < minSeq) minSeq = kvp.Key;
+                    if (kvp.Key > maxSeq) maxSeq = kvp.Key;
+                }
+                count++;
+            }
+            _logger?.LogWarning(
+                "AudioKey response for unknown seq={Seq} type={PacketType} pending={Pending} pendingRange=[{Min}..{Max}]",
+                seq, packetType, count, minSeq, maxSeq);
             return;
         }
 
@@ -247,10 +300,13 @@ public sealed class AudioKeyManager : IAsyncDisposable
                     ? BinaryPrimitives.ReadUInt16BigEndian(payload.Slice(4))
                     : (ushort)0;
 
-                _logger?.LogError("Received AudioKeyError: seq={Seq}, errorCode=0x{ErrorCode:X4}", seq, errorCode);
+                _logger?.LogError(
+                    "AudioKey error: seq={Seq} code=0x{ErrorCode:X4} fileId={FileId}",
+                    seq, errorCode, fileId.ToBase16());
                 tcs.TrySetException(new AudioKeyException(
                     AudioKeyFailureReason.KeyError,
-                    $"AudioKey error: 0x{errorCode:X4}"));
+                    $"AudioKey error code 0x{errorCode:X4}",
+                    errorCode));
                 break;
 
             default:
@@ -349,10 +405,25 @@ public sealed class AudioKeyException : Exception
     /// </summary>
     public AudioKeyFailureReason Reason { get; }
 
+    /// <summary>
+    /// The raw 2-byte error code returned by the AP, when <see cref="Reason"/> is
+    /// <see cref="AudioKeyFailureReason.KeyError"/>. Null otherwise. Librespot does
+    /// not decode these bytes; community reading of issue #1348 treats 0x0002 as a
+    /// transient backend failure (retry) and 0x0001 as entitlement denial (permanent).
+    /// </summary>
+    public ushort? ErrorCode { get; }
+
     public AudioKeyException(AudioKeyFailureReason reason, string message)
         : base(message)
     {
         Reason = reason;
+    }
+
+    public AudioKeyException(AudioKeyFailureReason reason, string message, ushort errorCode)
+        : base(message)
+    {
+        Reason = reason;
+        ErrorCode = errorCode;
     }
 
     public AudioKeyException(AudioKeyFailureReason reason, string message, Exception innerException)

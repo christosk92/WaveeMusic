@@ -12,30 +12,36 @@
     mc:Ignorable="d"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Top"
-    SizeChanged="BaselineHomeCard_SizeChanged"
     Loaded="Card_Loaded"
     Unloaded="Card_Unloaded">
 
-    <Grid
-        x:Name="CardRoot"
-        CornerRadius="14"
-        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-        BorderThickness="1"
-        PointerEntered="Card_PointerEntered"
-        PointerExited="Card_PointerExited"
-        PointerCanceled="Card_PointerCanceled"
-        PointerMoved="Card_PointerMoved"
-        PointerPressed="CardRoot_PointerPressed"
-        RightTapped="CardRoot_RightTapped"
-        Tapped="CardRoot_Tapped">
-        <winUi:Effects.Shadow>
-            <ui:AttachedCardShadow
-                BlurRadius="26"
-                CornerRadius="14"
-                Offset="0,8"
-                Opacity="0.22"/>
-        </winUi:Effects.Shadow>
+    <Viewbox
+        Stretch="Uniform"
+        StretchDirection="Both"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch">
+        <Grid
+            x:Name="CardRoot"
+            Width="230"
+            Height="340"
+            CornerRadius="14"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            PointerEntered="Card_PointerEntered"
+            PointerExited="Card_PointerExited"
+            PointerCanceled="Card_PointerCanceled"
+            PointerMoved="Card_PointerMoved"
+            PointerPressed="CardRoot_PointerPressed"
+            RightTapped="CardRoot_RightTapped"
+            Tapped="CardRoot_Tapped">
+            <winUi:Effects.Shadow>
+                <ui:AttachedCardShadow
+                    BlurRadius="26"
+                    CornerRadius="14"
+                    Offset="0,8"
+                    Opacity="0.22"/>
+            </winUi:Effects.Shadow>
 
         <Grid.RowDefinitions>
             <RowDefinition Height="84*"/>
@@ -111,62 +117,71 @@
                 VerticalAlignment="Bottom"
                 IsHitTestVisible="False"/>
 
-            <Border
-                x:Name="CoverThumbBorder"
-                Width="58"
-                Height="58"
-                Margin="16"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                CornerRadius="10"
-                Background="{ThemeResource HomeBaselineCardOverlayThumbBackgroundBrush}"
-                BorderBrush="{ThemeResource HomeBaselineCardOverlayThumbBorderBrush}"
-                BorderThickness="1">
-                <winUi:Effects.Shadow>
-                    <ui:AttachedCardShadow
-                        BlurRadius="18"
-                        CornerRadius="10"
-                        Offset="0,6"
-                        Opacity="0.18"/>
-                </winUi:Effects.Shadow>
-                <Grid>
-                    <Image
-                        x:Name="CoverThumbImage"
-                        Stretch="UniformToFill"/>
-                    <FontIcon
-                        x:Name="CoverThumbPlaceholder"
-                        Glyph="&#xE8D6;"
-                        FontSize="20"
-                        Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
-                        Opacity="0.45"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"/>
-                </Grid>
-            </Border>
+            <Grid
+                Margin="16,16,16,86"
+                RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
 
-            <StackPanel
-                x:Name="TitleOverlay"
-                VerticalAlignment="Bottom"
-                Padding="18,0,18,94"
-                Spacing="4">
-                <TextBlock
-                    x:Name="TitleText"
-                    TextWrapping="Wrap"
-                    FontSize="26"
-                    FontWeight="Black"
-                    Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
-                    MaxLines="3"
-                    TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Uid="Controls_Cards_BaselineHomeCard__TextBlock_1"
-                    x:Name="TypeText"
-                    Text="Playlist"
-                    FontSize="11"
-                    FontWeight="SemiBold"
-                    CharacterSpacing="120"
-                    Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
-                    MaxLines="1"
-                    TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
+                <Border
+                    x:Name="CoverThumbBorder"
+                    Grid.Row="0"
+                    Width="58"
+                    Height="58"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    CornerRadius="10"
+                    Background="{ThemeResource HomeBaselineCardOverlayThumbBackgroundBrush}"
+                    BorderBrush="{ThemeResource HomeBaselineCardOverlayThumbBorderBrush}"
+                    BorderThickness="1">
+                    <winUi:Effects.Shadow>
+                        <ui:AttachedCardShadow
+                            BlurRadius="18"
+                            CornerRadius="10"
+                            Offset="0,6"
+                            Opacity="0.18"/>
+                    </winUi:Effects.Shadow>
+                    <Grid>
+                        <Image
+                            x:Name="CoverThumbImage"
+                            Stretch="UniformToFill"/>
+                        <FontIcon
+                            x:Name="CoverThumbPlaceholder"
+                            Glyph="&#xE8D6;"
+                            FontSize="20"
+                            Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
+                            Opacity="0.45"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <StackPanel
+                    x:Name="TitleOverlay"
+                    Grid.Row="1"
+                    VerticalAlignment="Bottom"
+                    Spacing="4">
+                    <TextBlock
+                        x:Name="TitleText"
+                        TextWrapping="Wrap"
+                        FontSize="26"
+                        FontWeight="Black"
+                        Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"
+                        MaxLines="3"
+                        TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Uid="Controls_Cards_BaselineHomeCard__TextBlock_1"
+                        x:Name="TypeText"
+                        Text="Playlist"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        CharacterSpacing="120"
+                        Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
+                        MaxLines="1"
+                        TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </Grid>
 
             <Grid
                 x:Name="HoverChrome"
@@ -342,44 +357,45 @@
                         Margin="0,6,0,0"
                         FontSize="13"
                         Foreground="{ThemeResource HomeBaselineCardOverlaySecondaryTextBrush}"
-                        MaxLines="3"
+                        MaxLines="2"
                         TextWrapping="Wrap"
                         TextTrimming="CharacterEllipsis"/>
                 </Grid>
             </Grid>
         </Border>
 
-        <cards:PendingBorderBeam
-            x:Name="PendingBeam"
-            x:Load="False"
-            Grid.RowSpan="2"
-            Canvas.ZIndex="10"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            CornerRadius="14"
-            BeamThickness="2"/>
-
-        <Grid
-            x:Name="ShimmerOverlay"
-            x:Load="False"
-            Grid.RowSpan="2"
-            Padding="14"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="72*"/>
-                <RowDefinition Height="28*"/>
-            </Grid.RowDefinitions>
-            <controls:Shimmer
-                Grid.Row="0"
+            <cards:PendingBorderBeam
+                x:Name="PendingBeam"
+                x:Load="False"
+                Grid.RowSpan="2"
+                Canvas.ZIndex="10"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                CornerRadius="6"/>
-            <StackPanel Grid.Row="1" VerticalAlignment="Bottom" Spacing="10">
-                <controls:Shimmer Height="18" Width="220" HorizontalAlignment="Left" CornerRadius="4"/>
-                <controls:Shimmer Height="14" Width="300" HorizontalAlignment="Left" CornerRadius="4"/>
-                <controls:Shimmer Height="14" Width="240" HorizontalAlignment="Left" CornerRadius="4"/>
-            </StackPanel>
+                CornerRadius="14"
+                BeamThickness="2"/>
+
+            <Grid
+                x:Name="ShimmerOverlay"
+                x:Load="False"
+                Grid.RowSpan="2"
+                Padding="14"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="72*"/>
+                    <RowDefinition Height="28*"/>
+                </Grid.RowDefinitions>
+                <controls:Shimmer
+                    Grid.Row="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    CornerRadius="6"/>
+                <StackPanel Grid.Row="1" VerticalAlignment="Bottom" Spacing="10">
+                    <controls:Shimmer Height="18" Width="220" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="300" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="240" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+            </Grid>
         </Grid>
-    </Grid>
+    </Viewbox>
 </UserControl>

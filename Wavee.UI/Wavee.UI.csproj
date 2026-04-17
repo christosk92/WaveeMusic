@@ -8,7 +8,6 @@
     <LangVersion>preview</LangVersion>
     <RootNamespace>Wavee.UI</RootNamespace>
     <Platforms>AnyCPU;x86;x64;ARM64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>

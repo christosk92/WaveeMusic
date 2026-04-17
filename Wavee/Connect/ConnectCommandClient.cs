@@ -273,7 +273,7 @@ public sealed class ConnectCommandClient : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        _clusterSubscription.Dispose();
+        _clusterSubscription?.Dispose();
         foreach (var (_, tcs) in _pendingAcks)
             tcs.TrySetCanceled();
         _pendingAcks.Clear();

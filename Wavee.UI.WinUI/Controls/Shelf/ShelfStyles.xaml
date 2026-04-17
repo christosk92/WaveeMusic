@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf">
+
+    <!-- Chevron button style used by shelf headers (SectionShelf + any page
+         that wires its own header to a ShelfScroller). Matches the Fluent card
+         surface; greyed out automatically via ICommand.CanExecute. -->
+    <Style x:Key="ShelfChevronButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="32"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="CornerRadius" Value="16"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="UseSystemFocusVisuals" Value="True"/>
+    </Style>
+
+    <Style TargetType="shelf:ShelfScroller">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="shelf:ShelfScroller">
+                    <ScrollView x:Name="PART_Scroll"
+                                ContentOrientation="Horizontal"
+                                HorizontalScrollBarVisibility="Hidden"
+                                VerticalScrollBarVisibility="Hidden"
+                                VerticalScrollMode="Disabled"
+                                ZoomMode="Disabled"
+                                VerticalAlignment="Top">
+                        <ItemsRepeater x:Name="PART_Repeater"
+                                       VerticalAlignment="Top">
+                            <ItemsRepeater.Layout>
+                                <shelf:ShelfLayout/>
+                            </ItemsRepeater.Layout>
+                        </ItemsRepeater>
+                    </ScrollView>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

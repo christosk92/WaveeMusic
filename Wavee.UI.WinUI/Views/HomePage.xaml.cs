@@ -132,37 +132,47 @@ public sealed partial class HomePage : Page, ITabBarItemContent, IDisposable
     {
         _showingContent = true;
 
-        // Fade out shimmer
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
-            .Start(ShimmerContainer);
+        // Fade out shimmer, collapse it immediately on completion so it stops
+        // participating in layout — leaving it Visible for 500 ms after the opacity
+        // hit zero doubled the measure work on every outer-page scroll and amplified
+        // any layout stutter.
+        _ = CrossfadeShimmerOutAsync();
 
         // Fade in content
         AnimationBuilder.Create()
             .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
                      delay: TimeSpan.FromMilliseconds(100))
             .Start(ContentContainer);
-
-        // Collapse shimmer after animation
-        _ = CollapseShimmerAfterDelay();
     }
 
-    private const int ShimmerCollapseDelayMs = 500;
-
-    private async Task CollapseShimmerAfterDelay()
+    private async Task CrossfadeShimmerOutAsync()
     {
-        await Task.Delay(ShimmerCollapseDelayMs);
-        if (_showingContent && ShimmerContainer != null)
+        if (ShimmerContainer == null)
+            return;
+
+        try
         {
-            ShimmerContainer.Visibility = Visibility.Collapsed;
-            if (!_isShimmerContentReleased)
-            {
-                // The first-load skeleton is one of the heaviest retained subtrees on Home.
-                // Release it after content has loaded so a cached Home page doesn't keep the
-                // entire shimmer visual tree resident for the rest of the session.
-                ShimmerContainer.Content = null;
-                _isShimmerContentReleased = true;
-            }
+            await AnimationBuilder.Create()
+                .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+                .StartAsync(ShimmerContainer);
+        }
+        catch
+        {
+            // Animation was cancelled (e.g. ShowShimmer was called again). The
+            // guard below preserves correctness.
+        }
+
+        if (!_showingContent || ShimmerContainer == null)
+            return;
+
+        ShimmerContainer.Visibility = Visibility.Collapsed;
+        if (!_isShimmerContentReleased)
+        {
+            // The first-load skeleton is one of the heaviest retained subtrees on Home.
+            // Release it after content has loaded so a cached Home page doesn't keep the
+            // entire shimmer visual tree resident for the rest of the session.
+            ShimmerContainer.Content = null;
+            _isShimmerContentReleased = true;
         }
     }
 

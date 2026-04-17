@@ -115,10 +115,12 @@ public sealed class SettingsService : ISettingsService, IDisposable
             {
                 var json = await File.ReadAllTextAsync(SettingsPath);
                 _settings = JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
+                NormalizeSettings(_settings);
                 _logger?.LogInformation("Settings loaded from {Path}", SettingsPath);
             }
             else
             {
+                NormalizeSettings(_settings);
                 _logger?.LogInformation("No settings file found, using defaults");
             }
         }
@@ -126,13 +128,29 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             _logger?.LogWarning(ex, "Failed to load settings, using defaults");
             _settings = new AppSettings();
+            NormalizeSettings(_settings);
         }
     }
 
     public void Update(Action<AppSettings> modifier)
     {
+        NormalizeSettings(_settings);
         modifier(_settings);
         DebounceSave();
+    }
+
+    private static void NormalizeSettings(AppSettings settings)
+    {
+        settings.PanelWidths ??= new();
+        settings.ColumnWidths ??= new();
+        settings.HomeSettings ??= new();
+        settings.HomeSettings.Sections ??= [];
+        settings.ShellSession ??= new();
+        settings.ShellSession.Layout ??= new();
+        settings.ShellSession.SidebarGroups ??= [];
+        settings.ShellSession.Tabs ??= [];
+        settings.LyricsSourcePreferences ??= [];
+        settings.EqualizerBandGains ??= [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     }
 
     public async Task SaveAsync()

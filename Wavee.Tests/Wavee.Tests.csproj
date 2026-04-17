@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
-    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>AnyCPU;x64;ARM64</Platforms>
 
     <!-- To enable Microsoft.Testing.Platform, uncomment the following line. -->
     <!-- <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner> -->

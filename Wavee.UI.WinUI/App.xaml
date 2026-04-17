@@ -21,6 +21,7 @@
                 <ResourceDictionary Source="ms-appx:///Controls/Omnibar/Omnibar.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/GridSplitter/GridSplitter.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/ErrorStateView.xaml" />
+                <ResourceDictionary Source="ms-appx:///Controls/Shelf/ShelfStyles.xaml" />
 
                 <!-- INLINE ThemeDictionaries for TabView overrides (Files pattern) -->
                 <ResourceDictionary>
