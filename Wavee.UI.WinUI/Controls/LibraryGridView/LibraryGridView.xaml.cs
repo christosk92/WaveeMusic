@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.Controls;
 
@@ -61,6 +62,34 @@ public sealed partial class LibraryGridView : UserControl
     public static readonly DependencyProperty SelectionChangedCommandProperty =
         DependencyProperty.Register(nameof(SelectionChangedCommand), typeof(ICommand), typeof(LibraryGridView),
             new PropertyMetadata(null));
+
+    public static readonly DependencyProperty HeaderLeadingContentProperty =
+        DependencyProperty.Register(nameof(HeaderLeadingContent), typeof(object), typeof(LibraryGridView),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty SubHeaderContentProperty =
+        DependencyProperty.Register(nameof(SubHeaderContent), typeof(object), typeof(LibraryGridView),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty ViewModeProperty =
+        DependencyProperty.Register(nameof(ViewMode), typeof(LibraryViewMode), typeof(LibraryGridView),
+            new PropertyMetadata(LibraryViewMode.DefaultGrid, OnViewModeChanged));
+
+    public static readonly DependencyProperty CompactListItemTemplateProperty =
+        DependencyProperty.Register(nameof(CompactListItemTemplate), typeof(DataTemplate), typeof(LibraryGridView),
+            new PropertyMetadata(null, OnTemplatePropertyChanged));
+
+    public static readonly DependencyProperty DefaultListItemTemplateProperty =
+        DependencyProperty.Register(nameof(DefaultListItemTemplate), typeof(DataTemplate), typeof(LibraryGridView),
+            new PropertyMetadata(null, OnTemplatePropertyChanged));
+
+    public static readonly DependencyProperty CompactGridItemTemplateProperty =
+        DependencyProperty.Register(nameof(CompactGridItemTemplate), typeof(DataTemplate), typeof(LibraryGridView),
+            new PropertyMetadata(null, OnTemplatePropertyChanged));
+
+    public static readonly DependencyProperty DefaultGridItemTemplateProperty =
+        DependencyProperty.Register(nameof(DefaultGridItemTemplate), typeof(DataTemplate), typeof(LibraryGridView),
+            new PropertyMetadata(null, OnTemplatePropertyChanged));
 
     #endregion
 
@@ -174,6 +203,61 @@ public sealed partial class LibraryGridView : UserControl
         set => SetValue(SelectionChangedCommandProperty, value);
     }
 
+    /// <summary>
+    /// Content hosted to the left of the search box (e.g. a "Sort & view" trigger button).
+    /// </summary>
+    public object? HeaderLeadingContent
+    {
+        get => GetValue(HeaderLeadingContentProperty);
+        set => SetValue(HeaderLeadingContentProperty, value);
+    }
+
+    /// <summary>
+    /// Content placed between the search row and the items grid (e.g. an inline
+    /// expandable sort/view panel).
+    /// </summary>
+    public object? SubHeaderContent
+    {
+        get => GetValue(SubHeaderContentProperty);
+        set => SetValue(SubHeaderContentProperty, value);
+    }
+
+    /// <summary>
+    /// Layout mode for items. Swaps between StackLayout (compact/default list) and
+    /// UniformGridLayout (compact/default grid). The matching <c>*ItemTemplate</c> DP
+    /// is applied at the same time; <see cref="ItemTemplate"/> is the fallback when
+    /// a mode-specific template is not provided.
+    /// </summary>
+    public LibraryViewMode ViewMode
+    {
+        get => (LibraryViewMode)GetValue(ViewModeProperty);
+        set => SetValue(ViewModeProperty, value);
+    }
+
+    public DataTemplate? CompactListItemTemplate
+    {
+        get => (DataTemplate?)GetValue(CompactListItemTemplateProperty);
+        set => SetValue(CompactListItemTemplateProperty, value);
+    }
+
+    public DataTemplate? DefaultListItemTemplate
+    {
+        get => (DataTemplate?)GetValue(DefaultListItemTemplateProperty);
+        set => SetValue(DefaultListItemTemplateProperty, value);
+    }
+
+    public DataTemplate? CompactGridItemTemplate
+    {
+        get => (DataTemplate?)GetValue(CompactGridItemTemplateProperty);
+        set => SetValue(CompactGridItemTemplateProperty, value);
+    }
+
+    public DataTemplate? DefaultGridItemTemplate
+    {
+        get => (DataTemplate?)GetValue(DefaultGridItemTemplateProperty);
+        set => SetValue(DefaultGridItemTemplateProperty, value);
+    }
+
     #endregion
 
     #region Events
@@ -204,6 +288,97 @@ public sealed partial class LibraryGridView : UserControl
         ShimmerOverlay.ItemsSource = ShimmerPlaceholders;
         Loaded += OnLoaded;
         ItemsGridView.DoubleTapped += ItemsGridView_DoubleTapped;
+
+        // Apply the initial ViewMode / template once named elements exist.
+        ApplyViewMode();
+    }
+
+    private static void OnViewModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is LibraryGridView control)
+            control.ApplyViewMode();
+    }
+
+    private static void OnTemplatePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // Mode-specific templates may arrive after ViewMode is set (they live on the
+        // consumer's XAML and are assigned sequentially). Re-apply whenever any
+        // template DP changes so the currently-selected mode picks up a late binding.
+        if (d is LibraryGridView control)
+            control.ApplyViewMode();
+    }
+
+    private void ApplyViewMode()
+    {
+        if (ItemsGridView == null) return;
+
+        var (template, layout, minWidth, minHeight) = ViewMode switch
+        {
+            LibraryViewMode.CompactList => (
+                CompactListItemTemplate ?? DefaultListItemTemplate ?? ItemTemplate,
+                (Microsoft.UI.Xaml.Controls.Layout)new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 },
+                (double)0,
+                (double)36),
+            LibraryViewMode.DefaultList => (
+                DefaultListItemTemplate ?? ItemTemplate,
+                new StackLayout { Orientation = Orientation.Vertical, Spacing = 4 },
+                (double)0,
+                (double)56),
+            LibraryViewMode.CompactGrid => (
+                CompactGridItemTemplate ?? DefaultGridItemTemplate ?? ItemTemplate,
+                new UniformGridLayout
+                {
+                    MinItemWidth = 100,
+                    MinItemHeight = 100,
+                    MinRowSpacing = 8,
+                    MinColumnSpacing = 8,
+                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                },
+                (double)100,
+                (double)100),
+            _ => (
+                DefaultGridItemTemplate ?? ItemTemplate,
+                new UniformGridLayout
+                {
+                    MinItemWidth = MinItemWidth,
+                    MinItemHeight = MinItemHeight,
+                    MinRowSpacing = 12,
+                    MinColumnSpacing = 12,
+                    // Cells size to the card's natural height so an optional badge (e.g.
+                    // "Played 3h ago") is included without the consumer having to bump
+                    // MinItemHeight. MinItemWidth still floors the horizontal cell size.
+                    ItemsStretch = UniformGridLayoutItemsStretch.None
+                },
+                MinItemWidth,
+                MinItemHeight)
+        };
+
+        // Keep the shimmer aligned to the items layout so the placeholder silhouette
+        // approximates the actual rendered rows/cards.
+        if (layout is UniformGridLayout uniform)
+        {
+            ShimmerOverlay.Layout = new UniformGridLayout
+            {
+                MinItemWidth = uniform.MinItemWidth,
+                MinItemHeight = uniform.MinItemHeight,
+                MinRowSpacing = uniform.MinRowSpacing,
+                MinColumnSpacing = uniform.MinColumnSpacing,
+                ItemsStretch = uniform.ItemsStretch
+            };
+        }
+        else if (layout is StackLayout stack)
+        {
+            ShimmerOverlay.Layout = new StackLayout
+            {
+                Orientation = stack.Orientation,
+                Spacing = stack.Spacing
+            };
+        }
+
+        ItemsGridView.Layout = layout;
+        if (template != null)
+            ItemsGridView.ItemTemplate = template;
+        _ = minWidth; _ = minHeight;
     }
 
     private void ItemsGridView_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)

@@ -302,11 +302,17 @@ public interface ISpClient
     /// </summary>
     /// <param name="userId">Spotify username.</param>
     /// <param name="limit">Maximum number of items to return (default 50).</param>
+    /// <param name="filter">
+    /// Server-side filter (URL <c>filter</c> param). Defaults to the HomePage-style
+    /// <c>"default,collection-new-episodes"</c>; pass <c>"album"</c> or <c>"artist"</c>
+    /// to restrict the result set for the library Recents sort.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Recently played contexts with URIs and timestamps.</returns>
     Task<RecentlyPlayedResponse> GetRecentlyPlayedAsync(
         string userId,
         int limit = 50,
+        string filter = "default,collection-new-episodes",
         CancellationToken cancellationToken = default);
 
     /// <summary>

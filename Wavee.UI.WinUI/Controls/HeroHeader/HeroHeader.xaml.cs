@@ -16,6 +16,7 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 /// </summary>
 public sealed partial class HeroHeader : UserControl
 {
+    private static readonly TimeSpan ColorTransitionDuration = TimeSpan.FromMilliseconds(420);
     private CompositionSurfaceBrush? _surfaceBrush;
     private CompositionLinearGradientBrush? _colorBlendBrush;
     private CompositionColorGradientStop? _colorBlendMidStop;
@@ -29,6 +30,9 @@ public sealed partial class HeroHeader : UserControl
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
     private bool _hasAnimated;
+    private bool _animateNextImageLoad = true;
+    private string? _loadedImageUrl;
+    private string? _requestedImageUrl;
 
     // ── Dependency Properties ──
 
@@ -279,7 +283,7 @@ public sealed partial class HeroHeader : UserControl
             (float)(ImageBorder.ActualHeight / 2), 0);
 
         ElementCompositionPreview.SetElementChildVisual(ImageBorder, _containerVisual);
-        ApplyColor(ColorHex);
+        ApplyColor(ColorHex, animate: false);
 
         ImageBorder.SizeChanged -= OnImageBorderSizeChanged;
         ImageBorder.SizeChanged += OnImageBorderSizeChanged;
@@ -289,30 +293,83 @@ public sealed partial class HeroHeader : UserControl
     {
         if (_surfaceBrush == null || _compositor == null) return;
 
-        if (string.IsNullOrEmpty(url))
+        var normalizedUrl = NormalizeImageUrl(url);
+        _requestedImageUrl = normalizedUrl;
+        _animateNextImageLoad = !string.Equals(_loadedImageUrl, normalizedUrl, StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrEmpty(normalizedUrl))
         {
+            _loadedImageUrl = null;
+            _hasAnimated = false;
             _surfaceBrush.Surface = null;
-            if (_containerVisual != null) _containerVisual.Opacity = 0f;
+            if (_containerVisual != null)
+            {
+                _containerVisual.StopAnimation("Scale");
+                _containerVisual.StopAnimation("Opacity");
+                _containerVisual.Scale = new Vector3((float)InitialScale);
+                _containerVisual.Opacity = 0f;
+            }
             return;
         }
 
-        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
-        if (string.IsNullOrEmpty(httpsUrl)) return;
+        var shouldAnimate = _animateNextImageLoad;
+        PrepareContainerForImageLoad(shouldAnimate);
 
         _imageSurface?.Dispose();
         var desiredSize = new Windows.Foundation.Size(
             Math.Max(1, ImageBorder.ActualWidth > 0 ? ImageBorder.ActualWidth : 1200),
             Math.Max(1, ImageBorder.ActualHeight > 0 ? ImageBorder.ActualHeight : 420));
-        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), desiredSize);
+        _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(normalizedUrl), desiredSize);
         _surfaceBrush.Surface = _imageSurface;
+        _loadedImageUrl = normalizedUrl;
 
-        _imageSurface.LoadCompleted += (_, _) =>
+        var surface = _imageSurface;
+        surface.LoadCompleted += (_, args) =>
         {
-            DispatcherQueue.TryEnqueue(() => PlayPopInAnimation());
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!ReferenceEquals(surface, _imageSurface)
+                    || !string.Equals(normalizedUrl, _requestedImageUrl, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (args.Status == LoadedImageSourceLoadStatus.Success)
+                {
+                    PlayPopInAnimation();
+                }
+                else if (_containerVisual != null)
+                {
+                    _containerVisual.Opacity = 1f;
+                    _containerVisual.Scale = new Vector3((float)FinalScale);
+                }
+            });
         };
     }
 
-    private void ApplyColor(string? hex)
+    private void PrepareContainerForImageLoad(bool shouldAnimate)
+    {
+        if (_containerVisual == null)
+            return;
+
+        _containerVisual.StopAnimation("Scale");
+        _containerVisual.StopAnimation("Opacity");
+
+        if (shouldAnimate)
+        {
+            _hasAnimated = false;
+            _containerVisual.Scale = new Vector3((float)InitialScale);
+            _containerVisual.Opacity = 0f;
+        }
+        else
+        {
+            _hasAnimated = true;
+            _containerVisual.Scale = new Vector3((float)FinalScale);
+            _containerVisual.Opacity = 1f;
+        }
+    }
+
+    private void ApplyColor(string? hex, bool animate = true)
     {
         if (_colorBlendBrush == null
             || _colorBlendMidStop == null
@@ -321,27 +378,44 @@ public sealed partial class HeroHeader : UserControl
             return;
         }
 
+        Windows.UI.Color midColor;
+        Windows.UI.Color bottomColor;
+        float targetOpacity;
+
         if (string.IsNullOrWhiteSpace(hex))
         {
-            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
-            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
-            if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 0f;
-            return;
+            midColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            bottomColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            targetOpacity = 0f;
         }
-
-        if (TintColorHelper.TryParseHex(hex, out var parsedColor))
+        else if (TintColorHelper.TryParseHex(hex, out var parsedColor))
         {
             var color = TintColorHelper.BrightenForTint(parsedColor);
-            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(60, color.R, color.G, color.B);
-            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(210, color.R, color.G, color.B);
-            if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 1f;
+            midColor = Windows.UI.Color.FromArgb(60, color.R, color.G, color.B);
+            bottomColor = Windows.UI.Color.FromArgb(210, color.R, color.G, color.B);
+            targetOpacity = 1f;
         }
         else
         {
-            _colorBlendMidStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
-            _colorBlendBottomStop.Color = Windows.UI.Color.FromArgb(0, 0, 0, 0);
-            if (_colorBlendVisual != null) _colorBlendVisual.Opacity = 0f;
+            midColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            bottomColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            targetOpacity = 0f;
         }
+
+        if (!animate || _compositor == null)
+        {
+            _colorBlendMidStop.Color = midColor;
+            _colorBlendBottomStop.Color = bottomColor;
+            if (_colorBlendVisual != null)
+                _colorBlendVisual.Opacity = targetOpacity;
+            return;
+        }
+
+        AnimateColorStop(_colorBlendMidStop, midColor);
+        AnimateColorStop(_colorBlendBottomStop, bottomColor);
+
+        if (_colorBlendVisual != null)
+            AnimateScalar(_colorBlendVisual, "Opacity", targetOpacity);
     }
 
     private void OnImageBorderSizeChanged(object sender, SizeChangedEventArgs args)
@@ -381,6 +455,45 @@ public sealed partial class HeroHeader : UserControl
 
         _containerVisual.StartAnimation("Scale", scaleAnim);
         _containerVisual.StartAnimation("Opacity", opacityAnim);
+    }
+
+    private void AnimateColorStop(CompositionColorGradientStop stop, Windows.UI.Color target)
+    {
+        if (_compositor == null)
+        {
+            stop.Color = target;
+            return;
+        }
+
+        var animation = _compositor.CreateColorKeyFrameAnimation();
+        animation.InsertKeyFrame(1f, target,
+            _compositor.CreateCubicBezierEasingFunction(new Vector2(0.18f, 0.84f), new Vector2(0.24f, 1f)));
+        animation.Duration = ColorTransitionDuration;
+        stop.StartAnimation(nameof(CompositionColorGradientStop.Color), animation);
+    }
+
+    private void AnimateScalar(CompositionObject target, string propertyName, float to)
+    {
+        if (_compositor == null)
+        {
+            if (target is Visual visual && propertyName == nameof(Visual.Opacity))
+                visual.Opacity = to;
+            return;
+        }
+
+        var animation = _compositor.CreateScalarKeyFrameAnimation();
+        animation.InsertKeyFrame(1f, to,
+            _compositor.CreateCubicBezierEasingFunction(new Vector2(0.18f, 0.84f), new Vector2(0.24f, 1f)));
+        animation.Duration = ColorTransitionDuration;
+        target.StartAnimation(propertyName, animation);
+    }
+
+    private static string? NormalizeImageUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+
+        return SpotifyImageHelper.ToHttpsUrl(url);
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

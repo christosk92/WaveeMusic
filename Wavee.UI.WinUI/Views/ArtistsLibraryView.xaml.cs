@@ -5,6 +5,7 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -43,6 +44,8 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 
         // Initialize tracks panel state
         UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: false);
+
+        ApplyArtistsViewMode();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -63,6 +66,66 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable
         {
             UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: true);
         }
+        else if (e.PropertyName == nameof(ViewModel.ViewMode))
+        {
+            ApplyArtistsViewMode();
+        }
+    }
+
+    /// <summary>
+    /// Swaps the artists <see cref="ItemsView.Layout"/> and <see cref="ItemsView.ItemTemplate"/>
+    /// based on the selected <see cref="LibraryViewMode"/>. The inline template defined in XAML
+    /// is the DefaultList variant; the other three live in <c>UserControl.Resources</c>.
+    /// </summary>
+    private void ApplyArtistsViewMode()
+    {
+        if (ArtistsView is null) return;
+
+        var resources = Resources;
+        switch (ViewModel.ViewMode)
+        {
+            case LibraryViewMode.CompactList:
+                ArtistsView.Layout = new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 };
+                ApplyTemplateFromResources("ArtistCompactListItemTemplate");
+                break;
+
+            case LibraryViewMode.CompactGrid:
+                ArtistsView.Layout = new UniformGridLayout
+                {
+                    MinItemWidth = 104,
+                    MinItemHeight = 104,
+                    MinRowSpacing = 8,
+                    MinColumnSpacing = 8,
+                    ItemsStretch = UniformGridLayoutItemsStretch.None
+                };
+                ApplyTemplateFromResources("ArtistCompactGridItemTemplate");
+                break;
+
+            case LibraryViewMode.DefaultGrid:
+                ArtistsView.Layout = new UniformGridLayout
+                {
+                    MinItemWidth = 112,
+                    MinItemHeight = 150,
+                    MinRowSpacing = 4,
+                    MinColumnSpacing = 4,
+                    ItemsStretch = UniformGridLayoutItemsStretch.None
+                };
+                ApplyTemplateFromResources("ArtistDefaultGridItemTemplate");
+                break;
+
+            case LibraryViewMode.DefaultList:
+            default:
+                ArtistsView.Layout = new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 };
+                ApplyTemplateFromResources("ArtistDefaultListItemTemplate");
+                break;
+        }
+    }
+
+    private void ApplyTemplateFromResources(string resourceKey)
+    {
+        if (ArtistsView is null) return;
+        if (Resources.TryGetValue(resourceKey, out var tpl) && tpl is Microsoft.UI.Xaml.IElementFactory factory)
+            ArtistsView.ItemTemplate = factory;
     }
 
     private void UpdateTracksPanelVisibility(bool isVisible, bool animate)

@@ -1174,11 +1174,15 @@ public sealed class SpClient : ISpClient
 
     /// <inheritdoc />
     public async Task<RecentlyPlayedResponse> GetRecentlyPlayedAsync(
-        string userId, int limit = 50, CancellationToken cancellationToken = default)
+        string userId,
+        int limit = 50,
+        string filter = "default,collection-new-episodes",
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        var url = $"{_baseUrl}/recently-played/v3/user/{Uri.EscapeDataString(userId)}/recently-played?format=json&offset=0&limit={limit}&filter=default,collection-new-episodes&market=from_token";
+        var filterParam = string.IsNullOrWhiteSpace(filter) ? "default,collection-new-episodes" : filter;
+        var url = $"{_baseUrl}/recently-played/v3/user/{Uri.EscapeDataString(userId)}/recently-played?format=json&offset=0&limit={limit}&filter={Uri.EscapeDataString(filterParam)}&market=from_token";
         var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);

@@ -190,6 +190,16 @@
                            TextTrimming="CharacterEllipsis"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            FontSize="12"/>
+
+                <!-- Optional accent badge (e.g. "Played 3h ago" for library Recents sort). Lives
+                     inside the card so the card sizes to include it — no parent-level height
+                     magic required. Collapsed by default; consumer sets BadgeText to reveal. -->
+                <TextBlock x:Name="BadgeText"
+                           Visibility="Collapsed"
+                           MaxLines="1"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                           FontSize="11"/>
             </StackPanel>
         </Grid>
             <local:PendingBorderBeam x:Name="PendingBeam"

@@ -268,6 +268,12 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMessenger>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<ILogger<RecentlyPlayedService>>()))
+                .AddSingleton<LibraryRecentsService>(sp =>
+                    new LibraryRecentsService(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<IMessenger>(),
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
+                        sp.GetService<ILogger<LibraryRecentsService>>()))
                 .AddSingleton<ProfileCache>()
                 .AddSingleton<IProfileCache>(sp => sp.GetRequiredService<ProfileCache>())
                 .AddSingleton(sp => new ImageCacheService(cacheCapacities.ImageCacheMaxSize))

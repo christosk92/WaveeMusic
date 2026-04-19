@@ -35,4 +35,10 @@ public sealed record LibraryArtistDto
     public string AddedAtFormatted => AddedAt == DateTimeOffset.MinValue
         ? ""
         : $"Added {AddedAt.LocalDateTime:MMM d, yyyy}";
+
+    /// <summary>
+    /// VM-populated, sort-dependent subtitle. Non-null only when the library is sorted by
+    /// "Recents" and this artist has a known last-played timestamp.
+    /// </summary>
+    public string? RecentsSubtitle { get; set; }
 }

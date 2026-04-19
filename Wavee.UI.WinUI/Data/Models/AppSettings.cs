@@ -170,6 +170,21 @@ public sealed class AppSettings
     /// The last app version whose "What's New" dialog was shown/dismissed.
     /// </summary>
     public string? LastSeenChangelogVersion { get; set; }
+
+    // ── Library (per-tab sort + view preferences) ──
+
+    /// <summary>
+    /// Persisted sort + view-mode preferences, keyed by library tab
+    /// ("albums", "artists"). Unknown tabs fall back to defaults.
+    /// </summary>
+    public Dictionary<string, LibraryTabPreferences> LibraryTabs { get; set; } = new();
+}
+
+public sealed class LibraryTabPreferences
+{
+    public string SortBy { get; set; } = "Recents";
+    public string SortDirection { get; set; } = "Descending";
+    public string ViewMode { get; set; } = "DefaultGrid";
 }
 
 public sealed class HomeSectionSettings

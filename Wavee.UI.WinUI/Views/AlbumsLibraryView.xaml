@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:libcontrols="using:Wavee.UI.WinUI.Controls.Library"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
@@ -27,8 +28,138 @@
             EmptyStateGlyph="&#xE93C;"
             MinItemWidth="120"
             MinItemHeight="170"
+            ViewMode="{x:Bind ViewModel.ViewMode, Mode=OneWay}"
             Visibility="{x:Bind ViewModel.IsWideLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
+            <controls:LibraryGridView.HeaderLeadingContent>
+                <libcontrols:LibrarySortViewPanel
+                    AllowedSortKeys="Recents,RecentlyAdded,Alphabetical,Creator,ReleaseDate"
+                    SortBy="{x:Bind ViewModel.SortBy, Mode=TwoWay}"
+                    SortDirection="{x:Bind ViewModel.SortDirection, Mode=TwoWay}"
+                    ViewMode="{x:Bind ViewModel.ViewMode, Mode=TwoWay}"/>
+            </controls:LibraryGridView.HeaderLeadingContent>
+
+            <controls:LibraryGridView.DefaultGridItemTemplate>
+                <DataTemplate x:DataType="dto:LibraryAlbumDto">
+                    <ItemContainer>
+                        <cards:ContentCard
+                            ImageUrl="{x:Bind ImageUrl}"
+                            Title="{x:Bind Name}"
+                            Subtitle="{x:Bind ArtistName}"
+                            Badge="{x:Bind RecentsSubtitle}"
+                            NavigationUri="{x:Bind Id}"
+                            PlaceholderGlyph="&#xE93C;"
+                            IsCircularImage="False"
+                            IsPassive="True"
+                            IsLoading="{x:Bind IsLoading}"/>
+                    </ItemContainer>
+                </DataTemplate>
+            </controls:LibraryGridView.DefaultGridItemTemplate>
+
+            <controls:LibraryGridView.CompactGridItemTemplate>
+                <DataTemplate x:DataType="dto:LibraryAlbumDto">
+                    <ItemContainer>
+                        <Grid
+                            Width="100" Height="100"
+                            CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <FontIcon
+                                Glyph="&#xE93C;"
+                                FontSize="28"
+                                Opacity="0.3"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"/>
+                            <Image
+                                Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
+                                Stretch="UniformToFill"
+                                behaviors:ImageFallbackBehavior.HideOnError="True"
+                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                behaviors:ImageFallbackBehavior.DecodePixelWidth="200"/>
+                            <ToolTipService.ToolTip>
+                                <TextBlock>
+                                    <Run Text="{x:Bind Name}"/>
+                                    <LineBreak/>
+                                    <Run Text="{x:Bind ArtistName}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </TextBlock>
+                            </ToolTipService.ToolTip>
+                        </Grid>
+                    </ItemContainer>
+                </DataTemplate>
+            </controls:LibraryGridView.CompactGridItemTemplate>
+
+            <controls:LibraryGridView.DefaultListItemTemplate>
+                <DataTemplate x:DataType="dto:LibraryAlbumDto">
+                    <ItemContainer>
+                        <Grid Padding="8,6" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid
+                                Grid.Column="0"
+                                Width="40" Height="40"
+                                CornerRadius="4"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE93C;" FontSize="16" Opacity="0.3"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image
+                                    Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
+                                    Stretch="UniformToFill"
+                                    behaviors:ImageFallbackBehavior.HideOnError="True"
+                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
+                            </Grid>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                <TextBlock Text="{x:Bind ArtistName}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           FontSize="12"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </StackPanel>
+                            <!-- Accent "Played X ago" badge, only when VM stamped RecentsSubtitle. -->
+                            <TextBlock Grid.Column="2"
+                                       Text="{x:Bind RecentsSubtitle}"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Visibility="{x:Bind RecentsSubtitle, Converter={StaticResource NullToVisibilityConverter}}"/>
+                        </Grid>
+                    </ItemContainer>
+                </DataTemplate>
+            </controls:LibraryGridView.DefaultListItemTemplate>
+
+            <controls:LibraryGridView.CompactListItemTemplate>
+                <DataTemplate x:DataType="dto:LibraryAlbumDto">
+                    <ItemContainer>
+                        <Grid Padding="8,4" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="{x:Bind Name}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{x:Bind ArtistName}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1"/>
+                            <TextBlock Grid.Column="2"
+                                       Text="{x:Bind RecentsSubtitle}"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       FontSize="11"
+                                       Margin="8,0,0,0"
+                                       Visibility="{x:Bind RecentsSubtitle, Converter={StaticResource NullToVisibilityConverter}}"/>
+                        </Grid>
+                    </ItemContainer>
+                </DataTemplate>
+            </controls:LibraryGridView.CompactListItemTemplate>
+
+            <!-- Fallback template (used when ViewMode has no matching template) -->
             <controls:LibraryGridView.ItemTemplate>
                 <DataTemplate x:DataType="dto:LibraryAlbumDto">
                     <ItemContainer>
@@ -36,6 +167,7 @@
                             ImageUrl="{x:Bind ImageUrl}"
                             Title="{x:Bind Name}"
                             Subtitle="{x:Bind ArtistName}"
+                            Badge="{x:Bind RecentsSubtitle}"
                             NavigationUri="{x:Bind Id}"
                             PlaceholderGlyph="&#xE93C;"
                             IsCircularImage="False"
@@ -215,6 +347,7 @@
                                                 ImageUrl="{x:Bind ImageUrl}"
                                                 Title="{x:Bind Name}"
                                                 Subtitle="{x:Bind ArtistName}"
+                                                Badge="{x:Bind RecentsSubtitle}"
                                                 NavigationUri="{x:Bind Id}"
                                                 PlaceholderGlyph="&#xE93C;"
                                                 IsCircularImage="False"

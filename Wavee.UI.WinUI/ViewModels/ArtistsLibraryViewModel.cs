@@ -11,6 +11,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
@@ -26,13 +27,20 @@ public enum ArtistsLibraryStage
 
 public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
+    private const string PreferencesTabKey = "artists";
+
     private readonly ILibraryDataService _libraryDataService;
     private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
     private readonly ITrackLikeService? _likeService;
+    private readonly ISettingsService? _settingsService;
+    private readonly LibraryRecentsService? _libraryRecents;
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
+    private bool _preferencesLoaded;
+    private IReadOnlyDictionary<string, DateTimeOffset> _artistRecents =
+        new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty]
     private bool _isLoading;
@@ -54,6 +62,15 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     [ObservableProperty]
     private string _searchQuery = "";
+
+    [ObservableProperty]
+    private LibrarySortBy _sortBy = LibrarySortBy.Recents;
+
+    [ObservableProperty]
+    private LibrarySortDirection _sortDirection = LibrarySortDirection.Descending;
+
+    [ObservableProperty]
+    private LibraryViewMode _viewMode = LibraryViewMode.DefaultGrid;
 
     // Wrapper properties for selected artist (avoids null reference in x:Bind)
     [ObservableProperty]
@@ -129,17 +146,120 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         IArtistService artistService,
         IAlbumService albumService,
         IPlaybackService playbackService,
-        ITrackLikeService? likeService = null)
+        ITrackLikeService? likeService = null,
+        ISettingsService? settingsService = null,
+        LibraryRecentsService? libraryRecents = null)
     {
         _libraryDataService = libraryDataService;
         _artistService = artistService;
         _albumService = albumService;
         _playbackService = playbackService;
         _likeService = likeService;
+        _settingsService = settingsService;
+        _libraryRecents = libraryRecents;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        LoadPreferences();
 
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+
+        if (_libraryRecents != null)
+        {
+            _libraryRecents.RecentsChanged += OnLibraryRecentsChanged;
+            _ = PrefetchRecentsAsync();
+        }
+    }
+
+    private async Task PrefetchRecentsAsync()
+    {
+        if (_libraryRecents == null) return;
+        try
+        {
+            var map = await _libraryRecents.GetArtistRecentsAsync().ConfigureAwait(false);
+            _artistRecents = map;
+            _dispatcherQueue.TryEnqueue(ApplyFilter);
+        }
+        catch
+        {
+            // Ignore — sort falls back to AddedAt.
+        }
+    }
+
+    private void OnLibraryRecentsChanged()
+    {
+        if (_disposed || _libraryRecents == null) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var map = await _libraryRecents.GetArtistRecentsAsync().ConfigureAwait(false);
+                _artistRecents = map;
+                _dispatcherQueue.TryEnqueue(ApplyFilter);
+            }
+            catch { /* ignore */ }
+        });
+    }
+
+    private void LoadPreferences()
+    {
+        var prefs = _settingsService?.Settings.LibraryTabs;
+        if (prefs == null || !prefs.TryGetValue(PreferencesTabKey, out var saved) || saved == null)
+        {
+            _preferencesLoaded = true;
+            return;
+        }
+
+        if (Enum.TryParse<LibrarySortBy>(saved.SortBy, ignoreCase: true, out var sb) && IsAllowedSortKey(sb))
+            _sortBy = sb;
+        if (Enum.TryParse<LibrarySortDirection>(saved.SortDirection, ignoreCase: true, out var sd))
+            _sortDirection = sd;
+        if (Enum.TryParse<LibraryViewMode>(saved.ViewMode, ignoreCase: true, out var vm))
+            _viewMode = vm;
+
+        _preferencesLoaded = true;
+    }
+
+    // Creator + ReleaseDate don't apply to artists; the panel hides them, but guard
+    // against a stale settings value (e.g. migrated from an album tab preference).
+    private static bool IsAllowedSortKey(LibrarySortBy key) =>
+        key is LibrarySortBy.Recents or LibrarySortBy.RecentlyAdded or LibrarySortBy.Alphabetical;
+
+    private void SavePreferences()
+    {
+        if (!_preferencesLoaded || _settingsService == null) return;
+
+        _settingsService.Update(s =>
+        {
+            if (!s.LibraryTabs.TryGetValue(PreferencesTabKey, out var entry) || entry == null)
+            {
+                entry = new LibraryTabPreferences();
+                s.LibraryTabs[PreferencesTabKey] = entry;
+            }
+
+            entry.SortBy = SortBy.ToString();
+            entry.SortDirection = SortDirection.ToString();
+            entry.ViewMode = ViewMode.ToString();
+        });
+
+        _ = _settingsService.SaveAsync();
+    }
+
+    partial void OnSortByChanged(LibrarySortBy value)
+    {
+        ApplyFilter();
+        SavePreferences();
+    }
+
+    partial void OnSortDirectionChanged(LibrarySortDirection value)
+    {
+        ApplyFilter();
+        SavePreferences();
+    }
+
+    partial void OnViewModeChanged(LibraryViewMode value)
+    {
+        SavePreferences();
     }
 
     [RelayCommand]
@@ -587,15 +707,59 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         FilteredArtists.Clear();
 
         var query = SearchQuery?.Trim() ?? "";
-        var filtered = string.IsNullOrEmpty(query)
+        IEnumerable<LibraryArtistDto> filtered = string.IsNullOrEmpty(query)
             ? Artists
             : Artists.Where(a => a.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
 
-        foreach (var artist in filtered)
+        var showRecents = SortBy == LibrarySortBy.Recents;
+        foreach (var artist in SortArtists(filtered))
         {
+            artist.RecentsSubtitle = showRecents && _artistRecents.TryGetValue(artist.Id, out var ts)
+                ? FormatRecentsSubtitle(ts)
+                : null;
             FilteredArtists.Add(artist);
         }
     }
+
+    private static string FormatRecentsSubtitle(DateTimeOffset playedAt)
+    {
+        var delta = DateTimeOffset.UtcNow - playedAt;
+        if (delta < TimeSpan.Zero) delta = TimeSpan.Zero;
+
+        if (delta < TimeSpan.FromSeconds(60)) return "Played just now";
+        if (delta < TimeSpan.FromMinutes(60)) return $"Played {(int)delta.TotalMinutes}m ago";
+        if (delta < TimeSpan.FromHours(24)) return $"Played {(int)delta.TotalHours}h ago";
+        if (delta < TimeSpan.FromDays(7)) return $"Played {(int)delta.TotalDays}d ago";
+        return $"Played {playedAt.LocalDateTime:MMM d, yyyy}";
+    }
+
+    private IEnumerable<LibraryArtistDto> SortArtists(IEnumerable<LibraryArtistDto> source)
+    {
+        var descending = SortDirection == LibrarySortDirection.Descending;
+
+        return SortBy switch
+        {
+            // Recents uses real play recency (LibraryRecentsService); never-played artists
+            // fall to the bottom (desc) or top (asc) via DateTimeOffset.MinValue. Ties break
+            // by AddedAt desc for a stable order.
+            LibrarySortBy.Recents => descending
+                ? source.OrderByDescending(a => LastPlayedOrMin(a)).ThenByDescending(a => a.AddedAt)
+                : source.OrderBy(a => LastPlayedOrMin(a)).ThenByDescending(a => a.AddedAt),
+            LibrarySortBy.RecentlyAdded => descending
+                ? source.OrderByDescending(a => a.AddedAt)
+                : source.OrderBy(a => a.AddedAt),
+            LibrarySortBy.Alphabetical => descending
+                ? source.OrderByDescending(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                : source.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase),
+            // Creator / ReleaseDate aren't offered for artists; fall through to RecentlyAdded.
+            _ => descending
+                ? source.OrderByDescending(a => a.AddedAt)
+                : source.OrderBy(a => a.AddedAt)
+        };
+    }
+
+    private DateTimeOffset LastPlayedOrMin(LibraryArtistDto artist) =>
+        _artistRecents.TryGetValue(artist.Id, out var ts) ? ts : DateTimeOffset.MinValue;
 
     #region ITrackListViewModel Implementation
 
@@ -613,8 +777,10 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         : $"{SelectedCount} tracks selected";
 
     // Sorting - no-op for album tracks (always in track order)
+    // Renamed from SortBy to avoid colliding with the LibrarySortBy observable
+    // property that drives the library grid's global sort.
     [RelayCommand]
-    private void SortBy(string? columnName) { }
+    private void SortTrackColumn(string? columnName) { }
 
     public string SortChevronGlyph => "";
     public bool IsSortingByTitle => false;
@@ -681,7 +847,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     }
 
     // Explicit ITrackListViewModel ICommand implementation
-    ICommand ITrackListViewModel.SortByCommand => SortByCommand;
+    ICommand ITrackListViewModel.SortByCommand => SortTrackColumnCommand;
     ICommand ITrackListViewModel.PlayTrackCommand => PlayTrackCommand;
     ICommand ITrackListViewModel.PlaySelectedCommand => PlaySelectedCommand;
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
@@ -708,5 +874,8 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+
+        if (_libraryRecents != null)
+            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
     }
 }

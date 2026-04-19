@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Core.Http;
 using Wavee.UI.Contracts;
@@ -24,6 +25,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
+using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -33,6 +35,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private const int ResizeDebounceDelayMs = 150;
     private const int PinnedItemFlyoutDelayMs = 900;
     private const int PinnedItemFlyoutCloseDelayMs = 220;
+    private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
 
     // Avatar collapse — when the artist has a header image but no watch-feed
     // video, the 120px circular avatar is redundant with the hero and collapses
@@ -53,6 +56,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private bool _isPointerOverPinnedPreview;
     private bool _isPinnedItemPreviewOpen;
     private bool _isPinnedItemPressed;
+    private LinearGradientBrush? _pageTintBrush;
+    private GradientStop? _pageTintStartStop;
+    private GradientStop? _pageTintHeroStop;
+    private GradientStop? _pageTintFadeStop;
+    private GradientStop? _pageTintEndStop;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -127,11 +135,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         if (PageTintFill == null) return;
 
-        if (!TintColorHelper.TryParseHex(ViewModel.HeaderHeroColorHex, out var parsed))
-        {
-            PageTintFill.Fill = null;
-            return;
-        }
+        EnsurePageTintBrush();
 
         // Size the rectangle to the current hero height plus a fixed spill tail.
         // This keeps the fade anchored to the hero's bottom edge even as the
@@ -143,33 +147,74 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Relative offsets: full tint through the hero region (hidden behind image),
         // start fading right at the hero's bottom edge, fully transparent at the tail.
         double heroBottomOffset = heroH / totalH;
+        double fadeOffset = Math.Min(1.0, heroBottomOffset + (1.0 - heroBottomOffset) * 0.7);
 
-        var brush = new LinearGradientBrush
+        if (_pageTintStartStop != null) _pageTintStartStop.Offset = 0.0;
+        if (_pageTintHeroStop != null) _pageTintHeroStop.Offset = heroBottomOffset;
+        if (_pageTintFadeStop != null) _pageTintFadeStop.Offset = fadeOffset;
+        if (_pageTintEndStop != null) _pageTintEndStop.Offset = 1.0;
+
+        if (!TintColorHelper.TryParseHex(ViewModel.HeaderHeroColorHex, out var parsed))
+        {
+            AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            AnimatePageTintColor(_pageTintHeroStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            AnimatePageTintColor(_pageTintFadeStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            AnimatePageTintColor(_pageTintEndStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            return;
+        }
+
+        AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(140, parsed.R, parsed.G, parsed.B));
+        AnimatePageTintColor(_pageTintHeroStop, Windows.UI.Color.FromArgb(120, parsed.R, parsed.G, parsed.B));
+        AnimatePageTintColor(_pageTintFadeStop, Windows.UI.Color.FromArgb(20, parsed.R, parsed.G, parsed.B));
+        AnimatePageTintColor(_pageTintEndStop, Windows.UI.Color.FromArgb(0, parsed.R, parsed.G, parsed.B));
+    }
+
+    private void EnsurePageTintBrush()
+    {
+        if (_pageTintBrush != null)
+        {
+            if (!ReferenceEquals(PageTintFill.Fill, _pageTintBrush))
+                PageTintFill.Fill = _pageTintBrush;
+            return;
+        }
+
+        _pageTintBrush = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(0, 1)
         };
-        brush.GradientStops.Add(new GradientStop
+        _pageTintStartStop = new GradientStop { Offset = 0.0, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
+        _pageTintHeroStop = new GradientStop { Offset = 0.5, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
+        _pageTintFadeStop = new GradientStop { Offset = 0.85, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
+        _pageTintEndStop = new GradientStop { Offset = 1.0, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
+
+        _pageTintBrush.GradientStops.Add(_pageTintStartStop);
+        _pageTintBrush.GradientStops.Add(_pageTintHeroStop);
+        _pageTintBrush.GradientStops.Add(_pageTintFadeStop);
+        _pageTintBrush.GradientStops.Add(_pageTintEndStop);
+        PageTintFill.Fill = _pageTintBrush;
+    }
+
+    private void AnimatePageTintColor(GradientStop? stop, Windows.UI.Color targetColor)
+    {
+        if (stop == null)
+            return;
+
+        if (stop.Color == targetColor)
+            return;
+
+        var animation = new ColorAnimation
         {
-            Offset = 0.0,
-            Color = Windows.UI.Color.FromArgb(140, parsed.R, parsed.G, parsed.B)
-        });
-        brush.GradientStops.Add(new GradientStop
-        {
-            Offset = heroBottomOffset,
-            Color = Windows.UI.Color.FromArgb(120, parsed.R, parsed.G, parsed.B)
-        });
-        brush.GradientStops.Add(new GradientStop
-        {
-            Offset = Math.Min(1.0, heroBottomOffset + (1.0 - heroBottomOffset) * 0.7),
-            Color = Windows.UI.Color.FromArgb(20, parsed.R, parsed.G, parsed.B)
-        });
-        brush.GradientStops.Add(new GradientStop
-        {
-            Offset = 1.0,
-            Color = Windows.UI.Color.FromArgb(0, parsed.R, parsed.G, parsed.B)
-        });
-        PageTintFill.Fill = brush;
+            To = targetColor,
+            Duration = new Duration(PageTintTransitionDuration),
+            EnableDependentAnimation = true
+        };
+
+        var storyboard = new Storyboard();
+        Storyboard.SetTarget(animation, stop);
+        Storyboard.SetTargetProperty(animation, nameof(GradientStop.Color));
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
     }
 
     /// <summary>

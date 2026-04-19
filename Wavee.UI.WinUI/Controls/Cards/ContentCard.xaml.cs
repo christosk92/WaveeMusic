@@ -36,6 +36,10 @@ public sealed partial class ContentCard : UserControl
         DependencyProperty.Register(nameof(Subtitle), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null, OnSubtitleChanged));
 
+    public static readonly DependencyProperty BadgeProperty =
+        DependencyProperty.Register(nameof(Badge), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(null, OnBadgeChanged));
+
     public static readonly DependencyProperty PlaceholderColorHexProperty =
         DependencyProperty.Register(nameof(PlaceholderColorHex), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null, OnPlaceholderColorChanged));
@@ -72,6 +76,17 @@ public sealed partial class ContentCard : UserControl
     {
         get => (string?)GetValue(SubtitleProperty);
         set => SetValue(SubtitleProperty, value);
+    }
+
+    /// <summary>
+    /// Optional short accent line rendered beneath the subtitle. When <c>null</c> or empty
+    /// the badge row is collapsed and the card retains its original height. Used today to
+    /// show "Played 3h ago" on the library grid when the user sorts by Recents.
+    /// </summary>
+    public string? Badge
+    {
+        get => (string?)GetValue(BadgeProperty);
+        set => SetValue(BadgeProperty, value);
     }
 
     public string? PlaceholderColorHex
@@ -220,13 +235,11 @@ public sealed partial class ContentCard : UserControl
         {
             _passiveHandlersAdded = true;
 
-            // Apply passive state now that the control is in the visual tree
-            if (CardButton != null)
-                CardButton.IsHitTestVisible = false;
-
-            // Register with handledEventsToo=true so we get pointer events
-            // even when a parent ItemContainer marks them as handled.
-            // Store references so RemoveHandler can match the exact instances.
+            // Register with handledEventsToo=true so hover/press animations still run
+            // when a parent ItemContainer marks pointer events as handled (selection chrome).
+            // CardButton itself stays hit-testable so the inner play-button overlay can
+            // receive clicks; passive "don't navigate on card click" is enforced in
+            // CardButton_Click by selecting the parent ItemContainer instead.
             _passivePointerEntered = new PointerEventHandler(Card_PointerEntered);
             _passivePointerExited = new PointerEventHandler(Card_PointerExited);
             _passivePointerPressed = new PointerEventHandler(Card_PointerPressed);
@@ -362,6 +375,15 @@ public sealed partial class ContentCard : UserControl
     {
         var card = (ContentCard)d;
         card.SubtitleText.Text = e.NewValue as string ?? "";
+    }
+
+    private static void OnBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        if (card.BadgeText == null) return;
+        var value = e.NewValue as string;
+        card.BadgeText.Text = value ?? "";
+        card.BadgeText.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static void OnPlaceholderColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -619,10 +641,9 @@ public sealed partial class ContentCard : UserControl
 
     private static void OnIsPassiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        var card = (ContentCard)d;
-        var passive = (bool)e.NewValue;
-        if (card.CardButton != null)
-            card.CardButton.IsHitTestVisible = !passive;
+        // Passive behaviour is enforced in CardButton_Click by redirecting to
+        // parent ItemContainer selection. CardButton stays hit-testable so the
+        // inner play-button overlay still receives clicks.
     }
 
     // ── Playing state ──
@@ -731,6 +752,22 @@ public sealed partial class ContentCard : UserControl
         if (IsPlayButtonSource(e.OriginalSource))
             return;
 
+        // Passive mode: the card lives inside an ItemsView/ItemContainer and a
+        // click should select the item rather than navigate. Ctrl+click still
+        // opens a new tab to preserve the "open in background" affordance.
+        if (IsPassive)
+        {
+            if (!string.IsNullOrEmpty(NavigationUri) && Helpers.Navigation.NavigationHelpers.IsCtrlPressed())
+            {
+                ResetInteractionState();
+                if (NavigateToUri(openInNewTab: true))
+                    return;
+            }
+
+            SelectParentItemContainer();
+            return;
+        }
+
         // Self-navigation: if NavigationUri is set, navigate directly
         if (!string.IsNullOrEmpty(NavigationUri))
         {
@@ -742,6 +779,20 @@ public sealed partial class ContentCard : UserControl
         }
 
         CardClick?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SelectParentItemContainer()
+    {
+        DependencyObject? current = VisualTreeHelper.GetParent(this);
+        while (current != null)
+        {
+            if (current is ItemContainer itemContainer)
+            {
+                itemContainer.IsSelected = true;
+                return;
+            }
+            current = VisualTreeHelper.GetParent(current);
+        }
     }
 
     private async void PlayButton_Click(object sender, RoutedEventArgs e)

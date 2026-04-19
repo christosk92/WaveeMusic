@@ -10,52 +10,63 @@
     xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
+    <!-- Two-column layout. The sort/search header lives INSIDE the items column so it
+         no longer stretches across the details pane. -->
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="ItemsColumn" Width="*" MinWidth="300"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition x:Name="DetailsColumn" Width="*" MinWidth="280"/>
+        </Grid.ColumnDefinitions>
 
-        <!-- Search Box -->
-        <TextBox
-            x:Name="SearchBox"
-            Grid.Row="0"
-            Margin="0,0,0,16"
-            PlaceholderText="{x:Bind SearchPlaceholderText, Mode=OneWay}"
-            Text="{x:Bind SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+        <!-- Left: items column (header + items) -->
+        <Grid Grid.Column="0" Margin="0,0,8,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <!-- Two-column layout -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="ItemsColumn" Width="*" MinWidth="300"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition x:Name="DetailsColumn" Width="*" MinWidth="280"/>
-            </Grid.ColumnDefinitions>
+            <!-- Header row: leading content (sort/view trigger) + search box. -->
+            <Grid Grid.Row="0" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-            <!-- Left: Items Grid -->
+                <ContentPresenter
+                    x:Name="HeaderLeadingPresenter"
+                    Grid.Column="0"
+                    Margin="0,0,12,0"
+                    VerticalAlignment="Center"
+                    Content="{x:Bind HeaderLeadingContent, Mode=OneWay}"/>
+
+                <TextBox
+                    x:Name="SearchBox"
+                    Grid.Column="1"
+                    PlaceholderText="{x:Bind SearchPlaceholderText, Mode=OneWay}"
+                    Text="{x:Bind SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+            </Grid>
+
+            <!-- Optional sub-header content. -->
+            <ContentPresenter
+                x:Name="SubHeaderPresenter"
+                Grid.Row="1"
+                Margin="0,0,0,12"
+                Content="{x:Bind SubHeaderContent, Mode=OneWay}"/>
+
+            <!-- Items grid. Layout + ItemTemplate are swapped in code-behind on ViewMode change. -->
             <ItemsView
                 x:Name="ItemsGridView"
-                Grid.Column="0"
+                Grid.Row="2"
                 ItemsSource="{x:Bind ItemsSource, Mode=OneWay}"
-                ItemTemplate="{x:Bind ItemTemplate, Mode=OneWay}"
                 SelectionMode="Single"
-                SelectionChanged="ItemsGridView_SelectionChanged"
-                Margin="0,0,8,0">
-                <ItemsView.Layout>
-                    <UniformGridLayout
-                        MinItemWidth="{x:Bind MinItemWidth, Mode=OneWay}"
-                        MinItemHeight="{x:Bind MinItemHeight, Mode=OneWay}"
-                        MinRowSpacing="12"
-                        MinColumnSpacing="12"
-                        ItemsStretch="Uniform"/>
-                </ItemsView.Layout>
-            </ItemsView>
+                SelectionChanged="ItemsGridView_SelectionChanged"/>
 
             <!-- Loading shimmer skeleton cards (shown while loading) -->
             <ItemsRepeater
                 x:Name="ShimmerOverlay"
-                Grid.Column="0"
-                Margin="0,0,8,0"
+                Grid.Row="2"
                 Visibility="Collapsed">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout
@@ -82,45 +93,44 @@
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
+        </Grid>
 
+        <!-- GridSplitter spans full height between the two columns -->
+        <controls:GridSplitter
+            Grid.Column="1"
+            Width="8"
+            Margin="4,0"/>
 
-            <!-- GridSplitter -->
-            <controls:GridSplitter
-                Grid.Column="1"
-                Width="8"
-                Margin="4,0"/>
+        <!-- Right: Detail panel, stretches full height -->
+        <Grid
+            Grid.Column="2"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            CornerRadius="8"
+            Padding="16">
 
-            <!-- Right: Detail Panel -->
-            <Grid
-                Grid.Column="2"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                CornerRadius="8"
-                Padding="16">
+            <!-- Empty state when nothing selected -->
+            <StackPanel
+                x:Name="EmptyStatePanel"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12"
+                Visibility="{x:Bind SelectedItem, Converter={StaticResource InverseNullToVisibilityConverter}, Mode=OneWay}">
+                <FontIcon
+                    Glyph="{x:Bind EmptyStateGlyph, Mode=OneWay}"
+                    FontSize="48"
+                    Opacity="0.3"/>
+                <TextBlock
+                    Text="{x:Bind EmptyStateText, Mode=OneWay}"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Opacity="0.5"
+                    TextAlignment="Center"/>
+            </StackPanel>
 
-                <!-- Empty state when nothing selected -->
-                <StackPanel
-                    x:Name="EmptyStatePanel"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="12"
-                    Visibility="{x:Bind SelectedItem, Converter={StaticResource InverseNullToVisibilityConverter}, Mode=OneWay}">
-                    <FontIcon
-                        Glyph="{x:Bind EmptyStateGlyph, Mode=OneWay}"
-                        FontSize="48"
-                        Opacity="0.3"/>
-                    <TextBlock
-                        Text="{x:Bind EmptyStateText, Mode=OneWay}"
-                        Style="{StaticResource BodyTextBlockStyle}"
-                        Opacity="0.5"
-                        TextAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Detail content -->
-                <ContentPresenter
-                    x:Name="DetailContentPresenter"
-                    Content="{x:Bind DetailContent, Mode=OneWay}"
-                    Visibility="{x:Bind SelectedItem, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}"/>
-            </Grid>
+            <!-- Detail content -->
+            <ContentPresenter
+                x:Name="DetailContentPresenter"
+                Content="{x:Bind DetailContent, Mode=OneWay}"
+                Visibility="{x:Bind SelectedItem, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}"/>
         </Grid>
 
     </Grid>

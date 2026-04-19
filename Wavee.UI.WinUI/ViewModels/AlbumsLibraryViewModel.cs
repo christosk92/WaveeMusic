@@ -9,6 +9,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
@@ -22,11 +24,18 @@ public enum AlbumsLibraryStage
 
 public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
+    private const string PreferencesTabKey = "albums";
+
     private readonly ILibraryDataService _libraryDataService;
     private readonly IAlbumService _albumService;
     private readonly ITrackLikeService? _likeService;
+    private readonly ISettingsService? _settingsService;
+    private readonly LibraryRecentsService? _libraryRecents;
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
+    private bool _preferencesLoaded;
+    private IReadOnlyDictionary<string, DateTimeOffset> _albumRecents =
+        new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty]
     private bool _isLoading;
@@ -48,6 +57,15 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     [ObservableProperty]
     private string _searchQuery = "";
+
+    [ObservableProperty]
+    private LibrarySortBy _sortBy = LibrarySortBy.Recents;
+
+    [ObservableProperty]
+    private LibrarySortDirection _sortDirection = LibrarySortDirection.Descending;
+
+    [ObservableProperty]
+    private LibraryViewMode _viewMode = LibraryViewMode.DefaultGrid;
 
     [ObservableProperty]
     private TimeSpan _selectedAlbumDuration;
@@ -95,15 +113,122 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     public AlbumsLibraryViewModel(
         ILibraryDataService libraryDataService,
         IAlbumService albumService,
-        ITrackLikeService? likeService = null)
+        ITrackLikeService? likeService = null,
+        ISettingsService? settingsService = null,
+        LibraryRecentsService? libraryRecents = null)
     {
         _libraryDataService = libraryDataService;
         _albumService = albumService;
         _likeService = likeService;
+        _settingsService = settingsService;
+        _libraryRecents = libraryRecents;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        LoadPreferences();
 
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+
+        if (_libraryRecents != null)
+        {
+            _libraryRecents.RecentsChanged += OnLibraryRecentsChanged;
+            // Best-effort prefetch; result arrives via RecentsChanged → re-applies sort.
+            _ = PrefetchRecentsAsync();
+        }
+    }
+
+    private async Task PrefetchRecentsAsync()
+    {
+        if (_libraryRecents == null) return;
+        try
+        {
+            var map = await _libraryRecents.GetAlbumRecentsAsync().ConfigureAwait(false);
+            _albumRecents = map;
+            _dispatcherQueue.TryEnqueue(ApplyFilter);
+        }
+        catch
+        {
+            // Swallow — sort falls back to AddedAt.
+        }
+    }
+
+    private void OnLibraryRecentsChanged()
+    {
+        if (_disposed || _libraryRecents == null) return;
+        // The service raises on the UI dispatcher, but await the refetch off the UI thread.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var map = await _libraryRecents.GetAlbumRecentsAsync().ConfigureAwait(false);
+                _albumRecents = map;
+                _dispatcherQueue.TryEnqueue(() =>
+                {
+                    ApplyFilter();
+                    // Detail-panel metadata embeds the last-played line; refresh it so the
+                    // currently-selected album picks up the timestamp without reselection.
+                    if (SelectedAlbum is { } current)
+                        SelectedAlbumMetadata = BuildSelectedAlbumMetadata(current);
+                });
+            }
+            catch { /* ignore */ }
+        });
+    }
+
+    private void LoadPreferences()
+    {
+        var prefs = _settingsService?.Settings.LibraryTabs;
+        if (prefs == null || !prefs.TryGetValue(PreferencesTabKey, out var saved) || saved == null)
+        {
+            _preferencesLoaded = true;
+            return;
+        }
+
+        if (Enum.TryParse<LibrarySortBy>(saved.SortBy, ignoreCase: true, out var sb))
+            _sortBy = sb;
+        if (Enum.TryParse<LibrarySortDirection>(saved.SortDirection, ignoreCase: true, out var sd))
+            _sortDirection = sd;
+        if (Enum.TryParse<LibraryViewMode>(saved.ViewMode, ignoreCase: true, out var vm))
+            _viewMode = vm;
+
+        _preferencesLoaded = true;
+    }
+
+    private void SavePreferences()
+    {
+        if (!_preferencesLoaded || _settingsService == null) return;
+
+        _settingsService.Update(s =>
+        {
+            if (!s.LibraryTabs.TryGetValue(PreferencesTabKey, out var entry) || entry == null)
+            {
+                entry = new LibraryTabPreferences();
+                s.LibraryTabs[PreferencesTabKey] = entry;
+            }
+
+            entry.SortBy = SortBy.ToString();
+            entry.SortDirection = SortDirection.ToString();
+            entry.ViewMode = ViewMode.ToString();
+        });
+
+        _ = _settingsService.SaveAsync();
+    }
+
+    partial void OnSortByChanged(LibrarySortBy value)
+    {
+        ApplyFilter();
+        SavePreferences();
+    }
+
+    partial void OnSortDirectionChanged(LibrarySortDirection value)
+    {
+        ApplyFilter();
+        SavePreferences();
+    }
+
+    partial void OnViewModeChanged(LibraryViewMode value)
+    {
+        SavePreferences();
     }
 
     [RelayCommand]
@@ -209,7 +334,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         SelectedAlbumTrackCount = value?.TrackCount ?? 0;
         SelectedAlbumImageUrl = value?.ImageUrl;
         SelectedAlbumMetadata = value != null
-            ? $"{value.Year} • {value.TrackCount} tracks"
+            ? BuildSelectedAlbumMetadata(value)
             : "";
 
         if (UseNarrowLayout && value == null)
@@ -397,17 +522,91 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         FilteredAlbums.Clear();
 
         var query = SearchQuery?.Trim() ?? "";
-        var filtered = string.IsNullOrEmpty(query)
+        IEnumerable<LibraryAlbumDto> filtered = string.IsNullOrEmpty(query)
             ? Albums
             : Albums.Where(a =>
                 a.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 a.ArtistName.Contains(query, StringComparison.OrdinalIgnoreCase));
 
-        foreach (var album in filtered)
+        // When sorted by Recents, stamp each DTO with a "Played X ago" subtitle so the
+        // list/grid templates can show it in place of the artist / added-date line.
+        var showRecents = SortBy == LibrarySortBy.Recents;
+        foreach (var album in SortAlbums(filtered))
         {
+            album.RecentsSubtitle = showRecents && _albumRecents.TryGetValue(album.Id, out var ts)
+                ? FormatRecentsSubtitle(ts)
+                : null;
             FilteredAlbums.Add(album);
         }
     }
+
+    /// <summary>
+    /// Builds the single-line metadata string for the detail panel. Year + track count
+    /// always show; we also append "Added MMM d, yyyy" and — when we have a last-played
+    /// timestamp for this album — "Played Xh ago" so the detail panel reflects the user's
+    /// relationship to the album at a glance, regardless of the current sort.
+    /// </summary>
+    private string BuildSelectedAlbumMetadata(LibraryAlbumDto album)
+    {
+        var parts = new List<string>();
+        if (album.Year > 0) parts.Add(album.Year.ToString());
+        parts.Add($"{album.TrackCount} tracks");
+        if (album.AddedAt > DateTimeOffset.MinValue)
+            parts.Add($"Added {album.AddedAt.LocalDateTime:MMM d, yyyy}");
+        if (_albumRecents.TryGetValue(album.Id, out var lastPlayed))
+            parts.Add(FormatRecentsSubtitle(lastPlayed));
+        return string.Join(" • ", parts);
+    }
+
+    /// <summary>
+    /// Human-friendly last-played formatter: "Played just now" / "Played 12m ago" /
+    /// "Played 3h ago" / "Played 2d ago" / "Played Mar 15" for older entries.
+    /// </summary>
+    private static string FormatRecentsSubtitle(DateTimeOffset playedAt)
+    {
+        var delta = DateTimeOffset.UtcNow - playedAt;
+        if (delta < TimeSpan.Zero) delta = TimeSpan.Zero;
+
+        if (delta < TimeSpan.FromSeconds(60)) return "Played just now";
+        if (delta < TimeSpan.FromMinutes(60)) return $"Played {(int)delta.TotalMinutes}m ago";
+        if (delta < TimeSpan.FromHours(24)) return $"Played {(int)delta.TotalHours}h ago";
+        if (delta < TimeSpan.FromDays(7)) return $"Played {(int)delta.TotalDays}d ago";
+        return $"Played {playedAt.LocalDateTime:MMM d, yyyy}";
+    }
+
+    private IEnumerable<LibraryAlbumDto> SortAlbums(IEnumerable<LibraryAlbumDto> source)
+    {
+        var descending = SortDirection == LibrarySortDirection.Descending;
+
+        return SortBy switch
+        {
+            // Recents = actual play recency from the Spotify private API (LibraryRecentsService).
+            // Never-played items fall to the bottom (desc) or top (asc) via DateTimeOffset.MinValue.
+            // Ties are broken by AddedAt descending so the ordering is stable.
+            LibrarySortBy.Recents => descending
+                ? source.OrderByDescending(a => LastPlayedOrMin(a)).ThenByDescending(a => a.AddedAt)
+                : source.OrderBy(a => LastPlayedOrMin(a)).ThenByDescending(a => a.AddedAt),
+            // RecentlyAdded keeps its original semantics (library save date).
+            LibrarySortBy.RecentlyAdded => descending
+                ? source.OrderByDescending(a => a.AddedAt)
+                : source.OrderBy(a => a.AddedAt),
+            LibrarySortBy.Alphabetical => descending
+                ? source.OrderByDescending(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                : source.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase),
+            LibrarySortBy.Creator => descending
+                ? source.OrderByDescending(a => a.ArtistName, StringComparer.OrdinalIgnoreCase)
+                    .ThenByDescending(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                : source.OrderBy(a => a.ArtistName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase),
+            LibrarySortBy.ReleaseDate => descending
+                ? source.OrderByDescending(a => a.Year).ThenByDescending(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                : source.OrderBy(a => a.Year).ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase),
+            _ => source
+        };
+    }
+
+    private DateTimeOffset LastPlayedOrMin(LibraryAlbumDto album) =>
+        _albumRecents.TryGetValue(album.Id, out var ts) ? ts : DateTimeOffset.MinValue;
 
     #region ITrackListViewModel Implementation
 
@@ -424,9 +623,11 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         ? "1 track selected"
         : $"{SelectedCount} tracks selected";
 
-    // Sorting - no-op for album tracks (always in track order)
+    // Sorting track columns - no-op for album tracks (always in track order).
+    // Renamed from SortBy to avoid colliding with the LibrarySortBy observable
+    // property that drives the library grid's global sort.
     [RelayCommand]
-    private void SortBy(string? columnName) { }
+    private void SortTrackColumn(string? columnName) { }
 
     public string SortChevronGlyph => "";
     public bool IsSortingByTitle => false;
@@ -475,7 +676,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     }
 
     // Explicit ITrackListViewModel ICommand implementation
-    ICommand ITrackListViewModel.SortByCommand => SortByCommand;
+    ICommand ITrackListViewModel.SortByCommand => SortTrackColumnCommand;
     ICommand ITrackListViewModel.PlayTrackCommand => PlayTrackCommand;
     ICommand ITrackListViewModel.PlaySelectedCommand => PlaySelectedCommand;
     ICommand ITrackListViewModel.PlayAfterCommand => PlayAfterCommand;
@@ -503,5 +704,8 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+
+        if (_libraryRecents != null)
+            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
     }
 }
