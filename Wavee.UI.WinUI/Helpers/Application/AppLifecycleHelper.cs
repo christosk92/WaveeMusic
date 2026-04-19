@@ -241,6 +241,7 @@ public static class AppLifecycleHelper
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>()))
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
+                .AddSingleton<IFriendsFeedService, Data.Contexts.FriendsFeedService>()
 
                 // EQ processor now lives in AudioHost — settings sent via IPC
 

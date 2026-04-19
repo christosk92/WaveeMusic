@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core;
 using Wavee.Core.Audio;
 using Wavee.Core.Http.Lyrics;
+using Wavee.Core.Http.Presence;
 using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.Storage;
@@ -1301,6 +1302,127 @@ public sealed class SpClient : ISpClient
             ETag = etag,
             IsNotModified = false
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<FriendFeedEntry?> GetFriendPresenceAsync(
+        string userId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var url = $"{_baseUrl}/presence-view/v1/user/{Uri.EscapeDataString(userId)}";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token for friend presence, continuing without");
+            }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        // Friend no longer visible (private/unfollowed) — caller should drop their row.
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
+        {
+            _logger?.LogDebug("Friend presence {UserId}: {Status} (removed)", userId, response.StatusCode);
+            return null;
+        }
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            throw new SpClientException(SpClientFailureReason.RateLimited, "Rate limit exceeded");
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var entry = await JsonSerializer.DeserializeAsync(
+            stream, FriendFeedJsonContext.Default.FriendFeedEntry, cancellationToken);
+
+        if (entry == null)
+        {
+            _logger?.LogDebug("Friend presence {UserId}: empty body", userId);
+            return null;
+        }
+
+        _logger?.LogDebug("Friend presence {UserId}: {Track} by {Artist}",
+            userId, entry.Track?.Name ?? "<none>", entry.Track?.Artist?.Name ?? "<none>");
+        return entry;
+    }
+
+    /// <inheritdoc />
+    public async Task<FriendFeedResponse> GetFriendFeedAsync(
+        string connectionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
+
+        var url = $"{_baseUrl}/presence-view/v2/init-friend-feed/{Uri.EscapeDataString(connectionId)}";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token for friend feed, continuing without");
+            }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, "Friend feed endpoint not found");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.TooManyRequests:
+                throw new SpClientException(SpClientFailureReason.RateLimited, "Rate limit exceeded");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var payload = await JsonSerializer.DeserializeAsync(
+            stream, FriendFeedJsonContext.Default.FriendFeedResponse, cancellationToken);
+
+        if (payload == null)
+        {
+            throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty friend-feed response");
+        }
+
+        _logger?.LogDebug("Friend feed fetched: {Count} entries", payload.Friends?.Count ?? 0);
+        return payload;
     }
 
     /// <summary>

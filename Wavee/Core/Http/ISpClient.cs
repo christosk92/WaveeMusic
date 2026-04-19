@@ -1,5 +1,6 @@
 using Wavee.Core.Audio;
 using Wavee.Core.Http.Lyrics;
+using Wavee.Core.Http.Presence;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.Storage;
 
@@ -317,5 +318,31 @@ public interface ISpClient
     /// <returns>Typed filter list with ETag metadata and 304 state.</returns>
     Task<LikedSongsContentFiltersResult> GetLikedSongsContentFiltersAsync(
         string? ifNoneMatch = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Seeds the Friend Activity panel via /presence-view/v2/init-friend-feed/{connectionId}.
+    /// </summary>
+    /// <remarks>
+    /// Returns the latest listening activity for the current user's friends.
+    /// The <paramref name="connectionId"/> must be the dealer WebSocket connection id
+    /// (<see cref="Wavee.Connect.DealerClient.CurrentConnectionId"/>).
+    /// Side-effect: this call registers the connection id as a subscriber for
+    /// subsequent <c>hm://presence2/user/{id}</c> dealer pushes.
+    /// </remarks>
+    Task<FriendFeedResponse> GetFriendFeedAsync(
+        string connectionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches the latest listening activity for a single friend via
+    /// /presence-view/v1/user/{userId}. Used to apply delta updates when a
+    /// <c>hm://presence2/user/{userId}</c> dealer push arrives.
+    /// </summary>
+    /// <param name="userId">Spotify user id (the segment after <c>spotify:user:</c>).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The entry, or <c>null</c> if the friend is no longer visible (404/403).</returns>
+    Task<FriendFeedEntry?> GetFriendPresenceAsync(
+        string userId,
         CancellationToken cancellationToken = default);
 }

@@ -5,10 +5,215 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d">
 
-    <StackPanel Spacing="8">
+    <UserControl.Resources>
+        <!-- Inline text-link: a minimal-chrome HyperlinkButton that looks like a span of text.
+             Inherits foreground from caller; accent-tints on hover/press; underline on hover only. -->
+        <Style x:Key="RowLinkStyle" TargetType="HyperlinkButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="UseSystemFocusVisuals" Value="True"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="HyperlinkButton">
+                        <Grid x:Name="RootGrid" Background="Transparent">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Foreground="{TemplateBinding Foreground}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="ContentPresenter.Foreground"
+                                                    Value="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="ContentPresenter.Foreground"
+                                                    Value="{ThemeResource AccentTextFillColorSecondaryBrush}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Card-styled row: Fluent "card" surface with subtle stroke, lifts on hover -->
+        <Style x:Key="FriendRowButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="UseSystemFocusVisuals" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootGrid.Background"
+                                                    Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+                                            <Setter Target="RootGrid.BorderBrush"
+                                                    Value="{ThemeResource ControlStrokeColorSecondaryBrush}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootGrid.Background"
+                                                    Value="{ThemeResource CardBackgroundFillColorTertiaryBrush}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="FriendRowTemplate" x:DataType="vm:FriendFeedRowViewModel">
+            <Button Style="{StaticResource FriendRowButtonStyle}"
+                    Command="{x:Bind NavigateToContextCommand, Mode=OneTime}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Accent glow overlay — sits behind content, fades in/out on upsert.
+                         Tag "HighlightGlow" so code-behind can find it in the realized tree. -->
+                    <Border Grid.Column="0" Grid.ColumnSpan="3"
+                            Tag="HighlightGlow"
+                            Margin="-10,-10"
+                            CornerRadius="8"
+                            IsHitTestVisible="False"
+                            Opacity="0"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"/>
+
+                    <!-- Avatar + presence dot -->
+                    <Grid Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top">
+                        <PersonPicture Width="40" Height="40"
+                                       ProfilePicture="{x:Bind AvatarUrl, Mode=OneTime, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=40}"
+                                       Initials="{x:Bind AvatarFallbackInitial, Mode=OneTime}"/>
+                        <Border Width="12" Height="12"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                Margin="0,0,-2,-2"
+                                CornerRadius="999"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                                BorderThickness="2"
+                                Visibility="{x:Bind IsCurrentlyListening, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </Grid>
+
+                    <!-- Text stack: each section independently clickable -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <!-- Username (plain text for now — no foreign-user profile route yet) -->
+                        <TextBlock Text="{x:Bind DisplayUsername, Mode=OneTime}"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"/>
+
+                        <!-- Track • Artist — each is its own link -->
+                        <StackPanel Orientation="Horizontal" Spacing="0">
+                            <HyperlinkButton Style="{StaticResource RowLinkStyle}"
+                                             Command="{x:Bind NavigateToTrackCommand, Mode=OneTime}"
+                                             ToolTipService.ToolTip="{x:Bind TrackName, Mode=OneTime}">
+                                <TextBlock Text="{x:Bind TrackName, Mode=OneTime}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </HyperlinkButton>
+                            <TextBlock Text=" • "
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Visibility="{x:Bind HasArtist, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <HyperlinkButton Style="{StaticResource RowLinkStyle}"
+                                             Command="{x:Bind NavigateToArtistCommand, Mode=OneTime}"
+                                             Visibility="{x:Bind HasArtist, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"
+                                             ToolTipService.ToolTip="{x:Bind ArtistName, Mode=OneTime}">
+                                <TextBlock Text="{x:Bind ArtistName, Mode=OneTime}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </HyperlinkButton>
+                        </StackPanel>
+
+                        <!-- Context (album/playlist) -->
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="4"
+                                    Visibility="{x:Bind HasContext, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <FontIcon Glyph="&#xE93C;"
+                                      FontSize="11"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <HyperlinkButton Style="{StaticResource RowLinkStyle}"
+                                             Command="{x:Bind NavigateToContextCommand, Mode=OneTime}"
+                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                             ToolTipService.ToolTip="{x:Bind ContextName, Mode=OneTime}">
+                                <TextBlock Text="{x:Bind ContextName, Mode=OneTime}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </HyperlinkButton>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Trailing: animated equalizer for live friends, relative time for older -->
+                    <Grid Grid.Column="2" VerticalAlignment="Top" MinWidth="40">
+                        <cards:LottieEqualizer IconSize="18"
+                                               IsActive="{x:Bind IsCurrentlyListening, Mode=OneWay}"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Top"
+                                               Visibility="{x:Bind IsCurrentlyListening, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <TextBlock Text="{x:Bind TrailingText, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Top"
+                                   Visibility="{x:Bind TrailingText, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                    </Grid>
+                </Grid>
+            </Button>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
         <animations:Implicit.ShowAnimations>
             <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
             <animations:TranslationAnimation Duration="0:0:0.2" From="0,8,0" To="0"/>
@@ -16,14 +221,170 @@
         <animations:Implicit.HideAnimations>
             <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
         </animations:Implicit.HideAnimations>
-        <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__TextBlock_1"
-            Text="Friends Activity"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Margin="0,0,0,8"/>
-        <TextBlock x:Uid="Controls_RightPanel_FriendsTabView__TextBlock_2"
-            Text="See what your friends are listening to."
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            TextWrapping="WrapWholeWords"
-            FontSize="13"/>
-    </StackPanel>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Jam promo card (static v1) — WinUI card with accent button -->
+        <Border Grid.Row="0"
+                x:Name="JamCard"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource ControlCornerRadius}"
+                Padding="16,14"
+                Margin="0,4,0,12">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Spacing="12">
+                    <TextBlock Text="Invite others to your Jam, and listen together from anywhere."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <Button x:Name="StartJamButton"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="StartJam_Click"
+                            HorizontalAlignment="Left"
+                            ToolTipService.ToolTip="Jam is not yet supported in Wavee.">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE7F4;" FontSize="14"/>
+                            <TextBlock Text="Start a Jam"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        x:Name="JamDismissButton"
+                        Click="JamDismiss_Click"
+                        Style="{StaticResource DefaultButtonStyle}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="6"
+                        MinWidth="0"
+                        VerticalAlignment="Top"
+                        ToolTipService.ToolTip="Dismiss">
+                    <FontIcon Glyph="&#xE711;" FontSize="12"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Body: states + list -->
+        <Grid Grid.Row="1">
+            <!-- Loading skeleton -->
+            <StackPanel x:Name="LoadingPanel"
+                        Spacing="6"
+                        Visibility="Collapsed">
+                <Grid ColumnSpacing="12" Padding="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Width="40" Height="40" Fill="{ThemeResource ControlFillColorSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                        <Rectangle Height="12" Width="120" HorizontalAlignment="Left"
+                                   Fill="{ThemeResource ControlFillColorSecondaryBrush}" RadiusX="2" RadiusY="2"/>
+                        <Rectangle Height="11" Width="180" HorizontalAlignment="Left"
+                                   Fill="{ThemeResource ControlFillColorSecondaryBrush}" RadiusX="2" RadiusY="2"/>
+                        <Rectangle Height="10" Width="140" HorizontalAlignment="Left"
+                                   Fill="{ThemeResource ControlFillColorSecondaryBrush}" RadiusX="2" RadiusY="2"/>
+                    </StackPanel>
+                </Grid>
+                <Grid ColumnSpacing="12" Padding="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Width="40" Height="40" Fill="{ThemeResource ControlFillColorSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                        <Rectangle Height="12" Width="100" HorizontalAlignment="Left"
+                                   Fill="{ThemeResource ControlFillColorSecondaryBrush}" RadiusX="2" RadiusY="2"/>
+                        <Rectangle Height="11" Width="160" HorizontalAlignment="Left"
+                                   Fill="{ThemeResource ControlFillColorSecondaryBrush}" RadiusX="2" RadiusY="2"/>
+                        <Rectangle Height="10" Width="120" HorizontalAlignment="Left"
+                                   Fill="{ThemeResource ControlFillColorSecondaryBrush}" RadiusX="2" RadiusY="2"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!-- Empty -->
+            <StackPanel x:Name="EmptyPanel"
+                        Spacing="6"
+                        VerticalAlignment="Top"
+                        HorizontalAlignment="Center"
+                        Margin="0,24,0,0"
+                        Visibility="Collapsed">
+                <FontIcon Glyph="&#xE716;"
+                          FontSize="28"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center"/>
+                <TextBlock Text="No friends listening right now"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Offline -->
+            <StackPanel x:Name="OfflinePanel"
+                        Spacing="6"
+                        VerticalAlignment="Top"
+                        HorizontalAlignment="Center"
+                        Margin="0,24,0,0"
+                        Visibility="Collapsed">
+                <FontIcon Glyph="&#xF384;"
+                          FontSize="28"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center"/>
+                <TextBlock Text="Friend activity is unavailable while disconnected"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Error -->
+            <StackPanel x:Name="ErrorPanel"
+                        Spacing="10"
+                        VerticalAlignment="Top"
+                        HorizontalAlignment="Center"
+                        Margin="0,24,0,0"
+                        Visibility="Collapsed">
+                <FontIcon Glyph="&#xE783;"
+                          FontSize="28"
+                          Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                          HorizontalAlignment="Center"/>
+                <TextBlock x:Name="ErrorText"
+                           Text="Couldn't load friend activity."
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center"/>
+                <Button Content="Retry"
+                        HorizontalAlignment="Center"
+                        Click="Retry_Click"/>
+            </StackPanel>
+
+            <!-- Populated list -->
+            <ScrollViewer x:Name="ListScroll"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="0,0,4,0"
+                          Visibility="Collapsed">
+                <controls:ItemsRepeater x:Name="FriendsRepeater"
+                                        ItemTemplate="{StaticResource FriendRowTemplate}">
+                    <controls:ItemsRepeater.Layout>
+                        <controls:StackLayout Orientation="Vertical" Spacing="6"/>
+                    </controls:ItemsRepeater.Layout>
+                </controls:ItemsRepeater>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
 </UserControl>

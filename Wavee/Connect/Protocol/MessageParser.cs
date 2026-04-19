@@ -28,6 +28,11 @@ internal static class MessageParser
     private static ReadOnlySpan<byte> MessageType => "message"u8;
     private static ReadOnlySpan<byte> RequestType => "request"u8;
 
+    // Shared empty headers dictionary — used when the dealer frame omits "headers"
+    // (e.g. hm://presence2/user/{id} pushes). Avoids allocating a new dict per message.
+    private static readonly IReadOnlyDictionary<string, string> EmptyHeaders =
+        new Dictionary<string, string>(0);
+
     /// <summary>
     /// Parses the message type from raw JSON bytes.
     /// </summary>
@@ -120,11 +125,12 @@ internal static class MessageParser
                 }
             }
 
-            // Payload is optional - some messages (like connection ID) have no payload
-            if (uri == null || headers == null)
+            // Only `uri` is required. Both `headers` and `payloads` are optional:
+            // connection-id messages omit payload; presence2/user pushes omit both
+            // (the frame is literally {"type":"message","uri":"hm://presence2/user/..."}).
+            if (uri == null)
             {
-                logger?.LogWarning("MESSAGE missing required fields - uri:{HasUri} headers:{HasHeaders}",
-                    uri != null, headers != null);
+                logger?.LogWarning("MESSAGE missing required uri field");
 
                 if (logger?.IsEnabled(LogLevel.Trace) == true)
                 {
@@ -137,7 +143,7 @@ internal static class MessageParser
             message = new DealerMessage
             {
                 Uri = uri,
-                Headers = headers,
+                Headers = headers ?? EmptyHeaders,
                 Payload = payload ?? Array.Empty<byte>()
             };
 
