@@ -18,7 +18,13 @@ public sealed record PlaylistTrackDto : ITrackItem
     public required string AlbumId { get; init; }
     public string? ImageUrl { get; init; }
     public TimeSpan Duration { get; init; }
-    public DateTime AddedAt { get; init; }
+    /// <summary>
+    /// When the track was added to the playlist, or <c>null</c> when the playlist's
+    /// API payload did not include an added-at timestamp (editorial / radio playlists
+    /// typically omit it). Pages hide the Date Added column when no track carries a
+    /// non-null value.
+    /// </summary>
+    public DateTime? AddedAt { get; init; }
     public string? AddedBy { get; init; }
     public bool IsExplicit { get; init; }
     public int OriginalIndex { get; init; }
@@ -33,18 +39,19 @@ public sealed record PlaylistTrackDto : ITrackItem
         : Duration.ToString(@"m\:ss");
 
     /// <summary>
-    /// AddedAt formatted as relative time or date.
+    /// AddedAt formatted as relative time or date; empty when no timestamp is available.
     /// </summary>
     public string AddedAtFormatted
     {
         get
         {
-            var diff = DateTime.Now - AddedAt;
+            if (AddedAt is not DateTime when) return "";
+            var diff = DateTime.Now - when;
             if (diff.TotalMinutes < 1) return "Just now";
             if (diff.TotalHours < 1) return $"{(int)diff.TotalMinutes} min ago";
             if (diff.TotalDays < 1) return $"{(int)diff.TotalHours} hr ago";
             if (diff.TotalDays < 7) return $"{(int)diff.TotalDays} days ago";
-            return AddedAt.ToString("MMM d, yyyy");
+            return when.ToString("MMM d, yyyy");
         }
     }
 }

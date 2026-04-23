@@ -1,4 +1,5 @@
 using Wavee.Core.Library.Spotify;
+using Wavee.Core.Storage.Entities;
 using Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee.Core.Storage.Abstractions;
@@ -305,6 +306,55 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task ClearAllPlaylistsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Upserts a cached playlist snapshot used by PlaylistCacheService.
+    /// </summary>
+    Task UpsertPlaylistCacheEntryAsync(PlaylistCacheEntry playlist, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a cached playlist snapshot.
+    /// </summary>
+    Task<PlaylistCacheEntry?> GetPlaylistCacheEntryAsync(
+        string playlistUri,
+        bool touchAccess = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the last-accessed timestamp for a cached playlist snapshot.
+    /// </summary>
+    Task TouchPlaylistCacheEntryAsync(
+        string playlistUri,
+        DateTimeOffset accessedAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the most recently accessed cached playlists.
+    /// </summary>
+    Task<List<PlaylistCacheEntry>> GetRecentPlaylistCacheEntriesAsync(
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Upserts the user's cached rootlist snapshot.
+    /// </summary>
+    Task UpsertRootlistCacheEntryAsync(RootlistCacheEntry rootlist, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the user's cached rootlist snapshot.
+    /// </summary>
+    Task<RootlistCacheEntry?> GetRootlistCacheEntryAsync(
+        string rootlistUri,
+        bool touchAccess = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the last-accessed timestamp for the cached rootlist snapshot.
+    /// </summary>
+    Task TouchRootlistCacheEntryAsync(
+        string rootlistUri,
+        DateTimeOffset accessedAt,
+        CancellationToken cancellationToken = default);
 
     #endregion
 

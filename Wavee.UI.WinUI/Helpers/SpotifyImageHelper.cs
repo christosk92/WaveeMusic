@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace Wavee.UI.WinUI.Helpers;
 
 /// <summary>
@@ -5,6 +8,8 @@ namespace Wavee.UI.WinUI.Helpers;
 /// </summary>
 internal static class SpotifyImageHelper
 {
+    private const string MosaicPrefix = "spotify:mosaic:";
+
     /// <summary>
     /// Converts a Spotify image URI to an HTTPS URL that can be loaded by an Image control.
     /// </summary>
@@ -12,7 +17,8 @@ internal static class SpotifyImageHelper
     /// Handles these formats:
     /// - "https://i.scdn.co/image/..." → returned as-is (already HTTPS)
     /// - "spotify:image:ab67616d..." → "https://i.scdn.co/image/ab67616d..."
-    /// - "spotify:mosaic:id1:id2:id3:id4" → null (composite images not supported yet)
+    /// - "spotify:mosaic:id1:id2:id3:id4" → null (single-image only — for the 2×2 composition
+    ///   path see <see cref="TryParseMosaicTileUrls"/> + PlaylistMosaicService).
     /// - null/empty → null
     /// </remarks>
     public static string? ToHttpsUrl(string? spotifyUri)
@@ -20,22 +26,50 @@ internal static class SpotifyImageHelper
         if (string.IsNullOrEmpty(spotifyUri))
             return null;
 
-        // Already an HTTPS URL
-        if (spotifyUri.StartsWith("https://", System.StringComparison.OrdinalIgnoreCase))
+        if (spotifyUri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return spotifyUri;
 
-        // spotify:image:hexid → https://i.scdn.co/image/hexid
-        if (spotifyUri.StartsWith("spotify:image:", System.StringComparison.Ordinal))
+        if (spotifyUri.StartsWith("spotify:image:", StringComparison.Ordinal))
         {
             var imageId = spotifyUri["spotify:image:".Length..];
             return $"https://i.scdn.co/image/{imageId}";
         }
 
-        // spotify:mosaic: → not directly loadable (composite of 4 images)
-        // Could be implemented later by fetching individual images and compositing
-        if (spotifyUri.StartsWith("spotify:mosaic:", System.StringComparison.Ordinal))
-            return null;
-
         return null;
+    }
+
+    /// <summary>
+    /// Returns true if the URI is a Spotify mosaic descriptor (e.g. "spotify:mosaic:id1:id2:id3:id4").
+    /// </summary>
+    public static bool IsMosaicUri(string? uri)
+        => !string.IsNullOrEmpty(uri) && uri.StartsWith(MosaicPrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Parses "spotify:mosaic:id1:id2:id3:id4" into the 4 individual CDN URLs that compose the
+    /// mosaic. Each id is a regular i.scdn.co image hash (same format as <c>spotify:image:</c>),
+    /// so the tiles can be loaded via the standard image pipeline. Returns false when the URI
+    /// is not a mosaic, has no ids, or contains only empty segments.
+    /// </summary>
+    public static bool TryParseMosaicTileUrls(string? mosaicUri, out IReadOnlyList<string> tileUrls)
+    {
+        if (!IsMosaicUri(mosaicUri))
+        {
+            tileUrls = Array.Empty<string>();
+            return false;
+        }
+
+        var ids = mosaicUri![MosaicPrefix.Length..].Split(':', StringSplitOptions.RemoveEmptyEntries);
+        if (ids.Length == 0)
+        {
+            tileUrls = Array.Empty<string>();
+            return false;
+        }
+
+        var urls = new List<string>(ids.Length);
+        foreach (var id in ids)
+            urls.Add($"https://i.scdn.co/image/{id}");
+
+        tileUrls = urls;
+        return true;
     }
 }

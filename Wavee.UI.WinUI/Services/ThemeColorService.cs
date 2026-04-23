@@ -22,6 +22,9 @@ public sealed class ThemeColorService
     public Brush TextTertiary { get; private set; } = new SolidColorBrush(Colors.DarkGray);
     public Brush AccentText { get; private set; } = new SolidColorBrush(Colors.Blue);
     public Brush AccentFill { get; private set; } = new SolidColorBrush(Colors.Blue);
+    public Brush AccentFillTertiary { get; private set; } = new SolidColorBrush(Colors.Blue);
+    /// <summary>App-defined accent brush (e.g. Spotify green #1DB954), not the Fluent system accent.</summary>
+    public Brush AppAccent { get; private set; } = new SolidColorBrush(Colors.Blue);
     public Brush CardBackground { get; private set; } = new SolidColorBrush(Colors.Transparent);
     public Brush CardBackgroundSecondary { get; private set; } = new SolidColorBrush(Colors.Transparent);
     public Brush SubtleFillTransparent { get; private set; } = new SolidColorBrush(Colors.Transparent);
@@ -65,6 +68,8 @@ public sealed class ThemeColorService
         TextTertiary = Resolve("TextFillColorTertiaryBrush");
         AccentText = Resolve("AccentTextFillColorPrimaryBrush");
         AccentFill = Resolve("AccentFillColorDefaultBrush");
+        AccentFillTertiary = Resolve("AccentFillColorTertiaryBrush");
+        AppAccent = Resolve("App.Theme.AccentBrush");
         CardBackground = Resolve("CardBackgroundFillColorDefaultBrush");
         CardBackgroundSecondary = Resolve("CardBackgroundFillColorSecondaryBrush");
         SubtleFillTransparent = Resolve("SubtleFillColorTransparentBrush");

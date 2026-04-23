@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reactive.Disposables;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using ReactiveUI;
+using Wavee.Core.Data;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -15,6 +18,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
@@ -32,6 +36,9 @@ public enum AlbumSortColumn { Title, Artist, TrackNumber }
 public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel, ITabBarItemContent, IDisposable
 {
     private readonly IAlbumService _albumService;
+    private readonly AlbumStore _albumStore;
+    private CompositeDisposable? _subscriptions;
+    private string? _appliedDetailFor;
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackLikeService? _likeService;
@@ -369,12 +376,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public AlbumViewModel(
         IAlbumService albumService,
+        AlbumStore albumStore,
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
         ILogger<AlbumViewModel>? logger = null)
     {
         _albumService = albumService;
+        _albumStore = albumStore;
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _likeService = likeService;
@@ -387,6 +396,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void Initialize(string albumId)
     {
+        if (AlbumId != albumId)
+            _appliedDetailFor = null;
+
         AlbumId = albumId;
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Album, albumId)
         {
@@ -394,6 +406,58 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         };
 
         RefreshSaveState();
+    }
+
+    /// <summary>
+    /// Start observing the album detail through AlbumStore. Disposing the
+    /// subscription on navigation-away cancels any inflight Pathfinder query.
+    /// </summary>
+    public void Activate(string albumId)
+    {
+        Initialize(albumId);
+
+        _subscriptions?.Dispose();
+        _subscriptions = new CompositeDisposable();
+
+        var sub = _albumStore.Observe(albumId)
+            .Subscribe(
+                state => _dispatcherQueue.TryEnqueue(() => ApplyDetailState(state, albumId)),
+                ex => _logger?.LogError(ex, "AlbumStore stream faulted for {AlbumId}", albumId));
+        _subscriptions.Add(sub);
+    }
+
+    public void Deactivate()
+    {
+        _subscriptions?.Dispose();
+        _subscriptions = null;
+    }
+
+    private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)
+    {
+        if (AlbumId != expectedAlbumId)
+            return;
+
+        switch (state)
+        {
+            case EntityState<AlbumDetailResult>.Initial:
+                IsLoading = string.IsNullOrEmpty(AlbumImageUrl);
+                IsLoadingTracks = true;
+                break;
+            case EntityState<AlbumDetailResult>.Loading loading:
+                IsLoading = loading.Previous is null && string.IsNullOrEmpty(AlbumImageUrl);
+                break;
+            case EntityState<AlbumDetailResult>.Ready ready:
+                if (_appliedDetailFor != expectedAlbumId || ready.Freshness == Freshness.Fresh)
+                    _ = ApplyDetailAsync(ready.Value, expectedAlbumId);
+                break;
+            case EntityState<AlbumDetailResult>.Error error:
+                HasError = true;
+                ErrorMessage = error.Exception.Message;
+                IsLoading = false;
+                IsLoadingTracks = false;
+                _logger?.LogError(error.Exception, "AlbumStore reported error for {AlbumId}", expectedAlbumId);
+                break;
+        }
     }
 
     private void UpdateTabTitle()
@@ -448,30 +512,30 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         if (!string.IsNullOrEmpty(nav.Subtitle)) ArtistName = nav.Subtitle;
     }
 
-    [RelayCommand]
-    private async Task LoadAsync(string? albumId)
+    /// <summary>
+    /// Apply a pre-fetched AlbumDetailResult from the AlbumStore. Called by
+    /// ApplyDetailState once the store emits Ready; drives tracklist build,
+    /// related-albums, and the non-blocking merch fetch.
+    /// </summary>
+    private async Task ApplyDetailAsync(AlbumDetailResult detail, string albumId)
     {
-        if (string.IsNullOrEmpty(albumId) || IsLoading) return;
-        IsLoading = string.IsNullOrEmpty(AlbumImageUrl);
-        IsLoadingTracks = true;
+        if (AlbumId != albumId) return;
+        _appliedDetailFor = albumId;
         HasError = false;
         ErrorMessage = null;
-        Initialize(albumId);
 
         try
         {
-            // Show shimmer placeholders immediately
-            FilteredTracks = Enumerable.Range(0, 10)
-                .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
-                .ToList();
+            // Show shimmer placeholders immediately if we don't have any tracks yet.
+            if (_allTracks.Count == 0)
+            {
+                FilteredTracks = Enumerable.Range(0, 10)
+                    .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
+                    .ToList();
+            }
 
-            // Start network I/O. Shimmer placeholders were assigned synchronously
-            // above and will render many frames during the network round-trip.
-            var detailTask = Task.Run(async () => await _albumService.GetDetailAsync(albumId));
-            var playlistsTask = Task.Run(async () => await _libraryDataService.GetUserPlaylistsAsync());
-
-            await Task.WhenAll(detailTask, playlistsTask);
-            var detail = await detailTask;
+            // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
+            _ = LoadRootlistAsync();
 
             // Map metadata (respect prefilled values from navigation)
             if (!string.IsNullOrEmpty(detail.Name))
@@ -505,7 +569,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
             RefreshSaveState();
 
-            Playlists = await playlistsTask;
             IsLoading = false;
 
             // Build real track list
@@ -546,11 +609,28 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     }
 
     [RelayCommand]
-    private async Task RetryAsync()
+    private void Retry()
     {
         HasError = false;
         ErrorMessage = null;
-        await LoadAsync(AlbumId);
+        if (!string.IsNullOrEmpty(AlbumId))
+        {
+            _appliedDetailFor = null;
+            _albumStore.Invalidate(AlbumId);
+        }
+    }
+
+    private async Task LoadRootlistAsync()
+    {
+        try
+        {
+            var list = await _libraryDataService.GetUserPlaylistsAsync().ConfigureAwait(false);
+            _dispatcherQueue.TryEnqueue(() => Playlists = list);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "LoadRootlistAsync failed (album)");
+        }
     }
 
     [RelayCommand]

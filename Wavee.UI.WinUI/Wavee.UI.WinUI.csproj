@@ -52,6 +52,7 @@
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.Shimmer" Version="0.1.251217-build.2433" />
 		<PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.TokenView" Version="0.1.251217-build.2433" />
+		<PackageReference Include="CommunityToolkit.Labs.WinUI.TransitionHelper" Version="0.1.251217-build.2433" />
 		<PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.3.260402-preview2" />
 		<PackageReference Include="CommunityToolkit.WinUI.Controls.MetadataControl" Version="8.3.260402-preview2" />
 		<PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.3.260402-preview2" />
@@ -63,7 +64,7 @@
 		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
 		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1-RTM" />
-		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.0-preview2" />
+		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.0-experimental7" />
 		<PackageReference Include="QRCoder" Version="1.8.0" />
 		<PackageReference Include="Serilog" Version="4.3.1" />
 		<PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
@@ -149,8 +150,7 @@
 	     breaks XAML type activation with "Cannot create instance of type ..." errors.
 	     Only the specific orphan asset files under the nested Assets subfolder are
 	     safe to delete. -->
-	<Target Name="RemoveDuplicateReferencedProjectAssets"
-	        AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
+	<Target Name="RemoveDuplicateReferencedProjectAssets" AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
 		<ItemGroup>
 			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
 			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
@@ -173,8 +173,7 @@
 	     Removing them is safe because PortAudioSharp2, WinUI, WinAppSDK base runtime,
 	     CommunityToolkit, ReactiveUI, and our own code do not depend on these types.
 	     If a future feature needs on-device ML, delete this target to re-enable them. -->
-	<Target Name="StripUnusedWindowsAiPayload"
-	        AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
+	<Target Name="StripUnusedWindowsAiPayload" AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
 		<ItemGroup>
 			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.*.Projection.dll" />
 			<_StripManagedAi Include="$(OutputPath)Microsoft.Windows.AI.*.Projection.pdb" />

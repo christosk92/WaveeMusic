@@ -277,6 +277,10 @@ public static class AppLifecycleHelper
                 .AddSingleton<ProfileCache>()
                 .AddSingleton<IProfileCache>(sp => sp.GetRequiredService<ProfileCache>())
                 .AddSingleton(sp => new ImageCacheService(cacheCapacities.ImageCacheMaxSize))
+                .AddSingleton(sp => new PlaylistMosaicService(
+                    sp.GetRequiredService<ILibraryDataService>(),
+                    Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
+                    sp.GetService<ILogger<PlaylistMosaicService>>()))
                 .AddSingleton<IPreviewAudioPlaybackEngine, PreviewAudioGraphService>()
                 .AddSingleton<PreviewAudioGraphService>(sp => (PreviewAudioGraphService)sp.GetRequiredService<IPreviewAudioPlaybackEngine>())
                 // IUiDispatcher abstraction: lets services in the plain-C# Wavee.UI library marshal
@@ -371,13 +375,26 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.TrackLikeService>>()))
+                .AddSingleton<Wavee.Core.Playlists.IPlaylistCacheService>(sp =>
+                    new Wavee.Core.Playlists.PlaylistCacheService(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetService<ILogger<Wavee.Core.Playlists.PlaylistCacheService>>()))
                 .AddSingleton<ILibraryDataService>(sp =>
                     new Data.Contexts.LibraryDataService(
                         sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetRequiredService<ITrackLikeService>(),
                         sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
+                .AddSingleton(sp =>
+                    new Data.Stores.PlaylistStore(
+                        sp.GetRequiredService<ILibraryDataService>(),
+                        sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
+                        sp.GetService<ILogger<Data.Stores.PlaylistStore>>()))
                 .AddSingleton<ILocationService>(sp =>
                     new Data.Contexts.LocationService(
                         sp.GetRequiredService<ISession>().Pathfinder,
@@ -394,6 +411,18 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ILocationService>(),
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
+                .AddSingleton(sp =>
+                    new Data.Stores.ArtistStore(
+                        sp.GetRequiredService<IArtistService>(),
+                        sp.GetService<ILogger<Data.Stores.ArtistStore>>()))
+                .AddSingleton(sp =>
+                    new Data.Stores.AlbumStore(
+                        sp.GetRequiredService<IAlbumService>(),
+                        sp.GetService<ILogger<Data.Stores.AlbumStore>>()))
+                .AddSingleton(sp =>
+                    new Data.Stores.ExtendedMetadataStore(
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetService<ILogger<Data.Stores.ExtendedMetadataStore>>()))
                 .AddSingleton<IAlbumService>(sp =>
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,

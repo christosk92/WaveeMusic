@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using Microsoft.UI.Input;
@@ -10,11 +12,14 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Wavee.UI.WinUI.DragDrop;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 
 namespace Wavee.UI.WinUI.Controls.Sidebar;
 
@@ -41,6 +46,7 @@ public sealed partial class SidebarItem : Control
 	private Border? _elementBorder;
 	private Action? _themeChangedHandler;
 	private Services.ThemeColorService? _themeColorService;
+	private CancellationTokenSource? _lazyIconCts;
 
 	public SidebarItem()
 	{
@@ -76,28 +82,121 @@ public sealed partial class SidebarItem : Control
 
 	private void UpdateIconPresenter()
 	{
-		if (iconPresenter is not null && Item?.IconSource is not null)
+		if (iconPresenter is null)
+			return;
+
+		if (_themeColorService != null && _themeChangedHandler != null)
 		{
-			var icon = Item.IconSource.CreateIconElement();
-			if (icon is FontIcon fontIcon)
+			_themeColorService.ThemeChanged -= _themeChangedHandler;
+			_themeChangedHandler = null;
+		}
+
+		if (Item?.IconSource is null)
+		{
+			iconPresenter.Content = null;
+			return;
+		}
+
+		var rawIcon = CreateSidebarIcon(Item.IconSource);
+		var isFolder = Item is SidebarItemModel folderModel && folderModel.IsFolder;
+
+		// Folders wrap their glyph in a 32×32 accent-tinted rounded tile so the row
+		// carries the same visual mass as a playlist row (which shows 32×32 artwork).
+		// The inner FontIcon still receives theme-aware foreground wiring below.
+		FrameworkElement icon;
+		FontIcon? fontIcon;
+		Border? folderTile = null;
+		if (isFolder)
+		{
+			icon = CreateFolderIcon(rawIcon, out var themed, out folderTile);
+			fontIcon = themed;
+		}
+		else
+		{
+			icon = rawIcon;
+			fontIcon = rawIcon as FontIcon;
+		}
+
+		if (_themeColorService != null && (fontIcon is not null || folderTile is not null))
+		{
+			var colors = _themeColorService;
+			if (fontIcon is not null)
 			{
 				fontIcon.FontSize = 16;
-				// Use ThemeColorService for theme-aware foreground
-				if (_themeColorService != null)
-				{
-					var colors = _themeColorService;
-					fontIcon.Foreground = colors.TextPrimary;
-					// Store handler so we can unsubscribe in Unloaded
-					_themeChangedHandler = () =>
-					{
-						if (fontIcon.DispatcherQueue != null)
-							fontIcon.DispatcherQueue.TryEnqueue(() => fontIcon.Foreground = colors.TextPrimary);
-					};
-					colors.ThemeChanged += _themeChangedHandler;
-				}
+				fontIcon.Foreground = colors.TextPrimary;
 			}
-			iconPresenter.Content = icon;
+			if (folderTile is not null)
+				folderTile.Background = colors.AppAccent;
+
+			// One handler refreshes both the glyph foreground AND the folder-tile fill
+			// on live theme changes (light/dark swap, accent palette shift).
+			var capturedFontIcon = fontIcon;
+			var capturedTile = folderTile;
+			_themeChangedHandler = () =>
+			{
+				var dq = capturedFontIcon?.DispatcherQueue ?? capturedTile?.DispatcherQueue;
+				dq?.TryEnqueue(() =>
+				{
+					if (capturedFontIcon is not null)
+						capturedFontIcon.Foreground = colors.TextPrimary;
+					if (capturedTile is not null)
+						capturedTile.Background = colors.AppAccent;
+				});
+			};
+			colors.ThemeChanged += _themeChangedHandler;
 		}
+		else if (fontIcon is not null)
+		{
+			fontIcon.FontSize = 16;
+		}
+
+		// Artwork (playlist thumbnail) and folder tiles render at 32 px so they align
+		// vertically; bare-glyph icons stay at 16. Row height is 44 px to fit the tile.
+		var hostTag = (icon as FrameworkElement)?.Tag as string;
+		var isTile = hostTag == "ArtworkIcon" || hostTag == "FolderIcon";
+		iconPresenter.Width = isTile ? 32 : 16;
+		iconPresenter.Height = isTile ? 32 : 16;
+		iconPresenter.Margin = isTile ? new Thickness(6, 0, 0, 0) : new Thickness(8, 0, 0, 0);
+		iconPresenter.Content = icon;
+	}
+
+	/// <summary>
+	/// Wraps a folder's inner glyph in a 32×32 rounded accent-tinted tile so folder rows
+	/// have the same visual mass as playlist rows (which show artwork in the same slot).
+	/// Returns the host element and surfaces both the inner <see cref="FontIcon"/> and the
+	/// tile <see cref="Border"/> so the caller can refresh their colors on theme change.
+	/// </summary>
+	private FrameworkElement CreateFolderIcon(FrameworkElement innerGlyph, out FontIcon? innerFontIcon, out Border tile)
+	{
+		innerFontIcon = innerGlyph as FontIcon;
+		if (innerFontIcon is not null)
+		{
+			innerFontIcon.FontSize = 16;
+			innerFontIcon.HorizontalAlignment = HorizontalAlignment.Center;
+			innerFontIcon.VerticalAlignment = VerticalAlignment.Center;
+		}
+
+		var host = new Grid
+		{
+			Width = 32,
+			Height = 32,
+			Tag = "FolderIcon"
+		};
+
+		// Use the app's accent color at low opacity for a soft tint, NOT the Fluent
+		// AccentFillColor*Brush system brushes — those are designed as solid button fills
+		// (near-full opacity) and render far too loud as a background tile.
+		tile = new Border
+		{
+			CornerRadius = new CornerRadius(6),
+			Background = _themeColorService?.AppAccent
+				?? new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0xFF, 0x1D, 0xB9, 0x54)),
+			Opacity = 0.2
+		};
+
+		host.Children.Add(tile);
+		host.Children.Add(innerGlyph);
+		return host;
 	}
 
 	internal void Select()
@@ -150,6 +249,84 @@ public sealed partial class SidebarItem : Control
 
 		if (Item is not null)
 			Decorator = Item.ItemDecorator;
+
+		TryStartLazyIconLoad();
+	}
+
+	/// <summary>
+	/// Spotify "custom" playlists arrive without a single cover image — instead the model
+	/// carries a <see cref="SidebarItemModel.LazyIconSourceLoader"/> that, when invoked,
+	/// fetches the playlist's tracks and composes a 2×2 mosaic. This runs at most once per
+	/// model: the loader nulls itself on success so subsequent container recycles for the
+	/// same model skip the work. On Unloaded the per-container CTS cancels in-flight work,
+	/// and PlaylistMosaicService de-dupes via its in-flight task cache.
+	/// </summary>
+	private void TryStartLazyIconLoad()
+	{
+		// A new model is being bound — cancel any work tied to the previous one.
+		_lazyIconCts?.Cancel();
+		_lazyIconCts?.Dispose();
+		_lazyIconCts = null;
+
+		if (Item is not SidebarItemModel model) return;
+		var loader = model.LazyIconSourceLoader;
+		if (loader is null) return;
+
+		var cts = new CancellationTokenSource();
+		_lazyIconCts = cts;
+		var ct = cts.Token;
+		var dispatcher = DispatcherQueue;
+
+		// Up to MaxAttempts passes, each spaced RetryDelay apart. The original
+		// "will retry on next realization" comment assumed the row would
+		// scroll out and back — but Spotify-style sidebars stay realized,
+		// so a row that failed once (cancel cascade at startup, transient
+		// network blip, etc.) never recovered and the placeholder glyph stuck.
+		_ = Task.Run(async () =>
+		{
+			const int MaxAttempts = 3;
+			for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+			{
+				try
+				{
+					var icon = await loader(ct).ConfigureAwait(false);
+					if (ct.IsCancellationRequested) return;
+					if (icon is null)
+					{
+						// Nothing composed (e.g. tile URLs resolved to zero,
+						// or every tile failed to load). Back off and retry.
+					}
+					else
+					{
+						dispatcher.TryEnqueue(() =>
+						{
+							model.IconSource = icon;
+							model.LazyIconSourceLoader = null;
+						});
+						return;
+					}
+				}
+				catch (OperationCanceledException) when (ct.IsCancellationRequested)
+				{
+					// Outer row-unload cancel. Don't retry — a new bind will
+					// kick off its own TryStartLazyIconLoad.
+					return;
+				}
+				catch (OperationCanceledException)
+				{
+					// Inner cancel (e.g. sync-complete cascade) — not ours.
+					// Fall through to retry.
+				}
+				catch (Exception)
+				{
+					// Same — retry silently after a pause.
+				}
+
+				if (attempt == MaxAttempts) return;
+				try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); }
+				catch (OperationCanceledException) { return; }
+			}
+		}, ct);
 	}
 
 	private void HookupOwners()
@@ -213,6 +390,11 @@ public sealed partial class SidebarItem : Control
 			_themeChangedHandler = null;
 			_themeColorService = null;
 		}
+
+		// Cancel any in-flight lazy icon (mosaic) load tied to this container.
+		_lazyIconCts?.Cancel();
+		_lazyIconCts?.Dispose();
+		_lazyIconCts = null;
 	}
 
 	private void HookupItemChangeListener(ISidebarItemModel? oldItem, ISidebarItemModel? newItem)
@@ -395,10 +577,72 @@ public sealed partial class SidebarItem : Control
 
 	private void UpdateIcon()
 	{
-		Icon = Item?.IconSource?.CreateIconElement();
+		Icon = Item?.IconSource is null ? null : CreateSidebarIcon(Item.IconSource);
 		if (Icon is not null)
 			AutomationProperties.SetAccessibilityView(Icon, AccessibilityView.Raw);
 		UpdateIconPresenter();
+	}
+
+	private FrameworkElement CreateSidebarIcon(IconSource iconSource)
+	{
+		if (iconSource is ImageIconSource imageIconSource)
+			return CreateArtworkIcon(imageIconSource.ImageSource);
+
+		return iconSource.CreateIconElement();
+	}
+
+	private FrameworkElement CreateArtworkIcon(ImageSource? imageSource)
+	{
+		// Matches the IconPresenter size set in UpdateIconPresenter (isArtwork branch).
+		var host = new Grid
+		{
+			Width = 32,
+			Height = 32,
+			Tag = "ArtworkIcon"
+		};
+
+		var background = new Border
+		{
+			CornerRadius = new CornerRadius(6),
+			Background = ResolveBrush("CardBackgroundFillColorSecondaryBrush")
+				?? ResolveBrush("CardBackgroundFillColorDefaultBrush")
+				?? new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(0x22, 0x7F, 0x7F, 0x7F))
+		};
+
+		var fallbackIcon = new FontIcon
+		{
+			Glyph = "\uE189",
+			FontSize = 10,
+			HorizontalAlignment = HorizontalAlignment.Center,
+			VerticalAlignment = VerticalAlignment.Center,
+			Foreground = ResolveBrush("TextFillColorSecondaryBrush")
+				?? new SolidColorBrush(Microsoft.UI.Colors.Gray)
+		};
+
+		host.Children.Add(background);
+		host.Children.Add(fallbackIcon);
+
+		if (imageSource != null)
+		{
+			host.Children.Add(new Border
+			{
+				CornerRadius = new CornerRadius(6),
+				Background = new ImageBrush
+				{
+					ImageSource = imageSource,
+					Stretch = Stretch.UniformToFill
+				}
+			});
+		}
+
+		return host;
+	}
+
+	private static Brush? ResolveBrush(string resourceKey)
+	{
+		return Application.Current?.Resources.TryGetValue(resourceKey, out var resource) == true
+			? resource as Brush
+			: null;
 	}
 
 	private bool ShouldShowSelectionIndicator()
@@ -432,27 +676,63 @@ public sealed partial class SidebarItem : Control
 
 	private void UpdateExpansionState(bool useAnimations = true)
 	{
+		var model = Item as SidebarItemModel;
+		var isSectionHeader = model is { IsSectionHeader: true };
+		var showPlaceholder = model is { ShowEmptyPlaceholder: true };
+
 		if (Item?.Children is null || !CollapseEnabled)
 		{
-			VisualStateManager.GoToState(this, Item?.PaddedItem == true ? "NoExpansionWithPadding" : "NoExpansion", useAnimations);
+			var state = isSectionHeader
+				? "SectionHeaderCollapsed"
+				: (Item?.PaddedItem == true ? "NoExpansionWithPadding" : "NoExpansion");
+			VisualStateManager.GoToState(this, state, useAnimations);
 		}
 		else if (!HasChildren)
 		{
-			var showPlaceholder = Item is SidebarItemModel model && model.ShowEmptyPlaceholder;
-			VisualStateManager.GoToState(this, showPlaceholder ? "NoChildrenWithPlaceholder" : "NoChildren", useAnimations);
+			string state;
+			if (isSectionHeader)
+			{
+				// Section headers reuse Expanded/Collapsed chrome states regardless of children
+				// count; the placeholder follows IsExpanded only when ShowEmptyPlaceholder is set.
+				state = (showPlaceholder && IsExpanded)
+					? "SectionHeaderExpanded"
+					: "SectionHeaderCollapsed";
+			}
+			else if (showPlaceholder)
+			{
+				state = IsExpanded ? "NoChildrenWithPlaceholderExpanded" : "NoChildrenWithPlaceholderCollapsed";
+				VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconNormal" : "CollapsedIconNormal", useAnimations);
+			}
+			else
+			{
+				state = "NoChildren";
+			}
+			VisualStateManager.GoToState(this, state, useAnimations);
 		}
 		else
 		{
-			if (Item?.Children is IList enumerable && enumerable.Count > 0 && childrenRepeater is not null)
+			if (Item?.Children is IList enumerable && enumerable.Count > 0)
 			{
-				var firstChild = childrenRepeater.GetOrCreateElement(0);
+				var childHeight = 32d;
+				if (childrenRepeater?.ItemsSource is not null)
+				{
+					var firstChild = childrenRepeater.GetOrCreateElement(0);
 
-				// Collapsed elements might have a desired size of 0 so we need to have a sensible fallback
-				var childHeight = firstChild.DesiredSize.Height > 0 ? firstChild.DesiredSize.Height : 32;
+					// Collapsed elements might have a desired size of 0 so we need to have a sensible fallback
+					childHeight = firstChild.DesiredSize.Height > 0 ? firstChild.DesiredSize.Height : 32d;
+				}
+
 				ChildrenPresenterHeight = enumerable.Count * childHeight;
 			}
-			VisualStateManager.GoToState(this, IsExpanded ? "Expanded" : "Collapsed", useAnimations);
-			VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconNormal" : "CollapsedIconNormal", useAnimations);
+			if (isSectionHeader)
+			{
+				VisualStateManager.GoToState(this, IsExpanded ? "SectionHeaderExpanded" : "SectionHeaderCollapsed", useAnimations);
+			}
+			else
+			{
+				VisualStateManager.GoToState(this, IsExpanded ? "Expanded" : "Collapsed", useAnimations);
+				VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconNormal" : "CollapsedIconNormal", useAnimations);
+			}
 		}
 		UpdateSelectionState();
 	}

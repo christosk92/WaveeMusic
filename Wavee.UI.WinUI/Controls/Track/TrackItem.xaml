@@ -11,6 +11,7 @@
     xmlns:ui="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -65,9 +66,9 @@
                         Width="48" Height="48" CornerRadius="4"
                         Padding="0" Background="#CC000000" BorderThickness="0"
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                    <FontIcon x:Name="CompactPlayIcon" Glyph="&#xE768;" FontSize="20"
-                              Foreground="White"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <playback:PlaybackActionContent x:Name="CompactPlayContent"
+                                                   IconSize="20"
+                                                   ActionForeground="White"/>
                 </Button>
 
                 <controls1:Shimmer x:Name="CompactArtShimmer" Width="48" Height="48"
@@ -134,15 +135,19 @@
                 ui:Effects.Shadow="{StaticResource RowShadow}">
             <Grid>
                 <Grid x:Name="RowContentGrid" ColumnSpacing="0">
+                    <!--
+                        Artist is rendered as a subline under the Title (column 3) rather
+                        than occupying its own grid column. Saves ~180 px per row and
+                        matches the Spotify/Apple Music row layout.
+                    -->
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="RowIndexColDef" Width="40"/>
                         <ColumnDefinition x:Name="RowHeartColDef" Width="32"/>
                         <ColumnDefinition x:Name="RowArtColDef" Width="42"/>
-                        <ColumnDefinition Width="*" MinWidth="120"/>
-                        <ColumnDefinition x:Name="RowArtistColDef" Width="180"/>
+                        <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="RowAlbumColDef" Width="180"/>
                         <ColumnDefinition x:Name="RowDateColDef" Width="120"/>
-                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition x:Name="RowDurationColDef" Width="60"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Row number / Now Playing icon / Play button area -->
@@ -169,8 +174,9 @@
                                 Padding="0"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center">
-                            <FontIcon x:Name="RowPlayIcon" Glyph="&#xE768;" FontSize="14"
-                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                            <playback:PlaybackActionContent x:Name="RowPlayContent"
+                                                           IconSize="14"
+                                                           ActionForeground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
                         </Button>
                     </Grid>
 
@@ -192,37 +198,49 @@
                         </Grid>
                     </Border>
 
-                    <!-- Title + Explicit badge -->
-                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                    <!-- Title stacked over Artist subline -->
+                    <StackPanel Grid.Column="3" Orientation="Vertical" Spacing="0"
                                 Margin="12,0,8,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="RowTitle"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis"
-                                   MaxLines="1"/>
-                        <Border x:Name="RowExplicit" Visibility="Collapsed"
-                                Background="{ThemeResource TextFillColorSecondaryBrush}"
-                                CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
-                            <TextBlock Text="E" FontSize="9" FontWeight="Bold"
-                                       Foreground="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
-                        </Border>
+                        <!-- 2-column Grid (not StackPanel) so RowTitle actually
+                             gets a bounded measure width and TextTrimming kicks
+                             in. Horizontal StackPanel hands children infinite
+                             width and the title bleeds into the Album column. -->
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="RowTitle"
+                                       Grid.Column="0"
+                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1"/>
+                            <Border x:Name="RowExplicit" Grid.Column="1" Visibility="Collapsed"
+                                    Background="{ThemeResource TextFillColorSecondaryBrush}"
+                                    CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
+                                <TextBlock Text="E" FontSize="9" FontWeight="Bold"
+                                           Foreground="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
+                            </Border>
+                        </Grid>
+                        <HyperlinkButton x:Name="RowArtistLink"
+                                         Padding="0,0,0,0"
+                                         Margin="0,-2,0,0"
+                                         HorizontalAlignment="Left"
+                                         Visibility="Collapsed">
+                            <HyperlinkButton.ContentTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="1"/>
+                                </DataTemplate>
+                            </HyperlinkButton.ContentTemplate>
+                        </HyperlinkButton>
                     </StackPanel>
 
-                    <!-- Artist (clickable) -->
-                    <HyperlinkButton x:Name="RowArtistLink" Grid.Column="4"
-                                     Padding="0" VerticalAlignment="Center">
-                        <HyperlinkButton.ContentTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextTrimming="CharacterEllipsis"
-                                           MaxLines="1"/>
-                            </DataTemplate>
-                        </HyperlinkButton.ContentTemplate>
-                    </HyperlinkButton>
-
                     <!-- Album (clickable) -->
-                    <HyperlinkButton x:Name="RowAlbumLink" Grid.Column="5"
+                    <HyperlinkButton x:Name="RowAlbumLink" Grid.Column="4"
                                      Padding="0" VerticalAlignment="Center">
                         <HyperlinkButton.ContentTemplate>
                             <DataTemplate>
@@ -236,36 +254,43 @@
                     </HyperlinkButton>
 
                     <!-- Date Added -->
-                    <TextBlock x:Name="RowDateAdded" Grid.Column="6"
+                    <TextBlock x:Name="RowDateAdded" Grid.Column="5"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center"/>
 
                     <!-- Duration -->
-                    <TextBlock x:Name="RowDuration" Grid.Column="7"
+                    <TextBlock x:Name="RowDuration" Grid.Column="6"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Right"
                                VerticalAlignment="Center"/>
                 </Grid>
 
-                <!-- Shimmer overlay for lazy/loading rows -->
+                <!-- Shimmer overlay for lazy/loading rows. Mirrors RowContentGrid's 8 columns
+                     so individual shimmer rectangles align under the column headers. The
+                     conditional column widths are kept in sync with the real row in
+                     ApplyShowFlags (TrackItem.xaml.cs). -->
                 <Grid x:Name="RowShimmerOverlay" VerticalAlignment="Center"
                       Visibility="Collapsed"
-                      ColumnSpacing="12" Padding="40,0,0,0">
+                      ColumnSpacing="0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="34"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="50"/>
+                        <ColumnDefinition Width="40"/>
+                        <ColumnDefinition x:Name="ShimHeartColDef" Width="32"/>
+                        <ColumnDefinition x:Name="ShimArtColDef" Width="42"/>
+                        <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
+                        <ColumnDefinition x:Name="ShimAlbumColDef" Width="180"/>
+                        <ColumnDefinition x:Name="ShimDateColDef" Width="120"/>
+                        <ColumnDefinition x:Name="ShimDurationColDef" Width="60"/>
                     </Grid.ColumnDefinitions>
-                    <controls1:Shimmer Grid.Column="0" Width="34" Height="34" CornerRadius="4"/>
-                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                    <controls1:Shimmer Grid.Column="2" Width="34" Height="34" CornerRadius="4" HorizontalAlignment="Left"/>
+                    <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Center" Margin="12,0,8,0">
                         <controls1:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
                         <controls1:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
                     </StackPanel>
-                    <controls1:Shimmer Grid.Column="2" Width="50" Height="12"/>
-                    <controls1:Shimmer Grid.Column="3" Width="36" Height="12" HorizontalAlignment="Right"/>
+                    <controls1:Shimmer Grid.Column="4" Width="120" Height="12" HorizontalAlignment="Left"/>
+                    <controls1:Shimmer Grid.Column="5" Width="80" Height="12" HorizontalAlignment="Left"/>
+                    <controls1:Shimmer Grid.Column="6" Width="36" Height="12" HorizontalAlignment="Right"/>
                 </Grid>
             </Grid>
         </Border>

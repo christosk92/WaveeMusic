@@ -42,6 +42,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly IHomeFeedCache? _homeFeedCache;
     private List<QueueItem> _queue = [];
     private List<QueueItem> _prevQueue = [];
+    private IReadOnlyList<QueueItem>? _userQueueCache;
     private IReadOnlyList<Wavee.Audio.Queue.IQueueItem> _rawNextQueue = [];
     private IReadOnlyList<Wavee.Audio.Queue.IQueueItem> _rawPrevQueue = [];
     private IDisposable? _stateSubscription;
@@ -52,6 +53,14 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private bool _isSuppressingPropertyChanged;
     private HashSet<string>? _pendingPropertyChanges;
     private string? _lastColorImageUrl;
+    // Deferred color-extract target. ApplyConnectState records the URL to
+    // extract from here instead of firing synchronously, and the batched
+    // OnRemoteStateChanged flush handler schedules extraction on a ThreadPool
+    // worker AFTER FlushPropertyChanges() returns. Without this, the colour
+    // service's synchronous ramp (SQLite probe + hot-cache check) runs inside
+    // the dispatcher tick the profiler measures as "PlaybackStateFlush".
+    private string? _pendingColorImageUrl;
+    private bool _pendingColorClear;
     private double? _pendingSeekPositionMs;
     private long _lastPositionLogAtMs;
     // Seek-in-flight guard: between the moment Seek() is sent and the moment the
@@ -94,7 +103,19 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public IReadOnlyList<QueueItem> Queue => _queue;
     public IReadOnlyList<QueueItem> PreviousTracks => _prevQueue;
-    public IReadOnlyList<QueueItem> UserQueue => _queue.Where(q => q.IsUserQueued).ToList();
+    public IReadOnlyList<QueueItem> UserQueue => _userQueueCache ??= BuildUserQueueCache();
+
+    private IReadOnlyList<QueueItem> BuildUserQueueCache()
+    {
+        List<QueueItem>? result = null;
+        foreach (var q in _queue)
+        {
+            if (!q.IsUserQueued) continue;
+            result ??= new List<QueueItem>();
+            result.Add(q);
+        }
+        return result ?? (IReadOnlyList<QueueItem>)Array.Empty<QueueItem>();
+    }
     public IReadOnlyList<Wavee.Audio.Queue.IQueueItem> RawNextQueue => _rawNextQueue;
     public IReadOnlyList<Wavee.Audio.Queue.IQueueItem> RawPrevQueue => _rawPrevQueue;
 
@@ -135,6 +156,59 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _logger?.LogInformation("Auth status: Authenticated — attempting subscription to PlaybackStateManager.StateChanges");
             _dispatcherQueue.TryEnqueue(TrySubscribeToRemoteState);
         }
+        else if (message.Value == AuthStatus.LoggedOut || message.Value == AuthStatus.SessionExpired)
+        {
+            _logger?.LogInformation("Auth status: {Status} — tearing down remote state bridge", message.Value);
+            _dispatcherQueue.TryEnqueue(TearDownRemoteState);
+        }
+    }
+
+    private void TearDownRemoteState()
+    {
+        var sub = Interlocked.Exchange(ref _stateSubscription, null);
+        sub?.Dispose();
+        _subscribeAttemptCount = 0;
+        _isFirstStateUpdate = true;
+
+        // Clear visible now-playing state — without this, the mini-player and queue
+        // panel keep showing the signed-out user's last track/queue.
+        IsPlaying = false;
+        CurrentTrackId = null;
+        CurrentTrackTitle = null;
+        CurrentArtistName = null;
+        CurrentAlbumArt = null;
+        CurrentAlbumArtLarge = null;
+        CurrentArtistId = null;
+        CurrentAlbumId = null;
+        CurrentAlbumArtColor = null;
+        CurrentArtists = null;
+        Position = 0;
+        Duration = 0;
+        CurrentContext = null;
+        QueuePosition = 0;
+        IsPlayingRemotely = false;
+        ActiveDeviceName = null;
+        ActiveDeviceType = DeviceType.Computer;
+        AvailableConnectDevices = [];
+        IsBuffering = false;
+        BufferingTrackId = null;
+
+        _queue = [];
+        _prevQueue = [];
+        _rawNextQueue = [];
+        _rawPrevQueue = [];
+        _userQueueCache = null;
+        OnPropertyChanged(nameof(Queue));
+        OnPropertyChanged(nameof(PreviousTracks));
+        OnPropertyChanged(nameof(UserQueue));
+        OnPropertyChanged(nameof(RawNextQueue));
+        OnPropertyChanged(nameof(RawPrevQueue));
+
+        _lastColorImageUrl = null;
+        _pendingSeekPositionMs = null;
+        _seekConfirmationCts?.Cancel();
+        _seekConfirmationCts?.Dispose();
+        _seekConfirmationCts = null;
     }
 
     // ── Remote state bridge ──
@@ -417,6 +491,24 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
                 // Send consolidated now-playing notification (deduplicated across IsPlaying + Context changes)
                 FlushNowPlayingMessage();
+
+                // Fire colour extraction OUTSIDE the flush tick. ApplyConnectState
+                // records the intent in _pendingColorImageUrl; we dispatch to the
+                // ThreadPool so the colour service's sync ramp (SQLite probe,
+                // hot-cache check, HttpClient prep) never runs on the dispatcher.
+                // Results marshal back via _dispatcherQueue.TryEnqueue inside
+                // ExtractAlbumColorAsync itself.
+                if (_pendingColorClear)
+                {
+                    _pendingColorClear = false;
+                    _lastColorImageUrl = null;
+                    CurrentAlbumArtColor = null;
+                }
+                else if (_pendingColorImageUrl is { } colorUrl)
+                {
+                    _pendingColorImageUrl = null;
+                    _ = ExtractAlbumColorAsync(colorUrl);
+                }
             }
         });
     }
@@ -438,7 +530,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             if (message.AlbumId != null) CurrentAlbumId = message.AlbumId;
             if (message.Artists != null) CurrentArtists = message.Artists;
 
-            // Re-extract color if album art was enriched
+            // Re-extract color if album art was enriched.
             if (message.AlbumArt != null)
                 _ = ExtractAlbumColorAsync(message.AlbumArt);
         });
@@ -469,14 +561,20 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
         CurrentTrackId = trackId;
 
-        // Extract color from album art
+        // Record color-extract intent; the outer flush handler fires the
+        // actual extraction on a ThreadPool worker after the dispatcher tick
+        // ends, so the colour service's sync ramp doesn't count against
+        // [PlaybackStateFlush] (measured 169ms on first render).
         var imageUrl = connectState.Track?.ImageUrl;
         if (!string.IsNullOrEmpty(imageUrl))
-            _ = ExtractAlbumColorAsync(imageUrl);
+        {
+            _pendingColorImageUrl = imageUrl;
+            _pendingColorClear = false;
+        }
         else
         {
-            _lastColorImageUrl = null;
-            CurrentAlbumArtColor = null;
+            _pendingColorImageUrl = null;
+            _pendingColorClear = true;
         }
     }
 
@@ -587,13 +685,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             var updated = new List<Wavee.Audio.Queue.IQueueItem>(_rawNextQueue.Count);
             foreach (var item in _rawNextQueue)
             {
-                if (item is Wavee.Audio.Queue.QueueTrack qt && !qt.HasMetadata && tracks.TryGetValue(qt.Uri, out var meta))
+                if (item is Wavee.Audio.Queue.QueueTrack qt
+                    && NeedsQueueTrackEnrichment(qt)
+                    && tracks.TryGetValue(qt.Uri, out var meta))
                 {
                     updated.Add(qt with
                     {
-                        Title = meta.Title,
-                        Artist = meta.ArtistName,
-                        ImageUrl = meta.AlbumArt,
+                        Title = string.IsNullOrEmpty(meta.Title) ? qt.Title : meta.Title,
+                        Artist = string.IsNullOrEmpty(meta.ArtistName) ? qt.Artist : meta.ArtistName,
+                        ImageUrl = string.IsNullOrEmpty(meta.AlbumArt) ? qt.ImageUrl : meta.AlbumArt,
                         DurationMs = meta.DurationMs > 0 ? (int)meta.DurationMs : qt.DurationMs
                     });
                 }
@@ -604,7 +704,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             }
 
             _rawNextQueue = updated;
+            _queue = updated
+                .OfType<Wavee.Audio.Queue.QueueTrack>()
+                .Select(QueueItem.FromQueueTrack)
+                .ToList();
+            _userQueueCache = null;
             OnPropertyChanged(nameof(Queue));
+            OnPropertyChanged(nameof(UserQueue));
         });
     }
 
@@ -644,6 +750,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             }
             _queue = newQueue;
         }
+        _userQueueCache = null;
 
         // Build previous tracks list
         if (state.PrevQueue.Count > 0)
@@ -656,12 +763,28 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         OnPropertyChanged(nameof(Queue));
         OnPropertyChanged(nameof(PreviousTracks));
+        OnPropertyChanged(nameof(UserQueue));
 
-        // Request enrichment for tracks with missing metadata
-        var sparseUris = _queue
-            .Where(q => !q.HasMetadata && !string.IsNullOrEmpty(q.TrackId))
-            .Select(q => q.TrackId)
-            .ToList();
+        // Request enrichment for tracks with missing metadata or artwork.
+        List<string> sparseUris;
+        if (state.NextQueue.Count > 0)
+        {
+            sparseUris = state.NextQueue
+                .OfType<Wavee.Audio.Queue.QueueTrack>()
+                .Where(NeedsQueueTrackEnrichment)
+                .Select(track => track.Uri)
+                .Distinct()
+                .ToList();
+        }
+        else
+        {
+            sparseUris = _queue
+                .Where(q => (!q.HasMetadata || string.IsNullOrEmpty(q.AlbumArt))
+                    && !string.IsNullOrEmpty(q.TrackId))
+                .Select(q => q.TrackId)
+                .Distinct()
+                .ToList();
+        }
 
         if (sparseUris.Count > 0)
         {
@@ -672,6 +795,11 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     // ── PropertyChanged batching ──
     // During OnRemoteStateChanged, suppress individual PropertyChanged events
     // and flush them all at once to reduce binding evaluation + layout passes.
+
+    private static bool NeedsQueueTrackEnrichment(Wavee.Audio.Queue.QueueTrack track)
+        => string.IsNullOrEmpty(track.Title)
+            || string.IsNullOrEmpty(track.Artist)
+            || string.IsNullOrEmpty(track.ImageUrl);
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {

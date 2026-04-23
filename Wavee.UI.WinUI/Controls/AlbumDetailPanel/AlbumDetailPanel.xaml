@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
     mc:Ignorable="d">
 
@@ -71,7 +72,8 @@
                             <Button Style="{StaticResource AccentButtonStyle}" Padding="14,6" CornerRadius="16"
                                     Click="PlayButton_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE768;" FontSize="12"/>
+                                    <playback:PlaybackActionContent IconSize="12"
+                                                                   ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                                     <TextBlock x:Uid="Controls_AlbumDetailPanel_AlbumDetailPanel__TextBlock_1" Text="Play" FontSize="12"/>
                                 </StackPanel>
                             </Button>

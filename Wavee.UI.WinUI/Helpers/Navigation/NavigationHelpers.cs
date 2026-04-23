@@ -182,8 +182,17 @@ public static class NavigationHelpers
             {
                 _shellViewModel.UpdateNavigationState();
 
-                // Clear sidebar selection for non-library pages
-                if (pageType != typeof(LibraryPage))
+                // Sync sidebar selection to the target page:
+                //   - PlaylistPage: resolve the parameter (playlist id or URI) to the matching
+                //     sidebar row. Clears if the playlist isn't in the user's library.
+                //   - LibraryPage: leave alone. LibraryPage.OnSelectedItemChanged keeps
+                //     Albums/Artists/LikedSongs/Playlists sub-tab selection in sync.
+                //   - Everything else (Search, Concert, Profile, Settings, …): clear.
+                if (pageType == typeof(PlaylistPage))
+                {
+                    _shellViewModel.SyncSidebarSelectionToPlaylist(parameter);
+                }
+                else if (pageType != typeof(LibraryPage))
                 {
                     _shellViewModel.SelectedSidebarItem = null;
                 }

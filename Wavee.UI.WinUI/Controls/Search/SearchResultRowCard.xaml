@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     mc:Ignorable="d">
 
     <Grid>
@@ -69,12 +70,9 @@
                                     Visibility="Collapsed"
                                     Opacity="0"
                                     IsHitTestVisible="False">
-                                <FontIcon x:Name="HoverPlayIcon"
-                                          Glyph="&#xE768;"
-                                          FontSize="20"
-                                          Foreground="White"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center"/>
+                                <playback:PlaybackActionContent x:Name="HoverPlayContent"
+                                                               IconSize="20"
+                                                               ActionForeground="White"/>
                             </Border>
                         </Grid>
                     </Border>

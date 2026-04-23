@@ -7,6 +7,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using System;
 using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
@@ -155,24 +157,32 @@ public sealed partial class ShellPage : Page
             NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
     }
 
+    private AuthStatus _previousAuthStatus = AuthStatus.Unknown;
+
     private void UpdateUserButton()
     {
         if (_authState == null) return;
 
-        switch (_authState.Status)
+        var status = _authState.Status;
+        switch (status)
         {
             case AuthStatus.Authenticated:
                 NavToolbar.IsConnecting = false;
+                NavToolbar.IsAuthenticated = true;
                 NavToolbar.UserDisplayName = _authState.DisplayName ?? "User";
                 if (ConnectionErrorBar != null) ConnectionErrorBar.IsOpen = false;
                 break;
             case AuthStatus.Authenticating:
+            case AuthStatus.Unknown:
+                // Still resolving; don't surface signed-out CTAs yet.
                 NavToolbar.IsConnecting = true;
+                NavToolbar.IsAuthenticated = false;
                 NavToolbar.UserDisplayName = "Connecting...";
                 if (ConnectionErrorBar != null) ConnectionErrorBar.IsOpen = false;
                 break;
             case AuthStatus.Error:
                 NavToolbar.IsConnecting = false;
+                NavToolbar.IsAuthenticated = false;
                 NavToolbar.UserDisplayName = "Connection failed";
                 if (ConnectionErrorBar != null)
                 {
@@ -180,11 +190,56 @@ public sealed partial class ShellPage : Page
                     ConnectionErrorBar.IsOpen = true;
                 }
                 break;
-            default:
+            default: // LoggedOut / SessionExpired
                 NavToolbar.IsConnecting = false;
+                NavToolbar.IsAuthenticated = false;
                 NavToolbar.UserDisplayName = "Sign in";
+                if (ConnectionErrorBar != null) ConnectionErrorBar.IsOpen = false;
                 break;
         }
+
+        // Auto-open the sign-in dialog exactly once per transition into a signed-out state.
+        // If the user dismisses it, the toolbar "Sign in" button is the way back in.
+        if (IsSignedOut(status) && !IsSignedOut(_previousAuthStatus))
+        {
+            _ = ShowSignInDialogAsync();
+        }
+        _previousAuthStatus = status;
+    }
+
+    private static bool IsSignedOut(AuthStatus s)
+        => s == AuthStatus.LoggedOut || s == AuthStatus.SessionExpired;
+
+    private static int _signInDialogOpen; // Interlocked flag — VM is AddTransient, no identity guard usable.
+
+    private async Task ShowSignInDialogAsync()
+    {
+        if (Interlocked.CompareExchange(ref _signInDialogOpen, 1, 0) != 0) return;
+        try
+        {
+            var xamlRoot = MainWindow.Instance?.Content?.XamlRoot;
+            if (xamlRoot == null)
+            {
+                _logger?.LogWarning("Cannot show sign-in dialog: MainWindow XamlRoot unavailable.");
+                return;
+            }
+
+            var dialog = new SpotifyConnectDialog { XamlRoot = xamlRoot };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Sign-in dialog failed to show.");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _signInDialogOpen, 0);
+        }
+    }
+
+    private void NavToolbar_SignInRequested(NavigationToolbar sender, RoutedEventArgs e)
+    {
+        _ = ShowSignInDialogAsync();
     }
 
     private async void RetryConnection_Click(object sender, RoutedEventArgs e)

@@ -232,6 +232,15 @@
                                             x:Name="DetailsTabItem"
                                             Content="Details"
                                             Tag="Details"/>
+                    <!--
+                        Temporary "Track details" tab — invoked from TrackDataGrid's
+                        details toggle. Collapsed by default; code-behind shows it
+                        when ShellViewModel.SelectedTrackForDetails is set.
+                    -->
+                    <controls:SegmentedItem x:Name="TrackDetailsTabItem"
+                                            Content="Track"
+                                            Tag="TrackDetails"
+                                            Visibility="Collapsed"/>
                 </controls:Segmented>
 
                 <!-- Content area -->
@@ -336,6 +345,70 @@
 
                 <!-- Friends tab (its own UserControl) -->
                 <local:FriendsTabView x:Name="FriendsContent" Visibility="Collapsed"/>
+
+                <!--
+                    Track details tab (temporary, invoked from TrackDataGrid).
+                    Bound to ShellViewModel.SelectedTrackForDetails via code-behind.
+                    x:Load="False" keeps the subtree out of the visual tree until
+                    the first time this tab is activated.
+                -->
+                <ScrollViewer x:Name="TrackDetailsContent"
+                              x:Load="False"
+                              Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Hidden"
+                              Padding="0,4,0,12">
+                    <StackPanel x:Name="TrackDetailsPanel" Spacing="14">
+                        <Border Width="180" Height="180"
+                                HorizontalAlignment="Center"
+                                CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <Image x:Name="TrackDetailsArtwork" Stretch="UniformToFill"/>
+                        </Border>
+                        <StackPanel Spacing="4" HorizontalAlignment="Center">
+                            <TextBlock x:Name="TrackDetailsTitle"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       TextAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="2"/>
+                            <TextBlock x:Name="TrackDetailsArtist"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextAlignment="Center"/>
+                        </StackPanel>
+                        <Grid ColumnSpacing="12" RowSpacing="6"
+                              HorizontalAlignment="Stretch"
+                              Margin="8,8,8,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Album"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="TrackDetailsAlbum" Grid.Row="0" Grid.Column="1"
+                                       TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Duration"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="TrackDetailsDuration" Grid.Row="1" Grid.Column="1"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Added"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="TrackDetailsAdded" Grid.Row="2" Grid.Column="1"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Plays"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="TrackDetailsPlays" Grid.Row="3" Grid.Column="1"/>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- Details panel — deferred from visual tree until first selection -->
                 <ScrollViewer VerticalScrollBarVisibility="Hidden"

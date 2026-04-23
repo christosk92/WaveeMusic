@@ -44,13 +44,19 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         _dispatcher = dispatcher;
         _logger = logger;
 
-        // React to auth status — trigger sync when Authenticated
+        // React to auth status — trigger sync when Authenticated, drop the in-memory
+        // save cache when the user signs out so the next account doesn't inherit hearts.
         messenger.Register<AuthStatusChangedMessage>(this, (_, msg) =>
         {
             if (msg.Value == AuthStatus.Authenticated)
             {
                 _logger?.LogInformation("Auth status → Authenticated, triggering library sync");
                 _ = RunSyncAsync();
+            }
+            else if (msg.Value is AuthStatus.LoggedOut or AuthStatus.SessionExpired)
+            {
+                _logger?.LogInformation("Auth status → {Status}, clearing TrackLikeService cache", msg.Value);
+                _likeService?.ClearCache();
             }
         });
 

@@ -17,7 +17,10 @@
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
     xmlns:albumDetail="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -27,29 +30,94 @@
         </TransitionCollection>
     </Page.Transitions>
     <Page.Resources>
-        <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
-        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
-        <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
-        <converters:BoolToGridListGlyphConverter x:Key="BoolToGridListGlyphConverter"/>
-        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
-        <converters:NullToForegroundConverter x:Key="NullToForegroundConverter"/>
-        <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="#66101010"/>
-        <SolidColorBrush x:Key="PinnedItemHoverBackgroundBrush" Color="#88202020"/>
-        <SolidColorBrush x:Key="PinnedItemPressedBackgroundBrush" Color="#AA050505"/>
-        <SolidColorBrush x:Key="PinnedItemNormalBorderBrush" Color="#44FFFFFF"/>
-        <SolidColorBrush x:Key="PinnedItemHoverBorderBrush" Color="#88FFFFFF"/>
-        <SolidColorBrush x:Key="PinnedItemPressedBorderBrush" Color="#BBFFFFFF"/>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="#66101010"/>
+                    <SolidColorBrush x:Key="PinnedItemHoverBackgroundBrush" Color="#88202020"/>
+                    <SolidColorBrush x:Key="PinnedItemPressedBackgroundBrush" Color="#AA050505"/>
+                    <SolidColorBrush x:Key="PinnedItemNormalBorderBrush" Color="#44FFFFFF"/>
+                    <SolidColorBrush x:Key="PinnedItemHoverBorderBrush" Color="#88FFFFFF"/>
+                    <SolidColorBrush x:Key="PinnedItemPressedBorderBrush" Color="#BBFFFFFF"/>
+                    <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="White"/>
+                    <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="#66FFFFFF"/>
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#66FFFFFF"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <!-- Inverted: bright translucent pill over the now white-scrimmed hero. -->
+                    <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="#66F4F4F4"/>
+                    <SolidColorBrush x:Key="PinnedItemHoverBackgroundBrush" Color="#88EAEAEA"/>
+                    <SolidColorBrush x:Key="PinnedItemPressedBackgroundBrush" Color="#AADDDDDD"/>
+                    <SolidColorBrush x:Key="PinnedItemNormalBorderBrush" Color="#33000000"/>
+                    <SolidColorBrush x:Key="PinnedItemHoverBorderBrush" Color="#66000000"/>
+                    <SolidColorBrush x:Key="PinnedItemPressedBorderBrush" Color="#99000000"/>
+                    <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="#1A1A1A"/>
+                    <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="#33000000"/>
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#33000000"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemHoverBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemPressedBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemNormalBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemHoverBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemPressedBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
+            <converters:BoolToGridListGlyphConverter x:Key="BoolToGridListGlyphConverter"/>
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+            <converters:NullToForegroundConverter x:Key="NullToForegroundConverter"/>
+
+        <!-- Shy-header morph: hero overlay panel <-> floating compact card.
+             Matched ids on inner avatar/name/badge/meta/play/follow elements
+             interpolate between the two states. Unpaired chrome (the floating
+             card border) fades in via the helper's independent show animation. -->
+        <transitions:TransitionHelper x:Key="ArtistShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="artist-avatar" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="artist-name" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <waveeHelpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="artist-badge" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="artist-meta" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <waveeHelpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="artist-play" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="artist-follow" ScaleMode="Scale"/>
+        </transitions:TransitionHelper>
+        </ResourceDictionary>
     </Page.Resources>
 
-    <ScrollView x:Name="PageScrollView">
-        <ScrollView.Transitions>
-            <TransitionCollection>
-                <EntranceThemeTransition />
-            </TransitionCollection>
-        </ScrollView.Transitions>
-        <Grid>
+    <Grid>
+        <ScrollView x:Name="PageScrollView">
+            <ScrollView.Transitions>
+                <TransitionCollection>
+                    <EntranceThemeTransition />
+                </TransitionCollection>
+            </ScrollView.Transitions>
+            <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="HeroRow" Height="300" MinHeight="200" MaxHeight="700"/>
                 <RowDefinition Height="Auto"/>
@@ -79,14 +147,28 @@
                              FadeStart="0.55"
                              FadeEnd="0.95">
                 <hero:HeroHeader.OverlayContent>
-                    <StackPanel Padding="32,0,32,24" Spacing="8">
+                    <!-- Grid wrapper hosts the source-side matched-id chrome
+                         alongside the visible content. The chrome itself is invisible
+                         here (transparent fill, no border) — it exists purely to give
+                         TransitionHelper a source bounds to morph the floating card
+                         chrome FROM. -->
+                    <Grid x:Name="HeroOverlayPanel">
+                        <Border transitions:TransitionHelper.Id="card-shell"
+                                Background="Transparent"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"/>
+                        <StackPanel Padding="32,0,32,24" Spacing="8">
                         <StackPanel Orientation="Horizontal">
                             <!-- Avatar wrapper — Width animates 136 → 0 when the artist has a
                                  header image but no watch-feed video, reclaiming the space for
                                  the name/stats block. 136 = 120 avatar + 16 gap. -->
                             <Grid x:Name="AvatarWrapper" Width="136">
                                 <!-- Avatar / Watch Feed Video (connected animation target) -->
-                                <Grid x:Name="ArtistImageContainer" Width="120" Height="120" HorizontalAlignment="Left">
+                                <Grid x:Name="ArtistImageContainer"
+                                      Width="120"
+                                      Height="120"
+                                      HorizontalAlignment="Left"
+                                      transitions:TransitionHelper.Id="artist-avatar">
                                 <Border CornerRadius="60" Width="120" Height="120">
                                     <Grid>
                                         <!-- Static artist image (always present, video fades in on top) -->
@@ -124,12 +206,14 @@
                                       
                                             <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                                        FontSize="48" FontWeight="Black"
-                                                       Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}"/>
+                                                       Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}"
+                                                       transitions:TransitionHelper.Id="artist-name"/>
                                         </Grid>
                                         <Border Width="28" Height="28" CornerRadius="14"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                 Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay}"
-                                                VerticalAlignment="Center">
+                                                VerticalAlignment="Center"
+                                                transitions:TransitionHelper.Id="artist-badge">
                                             <FontIcon Glyph="&#xE73E;" FontSize="14" Foreground="White"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
@@ -143,7 +227,8 @@
                                     <Grid Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                                    FontWeight="SemiBold" FontSize="14"
-                                                   Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}" Opacity=".9">
+                                                   Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}" Opacity=".9"
+                                                   transitions:TransitionHelper.Id="artist-meta">
                                             <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/><Run x:Uid="Views_ArtistPage__Run_1" Text=" monthly listeners"/>
                                         </TextBlock>
                                     </Grid>
@@ -159,16 +244,23 @@
                             <Button Style="{StaticResource AccentButtonStyle}"
                                     Command="{x:Bind ViewModel.PlayTopTracksCommand}"
                                     VerticalAlignment="Center"
-                                    Padding="20,10" CornerRadius="20">
+                                    Padding="20,10" CornerRadius="20"
+                                    transitions:TransitionHelper.Id="artist-play">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE768;" FontSize="16"/>
-                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_2" Text="Play"/>
+                                    <playback:PlaybackActionContent IconSize="16"
+                                                                   SpinnerSize="16"
+                                                                   IsPlaying="{x:Bind ViewModel.IsArtistContextPlaying, Mode=OneWay}"
+                                                                   IsPending="{x:Bind ViewModel.IsPlayPending, Mode=OneWay}"
+                                                                   ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_2"
+                                               Text="{x:Bind ViewModel.ArtistPlayButtonText, Mode=OneWay}"/>
                                 </StackPanel>
                             </Button>
                             <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
                                     Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                                     VerticalAlignment="Center"
-                                    Padding="16,10" CornerRadius="20">
+                                    Padding="16,10" CornerRadius="20"
+                                    transitions:TransitionHelper.Id="artist-follow">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowGlyphConverter}}" FontSize="14"/>
                                     <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
@@ -287,14 +379,14 @@
                                 <Border x:Name="PinnedItemPill"
                                         CornerRadius="20"
                                         Padding="4,4,12,4"
-                                        Background="{StaticResource PinnedItemNormalBackgroundBrush}"
-                                        BorderBrush="{StaticResource PinnedItemNormalBorderBrush}"
+                                        Background="{ThemeResource PinnedItemNormalBackgroundBrush}"
+                                        BorderBrush="{ThemeResource PinnedItemNormalBorderBrush}"
                                         BorderThickness="1">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Width="32"
                                                 Height="32"
                                                 CornerRadius="16"
-                                                BorderBrush="#66FFFFFF"
+                                                BorderBrush="{ThemeResource PinnedItemAvatarBorderBrush}"
                                                 BorderThickness="1"
                                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                                             <Image Source="{x:Bind ViewModel.PinnedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=32}"
@@ -303,16 +395,16 @@
                                         <StackPanel VerticalAlignment="Center" MaxWidth="120">
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Title, Mode=OneWay}"
                                                        FontSize="11" FontWeight="SemiBold"
-                                                       Foreground="White"
+                                                       Foreground="{ThemeResource PinnedItemForegroundBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay}"
                                                        FontSize="10" Opacity="0.82"
-                                                       Foreground="White"
+                                                       Foreground="{ThemeResource PinnedItemForegroundBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                             <TextBlock Text="{x:Bind ViewModel.PinnedItem.Comment, Mode=OneWay}"
                                                        FontSize="10" Opacity="0.82"
-                                                       Foreground="White"
+                                                       Foreground="{ThemeResource PinnedItemForegroundBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        Visibility="{x:Bind ViewModel.PinnedItem.Subtitle, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                                         </StackPanel>
@@ -321,7 +413,8 @@
                             </Button>
 
                         </StackPanel>
-                    </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </hero:HeroHeader.OverlayContent>
             </hero:HeroHeader>
 
@@ -405,7 +498,6 @@
             <!-- CONTENT SECTIONS (fades in after shimmer)       -->
             <!-- ═══════════════════════════════════════════════ -->
             <StackPanel x:Name="ContentContainer" Grid.Row="3" Padding="32,24,32,32" Spacing="32">
-
                 <!-- ─── Top Tracks (Apple Music grid style) ─── -->
                 <StackPanel Spacing="12">
                     <Grid>
@@ -482,6 +574,7 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
+                                        PlaceholderColorHex="{x:Bind Data.ColorHex, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"
                                         CardHover="AlbumCard_Hover"/>
                                     <StackPanel Spacing="8" Padding="8"
@@ -576,6 +669,7 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
+                                        PlaceholderColorHex="{x:Bind Data.ColorHex, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"
                                         CardHover="AlbumCard_Hover"/>
                                     <StackPanel Spacing="8" Padding="8"
@@ -676,6 +770,7 @@
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                         Title="{x:Bind Data.Name, Mode=OneWay}"
                                         Subtitle="{x:Bind Data.Year, Mode=OneWay}"
+                                        PlaceholderColorHex="{x:Bind Data.ColorHex, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"
                                         CardHover="AlbumCard_Hover"/>
                                     <!-- Loading: shimmer card -->
@@ -792,6 +887,122 @@
 
             </StackPanel> <!-- ContentContainer -->
 
+            </Grid>
+        </ScrollView>
+
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              Margin="16,16,16,0">
+            <Grid x:Name="ShyHeaderCard"
+                  HorizontalAlignment="Center"
+                  MaxWidth="760"
+                  MinHeight="68"
+                  Visibility="Collapsed">
+                <!-- Chrome layer: matched-id "card-shell" pairs with the invisible
+                     chrome inside HeroOverlayPanel. TransitionHelper morphs this
+                     visible chrome FROM the source chrome bounds (full-width, bottom
+                     of hero) TO this floating-card position — translation+scale
+                     interpolation gives the chrome itself a true morph instead of
+                     just appearing in place. -->
+                <Border transitions:TransitionHelper.Id="card-shell"
+                        CornerRadius="18"
+                        BorderBrush="{ThemeResource ShyHeaderBorderBrush}"
+                        BorderThickness="1.5">
+                    <Border.Background>
+                        <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                      TintOpacity="0.78"
+                                      FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
+                </Border>
+
+                <Grid Padding="12,10" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Width="40"
+                            Height="40"
+                            CornerRadius="20"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            transitions:TransitionHelper.Id="artist-avatar">
+                        <Image Source="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=64}"
+                               Stretch="UniformToFill"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1"
+                                       transitions:TransitionHelper.Id="artist-name"/>
+                            <Border Width="20"
+                                    Height="20"
+                                    CornerRadius="10"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay}"
+                                    transitions:TransitionHelper.Id="artist-badge">
+                                <FontIcon Glyph="&#xE73E;"
+                                          FontSize="10"
+                                          Foreground="White"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
+                                   Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                   transitions:TransitionHelper.Id="artist-meta">
+                            <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"/>
+                            <Run Text=" monthly listeners"/>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Command="{x:Bind ViewModel.PlayTopTracksCommand}"
+                                Padding="16,8"
+                                CornerRadius="18"
+                                MinWidth="92"
+                                transitions:TransitionHelper.Id="artist-play">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <playback:PlaybackActionContent IconSize="14"
+                                                               SpinnerSize="14"
+                                                               IsPlaying="{x:Bind ViewModel.IsArtistContextPlaying, Mode=OneWay}"
+                                                               IsPending="{x:Bind ViewModel.IsPlayPending, Mode=OneWay}"
+                                                               ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                <TextBlock Text="{x:Bind ViewModel.ArtistPlayButtonText, Mode=OneWay}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                                Padding="14,8"
+                                CornerRadius="18"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                transitions:TransitionHelper.Id="artist-follow">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowGlyphConverter}}"
+                                          FontSize="12"/>
+                                <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
         </Grid>
-    </ScrollView>
+    </Grid>
 </Page>

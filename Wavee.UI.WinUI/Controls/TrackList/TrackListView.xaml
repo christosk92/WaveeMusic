@@ -46,12 +46,12 @@
 
                     <!-- Column Headers (scrolls with page header initially) -->
                     <Grid x:Name="ScrollableColumnHeaders" Padding="8,0,8,0" Margin="0,0,0,8" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+                        <!-- 7 columns matching TrackItem Row layout (artist is a subline under Title, no standalone column) -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="40"/>
                             <ColumnDefinition x:Name="HeartColumnDef" Width="32"/>
                             <ColumnDefinition x:Name="ArtColumnDef" Width="42"/>
                             <ColumnDefinition Width="*" MinWidth="120"/>
-                            <ColumnDefinition x:Name="ArtistColumnDef" Width="180"/>
                             <ColumnDefinition x:Name="AlbumColumnDef" Width="180"/>
                             <ColumnDefinition x:Name="AddedColumnDef" Width="120"/>
                             <ColumnDefinition Width="60"/>
@@ -80,27 +80,8 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- Artist (sortable) -->
-                        <Button x:Name="ArtistHeaderScrollable" Grid.Column="4"
-                                Command="{x:Bind ViewModel.SortByCommand, Mode=OneWay}"
-                                CommandParameter="Artist"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Padding="0,8,8,8"
-                                HorizontalAlignment="Left"
-                                HorizontalContentAlignment="Left">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_2" Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
-                                          FontSize="10"
-                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                          Visibility="{x:Bind ViewModel.IsSortingByArtist, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            </StackPanel>
-                        </Button>
-
                         <!-- Album (sortable) -->
-                        <Button x:Name="AlbumHeaderScrollable" Grid.Column="5"
+                        <Button x:Name="AlbumHeaderScrollable" Grid.Column="4"
                                 Command="{x:Bind ViewModel.SortByCommand, Mode=OneWay}"
                                 CommandParameter="Album"
                                 Background="Transparent"
@@ -119,7 +100,7 @@
                         </Button>
 
                         <!-- Date Added (sortable) -->
-                        <Button x:Name="AddedHeaderScrollable" Grid.Column="6"
+                        <Button x:Name="AddedHeaderScrollable" Grid.Column="5"
                                 Command="{x:Bind ViewModel.SortByCommand, Mode=OneWay}"
                                 CommandParameter="AddedAt"
                                 Background="Transparent"
@@ -137,7 +118,7 @@
                             </StackPanel>
                         </Button>
 
-                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_5" Grid.Column="7" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_5" Grid.Column="6" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8"/>
                     </Grid>
@@ -180,12 +161,12 @@
                 Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
             <Grid Padding="24,0,24,0">
+                <!-- 7 columns matching TrackItem Row layout (artist is subline under Title). -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="40"/>
                     <ColumnDefinition x:Name="StickyHeartColumnDef" Width="32"/>
                     <ColumnDefinition x:Name="StickyArtColumnDef" Width="42"/>
                     <ColumnDefinition Width="*" MinWidth="120"/>
-                    <ColumnDefinition x:Name="StickyArtistColumnDef" Width="180"/>
                     <ColumnDefinition x:Name="StickyAlbumColumnDef" Width="180"/>
                     <ColumnDefinition x:Name="StickyAddedColumnDef" Width="120"/>
                     <ColumnDefinition Width="60"/>
@@ -214,27 +195,8 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Artist (sortable) -->
-                <Button x:Name="StickyArtistHeader" Grid.Column="4"
-                        Command="{x:Bind ViewModel.SortByCommand, Mode=OneWay}"
-                        CommandParameter="Artist"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Padding="0,8,8,8"
-                        HorizontalAlignment="Left"
-                        HorizontalContentAlignment="Left">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_7" Text="Artist" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <FontIcon Glyph="{x:Bind ViewModel.SortChevronGlyph, Mode=OneWay}"
-                                  FontSize="10"
-                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                  Visibility="{x:Bind ViewModel.IsSortingByArtist, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    </StackPanel>
-                </Button>
-
                 <!-- Album (sortable) -->
-                <Button x:Name="StickyAlbumHeader" Grid.Column="5"
+                <Button x:Name="StickyAlbumHeader" Grid.Column="4"
                         Command="{x:Bind ViewModel.SortByCommand, Mode=OneWay}"
                         CommandParameter="Album"
                         Background="Transparent"
@@ -253,7 +215,7 @@
                 </Button>
 
                 <!-- Date Added (sortable) -->
-                <Button x:Name="StickyAddedHeader" Grid.Column="6"
+                <Button x:Name="StickyAddedHeader" Grid.Column="5"
                         Command="{x:Bind ViewModel.SortByCommand, Mode=OneWay}"
                         CommandParameter="AddedAt"
                         Background="Transparent"
@@ -271,7 +233,7 @@
                     </StackPanel>
                 </Button>
 
-                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_10" Grid.Column="7" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock x:Uid="Controls_TrackList_TrackListView__TextBlock_10" Grid.Column="6" Text="Duration" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8"/>
             </Grid>

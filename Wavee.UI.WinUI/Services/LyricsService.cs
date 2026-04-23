@@ -390,6 +390,14 @@ public sealed class LyricsService : ILyricsService
             _logger?.LogDebug("{Provider} timed out", name);
             return new ProviderResult(name, null, "timed out");
         }
+        catch (OperationCanceledException)
+        {
+            // Outer ct cancelled (track changed mid-search). Return a cancelled
+            // sentinel rather than rethrowing — the Task.WhenAll caller would
+            // otherwise aggregate one OCE per in-flight provider, each a
+            // first-chance throw in the debugger. Caller observes ct itself.
+            return new ProviderResult(name, null, "cancelled");
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogDebug(ex, "{Provider} search failed", name);

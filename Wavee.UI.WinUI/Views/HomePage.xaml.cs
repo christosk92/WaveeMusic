@@ -195,6 +195,16 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        ViewModel.ResumeBackgroundRefresh();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        // Pause the 5-minute refresh timer while the user is on another
+        // page — it previously kept running and re-enriching home cards
+        // even when nobody could see the result (hot-spot #3).
+        ViewModel.SuspendBackgroundRefresh();
     }
 
     public void Dispose()

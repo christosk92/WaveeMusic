@@ -182,22 +182,10 @@ public sealed partial class ShortsPill : UserControl
             PlayingIndicator.IsActive = showPlayingIndicator && IsPlaying;
         }
 
-        if (PlayButton != null && PlayButtonIcon != null && PlayButtonSpinner != null)
+        if (PlayButton != null && PlayButtonContent != null)
         {
-            PlayButtonIcon.Glyph = IsPlaying ? "\uE769" : "\uE768";
-            if (isPending)
-            {
-                PlayButtonIcon.Visibility = Visibility.Collapsed;
-                PlayButtonSpinner.Visibility = Visibility.Visible;
-                PlayButtonSpinner.IsActive = true;
-            }
-            else
-            {
-                PlayButtonSpinner.IsActive = false;
-                PlayButtonSpinner.Visibility = Visibility.Collapsed;
-                PlayButtonIcon.Visibility = Visibility.Visible;
-            }
-
+            PlayButtonContent.IsPlaying = IsPlaying;
+            PlayButtonContent.IsPending = isPending;
             PlayButton.Visibility = showPlayButton ? Visibility.Visible : Visibility.Collapsed;
             if (PlayButton.Visibility == Visibility.Visible)
                 PlayButton.Opacity = 1;

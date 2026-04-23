@@ -1,8 +1,11 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Library.Spotify;
+using Wavee.Core.Playlists;
 using Wavee.Core.Storage.Abstractions;
+using Wavee.Core.Storage.Entities;
 using Wavee.Protocol.ExtendedMetadata;
 
 namespace Wavee.Core.Storage;
@@ -55,7 +58,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v7: Added library_outbox table
     // v8: Removed FK constraint from spotify_library (decoupled from entities)
     // v9: Added media_overrides table
-    private const int CurrentSchemaVersion = 10;
+    // v11: Added playlist/rootlist cache snapshots
+    private const int CurrentSchemaVersion = 11;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -167,6 +171,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS podcast_episodes;
             DROP TABLE IF EXISTS episode_progress;
             DROP TABLE IF EXISTS spotify_playlists;
+            DROP TABLE IF EXISTS rootlist_cache;
             DROP TABLE IF EXISTS color_cache;
             DROP TABLE IF EXISTS album_tracks_cache;
             DROP TABLE IF EXISTS lyrics_cache;
@@ -407,6 +412,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         id                  TEXT PRIMARY KEY NOT NULL,
                         name                TEXT NOT NULL,
                         owner_id            TEXT,
+                        owner_name          TEXT,
                         description         TEXT,
                         image_url           TEXT,
                         track_count         INTEGER NOT NULL DEFAULT 0,
@@ -415,8 +421,31 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         is_owned            INTEGER NOT NULL DEFAULT 0,
                         synced_at           INTEGER NOT NULL,
                         revision            TEXT,
+                        cache_revision      BLOB,
                         folder_path         TEXT,
-                        is_from_rootlist    INTEGER NOT NULL DEFAULT 1
+                        is_from_rootlist    INTEGER NOT NULL DEFAULT 1,
+                        ordered_items_json  TEXT,
+                        has_contents_snapshot INTEGER NOT NULL DEFAULT 0,
+                        base_permission     INTEGER NOT NULL DEFAULT 0,
+                        capabilities_json   TEXT,
+                        deleted_by_owner    INTEGER NOT NULL DEFAULT 0,
+                        abuse_reporting_enabled INTEGER NOT NULL DEFAULT 0,
+                        last_accessed_at    INTEGER
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS rootlist_cache (
+                        id               TEXT PRIMARY KEY NOT NULL,
+                        revision         BLOB,
+                        json_data        TEXT NOT NULL,
+                        cached_at        INTEGER NOT NULL,
+                        last_accessed_at INTEGER
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -2150,11 +2179,12 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO spotify_playlists (id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist)
-                VALUES ($id, $name, $owner_id, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path, $is_from_rootlist)
+                INSERT INTO spotify_playlists (id, name, owner_id, owner_name, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist)
+                VALUES ($id, $name, $owner_id, $owner_name, $description, $image_url, $track_count, $is_public, $is_collaborative, $is_owned, $synced_at, $revision, $folder_path, $is_from_rootlist)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     owner_id = excluded.owner_id,
+                    owner_name = excluded.owner_name,
                     description = excluded.description,
                     image_url = excluded.image_url,
                     track_count = excluded.track_count,
@@ -2170,6 +2200,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$id", playlist.Uri);
             cmd.Parameters.AddWithValue("$name", playlist.Name);
             cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount);
@@ -2204,7 +2235,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist
+            SELECT id, name, owner_id, owner_name, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist
             FROM spotify_playlists
             WHERE id = $id;
             """;
@@ -2231,7 +2262,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT id, name, owner_id, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist
+            SELECT id, name, owner_id, owner_name, description, image_url, track_count, is_public, is_collaborative, is_owned, synced_at, revision, folder_path, is_from_rootlist
             FROM spotify_playlists
             ORDER BY folder_path, name COLLATE NOCASE;
             """;
@@ -2295,6 +2326,235 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
     }
 
+    public async Task UpsertPlaylistCacheEntryAsync(PlaylistCacheEntry playlist, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(playlist);
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO spotify_playlists (
+                    id, name, owner_id, owner_name, description, image_url, track_count,
+                    is_public, is_collaborative, is_owned, synced_at, cache_revision,
+                    ordered_items_json, has_contents_snapshot, base_permission,
+                    capabilities_json, deleted_by_owner, abuse_reporting_enabled,
+                    last_accessed_at, is_from_rootlist
+                )
+                VALUES (
+                    $id, $name, $owner_id, $owner_name, $description, $image_url, $track_count,
+                    $is_public, $is_collaborative, $is_owned, $synced_at, $cache_revision,
+                    $ordered_items_json, $has_contents_snapshot, $base_permission,
+                    $capabilities_json, $deleted_by_owner, $abuse_reporting_enabled,
+                    $last_accessed_at, 1
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    owner_id = excluded.owner_id,
+                    owner_name = excluded.owner_name,
+                    description = excluded.description,
+                    image_url = excluded.image_url,
+                    track_count = excluded.track_count,
+                    is_public = excluded.is_public,
+                    is_collaborative = excluded.is_collaborative,
+                    is_owned = excluded.is_owned,
+                    synced_at = excluded.synced_at,
+                    cache_revision = excluded.cache_revision,
+                    ordered_items_json = COALESCE(excluded.ordered_items_json, spotify_playlists.ordered_items_json),
+                    has_contents_snapshot = excluded.has_contents_snapshot,
+                    base_permission = excluded.base_permission,
+                    capabilities_json = excluded.capabilities_json,
+                    deleted_by_owner = excluded.deleted_by_owner,
+                    abuse_reporting_enabled = excluded.abuse_reporting_enabled,
+                    last_accessed_at = excluded.last_accessed_at,
+                    is_from_rootlist = 1;
+                """;
+
+            cmd.Parameters.AddWithValue("$id", playlist.Uri);
+            cmd.Parameters.AddWithValue("$name", playlist.Name ?? string.Empty);
+            cmd.Parameters.AddWithValue("$owner_id", (object?)playlist.OwnerUri ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount ?? 0);
+            cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
+            cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
+            cmd.Parameters.AddWithValue("$is_owned", playlist.BasePermission == CachedPlaylistBasePermission.Owner ? 1 : 0);
+            cmd.Parameters.AddWithValue("$synced_at", playlist.CachedAt.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$cache_revision", (object?)playlist.Revision ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$ordered_items_json", (object?)playlist.OrderedItemsJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$has_contents_snapshot", playlist.HasContentsSnapshot ? 1 : 0);
+            cmd.Parameters.AddWithValue("$base_permission", (int)playlist.BasePermission);
+            cmd.Parameters.AddWithValue("$capabilities_json", (object?)playlist.CapabilitiesJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$deleted_by_owner", playlist.DeletedByOwner ? 1 : 0);
+            cmd.Parameters.AddWithValue("$abuse_reporting_enabled", playlist.AbuseReportingEnabled ? 1 : 0);
+            cmd.Parameters.AddWithValue("$last_accessed_at", playlist.LastAccessedAt.HasValue
+                ? playlist.LastAccessedAt.Value.ToUnixTimeSeconds()
+                : DBNull.Value);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public async Task<PlaylistCacheEntry?> GetPlaylistCacheEntryAsync(
+        string playlistUri,
+        bool touchAccess = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, name, owner_id, owner_name, description, image_url, track_count,
+                   is_public, is_collaborative, cache_revision, ordered_items_json,
+                   has_contents_snapshot, base_permission, capabilities_json,
+                   deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at
+            FROM spotify_playlists
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$id", playlistUri);
+
+        PlaylistCacheEntry? entry;
+        using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken))
+                return null;
+
+            entry = ReadPlaylistCacheEntry(reader);
+        }
+
+        if (!touchAccess)
+            return entry;
+
+        var touchedAt = DateTimeOffset.UtcNow;
+        await TouchPlaylistCacheEntryAsync(playlistUri, touchedAt, cancellationToken);
+        return entry with { LastAccessedAt = touchedAt };
+    }
+
+    public async Task<List<PlaylistCacheEntry>> GetRecentPlaylistCacheEntriesAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0)
+            return [];
+
+        var results = new List<PlaylistCacheEntry>();
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, name, owner_id, owner_name, description, image_url, track_count,
+                   is_public, is_collaborative, cache_revision, ordered_items_json,
+                   has_contents_snapshot, base_permission, capabilities_json,
+                   deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at
+            FROM spotify_playlists
+            ORDER BY COALESCE(last_accessed_at, synced_at, 0) DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(ReadPlaylistCacheEntry(reader));
+        }
+
+        return results;
+    }
+
+    public async Task UpsertRootlistCacheEntryAsync(RootlistCacheEntry rootlist, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(rootlist);
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO rootlist_cache (id, revision, json_data, cached_at, last_accessed_at)
+                VALUES ($id, $revision, $json_data, $cached_at, $last_accessed_at)
+                ON CONFLICT(id) DO UPDATE SET
+                    revision = excluded.revision,
+                    json_data = excluded.json_data,
+                    cached_at = excluded.cached_at,
+                    last_accessed_at = excluded.last_accessed_at;
+                """;
+            cmd.Parameters.AddWithValue("$id", rootlist.Uri);
+            cmd.Parameters.AddWithValue("$revision", (object?)rootlist.Revision ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$json_data", rootlist.JsonData);
+            cmd.Parameters.AddWithValue("$cached_at", rootlist.CachedAt.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$last_accessed_at", rootlist.LastAccessedAt.HasValue
+                ? rootlist.LastAccessedAt.Value.ToUnixTimeSeconds()
+                : DBNull.Value);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public async Task<RootlistCacheEntry?> GetRootlistCacheEntryAsync(
+        string rootlistUri,
+        bool touchAccess = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootlistUri);
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, revision, json_data, cached_at, last_accessed_at
+            FROM rootlist_cache
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$id", rootlistUri);
+
+        RootlistCacheEntry? entry;
+        using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken))
+                return null;
+
+            entry = new RootlistCacheEntry
+            {
+                Uri = reader.GetString(0),
+                Revision = reader.IsDBNull(1) ? null : (byte[])reader[1],
+                JsonData = reader.GetString(2),
+                CachedAt = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(3)),
+                LastAccessedAt = reader.IsDBNull(4)
+                    ? null
+                    : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(4))
+            };
+        }
+
+        if (!touchAccess)
+            return entry;
+
+        var touchedAt = DateTimeOffset.UtcNow;
+        await TouchRootlistCacheEntryAsync(rootlistUri, touchedAt, cancellationToken);
+        return entry with { LastAccessedAt = touchedAt };
+    }
+
     private static SpotifyPlaylist ReadPlaylist(SqliteDataReader reader)
     {
         return new SpotifyPlaylist
@@ -2302,17 +2562,100 @@ public sealed class MetadataDatabase : IMetadataDatabase
             Uri = reader.GetString(0),
             Name = reader.GetString(1),
             OwnerId = reader.IsDBNull(2) ? null : reader.GetString(2),
-            Description = reader.IsDBNull(3) ? null : reader.GetString(3),
-            ImageUrl = reader.IsDBNull(4) ? null : reader.GetString(4),
-            TrackCount = reader.GetInt32(5),
-            IsPublic = reader.GetInt32(6) == 1,
-            IsCollaborative = reader.GetInt32(7) == 1,
-            IsOwned = reader.GetInt32(8) == 1,
-            SyncedAt = reader.GetInt64(9),
-            Revision = reader.IsDBNull(10) ? null : reader.GetString(10),
-            FolderPath = reader.IsDBNull(11) ? null : reader.GetString(11),
-            IsFromRootlist = reader.IsDBNull(12) || reader.GetInt32(12) == 1
+            OwnerName = reader.IsDBNull(3) ? null : reader.GetString(3),
+            Description = reader.IsDBNull(4) ? null : reader.GetString(4),
+            ImageUrl = reader.IsDBNull(5) ? null : reader.GetString(5),
+            TrackCount = reader.GetInt32(6),
+            IsPublic = reader.GetInt32(7) == 1,
+            IsCollaborative = reader.GetInt32(8) == 1,
+            IsOwned = reader.GetInt32(9) == 1,
+            SyncedAt = reader.GetInt64(10),
+            Revision = reader.IsDBNull(11) ? null : reader.GetString(11),
+            FolderPath = reader.IsDBNull(12) ? null : reader.GetString(12),
+            IsFromRootlist = reader.IsDBNull(13) || reader.GetInt32(13) == 1
         };
+    }
+
+    private static PlaylistCacheEntry ReadPlaylistCacheEntry(SqliteDataReader reader)
+    {
+        return new PlaylistCacheEntry
+        {
+            Uri = reader.GetString(0),
+            Name = reader.GetString(1),
+            OwnerUri = reader.IsDBNull(2) ? null : reader.GetString(2),
+            OwnerUsername = reader.IsDBNull(2) ? null : reader.GetString(2),
+            OwnerName = reader.IsDBNull(3) ? null : reader.GetString(3),
+            Description = reader.IsDBNull(4) ? null : reader.GetString(4),
+            ImageUrl = reader.IsDBNull(5) ? null : reader.GetString(5),
+            TrackCount = reader.GetInt32(6),
+            IsPublic = reader.GetInt32(7) == 1,
+            IsCollaborative = reader.GetInt32(8) == 1,
+            Revision = reader.IsDBNull(9) ? null : (byte[])reader[9],
+            OrderedItemsJson = reader.IsDBNull(10) ? null : reader.GetString(10),
+            HasContentsSnapshot = reader.GetInt32(11) == 1,
+            BasePermission = (CachedPlaylistBasePermission)reader.GetInt32(12),
+            CapabilitiesJson = reader.IsDBNull(13) ? null : reader.GetString(13),
+            DeletedByOwner = reader.GetInt32(14) == 1,
+            AbuseReportingEnabled = reader.GetInt32(15) == 1,
+            CachedAt = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(16)),
+            LastAccessedAt = reader.IsDBNull(17)
+                ? null
+                : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(17))
+        };
+    }
+
+    public async Task TouchPlaylistCacheEntryAsync(
+        string playlistUri,
+        DateTimeOffset accessedAt,
+        CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE spotify_playlists
+                SET last_accessed_at = $last_accessed_at
+                WHERE id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", playlistUri);
+            cmd.Parameters.AddWithValue("$last_accessed_at", accessedAt.ToUnixTimeSeconds());
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public async Task TouchRootlistCacheEntryAsync(
+        string rootlistUri,
+        DateTimeOffset accessedAt,
+        CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE rootlist_cache
+                SET last_accessed_at = $last_accessed_at
+                WHERE id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", rootlistUri);
+            cmd.Parameters.AddWithValue("$last_accessed_at", accessedAt.ToUnixTimeSeconds());
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     #endregion
@@ -2474,10 +2817,16 @@ public sealed class MetadataDatabase : IMetadataDatabase
         // Simple size-based eviction if we're at capacity
         if (_hotCache.Count >= _maxHotCacheSize)
         {
-            // Remove ~10% of oldest entries
-            var keysToRemove = _hotCache
+            // Snapshot first — enumerating a ConcurrentDictionary while other
+            // callers write can surface a KVP whose Value reads as null for
+            // an instant (bucket in the middle of a transition). OrderBy would
+            // then NRE on kvp.Value.ExpiresAt. ToArray() takes a stable view,
+            // and the explicit null-guard survives any remaining races.
+            var snapshot = _hotCache.ToArray();
+            var keysToRemove = snapshot
+                .Where(kvp => kvp.Value is not null)
                 .OrderBy(kvp => kvp.Value.ExpiresAt)
-                .Take(_maxHotCacheSize / 10)
+                .Take(Math.Max(1, _maxHotCacheSize / 10))
                 .Select(kvp => kvp.Key)
                 .ToList();
 

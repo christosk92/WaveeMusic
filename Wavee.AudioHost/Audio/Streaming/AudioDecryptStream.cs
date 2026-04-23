@@ -1,4 +1,5 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace Wavee.AudioHost.Audio.Streaming;
@@ -150,12 +151,33 @@ public sealed class AudioDecryptStream : Stream
 
             int bytesToProcess = Math.Min(buffer.Length - bufferOffset, AES_BLOCK_SIZE - offsetInBlock);
 
-            for (int i = 0; i < bytesToProcess; i++)
-                buffer[bufferOffset + i] ^= _keystreamBlock[offsetInBlock + i];
+            XorBytes(
+                buffer.Slice(bufferOffset, bytesToProcess),
+                MemoryMarshal.CreateReadOnlySpan(ref _keystreamBlock[offsetInBlock], bytesToProcess));
 
             bufferOffset += bytesToProcess;
             currentPosition += bytesToProcess;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void XorBytes(Span<byte> dst, ReadOnlySpan<byte> key)
+    {
+        // Fast path: aligned 8-byte chunks, then tail bytes. A full keystream
+        // block is 16 bytes, so we usually take the ulong path twice + zero tail.
+        int i = 0;
+        int end = dst.Length - sizeof(ulong);
+        ref byte dRef = ref MemoryMarshal.GetReference(dst);
+        ref byte kRef = ref MemoryMarshal.GetReference(key);
+        while (i <= end)
+        {
+            ulong d = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref dRef, i));
+            ulong k = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref kRef, i));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref dRef, i), d ^ k);
+            i += sizeof(ulong);
+        }
+        for (; i < dst.Length; i++)
+            Unsafe.Add(ref dRef, i) ^= Unsafe.Add(ref kRef, i);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

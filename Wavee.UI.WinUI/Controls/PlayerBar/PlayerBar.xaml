@@ -9,6 +9,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -20,7 +21,6 @@
                 <ResourceDictionary Source="ms-appx:///Styles/PlayerBarStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <converters:BoolToPlayPauseGlyphConverter x:Key="PlayPauseGlyphConverter" />
             <converters:VolumeToGlyphConverter x:Key="VolumeGlyphConverter" />
             <converters:RepeatModeToGlyphConverter x:Key="RepeatGlyphConverter" />
             <converters:RepeatModeToCheckedConverter x:Key="RepeatCheckedConverter" />
@@ -259,18 +259,11 @@
                             Padding="0"
                             Command="{x:Bind ViewModel.PlayPauseCommand}"
                             ToolTipService.ToolTip="Play/Pause">
-                            <Grid>
-                                <FontIcon
-                                    FontSize="18"
-                                    Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}"
-                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                                <ProgressRing
-                                    Width="20"
-                                    Height="20"
-                                    IsActive="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
-                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                            </Grid>
+                            <playback:PlaybackActionContent IconSize="18"
+                                                           SpinnerSize="20"
+                                                           IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                                                           IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                                                           ActionForeground="{ThemeResource TextFillColorPrimaryBrush}"/>
                         </Button>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
@@ -661,18 +654,11 @@
                             Padding="0"
                             Command="{x:Bind ViewModel.PlayPauseCommand}"
                             ToolTipService.ToolTip="Play/Pause">
-                            <Grid>
-                                <FontIcon
-                                    FontSize="18"
-                                    Glyph="{x:Bind ViewModel.IsPlaying, Mode=OneWay, Converter={StaticResource PlayPauseGlyphConverter}}"
-                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                                <ProgressRing
-                                    Width="20"
-                                    Height="20"
-                                    IsActive="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
-                                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                            </Grid>
+                            <playback:PlaybackActionContent IconSize="18"
+                                                           SpinnerSize="20"
+                                                           IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                                                           IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                                                           ActionForeground="{ThemeResource TextFillColorPrimaryBrush}"/>
                         </Button>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"

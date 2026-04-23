@@ -9,6 +9,7 @@
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     mc:Ignorable="d"
     Background="Transparent"
     PointerEntered="Card_PointerEntered"
@@ -84,15 +85,10 @@
                             Padding="0"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="PlayButton_Click">
-                        <Grid>
-                            <FontIcon x:Name="SquarePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
-                            <ProgressRing x:Name="SquarePlayButtonSpinner"
-                                          Width="18"
-                                          Height="18"
-                                          IsActive="False"
-                                          Visibility="Collapsed"
-                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                        </Grid>
+                        <playback:PlaybackActionContent x:Name="SquarePlayAction"
+                                                       IconSize="16"
+                                                       SpinnerSize="18"
+                                                       ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                     </Button>
 
                     <!-- Playing indicator (shown when IsPlaying) -->
@@ -152,15 +148,10 @@
                             Padding="0"
                             Style="{StaticResource AccentButtonStyle}"
                             Click="PlayButton_Click">
-                        <Grid>
-                            <FontIcon x:Name="CirclePlayButtonIcon" Glyph="&#xE768;" FontSize="16"/>
-                            <ProgressRing x:Name="CirclePlayButtonSpinner"
-                                          Width="18"
-                                          Height="18"
-                                          IsActive="False"
-                                          Visibility="Collapsed"
-                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                        </Grid>
+                        <playback:PlaybackActionContent x:Name="CirclePlayAction"
+                                                       IconSize="16"
+                                                       SpinnerSize="18"
+                                                       ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                     </Button>
 
                     <!-- Playing indicator for circle cards -->

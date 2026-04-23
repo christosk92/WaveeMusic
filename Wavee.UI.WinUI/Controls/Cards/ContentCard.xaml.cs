@@ -704,37 +704,17 @@ public sealed partial class ContentCard : UserControl
             CirclePlayingEqualizer.IsActive = showCirclePlaying && isPlaying;
 
         var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        var playIcon = IsCircularImage ? CirclePlayButtonIcon : SquarePlayButtonIcon;
-        var playSpinner = IsCircularImage ? CirclePlayButtonSpinner : SquarePlayButtonSpinner;
-        if (playBtn != null && playIcon != null)
+        var playAction = IsCircularImage ? CirclePlayAction : SquarePlayAction;
+        if (playBtn != null && playAction != null)
         {
-            if (isPending)
-            {
-                playIcon.Glyph = isPlaying ? "\uE769" : "\uE768";
-                playIcon.Visibility = Visibility.Collapsed;
-                if (playSpinner != null)
-                {
-                    playSpinner.Visibility = Visibility.Visible;
-                    playSpinner.IsActive = true;
-                }
-                playBtn.Visibility = Visibility.Visible;
+            playAction.IsPlaying = isPlaying;
+            playAction.IsPending = isPending;
+
+            playBtn.Visibility = (isPending || showPlayButton)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            if (playBtn.Visibility == Visibility.Visible)
                 playBtn.Opacity = 1;
-            }
-            else
-            {
-                if (playSpinner != null)
-                {
-                    playSpinner.IsActive = false;
-                    playSpinner.Visibility = Visibility.Collapsed;
-                }
-
-                playIcon.Glyph = isPlaying ? "\uE769" : "\uE768";
-                playIcon.Visibility = Visibility.Visible;
-
-                playBtn.Visibility = showPlayButton ? Visibility.Visible : Visibility.Collapsed;
-                if (playBtn.Visibility == Visibility.Visible)
-                    playBtn.Opacity = 1;
-            }
         }
 
         // Accent color on title when this is the active context

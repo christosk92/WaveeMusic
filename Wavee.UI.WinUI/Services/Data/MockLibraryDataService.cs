@@ -238,6 +238,18 @@ public sealed class MockLibraryDataService : ILibraryDataService
 
         var trackCount = _mockPlaylistTracks.TryGetValue(playlistId, out var tracks) ? tracks.Count : 0;
 
+        var basePermission = summary.IsOwner
+            ? PlaylistBasePermission.Owner
+            : PlaylistBasePermission.Viewer;
+        var capabilities = new PlaylistCapabilitiesDto
+        {
+            CanView = true,
+            CanEditItems = summary.IsOwner,
+            CanAdministratePermissions = summary.IsOwner,
+            CanCancelMembership = !summary.IsOwner,
+            CanAbuseReport = !summary.IsOwner
+        };
+
         var detail = new PlaylistDetailDto
         {
             Id = summary.Id,
@@ -250,7 +262,9 @@ public sealed class MockLibraryDataService : ILibraryDataService
             FollowerCount = summary.IsOwner ? 0 : 1_250_000,
             IsOwner = summary.IsOwner,
             IsCollaborative = false,
-            IsPublic = !summary.IsOwner
+            IsPublic = !summary.IsOwner,
+            BasePermission = basePermission,
+            Capabilities = capabilities
         };
 
         return Task.FromResult(detail);

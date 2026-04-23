@@ -961,14 +961,8 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private void UpdatePreviewButtonVisualState()
     {
-        if (TrackPlayButtonIcon != null)
-            TrackPlayButtonIcon.Visibility = _isPreviewAudioPending ? Visibility.Collapsed : Visibility.Visible;
-
-        if (PreviewPendingSpinner != null)
-        {
-            PreviewPendingSpinner.IsActive = _isPreviewAudioPending;
-            PreviewPendingSpinner.Visibility = _isPreviewAudioPending ? Visibility.Visible : Visibility.Collapsed;
-        }
+        if (TrackPlayButtonContent != null)
+            TrackPlayButtonContent.IsPending = _isPreviewAudioPending;
     }
 
     private void UpdatePreviewVisualState(bool hasPreviewAudio)
@@ -1385,36 +1379,15 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (ContextPlayButton != null)
         {
-            if (isPending)
+            if (ContextPlayButtonContent != null)
             {
-                if (ContextPlayButtonIcon != null)
-                    ContextPlayButtonIcon.Visibility = Visibility.Collapsed;
-                if (ContextPlayButtonSpinner != null)
-                {
-                    ContextPlayButtonSpinner.Visibility = Visibility.Visible;
-                    ContextPlayButtonSpinner.IsActive = true;
-                }
-                ContextPlayButton.Visibility = Visibility.Visible;
+                ContextPlayButtonContent.IsPlaying = _isContextPlaying;
+                ContextPlayButtonContent.IsPending = isPending;
+            }
+
+            ContextPlayButton.Visibility = showContextPlayButton ? Visibility.Visible : Visibility.Collapsed;
+            if (ContextPlayButton.Visibility == Visibility.Visible)
                 ContextPlayButton.Opacity = 1;
-            }
-            else
-            {
-                if (ContextPlayButtonSpinner != null)
-                {
-                    ContextPlayButtonSpinner.IsActive = false;
-                    ContextPlayButtonSpinner.Visibility = Visibility.Collapsed;
-                }
-
-                if (ContextPlayButtonIcon != null)
-                {
-                    ContextPlayButtonIcon.Glyph = _isContextPlaying ? "\uE769" : "\uE768";
-                    ContextPlayButtonIcon.Visibility = Visibility.Visible;
-                }
-
-                ContextPlayButton.Visibility = showContextPlayButton ? Visibility.Visible : Visibility.Collapsed;
-                if (ContextPlayButton.Visibility == Visibility.Visible)
-                    ContextPlayButton.Opacity = 1;
-            }
         }
     }
 

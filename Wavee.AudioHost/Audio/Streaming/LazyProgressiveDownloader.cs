@@ -341,7 +341,8 @@ public sealed class LazyProgressiveDownloader : Stream
         if (_decryptStream == null)
             return 0;
 
-        _decryptStream.Position = _position;
+        if (_decryptStream.Position != _position)
+            _decryptStream.Position = _position;
         var bytesRead = _decryptStream.Read(buffer);
         _position += bytesRead;
         return bytesRead;
@@ -352,7 +353,8 @@ public sealed class LazyProgressiveDownloader : Stream
         if (_decryptStream == null)
             return 0;
 
-        _decryptStream.Position = _position;
+        if (_decryptStream.Position != _position)
+            _decryptStream.Position = _position;
         var bytesRead = await _decryptStream.ReadAsync(buffer, cancellationToken);
         _position += bytesRead;
         return bytesRead;

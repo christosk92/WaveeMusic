@@ -3,32 +3,43 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Data;
+using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
+    private const int PlayPendingTimeoutMs = 8000;
     private readonly IArtistService _artistService;
+    private readonly ArtistStore _artistStore;
     private readonly IAlbumService _albumService;
     private readonly ILocationService _locationService;
     private readonly IPlaybackService _playbackService;
+    private readonly IPlaybackStateService _playbackStateService;
+    private CompositeDisposable? _subscriptions;
+    private string? _appliedOverviewFor;
+    private readonly IColorService _colorService;
     private readonly ITrackLikeService? _likeService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _discoCts;
+    private CancellationTokenSource? _playPendingCts;
     private bool _disposed;
 
     // ── Backing data ──
@@ -70,6 +81,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private string? _biography;
     [ObservableProperty] private bool _isVerified;
     [ObservableProperty] private bool _isFollowing;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
+    private bool _isPlayPending;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
+    private bool _isArtistContextPlaying;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
+    private bool _isArtistContextPaused;
+
+    public string ArtistPlayButtonText => IsArtistContextPlaying ? "Pause" : "Play";
 
     // Latest release
     [ObservableProperty] private string? _latestReleaseName;
@@ -102,8 +126,20 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private int TracksPerPage => RowsPerPage * ColumnCount;
     public int TotalPages => TopTracks.Count == 0 ? 0 : (int)Math.Ceiling((double)TopTracks.Count / TracksPerPage);
 
-    public IEnumerable<LazyTrackItem> PagedTopTracks =>
-        TopTracks.Skip(CurrentPage * TracksPerPage).Take(TracksPerPage);
+    private List<LazyTrackItem>? _pagedTopTracksCache;
+    public IEnumerable<LazyTrackItem> PagedTopTracks => _pagedTopTracksCache ??= BuildPagedTopTracks();
+
+    private List<LazyTrackItem> BuildPagedTopTracks()
+    {
+        int start = CurrentPage * TracksPerPage;
+        int available = TopTracks.Count - start;
+        if (available <= 0) return [];
+        int count = Math.Min(TracksPerPage, available);
+        var result = new List<LazyTrackItem>(count);
+        for (int i = 0; i < count; i++)
+            result.Add(TopTracks[start + i]);
+        return result;
+    }
 
     // ── Expanded album detail ──
     [ObservableProperty] private LazyReleaseItem? _expandedAlbum;
@@ -160,18 +196,31 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Constructor ──
 
-    public ArtistViewModel(IArtistService artistService, IAlbumService albumService, ILocationService locationService, IPlaybackService playbackService, ITrackLikeService? likeService = null, ILogger<ArtistViewModel>? logger = null)
+    public ArtistViewModel(
+        IArtistService artistService,
+        ArtistStore artistStore,
+        IAlbumService albumService,
+        ILocationService locationService,
+        IPlaybackService playbackService,
+        IPlaybackStateService playbackStateService,
+        IColorService colorService,
+        ITrackLikeService? likeService = null,
+        ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
+        _artistStore = artistStore;
         _albumService = albumService;
         _locationService = locationService;
         _playbackService = playbackService;
+        _playbackStateService = playbackStateService;
+        _colorService = colorService;
         _likeService = likeService;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+        _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
     }
 
     // ── Initialization ──
@@ -179,7 +228,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     public void Initialize(string artistId)
     {
         if (ArtistId != null && ArtistId != artistId)
+        {
             ResetForNewArtist();
+            _appliedOverviewFor = null;
+        }
 
         ArtistId = artistId;
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Artist, artistId)
@@ -187,6 +239,57 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             Title = "Artist"
         };
         RefreshFollowState();
+        SyncArtistPlaybackState();
+
+        // Drop any prior subscription (cancels its inflight fetch via refcount==0)
+        // and start observing the new artist through the reactive store.
+        _subscriptions?.Dispose();
+        _subscriptions = new CompositeDisposable();
+
+        var sub = _artistStore.Observe(artistId)
+            .Subscribe(
+                state => _dispatcherQueue.TryEnqueue(() => ApplyOverviewState(state, artistId)),
+                ex => _logger?.LogError(ex, "ArtistStore stream faulted for {ArtistId}", artistId));
+        _subscriptions.Add(sub);
+    }
+
+    /// <summary>
+    /// Dispose the store subscription; fetches for this VM stop and any
+    /// TaskCanceledException propagation is avoided.
+    /// </summary>
+    public void Deactivate()
+    {
+        _subscriptions?.Dispose();
+        _subscriptions = null;
+    }
+
+    private void ApplyOverviewState(EntityState<ArtistOverviewResult> state, string expectedArtistId)
+    {
+        if (_disposed || ArtistId != expectedArtistId)
+            return;
+
+        switch (state)
+        {
+            case EntityState<ArtistOverviewResult>.Initial:
+                IsLoading = true;
+                break;
+            case EntityState<ArtistOverviewResult>.Loading loading:
+                IsLoading = loading.Previous is null;
+                break;
+            case EntityState<ArtistOverviewResult>.Ready ready:
+                if (_appliedOverviewFor != expectedArtistId || ready.Freshness == Freshness.Fresh)
+                {
+                    _ = LoadAsync(ready.Value, expectedArtistId);
+                }
+                IsLoading = false;
+                break;
+            case EntityState<ArtistOverviewResult>.Error error:
+                HasError = true;
+                ErrorMessage = error.Exception.Message;
+                IsLoading = false;
+                _logger?.LogError(error.Exception, "ArtistStore reported error for {ArtistId}", expectedArtistId);
+                break;
+        }
     }
 
     private void ResetForNewArtist()
@@ -212,6 +315,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         CurrentPage = 0;
         ExpandedAlbum = null;
         ExpandedAlbumTracks.Clear();
+        IsPlayPending = false;
+        IsArtistContextPlaying = false;
+        IsArtistContextPaused = false;
 
         TopTracks.Clear();
         _allReleases.Clear();
@@ -283,10 +389,16 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Load data from real Pathfinder API ──
 
-    [RelayCommand]
-    private async Task LoadAsync()
+    /// <summary>
+    /// Apply a freshly-fetched ArtistOverviewResult from the ArtistStore and
+    /// kick off the downstream cascade (extended tracks, discography pages,
+    /// concerts, color prefetch). Called by ApplyOverviewState on each
+    /// Ready emission; idempotent per (artistId, overview-ref).
+    /// </summary>
+    private async Task LoadAsync(ArtistOverviewResult overview, string artistId)
     {
-        if (IsLoading || string.IsNullOrEmpty(ArtistId)) return;
+        if (ArtistId != artistId) return;
+        _appliedOverviewFor = artistId;
         IsLoading = true;
         HasError = false;
         ErrorMessage = null;
@@ -296,7 +408,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         try
         {
-            var overview = await Task.Run(async () => await _artistService.GetOverviewAsync(ArtistId));
 
             // ── Map scalar properties ──
             ArtistName = overview.Name ?? ArtistName;
@@ -368,6 +479,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             AddReleasesToList(overview.Singles, "SINGLE", "single-ph", overview.SinglesTotalCount);
             AddReleasesToList(overview.Compilations, "COMPILATION", "comp-ph", overview.CompilationsTotalCount);
             DispatchReleases();
+            _ = PrefetchReleaseColorsAsync(
+                _allReleases
+                    .Where(item => item.IsLoaded && item.Data != null)
+                    .Select(item => item.Data!));
 
             AlbumsTotalCount = overview.AlbumsTotalCount;
             SinglesTotalCount = overview.SinglesTotalCount;
@@ -468,6 +583,65 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         var maxPlaceholders = Math.Min(totalCount - count, 20);
         for (int i = count; i < count + maxPlaceholders; i++)
             _allReleases.Add(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
+    }
+
+    private async Task PrefetchReleaseColorsAsync(IEnumerable<ArtistReleaseVm> releases)
+    {
+        var releasesByUrl = new Dictionary<string, List<ArtistReleaseVm>>(StringComparer.Ordinal);
+
+        foreach (var release in releases)
+        {
+            if (!string.IsNullOrEmpty(release.ColorHex))
+                continue;
+
+            var imageUrl = SpotifyImageHelper.ToHttpsUrl(release.ImageUrl) ?? release.ImageUrl;
+            if (string.IsNullOrWhiteSpace(imageUrl))
+                continue;
+
+            if (!releasesByUrl.TryGetValue(imageUrl, out var mapped))
+            {
+                mapped = [];
+                releasesByUrl[imageUrl] = mapped;
+            }
+
+            mapped.Add(release);
+        }
+
+        if (releasesByUrl.Count == 0)
+            return;
+
+        try
+        {
+            var colors = await _colorService
+                .GetColorsAsync(releasesByUrl.Keys.ToList())
+                .ConfigureAwait(false);
+
+            if (colors.Count == 0)
+                return;
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                foreach (var (url, mappedReleases) in releasesByUrl)
+                {
+                    if (!colors.TryGetValue(url, out var color))
+                        continue;
+
+                    var hex = color.DarkHex ?? color.RawHex ?? color.LightHex;
+                    if (string.IsNullOrEmpty(hex))
+                        continue;
+
+                    foreach (var release in mappedReleases)
+                    {
+                        if (string.IsNullOrEmpty(release.ColorHex))
+                            release.ColorHex = hex;
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to prefetch artist release colors for {Count} images", releasesByUrl.Count);
+        }
     }
 
     // ── Background discography pagination ──
@@ -582,6 +756,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             if (allReleases.Count == 0) return;
 
+            var createdReleaseVms = new List<ArtistReleaseVm>();
             var tcs = new TaskCompletionSource();
             _dispatcherQueue.TryEnqueue(() =>
             {
@@ -604,6 +779,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                                 Label = r.Label,
                                 Year = r.Year
                             };
+                            createdReleaseVms.Add(vm);
 
                             var phKey = $"{phPrefix}-{i}";
                             var existing = _allReleases.FirstOrDefault(x => x.Id == phKey);
@@ -620,6 +796,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 catch (Exception ex) { tcs.SetException(ex); }
             });
             await tcs.Task;
+            _ = PrefetchReleaseColorsAsync(createdReleaseVms);
         }
         catch (OperationCanceledException) { /* navigated away */ }
         catch (Exception ex)
@@ -654,11 +831,15 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     // ── Commands ──
 
     [RelayCommand]
-    private async Task RetryAsync()
+    private void Retry()
     {
         HasError = false;
         ErrorMessage = null;
-        await LoadAsync();
+        if (!string.IsNullOrEmpty(ArtistId))
+        {
+            _appliedOverviewFor = null;
+            _artistStore.Invalidate(ArtistId);
+        }
     }
 
     [RelayCommand]
@@ -701,15 +882,108 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _dispatcherQueue?.TryEnqueue(RefreshFollowState);
     }
 
+    private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentContext)
+            or nameof(IPlaybackStateService.IsPlaying)
+            or nameof(IPlaybackStateService.IsBuffering))
+        {
+            _dispatcherQueue.TryEnqueue(SyncArtistPlaybackState);
+        }
+    }
+
+    private void SyncArtistPlaybackState()
+    {
+        bool isArtistContext = IsArtistContextActive();
+        IsArtistContextPlaying = isArtistContext && _playbackStateService.IsPlaying;
+        IsArtistContextPaused = isArtistContext && !_playbackStateService.IsPlaying;
+
+        if (IsPlayPending && (!isArtistContext || IsArtistContextPlaying))
+            SetPlayPending(false);
+    }
+
+    private bool IsArtistContextActive()
+    {
+        var artistId = ArtistId;
+        var contextUri = _playbackStateService.CurrentContext?.ContextUri;
+        if (string.IsNullOrWhiteSpace(artistId) || string.IsNullOrWhiteSpace(contextUri))
+            return false;
+
+        var canonicalArtistUri = artistId.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase)
+            ? artistId
+            : $"spotify:artist:{artistId}";
+
+        return string.Equals(contextUri, artistId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(contextUri, canonicalArtistUri, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SetPlayPending(bool pending)
+    {
+        if (IsPlayPending == pending)
+            return;
+
+        IsPlayPending = pending;
+        _playPendingCts?.Cancel();
+        _playPendingCts?.Dispose();
+        _playPendingCts = null;
+
+        if (!pending)
+            return;
+
+        _playPendingCts = new CancellationTokenSource();
+        _ = ClearPlayPendingAfterTimeoutAsync(_playPendingCts.Token);
+    }
+
+    private async Task ClearPlayPendingAfterTimeoutAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(PlayPendingTimeoutMs, ct);
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (!ct.IsCancellationRequested && IsPlayPending)
+                {
+                    SetPlayPending(false);
+                    _playbackStateService.ClearBuffering();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     [RelayCommand]
     private async Task PlayTopTracksAsync()
     {
         if (string.IsNullOrEmpty(ArtistId)) return;
-        var result = await _playbackService.PlayContextAsync(
-            ArtistId,
-            new PlayContextOptions { PlayOriginFeature = "artist_page" });
+
+        PlaybackResult result;
+        if (IsArtistContextPlaying)
+        {
+            result = await _playbackService.PauseAsync();
+        }
+        else if (IsArtistContextPaused)
+        {
+            SetPlayPending(true);
+            _playbackStateService.NotifyBuffering(null);
+            result = await _playbackService.ResumeAsync();
+        }
+        else
+        {
+            SetPlayPending(true);
+            _playbackStateService.NotifyBuffering(null);
+            result = await _playbackService.PlayContextAsync(
+                ArtistId,
+                new PlayContextOptions { PlayOriginFeature = "artist_page" });
+        }
+
         if (!result.IsSuccess)
+        {
+            SetPlayPending(false);
+            _playbackStateService.ClearBuffering();
             _logger?.LogWarning("PlayTopTracks failed: {Error}", result.ErrorMessage);
+        }
     }
 
     [RelayCommand]
@@ -717,14 +991,20 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (track == null || string.IsNullOrEmpty(ArtistId)) return;
 
-        var allTrackUris = TopTracks
-            .Where(t => t.IsLoaded && t.Data != null)
-            .Select(t => t.Data!.Uri)
-            .Where(uri => !string.IsNullOrEmpty(uri))
-            .ToList();
+        List<string>? allTrackUris = null;
+        int startIndex = -1;
+        foreach (var t in TopTracks)
+        {
+            if (!t.IsLoaded || t.Data == null) continue;
+            var uri = t.Data.Uri;
+            if (string.IsNullOrEmpty(uri)) continue;
+            allTrackUris ??= new List<string>();
+            if (startIndex < 0 && uri == track.Uri)
+                startIndex = allTrackUris.Count;
+            allTrackUris.Add(uri);
+        }
 
-        var startIndex = allTrackUris.IndexOf(track.Uri);
-        if (startIndex >= 0)
+        if (startIndex >= 0 && allTrackUris != null)
         {
             await _playbackService.PlayTracksAsync(allTrackUris, startIndex);
         }
@@ -762,6 +1042,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     private void NotifyPaginationChanged()
     {
+        _pagedTopTracksCache = null;
         OnPropertyChanged(nameof(TotalPages));
         OnPropertyChanged(nameof(PagedTopTracks));
     }
@@ -773,6 +1054,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         CurrentPage = 0;
         NotifyPaginationChanged();
     }
+
+    partial void OnTopTracksChanged(ObservableCollection<LazyTrackItem> value) => NotifyPaginationChanged();
 
     partial void OnArtistNameChanged(string? value)
     {
@@ -834,6 +1117,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     idx++;
                 }
 
+                _pagedTopTracksCache = null;
                 OnPropertyChanged(nameof(TotalPages));
                 OnPropertyChanged(nameof(PagedTopTracks));
             });
@@ -852,6 +1136,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
+
+        _subscriptions?.Dispose();
+        _subscriptions = null;
+
+        _playPendingCts?.Cancel();
+        _playPendingCts?.Dispose();
+        _playPendingCts = null;
 
         CancelAndDisposeDiscographyCts();
     }
@@ -923,7 +1215,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     }
 }
 
-public sealed class ArtistReleaseVm
+public sealed partial class ArtistReleaseVm : ObservableObject
 {
     public string Id { get; init; }
     public string? Uri { get; init; }
@@ -934,6 +1226,9 @@ public sealed class ArtistReleaseVm
     public int TrackCount { get; init; }
     public string? Label { get; init; }
     public int Year { get; init; }
+
+    [ObservableProperty]
+    private string? _colorHex;
 }
 
 public sealed class RelatedArtistVm

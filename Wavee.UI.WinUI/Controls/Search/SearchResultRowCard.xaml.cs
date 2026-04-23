@@ -19,9 +19,6 @@ namespace Wavee.UI.WinUI.Controls.Search;
 
 public sealed partial class SearchResultRowCard : UserControl
 {
-    private const string PlayGlyph = "\uE768";
-    private const string PauseGlyph = "\uE769";
-
     public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register(
             nameof(Item),
@@ -249,7 +246,8 @@ public sealed partial class SearchResultRowCard : UserControl
         {
             NowPlayingOverlay.Visibility = Visibility.Collapsed;
             NowPlayingEqualizer.IsActive = false;
-            HoverPlayIcon.Glyph = _isThisTrackPlaying ? PauseGlyph : PlayGlyph;
+            if (HoverPlayContent != null)
+                HoverPlayContent.IsPlaying = _isThisTrackPlaying;
 
             if (HoverPlayButton.Visibility == Visibility.Collapsed)
             {

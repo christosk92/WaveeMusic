@@ -890,6 +890,9 @@ Aggressive</value>
   <data name="Shell_SidebarNoPlaylists" xml:space="preserve">
     <value>아직 플레이리스트가 없습니다. 하나 만들어 보세요!</value>
   </data>
+  <data name="Shell_SidebarFolderEmpty" xml:space="preserve">
+    <value>여기에 플레이리스트를 드롭하여 추가하세요</value>
+  </data>
   <data name="Shell_SidebarPinned" xml:space="preserve">
     <value>고정됨</value>
   </data>

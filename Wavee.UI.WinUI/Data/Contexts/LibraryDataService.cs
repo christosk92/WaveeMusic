@@ -1,29 +1,38 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Audio;
+using Wavee.Core.Http;
 using Wavee.Core.Library.Spotify;
+using Wavee.Core.Playlists;
 using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.Protocol.DescriptorExtension;
 using Wavee.Protocol.ExtendedMetadata;
+using Wavee.Protocol.Metadata;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Data.Stores;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
 /// <summary>
-/// Real library data service backed by MetadataDatabase.
-/// Reads from synced SQLite — no direct Spotify API dependency at construction.
+/// Real library data service backed by MetadataDatabase and PlaylistCacheService.
+/// Reads liked/albums/artists from SQLite and playlists from the dedicated playlist cache.
 /// Reacts to IMessenger messages for refresh signaling.
 /// </summary>
 public sealed class LibraryDataService : ILibraryDataService
 {
     private readonly IMetadataDatabase _database;
+    private readonly IPlaylistCacheService _playlistCache;
+    private readonly IExtendedMetadataClient _metadataClient;
+    private readonly ExtendedMetadataStore? _extendedMetadataStore;
     private readonly ITrackLikeService _likeService;
     private readonly ISession _session;
     private readonly IMessenger _messenger;
@@ -31,47 +40,92 @@ public sealed class LibraryDataService : ILibraryDataService
     private IReadOnlyList<LikedSongsFilterDto> _cachedLikedSongFilters = Array.Empty<LikedSongsFilterDto>();
     private string? _likedSongFiltersEtag;
 
+    // Sync complete fans out across messenger + playlist-cache subjects +
+    // like-service save events in tight succession — each producing a fresh
+    // DataChanged emission. Without coalescing, every consumer reloads 2-4
+    // times per logical change. Batch into a single trailing event per burst.
+    private static readonly TimeSpan ChangeCoalesceWindow = TimeSpan.FromMilliseconds(150);
+    private readonly object _coalesceGate = new();
+    private bool _dataChangedPending;
+    private bool _playlistsChangedPending;
+
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
 
     public LibraryDataService(
         IMetadataDatabase database,
+        IPlaylistCacheService playlistCache,
+        IExtendedMetadataClient metadataClient,
         IMessenger messenger,
         ITrackLikeService likeService,
         ISession session,
+        ExtendedMetadataStore? extendedMetadataStore = null,
         ILogger<LibraryDataService>? logger = null)
     {
         _database = database;
+        _playlistCache = playlistCache;
+        _metadataClient = metadataClient;
+        _extendedMetadataStore = extendedMetadataStore;
         _likeService = likeService;
         _session = session;
         _messenger = messenger;
         _logger = logger;
 
-        // Subscribe to messenger — no dependency on ISpotifyLibraryService
         messenger.Register<LibraryDataChangedMessage>(this, (_, _) =>
         {
             _logger?.LogDebug("LibraryDataService: received LibraryDataChangedMessage");
-            DataChanged?.Invoke(this, EventArgs.Empty);
+            ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
         });
 
         messenger.Register<PlaylistsChangedMessage>(this, (_, _) =>
         {
             _logger?.LogDebug("LibraryDataService: received PlaylistsChangedMessage");
-            PlaylistsChanged?.Invoke(this, EventArgs.Empty);
-            DataChanged?.Invoke(this, EventArgs.Empty);
+            ScheduleChangeEmit(dataChanged: true, playlistsChanged: true);
         });
 
-        // Forward like/unlike cache changes to DataChanged so sidebar badges refresh immediately
         _likeService.SaveStateChanged += () =>
         {
-            _logger?.LogDebug("LibraryDataService: SaveStateChanged — forwarding as DataChanged");
-            DataChanged?.Invoke(this, EventArgs.Empty);
+            _logger?.LogDebug("LibraryDataService: SaveStateChanged forwarding as DataChanged");
+            ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
         };
+
+        _playlistCache.Changes.Subscribe(_ =>
+        {
+            _logger?.LogDebug("LibraryDataService: playlist cache change received");
+            ScheduleChangeEmit(dataChanged: true, playlistsChanged: true);
+        });
+    }
+
+    private void ScheduleChangeEmit(bool dataChanged, bool playlistsChanged)
+    {
+        bool startFlush = false;
+        lock (_coalesceGate)
+        {
+            startFlush = !_dataChangedPending && !_playlistsChangedPending;
+            _dataChangedPending |= dataChanged;
+            _playlistsChangedPending |= playlistsChanged;
+        }
+        if (startFlush)
+            _ = FlushAfterDelayAsync();
+    }
+
+    private async Task FlushAfterDelayAsync()
+    {
+        await Task.Delay(ChangeCoalesceWindow).ConfigureAwait(false);
+        bool fireData, firePlaylists;
+        lock (_coalesceGate)
+        {
+            fireData = _dataChangedPending;
+            firePlaylists = _playlistsChangedPending;
+            _dataChangedPending = false;
+            _playlistsChangedPending = false;
+        }
+        if (firePlaylists) PlaylistsChanged?.Invoke(this, EventArgs.Empty);
+        if (fireData) DataChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public Task<LibraryStatsDto> GetStatsAsync(CancellationToken ct = default)
     {
-        // Use in-memory cache counts — includes optimistic local likes not yet in SQLite
         var trackCount = _likeService.GetCount(SavedItemType.Track);
         var albumCount = _likeService.GetCount(SavedItemType.Album);
         var artistCount = _likeService.GetCount(SavedItemType.Artist);
@@ -107,13 +161,33 @@ public sealed class LibraryDataService : ILibraryDataService
 
     public async Task<IReadOnlyList<PlaylistSummaryDto>> GetUserPlaylistsAsync(CancellationToken ct = default)
     {
-        // Read playlists from local DB (synced by SpotifyLibraryService)
-        var db = _database;
-        // GetPlaylistsAsync is on ISpotifyLibraryService, but playlists are in spotify_playlists table.
-        // For now, return empty — playlist reading from DB needs a dedicated query.
-        // TODO: Add GetPlaylistsFromDbAsync to IMetadataDatabase
-        _logger?.LogDebug("GetUserPlaylistsAsync: playlist DB query not yet implemented");
-        return Array.Empty<PlaylistSummaryDto>();
+        if (string.IsNullOrWhiteSpace(_session.GetUserData()?.Username))
+            return Array.Empty<PlaylistSummaryDto>();
+
+        var snapshot = await _playlistCache.GetRootlistAsync(ct: ct);
+        var currentUsername = _session.GetUserData()?.Username;
+        var results = new List<PlaylistSummaryDto>();
+
+        foreach (var entry in snapshot.Items.OfType<RootlistPlaylist>())
+        {
+            snapshot.Decorations.TryGetValue(entry.Uri, out var decoration);
+            var persisted = decoration == null
+                ? await _database.GetPlaylistCacheEntryAsync(entry.Uri, touchAccess: false, ct)
+                : null;
+
+            var ownerUsername = decoration?.OwnerUsername ?? persisted?.OwnerUsername ?? persisted?.OwnerName;
+            results.Add(new PlaylistSummaryDto
+            {
+                Id = entry.Uri,
+                Name = decoration?.Name ?? persisted?.Name ?? "Playlist",
+                ImageUrl = decoration?.ImageUrl ?? persisted?.ImageUrl,
+                TrackCount = decoration?.Length ?? persisted?.TrackCount ?? 0,
+                IsOwner = !string.IsNullOrWhiteSpace(currentUsername)
+                    && string.Equals(ownerUsername, currentUsername, StringComparison.OrdinalIgnoreCase)
+            });
+        }
+
+        return results;
     }
 
     public async Task<IReadOnlyList<LibraryAlbumDto>> GetAlbumsAsync(CancellationToken ct = default)
@@ -154,10 +228,6 @@ public sealed class LibraryDataService : ILibraryDataService
     {
         var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Track, 500, 0, ct);
 
-        // Bulk-read cached TRACK_DESCRIPTOR bytes so we can merge real descriptor tags into
-        // the DTOs. Empty blobs are negative-cache markers (tracks Spotify has no descriptors
-        // for) and cause fallback to genre-based tags. Absent entries (never fetched) also
-        // fall back — the fetcher will populate them on the next page-open cycle.
         var trackUris = entities.Select(e => e.Uri).ToList();
         var descriptorBytes = await _database
             .GetExtensionsBulkAsync(trackUris, ExtensionKind.TrackDescriptor, ct)
@@ -227,16 +297,152 @@ public sealed class LibraryDataService : ILibraryDataService
     }
 
     public Task<PlaylistDetailDto> GetPlaylistAsync(string playlistId, CancellationToken ct = default)
-        => Task.FromResult(new PlaylistDetailDto { Id = playlistId, Name = "Playlist", OwnerName = "" });
+        => GetPlaylistCoreAsync(playlistId, ct);
 
-    public Task<IReadOnlyList<PlaylistTrackDto>> GetPlaylistTracksAsync(string playlistId, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<PlaylistTrackDto>>(Array.Empty<PlaylistTrackDto>());
+    public async Task<IReadOnlyList<PlaylistTrackDto>> GetPlaylistTracksAsync(string playlistId, CancellationToken ct = default)
+    {
+        var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
+        var trackItems = playlist.Items
+            .Where(static item => item.Uri.StartsWith("spotify:track:", StringComparison.Ordinal))
+            .ToArray();
+
+        if (trackItems.Length == 0)
+            return Array.Empty<PlaylistTrackDto>();
+
+        // Route through ExtendedMetadataStore when available so concurrent
+        // playlist opens share a single batched POST; fall back to the
+        // client's direct batch API if DI didn't inject the store.
+        var parsedTracks = new Dictionary<string, Track>(StringComparer.Ordinal);
+        if (_extendedMetadataStore is not null)
+        {
+            var requests = trackItems
+                .Select(item => (item.Uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+            var resolved = await _extendedMetadataStore.GetManyAsync(requests, ct);
+            foreach (var (key, bytes) in resolved)
+            {
+                try
+                {
+                    parsedTracks[key.Uri] = Track.Parser.ParseFrom(bytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Failed to parse Track for {Uri}", key.Uri);
+                }
+            }
+        }
+        else
+        {
+            var requests = trackItems
+                .Select(item => (item.Uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+            var response = await _metadataClient.GetBatchedExtensionsAsync(requests, ct);
+            foreach (var data in response.GetAllExtensionData(ExtensionKind.TrackV4))
+            {
+                var track = data.UnpackAs<Track>();
+                if (track != null)
+                    parsedTracks[data.EntityUri] = track;
+            }
+        }
+
+        var tracks = new List<PlaylistTrackDto>(trackItems.Length);
+        foreach (var item in trackItems)
+        {
+            if (!parsedTracks.TryGetValue(item.Uri, out var track))
+                continue;
+
+            tracks.Add(new PlaylistTrackDto
+            {
+                Id = ExtractBareId(item.Uri, "spotify:track:"),
+                Uri = item.Uri,
+                Title = track.Name ?? "Unknown",
+                ArtistName = track.Artist.Count > 0
+                    ? string.Join(", ", track.Artist.Select(static artist => artist.Name))
+                    : "",
+                ArtistId = GetSpotifyUri(track.Artist.Count > 0 ? track.Artist[0].Gid : null, SpotifyIdType.Artist) ?? "",
+                AlbumName = track.Album?.Name ?? "",
+                AlbumId = GetSpotifyUri(track.Album?.Gid, SpotifyIdType.Album) ?? "",
+                ImageUrl = GetImageUrl(track.Album, Image.Types.Size.Default),
+                Duration = TimeSpan.FromMilliseconds(track.Duration),
+                AddedAt = item.AddedAt?.LocalDateTime,
+                AddedBy = item.AddedBy,
+                IsExplicit = track.Explicit,
+                OriginalIndex = tracks.Count + 1
+            });
+        }
+
+        return tracks;
+    }
 
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    private async Task<PlaylistDetailDto> GetPlaylistCoreAsync(string playlistId, CancellationToken ct)
+    {
+        var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
+        return new PlaylistDetailDto
+        {
+            Id = playlist.Uri,
+            Name = playlist.Name,
+            Description = playlist.Description,
+            ImageUrl = playlist.ImageUrl,
+            HeaderImageUrl = playlist.HeaderImageUrl,
+            OwnerName = playlist.OwnerUsername,
+            OwnerId = string.IsNullOrWhiteSpace(playlist.OwnerUsername) ? null : $"spotify:user:{playlist.OwnerUsername}",
+            TrackCount = playlist.Length,
+            FollowerCount = 0,
+            IsOwner = playlist.BasePermission == CachedPlaylistBasePermission.Owner,
+            IsCollaborative = playlist.IsCollaborative,
+            IsPublic = playlist.IsPublic,
+            BasePermission = MapBasePermission(playlist.BasePermission),
+            Capabilities = MapCapabilities(playlist.Capabilities)
+        };
+    }
+
     private static string ExtractBareId(string uri, string prefix) =>
         uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
+
+    private static PlaylistBasePermission MapBasePermission(CachedPlaylistBasePermission value)
+    {
+        return value switch
+        {
+            CachedPlaylistBasePermission.Owner => PlaylistBasePermission.Owner,
+            CachedPlaylistBasePermission.Contributor => PlaylistBasePermission.Contributor,
+            _ => PlaylistBasePermission.Viewer
+        };
+    }
+
+    private static PlaylistCapabilitiesDto MapCapabilities(CachedPlaylistCapabilities value)
+    {
+        return new PlaylistCapabilitiesDto
+        {
+            CanView = value.CanView,
+            CanEditItems = value.CanEditItems,
+            CanAdministratePermissions = value.CanAdministratePermissions,
+            CanCancelMembership = value.CanCancelMembership,
+            CanAbuseReport = value.CanAbuseReport
+        };
+    }
+
+    private static string? GetSpotifyUri(Google.Protobuf.ByteString? gid, SpotifyIdType type)
+    {
+        if (gid is not { Length: > 0 })
+            return null;
+
+        var prefix = type == SpotifyIdType.Album ? "spotify:album:" : "spotify:artist:";
+        return prefix + SpotifyId.FromRaw(gid.Span, type).ToBase62();
+    }
+
+    private static string? GetImageUrl(Album? album, Image.Types.Size preferredSize)
+    {
+        if (album?.CoverGroup?.Image.Count is not > 0)
+            return null;
+
+        var image = album.CoverGroup.Image.FirstOrDefault(img => img.Size == preferredSize)
+            ?? album.CoverGroup.Image.FirstOrDefault();
+        if (image == null)
+            return null;
+
+        return $"spotify:image:{Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant()}";
+    }
 
     private static IReadOnlyList<string> ExtractTags(string? genre)
     {
@@ -249,20 +455,9 @@ public sealed class LibraryDataService : ILibraryDataService
             .ToArray();
     }
 
-    /// <summary>
-    /// Returns descriptor tags for a track, falling back to Genre-derived tags when the
-    /// descriptor cache has no data (either never fetched, negative-cached, or parse error).
-    /// Descriptor text is normalized to trimmed lowercase and interned to deduplicate the
-    /// ~200 unique values that repeat across ~10k liked songs.
-    /// </summary>
     private static IReadOnlyList<string> ExtractDescriptorTags(byte[]? descriptorBytes, string? fallbackGenre)
     {
-        // Not in cache → try again later once the fetcher populates it.
-        if (descriptorBytes is null)
-            return ExtractTags(fallbackGenre);
-
-        // Negative cache (Spotify has no descriptors for this track) — fall back.
-        if (descriptorBytes.Length == 0)
+        if (descriptorBytes is null || descriptorBytes.Length == 0)
             return ExtractTags(fallbackGenre);
 
         try
@@ -273,10 +468,12 @@ public sealed class LibraryDataService : ILibraryDataService
 
             var tags = new List<string>(data.Descriptors.Count);
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var d in data.Descriptors)
+            foreach (var descriptor in data.Descriptors)
             {
-                var text = d.Text?.Trim();
-                if (string.IsNullOrEmpty(text)) continue;
+                var text = descriptor.Text?.Trim();
+                if (string.IsNullOrEmpty(text))
+                    continue;
+
                 var lower = string.Intern(text.ToLowerInvariant());
                 if (seen.Add(lower))
                     tags.Add(lower);
@@ -286,14 +483,13 @@ public sealed class LibraryDataService : ILibraryDataService
         }
         catch
         {
-            // Corrupt blob — rare, but don't poison the whole liked-songs list. Fall back.
             return ExtractTags(fallbackGenre);
         }
     }
 
     public void RequestSyncIfEmpty()
     {
-        _logger?.LogDebug("RequestSyncIfEmpty — sending RequestLibrarySyncMessage");
+        _logger?.LogDebug("RequestSyncIfEmpty sending RequestLibrarySyncMessage");
         _messenger.Send(new RequestLibrarySyncMessage());
     }
 }

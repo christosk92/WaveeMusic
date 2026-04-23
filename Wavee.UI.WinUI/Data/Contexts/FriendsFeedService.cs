@@ -107,6 +107,35 @@ public sealed partial class FriendsFeedService
             _logger?.LogDebug("FriendsFeed: auth=Authenticated — attempting dealer subscription");
             TrySubscribeToDealer();
         }
+        else if (message.Value == AuthStatus.LoggedOut || message.Value == AuthStatus.SessionExpired)
+        {
+            _logger?.LogDebug("FriendsFeed: auth={Status} — tearing down", message.Value);
+            TearDown();
+        }
+    }
+
+    private void TearDown()
+    {
+        if (_disposed) return;
+
+        CancelInFlight();
+        CancelAllUserFetches();
+
+        _dealerMessagesSub?.Dispose();
+        _dealerMessagesSub = null;
+        _lifecycleSubs.Clear();
+        _dealerSubscribed = false;
+        _seedConnectionId = null;
+
+        Dispatch(() =>
+        {
+            _items.Clear();
+            LastUpdated = null;
+            ErrorMessage = null;
+            LastPushUri = null;
+            IsLoading = false;
+            State = FriendsFeedState.Idle;
+        });
     }
 
     private void TrySubscribeToDealer()

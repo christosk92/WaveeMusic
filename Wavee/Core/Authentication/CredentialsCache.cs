@@ -34,6 +34,13 @@ public interface ICredentialsCache
     Task ClearCredentialsAsync(string? username = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Clears all cached credentials (every user file plus the last-username marker).
+    /// Use on sign-out to guarantee no stale file is picked up on the next launch.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task ClearAllCredentialsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Loads the last authenticated username.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -203,6 +210,37 @@ public sealed class CredentialsCache : ICredentialsCache
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to clear cached credentials");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public Task ClearAllCredentialsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (Directory.Exists(_cacheDirectory))
+            {
+                foreach (var file in Directory.EnumerateFiles(_cacheDirectory, "*_credentials.dat"))
+                {
+                    try { File.Delete(file); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "Failed to delete credentials file {FilePath}", file); }
+                }
+
+                var lastUserFile = Path.Combine(_cacheDirectory, "last_user.txt");
+                if (File.Exists(lastUserFile))
+                {
+                    try { File.Delete(lastUserFile); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "Failed to delete last-username marker"); }
+                }
+            }
+
+            _logger?.LogInformation("Cleared all cached credentials in {Directory}", _cacheDirectory);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to clear all cached credentials");
         }
 
         return Task.CompletedTask;

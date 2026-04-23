@@ -2,9 +2,11 @@ using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
@@ -36,6 +38,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private const int PinnedItemFlyoutDelayMs = 900;
     private const int PinnedItemFlyoutCloseDelayMs = 220;
     private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
+    private const double ShyHeaderPinThresholdPx = 24;
 
     // Avatar collapse — when the artist has a header image but no watch-feed
     // video, the 120px circular avatar is redundant with the hero and collapses
@@ -61,6 +64,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private GradientStop? _pageTintHeroStop;
     private GradientStop? _pageTintFadeStop;
     private GradientStop? _pageTintEndStop;
+    private TransitionHelper? _shyHeaderTransition;
+    private bool _isShyHeaderPinned;
+    private bool _isShyHeaderTransitionRunning;
+    private bool _shyHeaderRecheckPending;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -76,6 +83,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
+        // Subscribe to IsLoading transitions in the ctor (not Loaded) so we don't
+        // miss a fast load that completes before the page is added to the visual
+        // tree — that race left the shimmer on forever after a tab restore.
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         Unloaded += ArtistPage_Unloaded;
         Loaded += ArtistPage_Loaded;
     }
@@ -84,11 +95,22 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         Loaded -= ArtistPage_Loaded;
 
-        // Deferred setup — moved from constructor so InitializeComponent returns faster
-        ContentContainer.Opacity = 0;
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         SizeChanged += OnSizeChanged;
         HeroGrid.SizeChanged += HeroGrid_SizeChanged;
+        PageScrollView.ViewChanged += PageScrollView_ViewChanged;
+        EnsureShyHeaderTransition();
+        ResetShyHeaderState();
+
+        // If data already arrived before we attached, the IsLoading transition
+        // already fired and our handler missed it. Force the crossfade now.
+        TryShowContentNow();
+    }
+
+    private void TryShowContentNow()
+    {
+        if (_showingContent || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.ArtistName))
+            return;
+        DispatcherQueue.TryEnqueue(CrossfadeToContent);
     }
 
     private void HeroGrid_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -96,6 +118,101 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Hero height is user-draggable via HeroSplitter; keep the page tint
         // aligned so the fade always starts at the hero's bottom edge.
         UpdatePageTint();
+        _ = EvaluateShyHeaderAsync();
+    }
+
+    private void EnsureShyHeaderTransition()
+    {
+        if (_shyHeaderTransition != null)
+            return;
+
+        // Helper is declared in Page.Resources so it survives navigation cache.
+        // Source/Target are wired here because XAML resources can't ElementName-bind.
+        if (Resources.TryGetValue("ArtistShyHeaderTransition", out var resource)
+            && resource is TransitionHelper helper)
+        {
+            helper.Source = HeroOverlayPanel;
+            helper.Target = ShyHeaderCard;
+            _shyHeaderTransition = helper;
+        }
+    }
+
+    private void ResetShyHeaderState()
+    {
+        _isShyHeaderPinned = false;
+        _isShyHeaderTransitionRunning = false;
+        _shyHeaderRecheckPending = false;
+        // Reset to source state: hero overlay visible, floating card collapsed.
+        _shyHeaderTransition?.Reset(toInitialState: true);
+    }
+
+    private void PageScrollView_ViewChanged(ScrollView sender, object args)
+    {
+        UpdateHeroScrollFade();
+        _ = EvaluateShyHeaderAsync();
+    }
+
+    private void UpdateHeroScrollFade()
+    {
+        if (HeroGrid == null) return;
+        var heroH = HeroGrid.ActualHeight;
+        if (heroH <= 0)
+        {
+            HeroGrid.ScrollFadeProgress = 0;
+            return;
+        }
+        HeroGrid.ScrollFadeProgress = Math.Clamp(PageScrollView.VerticalOffset / heroH, 0.0, 1.0);
+    }
+
+    private async Task EvaluateShyHeaderAsync()
+    {
+        if (_shyHeaderTransition == null || HeroOverlayPanel == null || ShyHeaderCard == null || HeroGrid == null)
+            return;
+
+        if (_isShyHeaderTransitionRunning)
+        {
+            // Coalesce: re-check once the in-flight transition lands.
+            _shyHeaderRecheckPending = true;
+            return;
+        }
+
+        while (true)
+        {
+            if (_isNavigatingAway || !HeroGrid.IsLoaded || !ShyHeaderHost.IsLoaded)
+                return;
+
+            double pinOffset = Math.Max(0, HeroGrid.ActualHeight - 120);
+            bool shouldPin = PageScrollView.VerticalOffset >= pinOffset;
+
+            if (shouldPin == _isShyHeaderPinned)
+                return;
+
+            _isShyHeaderTransitionRunning = true;
+            _shyHeaderRecheckPending = false;
+
+            try
+            {
+                if (shouldPin)
+                    await _shyHeaderTransition.StartAsync();
+                else
+                    await _shyHeaderTransition.ReverseAsync();
+
+                _isShyHeaderPinned = shouldPin;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Shy header transition skipped.");
+                return;
+            }
+            finally
+            {
+                _isShyHeaderTransitionRunning = false;
+            }
+
+            // Loop only if a scroll event arrived during the transition.
+            if (!_shyHeaderRecheckPending)
+                return;
+        }
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -415,12 +532,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // Decide whether to collapse the redundant circular avatar now that
         // we know the final HeaderImageUrl + WatchFeed state.
         UpdateAvatarLayout(animate: true);
+
+        await EvaluateShyHeaderAsync();
     }
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
     {
         // Only tear down ephemeral resources. ViewModel subscriptions stay alive
-        // because the page may be re-attached from navigation cache.
+        // because the page may be re-attached from navigation cache. Page and
+        // VM share lifetime (VM is transient), so the handlers don't leak.
         _isNavigatingAway = true;
         CancelPinnedItemPreview();
         CancelResizeDebounce();
@@ -559,10 +679,20 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         LoadNewContent(parameter);
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        // Drop the ArtistStore subscription so the store refcount hits zero
+        // and any inflight Pathfinder query gets cancelled cleanly. Prevents
+        // TaskCanceledException from leaking into the log after fast navs.
+        ViewModel.Deactivate();
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         _isNavigatingAway = false;
+        ResetShyHeaderState();
 
         // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
         // ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
@@ -576,6 +706,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             || (incomingUri != null && incomingUri == ViewModel.ArtistId))
         {
             SetupWatchFeedVideo();
+            // If the cached VM already has data, surface the content immediately
+            // — otherwise we'd stay on the (now-empty) shimmer view.
+            TryShowContentNow();
             return;
         }
 
@@ -586,6 +719,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         // Reset visual state for fresh load
         PageScrollView.ScrollTo(0, 0);
+        ResetShyHeaderState();
+        if (HeroGrid != null) HeroGrid.ScrollFadeProgress = 0;
         _showingContent = false;
         ContentContainer.Opacity = 0;
         ShimmerContainer.Visibility = Visibility.Visible;
@@ -606,9 +741,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (!string.IsNullOrEmpty(artistI2d))
             RestoreHeroHeight(artistI2d);
 
-        // Fire-and-forget: page renders shimmer instantly, data populates as it arrives.
+        // Initialize() above already subscribed to the ArtistStore — the store
+        // emits Ready once the overview lands and the VM drives its cascade from
+        // there. No explicit load command needed.
         // SetupWatchFeedVideo is called from CrossfadeToContent after data loads.
-        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void RestoreHeroHeight(string artistId)
@@ -833,6 +969,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
+        try { _shyHeaderTransition?.Stop(); } catch { }
     }
 
 
@@ -1059,6 +1196,18 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private Brush GetPinnedItemBrush(string resourceKey)
     {
+        // The brushes live inside Page.Resources.ThemeDictionaries, and
+        // ResourceDictionary.TryGetValue does not traverse theme dictionaries.
+        // Resolve against the currently active theme explicitly.
+        var themeKey = ActualTheme == ElementTheme.Light ? "Light" : "Dark";
+        if (Resources.ThemeDictionaries.TryGetValue(themeKey, out var themeDictObj)
+            && themeDictObj is ResourceDictionary themeDict
+            && themeDict.TryGetValue(resourceKey, out var themeResource)
+            && themeResource is Brush themeBrush)
+        {
+            return themeBrush;
+        }
+
         if (Resources.TryGetValue(resourceKey, out var resource) && resource is Brush brush)
             return brush;
 
@@ -1074,6 +1223,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private async Task FetchAlbumColorAsync(ArtistReleaseVm album, AlbumDetailPanel panel)
     {
+        if (!string.IsNullOrEmpty(album.ColorHex))
+        {
+            panel.ColorHex = album.ColorHex;
+            return;
+        }
+
         if (string.IsNullOrEmpty(album.ImageUrl)) return;
 
         var imageUrl = SpotifyImageHelper.ToHttpsUrl(album.ImageUrl);
@@ -1122,7 +1277,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (items == null || index >= items.Count) return;
 
         var item = items[index] as LazyReleaseItem;
-        if (item?.Data?.ImageUrl == null) return;
+        if (item?.Data == null || !string.IsNullOrEmpty(item.Data.ColorHex) || item.Data.ImageUrl == null) return;
 
         var imageUrl = SpotifyImageHelper.ToHttpsUrl(item.Data.ImageUrl);
         if (string.IsNullOrEmpty(imageUrl)) return;

@@ -45,6 +45,12 @@ public interface ITrackLikeService
     Task ReloadCacheAsync();
 
     /// <summary>
+    /// Drop all in-memory saved state. Call on sign-out so hearts don't
+    /// linger as "saved" for the next user until their sync completes.
+    /// </summary>
+    void ClearCache();
+
+    /// <summary>
     /// Returns all saved bare IDs for a given item type from in-memory cache.
     /// </summary>
     IReadOnlyCollection<string> GetSavedIds(SavedItemType type);

@@ -50,14 +50,34 @@ public sealed partial class MainWindow : WindowEx
         // Extend content into titlebar
         ExtendsContentIntoTitleBar = true;
 
-        // Make titlebar buttons blend with content
+        // Make titlebar buttons blend with content (backgrounds are theme-neutral transparents)
         AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(20, 128, 128, 128);
         AppWindow.TitleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(40, 128, 128, 128);
-        // Let Windows auto-pick foreground based on theme (don't set = auto)
-        AppWindow.TitleBar.ButtonForegroundColor = null;
-        AppWindow.TitleBar.ButtonInactiveForegroundColor = null;
+
+        // Caption glyph color must track the *app* theme, not the system theme —
+        // leaving it null causes white glyphs on a light app (or vice-versa) whenever
+        // the app and system themes disagree. ActualThemeChanged fires both at load
+        // and on every runtime theme switch.
+        RootFrame.ActualThemeChanged += OnRootThemeChanged;
+        ApplyCaptionButtonColors(RootFrame.ActualTheme);
+    }
+
+    private void OnRootThemeChanged(FrameworkElement sender, object args)
+        => ApplyCaptionButtonColors(sender.ActualTheme);
+
+    private void ApplyCaptionButtonColors(ElementTheme theme)
+    {
+        var isDark = theme == ElementTheme.Dark;
+        var foreground = isDark ? Colors.White : Windows.UI.Color.FromArgb(255, 0x1A, 0x1A, 0x1A);
+        var inactive = isDark
+            ? Windows.UI.Color.FromArgb(255, 0x9A, 0x9A, 0x9A)
+            : Windows.UI.Color.FromArgb(255, 0x80, 0x80, 0x80);
+        AppWindow.TitleBar.ButtonForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonHoverForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonPressedForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonInactiveForegroundColor = inactive;
     }
 
     private async void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
@@ -66,6 +86,7 @@ public sealed partial class MainWindow : WindowEx
         VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
         AppWindow.Closing -= OnAppWindowClosing;
+        RootFrame.ActualThemeChanged -= OnRootThemeChanged;
         if (_memoryReleaseTimer != null)
         {
             _memoryReleaseTimer.Stop();

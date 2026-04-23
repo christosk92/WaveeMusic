@@ -179,6 +179,20 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// <summary>
     /// Called by HomePage when background refresh completes. Applies diff on UI thread.
     /// </summary>
+    /// <summary>
+    /// Pause the 5-minute background refresh. Call from the page's
+    /// OnNavigatedFrom so the timer doesn't keep hammering Pathfinder
+    /// while the user is on another page (that work was a big chunk of
+    /// hot-spot #3 in the reactive-infrastructure plan).
+    /// </summary>
+    public void SuspendBackgroundRefresh() => _homeFeedCache?.SuspendRefresh();
+
+    /// <summary>
+    /// Resume the 5-minute background refresh. Call from OnNavigatedTo.
+    /// No-op if refresh was never started.
+    /// </summary>
+    public void ResumeBackgroundRefresh() => _homeFeedCache?.ResumeRefresh();
+
     public void ApplyBackgroundRefresh(Services.HomeFeedSnapshot snapshot)
     {
         CancelBaselineEnrichment();
@@ -398,6 +412,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// </summary>
     private static void EnrichFromRawJson(HomeSectionItem item, System.Text.Json.JsonElement raw)
     {
+        if (raw.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return;
+
         // Diagnostic: log the actual properties in the JsonElement
         System.Diagnostics.Debug.WriteLine(
             $"[EnrichFromRawJson] uri={item.Uri}, rawText={raw.GetRawText()[..Math.Min(200, raw.GetRawText().Length)]}");
@@ -431,6 +448,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private static string? ExtractImageUrlFromJson(System.Text.Json.JsonElement raw)
     {
+        if (raw.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return null;
+
         // Playlist: images.items[0].sources
         if (raw.TryGetProperty("images", out var images)
             && images.TryGetProperty("items", out var items)
@@ -461,6 +481,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private static string? GetLargestSourceUrl(System.Text.Json.JsonElement container)
     {
+        if (container.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return null;
+
         if (!container.TryGetProperty("sources", out var sources)
             || sources.ValueKind != System.Text.Json.JsonValueKind.Array
             || sources.GetArrayLength() == 0)
@@ -470,6 +493,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         int maxWidth = -1;
         foreach (var source in sources.EnumerateArray())
         {
+            if (source.ValueKind != System.Text.Json.JsonValueKind.Object)
+                continue;
+
             var width = source.TryGetProperty("width", out var w) && w.ValueKind == System.Text.Json.JsonValueKind.Number
                 ? w.GetInt32() : 0;
             if (width > maxWidth || bestUrl == null)
@@ -483,20 +509,29 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private static string? ExtractColorFromJson(System.Text.Json.JsonElement raw)
     {
+        if (raw.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return null;
+
         // Try images.items[0].extractedColors.colorDark.hex
         if (raw.TryGetProperty("images", out var images)
             && images.TryGetProperty("items", out var items)
             && items.ValueKind == System.Text.Json.JsonValueKind.Array
             && items.GetArrayLength() > 0
+            && items[0].ValueKind == System.Text.Json.JsonValueKind.Object
             && items[0].TryGetProperty("extractedColors", out var ec)
+            && ec.ValueKind == System.Text.Json.JsonValueKind.Object
             && ec.TryGetProperty("colorDark", out var cd)
+            && cd.ValueKind == System.Text.Json.JsonValueKind.Object
             && cd.TryGetProperty("hex", out var hex))
             return hex.GetString();
 
         // Try coverArt.extractedColors.colorDark.hex
         if (raw.TryGetProperty("coverArt", out var coverArt)
+            && coverArt.ValueKind == System.Text.Json.JsonValueKind.Object
             && coverArt.TryGetProperty("extractedColors", out var ec2)
+            && ec2.ValueKind == System.Text.Json.JsonValueKind.Object
             && ec2.TryGetProperty("colorDark", out var cd2)
+            && cd2.ValueKind == System.Text.Json.JsonValueKind.Object
             && cd2.TryGetProperty("hex", out var hex2))
             return hex2.GetString();
 

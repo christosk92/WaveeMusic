@@ -127,20 +127,22 @@
             Orientation="Horizontal"
             Spacing="2">
 
-            <!-- Profile Button with Selection Indicator -->
+            <!-- Profile / Sign-in Button with Selection Indicator -->
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
+                <!-- Authenticated / Connecting: profile chip with dropdown flyout -->
                 <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_6"
                     x:Name="ProfileButton"
                     Grid.Row="0"
                     Style="{StaticResource NavigationButtonStyle}"
                     Width="Auto"
                     Padding="4,0,8,0"
-                    ToolTipService.ToolTip="Profile">
+                    ToolTipService.ToolTip="Profile"
+                    Visibility="{x:Bind ShowProfileChip, Mode=OneWay}">
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedRight">
                             <MenuFlyoutItem x:Uid="Controls_NavigationToolbar_NavigationToolbar__MenuFlyoutItem_7" Text="View Profile" Click="ViewProfileMenuItem_Click">
@@ -177,6 +179,23 @@
                             Text="{x:Bind UserDisplayName, Mode=OneWay}"
                             VerticalAlignment="Center"
                             FontSize="12" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Unauthenticated: accent CTA that opens the sign-in dialog -->
+                <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__SignInButton"
+                    x:Name="SignInButton"
+                    Grid.Row="0"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Height="32"
+                    Padding="10,0,12,0"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Sign in with Spotify"
+                    Click="SignInButton_Click"
+                    Visibility="{x:Bind ShowSignInCta, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <FontIcon FontSize="14" Glyph="&#xE77B;"/>
+                        <TextBlock Text="Sign in" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
 

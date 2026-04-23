@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
@@ -17,6 +19,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.Services;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Queue;
@@ -24,7 +27,7 @@ namespace Wavee.UI.WinUI.Controls.Queue;
 /// <summary>
 /// Display item bound by the shared TrackTemplate in ItemsRepeaters.
 /// </summary>
-public sealed class QueueDisplayItem
+public sealed partial class QueueDisplayItem : ObservableObject
 {
     public enum ItemKind { NowPlaying, Header, Track, Delimiter }
 
@@ -36,6 +39,27 @@ public sealed class QueueDisplayItem
     public double VisualOpacity { get; init; } = 1.0;
     public Visibility IsLoaded => HasMetadata ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IsShimmer => HasMetadata ? Visibility.Collapsed : Visibility.Visible;
+
+    [ObservableProperty]
+    private Brush? _artworkTintBrush;
+
+    public Visibility ArtworkTintVisibility =>
+        ArtworkTintBrush == null ? Visibility.Collapsed : Visibility.Visible;
+
+    partial void OnArtworkTintBrushChanged(Brush? value)
+        => OnPropertyChanged(nameof(ArtworkTintVisibility));
+
+    public void ApplyArtworkTint(string? hex)
+    {
+        if (!TintColorHelper.TryParseHex(hex, out var parsed))
+        {
+            ArtworkTintBrush = null;
+            return;
+        }
+
+        var tint = TintColorHelper.BrightenForTint(parsed);
+        ArtworkTintBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(96, tint.R, tint.G, tint.B));
+    }
 }
 
 public sealed partial class QueueControl : UserControl
@@ -45,6 +69,7 @@ public sealed partial class QueueControl : UserControl
         InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
     private readonly IPlaybackStateService? _playbackService;
+    private readonly ITrackColorHintService? _colorHintService;
     private readonly ImageCacheService? _imageCache;
     private readonly ILogger? _logger;
     // Coalesce bursts of PropertyChanged (up to 7 per state batch) into a single
@@ -57,6 +82,7 @@ public sealed partial class QueueControl : UserControl
         InitializeComponent();
 
         _playbackService = Ioc.Default.GetService<IPlaybackStateService>();
+        _colorHintService = Ioc.Default.GetService<ITrackColorHintService>();
         _imageCache = Ioc.Default.GetService<ImageCacheService>();
         _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("QueueControl");
 
@@ -147,6 +173,9 @@ public sealed partial class QueueControl : UserControl
         }
 
         bool hasAutoplay = autoplay.Count > 0;
+        ResolveArtworkTints(userQueued);
+        ResolveArtworkTints(nextFrom);
+        ResolveArtworkTints(autoplay);
 
         // ── Pill states ──
         ShuffleButton.IsChecked = _playbackService.IsShuffle;
@@ -215,6 +244,46 @@ public sealed partial class QueueControl : UserControl
     };
 
     // ── Pill click handlers ──
+
+    private void ResolveArtworkTints(IEnumerable<QueueDisplayItem> items)
+    {
+        if (_colorHintService == null)
+            return;
+
+        foreach (var item in items)
+        {
+            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(item.ImageUrl);
+            if (string.IsNullOrWhiteSpace(httpsUrl))
+            {
+                item.ApplyArtworkTint(null);
+                continue;
+            }
+
+            if (_colorHintService.TryGet(httpsUrl, out var cachedHex))
+            {
+                item.ApplyArtworkTint(cachedHex);
+                continue;
+            }
+
+            _ = ResolveArtworkTintAsync(item, httpsUrl);
+        }
+    }
+
+    private async Task ResolveArtworkTintAsync(QueueDisplayItem item, string httpsUrl)
+    {
+        try
+        {
+            var hex = await _colorHintService!.GetOrResolveAsync(httpsUrl).ConfigureAwait(true);
+            item.ApplyArtworkTint(hex);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Queue artwork tint resolution failed for {Url}", httpsUrl);
+        }
+    }
 
     private void ShuffleButton_Click(object sender, RoutedEventArgs e)
     {

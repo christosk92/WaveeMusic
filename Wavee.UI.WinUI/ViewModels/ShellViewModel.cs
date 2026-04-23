@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
@@ -28,12 +29,16 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.Core.Playlists;
+using Microsoft.UI.Xaml.Media;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaylistCacheService _playlistCache;
     private readonly IThemeService _themeService;
     private readonly INotificationService _notificationService;
     private readonly ISearchService _searchService;
@@ -42,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly IShellSessionService _shellSession;
     private readonly ILogger? _logger;
     private readonly IDispatcherService? _dispatcher;
+    private readonly PlaylistMosaicService? _mosaicService;
     private readonly Helpers.Debouncer _searchDebouncer = new(TimeSpan.FromMilliseconds(300));
     private readonly Dictionary<string, CachedSearchSuggestions> _querySuggestionCache = new(StringComparer.OrdinalIgnoreCase);
     private CachedSearchSuggestions? _recentSearchesCache;
@@ -157,6 +163,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public ShellViewModel(
         ILibraryDataService libraryDataService,
+        IPlaylistCacheService playlistCache,
         IThemeService themeService,
         INotificationService notificationService,
         ISearchService searchService,
@@ -164,9 +171,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         AppModel appModel,
         IShellSessionService shellSession,
         IDispatcherService? dispatcher = null,
-        ILogger<ShellViewModel>? logger = null)
+        ILogger<ShellViewModel>? logger = null,
+        PlaylistMosaicService? mosaicService = null)
     {
         _libraryDataService = libraryDataService;
+        _playlistCache = playlistCache;
         _themeService = themeService;
         _notificationService = notificationService;
         _searchService = searchService;
@@ -175,6 +184,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _shellSession = shellSession;
         _dispatcher = dispatcher;
         _logger = logger;
+        _mosaicService = mosaicService;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
@@ -219,11 +229,33 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             });
         });
 
+        // Initial library load must wait for auth+sync to complete — rootlist lookup
+        // requires an authenticated username, so firing this from the constructor
+        // races the auth pipeline and produces a spurious "Failed to load library data"
+        // error on every cold start.
+        WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncCompletedMessage>(this, (_, _) =>
+        {
+            _dispatcher?.TryEnqueue(() => _ = LoadLibraryDataAsync());
+        });
+
+        // On sign-out, wipe the signed-in user's sidebar state (badges + playlists)
+        // so the next user doesn't briefly see stale counts/items before their sync lands.
+        WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (_, msg) =>
+        {
+            if (msg.Value is AuthStatus.LoggedOut or AuthStatus.SessionExpired)
+            {
+                _dispatcher?.TryEnqueue(() =>
+                {
+                    _logger?.LogDebug("Sidebar: auth status {Status} — clearing library state", msg.Value);
+                    ClearLibrarySidebar();
+                });
+            }
+        });
+
         InitializeSidebarItems();
         ApplyPersistedSidebarState();
         TabInstances.CollectionChanged += OnTabInstancesCollectionChanged;
         InitializeTabSleepTimer();
-        _ = LoadLibraryDataAsync();
     }
 
     private void OnNotificationServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -272,30 +304,54 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void ClearLibrarySidebar()
+    {
+        ClearLibraryBadges();
+
+        var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
+        if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
+        {
+            playlistChildren.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Cancelled on every new OnPlaylistsChanged tick so bursts of dealer events collapse
+    /// into a single rebuild ~<see cref="PlaylistRefreshDebounceMs"/> after the last event.
+    /// Rebuilding the sidebar is expensive (N SidebarItemModels + connector strips); the
+    /// previous "rebuild on every event" path was the main culprit for app-wide slowness.
+    /// </summary>
+    private CancellationTokenSource? _playlistRefreshCts;
+    private const int PlaylistRefreshDebounceMs = 250;
+
     private void OnLibraryDataChanged(object? sender, EventArgs e)
     {
-        _dispatcher?.TryEnqueue(async () =>
-        {
-            try
-            {
-                _logger?.LogDebug("Library data changed — refreshing sidebar");
-                await LoadLibraryDataAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Failed to refresh library data after change");
-            }
-        });
+        // DataChanged fires for lots of unrelated things (liked-songs save state, Dealer
+        // deltas on non-playlist topics, etc). Previously we unconditionally rebuilt the
+        // WHOLE sidebar on every one of these events, which was the primary slowness cause.
+        // Now: only playlists-specific signals rebuild the sidebar via OnPlaylistsChanged,
+        // and DataChanged is a no-op here. Other VMs (PlaylistViewModel, LikedSongsViewModel)
+        // still listen to DataChanged for their own page-scoped refreshes — that's fine.
     }
 
     private void OnPlaylistsChanged(object? sender, EventArgs e)
     {
+        // Debounce: cancel any pending refresh and schedule a new one. Rapid dealer bursts
+        // (e.g. five Add-track events in 50ms on a collaborative playlist) collapse into
+        // one rebuild after the quiet period.
+        var previous = Interlocked.Exchange(ref _playlistRefreshCts, new CancellationTokenSource());
+        previous?.Cancel();
+        previous?.Dispose();
+
+        var token = _playlistRefreshCts!.Token;
         _dispatcher?.TryEnqueue(async () =>
         {
             try
             {
+                await Task.Delay(PlaylistRefreshDebounceMs, token);
                 await RefreshPlaylistsAsync();
             }
+            catch (OperationCanceledException) { /* superseded by a newer event */ }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Failed to handle playlists change event");
@@ -308,24 +364,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var playlists = await _libraryDataService.GetUserPlaylistsAsync();
+            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
+            var treeTask = _playlistCache.GetRootlistTreeAsync();
 
-            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
-            if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
-            {
-                playlistChildren.Clear();
-                foreach (var playlist in playlists)
-                {
-                    playlistChildren.Add(new SidebarItemModel
-                    {
-                        Text = playlist.Name,
-                        IconSource = new FontIconSource { Glyph = "\uE8FD" },
-                        Tag = playlist.Id,
-                        BadgeCount = playlist.TrackCount,
-                        DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
-                    });
-                }
-            }
+            await Task.WhenAll(playlistsTask, treeTask);
+            PopulatePlaylistsSidebar(await playlistsTask, await treeTask);
         }
         catch (Exception ex)
         {
@@ -344,6 +387,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Text = AppLocalization.GetString("Shell_SidebarPinned"),
                 Tag = "Pinned",
                 IsExpanded = true,
+                IsSectionHeader = true,
                 ShowEmptyPlaceholder = true,
                 Children = new ObservableCollection<SidebarItemModel>
                 {
@@ -356,6 +400,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Text = AppLocalization.GetString("Shell_SidebarYourLibrary"),
                 Tag = "YourLibrary",
                 IsExpanded = true,
+                IsSectionHeader = true,
                 Children = new ObservableCollection<SidebarItemModel>
                 {
                     new SidebarItemModel
@@ -387,6 +432,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Text = AppLocalization.GetString("Shell_SidebarPlaylists"),
                 Tag = "Playlists",
                 IsExpanded = true,
+                IsSectionHeader = true,
                 ShowEmptyPlaceholder = true,
                 EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarNoPlaylists"),
                 ItemDecorator = CreatePlaylistsAddButton(),
@@ -405,8 +451,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         foreach (var group in SidebarItems)
         {
-            if (group.Tag is string tag && _shellSession.TryGetSidebarGroupExpansion(tag, out var isExpanded))
-                group.IsExpanded = isExpanded;
+            ApplyPersistedSidebarState(group);
         }
 
         if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
@@ -415,20 +460,39 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private SidebarItemModel? FindSidebarItemByTag(string tag)
     {
-        foreach (var item in SidebarItems)
-        {
-            if (string.Equals(item.Tag, tag, StringComparison.Ordinal))
-                return item;
+        return FindSidebarItemByTag(SidebarItems, tag);
+    }
 
-            if (item.Children is IEnumerable<SidebarItemModel> children)
-            {
-                var child = children.FirstOrDefault(x => string.Equals(x.Tag, tag, StringComparison.Ordinal));
-                if (child != null)
-                    return child;
-            }
+    /// <summary>
+    /// Sync the sidebar selection to the playlist identified by <paramref name="uriOrId"/>.
+    /// Accepts a bare playlist id or a Spotify URI (<c>spotify:playlist:xxx</c>); the id
+    /// segment after the last <c>:</c> is extracted before looking up the sidebar row.
+    /// Clears the selection when no sidebar row matches — e.g. a search-opened playlist
+    /// that isn't in the user's library.
+    /// </summary>
+    public void SyncSidebarSelectionToPlaylist(object? uriOrId)
+    {
+        if (uriOrId is not string s || string.IsNullOrWhiteSpace(s))
+        {
+            SelectedSidebarItem = null;
+            return;
         }
 
-        return null;
+        var trimmed = s.Trim();
+        var match = FindSidebarItemByTag(trimmed);
+        if (match is null)
+        {
+            var lastColon = trimmed.LastIndexOf(':');
+            var id = lastColon >= 0 ? trimmed[(lastColon + 1)..] : trimmed;
+
+            if (!string.Equals(id, trimmed, StringComparison.Ordinal))
+                match = FindSidebarItemByTag(id);
+
+            if (match is null && !trimmed.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+                match = FindSidebarItemByTag($"spotify:playlist:{id}");
+        }
+
+        SelectedSidebarItem = match;
     }
 
     private void OnSidebarGroupPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -439,6 +503,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
+        // Folders: swap Fluent Folder (E8B7) ↔ FolderOpen (E838) so the tree glyph matches state.
+        // FontFamily re-pinned on each replacement — without it the new IconSource
+        // inherits ContentControlThemeFontFamily (a text font) and the glyph renders as tofu.
+        if (group.IsFolder)
+            group.IconSource = new FontIconSource
+            {
+                Glyph = group.IsExpanded ? FluentGlyphs.FolderOpen : FluentGlyphs.Folder,
+                FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets")
+            };
 
         _shellSession.UpdateSidebarGroupExpansion(group.Tag!, group.IsExpanded);
     }
@@ -527,11 +601,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // Load stats and playlists in parallel
             var statsTask = _libraryDataService.GetStatsAsync();
             var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
+            var treeTask = _playlistCache.GetRootlistTreeAsync();
 
-            await Task.WhenAll(statsTask, playlistsTask);
+            await Task.WhenAll(statsTask, playlistsTask, treeTask);
 
             var stats = await statsTask;
-            var playlists = await playlistsTask;
 
             // Update "Your Library" section badges
             var librarySection = SidebarItems.FirstOrDefault(x => x.Tag == "YourLibrary");
@@ -543,36 +617,187 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 var artistsItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "Artists");
                 if (artistsItem != null) artistsItem.BadgeCount = stats.ArtistCount;
 
-                var likedItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "LikedSongs");
-                if (likedItem != null) likedItem.BadgeCount = stats.LikedSongsCount;
+                    var likedItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "LikedSongs");
+                    if (likedItem != null) likedItem.BadgeCount = stats.LikedSongsCount;
             }
 
-            // Update "Playlists" section
-            var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
-            if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
-            {
-                playlistChildren.Clear();
-                foreach (var playlist in playlists)
-                {
-                    playlistChildren.Add(new SidebarItemModel
-                    {
-                        Text = playlist.Name,
-                        IconSource = new FontIconSource { Glyph = "\uE8FD" },
-                        Tag = playlist.Id,
-                        BadgeCount = playlist.TrackCount,
-                        DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
-                    });
-                }
-
-                if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
-                    SelectedSidebarItem = FindSidebarItemByTag(selectedTag);
-            }
+            PopulatePlaylistsSidebar(await playlistsTask, await treeTask);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to load library data");
             ShowNotification(AppLocalization.GetString("Shell_LoadLibraryFailed"));
         }
+    }
+
+    private void PopulatePlaylistsSidebar(
+        IReadOnlyList<PlaylistSummaryDto> playlists,
+        RootlistTree tree)
+    {
+        // Walks the tree built by RootlistTreeBuilder — which already handles folder
+        // nesting (ID-matched pop, self-healed unclosed folders) — rather than re-parsing
+        // the flat rootlist items here. Previous flat walker blindly popped on end-group
+        // which corrupted nesting whenever IDs didn't match one-to-one.
+        var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
+        if (playlistsSection?.Children is not ObservableCollection<SidebarItemModel> playlistChildren)
+            return;
+
+        playlistChildren.Clear();
+
+        var playlistLookup = playlists.ToDictionary(x => x.Id, StringComparer.Ordinal);
+
+        // Top-level rows (root playlists + root folders) are at depth 0; folders push +1 per nesting level.
+        AppendNodeChildren(tree.Root, playlistChildren, playlistLookup, depth: 0);
+
+        ApplyPersistedSidebarState(playlistsSection);
+
+        if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
+            SelectedSidebarItem = FindSidebarItemByTag(selectedTag);
+    }
+
+    private SidebarItemModel BuildFolderSidebarItem(
+        RootlistNode folder,
+        IReadOnlyDictionary<string, PlaylistSummaryDto> playlistLookup,
+        int depth)
+    {
+        var children = new ObservableCollection<SidebarItemModel>();
+        AppendNodeChildren(folder, children, playlistLookup, depth + 1);
+
+        var folderItem = new SidebarItemModel
+        {
+            Text = string.IsNullOrWhiteSpace(folder.Name)
+                ? AppLocalization.GetString("Shell_NewFolder")
+                : folder.Name,
+            // Pin the font explicitly — otherwise the glyph falls through to whatever
+            // ContentControlThemeFontFamily resolves to, which is _not_ a symbol font and
+            // renders E838/E8B7 as tofu. Segoe Fluent Icons ships with Windows 11; MDL2
+            // Assets is the Windows-10 fallback (both contain these codepoints).
+            IconSource = new FontIconSource
+            {
+                Glyph = FluentGlyphs.FolderOpen,
+                FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets")
+            },
+            Tag = $"folder:{folder.Id}",
+            IsExpanded = true,
+            Depth = depth,
+            IsFolder = true,
+            ShowEmptyPlaceholder = true,
+            EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarFolderEmpty"),
+            Children = children
+        };
+        folderItem.PropertyChanged += OnSidebarGroupPropertyChanged;
+        ApplyPersistedSidebarState(folderItem);
+        return folderItem;
+    }
+
+    /// <summary>
+    /// Walks <see cref="RootlistNode.Children"/> in arrival order, emitting playlist or
+    /// folder sidebar items into <paramref name="target"/>. Stamps each row with its
+    /// <see cref="SidebarItemModel.Depth"/>, which the template binds through the
+    /// DepthToThicknessConverter (20 px/level) for row indentation.
+    /// </summary>
+    private void AppendNodeChildren(
+        RootlistNode node,
+        ObservableCollection<SidebarItemModel> target,
+        IReadOnlyDictionary<string, PlaylistSummaryDto> playlistLookup,
+        int depth)
+    {
+        foreach (var child in node.Children)
+        {
+            switch (child)
+            {
+                case RootlistChildPlaylist playlist:
+                    if (playlistLookup.TryGetValue(playlist.Uri, out var summary))
+                    {
+                        var item = CreatePlaylistSidebarItem(summary);
+                        item.Depth = depth;
+                        target.Add(item);
+                    }
+                    break;
+
+                case RootlistChildFolder folder:
+                    target.Add(BuildFolderSidebarItem(folder.Folder, playlistLookup, depth));
+                    break;
+            }
+        }
+    }
+
+    private SidebarItemModel CreatePlaylistSidebarItem(PlaylistSummaryDto playlist)
+    {
+        var item = new SidebarItemModel
+        {
+            Text = playlist.Name,
+            IconSource = CreatePlaylistIconSource(playlist),
+            Tag = playlist.Id,
+            BadgeCount = playlist.TrackCount,
+            DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
+        };
+
+        // Spotify "custom" playlists (auto-named, e.g. "내 플레이리스트 #15") arrive either with
+        // ImageUrl == null or ImageUrl == "spotify:mosaic:id1:id2:id3:id4". Neither is loadable
+        // as a single image — CreatePlaylistIconSource above seats the placeholder glyph, and
+        // we attach a lazy loader so PlaylistMosaicService can compose a 2×2 bitmap and replace
+        // IconSource the first time the row is realized.
+        if (_mosaicService is { } service
+            && (string.IsNullOrEmpty(playlist.ImageUrl) || SpotifyImageHelper.IsMosaicUri(playlist.ImageUrl)))
+        {
+            var playlistId = playlist.Id;
+            var hint = playlist.ImageUrl;
+            item.LazyIconSourceLoader = ct => service.BuildMosaicAsync(playlistId, hint, ct);
+        }
+
+        return item;
+    }
+
+    private static IconSource CreatePlaylistIconSource(PlaylistSummaryDto playlist)
+    {
+        // spotify:mosaic: parses as a valid Uri (its scheme is "spotify") but BitmapImage can't
+        // load it — handle that case before TryCreate or we'd seat a broken ImageIconSource.
+        if (!SpotifyImageHelper.IsMosaicUri(playlist.ImageUrl)
+            && Uri.TryCreate(playlist.ImageUrl, UriKind.Absolute, out var imageUri)
+            && (imageUri.Scheme == Uri.UriSchemeHttp || imageUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return new ImageIconSource
+            {
+                ImageSource = new BitmapImage
+                {
+                    UriSource = imageUri,
+                    DecodePixelWidth = 44
+                }
+            };
+        }
+
+        return new FontIconSource { Glyph = "\uE8FD" };
+    }
+
+    private void ApplyPersistedSidebarState(SidebarItemModel item)
+    {
+        if (item.Tag is string tag && _shellSession.TryGetSidebarGroupExpansion(tag, out var isExpanded))
+            item.IsExpanded = isExpanded;
+
+        if (item.Children is IEnumerable<SidebarItemModel> children)
+        {
+            foreach (var child in children)
+                ApplyPersistedSidebarState(child);
+        }
+    }
+
+    private SidebarItemModel? FindSidebarItemByTag(IEnumerable<SidebarItemModel> items, string tag)
+    {
+        foreach (var item in items)
+        {
+            if (string.Equals(item.Tag, tag, StringComparison.Ordinal))
+                return item;
+
+            if (item.Children is IEnumerable<SidebarItemModel> children)
+            {
+                var match = FindSidebarItemByTag(children, tag);
+                if (match != null)
+                    return match;
+            }
+        }
+
+        return null;
     }
 
     private void OnTabInstancesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -753,12 +978,34 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (IsRightPanelOpen && RightPanelMode == mode)
         {
             IsRightPanelOpen = false;
+            if (mode == RightPanelMode.TrackDetails)
+                SelectedTrackForDetails = null;
         }
         else
         {
             RightPanelMode = mode;
             IsRightPanelOpen = true;
         }
+    }
+
+    /// <summary>
+    /// Selected <see cref="ITrackItem"/> feeding the <see cref="RightPanelMode.TrackDetails"/>
+    /// tab. Set via <see cref="ShowTrackDetails"/> when a TrackDataGrid row's details button
+    /// fires; cleared when the panel is toggled off for that mode.
+    /// </summary>
+    [ObservableProperty]
+    private Wavee.UI.WinUI.Data.Contracts.ITrackItem? _selectedTrackForDetails;
+
+    /// <summary>
+    /// Open the right panel with the temporary "Track details" tab showing metadata for
+    /// <paramref name="track"/>. No-op when <paramref name="track"/> is null.
+    /// </summary>
+    public void ShowTrackDetails(Wavee.UI.WinUI.Data.Contracts.ITrackItem? track)
+    {
+        if (track is null) return;
+        SelectedTrackForDetails = track;
+        RightPanelMode = RightPanelMode.TrackDetails;
+        IsRightPanelOpen = true;
     }
 
     partial void OnSelectedSidebarItemChanged(ISidebarItemModel? value)
@@ -1066,6 +1313,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _searchDebouncer.Dispose();
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
+
+        // Cancel any in-flight debounced playlist refresh so we don't touch disposed state.
+        var pending = Interlocked.Exchange(ref _playlistRefreshCts, null);
+        pending?.Cancel();
+        pending?.Dispose();
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
         WeakReferenceMessenger.Default.Unregister<ToggleRightPanelMessage>(this);
         TabInstances.CollectionChanged -= OnTabInstancesCollectionChanged;

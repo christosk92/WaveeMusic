@@ -1,3 +1,4 @@
+using Wavee.Core.Playlists;
 using Wavee.Core.Storage.Abstractions;
 
 namespace Wavee.Core.Storage.Entities;
@@ -29,6 +30,11 @@ public sealed record PlaylistCacheEntry : ICacheEntry
     public string? OwnerUri { get; init; }
 
     /// <summary>
+    /// Owner username.
+    /// </summary>
+    public string? OwnerUsername { get; init; }
+
+    /// <summary>
     /// Owner display name.
     /// </summary>
     public string? OwnerName { get; init; }
@@ -57,6 +63,41 @@ public sealed record PlaylistCacheEntry : ICacheEntry
     /// Number of followers.
     /// </summary>
     public int? FollowerCount { get; init; }
+
+    /// <summary>
+    /// Opaque playlist revision bytes from the playlist v2 API.
+    /// </summary>
+    public byte[]? Revision { get; init; }
+
+    /// <summary>
+    /// JSON-serialized ordered playlist items.
+    /// </summary>
+    public string? OrderedItemsJson { get; init; }
+
+    /// <summary>
+    /// Whether OrderedItemsJson is a complete snapshot of playlist contents.
+    /// </summary>
+    public bool HasContentsSnapshot { get; init; }
+
+    /// <summary>
+    /// Cached base permission for the current user.
+    /// </summary>
+    public CachedPlaylistBasePermission BasePermission { get; init; } = CachedPlaylistBasePermission.Viewer;
+
+    /// <summary>
+    /// JSON-serialized capability snapshot.
+    /// </summary>
+    public string? CapabilitiesJson { get; init; }
+
+    /// <summary>
+    /// Whether the owner deleted the playlist while the user still has access.
+    /// </summary>
+    public bool DeletedByOwner { get; init; }
+
+    /// <summary>
+    /// Whether abuse reporting is enabled for the playlist.
+    /// </summary>
+    public bool AbuseReportingEnabled { get; init; }
 
     /// <inheritdoc />
     public DateTimeOffset CachedAt { get; init; } = DateTimeOffset.UtcNow;

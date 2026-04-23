@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     mc:Ignorable="d">
 
     <Button
@@ -89,17 +90,10 @@
                                 Foreground="White"
                                 Visibility="Collapsed"
                                 Click="PlayButton_Click">
-                            <Grid>
-                                <FontIcon x:Name="PlayButtonIcon"
-                                          Glyph="&#xE768;"
-                                          FontSize="14"/>
-                                <ProgressRing x:Name="PlayButtonSpinner"
-                                              Width="16"
-                                              Height="16"
-                                              IsActive="False"
-                                              Visibility="Collapsed"
-                                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                            </Grid>
+                            <playback:PlaybackActionContent x:Name="PlayButtonContent"
+                                                           IconSize="14"
+                                                           SpinnerSize="16"
+                                                           ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                         </Button>
                     </Grid>
                 </Grid>

@@ -8,13 +8,24 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
+    xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d"
     Background="Transparent">
 
     <Grid>
+        <tdg:TrackDataGrid
+            x:Name="TrackGrid"
+            PageKey="liked"
+            ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
+            PlayCommand="{x:Bind ViewModel.PlayTrackCommand}" />
+
+        <!-- Legacy TrackListView kept hidden — DateAddedFormatter hookup in the
+             code-behind still binds to this instance. Remove when AlbumPage + this
+             view are fully migrated and the old control is retired. -->
         <trackList:TrackListView
             x:Name="TrackList"
+            Visibility="Collapsed"
             ViewModel="{x:Bind ViewModel, Mode=OneWay}"
             ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
             IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"

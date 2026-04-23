@@ -33,6 +33,9 @@
                 <Border Grid.Column="0" Width="40" Height="40" CornerRadius="4"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Grid>
+                        <Border CornerRadius="4"
+                                Background="{x:Bind ArtworkTintBrush, Mode=OneWay}"
+                                Visibility="{x:Bind ArtworkTintVisibility, Mode=OneWay}"/>
                         <!-- Music-note placeholder sits behind the image; the image covers
                              it once it loads. When ImageUrl is null (queue track wasn't
                              enriched), this is what the user sees instead of an empty tile. -->

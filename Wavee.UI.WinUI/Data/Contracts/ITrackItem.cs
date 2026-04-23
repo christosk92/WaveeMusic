@@ -87,4 +87,18 @@ public interface ITrackItem : INotifyPropertyChanged
     /// Mutable — updated by the library save service.
     /// </summary>
     bool IsLiked { get; set; }
+
+    /// <summary>
+    /// Optional "added on" relative/absolute display string. Present on
+    /// <c>PlaylistTrackDto</c> and <c>LikedSongDto</c>; empty for album-track-style DTOs.
+    /// Exposed through the interface so <c>TrackDataGrid</c>'s Date Added column can
+    /// bind one path without per-DTO type checks.
+    /// </summary>
+    string AddedAtFormatted => string.Empty;
+
+    /// <summary>
+    /// Optional formatted play count. Present on <c>AlbumTrackDto</c> (e.g. "12.3M").
+    /// Empty when the DTO doesn't track plays.
+    /// </summary>
+    string PlayCountFormatted => string.Empty;
 }

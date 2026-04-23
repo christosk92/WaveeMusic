@@ -85,6 +85,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         OnPropertyChanged(nameof(IsExplicit));
         OnPropertyChanged(nameof(DurationFormatted));
         OnPropertyChanged(nameof(IsLiked));
+        OnPropertyChanged(nameof(AddedAtFormatted));
     }
 
     // ITrackItem — delegate to Data when loaded, safe defaults when not
@@ -109,6 +110,9 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public string PlayCountFormatted =>
         Data is Data.DTOs.AlbumTrackDto album ? album.PlayCountFormatted :
         Data is ArtistTopTrackVm artist ? artist.PlayCountFormatted : "";
+
+    public string AddedAtFormatted =>
+        Data is Data.DTOs.PlaylistTrackDto p ? p.AddedAtFormatted : "";
 
     public static LazyTrackItem Loaded(string id, int index, ITrackItem data) => new()
     {

@@ -207,15 +207,41 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
 
     public async Task LogoutAsync(CancellationToken ct = default)
     {
-        CurrentUser = null;
-        AccountType = null;
+        // 1. Stop Spotify playback first so the engine has no live Spotify streams
+        //    when we disconnect the session.
+        if (_playbackStateService != null
+            && _playbackStateService.CurrentTrackId?.StartsWith("spotify:") == true)
+        {
+            _playbackStateService.PlayPause();
+        }
 
-        // Clear cached credentials
+        // 2. Tear down the playback engine before we disconnect the session — the engine
+        //    uses the session for AudioKey/CDN requests.
+        Helpers.Application.AppLifecycleHelper.TeardownPlaybackEngine();
+
+        // 3. Disconnect the live AP/dealer connection so the old user's session is
+        //    actually terminated (not just "logged out" from the UI's POV).
+        if (_session != null && _session.IsConnected())
+        {
+            try
+            {
+                await _session.DisconnectAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to disconnect session during sign-out");
+            }
+        }
+
+        // 4. Clear ALL cached credentials + the last-username marker. Using
+        //    ClearCredentialsAsync(null) only targeted "default_credentials.dat" which
+        //    never existed — real files are keyed by username, so the old file would
+        //    survive and auto-restore on the next launch.
         if (_credentialsCache != null)
         {
             try
             {
-                await _credentialsCache.ClearCredentialsAsync(cancellationToken: ct);
+                await _credentialsCache.ClearAllCredentialsAsync(ct);
             }
             catch (Exception ex)
             {
@@ -223,17 +249,11 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
             }
         }
 
-        // Stop Spotify playback and remove Spotify tracks from queue
-        if (_playbackStateService != null)
-        {
-            if (_playbackStateService.CurrentTrackId?.StartsWith("spotify:") == true)
-            {
-                _playbackStateService.PlayPause(); // stop current Spotify track
-            }
-        }
-
-        // Tear down playback engine resources to avoid leaks on re-login
-        Helpers.Application.AppLifecycleHelper.TeardownPlaybackEngine();
+        // 5. Reset in-memory user state last — so any subscribers reacting to LoggedOut
+        //    see cleared user data when they inspect IAuthState.
+        CurrentUser = null;
+        AccountType = null;
+        ConnectionError = null;
 
         SetStatus(AuthStatus.LoggedOut);
     }

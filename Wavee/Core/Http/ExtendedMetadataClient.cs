@@ -226,6 +226,17 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             uncachedRequests.Select(r => (r.EntityUri, r.Extensions.Select(e => e.Kind))),
             cancellationToken);
 
+        // Merge cached entries into the response. Without this, a mixed batch
+        // (some cached, some not) returns only the uncached entries — callers
+        // iterating response.GetExtensionData see nulls for the cached keys,
+        // so SQLite-persisted data never surfaces to the caller. With the
+        // ExtendedMetadataStore batching unrelated requests into the same
+        // 50ms window, this bug was firing on nearly every batch.
+        if (cachedData.Count > 0)
+        {
+            MergeCachedIntoResponse(response, cachedData);
+        }
+
         return response;
     }
 
@@ -672,6 +683,39 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         }
     }
 
+    // Merges cached (uri, kind) -> bytes entries into an existing response
+    // whose ExtendedMetadata arrays were populated from a network fetch of
+    // uncached keys. Preserves existing arrays for kinds already present and
+    // appends new EntityExtensionData entries for cached URIs; creates a new
+    // EntityExtensionDataArray when a kind appears only in cachedData.
+    private static void MergeCachedIntoResponse(
+        BatchedExtensionResponse response,
+        Dictionary<(string, ExtensionKind), byte[]> cachedData)
+    {
+        foreach (var kindGroup in cachedData.GroupBy(kvp => kvp.Key.Item2))
+        {
+            var extArray = response.ExtendedMetadata
+                .FirstOrDefault(a => a.ExtensionKind == kindGroup.Key);
+            if (extArray is null)
+            {
+                extArray = new EntityExtensionDataArray { ExtensionKind = kindGroup.Key };
+                response.ExtendedMetadata.Add(extArray);
+            }
+
+            foreach (var ((entityUri, _), data) in kindGroup)
+            {
+                extArray.ExtensionData.Add(new EntityExtensionData
+                {
+                    EntityUri = entityUri,
+                    ExtensionData = new Google.Protobuf.WellKnownTypes.Any
+                    {
+                        Value = ByteString.CopyFrom(data)
+                    }
+                });
+            }
+        }
+    }
+
     private static BatchedExtensionResponse BuildResponseFromCache(
         Dictionary<(string, ExtensionKind), byte[]> cachedData)
     {
@@ -692,11 +736,16 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
             foreach (var ((entityUri, _), data) in kindGroup)
             {
+                // Match the network path's Any shape: .Value holds the raw Track/Album/etc.
+                // bytes directly. Wrapping in BytesValue made UnpackAs<T> parse BytesValue
+                // wire bytes as T and silently fail, which blanked cached rows.
                 var extData = new EntityExtensionData
                 {
                     EntityUri = entityUri,
-                    ExtensionData = Google.Protobuf.WellKnownTypes.Any.Pack(
-                        new Google.Protobuf.WellKnownTypes.BytesValue { Value = ByteString.CopyFrom(data) })
+                    ExtensionData = new Google.Protobuf.WellKnownTypes.Any
+                    {
+                        Value = ByteString.CopyFrom(data)
+                    }
                 };
                 extArray.ExtensionData.Add(extData);
             }

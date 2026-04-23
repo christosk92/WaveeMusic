@@ -1458,11 +1458,22 @@ public sealed class SpClient : ISpClient
 
         for (int attempt = 0; attempt < MaxRetries; attempt++)
         {
+            // If the caller's token is already cancelled on a retry pass,
+            // skip straight to the throw. Continuing the loop here would
+            // fire another SendAsync → another cancellation → another
+            // first-chance exception on top of the one the caller already
+            // saw. One OCE per cancelled request instead of MaxRetries.
+            if (cancellationToken.IsCancellationRequested)
+                cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 var response = await _httpClient.SendAsync(request, cancellationToken);
 
-                // Check for retryable status codes
+                // Only these are retryable status codes. Every other
+                // response (including 4xx NotFound / Unauthorized / Forbidden)
+                // is returned to the caller immediately so it can throw a
+                // specific SpClientException with the right reason.
                 if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
@@ -1481,6 +1492,13 @@ public sealed class SpClient : ISpClient
                 }
 
                 return response;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Caller cancelled the request mid-flight — propagate without
+                // retrying. Wrapping this in a retry loop turns one cancel
+                // into MaxRetries first-chance OCE throws under a debugger.
+                throw;
             }
             catch (HttpRequestException ex)
             {

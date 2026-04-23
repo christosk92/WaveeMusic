@@ -33,6 +33,7 @@
                             <SolidColorBrush x:Key="App.Theme.Content.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorDefault}"/>
                             <SolidColorBrush x:Key="App.Theme.Player.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorSecondary}"/>
                             <SolidColorBrush x:Key="App.Theme.AddressBar.BackgroundBrush" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.FileArea.BackgroundBrush" Color="#C0FCFCFC"/>
                             <SolidColorBrush x:Key="App.Theme.IconBaseBrush" Color="{StaticResource TextFillColorPrimary}"/>
 
                             <!-- TabView overrides - CRITICAL for styling -->
@@ -40,6 +41,15 @@
                             <SolidColorBrush x:Key="TabViewItemHeaderBackgroundSelected" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
                             <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPressed" Color="{StaticResource SubtleFillColorTertiary}"/>
                             <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPointerOver" Color="{StaticResource SubtleFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForeground" Color="{StaticResource TextFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundPointerOver" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundPressed" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundSelected" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundDisabled" Color="{StaticResource TextFillColorDisabled}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForeground" Color="{StaticResource TextFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForegroundPointerOver" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForegroundPressed" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForegroundSelected" Color="{StaticResource TextFillColorPrimary}"/>
 
                             <!-- Accent -->
                             <Color x:Key="App.Theme.AccentColor">#1DB954</Color>
@@ -91,6 +101,7 @@
                             <SolidColorBrush x:Key="App.Theme.Content.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorDefault}"/>
                             <SolidColorBrush x:Key="App.Theme.Player.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorSecondary}"/>
                             <SolidColorBrush x:Key="App.Theme.AddressBar.BackgroundBrush" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
+                            <SolidColorBrush x:Key="App.Theme.FileArea.BackgroundBrush" Color="{StaticResource CardBackgroundFillColorDefault}"/>
                             <SolidColorBrush x:Key="App.Theme.IconBaseBrush" Color="{StaticResource TextFillColorPrimary}"/>
 
                             <!-- TabView overrides - CRITICAL for styling -->
@@ -98,6 +109,15 @@
                             <SolidColorBrush x:Key="TabViewItemHeaderBackgroundSelected" Color="{StaticResource LayerOnMicaBaseAltFillColorDefault}"/>
                             <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPressed" Color="{StaticResource SubtleFillColorTertiary}"/>
                             <SolidColorBrush x:Key="TabViewItemHeaderBackgroundPointerOver" Color="{StaticResource SubtleFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForeground" Color="{StaticResource TextFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundPointerOver" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundPressed" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundSelected" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemHeaderForegroundDisabled" Color="{StaticResource TextFillColorDisabled}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForeground" Color="{StaticResource TextFillColorSecondary}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForegroundPointerOver" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForegroundPressed" Color="{StaticResource TextFillColorPrimary}"/>
+                            <SolidColorBrush x:Key="TabViewItemIconForegroundSelected" Color="{StaticResource TextFillColorPrimary}"/>
 
                             <!-- Accent -->
                             <Color x:Key="App.Theme.AccentColor">#1DB954</Color>
@@ -149,6 +169,7 @@
                             <SolidColorBrush x:Key="App.Theme.Content.BackgroundBrush" Color="Transparent"/>
                             <SolidColorBrush x:Key="App.Theme.Player.BackgroundBrush" Color="Transparent"/>
                             <SolidColorBrush x:Key="App.Theme.AddressBar.BackgroundBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="App.Theme.FileArea.BackgroundBrush" Color="Transparent"/>
                             <SolidColorBrush x:Key="App.Theme.IconBaseBrush" Color="{StaticResource SystemColorButtonTextColor}"/>
 
                             <!-- TabView overrides -->
@@ -224,6 +245,7 @@
             <converters:BoolToBackgroundConverter x:Key="BoolToBackgroundConverter" />
             <converters:BoolToBackgroundConverter x:Key="InverseBoolToBackgroundConverter" Invert="True" />
             <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
+            <converters:DepthToThicknessConverter x:Key="DepthToThicknessConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

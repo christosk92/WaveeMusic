@@ -116,7 +116,8 @@ public sealed partial class SearchResultHeroCard : UserControl
             SubtitleText.Inlines.Clear();
             TypeTagText.Text = string.Empty;
             ArtworkPlaceholderIcon.Glyph = string.Empty;
-            PlayActionIcon.Glyph = string.Empty;
+            if (PlayActionContent != null)
+                PlayActionContent.IdleGlyph = string.Empty;
             ArtworkImage.Source = null;
             ArtistAvatar.ProfilePicture = null;
             _trackId = null;
@@ -132,7 +133,12 @@ public sealed partial class SearchResultHeroCard : UserControl
         SearchSubtitleBuilder.Build(SubtitleText, item);
         TypeTagText.Text = item.GetTypeTag();
         ArtworkPlaceholderIcon.Glyph = item.GetPlaceholderGlyph();
-        PlayActionIcon.Glyph = item.GetActionGlyph();
+        if (PlayActionContent != null)
+        {
+            PlayActionContent.IdleGlyph = item.GetActionGlyph();
+            PlayActionContent.IsPlaying = false;
+            PlayActionContent.IsPending = false;
+        }
 
         var isArtist = item.Type == SearchResultType.Artist;
         _isTrack = item.Type == SearchResultType.Track;

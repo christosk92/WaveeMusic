@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.DragDrop;
@@ -26,6 +28,9 @@ public class SidebarItemModel : ISidebarItemModel
     private bool _showEmptyPlaceholder;
     private string _emptyPlaceholderText = "Drop items here to pin";
     private int? _badgeCount;
+    private int _depth;
+    private bool _isFolder;
+    private bool _isSectionHeader;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -111,9 +116,50 @@ public class SidebarItemModel : ISidebarItemModel
     }
 
     /// <summary>
+    /// Nesting depth used to indent the row. 0 = top-level, +1 per folder we are inside of.
+    /// The sidebar template binds this through <c>DepthToThicknessConverter</c> (20 px/level)
+    /// to produce the row's left padding.
+    /// </summary>
+    public int Depth
+    {
+        get => _depth;
+        set => SetProperty(ref _depth, value);
+    }
+
+    /// <summary>
+    /// True if this row represents a folder (vs. a playlist or other leaf). The sidebar
+    /// template uses this together with <see cref="IsExpanded"/> to swap the folder glyph
+    /// between closed (E8B7) and open (E838), and to render the accent-tinted folder tile.
+    /// </summary>
+    public bool IsFolder
+    {
+        get => _isFolder;
+        set => SetProperty(ref _isFolder, value);
+    }
+
+    /// <summary>
+    /// True for top-level section-label groups (e.g. "Your Library", "Playlists", "Made For You").
+    /// The sidebar template renders these chromeless as all-caps tertiary labels — distinct
+    /// from interactive folder rows. User-created folders must leave this <c>false</c>.
+    /// </summary>
+    public bool IsSectionHeader
+    {
+        get => _isSectionHeader;
+        set => SetProperty(ref _isSectionHeader, value);
+    }
+
+    /// <summary>
     /// Per-instance predicate that determines whether this item accepts a given drag payload.
     /// </summary>
     public Func<IDragPayload, bool>? DropPredicate { get; init; }
+
+    /// <summary>
+    /// Optional lazy loader for the icon. When non-null, the SidebarItem control invokes
+    /// it the first time the row is realized, then sets it back to null so recycling
+    /// doesn't re-trigger the work. Used for Spotify custom-playlist mosaic icons that
+    /// require fetching playlist tracks before composing.
+    /// </summary>
+    public Func<CancellationToken, Task<IconSource?>>? LazyIconSourceLoader { get; set; }
 
     /// <inheritdoc />
     public bool CanDrop(IDragPayload payload) => DropPredicate?.Invoke(payload) ?? false;

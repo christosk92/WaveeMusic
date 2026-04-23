@@ -23,10 +23,13 @@ public sealed partial class HeroHeader : UserControl
     private CompositionColorGradientStop? _colorBlendBottomStop;
     private SpriteVisual? _colorBlendVisual;
     private CompositionLinearGradientBrush? _scrimBrush;
+    private CompositionColorGradientStop? _scrimTopStop;
+    private CompositionColorGradientStop? _scrimUpperStop;
     private CompositionColorGradientStop? _scrimMidStop;
     private CompositionColorGradientStop? _scrimBottomStop;
     private SpriteVisual? _scrimVisual;
     private ContainerVisual? _containerVisual;
+    private Visual? _overlayVisual;
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
     private bool _hasAnimated;
@@ -67,6 +70,10 @@ public sealed partial class HeroHeader : UserControl
     public static readonly DependencyProperty FadeEndProperty =
         DependencyProperty.Register(nameof(FadeEnd), typeof(double), typeof(HeroHeader),
             new PropertyMetadata(0.95));
+
+    public static readonly DependencyProperty ScrollFadeProgressProperty =
+        DependencyProperty.Register(nameof(ScrollFadeProgress), typeof(double), typeof(HeroHeader),
+            new PropertyMetadata(0.0, OnScrollFadeProgressChanged));
 
     public string? ImageUrl
     {
@@ -116,17 +123,74 @@ public sealed partial class HeroHeader : UserControl
         set => SetValue(FadeEndProperty, value);
     }
 
+    /// <summary>
+    /// 0..1 scroll progress from the host. 0 = hero fully visible, 1 = hero fully
+    /// faded. The first 15% is a dead-zone so a tiny scroll doesn't soften the hero;
+    /// past that, opacity drops linearly to 0. Drives both the image stack visual
+    /// and the overlay (artist info + buttons) so they fade together.
+    /// </summary>
+    public double ScrollFadeProgress
+    {
+        get => (double)GetValue(ScrollFadeProgressProperty);
+        set => SetValue(ScrollFadeProgressProperty, value);
+    }
+
     public HeroHeader()
     {
         InitializeComponent();
         ImageBorder.Loaded += OnImageBorderLoaded;
         Unloaded += OnUnloaded;
+        ActualThemeChanged += OnHeroActualThemeChanged;
         ApplyColor(ColorHex);
+    }
+
+    private void OnHeroActualThemeChanged(FrameworkElement sender, object args)
+    {
+        ApplyScrimForTheme(sender.ActualTheme);
+        ApplyColor(ColorHex);
+    }
+
+    private void ApplyScrimForTheme(ElementTheme theme, bool animate = true)
+    {
+        if (_scrimTopStop == null || _scrimUpperStop == null
+            || _scrimMidStop == null || _scrimBottomStop == null)
+        {
+            return;
+        }
+
+        // Inverted scrim by theme:
+        //   Dark   → black gradient (photo fades into dark page, white overlay text)
+        //   Light  → white gradient (photo fades into bright page, dark overlay text)
+        // White needs more alpha than black for equivalent perceptual weight, so the
+        // Light values are deliberately higher than the Dark values' magnitude.
+        var isDark = theme != ElementTheme.Light;
+        byte scrimR = isDark ? (byte)0   : (byte)255;
+        byte scrimG = isDark ? (byte)0   : (byte)255;
+        byte scrimB = isDark ? (byte)0   : (byte)255;
+        byte top    = 0;
+        byte upper  = isDark ? (byte)6   : (byte)0;
+        byte mid    = isDark ? (byte)22  : (byte)70;
+        byte bottom = isDark ? (byte)60  : (byte)180;
+
+        SetScrimStop(_scrimTopStop, scrimR, scrimG, scrimB, top, animate);
+        SetScrimStop(_scrimUpperStop, scrimR, scrimG, scrimB, upper, animate);
+        SetScrimStop(_scrimMidStop, scrimR, scrimG, scrimB, mid, animate);
+        SetScrimStop(_scrimBottomStop, scrimR, scrimG, scrimB, bottom, animate);
+    }
+
+    private void SetScrimStop(CompositionColorGradientStop stop, byte r, byte g, byte b, byte alpha, bool animate)
+    {
+        var color = Windows.UI.Color.FromArgb(alpha, r, g, b);
+        if (animate && _compositor != null)
+            AnimateColorStop(stop, color);
+        else
+            stop.Color = color;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ImageBorder.SizeChanged -= OnImageBorderSizeChanged;
+        ActualThemeChanged -= OnHeroActualThemeChanged;
 
         _imageSurface?.Dispose();
         _imageSurface = null;
@@ -143,6 +207,8 @@ public sealed partial class HeroHeader : UserControl
         _colorBlendBottomStop = null;
         _colorBlendVisual = null;
         _scrimBrush = null;
+        _scrimTopStop = null;
+        _scrimUpperStop = null;
         _scrimMidStop = null;
         _scrimBottomStop = null;
         _scrimVisual = null;
@@ -154,13 +220,42 @@ public sealed partial class HeroHeader : UserControl
             _containerVisual = null;
         }
 
+        _overlayVisual = null;
         _compositor = null;
     }
 
     private void OnImageBorderLoaded(object sender, RoutedEventArgs e)
     {
         SetupComposition();
+        _overlayVisual = ElementCompositionPreview.GetElementVisual(OverlayPresenter);
+        ApplyScrollFade();
         LoadImage(ImageUrl);
+    }
+
+    private static void OnScrollFadeProgressChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is HeroHeader header)
+            header.ApplyScrollFade();
+    }
+
+    private void ApplyScrollFade()
+    {
+        // Don't fight the pop-in animation — the image stack starts at Opacity=0
+        // and animates to 1; once that has run we own the steady-state opacity here.
+        if (!_hasAnimated)
+            return;
+
+        var progress = Math.Clamp(ScrollFadeProgress, 0.0, 1.0);
+        const double deadZone = 0.15;
+        var faded = progress <= deadZone
+            ? 0.0
+            : (progress - deadZone) / (1.0 - deadZone);
+        var opacity = (float)(1.0 - faded);
+
+        if (_containerVisual != null)
+            _containerVisual.Opacity = opacity;
+        if (_overlayVisual != null)
+            _overlayVisual.Opacity = opacity;
     }
 
     private void SetupComposition()
@@ -199,16 +294,17 @@ public sealed partial class HeroHeader : UserControl
         imageVisual.RelativeSizeAdjustment = Vector2.One;
         _containerVisual.Children.InsertAtBottom(imageVisual);
 
-        // 2. Color blend that softly accumulates toward the bottom but still shares
-        // the same fade mask as the image, so it disappears cleanly into the page.
+        // 2. Color blend: the artist's dominant color accents the lower third only.
+        // Keeps the top ~60% of the hero unblended so the actual photo reads as a
+        // photo, not a muddy tint-stack.
         _colorBlendBrush = _compositor.CreateLinearGradientBrush();
         _colorBlendBrush.StartPoint = new Vector2(0.5f, 0f);
         _colorBlendBrush.EndPoint = new Vector2(0.5f, 1f);
         _colorBlendBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
             Windows.UI.Color.FromArgb(0, 0, 0, 0)));
-        _colorBlendBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.30f,
+        _colorBlendBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.60f,
             Windows.UI.Color.FromArgb(0, 0, 0, 0)));
-        _colorBlendMidStop = _compositor.CreateColorGradientStop(0.70f,
+        _colorBlendMidStop = _compositor.CreateColorGradientStop(0.85f,
             Windows.UI.Color.FromArgb(0, 0, 0, 0));
         _colorBlendBottomStop = _compositor.CreateColorGradientStop(1f,
             Windows.UI.Color.FromArgb(0, 0, 0, 0));
@@ -241,19 +337,23 @@ public sealed partial class HeroHeader : UserControl
         highlightVisual.RelativeSizeAdjustment = Vector2.One;
         _containerVisual.Children.InsertAtTop(highlightVisual);
 
-        // 4. Dark readability scrim. This now shares the image fade mask too,
-        // so the entire hero stack eases out together instead of forming a band.
+        // 4. Readability scrim. Theme-aware: in Dark the overlay text needs a strong
+        // black gradient for legibility, in Light the page is already bright so a
+        // softer scrim keeps the image detail from drowning. Applied via
+        // ApplyScrimForTheme() below so runtime theme switches transition smoothly.
         _scrimBrush = _compositor.CreateLinearGradientBrush();
         _scrimBrush.StartPoint = new Vector2(0.5f, 0f);
         _scrimBrush.EndPoint = new Vector2(0.5f, 1f);
-        _scrimBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
-            Windows.UI.Color.FromArgb(8, 0, 0, 0)));
-        _scrimBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.32f,
-            Windows.UI.Color.FromArgb(10, 0, 0, 0)));
+        _scrimTopStop = _compositor.CreateColorGradientStop(0f,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        _scrimUpperStop = _compositor.CreateColorGradientStop(0.32f,
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
         _scrimMidStop = _compositor.CreateColorGradientStop(0.68f,
-            Windows.UI.Color.FromArgb(44, 0, 0, 0));
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
         _scrimBottomStop = _compositor.CreateColorGradientStop(1f,
-            Windows.UI.Color.FromArgb(110, 0, 0, 0));
+            Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        _scrimBrush.ColorStops.Add(_scrimTopStop);
+        _scrimBrush.ColorStops.Add(_scrimUpperStop);
         _scrimBrush.ColorStops.Add(_scrimMidStop);
         _scrimBrush.ColorStops.Add(_scrimBottomStop);
 
@@ -265,6 +365,10 @@ public sealed partial class HeroHeader : UserControl
         _scrimVisual.Brush = scrimMaskBrush;
         _scrimVisual.RelativeSizeAdjustment = Vector2.One;
         _containerVisual.Children.InsertAtTop(_scrimVisual);
+
+        // Seed scrim alphas for the current theme without animation; subsequent
+        // theme flips go through ApplyScrimForTheme(animate: true).
+        ApplyScrimForTheme(ActualTheme, animate: false);
 
         // On first load: start hidden for pop-in. On re-attach: show immediately.
         if (_hasAnimated)
@@ -391,8 +495,14 @@ public sealed partial class HeroHeader : UserControl
         else if (TintColorHelper.TryParseHex(hex, out var parsedColor))
         {
             var color = TintColorHelper.BrightenForTint(parsedColor);
-            midColor = Windows.UI.Color.FromArgb(60, color.R, color.G, color.B);
-            bottomColor = Windows.UI.Color.FromArgb(210, color.R, color.G, color.B);
+            // The color blend stacks on top of the image along with the fade mask,
+            // highlight, and scrim layers. Full-strength tint + scrim produces a
+            // muddy "washed" look, so we keep the artist color as an accent only.
+            var isLight = ActualTheme == ElementTheme.Light;
+            byte midAlpha = isLight ? (byte)14 : (byte)32;
+            byte bottomAlpha = isLight ? (byte)56 : (byte)130;
+            midColor = Windows.UI.Color.FromArgb(midAlpha, color.R, color.G, color.B);
+            bottomColor = Windows.UI.Color.FromArgb(bottomAlpha, color.R, color.G, color.B);
             targetOpacity = 1f;
         }
         else

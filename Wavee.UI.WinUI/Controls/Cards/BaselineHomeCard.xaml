@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     mc:Ignorable="d"
@@ -208,19 +209,10 @@
                         Style="{StaticResource AccentButtonStyle}"
                         Click="ContextPlayButton_Click"
                         Visibility="Collapsed">
-                        <Grid>
-                            <FontIcon
-                                x:Name="ContextPlayButtonIcon"
-                                Glyph="&#xE768;"
-                                FontSize="18"/>
-                            <ProgressRing
-                                x:Name="ContextPlayButtonSpinner"
-                                Width="20"
-                                Height="20"
-                                IsActive="False"
-                                Visibility="Collapsed"
-                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                        </Grid>
+                        <playback:PlaybackActionContent x:Name="ContextPlayButtonContent"
+                                                       IconSize="18"
+                                                       SpinnerSize="20"
+                                                       ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                     </Button>
                 </Grid>
             </Grid>
@@ -256,20 +248,10 @@
                     BorderThickness="1"
                     Click="TrackPlayButton_Click"
                     Visibility="Collapsed">
-                    <Grid>
-                        <FontIcon
-                            x:Name="TrackPlayButtonIcon"
-                            Glyph="&#xE768;"
-                            FontSize="15"
-                            Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
-                        <ProgressRing
-                            x:Name="PreviewPendingSpinner"
-                            Width="16"
-                            Height="16"
-                            IsActive="False"
-                            Visibility="Collapsed"
-                            Foreground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
-                    </Grid>
+                    <playback:PlaybackActionContent x:Name="TrackPlayButtonContent"
+                                                   IconSize="15"
+                                                   SpinnerSize="16"
+                                                   ActionForeground="{ThemeResource HomeBaselineCardOverlayPrimaryTextBrush}"/>
                 </Button>
             </Grid>
 

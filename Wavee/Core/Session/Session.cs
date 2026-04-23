@@ -1193,6 +1193,28 @@ public sealed class Session : ISession, IAsyncDisposable
     }
 
     /// <summary>
+    /// Explicitly disconnects the session (closes AP transport, stops the dispatcher, fires
+    /// <see cref="Disconnected"/>). Intended for sign-out — callers can re-authenticate
+    /// by calling <see cref="ConnectAsync"/> again with new credentials.
+    /// </summary>
+    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        await _connectLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsConnected()) return;
+
+            await DisconnectInternalAsync();
+            _connectionState.OnNext(SessionConnectionState.Disconnected);
+            OnDisconnected();
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
+    }
+
+    /// <summary>
     /// Reconnects to the Access Point and resets audio key sequence numbers.
     /// Used when AudioKey requests time out repeatedly (stale connection).
     /// </summary>

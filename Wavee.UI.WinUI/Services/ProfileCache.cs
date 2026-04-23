@@ -34,8 +34,11 @@ public sealed record ProfileSnapshot
 /// </summary>
 public sealed class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
 {
-    public ProfileCache(ILogger<ProfileCache>? logger = null) : base(logger)
+    private readonly IColorService _colorService;
+
+    public ProfileCache(IColorService colorService, ILogger<ProfileCache>? logger = null) : base(logger)
     {
+        _colorService = colorService;
     }
 
     protected override async Task<ProfileSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
@@ -57,11 +60,8 @@ public sealed class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
         {
             try
             {
-                var colorResponse = await session.Pathfinder.GetExtractedColorsAsync(
-                    new List<string> { profileImageUrl });
-                var entry = colorResponse?.Data?.ExtractedColors?.FirstOrDefault();
-                if (entry != null)
-                    heroColorHex = entry.ColorDark?.Hex ?? entry.ColorRaw?.Hex;
+                var color = await _colorService.GetColorAsync(profileImageUrl, ct).ConfigureAwait(false);
+                heroColorHex = color?.DarkHex ?? color?.RawHex ?? color?.LightHex;
             }
             catch { /* Non-fatal: hero gradient is cosmetic */ }
         }

@@ -58,6 +58,9 @@ public sealed partial class RightPanelView : UserControl
     // loaded on demand when their tab is first selected. Once loaded, they stay loaded.
     private bool _lyricsTreeLoaded;
     private bool _detailsTreeLoaded;
+    private bool _trackDetailsTreeLoaded;
+    private PropertyChangedEventHandler? _shellViewModelTrackDetailsHandler;
+    private ShellViewModel? _shellViewModelForTrackDetails;
 
     // Details integration
     private TrackDetailsViewModel? _detailsVm;
@@ -1416,15 +1419,26 @@ public sealed partial class RightPanelView : UserControl
         // Materialize the deferred (x:Load="False") subtrees on first selection.
         if (SelectedMode == RightPanelMode.Lyrics) EnsureLyricsTreeLoaded();
         if (SelectedMode == RightPanelMode.Details) EnsureDetailsTreeLoaded();
+        if (SelectedMode == RightPanelMode.TrackDetails) EnsureTrackDetailsTreeLoaded();
 
         QueueContent.Visibility = SelectedMode == RightPanelMode.Queue ? Visibility.Visible : Visibility.Collapsed;
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
 
-        // LyricsContent / DetailsContent are x:Load'd — only touch once materialized.
+        // LyricsContent / DetailsContent / TrackDetailsContent are x:Load'd — only touch once materialized.
         if (LyricsContent != null)
             LyricsContent.Visibility = SelectedMode == RightPanelMode.Lyrics ? Visibility.Visible : Visibility.Collapsed;
         if (DetailsContent != null)
             DetailsContent.Visibility = SelectedMode == RightPanelMode.Details ? Visibility.Visible : Visibility.Collapsed;
+        if (TrackDetailsContent != null)
+            TrackDetailsContent.Visibility = SelectedMode == RightPanelMode.TrackDetails ? Visibility.Visible : Visibility.Collapsed;
+
+        // Keep the temporary TrackDetails tab visible only while the mode is active;
+        // tabs it as a segmented-option while it's showing, hides otherwise.
+        if (TrackDetailsTabItem != null)
+            TrackDetailsTabItem.Visibility = SelectedMode == RightPanelMode.TrackDetails ? Visibility.Visible : Visibility.Collapsed;
+
+        if (SelectedMode == RightPanelMode.TrackDetails)
+            RefreshTrackDetailsContent();
 
         UpdatePanelBackgroundState();
 
@@ -1489,6 +1503,7 @@ public sealed partial class RightPanelView : UserControl
             "Lyrics" => RightPanelMode.Lyrics,
             "Friends" => RightPanelMode.FriendsActivity,
             "Details" => RightPanelMode.Details,
+            "TrackDetails" => RightPanelMode.TrackDetails,
             _ => RightPanelMode.Queue
         };
     }
@@ -1504,6 +1519,7 @@ public sealed partial class RightPanelView : UserControl
             RightPanelMode.Lyrics => LyricsTabItem,
             RightPanelMode.FriendsActivity => FriendsTabItem,
             RightPanelMode.Details => DetailsTabItem,
+            RightPanelMode.TrackDetails => TrackDetailsTabItem,
             _ => QueueTabItem
         };
 
@@ -1528,6 +1544,56 @@ public sealed partial class RightPanelView : UserControl
         if (_lyricsTreeLoaded) return;
         _ = FindName(nameof(LyricsContent));
         _lyricsTreeLoaded = LyricsContent != null;
+    }
+
+    private void EnsureTrackDetailsTreeLoaded()
+    {
+        if (_trackDetailsTreeLoaded) return;
+        _ = FindName(nameof(TrackDetailsContent));
+        _trackDetailsTreeLoaded = TrackDetailsContent != null;
+
+        // Lazy-subscribe to ShellViewModel.SelectedTrackForDetails so a re-invocation
+        // with a different track rebinds without forcing the user to close+reopen.
+        if (_trackDetailsTreeLoaded && _shellViewModelTrackDetailsHandler is null)
+        {
+            _shellViewModelForTrackDetails = Ioc.Default.GetService<ShellViewModel>();
+            if (_shellViewModelForTrackDetails is not null)
+            {
+                _shellViewModelTrackDetailsHandler = (_, args) =>
+                {
+                    if (args.PropertyName == nameof(ShellViewModel.SelectedTrackForDetails))
+                        DispatcherQueue.TryEnqueue(RefreshTrackDetailsContent);
+                };
+                _shellViewModelForTrackDetails.PropertyChanged += _shellViewModelTrackDetailsHandler;
+            }
+        }
+    }
+
+    private void RefreshTrackDetailsContent()
+    {
+        if (!_trackDetailsTreeLoaded) return;
+        var track = (_shellViewModelForTrackDetails ??= Ioc.Default.GetService<ShellViewModel>())?.SelectedTrackForDetails;
+        if (track is null)
+        {
+            TrackDetailsTitle.Text = string.Empty;
+            TrackDetailsArtist.Text = string.Empty;
+            TrackDetailsAlbum.Text = string.Empty;
+            TrackDetailsDuration.Text = string.Empty;
+            TrackDetailsAdded.Text = string.Empty;
+            TrackDetailsPlays.Text = string.Empty;
+            TrackDetailsArtwork.Source = null;
+            return;
+        }
+
+        TrackDetailsTitle.Text = track.Title;
+        TrackDetailsArtist.Text = track.ArtistName;
+        TrackDetailsAlbum.Text = track.AlbumName;
+        TrackDetailsDuration.Text = track.DurationFormatted;
+        TrackDetailsAdded.Text = track.AddedAtFormatted;
+        TrackDetailsPlays.Text = track.PlayCountFormatted;
+        TrackDetailsArtwork.Source = string.IsNullOrEmpty(track.ImageUrl)
+            ? null
+            : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(track.ImageUrl));
     }
 
     private void EnsureDetailsTreeLoaded()

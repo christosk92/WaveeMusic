@@ -84,6 +84,60 @@ public sealed partial class TrackItem : UserControl
         DependencyProperty.Register(nameof(ShowAlbumColumn), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(true, OnColumnVisibilityChanged));
 
+    public static readonly DependencyProperty AlbumColumnWidthProperty =
+        DependencyProperty.Register(nameof(AlbumColumnWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(180d, OnRowColumnWidthChanged));
+
+    public double AlbumColumnWidth
+    {
+        get => (double)GetValue(AlbumColumnWidthProperty);
+        set => SetValue(AlbumColumnWidthProperty, value);
+    }
+
+    public static readonly DependencyProperty DateAddedColumnWidthProperty =
+        DependencyProperty.Register(nameof(DateAddedColumnWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(120d, OnRowColumnWidthChanged));
+
+    public double DateAddedColumnWidth
+    {
+        get => (double)GetValue(DateAddedColumnWidthProperty);
+        set => SetValue(DateAddedColumnWidthProperty, value);
+    }
+
+    public static readonly DependencyProperty DurationColumnWidthProperty =
+        DependencyProperty.Register(nameof(DurationColumnWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(60d, OnRowColumnWidthChanged));
+
+    public double DurationColumnWidth
+    {
+        get => (double)GetValue(DurationColumnWidthProperty);
+        set => SetValue(DurationColumnWidthProperty, value);
+    }
+
+    private static void OnRowColumnWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackItem item && item.Mode == TrackItemDisplayMode.Row && item._batchUpdateDepth == 0)
+            item.ApplyRowColumnVisibility();
+    }
+
+    /// <summary>
+    /// Depth counter for <see cref="BeginBatchUpdate"/>/<see cref="EndBatchUpdate"/>.
+    /// While &gt; 0 the Show*/Width DP change handlers skip <see cref="ApplyRowColumnVisibility"/>;
+    /// <see cref="EndBatchUpdate"/> flushes once at the end. Callers batch the 4 Show flags +
+    /// 3 width DPs per virtualized row to turn 7 layout passes into 1.
+    /// </summary>
+    private int _batchUpdateDepth;
+
+    public void BeginBatchUpdate() => _batchUpdateDepth++;
+
+    public void EndBatchUpdate()
+    {
+        if (_batchUpdateDepth == 0) return;
+        _batchUpdateDepth--;
+        if (_batchUpdateDepth == 0 && Mode == TrackItemDisplayMode.Row)
+            ApplyRowColumnVisibility();
+    }
+
     public static readonly DependencyProperty ShowDateAddedProperty =
         DependencyProperty.Register(nameof(ShowDateAdded), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(false, OnColumnVisibilityChanged));
@@ -360,8 +414,14 @@ public sealed partial class TrackItem : UserControl
 
             RowHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
             RowHeartButton.Visibility = Visibility.Visible;
-            RowArtistLink.Content = track.ArtistName ?? "";
+            var artistName = track.ArtistName ?? "";
+            RowArtistLink.Content = artistName;
             RowArtistLink.Tag = track.ArtistId;
+            // Hide the subline when ShowArtistColumn is off OR the artist name is blank
+            // (e.g. local files, editorial placeholders).
+            RowArtistLink.Visibility = (ShowArtistColumn && !string.IsNullOrEmpty(artistName))
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             RowAlbumLink.Content = track.AlbumName ?? "";
             RowAlbumLink.Tag = track.AlbumId;
             ApplyRowAlbumArt(track.ImageUrl);
@@ -554,7 +614,7 @@ public sealed partial class TrackItem : UserControl
     private static void OnColumnVisibilityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
-        if (item.Mode == TrackItemDisplayMode.Row)
+        if (item.Mode == TrackItemDisplayMode.Row && item._batchUpdateDepth == 0)
             item.ApplyRowColumnVisibility();
     }
 
@@ -647,10 +707,21 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyRowColumnVisibility()
     {
-        RowArtColDef.Width = ShowAlbumArt ? new GridLength(42) : new GridLength(0);
-        RowArtistColDef.Width = ShowArtistColumn ? new GridLength(180) : new GridLength(0);
-        RowAlbumColDef.Width = ShowAlbumColumn ? new GridLength(180) : new GridLength(0);
-        RowDateColDef.Width = ShowDateAdded ? new GridLength(120) : new GridLength(0);
+        RowArtColDef.Width      = ShowAlbumArt     ? new GridLength(42) : new GridLength(0);
+        RowAlbumColDef.Width    = ShowAlbumColumn  ? new GridLength(AlbumColumnWidth)    : new GridLength(0);
+        RowDateColDef.Width     = ShowDateAdded    ? new GridLength(DateAddedColumnWidth) : new GridLength(0);
+        RowDurationColDef.Width = new GridLength(DurationColumnWidth);
+
+        // Artist is now a subline under the title — ShowArtistColumn drives visibility
+        // of that HyperlinkButton rather than a grid column width.
+        RowArtistLink.Visibility = ShowArtistColumn ? Visibility.Visible : Visibility.Collapsed;
+
+        // Keep the shimmer overlay's columns in sync so loading rows align with the
+        // real row layout (and with the column headers above).
+        ShimArtColDef.Width      = RowArtColDef.Width;
+        ShimAlbumColDef.Width    = RowAlbumColDef.Width;
+        ShimDateColDef.Width     = RowDateColDef.Width;
+        ShimDurationColDef.Width = RowDurationColDef.Width;
     }
 
     #endregion
@@ -850,7 +921,8 @@ public sealed partial class TrackItem : UserControl
             CompactNowPlayingEqualizer.IsActive = false;
             CompactBufferingRing.IsActive = false;
             CompactBufferingRing.Visibility = Visibility.Collapsed;
-            CompactPlayIcon.Glyph = _isThisTrackPlaying ? "\uE769" : "\uE768";
+            if (CompactPlayContent != null)
+                CompactPlayContent.IsPlaying = _isThisTrackPlaying;
 
             if (CompactPlayButton.Visibility == Visibility.Collapsed)
             {
@@ -917,7 +989,8 @@ public sealed partial class TrackItem : UserControl
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
             RowPlayButton.Visibility = Visibility.Visible;
-            RowPlayIcon.Glyph = _isThisTrackPlaying ? "\uE769" : "\uE768";
+            if (RowPlayContent != null)
+                RowPlayContent.IsPlaying = _isThisTrackPlaying;
         }
         else if (_isThisTrackPlaying)
         {

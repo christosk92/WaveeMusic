@@ -1,13 +1,40 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
+using System.Reflection;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Extensions;
 
 public static class ObservableCollectionExtensions
 {
+    // Cached per-T reflection handles. Populated on first call for each generic instantiation.
+    // Both handles are on base types of ObservableCollection<T> so they exist in every
+    // runtime we build for; if reflection ever returns null we fall back to Clear+Add.
+    private static class CollectionReflection<T>
+    {
+        public static readonly PropertyInfo? ItemsProperty =
+            typeof(Collection<T>).GetProperty("Items",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+        public static readonly MethodInfo? OnCollectionChanged =
+            typeof(ObservableCollection<T>).GetMethod("OnCollectionChanged",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(NotifyCollectionChangedEventArgs) },
+                modifiers: null);
+
+        public static readonly MethodInfo? OnPropertyChanged =
+            typeof(ObservableCollection<T>).GetMethod("OnPropertyChanged",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(PropertyChangedEventArgs) },
+                modifiers: null);
+    }
+
     public static void InsertRange<T>(this ObservableCollection<T> collection, int index, IEnumerable<T> items)
     {
         if (collection == null || items == null) return;
@@ -44,13 +71,41 @@ public static class ObservableCollectionExtensions
     }
 
     /// <summary>
-    /// Replaces the entire collection content efficiently.
-    /// Clears and repopulates in one pass.
+    /// Replaces the entire collection content and emits ONE Reset notification
+    /// instead of N Add notifications.
+    ///
+    /// WinUI's ListView (and any other INotifyCollectionChanged consumer)
+    /// processes each Add event individually on the UI thread. For a 3000-item
+    /// playlist the naive Clear+Add loop produces 3000 CollectionChanged events
+    /// on the dispatcher → visible hang on load/sort/filter. A single Reset
+    /// lets the ListView rebuild its item tracking in one pass.
+    ///
+    /// Implementation: reach past ObservableCollection and mutate the protected
+    /// backing <see cref="Collection{T}.Items"/> list directly (no events), then
+    /// manually raise Count / Item[] / Reset via reflection. Same contract as
+    /// ObservableCollection itself fires on Clear(). Falls back to the plain
+    /// Clear+Add path if reflection ever fails.
     /// </summary>
     public static void ReplaceWith<T>(this ObservableCollection<T> collection, IEnumerable<T> items)
     {
-        collection.Clear();
+        var backing = CollectionReflection<T>.ItemsProperty?.GetValue(collection) as IList<T>;
+        var onChanged = CollectionReflection<T>.OnCollectionChanged;
+        var onPropChanged = CollectionReflection<T>.OnPropertyChanged;
+
+        if (backing is null || onChanged is null || onPropChanged is null)
+        {
+            collection.Clear();
+            foreach (var item in items)
+                collection.Add(item);
+            return;
+        }
+
+        backing.Clear();
         foreach (var item in items)
-            collection.Add(item);
+            backing.Add(item);
+
+        onPropChanged.Invoke(collection, new object[] { new PropertyChangedEventArgs(nameof(Collection<T>.Count)) });
+        onPropChanged.Invoke(collection, new object[] { new PropertyChangedEventArgs("Item[]") });
+        onChanged.Invoke(collection, new object[] { new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset) });
     }
 }

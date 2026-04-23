@@ -241,6 +241,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         LoadNewContent(e.Parameter);
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        ViewModel.Deactivate();
+    }
+
     private void LoadNewContent(object? parameter)
     {
         string? albumId = null;
@@ -249,12 +255,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         {
             albumId = nav.Uri;
             ViewModel.PrefillFrom(nav);
-            _ = ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
+            ViewModel.Activate(nav.Uri);
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
             albumId = rawId;
-            _ = ViewModel.LoadCommand.ExecuteAsync(rawId);
+            ViewModel.Activate(rawId);
         }
 
         if (!string.IsNullOrEmpty(albumId))

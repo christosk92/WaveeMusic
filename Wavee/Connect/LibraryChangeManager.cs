@@ -56,8 +56,33 @@ public sealed class LibraryChangeManager : IAsyncDisposable
 
             if (message.Payload.Length > 0)
             {
+                // Try rootlist-specific parsing first when the Dealer URI points at the user's rootlist.
+                if (message.Uri.Contains("rootlist", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var rootlistInfo = RootlistModificationInfo.Parser.ParseFrom(message.Payload);
+                        changeEvent = new LibraryChangeEvent
+                        {
+                            Uri = message.Uri,
+                            Set = "playlists",
+                            IsRootlist = true,
+                            NewRevision = rootlistInfo.NewRevision?.ToByteArray(),
+                            Timestamp = DateTimeOffset.UtcNow
+                        };
+
+                        _logger?.LogDebug("Parsed rootlist modification: {Uri}, {OpCount} ops",
+                            message.Uri, rootlistInfo.Ops.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Failed to parse as RootlistModificationInfo");
+                    }
+                }
+
                 // Try playlist-specific parsing first for playlist URIs
-                if (message.Uri.Contains("playlist", StringComparison.OrdinalIgnoreCase))
+                if (changeEvent == null &&
+                    message.Uri.Contains("playlist", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
@@ -139,6 +164,7 @@ public sealed class LibraryChangeManager : IAsyncDisposable
             {
                 Uri = message.Uri,
                 Set = DetermineSetFromUri(message.Uri),
+                IsRootlist = message.Uri.Contains("rootlist", StringComparison.OrdinalIgnoreCase),
                 Items = new List<LibraryChangeItem>(),
                 Timestamp = DateTimeOffset.UtcNow,
                 RawPayload = message.Payload
@@ -233,6 +259,11 @@ public sealed record LibraryChangeEvent
     /// For playlist changes, the specific playlist URI that changed.
     /// </summary>
     public string? PlaylistUri { get; init; }
+
+    /// <summary>
+    /// True when the change targets the user's rootlist rather than a specific playlist.
+    /// </summary>
+    public bool IsRootlist { get; init; }
 
     /// <summary>
     /// For playlist changes, the new revision after modifications.

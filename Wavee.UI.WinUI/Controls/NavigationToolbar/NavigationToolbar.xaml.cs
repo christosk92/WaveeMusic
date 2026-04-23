@@ -136,7 +136,7 @@ public sealed partial class NavigationToolbar : UserControl
 
     public static readonly DependencyProperty IsConnectingProperty =
         DependencyProperty.Register(nameof(IsConnecting), typeof(bool), typeof(NavigationToolbar),
-            new PropertyMetadata(false));
+            new PropertyMetadata(false, OnAuthVisualStateChanged));
 
     public bool IsConnecting
     {
@@ -174,6 +174,54 @@ public sealed partial class NavigationToolbar : UserControl
         set => SetValue(IsOnProfilePageProperty, value);
     }
 
+    public static readonly DependencyProperty IsAuthenticatedProperty =
+        DependencyProperty.Register(nameof(IsAuthenticated), typeof(bool), typeof(NavigationToolbar),
+            new PropertyMetadata(false, OnAuthVisualStateChanged));
+
+    public bool IsAuthenticated
+    {
+        get => (bool)GetValue(IsAuthenticatedProperty);
+        set => SetValue(IsAuthenticatedProperty, value);
+    }
+
+    private static void OnAuthVisualStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is NavigationToolbar t)
+        {
+            t.UpdateAuthVisualState();
+        }
+    }
+
+    public static readonly DependencyProperty ShowProfileChipProperty =
+        DependencyProperty.Register(nameof(ShowProfileChip), typeof(Visibility), typeof(NavigationToolbar),
+            new PropertyMetadata(Visibility.Collapsed));
+
+    public Visibility ShowProfileChip
+    {
+        get => (Visibility)GetValue(ShowProfileChipProperty);
+        private set => SetValue(ShowProfileChipProperty, value);
+    }
+
+    public static readonly DependencyProperty ShowSignInCtaProperty =
+        DependencyProperty.Register(nameof(ShowSignInCta), typeof(Visibility), typeof(NavigationToolbar),
+            new PropertyMetadata(Visibility.Visible));
+
+    public Visibility ShowSignInCta
+    {
+        get => (Visibility)GetValue(ShowSignInCtaProperty);
+        private set => SetValue(ShowSignInCtaProperty, value);
+    }
+
+    private void UpdateAuthVisualState()
+    {
+        // Profile chip shows for Authenticated and while connecting (so the spinner lands in-place).
+        // Sign-in CTA shows only for a true signed-out state (neither authenticated nor transitioning).
+        var authed = IsAuthenticated;
+        var connecting = IsConnecting;
+        ShowProfileChip = (authed || connecting) ? Visibility.Visible : Visibility.Collapsed;
+        ShowSignInCta = (!authed && !connecting) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>
     /// Suppresses the search flyout popup (used when already on SearchPage).
     /// </summary>
@@ -196,6 +244,12 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
     public event TypedEventHandler<NavigationToolbar, Data.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SearchRetryRequested;
+
+    /// <summary>
+    /// Raised when the unauthenticated "Sign in" CTA is clicked. ShellPage listens and opens the sign-in dialog.
+    /// Per-tab pages must not react — this is window-level UX.
+    /// </summary>
+    public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SignInRequested;
 
     #endregion
 
@@ -272,6 +326,11 @@ public sealed partial class NavigationToolbar : UserControl
             await _authState.LogoutAsync();
         }
         catch { /* best effort */ }
+    }
+
+    private void SignInButton_Click(object sender, RoutedEventArgs e)
+    {
+        SignInRequested?.Invoke(this, e);
     }
 
     #endregion

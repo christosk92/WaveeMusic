@@ -573,22 +573,18 @@ public sealed partial class TrackListView : UserControl
         ArtColumnDef.Width = ShowAlbumArtColumn ? new GridLength(42) : new GridLength(0);
         StickyArtColumnDef.Width = ShowAlbumArtColumn ? new GridLength(42) : new GridLength(0);
 
-        // Scrollable header columns
-        ArtistColumnDef.Width = ShowArtistColumn ? new GridLength(180) : new GridLength(0);
+        // Scrollable header columns (artist is a subline inside Title — no header cell)
         AlbumColumnDef.Width = ShowAlbumColumn ? new GridLength(180) : new GridLength(0);
         AddedColumnDef.Width = ShowDateAddedColumn ? new GridLength(120) : new GridLength(0);
 
         // Sticky header columns
-        StickyArtistColumnDef.Width = ShowArtistColumn ? new GridLength(180) : new GridLength(0);
         StickyAlbumColumnDef.Width = ShowAlbumColumn ? new GridLength(180) : new GridLength(0);
         StickyAddedColumnDef.Width = ShowDateAddedColumn ? new GridLength(120) : new GridLength(0);
 
         // Header button visibility
-        ArtistHeaderScrollable.Visibility = ShowArtistColumn ? Visibility.Visible : Visibility.Collapsed;
         AlbumHeaderScrollable.Visibility = ShowAlbumColumn ? Visibility.Visible : Visibility.Collapsed;
         AddedHeaderScrollable.Visibility = ShowDateAddedColumn ? Visibility.Visible : Visibility.Collapsed;
 
-        StickyArtistHeader.Visibility = ShowArtistColumn ? Visibility.Visible : Visibility.Collapsed;
         StickyAlbumHeader.Visibility = ShowAlbumColumn ? Visibility.Visible : Visibility.Collapsed;
         StickyAddedHeader.Visibility = ShowDateAddedColumn ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -976,7 +972,13 @@ public sealed partial class TrackListView : UserControl
 
     private void UpdateVisualState()
     {
-        var hasItems = ItemsSource != null;
+        // Treat both null and empty collections as "no items" so the empty state can
+        // actually show. Previously this was just `ItemsSource != null`, which meant
+        // an empty ObservableCollection always counted as "has items" and the empty
+        // state was never rendered.
+        var hasItems = ItemsSource is System.Collections.ICollection coll
+            ? coll.Count > 0
+            : ItemsSource?.Cast<object>().Any() == true;
 
         if (HasError)
         {

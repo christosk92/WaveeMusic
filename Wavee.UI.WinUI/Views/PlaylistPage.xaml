@@ -5,151 +5,187 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
+    xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     NavigationCacheMode="Disabled"
     Background="Transparent">
+    <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
+        <!-- Responsive: driven by SizeChanged in code-behind. Loading is bound to
+             IsLoading (metadata) for the left panel; the TrackListView has its own
+             IsLoadingTracks-driven shimmer because playlist tracks lazy-load
+             independently of the metadata. -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="WideState"/>
+                <VisualState x:Name="NarrowState">
+                    <VisualState.Setters>
+                        <!-- NarrowPlaylistHeader.Visibility setters removed: no element
+                             with that x:Name exists in this page anymore, so the setter
+                             threw XamlUnhandledException on every SizeChanged that flipped
+                             between Wide/Narrow. If a narrow-mode header is reintroduced
+                             later, re-add matching setters referencing the real name. -->
+                        <Setter Target="WidePlaylistPanel.Visibility" Value="Collapsed"/>
+                        <Setter Target="ShimmerContainer.Visibility" Value="Collapsed"/>
+                        <Setter Target="PlaylistSplitter.Visibility" Value="Collapsed"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
 
-    <Grid>
-        <!-- Main content with TrackListView -->
-        <trackList:TrackListView
-            x:Name="TrackList"
-            ViewModel="{x:Bind ViewModel, Mode=OneWay}"
-            ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
-            IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
-            HasError="{x:Bind ViewModel.HasError, Mode=OneWay}"
-            ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-            RetryCommand="{x:Bind ViewModel.RetryCommand}"
-            ShowDateAddedColumn="True"
-            RemoveActionLabel="Remove from playlist"
-            ArtistClicked="TrackList_ArtistClicked"
-            AlbumClicked="TrackList_AlbumClicked"
-            NewPlaylistRequested="TrackList_NewPlaylistRequested">
+        <Grid x:Name="TwoColumnGrid">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="280" MinWidth="200" MaxWidth="500"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-            <!-- Page-specific Header -->
-            <trackList:TrackListView.HeaderContent>
-                <Grid Padding="8,20,8,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Playlist Cover Image -->
-                    <Border x:Name="PlaylistArtContainer" Grid.Column="0"
-                            Width="140" Height="140"
-                            CornerRadius="8"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                            Margin="0,0,20,0">
-                        <Grid>
-                            <FontIcon Glyph="&#xE8FD;" FontSize="48" Opacity="0.3"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center"
-                                      Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                            <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=200}"
-                                   Stretch="UniformToFill"
-                                   Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                   behaviors:ImageFallbackBehavior.HideOnError="True"
-                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                   behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
-                        </Grid>
-                    </Border>
-
-                    <!-- Playlist Info -->
-                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
-                        <!-- Playlist type label -->
-                        <TextBlock x:Uid="Views_PlaylistPage__TextBlock_1" Text="Playlist"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontWeight="SemiBold"
-                                   CharacterSpacing="50"/>
-
-                        <!-- Playlist name -->
-                        <TextBlock Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                                   Style="{StaticResource TitleLargeTextBlockStyle}"
-                                   MaxLines="2"
-                                   TextTrimming="CharacterEllipsis"/>
-
-                        <!-- Description (if present) -->
-                        <TextBlock Text="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay}"
-                                   Style="{StaticResource BodyTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   MaxLines="2"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextWrapping="Wrap"
-                                   Visibility="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-
-                        <!-- Owner and stats -->
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}">
-                                <Run x:Uid="Views_PlaylistPage__Run_2" Text="by" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                <Run Text="{x:Bind ViewModel.OwnerName, Mode=OneWay}" FontWeight="SemiBold"/>
-                            </TextBlock>
-                            <TextBlock Text=" &#x2022; "
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                                <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/>
-                                <Run x:Uid="Views_PlaylistPage__Run_3" Text="songs"/>
-                            </TextBlock>
-                            <TextBlock Text=" &#x2022; "
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                            <TextBlock Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                        </StackPanel>
-
-                        <!-- Followers (for non-owned playlists) -->
-                        <TextBlock Text="{x:Bind ViewModel.FollowerCountFormatted, Mode=OneWay}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                   Visibility="{x:Bind ViewModel.FollowerCountFormatted, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-
-                        <!-- Action buttons -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <Button Style="{StaticResource AccentButtonStyle}"
-                                    Command="{x:Bind ViewModel.PlayAllCommand}"
-                                    Padding="16,8">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_4" Text="Play"/>
-                                </StackPanel>
-                            </Button>
-                            <Button Command="{x:Bind ViewModel.ShuffleCommand}" Padding="16,8">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_5" Text="Shuffle"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Search -->
-                    <TextBox x:Uid="Views_PlaylistPage__TextBox_6"
-                        Grid.Column="2"
-                        PlaceholderText="Filter tracks..."
-                        Width="200"
-                        VerticalAlignment="Top"
-                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                </Grid>
-            </trackList:TrackListView.HeaderContent>
-
-            <!-- Empty State -->
-            <trackList:TrackListView.EmptyStateContent>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                    <FontIcon Glyph="&#xE8FD;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_7"
-                        Text="This playlist is empty"
-                        Style="{StaticResource BodyTextBlockStyle}"
-                        Opacity="0.5"
-                        TextAlignment="Center"/>
+            <!-- Shimmer skeleton for left panel (visible while metadata loads) -->
+            <StackPanel x:Name="ShimmerContainer" Grid.Column="0" Spacing="14"
+                        HorizontalAlignment="Center" VerticalAlignment="Top"
+                        Padding="16,24"
+                        MaxWidth="280"
+                        Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <controls:Shimmer Width="120" Height="16" HorizontalAlignment="Center"/>
+                <controls:Shimmer Width="240" Height="240" CornerRadius="8"/>
+                <controls:Shimmer Width="180" Height="20" HorizontalAlignment="Center"/>
+                <controls:Shimmer Width="150" Height="20" HorizontalAlignment="Center"/>
+                <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Center"/>
+                <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,8,0,0">
+                    <controls:Shimmer Width="48" Height="48" CornerRadius="24"/>
+                    <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
                 </StackPanel>
-            </trackList:TrackListView.EmptyStateContent>
-        </trackList:TrackListView>
+            </StackPanel>
 
+            <!-- Wide left panel: shown once metadata has arrived -->
+            <StackPanel x:Name="WidePlaylistPanel" Grid.Column="0"
+                        Padding="16,24" Spacing="14" HorizontalAlignment="Stretch"
+                        VerticalAlignment="Top"
+                        Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+
+                <Grid MinHeight="20" HorizontalAlignment="Center">
+                    <HyperlinkButton Content="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
+                                     Padding="0"
+                                     HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                                     Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                    <controls:Shimmer Width="120" Height="16" HorizontalAlignment="Center"
+                                      Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                </Grid>
+
+                <!--
+                    Hero image (editorial / radio playlists) — wide aspect ratio, no
+                    fixed height; shown instead of the square cover when the playlist
+                    carries a header_image_url_desktop format attribute.
+                -->
+                <Border x:Name="PlaylistHeroContainer" CornerRadius="8"
+                        HorizontalAlignment="Stretch"
+                        Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Image Source="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='600'}"
+                           Stretch="UniformToFill"
+                           behaviors:ImageFallbackBehavior.HideOnError="True"
+                           behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                           behaviors:ImageFallbackBehavior.DecodePixelWidth="600"/>
+                </Border>
+
+                <Border x:Name="PlaylistArtContainer" CornerRadius="8"
+                        HorizontalAlignment="Stretch"
+                        SizeChanged="PlaylistArtContainer_SizeChanged"
+                        Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Grid>
+                        <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                               Stretch="UniformToFill"
+                               Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                               behaviors:ImageFallbackBehavior.HideOnError="True"
+                               behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                               behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
+                        <FontIcon Glyph="&#xE8FD;" FontSize="64" Opacity="0.3"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                    </Grid>
+                </Border>
+
+                <Grid MinHeight="24" HorizontalAlignment="Stretch">
+                    <TextBlock Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
+                               FontSize="20" FontWeight="Bold" TextAlignment="Center"
+                               TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                               Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                    <controls:Shimmer Width="180" Height="22" HorizontalAlignment="Center"
+                                      Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                </Grid>
+
+                <TextBlock Text="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextAlignment="Center"
+                           MaxLines="3"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="Wrap"
+                           Visibility="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+
+                <Grid MinHeight="16" HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4"
+                                Visibility="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run x:Uid="Views_PlaylistPage__Run_3" Text=" songs"/>
+                        </TextBlock>
+                        <TextBlock Text=" · " Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                        <TextBlock Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                    </StackPanel>
+                    <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Center"
+                                      Visibility="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </Grid>
+
+                <TextBlock Text="{x:Bind ViewModel.FollowerCountFormatted, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           HorizontalAlignment="Center"
+                           Visibility="{x:Bind ViewModel.FollowerCountFormatted, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+
+                <StackPanel Orientation="Horizontal" Spacing="12"
+                            HorizontalAlignment="Center" Margin="0,8,0,0">
+                    <Button Style="{StaticResource AccentButtonStyle}"
+                            Command="{x:Bind ViewModel.PlayAllCommand}" Padding="20,10" CornerRadius="20">
+                        <FontIcon Glyph="&#xE768;" FontSize="18"/>
+                    </Button>
+                    <Button Command="{x:Bind ViewModel.ShuffleCommand}"
+                            Padding="10,8" Background="Transparent" BorderThickness="1">
+                        <FontIcon Glyph="&#xE8B1;" FontSize="16"/>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+
+            <controls1:GridSplitter
+                x:Name="PlaylistSplitter"
+                Grid.Column="1"
+                Width="12"
+                ResizeCompleted="PlaylistSplitter_ResizeCompleted"/>
+
+            <!-- Track grid in column 2. IsLoading is driven by IsLoadingTracks because
+                 playlist tracks lazy-load independently of metadata. Rewrite swapped
+                 TrackListView for TrackDataGrid — filter/sort/columns live inside the
+                 grid's toolbar now; the page-level hero + narrow-mode header that used
+                 to nest inside TrackListView.HeaderContent still render above the grid. -->
+            <tdg:TrackDataGrid
+                x:Name="TrackGrid"
+                Grid.Column="2"
+                VerticalAlignment="Stretch"
+                Margin="0,0,0,0"
+                PageKey="playlist"
+                ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
+                PlayCommand="{x:Bind ViewModel.PlayTrackCommand}" />
+
+        </Grid>
     </Grid>
 </Page>

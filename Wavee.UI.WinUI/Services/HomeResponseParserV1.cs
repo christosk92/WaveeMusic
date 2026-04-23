@@ -234,6 +234,9 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
 
     private static void EnrichFromRawJson(HomeSectionItem item, JsonElement raw)
     {
+        if (raw.ValueKind != JsonValueKind.Object)
+            return;
+
         if (item.Title == null && raw.TryGetProperty("name", out var name))
             item.Title = name.GetString();
 
@@ -263,6 +266,9 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
 
     private static string? ExtractImageUrlFromJson(JsonElement raw)
     {
+        if (raw.ValueKind != JsonValueKind.Object)
+            return null;
+
         // Playlist: images.items[0].sources
         if (raw.TryGetProperty("images", out var images)
             && images.TryGetProperty("items", out var items)
@@ -293,6 +299,9 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
 
     private static string? GetLargestSourceUrl(JsonElement container)
     {
+        if (container.ValueKind != JsonValueKind.Object)
+            return null;
+
         if (!container.TryGetProperty("sources", out var sources)
             || sources.ValueKind != JsonValueKind.Array
             || sources.GetArrayLength() == 0)
@@ -302,6 +311,9 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
         int maxWidth = -1;
         foreach (var source in sources.EnumerateArray())
         {
+            if (source.ValueKind != JsonValueKind.Object)
+                continue;
+
             var width = source.TryGetProperty("width", out var w) && w.ValueKind == JsonValueKind.Number
                 ? w.GetInt32() : 0;
             if (width > maxWidth || bestUrl == null)
@@ -315,20 +327,29 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
 
     private static string? ExtractColorFromJson(JsonElement raw)
     {
+        if (raw.ValueKind != JsonValueKind.Object)
+            return null;
+
         // images.items[0].extractedColors.colorDark.hex
         if (raw.TryGetProperty("images", out var images)
             && images.TryGetProperty("items", out var items)
             && items.ValueKind == JsonValueKind.Array
             && items.GetArrayLength() > 0
+            && items[0].ValueKind == JsonValueKind.Object
             && items[0].TryGetProperty("extractedColors", out var ec)
+            && ec.ValueKind == JsonValueKind.Object
             && ec.TryGetProperty("colorDark", out var cd)
+            && cd.ValueKind == JsonValueKind.Object
             && cd.TryGetProperty("hex", out var hex))
             return hex.GetString();
 
         // coverArt.extractedColors.colorDark.hex
         if (raw.TryGetProperty("coverArt", out var coverArt)
+            && coverArt.ValueKind == JsonValueKind.Object
             && coverArt.TryGetProperty("extractedColors", out var ec2)
+            && ec2.ValueKind == JsonValueKind.Object
             && ec2.TryGetProperty("colorDark", out var cd2)
+            && cd2.ValueKind == JsonValueKind.Object
             && cd2.TryGetProperty("hex", out var hex2))
             return hex2.GetString();
 

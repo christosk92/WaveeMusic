@@ -146,8 +146,6 @@ public sealed partial class GridSplitter : Control
                 newHeight = _targetRow.MinHeight;
             if (!double.IsNaN(_targetRow.MaxHeight) && newHeight > _targetRow.MaxHeight)
                 newHeight = _targetRow.MaxHeight;
-            if (newHeight < 100)
-                newHeight = 100;
 
             _targetRow.Height = new GridLength(newHeight, GridUnitType.Pixel);
         }
@@ -161,8 +159,6 @@ public sealed partial class GridSplitter : Control
                 newWidth = _targetColumn.MinWidth;
             if (!double.IsNaN(_targetColumn.MaxWidth) && newWidth > _targetColumn.MaxWidth)
                 newWidth = _targetColumn.MaxWidth;
-            if (newWidth < 100)
-                newWidth = 100;
 
             _targetColumn.Width = new GridLength(newWidth, GridUnitType.Pixel);
         }

@@ -91,6 +91,17 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         SubscribeToLibraryChanges();
     }
 
+    public void ClearCache()
+    {
+        foreach (var cache in _caches.Values)
+            cache.Clear();
+
+        // Reset so a future InitializeAsync (after next sign-in) actually runs.
+        _initialized = false;
+        _logger?.LogInformation("TrackLikeService cache cleared (sign-out)");
+        SaveStateChanged?.Invoke();
+    }
+
     public async Task ReloadCacheAsync()
     {
         foreach (var (type, (_, dbType, _)) in TypeMap)
