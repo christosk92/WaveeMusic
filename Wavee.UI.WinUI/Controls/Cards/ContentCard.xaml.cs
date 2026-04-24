@@ -854,19 +854,19 @@ public sealed partial class ContentCard : UserControl
     {
         if (!string.IsNullOrEmpty(NavigationUri))
         {
-            var menu = new MenuFlyout();
-            var openNewTab = new MenuFlyoutItem
+            var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
             {
-                Text = "Open in new tab",
-                Icon = new SymbolIcon(Symbol.OpenWith)
-            };
-            openNewTab.Click += (_, _) =>
-            {
-                ResetInteractionState();
-                NavigateToUri(openInNewTab: true);
-            };
-            menu.Items.Add(openNewTab);
-            menu.ShowAt(this, e.GetPosition(this));
+                Uri = NavigationUri!,
+                Title = Title ?? string.Empty,
+                Subtitle = Subtitle,
+                ImageUrl = ImageUrl,
+                OpenAction = openInNewTab =>
+                {
+                    ResetInteractionState();
+                    NavigateToUri(openInNewTab);
+                }
+            });
+            Controls.ContextMenu.ContextMenuHost.Show(this, items, e.GetPosition(this));
             return;
         }
         CardRightTapped?.Invoke(this, e);

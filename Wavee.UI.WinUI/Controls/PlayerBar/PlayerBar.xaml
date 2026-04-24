@@ -199,6 +199,7 @@
                             CornerRadius="4"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             Tapped="AlbumArt_Tapped"
+                            RightTapped="NowPlaying_RightTapped"
                             Visibility="{x:Bind ViewModel.IsAlbumArtExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                             <animations:Implicit.ShowAnimations>
                                 <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1" />
@@ -237,7 +238,8 @@
                                 MinHeight="0"
                                 MinWidth="0"
                                 Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
-                                Click="TrackTitle_Click">
+                                Click="TrackTitle_Click"
+                                RightTapped="NowPlaying_RightTapped">
                                 <TextBlock
                                     Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
                                     FontSize="13"
@@ -616,6 +618,7 @@
                             CornerRadius="4"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             Tapped="AlbumArt_Tapped"
+                            RightTapped="NowPlaying_RightTapped"
                             Visibility="{x:Bind ViewModel.IsAlbumArtExpanded, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                             <Image
                                 Width="40"
@@ -646,7 +649,8 @@
                                 MinHeight="0"
                                 MinWidth="0"
                                 Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
-                                Click="TrackTitle_Click">
+                                Click="TrackTitle_Click"
+                                RightTapped="NowPlaying_RightTapped">
                                 <TextBlock
                                     Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
                                     FontSize="13"

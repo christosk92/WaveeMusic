@@ -9,7 +9,10 @@ using System;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -76,6 +79,9 @@ public sealed partial class ShellPage : Page
         // Handle track drops on sidebar playlists
         SidebarControl.ItemDropped += SidebarControl_ItemDropped;
 
+        // Right-click menus on sidebar playlist / folder rows
+        SidebarControl.ItemContextInvoked += SidebarControl_ItemContextInvoked;
+
         // Subscribe to drag state for app-wide overlay
         _dragStateService = Ioc.Default.GetService<DragStateService>();
         if (_dragStateService != null)
@@ -133,6 +139,7 @@ public sealed partial class ShellPage : Page
         TitleBarGrid.Loaded -= TitleBarGrid_Loaded;
         TabControl.SizeChanged -= TabControl_SizeChanged;
         SidebarControl.ItemDropped -= SidebarControl_ItemDropped;
+        SidebarControl.ItemContextInvoked -= SidebarControl_ItemContextInvoked;
         if (_sidebarOpenPaneLengthCallbackToken != -1)
         {
             SidebarControl.UnregisterPropertyChangedCallback(
@@ -555,6 +562,41 @@ public sealed partial class ShellPage : Page
         });
     }
 
+    private void SidebarControl_ItemContextInvoked(object? sender, ItemContextInvokedArgs e)
+    {
+        if (e.Item is not SidebarItemModel model) return;
+        if (string.IsNullOrEmpty(model.Tag)) return;
+
+        System.Collections.Generic.IReadOnlyList<ContextMenuItemModel>? items = null;
+
+        if (model.IsFolder && model.Tag.StartsWith("folder:", StringComparison.Ordinal))
+        {
+            items = SidebarFolderContextMenuBuilder.Build(new SidebarFolderMenuContext
+            {
+                FolderId = model.Tag["folder:".Length..],
+                FolderName = model.Text,
+                IsPinned = false
+            });
+        }
+        else if (model.Tag.StartsWith("spotify:playlist:", StringComparison.Ordinal)
+                 || !model.Tag.Contains(':'))
+        {
+            var playlistId = model.Tag.StartsWith("spotify:playlist:", StringComparison.Ordinal)
+                ? model.Tag["spotify:playlist:".Length..]
+                : model.Tag;
+            items = SidebarPlaylistContextMenuBuilder.Build(new SidebarPlaylistMenuContext
+            {
+                PlaylistId = playlistId,
+                PlaylistName = model.Text,
+                IsInLibrary = true,
+                IsOwner = false
+            });
+        }
+
+        if (items is null) return;
+        ContextMenuHost.Show(SidebarControl, items, e.Position);
+    }
+
     private async void SidebarControl_ItemDropped(object? sender, ItemDroppedEventArgs e)
     {
         if (!e.DroppedItem.Contains("WaveeTrackIds")) return;
@@ -626,14 +668,50 @@ public sealed partial class ShellPage : Page
             }
         }
 
-        if (args.Modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift)
-            && args.Key == VirtualKey.F)
+        if (args.Modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift))
         {
-            FpsOverlayAccelerator_Invoked(null!, null!);
-            args.Handled = true;
-            return;
+            switch (args.Key)
+            {
+                case VirtualKey.F:
+                    FpsOverlayAccelerator_Invoked(null!, null!);
+                    args.Handled = true;
+                    return;
+
+                case VirtualKey.L:
+                    if (ToggleLikeCurrentTrack()) args.Handled = true;
+                    return;
+
+                case VirtualKey.S:
+                    if (ToggleShuffle()) args.Handled = true;
+                    return;
+            }
         }
 
         base.OnProcessKeyboardAccelerators(args);
+    }
+
+    // ── Playback shortcuts ──────────────────────────────────────────────
+
+    private static bool ToggleLikeCurrentTrack()
+    {
+        var playback = Ioc.Default.GetService<IPlaybackStateService>();
+        var like = Ioc.Default.GetService<ITrackLikeService>();
+        if (playback is null || like is null) return false;
+
+        var id = playback.CurrentTrackId;
+        if (string.IsNullOrEmpty(id)) return false;
+
+        var uri = "spotify:track:" + id;
+        var isSaved = like.IsSaved(SavedItemType.Track, uri);
+        like.ToggleSave(SavedItemType.Track, uri, isSaved);
+        return true;
+    }
+
+    private static bool ToggleShuffle()
+    {
+        var playback = Ioc.Default.GetService<IPlaybackStateService>();
+        if (playback is null) return false;
+        playback.SetShuffle(!playback.IsShuffle);
+        return true;
     }
 }

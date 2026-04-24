@@ -133,11 +133,80 @@ public sealed class ConcertDetailArtistData
     [JsonPropertyName("headerImage")]
     public ArtistHeaderImage? HeaderImage { get; init; }
 
+    [JsonPropertyName("visualIdentity")]
+    public ArtistVisualIdentity? VisualIdentity { get; init; }
+
     [JsonPropertyName("discography")]
     public ConcertArtistDiscography? Discography { get; init; }
 
     [JsonPropertyName("goods")]
     public ConcertArtistGoods? Goods { get; init; }
+
+    [JsonPropertyName("relatedContent")]
+    public ConcertArtistRelatedContent? RelatedContent { get; init; }
+}
+
+public sealed class ConcertArtistRelatedContent
+{
+    [JsonPropertyName("featuringV2")]
+    public ConcertArtistFeaturingV2? FeaturingV2 { get; init; }
+}
+
+public sealed class ConcertArtistFeaturingV2
+{
+    [JsonPropertyName("items")]
+    public List<ConcertFeaturedPlaylistWrapper>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+}
+
+public sealed class ConcertFeaturedPlaylistWrapper
+{
+    [JsonPropertyName("data")]
+    public ConcertFeaturedPlaylistData? Data { get; init; }
+}
+
+public sealed class ConcertFeaturedPlaylistData
+{
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    [JsonPropertyName("images")]
+    public ConcertFeaturedPlaylistImages? Images { get; init; }
+
+    [JsonPropertyName("ownerV2")]
+    public ConcertFeaturedPlaylistOwnerWrapper? OwnerV2 { get; init; }
+}
+
+public sealed class ConcertFeaturedPlaylistImages
+{
+    [JsonPropertyName("items")]
+    public List<ConcertFeaturedPlaylistImageItem>? Items { get; init; }
+}
+
+public sealed class ConcertFeaturedPlaylistImageItem
+{
+    [JsonPropertyName("sources")]
+    public List<ArtistImageSource>? Sources { get; init; }
+}
+
+public sealed class ConcertFeaturedPlaylistOwnerWrapper
+{
+    [JsonPropertyName("data")]
+    public ConcertFeaturedPlaylistOwnerData? Data { get; init; }
+}
+
+public sealed class ConcertFeaturedPlaylistOwnerData
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
 }
 
 public sealed class ConcertArtistDiscography

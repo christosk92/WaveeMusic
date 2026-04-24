@@ -1,4 +1,5 @@
 using System;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -12,5 +13,11 @@ public sealed partial class StorageNetworkSettingsSection : UserControl
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         InitializeComponent();
+    }
+
+    private void ClearCollectionRevisions_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.ClearCollectionRevisionsCommand.CanExecute(XamlRoot))
+            ViewModel.ClearCollectionRevisionsCommand.Execute(XamlRoot);
     }
 }

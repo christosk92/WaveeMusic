@@ -35,6 +35,13 @@ public sealed class ThemeColorService
     /// look like full "cards" with heavy contrast in light mode.
     /// </summary>
     public Brush SubtleFillSecondary { get; private set; } = new SolidColorBrush(Colors.Transparent);
+
+    /// <summary>
+    /// Subtle card outline stroke. Theme-aware, matches Fluent cards. Used on
+    /// track-list rows so each row reads as a discrete chip in both light and
+    /// dark modes (card fill alone disappears in dark).
+    /// </summary>
+    public Brush CardStroke { get; private set; } = new SolidColorBrush(Colors.Transparent);
     public Brush TransparentBrush { get; } = new SolidColorBrush(Colors.Transparent);
 
     /// <summary>
@@ -81,6 +88,7 @@ public sealed class ThemeColorService
         CardBackgroundSecondary = Resolve("CardBackgroundFillColorSecondaryBrush");
         SubtleFillTransparent = Resolve("SubtleFillColorTransparentBrush");
         SubtleFillSecondary = Resolve("SubtleFillColorSecondaryBrush");
+        CardStroke = Resolve("CardStrokeColorDefaultBrush");
     }
 
     private void RebuildThemeDictionaryCache()

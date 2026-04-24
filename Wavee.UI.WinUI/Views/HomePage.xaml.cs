@@ -271,15 +271,15 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     {
         if (sender.DataContext is not HomeSectionItem item) return;
 
-        var menu = new MenuFlyout();
-        var openNewTab = new MenuFlyoutItem
+        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
         {
-            Text = "Open in new tab",
-            Icon = new SymbolIcon(Symbol.OpenWith)
-        };
-        openNewTab.Click += (_, _) => HomeViewModel.NavigateToItem(item, openInNewTab: true);
-        menu.Items.Add(openNewTab);
-        menu.ShowAt(sender, e.GetPosition(sender));
+            Uri = item.Uri ?? string.Empty,
+            Title = item.Title ?? string.Empty,
+            Subtitle = item.Subtitle,
+            ImageUrl = item.ImageUrl,
+            OpenAction = openInNewTab => HomeViewModel.NavigateToItem(item, openInNewTab)
+        });
+        Controls.ContextMenu.ContextMenuHost.Show(sender, items, e.GetPosition(sender));
     }
 
     // Baseline section still uses buttons directly

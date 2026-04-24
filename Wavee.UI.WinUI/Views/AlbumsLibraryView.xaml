@@ -26,8 +26,9 @@
             IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
             EmptyStateText="Select an album to see tracks"
             EmptyStateGlyph="&#xE93C;"
-            MinItemWidth="180"
-            MinItemHeight="240"
+            MinItemWidth="150"
+            MinItemHeight="230"
+            GridScale="{x:Bind ViewModel.GridScale, Mode=OneWay}"
             ViewMode="{x:Bind ViewModel.ViewMode, Mode=OneWay}"
             Visibility="{x:Bind ViewModel.IsWideLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
@@ -36,7 +37,9 @@
                     AllowedSortKeys="Recents,RecentlyAdded,Alphabetical,Creator,ReleaseDate"
                     SortBy="{x:Bind ViewModel.SortBy, Mode=TwoWay}"
                     SortDirection="{x:Bind ViewModel.SortDirection, Mode=TwoWay}"
-                    ViewMode="{x:Bind ViewModel.ViewMode, Mode=TwoWay}"/>
+                    ViewMode="{x:Bind ViewModel.ViewMode, Mode=TwoWay}"
+                    GridScale="{x:Bind ViewModel.GridScale, Mode=TwoWay}"
+                    ShowGridScale="True"/>
             </controls:LibraryGridView.HeaderLeadingContent>
 
             <controls:LibraryGridView.DefaultGridItemTemplate>

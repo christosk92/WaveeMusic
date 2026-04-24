@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Wavee.Core.Session;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -33,6 +34,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackDescriptorFetcher _descriptorFetcher;
+    private readonly ISession _session;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
@@ -114,11 +116,13 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
         ITrackDescriptorFetcher descriptorFetcher,
+        ISession session,
         ILogger<LikedSongsViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _descriptorFetcher = descriptorFetcher;
+        _session = session;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -442,9 +446,22 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             startIndex = 0;
         }
 
+        // The autoplay endpoint and dealer protocol both require a real Spotify
+        // URI for the context — the canonical Liked Songs form is
+        // `spotify:user:{username}:collection`. Passing the UI sentinel
+        // "liked-songs" instead 400s /context-resolve/v1/autoplay and corrupts
+        // the outgoing dealer state.
+        var username = _session.GetUserData()?.Username;
+        if (string.IsNullOrEmpty(username))
+        {
+            _logger?.LogWarning("Cannot start Liked Songs playback — no authenticated user");
+            return;
+        }
+        var collectionUri = $"spotify:user:{username}:collection";
+
         var context = new PlaybackContextInfo
         {
-            ContextUri = "liked-songs",
+            ContextUri = collectionUri,
             Type = PlaybackContextType.LikedSongs,
             Name = "Liked Songs"
         };

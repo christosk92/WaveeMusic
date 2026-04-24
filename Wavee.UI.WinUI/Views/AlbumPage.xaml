@@ -9,13 +9,15 @@
     xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
+    xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
         <!-- Responsive: driven by SizeChanged in code-behind -->
@@ -84,22 +86,27 @@
                                               Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                         </Grid>
 
-                        <Border x:Name="AlbumArtContainer" CornerRadius="8"
-                                HorizontalAlignment="Stretch"
-                                SizeChanged="AlbumArtContainer_SizeChanged"
-                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                            <Grid>
-                                <lyrics:ShadowImage
-                                    Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
-                                    Stretch="UniformToFill"
-                                    CornerRadiusAmount="8"
-                                    ShadowAmount="24"
-                                    Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                                <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                            </Grid>
-                        </Border>
+                        <Grid HorizontalAlignment="Stretch">
+                            <winUi:Effects.Shadow>
+                                <ui:AttachedCardShadow BlurRadius="32" Offset="0,12" Opacity="0.28" Color="Black" CornerRadius="8" InnerContentClipMode="CompositionMaskBrush"/>
+                            </winUi:Effects.Shadow>
+                            <Border x:Name="AlbumArtContainer" CornerRadius="8"
+                                    HorizontalAlignment="Stretch"
+                                    SizeChanged="AlbumArtContainer_SizeChanged"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <Grid>
+                                    <lyrics:ShadowImage
+                                        Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                        Stretch="UniformToFill"
+                                        CornerRadiusAmount="8"
+                                        ShadowAmount="0"
+                                        Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                    <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
 
                         <TextBlock Text="{x:Bind ViewModel.AlbumName, Mode=OneWay}"
                                    FontSize="20" FontWeight="Bold" TextAlignment="Center"
@@ -353,20 +360,25 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <Border Grid.Column="0" Width="140" Height="140" CornerRadius="8"
-                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Margin="0,0,24,0">
-                                    <Grid>
-                                        <lyrics:ShadowImage
-                                            Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='140'}"
-                                            Stretch="UniformToFill"
-                                            CornerRadiusAmount="8"
-                                            ShadowAmount="18"
-                                            Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                                        <FontIcon Glyph="&#xE93C;" FontSize="48" Opacity="0.3"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                  Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                    </Grid>
-                                </Border>
+                                <Grid Grid.Column="0" Width="140" Height="140" Margin="0,0,24,0">
+                                    <winUi:Effects.Shadow>
+                                        <ui:AttachedCardShadow BlurRadius="20" Offset="0,8" Opacity="0.22" Color="Black" CornerRadius="8" InnerContentClipMode="CompositionMaskBrush"/>
+                                    </winUi:Effects.Shadow>
+                                    <Border Width="140" Height="140" CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <lyrics:ShadowImage
+                                                Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='140'}"
+                                                Stretch="UniformToFill"
+                                                CornerRadiusAmount="8"
+                                                ShadowAmount="0"
+                                                Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                            <FontIcon Glyph="&#xE93C;" FontSize="48" Opacity="0.3"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
 
                                 <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="{x:Bind ViewModel.AlbumType, Mode=OneWay}"

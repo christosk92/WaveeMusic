@@ -22,6 +22,8 @@
                 <ResourceDictionary Source="ms-appx:///Controls/GridSplitter/GridSplitter.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/ErrorStateView.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Shelf/ShelfStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Themes/ContextMenu.xaml" />
+                <ResourceDictionary Source="ms-appx:///Controls/AccentIcon/AccentIcon.xaml" />
 
                 <!-- INLINE ThemeDictionaries for TabView overrides (Files pattern) -->
                 <ResourceDictionary>

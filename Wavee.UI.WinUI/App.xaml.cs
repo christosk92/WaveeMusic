@@ -119,16 +119,28 @@ public partial class App : Application
         // Start background cache cleanup
         Ioc.Default.GetRequiredService<CacheCleanupService>().Start();
 
-        // Eagerly activate — registers IMessenger handlers
-        Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
-        Ioc.Default.GetRequiredService<Data.Contracts.IActivityService>();
-
-        // Eagerly create profiler — sets static Instance for hot-path access
-        Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
-
-        // Launch main window
+        // Launch main window FIRST — these singletons used to be resolved
+        // eagerly here, blocking first paint by 30-90 ms while their
+        // constructors wired up IMessenger handlers + dealer subscriptions.
+        // None of them produce user-visible state on the first frame, so
+        // defer to a Low-priority dispatcher tick after Activate. The
+        // existing IsZeroRevisionCounter check elsewhere doesn't depend on
+        // them being live before window paint.
         MainWindow.Instance.Activate();
         _ = MainWindow.Instance.InitializeApplicationAsync();
+
+        MainWindow.Instance.DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                // LibrarySyncOrchestrator + IActivityService register IMessenger
+                // handlers in their ctors; UiOperationProfiler sets a static
+                // Instance for hot-path access. All three are subscribers, not
+                // producers — being live ~50 ms after first paint is safe.
+                Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
+                Ioc.Default.GetRequiredService<Data.Contracts.IActivityService>();
+                Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
+            });
 
         // One-shot post-startup heap compaction. Startup allocates aggressively across
         // many code paths (XAML parse, DI graph construction, library sync, home feed),

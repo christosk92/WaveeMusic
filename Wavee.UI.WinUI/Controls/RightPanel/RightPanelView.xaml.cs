@@ -13,6 +13,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Controls.Lyrics.Models.Lyrics;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;
@@ -1932,46 +1934,55 @@ public sealed partial class RightPanelView : UserControl
             ApplyDetailsState();
     }
 
-    private void AddDetailsCanvasMenuItems(MenuFlyout menu)
+    private IReadOnlyList<ContextMenuItemModel>? BuildDetailsCanvasMenuItems()
     {
-        if (_detailsVm?.HasData != true)
-            return;
+        if (_detailsVm?.HasData != true) return null;
 
-        menu.Items.Add(new MenuFlyoutSeparator());
-
-        var canvasSubMenu = new MenuFlyoutSubItem
+        var canvasLabel = _detailsVm.IsManualCanvasOverride ? "Custom canvas" : "Canvas";
+        var canvasMenuGlyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Canvas;
+        var children = new List<ContextMenuItemModel>
         {
-            Text = _detailsVm.IsManualCanvasOverride ? "Custom canvas" : "Canvas",
-            Icon = new FontIcon { Glyph = "\uE70F" }
+            new()
+            {
+                Text = "Choose file...",
+                Invoke = async () => await PickManualCanvasFileAsync()
+            },
+            new()
+            {
+                Text = "Set URL...",
+                Invoke = async () => await PromptForManualCanvasUrlAsync()
+            }
         };
-
-        var chooseFileItem = new MenuFlyoutItem { Text = "Choose file..." };
-        chooseFileItem.Click += async (_, _) => await PickManualCanvasFileAsync();
-        canvasSubMenu.Items.Add(chooseFileItem);
-
-        var setUrlItem = new MenuFlyoutItem { Text = "Set URL..." };
-        setUrlItem.Click += async (_, _) => await PromptForManualCanvasUrlAsync();
-        canvasSubMenu.Items.Add(setUrlItem);
 
         if (_detailsVm.IsManualCanvasOverride)
         {
-            canvasSubMenu.Items.Add(new MenuFlyoutSeparator());
-
-            var resetItem = new MenuFlyoutItem { Text = "Reset to Spotify" };
-            resetItem.Click += async (_, _) => await ResetCanvasToUpstreamAsync();
-            canvasSubMenu.Items.Add(resetItem);
+            children.Add(ContextMenuItemModel.Separator);
+            children.Add(new ContextMenuItemModel
+            {
+                Text = "Reset to Spotify",
+                Invoke = async () => await ResetCanvasToUpstreamAsync()
+            });
         }
 
         if (_detailsVm.HasPendingCanvasUpdate)
         {
-            canvasSubMenu.Items.Add(new MenuFlyoutSeparator());
-
-            var reviewItem = new MenuFlyoutItem { Text = "Review Spotify update..." };
-            reviewItem.Click += async (_, _) => await ReviewPendingCanvasAsync();
-            canvasSubMenu.Items.Add(reviewItem);
+            children.Add(ContextMenuItemModel.Separator);
+            children.Add(new ContextMenuItemModel
+            {
+                Text = "Review Spotify update...",
+                Invoke = async () => await ReviewPendingCanvasAsync()
+            });
         }
 
-        menu.Items.Add(canvasSubMenu);
+        return new[]
+        {
+            new ContextMenuItemModel
+            {
+                Text = canvasLabel,
+                Glyph = canvasMenuGlyph,
+                Items = children
+            }
+        };
     }
 
     private void DetailsLyricsSnippet_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
@@ -2741,11 +2752,10 @@ public sealed partial class RightPanelView : UserControl
         if (string.IsNullOrEmpty(ps.CurrentTrackId)) return;
 
         var adapter = new Data.DTOs.NowPlayingTrackAdapter(ps);
-        var options = new Track.TrackContextMenuOptions
+        var ctx = new TrackMenuContext
         {
             ShowCreditsAction = () =>
             {
-                // Scroll to credits section
                 if (DetailsCreditsSection.Visibility == Visibility.Visible)
                 {
                     var transform = DetailsCreditsSection.TransformToVisual(DetailsContent);
@@ -2764,17 +2774,15 @@ public sealed partial class RightPanelView : UserControl
                 };
                 _settingsService?.Update(s => s.DetailsBackgroundMode = modeStr);
                 _ = _settingsService?.SaveAsync();
-
-                // Re-apply background with the new mode
                 UpdatePanelBackgroundState();
             },
             HasCanvas = _detailsVm?.HasCanvas ?? false,
             CurrentBackgroundMode = _activeBackgroundMode,
+            ExtraItems = BuildDetailsCanvasMenuItems()
         };
 
-        var menu = Track.TrackContextMenu.Create(adapter, options);
-        AddDetailsCanvasMenuItems(menu);
-        menu.ShowAt((Microsoft.UI.Xaml.FrameworkElement)sender);
+        var items = TrackContextMenuBuilder.Build(adapter, ctx);
+        ContextMenuHost.Show((Microsoft.UI.Xaml.FrameworkElement)sender, items);
     }
 
     private void DetailsBioText_IsTextTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args)

@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Controls.Track.Behaviors;
@@ -223,15 +225,15 @@ public static class TrackBehavior
 
     private static void ShowContextMenu(FrameworkElement element, ITrackItem track, Windows.Foundation.Point position)
     {
-        var options = new TrackContextMenuOptions
+        var ctx = new TrackMenuContext
         {
             PlayCommand = GetPlayCommand(element),
             AddToQueueCommand = GetAddToQueueCommand(element),
             RemoveCommand = GetRemoveCommand(element)
         };
 
-        var menu = TrackContextMenu.Create(track, options);
-        menu.ShowAt(element, position);
+        var items = TrackContextMenuBuilder.Build(track, ctx);
+        ContextMenuHost.Show(element, items, position);
     }
 
     private static ISettingsService? TryGetSettings()

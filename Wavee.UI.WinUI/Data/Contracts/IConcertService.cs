@@ -29,6 +29,18 @@ public sealed record ConcertDetailResult
     public required List<ConcertOfferResult> Offers { get; init; }
     public required List<ConcertRelatedResult> RelatedConcerts { get; init; }
     public required List<string> Genres { get; init; }
+    /// <summary>Editorial playlists related to the headliner (e.g. "This Is …"). Empty when
+    /// the API didn't return a relatedContent.featuringV2 block.</summary>
+    public required List<ConcertFeaturedPlaylistResult> FeaturedPlaylists { get; init; }
+}
+
+public sealed record ConcertFeaturedPlaylistResult
+{
+    public string? Uri { get; init; }
+    public string? Name { get; init; }
+    public string? Description { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? OwnerName { get; init; }
 }
 
 public sealed record ConcertArtistResult
@@ -39,6 +51,32 @@ public sealed record ConcertArtistResult
     public string? HeaderImageUrl { get; init; }
     public int UpcomingConcertCount { get; init; }
     public required List<ConcertPopularAlbumResult> PopularAlbums { get; init; }
+    /// <summary>
+    /// Spotify-extracted palette for this artist (from the hero image). Null when the
+    /// API doesn't return a visualIdentity block. Each tier has Background/TextBase/
+    /// TextBrightAccent/TextSubdued and is pre-computed for dark/darker/light-bg contexts.
+    /// </summary>
+    public ConcertArtistPalette? Palette { get; init; }
+}
+
+public sealed record ConcertArtistPalette
+{
+    public ConcertPaletteTier? HighContrast { get; init; }    // saturated dark bg
+    public ConcertPaletteTier? HigherContrast { get; init; }  // darkest bg
+    public ConcertPaletteTier? MinContrast { get; init; }     // light / pastel bg
+}
+
+public sealed record ConcertPaletteTier
+{
+    public byte BackgroundR { get; init; }
+    public byte BackgroundG { get; init; }
+    public byte BackgroundB { get; init; }
+    public byte BackgroundTintedR { get; init; }
+    public byte BackgroundTintedG { get; init; }
+    public byte BackgroundTintedB { get; init; }
+    public byte TextAccentR { get; init; }
+    public byte TextAccentG { get; init; }
+    public byte TextAccentB { get; init; }
 }
 
 public sealed record ConcertPopularAlbumResult

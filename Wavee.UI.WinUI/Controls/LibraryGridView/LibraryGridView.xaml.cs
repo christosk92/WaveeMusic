@@ -75,6 +75,20 @@ public sealed partial class LibraryGridView : UserControl
         DependencyProperty.Register(nameof(ViewMode), typeof(LibraryViewMode), typeof(LibraryGridView),
             new PropertyMetadata(LibraryViewMode.DefaultGrid, OnViewModeChanged));
 
+    public static readonly DependencyProperty GridScaleProperty =
+        DependencyProperty.Register(nameof(GridScale), typeof(double), typeof(LibraryGridView),
+            new PropertyMetadata(1.0, OnGridScaleChanged));
+
+    public static readonly DependencyProperty GridItemTextBandHeightProperty =
+        DependencyProperty.Register(nameof(GridItemTextBandHeight), typeof(double), typeof(LibraryGridView),
+            new PropertyMetadata(0.0, OnGridScaleChanged));
+
+    public double GridItemTextBandHeight
+    {
+        get => (double)GetValue(GridItemTextBandHeightProperty);
+        set => SetValue(GridItemTextBandHeightProperty, value);
+    }
+
     public static readonly DependencyProperty CompactListItemTemplateProperty =
         DependencyProperty.Register(nameof(CompactListItemTemplate), typeof(DataTemplate), typeof(LibraryGridView),
             new PropertyMetadata(null, OnTemplatePropertyChanged));
@@ -195,6 +209,16 @@ public sealed partial class LibraryGridView : UserControl
     }
 
     /// <summary>
+    /// User-controlled multiplier applied to MinItemWidth/MinItemHeight for DefaultGrid mode.
+    /// Range is typically 0.7–1.6. Values outside that are clamped at apply time.
+    /// </summary>
+    public double GridScale
+    {
+        get => (double)GetValue(GridScaleProperty);
+        set => SetValue(GridScaleProperty, value);
+    }
+
+    /// <summary>
     /// Gets or sets the command to execute when selection changes.
     /// </summary>
     public ICommand? SelectionChangedCommand
@@ -308,9 +332,19 @@ public sealed partial class LibraryGridView : UserControl
             control.ApplyViewMode();
     }
 
+    private static void OnGridScaleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is LibraryGridView control)
+            control.ApplyViewMode();
+    }
+
     private void ApplyViewMode()
     {
         if (ItemsGridView == null) return;
+
+        var scale = GridScale <= 0 ? 1.0 : Math.Clamp(GridScale, 0.5, 2.0);
+        var scaledWidth = MinItemWidth * scale;
+        var scaledHeight = MinItemHeight * scale;
 
         var (template, layout, minWidth, minHeight) = ViewMode switch
         {
@@ -340,8 +374,8 @@ public sealed partial class LibraryGridView : UserControl
                 DefaultGridItemTemplate ?? ItemTemplate,
                 new UniformGridLayout
                 {
-                    MinItemWidth = MinItemWidth,
-                    MinItemHeight = MinItemHeight,
+                    MinItemWidth = scaledWidth,
+                    MinItemHeight = scaledHeight,
                     MinRowSpacing = 12,
                     MinColumnSpacing = 12,
                     // Uniform stretch: cells grow with the viewport while preserving the
@@ -351,8 +385,8 @@ public sealed partial class LibraryGridView : UserControl
                     // got truncated even on wide displays.
                     ItemsStretch = UniformGridLayoutItemsStretch.Uniform
                 },
-                MinItemWidth,
-                MinItemHeight)
+                scaledWidth,
+                scaledHeight)
         };
 
         // Keep the shimmer aligned to the items layout so the placeholder silhouette

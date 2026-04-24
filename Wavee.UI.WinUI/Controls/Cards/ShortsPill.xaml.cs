@@ -378,19 +378,19 @@ public sealed partial class ShortsPill : UserControl
     {
         if (Item == null) return;
 
-        var menu = new MenuFlyout();
-        var openNewTab = new MenuFlyoutItem
+        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
         {
-            Text = "Open in new tab",
-            Icon = new SymbolIcon(Symbol.OpenWith)
-        };
-        openNewTab.Click += (_, _) =>
-        {
-            ResetInteractionState();
-            HomeViewModel.NavigateToItem(Item, openInNewTab: true);
-        };
-        menu.Items.Add(openNewTab);
-        menu.ShowAt(PillButton, e.GetPosition(PillButton));
+            Uri = Item.Uri ?? string.Empty,
+            Title = Item.Title ?? string.Empty,
+            Subtitle = Item.Subtitle,
+            ImageUrl = Item.ImageUrl,
+            OpenAction = openInNewTab =>
+            {
+                ResetInteractionState();
+                HomeViewModel.NavigateToItem(Item, openInNewTab);
+            }
+        });
+        Controls.ContextMenu.ContextMenuHost.Show(PillButton, items, e.GetPosition(PillButton));
     }
 
     private void SetPlaybackPending(bool pending)

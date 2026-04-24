@@ -1513,19 +1513,19 @@ public sealed partial class BaselineHomeCard : UserControl
         if (item == null)
             return;
 
-        var menu = new MenuFlyout();
-        var openNewTab = new MenuFlyoutItem
+        var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
         {
-            Text = "Open in new tab",
-            Icon = new SymbolIcon(Symbol.OpenWith)
-        };
-        openNewTab.Click += (_, _) =>
-        {
-            ResetInteractionStateForNavigation();
-            HomeViewModel.NavigateToItem(item, openInNewTab: true);
-        };
-        menu.Items.Add(openNewTab);
-        menu.ShowAt(this, e.GetPosition(this));
+            Uri = item.Uri ?? string.Empty,
+            Title = item.Title ?? string.Empty,
+            Subtitle = item.Subtitle,
+            ImageUrl = item.ImageUrl,
+            OpenAction = openInNewTab =>
+            {
+                ResetInteractionStateForNavigation();
+                HomeViewModel.NavigateToItem(item, openInNewTab);
+            }
+        });
+        Controls.ContextMenu.ContextMenuHost.Show(this, items, e.GetPosition(this));
         e.Handled = true;
     }
 

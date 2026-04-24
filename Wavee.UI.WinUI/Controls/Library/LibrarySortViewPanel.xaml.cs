@@ -48,6 +48,20 @@ public sealed partial class LibrarySortViewPanel : UserControl
                 "Recents,RecentlyAdded,Alphabetical,Creator,ReleaseDate",
                 OnAllowedSortKeysChanged));
 
+    public static readonly DependencyProperty GridScaleProperty =
+        DependencyProperty.Register(
+            nameof(GridScale),
+            typeof(double),
+            typeof(LibrarySortViewPanel),
+            new PropertyMetadata(1.0));
+
+    public static readonly DependencyProperty ShowGridScaleProperty =
+        DependencyProperty.Register(
+            nameof(ShowGridScale),
+            typeof(bool),
+            typeof(LibrarySortViewPanel),
+            new PropertyMetadata(false, OnShowGridScaleChanged));
+
     public LibrarySortBy SortBy
     {
         get => (LibrarySortBy)GetValue(SortByProperty);
@@ -77,6 +91,18 @@ public sealed partial class LibrarySortViewPanel : UserControl
         set => SetValue(AllowedSortKeysProperty, value);
     }
 
+    public double GridScale
+    {
+        get => (double)GetValue(GridScaleProperty);
+        set => SetValue(GridScaleProperty, value);
+    }
+
+    public bool ShowGridScale
+    {
+        get => (bool)GetValue(ShowGridScaleProperty);
+        set => SetValue(ShowGridScaleProperty, value);
+    }
+
     public LibrarySortViewPanel()
     {
         InitializeComponent();
@@ -89,6 +115,7 @@ public sealed partial class LibrarySortViewPanel : UserControl
         ApplySortByToUi();
         ApplyDirectionToUi();
         ApplyViewModeToUi();
+        ApplyGridScaleVisibility();
         UpdateTriggerDisplay();
     }
 
@@ -112,12 +139,25 @@ public sealed partial class LibrarySortViewPanel : UserControl
     {
         var panel = (LibrarySortViewPanel)d;
         panel.ApplyViewModeToUi();
+        panel.ApplyGridScaleVisibility();
         panel.UpdateTriggerDisplay();
     }
 
     private static void OnAllowedSortKeysChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         ((LibrarySortViewPanel)d).ApplyAllowedSortKeys();
+    }
+
+    private static void OnShowGridScaleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((LibrarySortViewPanel)d).ApplyGridScaleVisibility();
+    }
+
+    private void ApplyGridScaleVisibility()
+    {
+        if (GridScaleSection == null) return;
+        var isGridMode = ViewMode is LibraryViewMode.DefaultGrid or LibraryViewMode.CompactGrid;
+        GridScaleSection.Visibility = (ShowGridScale && isGridMode) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── UI sync ──

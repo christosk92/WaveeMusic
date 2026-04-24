@@ -2129,6 +2129,26 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
     }
 
+    public async Task ClearAllSyncStateAsync(CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM sync_state;";
+            var affected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogInformation("Cleared {Count} sync_state rows", affected);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     #endregion
 
     #region Play History Operations
@@ -2696,12 +2716,27 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     private static PlaylistCacheEntry ReadPlaylistCacheEntry(SqliteDataReader reader)
     {
+        // Column 2 is the owner_id column, which stores the full `spotify:user:{id}` URI.
+        // OwnerUsername should be the bare id — strip the prefix (repeatedly, so legacy
+        // rows that were already corrupted as `spotify:user:spotify:user:{id}` heal on read).
+        // Without this normalisation, downstream writes build `spotify:user:{OwnerUsername}`
+        // and the prefix grows on every round-trip, eventually producing the long recursive
+        // string visible in the UI.
+        var ownerIdRaw = reader.IsDBNull(2) ? null : reader.GetString(2);
+        string? ownerUsername = ownerIdRaw;
+        if (ownerUsername is not null)
+        {
+            const string prefix = "spotify:user:";
+            while (ownerUsername.StartsWith(prefix, StringComparison.Ordinal))
+                ownerUsername = ownerUsername[prefix.Length..];
+        }
+
         return new PlaylistCacheEntry
         {
             Uri = reader.GetString(0),
             Name = reader.GetString(1),
-            OwnerUri = reader.IsDBNull(2) ? null : reader.GetString(2),
-            OwnerUsername = reader.IsDBNull(2) ? null : reader.GetString(2),
+            OwnerUri = ownerIdRaw,
+            OwnerUsername = ownerUsername,
             OwnerName = reader.IsDBNull(3) ? null : reader.GetString(3),
             Description = reader.IsDBNull(4) ? null : reader.GetString(4),
             ImageUrl = reader.IsDBNull(5) ? null : reader.GetString(5),

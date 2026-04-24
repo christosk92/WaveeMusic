@@ -13,6 +13,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -30,6 +32,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private LoadedImageSurface? _blurSurface;
     private bool _isNarrowMode;
     private SpriteVisual? _blurSprite;
+    private string? _lastBlurUrl;
 
     // CompositionEffectFactory compiles a pixel shader on creation, which is
     // expensive (Microsoft's Composition docs explicitly call this out). The
@@ -75,6 +78,24 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         // Plays column formatter — TrackDataGrid's PlayCount column uses this delegate
         // to reach AlbumTrackDto.PlayCountFormatted (TrackItem doesn't know that type).
         // Same pattern as the DateAddedFormatter used on PlaylistPage.
+        NarrowAlbumHeader.RightTapped += (_, e) =>
+        {
+            if (string.IsNullOrEmpty(ViewModel.AlbumId)) return;
+            var items = AlbumContextMenuBuilder.Build(new AlbumMenuContext
+            {
+                AlbumId = ViewModel.AlbumId!,
+                AlbumName = ViewModel.AlbumName ?? string.Empty,
+                ArtistId = ViewModel.ArtistId,
+                ArtistName = ViewModel.ArtistName,
+                IsSaved = ViewModel.IsSaved,
+                PlayCommand = ViewModel.PlayAlbumCommand,
+                ShuffleCommand = ViewModel.ShuffleAlbumCommand,
+                ToggleSaveCommand = ViewModel.ToggleSaveCommand
+            });
+            ContextMenuHost.Show(NarrowAlbumHeader, items, e.GetPosition(NarrowAlbumHeader));
+            e.Handled = true;
+        };
+
         TrackGrid.PlayCountFormatter = item =>
             item is ViewModels.LazyTrackItem lazy && lazy.Data is Data.DTOs.AlbumTrackDto dto
                 ? dto.PlayCountFormatted
@@ -92,10 +113,16 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     private void AlbumPage_Loaded(object sender, RoutedEventArgs e)
     {
-        // If AlbumImageUrl was already set before the page was fully loaded
-        // (e.g. via PrefillFrom during OnNavigatedTo), set up the blur now.
-        // Deferred to Low priority so first paint completes before we spin up
-        // LoadedImageSurface + Compositor work.
+        // Cached-page return: WinUI detaches the sprite's child-visual binding
+        // on Unloaded. Re-attach the existing sprite so it shows immediately —
+        // a subsequent ViewModel_PropertyChanged with a different URL will
+        // tear it down and build a new one via the URL-dedup miss path.
+        if (_blurSprite != null)
+            ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
+
+        // First-time setup: AlbumImageUrl was already populated by PrefillFrom
+        // during OnNavigatedTo. Deferred to Low priority so first paint
+        // completes before we spin up LoadedImageSurface + Compositor work.
         if (!string.IsNullOrEmpty(ViewModel.AlbumImageUrl) && _blurSprite == null)
         {
             var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
@@ -108,20 +135,17 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        ViewModel.ContentChanged -= ViewModel_ContentChanged;
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        (ViewModel as IDisposable)?.Dispose();
-
-        // Dispose composition resources
-        _blurSurface?.Dispose();
-        _blurSurface = null;
-        if (_blurSprite != null)
-        {
-            ElementCompositionPreview.SetElementChildVisual(BlurredBackground, null);
-            _blurSprite.Brush?.Dispose();
-            _blurSprite.Dispose();
-            _blurSprite = null;
-        }
+        // Page is now cached (NavigationCacheMode=Enabled): Unloaded fires on
+        // tab-switch but the instance comes back. Mirror PlaylistPage:
+        //   • Don't dispose the ViewModel — Activate/Deactivate handle the
+        //     subscription lifecycle in OnNavigatedTo/OnNavigatedFrom.
+        //   • Don't unhook ContentChanged/PropertyChanged — re-Loaded would
+        //     leave the page deaf to image/title updates without them.
+        //   • Don't dispose composition resources — keep _blurSurface and
+        //     _blurSprite alive so a cached return with the same album is a
+        //     no-op (URL dedup in SetupBlurredBackground), and a return with a
+        //     different album rebuilds them via the same dedup-miss path.
+        // Memory cost: ~512 KB per cached AlbumPage tab. Acceptable.
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -138,6 +162,17 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
     private void SetupBlurredBackground(string imageUrl)
     {
+        // Skip the full teardown + re-decode + shader pass when the URL hasn't
+        // changed. AlbumImageUrl fires PropertyChanged twice with the same
+        // value (PrefillFrom → detail-load), and on cached-page returns to the
+        // same album the URL matches what's already loaded. Re-attach the
+        // sprite (Unloaded detached it) and bail.
+        if (string.Equals(imageUrl, _lastBlurUrl, StringComparison.Ordinal) && _blurSprite != null)
+        {
+            ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
+            return;
+        }
+
         // Clean up previous
         _blurSurface?.Dispose();
         if (_blurSprite != null)
@@ -147,6 +182,8 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
             _blurSprite.Dispose();
             _blurSprite = null;
         }
+
+        _lastBlurUrl = imageUrl;
 
         var visual = ElementCompositionPreview.GetElementVisual(BlurredBackground);
         var compositor = visual.Compositor;

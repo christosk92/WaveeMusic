@@ -13,6 +13,8 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers;
@@ -64,6 +66,21 @@ public sealed partial class PlaylistPage : Page
             return "";
         };
         TrackGrid.DateAddedFormatter = addedFormatter;
+
+        WidePlaylistPanel.RightTapped += (_, e) =>
+        {
+            if (string.IsNullOrEmpty(ViewModel.PlaylistId)) return;
+            var items = PlaylistContextMenuBuilder.Build(new PlaylistMenuContext
+            {
+                PlaylistId = ViewModel.PlaylistId,
+                PlaylistName = ViewModel.PlaylistName ?? string.Empty,
+                IsOwner = ViewModel.IsOwner,
+                PlayCommand = ViewModel.PlayAllCommand,
+                ShuffleCommand = ViewModel.ShuffleCommand
+            });
+            ContextMenuHost.Show(WidePlaylistPanel, items, e.GetPosition(WidePlaylistPanel));
+            e.Handled = true;
+        };
 
         // Editorial / radio playlists don't carry added-at timestamps — hide the whole
         // Date Added column when the loaded tracks have none. Also watch HeaderImageUrl
@@ -305,23 +322,22 @@ public sealed partial class PlaylistPage : Page
         if (_heroScrimColorBrush != null)
             _heroScrimColorBrush.Color = GetHeroScrimColor();
 
-        // (Re)load the image on every Loaded. The previous Unloaded dropped the surface
-        // to free decoded pixels; reset _appliedHeroUrl so the dedupe in ApplyHeaderBackground
-        // doesn't short-circuit a load against a now-null surface.
-        _appliedHeroUrl = null;
+        // ApplyHeaderBackground's own _appliedHeroUrl dedup short-circuits when the
+        // ViewModel's HeaderImageUrl matches what's already loaded — so a cached-tab
+        // return with the same playlist is a true no-op (no surface alloc, no
+        // decode, no GPU work). Earlier we dropped the surface in Unloaded and reset
+        // _appliedHeroUrl here to "force a reload" — but that paid 50-200 ms on every
+        // tab switch for the sake of ~500 KB of decoded pixels. Trade reversed: keep
+        // the surface alive across Unloaded/Loaded; only re-decode when URL changes.
         ApplyHeaderBackground();
     }
 
     private void HeaderBackgroundHost_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Cached page: Unloaded fires on nav-away but the instance stays alive.
-        // Drop the image surface so we don't leak decoded pixels across navigations;
-        // the sprite + brush are reusable and recreate cheaply on the next Loaded.
-        _heroImageSurface?.Dispose();
-        _heroImageSurface = null;
-        _appliedHeroUrl = null;
-        if (_heroSurfaceBrush != null)
-            _heroSurfaceBrush.Surface = null;
+        // Intentionally NOT disposing _heroImageSurface or nulling _appliedHeroUrl
+        // here — see HeaderBackgroundHost_Loaded's comment block above. The cached
+        // page instance comes back next nav and we want the dedup to skip the
+        // re-decode. Memory cost: ~500 KB per cached PlaylistPage tab. Acceptable.
     }
 
     private void ApplyHeaderBackground()

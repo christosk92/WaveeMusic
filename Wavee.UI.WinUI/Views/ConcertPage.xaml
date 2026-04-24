@@ -8,234 +8,1056 @@
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
+    xmlns:winUi="using:CommunityToolkit.WinUI"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
     Background="Transparent">
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
+
+        <!-- Poster shadow shared across hero + lineup avatars so elevation reads consistently. -->
+        <ui:AttachedCardShadow x:Key="SoftElevation"
+                               BlurRadius="26"
+                               Offset="0,10"
+                               Opacity="0.22"
+                               Color="Black"
+                               CornerRadius="8"
+                               InnerContentClipMode="CompositionMaskBrush"/>
+
+        <!-- Shy-header morph: feature-tile overlay ↔ floating compact card.
+             Matched ids on the hero image + title interpolate between the two
+             states; unpaired chrome fades via the helper's independent timings. -->
+        <transitions:TransitionHelper x:Key="ConcertShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="card-shell"    ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="concert-image" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="concert-title" ScaleMode="Scale"/>
+        </transitions:TransitionHelper>
     </Page.Resources>
 
     <Grid>
-        <!-- Shimmer (visible while loading) -->
-        <StackPanel x:Name="ShimmerContainer" Spacing="24" Padding="32"
+        <!-- NarrowLayout removed: the hero is now a single landscape feature tile that
+             scales naturally with the viewport. -->
+
+
+        <!-- Palette-tinted page wash: a soft artist-coloured layer behind everything,
+             sitting on top of the window's Mica. Opacity is baked into the brush itself,
+             so when the palette is missing the brush is null and nothing renders. -->
+        <Border IsHitTestVisible="False"
+                Background="{x:Bind ViewModel.PaletteBackdropBrush, Mode=OneWay}"/>
+
+        <!-- ── LOADING SKELETON ──────────────────────────────────────────────────
+             Mirrors the new layout: full-width 480-tall landscape hero, a Lineup
+             row with a landscape artist tile + horizontal albums rail, and a
+             Featured playlists rail below. -->
+        <StackPanel x:Name="ShimmerContainer"
+                    Padding="40,48,40,48"
+                    Spacing="40"
+                    MaxWidth="1240"
+                    HorizontalAlignment="Stretch"
                     Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-            <controls:Shimmer Width="400" Height="32" HorizontalAlignment="Left"/>
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <controls:Shimmer Width="160" Height="20"/>
-                <controls:Shimmer Width="100" Height="20"/>
+
+            <!-- Landscape hero tile (matches StoreHero's 480-tall feature tile). -->
+            <controls:Shimmer Height="480"
+                              HorizontalAlignment="Stretch"
+                              CornerRadius="8"/>
+
+            <!-- Lineup section: heading, then a landscape artist tile (380×220)
+                 beside a horizontal album rail. -->
+            <StackPanel Spacing="20">
+                <controls:Shimmer Width="120" Height="28"/>
+                <Grid ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="380"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Spacing="10">
+                        <controls:Shimmer Width="380" Height="220" CornerRadius="8"/>
+                        <controls:Shimmer Width="260" Height="14"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="10">
+                        <controls:Shimmer Width="140" Height="14"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <controls:Shimmer Width="150" Height="210" CornerRadius="6"/>
+                            <controls:Shimmer Width="150" Height="210" CornerRadius="6"/>
+                            <controls:Shimmer Width="150" Height="210" CornerRadius="6"/>
+                            <controls:Shimmer Width="150" Height="210" CornerRadius="6"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
             </StackPanel>
-            <controls:Shimmer Width="250" Height="16"/>
-            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,16,0,0">
-                <controls:Shimmer Width="80" Height="80" CornerRadius="40"/>
-                <controls:Shimmer Width="80" Height="80" CornerRadius="40"/>
-            </StackPanel>
-            <controls:Shimmer Width="200" Height="20" Margin="0,16,0,0"/>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <controls:Shimmer Width="140" Height="44" CornerRadius="8"/>
-                <controls:Shimmer Width="140" Height="44" CornerRadius="8"/>
+
+            <!-- Featured playlists rail. -->
+            <StackPanel Spacing="16">
+                <controls:Shimmer Width="200" Height="28"/>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <controls:Shimmer Width="180" Height="240" CornerRadius="6"/>
+                    <controls:Shimmer Width="180" Height="240" CornerRadius="6"/>
+                    <controls:Shimmer Width="180" Height="240" CornerRadius="6"/>
+                    <controls:Shimmer Width="180" Height="240" CornerRadius="6"/>
+                </StackPanel>
             </StackPanel>
         </StackPanel>
 
-        <!-- Full-page background: diagonal artist images (Composition visuals injected in code-behind) -->
-        <Border x:Name="HeroImageContainer"/>
-
-        <!-- Full-page gradient overlay for text readability (theme-aware) -->
-        <Border x:Name="GradientOverlay" IsHitTestVisible="False"/>
-
-        <!-- Content (fades in after loading) -->
+        <!-- ── CONTENT ─────────────────────────────────────────────────────────── -->
         <ScrollView x:Name="ContentContainer" Opacity="0">
-            <StackPanel Spacing="24" Padding="32,40,32,32">
+            <Grid Padding="40,48,40,64"
+                  MaxWidth="1240"
+                  HorizontalAlignment="Stretch"
+                  RowSpacing="48">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>   <!-- Hero -->
+                    <RowDefinition Height="Auto"/>   <!-- Lineup -->
+                    <RowDefinition Height="Auto"/>   <!-- Featured playlists -->
+                    <RowDefinition Height="Auto"/>   <!-- Venue -->
+                    <RowDefinition Height="Auto"/>   <!-- Nearby -->
+                </Grid.RowDefinitions>
 
-                <!-- Concert info (was in hero, now top of scrollable content) -->
-                <StackPanel Spacing="10">
-                        <!-- Date pill -->
-                        <Border CornerRadius="4" Padding="10,5" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
-                                HorizontalAlignment="Left">
-                            <TextBlock Text="{x:Bind ViewModel.DateFormatted, Mode=OneWay}"
-                                       FontSize="13" FontWeight="Bold" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                        </Border>
+                <!-- ════ HERO ════════════════════════════════════════════════
+                     Spotify-style landscape hero banner: one feature tile (always) + up to
+                     3 supporting tiles (only when there are ≥2 artists). The supporting
+                     column's width is toggled in code-behind on VM.HasSupportingArtists
+                     changes — it collapses to 0 when solo, leaving the feature tile full-width. -->
+                <Grid Grid.Row="0" x:Name="StoreHero"
+                      Height="480"
+                      ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition x:Name="SupportingColumn" Width="0"/>
+                    </Grid.ColumnDefinitions>
 
-                        <!-- Title -->
-                        <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
-                                   FontSize="40" FontWeight="Bold" Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   TextWrapping="Wrap" MaxLines="2"/>
+                    <!-- FEATURE TILE: headliner image on the right, info overlay on the left.
+                         Named so the code-behind can fade it out in parallel with the shy-header
+                         morph (handles the outer chrome which isn't in HeroOverlayPanel). -->
+                    <Grid Grid.Column="0" x:Name="FeatureTileRoot">
+                        <winUi:Effects.Shadow>
+                            <ui:AttachedCardShadow BlurRadius="26"
+                                                   Offset="0,10"
+                                                   Opacity="0.22"
+                                                   Color="Black"
+                                                   CornerRadius="8"
+                                                   InnerContentClipMode="CompositionMaskBrush"/>
+                        </winUi:Effects.Shadow>
+                        <Border CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <!-- HeroOverlayPanel wraps EVERYTHING the shy-header morph owns:
+                                 the card-shell chrome (matched), the hero Image (matched,
+                                 concert-image), the gradient washes (independent), and the
+                                 content StackPanel (independent). TransitionHelper only looks
+                                 for matched ids inside its Source root, so anything outside
+                                 wouldn't participate in the morph. -->
+                            <Grid x:Name="HeroOverlayPanel">
+                                <Border transitions:TransitionHelper.Id="card-shell"
+                                        Background="Transparent"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"/>
+                                <Image transitions:TransitionHelper.Id="concert-image"
+                                       Source="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=1200}"
+                                       Stretch="UniformToFill"
+                                       HorizontalAlignment="Right"
+                                       Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                <!-- Horizontal gradient wash from left to mid: dark ink fades into the image. -->
+                                <Border>
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#E0000000" Offset="0"/>
+                                            <GradientStop Color="#80000000" Offset="0.4"/>
+                                            <GradientStop Color="#00000000" Offset="0.8"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                                <Border Background="{x:Bind ViewModel.PaletteHeroGradientBrush, Mode=OneWay}"/>
+                                <StackPanel HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Padding="40,32"
+                                            MaxWidth="480"
+                                            Spacing="14">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <!-- Accent pill: layered so a palette brush (when present) paints over the
+                                             system-accent fallback; when null, the fallback reads through. -->
+                                        <!-- Day-of-week pill: styled to match CommunityToolkit TokenItem's
+                                             SELECTED state (accent bg + accent border + TextOnAccent text).
+                                             Both layers share identical geometry — same padding, same 1px
+                                             border (transparent on the palette overlay) — so the matched-id
+                                             morph doesn't get a sub-pixel seam between the two. -->
+                                        <Grid>
+                                            <Border CornerRadius="16"
+                                                    Padding="11,4,11,6"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    BorderThickness="1">
+                                                <TextBlock Text="{x:Bind ViewModel.DayOfWeekUpper, Mode=OneWay}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                            </Border>
+                                            <Border CornerRadius="16"
+                                                    Padding="11,4,11,6"
+                                                    BorderThickness="1"
+                                                    BorderBrush="Transparent"
+                                                    Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}">
+                                                <TextBlock Text="{x:Bind ViewModel.DayOfWeekUpper, Mode=OneWay}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
+                                            </Border>
+                                        </Grid>
+                                        <TextBlock Text="{x:Bind ViewModel.DateFormatted, Mode=OneWay}"
+                                                   FontSize="13"
+                                                   FontWeight="Bold"
+                                                   CharacterSpacing="100"
+                                                   Foreground="White"
+                                                   Opacity="0.9"
+                                                   VerticalAlignment="Center"/>
+                                        <!-- Festival pill: same TokenItem spec. -->
+                                        <Border CornerRadius="16"
+                                                Padding="11,4,11,6"
+                                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                VerticalAlignment="Center"
+                                                Visibility="{x:Bind ViewModel.IsFestival, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Text="Festival"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                                        </Border>
+                                    </StackPanel>
 
-                        <!-- Venue · City · Time -->
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE81D;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <TextBlock FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                                <Run Text="{x:Bind ViewModel.Venue, Mode=OneWay}"/>
-                                <Run Text=" · "/>
-                                <Run Text="{x:Bind ViewModel.City, Mode=OneWay}"/>
-                                <Run Text=" · "/>
-                                <Run Text="{x:Bind ViewModel.ShowTime, Mode=OneWay}"/>
-                            </TextBlock>
-                        </StackPanel>
+                                    <TextBlock transitions:TransitionHelper.Id="concert-title"
+                                               Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                                               FontSize="40"
+                                               FontWeight="Bold"
+                                               LineHeight="46"
+                                               Foreground="White"
+                                               TextWrapping="Wrap"
+                                               MaxLines="3"/>
 
-                        <!-- Genre pills -->
-                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Genres, Mode=OneWay}"
-                                       Visibility="{x:Bind ViewModel.HasGenres, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Orientation="Horizontal" Spacing="6"/>
-                            </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <Border CornerRadius="10" Padding="10,4" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                        <TextBlock Text="{x:Bind}" FontSize="11" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
+                                    <TextBlock Visibility="{x:Bind ViewModel.ArtistNamesJoined, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"
+                                               Opacity="0.85">
+                                        <Run Text="Featuring "/>
+                                        <Run Text="{x:Bind ViewModel.ArtistNamesJoined, Mode=OneWay}"/>
+                                    </TextBlock>
 
-                        <!-- Action buttons: Get Tickets + Save -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Offers, Mode=OneWay}">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Orientation="Horizontal" Spacing="8"/>
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:ConcertOfferVm">
-                                        <Button Click="Offer_Click" Tag="{x:Bind Url}"
-                                                Style="{StaticResource AccentButtonStyle}"
-                                                Padding="16,8" CornerRadius="20">
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
-                                                <TextBlock Text="{x:Bind ProviderName}" FontWeight="SemiBold" FontSize="13"/>
+                                    <!-- Genre tokens — same visual treatment as the filter tokens on
+                                         the Liked Songs page, for a consistent pill language. -->
+                                    <controls:TokenView IsWrapped="True"
+                                                        CanRemoveTokens="False"
+                                                        ItemsSource="{x:Bind ViewModel.Genres, Mode=OneWay}"
+                                                        Visibility="{x:Bind ViewModel.HasGenres, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <controls:TokenView.ItemTemplate>
+                                            <DataTemplate x:DataType="x:String">
+                                                <TextBlock Text="{x:Bind}" FontSize="13"/>
+                                            </DataTemplate>
+                                        </controls:TokenView.ItemTemplate>
+                                    </controls:TokenView>
+
+                                    <StackPanel Spacing="4" Margin="0,6,0,0">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <FontIcon Glyph="&#xE81D;" FontSize="13" Foreground="White" Opacity="0.8"/>
+                                            <TextBlock FontSize="13" Foreground="White" Opacity="0.9">
+                                                <Run Text="{x:Bind ViewModel.Venue, Mode=OneWay}"/>
+                                                <Run Text=" · "/>
+                                                <Run Text="{x:Bind ViewModel.City, Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <FontIcon Glyph="&#xE823;" FontSize="13" Foreground="White" Opacity="0.8"/>
+                                            <TextBlock FontSize="13" Foreground="White" Opacity="0.9">
+                                                <Run Text="Doors at "/>
+                                                <Run Text="{x:Bind ViewModel.ShowTime, Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Offers, Mode=OneWay}">
+                                            <ItemsRepeater.Layout>
+                                                <StackLayout Orientation="Horizontal" Spacing="8"/>
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ConcertOfferVm">
+                                                    <Button Click="Offer_Click"
+                                                            Tag="{x:Bind Url}"
+                                                            Style="{StaticResource AccentButtonStyle}"
+                                                            Padding="18,10"
+                                                            CornerRadius="8">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                                                            <TextBlock FontSize="13" FontWeight="SemiBold">
+                                                                <Run Text="Tickets on "/>
+                                                                <Run Text="{x:Bind ProviderName}"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
+                                        <Button Padding="14,10" CornerRadius="8"
+                                                Background="#33FFFFFF"
+                                                BorderBrush="#55FFFFFF"
+                                                BorderThickness="1">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xEB51;" FontSize="14" Foreground="White"/>
+                                                <TextBlock Text="Save" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
                                             </StackPanel>
                                         </Button>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
-                            <Button Padding="12,8" CornerRadius="20"
-                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" BorderThickness="0">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xEB51;" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                                    <TextBlock x:Uid="Views_ConcertPage__TextBlock_1" Text="Save" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="13"/>
+                                    </StackPanel>
                                 </StackPanel>
-                            </Button>
-                        </StackPanel>
-                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    <!-- /FEATURE TILE -->
 
-                <!-- Lineup -->
-                <StackPanel Spacing="8">
-                    <TextBlock x:Uid="Views_ConcertPage__TextBlock_2" Text="Lineup" FontWeight="Bold" FontSize="20"/>
+                    <!-- SUPPORTING COLUMN: exactly one of the three layouts is visible at a time. -->
+                    <Grid Grid.Column="1">
+
+                        <!-- Layout A: 1 supporting artist → one tall tile, full height. -->
+                        <Grid Visibility="{x:Bind ViewModel.HasOneSupporting, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <winUi:Effects.Shadow>
+                                <ui:AttachedCardShadow BlurRadius="22" Offset="0,8" Opacity="0.20"
+                                                       Color="Black" CornerRadius="8"
+                                                       InnerContentClipMode="CompositionMaskBrush"/>
+                            </winUi:Effects.Shadow>
+                            <Button Click="Artist_Click"
+                                    Tag="{x:Bind ViewModel.SupportingArtist1.Uri, Mode=OneWay}"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Stretch"
+                                    CornerRadius="8">
+                                <Border CornerRadius="8"
+                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                    <Grid>
+                                        <Image Source="{x:Bind ViewModel.SupportingArtist1.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=800}"
+                                               Stretch="UniformToFill"/>
+                                        <Border VerticalAlignment="Bottom" Height="96">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                    <GradientStop Color="#00000000" Offset="0"/>
+                                                    <GradientStop Color="#B8000000" Offset="1"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                        </Border>
+                                        <TextBlock Text="{x:Bind ViewModel.SupportingArtist1.Name, Mode=OneWay}"
+                                                   VerticalAlignment="Bottom"
+                                                   Padding="18,0,18,16"
+                                                   FontSize="18"
+                                                   FontWeight="Bold"
+                                                   Foreground="White"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="2"/>
+                                    </Grid>
+                                </Border>
+                            </Button>
+                        </Grid>
+
+                        <!-- Layout B: 2 supporting artists → two tiles stacked. -->
+                        <Grid Visibility="{x:Bind ViewModel.HasTwoSupporting, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="16"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <winUi:Effects.Shadow>
+                                    <ui:AttachedCardShadow BlurRadius="18" Offset="0,6" Opacity="0.18"
+                                                           Color="Black" CornerRadius="8"
+                                                           InnerContentClipMode="CompositionMaskBrush"/>
+                                </winUi:Effects.Shadow>
+                                <Button Click="Artist_Click"
+                                        Tag="{x:Bind ViewModel.SupportingArtist1.Uri, Mode=OneWay}"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch"
+                                        CornerRadius="8">
+                                    <Border CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <Image Source="{x:Bind ViewModel.SupportingArtist1.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=600}"
+                                                   Stretch="UniformToFill"/>
+                                            <Border VerticalAlignment="Bottom" Height="72">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Color="#00000000" Offset="0"/>
+                                                        <GradientStop Color="#B8000000" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                            </Border>
+                                            <TextBlock Text="{x:Bind ViewModel.SupportingArtist1.Name, Mode=OneWay}"
+                                                       VerticalAlignment="Bottom"
+                                                       Padding="16,0,16,14"
+                                                       FontSize="16"
+                                                       FontWeight="Bold"
+                                                       Foreground="White"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxLines="2"/>
+                                        </Grid>
+                                    </Border>
+                                </Button>
+                            </Grid>
+                            <Grid Grid.Row="2">
+                                <winUi:Effects.Shadow>
+                                    <ui:AttachedCardShadow BlurRadius="18" Offset="0,6" Opacity="0.18"
+                                                           Color="Black" CornerRadius="8"
+                                                           InnerContentClipMode="CompositionMaskBrush"/>
+                                </winUi:Effects.Shadow>
+                                <Button Click="Artist_Click"
+                                        Tag="{x:Bind ViewModel.SupportingArtist2.Uri, Mode=OneWay}"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch"
+                                        CornerRadius="8">
+                                    <Border CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <Image Source="{x:Bind ViewModel.SupportingArtist2.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=600}"
+                                                   Stretch="UniformToFill"/>
+                                            <Border VerticalAlignment="Bottom" Height="72">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Color="#00000000" Offset="0"/>
+                                                        <GradientStop Color="#B8000000" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                            </Border>
+                                            <TextBlock Text="{x:Bind ViewModel.SupportingArtist2.Name, Mode=OneWay}"
+                                                       VerticalAlignment="Bottom"
+                                                       Padding="16,0,16,14"
+                                                       FontSize="16"
+                                                       FontWeight="Bold"
+                                                       Foreground="White"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxLines="2"/>
+                                        </Grid>
+                                    </Border>
+                                </Button>
+                            </Grid>
+                        </Grid>
+
+                        <!-- Layout C: 3 supporting artists → wide top tile + 2 square tiles below. -->
+                        <Grid Visibility="{x:Bind ViewModel.HasThreeSupporting, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="16"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <winUi:Effects.Shadow>
+                                    <ui:AttachedCardShadow BlurRadius="18" Offset="0,6" Opacity="0.18"
+                                                           Color="Black" CornerRadius="8"
+                                                           InnerContentClipMode="CompositionMaskBrush"/>
+                                </winUi:Effects.Shadow>
+                                <Button Click="Artist_Click"
+                                        Tag="{x:Bind ViewModel.SupportingArtist1.Uri, Mode=OneWay}"
+                                        Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch"
+                                        CornerRadius="8">
+                                    <Border CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <Image Source="{x:Bind ViewModel.SupportingArtist1.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=600}"
+                                                   Stretch="UniformToFill"/>
+                                            <Border VerticalAlignment="Bottom" Height="72">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Color="#00000000" Offset="0"/>
+                                                        <GradientStop Color="#B8000000" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                            </Border>
+                                            <TextBlock Text="{x:Bind ViewModel.SupportingArtist1.Name, Mode=OneWay}"
+                                                       VerticalAlignment="Bottom"
+                                                       Padding="16,0,16,14"
+                                                       FontSize="16"
+                                                       FontWeight="Bold"
+                                                       Foreground="White"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxLines="2"/>
+                                        </Grid>
+                                    </Border>
+                                </Button>
+                            </Grid>
+                            <Grid Grid.Row="2" ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0">
+                                    <winUi:Effects.Shadow>
+                                        <ui:AttachedCardShadow BlurRadius="14" Offset="0,4" Opacity="0.16"
+                                                               Color="Black" CornerRadius="8"
+                                                               InnerContentClipMode="CompositionMaskBrush"/>
+                                    </winUi:Effects.Shadow>
+                                    <Button Click="Artist_Click"
+                                            Tag="{x:Bind ViewModel.SupportingArtist2.Uri, Mode=OneWay}"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
+                                            CornerRadius="8">
+                                        <Border CornerRadius="8"
+                                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                            <Grid>
+                                                <Image Source="{x:Bind ViewModel.SupportingArtist2.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=400}"
+                                                       Stretch="UniformToFill"/>
+                                                <Border VerticalAlignment="Bottom" Height="56">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                            <GradientStop Color="#00000000" Offset="0"/>
+                                                            <GradientStop Color="#C0000000" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                </Border>
+                                                <TextBlock Text="{x:Bind ViewModel.SupportingArtist2.Name, Mode=OneWay}"
+                                                           VerticalAlignment="Bottom"
+                                                           Padding="12,0,12,10"
+                                                           FontSize="13"
+                                                           FontWeight="Bold"
+                                                           Foreground="White"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="2"/>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+                                </Grid>
+                                <Grid Grid.Column="1">
+                                    <winUi:Effects.Shadow>
+                                        <ui:AttachedCardShadow BlurRadius="14" Offset="0,4" Opacity="0.16"
+                                                               Color="Black" CornerRadius="8"
+                                                               InnerContentClipMode="CompositionMaskBrush"/>
+                                    </winUi:Effects.Shadow>
+                                    <Button Click="Artist_Click"
+                                            Tag="{x:Bind ViewModel.SupportingArtist3.Uri, Mode=OneWay}"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
+                                            CornerRadius="8">
+                                        <Border CornerRadius="8"
+                                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                            <Grid>
+                                                <Image Source="{x:Bind ViewModel.SupportingArtist3.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=400}"
+                                                       Stretch="UniformToFill"/>
+                                                <Border VerticalAlignment="Bottom" Height="56">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                            <GradientStop Color="#00000000" Offset="0"/>
+                                                            <GradientStop Color="#C0000000" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                </Border>
+                                                <TextBlock Text="{x:Bind ViewModel.SupportingArtist3.Name, Mode=OneWay}"
+                                                           VerticalAlignment="Bottom"
+                                                           Padding="12,0,12,10"
+                                                           FontSize="13"
+                                                           FontWeight="Bold"
+                                                           Foreground="White"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="2"/>
+                                            </Grid>
+                                        </Border>
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Grid>
+                <!-- /StoreHero -->
+
+                <!-- ════ LINEUP ══════════════════════════════════════════════ -->
+                <StackPanel Grid.Row="1" Spacing="20">
+                    <TextBlock x:Uid="Views_ConcertPage__TextBlock_2"
+                               Text="Lineup"
+                               Style="{StaticResource TitleTextBlockStyle}"/>
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.Artists, Mode=OneWay}">
                         <ItemsRepeater.Layout>
-                            <StackLayout Orientation="Vertical" Spacing="20"/>
+                            <StackLayout Orientation="Vertical" Spacing="28"/>
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:ConcertArtistVm">
-                                <StackPanel Spacing="8">
-                                    <!-- Artist name + on tour -->
-                                    <StackPanel Orientation="Horizontal" Spacing="12">
-                                        <cards:ContentCard
-                                            Width="140"
-                                            ImageUrl="{x:Bind AvatarUrl}"
-                                            Title="{x:Bind Name}"
-                                            Subtitle="Artist"
-                                            IsCircularImage="True"
-                                            CenterText="True"
-                                            NavigationUri="{x:Bind Uri}"/>
+                                <Grid ColumnSpacing="24">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="380"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Artist identity column — landscape hero tile (HeaderImageUrl)
+                                         with the artist name overlaid bottom-left, matching Spotify's
+                                         lineup layout. Click navigates to the ArtistPage. -->
+                                    <StackPanel Grid.Column="0" Spacing="10" VerticalAlignment="Top">
+                                        <Button Click="Artist_Click"
+                                                Tag="{x:Bind Uri}"
+                                                Padding="0"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
+                                                VerticalContentAlignment="Stretch"
+                                                CornerRadius="8">
+                                            <Grid Height="220">
+                                                <winUi:Effects.Shadow>
+                                                    <ui:AttachedCardShadow BlurRadius="22"
+                                                                           Offset="0,8"
+                                                                           Opacity="0.20"
+                                                                           Color="Black"
+                                                                           CornerRadius="8"
+                                                                           InnerContentClipMode="CompositionMaskBrush"/>
+                                                </winUi:Effects.Shadow>
+                                                <Border CornerRadius="8"
+                                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                                    <Grid>
+                                                        <!-- Placeholder person glyph for when no image is available -->
+                                                        <FontIcon Glyph="&#xE77B;"
+                                                                  FontSize="56"
+                                                                  Opacity="0.25"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                        <!-- Prefer the landscape hero; fall back to square avatar stretched if missing -->
+                                                        <Image Source="{x:Bind HeaderImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=800}"
+                                                               Stretch="UniformToFill"
+                                                               Visibility="{x:Bind HeaderImageUrl, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                                        <Image Source="{x:Bind AvatarUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=640}"
+                                                               Stretch="UniformToFill"
+                                                               Visibility="{x:Bind HeaderImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                                        <!-- Bottom gradient for name readability -->
+                                                        <Border VerticalAlignment="Bottom" Height="120">
+                                                            <Border.Background>
+                                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                                    <GradientStop Color="#00000000" Offset="0"/>
+                                                                    <GradientStop Color="#CC000000" Offset="1"/>
+                                                                </LinearGradientBrush>
+                                                            </Border.Background>
+                                                        </Border>
+                                                        <TextBlock Text="{x:Bind Name}"
+                                                                   VerticalAlignment="Bottom"
+                                                                   Padding="20,0,20,18"
+                                                                   FontSize="24"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="White"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   MaxLines="2"/>
+                                                    </Grid>
+                                                </Border>
+                                            </Grid>
+                                        </Button>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="On tour:"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       VerticalAlignment="Center"/>
+                                            <HyperlinkButton Click="Artist_Click"
+                                                             Tag="{x:Bind Uri}"
+                                                             Padding="0">
+                                                <TextBlock FontSize="13" FontWeight="SemiBold">
+                                                    <Run Text="View all upcoming concerts ("/>
+                                                    <Run Text="{x:Bind UpcomingConcertCount}"/>
+                                                    <Run Text=")"/>
+                                                </TextBlock>
+                                            </HyperlinkButton>
+                                        </StackPanel>
                                     </StackPanel>
 
-                                    <!-- Popular albums — wrapping grid -->
-                                    <ItemsRepeater ItemsSource="{x:Bind PopularAlbums}">
-                                        <ItemsRepeater.Layout>
-                                            <UniformGridLayout MinItemWidth="130" MinItemHeight="190"
-                                                               MinColumnSpacing="8" MinRowSpacing="8"
-                                                               ItemsStretch="Fill"/>
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:ConcertAlbumVm">
-                                                <cards:ContentCard
-                                                    ImageUrl="{x:Bind CoverArtUrl}"
-                                                    Title="{x:Bind Name}"
-                                                    Subtitle="{x:Bind ArtistName}"
-                                                    NavigationUri="{x:Bind Uri}"/>
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-
-                                    <!-- On tour link -->
-                                    <TextBlock FontSize="12" Opacity="0.6" Margin="0,4,0,0">
-                                        <Run x:Uid="Views_ConcertPage__Run_3" Text="On tour · View all upcoming concerts ("/>
-                                        <Run Text="{x:Bind UpcomingConcertCount}"/>
-                                        <Run Text=")"/>
-                                    </TextBlock>
-                                </StackPanel>
+                                    <!-- Popular albums rail -->
+                                    <StackPanel Grid.Column="1" Spacing="10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="Popular albums"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       CharacterSpacing="100"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                       VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                        Visibility="{Binding ElementName=PopularAlbumsShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                        Command="{Binding ElementName=PopularAlbumsShelf, Path=PageLeftCommand}">
+                                                    <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                                </Button>
+                                                <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                        Command="{Binding ElementName=PopularAlbumsShelf, Path=PageRightCommand}">
+                                                    <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                        <Grid>
+                                            <shelf:ShelfScroller x:Name="PopularAlbumsShelf"
+                                                                 ItemsSource="{x:Bind PopularAlbums}"
+                                                                 MinItemWidth="150"
+                                                                 MaxItemWidth="170"
+                                                                 Spacing="12">
+                                                <shelf:ShelfScroller.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:ConcertAlbumVm">
+                                                        <cards:ContentCard
+                                                            ImageUrl="{x:Bind CoverArtUrl}"
+                                                            Title="{x:Bind Name}"
+                                                            Subtitle="{x:Bind ArtistName}"
+                                                            NavigationUri="{x:Bind Uri}"
+                                                            PlaceholderGlyph="&#xE93C;"
+                                                            IsCircularImage="False"
+                                                            IsPassive="True"/>
+                                                    </DataTemplate>
+                                                </shelf:ShelfScroller.ItemTemplate>
+                                            </shelf:ShelfScroller>
+                                            <Border HorizontalAlignment="Right"
+                                                    Width="96"
+                                                    IsHitTestVisible="False"
+                                                    Background="{ThemeResource ShelfFadeRightBrush}"
+                                                    Visibility="{Binding ElementName=PopularAlbumsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </StackPanel>
 
-                <!-- Venue card -->
-                <Border CornerRadius="8" Padding="16"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                <!-- ════ FEATURED PLAYLISTS ═════════════════════════════════ -->
+                <StackPanel Grid.Row="2"
+                            Spacing="16"
+                            Visibility="{x:Bind ViewModel.HasFeaturedPlaylists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Featured playlists"
+                                   Style="{StaticResource TitleTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                    Visibility="{Binding ElementName=FeaturedPlaylistsShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                    Command="{Binding ElementName=FeaturedPlaylistsShelf, Path=PageLeftCommand}">
+                                <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                            </Button>
+                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                    Command="{Binding ElementName=FeaturedPlaylistsShelf, Path=PageRightCommand}">
+                                <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <Grid>
+                        <shelf:ShelfScroller x:Name="FeaturedPlaylistsShelf"
+                                             ItemsSource="{x:Bind ViewModel.FeaturedPlaylists, Mode=OneWay}"
+                                             MinItemWidth="170"
+                                             MaxItemWidth="190"
+                                             Spacing="12">
+                            <shelf:ShelfScroller.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ConcertFeaturedPlaylistVm">
+                                    <cards:ContentCard
+                                        ImageUrl="{x:Bind ImageUrl}"
+                                        Title="{x:Bind Name}"
+                                        Subtitle="{x:Bind OwnerName}"
+                                        NavigationUri="{x:Bind Uri}"
+                                        PlaceholderGlyph="&#xE142;"
+                                        IsCircularImage="False"
+                                        IsPassive="True"/>
+                                </DataTemplate>
+                            </shelf:ShelfScroller.ItemTemplate>
+                        </shelf:ShelfScroller>
+                        <Border HorizontalAlignment="Right"
+                                Width="96"
+                                IsHitTestVisible="False"
+                                Background="{ThemeResource ShelfFadeRightBrush}"
+                                Visibility="{Binding ElementName=FeaturedPlaylistsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ════ VENUE ══════════════════════════════════════════════ -->
+                <StackPanel Grid.Row="3" Spacing="16">
+                    <TextBlock x:Uid="Views_ConcertPage__TextBlock_4"
+                               Text="Venue"
+                               Style="{StaticResource TitleTextBlockStyle}"/>
+                    <Grid HorizontalAlignment="Stretch">
+                        <winUi:Effects.Shadow>
+                            <ui:AttachedCardShadow BlurRadius="20"
+                                                   Offset="0,6"
+                                                   Opacity="0.14"
+                                                   Color="Black"
+                                                   CornerRadius="8"
+                                                   InnerContentClipMode="CompositionMaskBrush"/>
+                        </winUi:Effects.Shadow>
+                        <Border CornerRadius="8"
+                                Padding="24"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0"
+                                      Width="56" Height="56"
+                                      VerticalAlignment="Center">
+                                    <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                                    <FontIcon Glyph="&#xE81D;"
+                                              FontSize="22"
+                                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind ViewModel.Venue, Mode=OneWay}"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               FontSize="18"/>
+                                    <TextBlock FontSize="14"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                        <Run Text="{x:Bind ViewModel.City, Mode=OneWay}"/>
+                                        <Run Text=", "/>
+                                        <Run Text="{x:Bind ViewModel.Country, Mode=OneWay}"/>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                                        <FontIcon Glyph="&#xE823;" FontSize="13"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock FontSize="13"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                            <Run x:Uid="Views_ConcertPage__Run_5" Text="Show at "/>
+                                            <Run Text="{x:Bind ViewModel.ShowTime, Mode=OneWay}"
+                                                 FontWeight="SemiBold"
+                                                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ════ MORE CONCERTS NEARBY ═══════════════════════════════ -->
+                <StackPanel Grid.Row="4"
+                            Spacing="16"
+                            Visibility="{x:Bind ViewModel.HasRelatedConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   x:Uid="Views_ConcertPage__TextBlock_6"
+                                   Text="More concerts nearby"
+                                   Style="{StaticResource TitleTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
+                        <appControls:LocationButton Grid.Column="1"
+                                                    LocationName="{x:Bind ViewModel.UserLocationName, Mode=TwoWay}"
+                                                    LocationChanged="LocationButton_LocationChanged"/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding ElementName=RelatedConcertsShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                    Command="{Binding ElementName=RelatedConcertsShelf, Path=PageLeftCommand}">
+                                <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                            </Button>
+                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                    Command="{Binding ElementName=RelatedConcertsShelf, Path=PageRightCommand}">
+                                <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <Grid>
+                        <shelf:ShelfScroller x:Name="RelatedConcertsShelf"
+                                             ItemsSource="{x:Bind ViewModel.RelatedConcerts, Mode=OneWay}"
+                                             MinItemWidth="260"
+                                             MaxItemWidth="300"
+                                             Spacing="12">
+                            <shelf:ShelfScroller.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ConcertRelatedVm">
+                                    <Button Click="RelatedConcert_Click"
+                                            Tag="{x:Bind Uri}"
+                                            Padding="0"
+                                            HorizontalAlignment="Stretch"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            HorizontalContentAlignment="Stretch">
+                                        <Grid>
+                                            <winUi:Effects.Shadow>
+                                                <ui:AttachedCardShadow BlurRadius="16"
+                                                                       Offset="0,4"
+                                                                       Opacity="0.12"
+                                                                       Color="Black"
+                                                                       CornerRadius="8"
+                                                                       InnerContentClipMode="CompositionMaskBrush"/>
+                                            </winUi:Effects.Shadow>
+                                            <Border CornerRadius="8"
+                                                    Padding="14,14"
+                                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1">
+                                                <Grid ColumnSpacing="14">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid Grid.Column="0" Width="56" Height="56" VerticalAlignment="Top">
+                                                        <Ellipse Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+                                                        <FontIcon Glyph="&#xE77B;" FontSize="22"
+                                                                  Opacity="0.4"
+                                                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                        <Ellipse Visibility="{x:Bind ArtistAvatarUrl, Converter={StaticResource NullToVisibilityConverter}}">
+                                                            <Ellipse.Fill>
+                                                                <ImageBrush Stretch="UniformToFill"
+                                                                            ImageSource="{x:Bind ArtistAvatarUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=64}"/>
+                                                            </Ellipse.Fill>
+                                                        </Ellipse>
+                                                    </Grid>
+                                                    <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                                        <TextBlock Text="{x:Bind DateFormatted}"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold"
+                                                                   CharacterSpacing="100"
+                                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                                        <TextBlock Text="{x:Bind ArtistName}"
+                                                                   FontSize="14"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   MaxLines="1"/>
+                                                        <TextBlock Text="{x:Bind Venue}"
+                                                                   FontSize="12"
+                                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   MaxLines="1"/>
+                                                        <TextBlock Text="{x:Bind City}"
+                                                                   FontSize="11"
+                                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </shelf:ShelfScroller.ItemTemplate>
+                        </shelf:ShelfScroller>
+                        <Border HorizontalAlignment="Right"
+                                Width="96"
+                                IsHitTestVisible="False"
+                                Background="{ThemeResource ShelfFadeRightBrush}"
+                                Visibility="{Binding ElementName=RelatedConcertsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </ScrollView>
+
+        <!-- Shy-header compact card. Lives OUTSIDE the ScrollView, pinned top, ZIndex above
+             content. Starts collapsed; the TransitionHelper fades/scales it in when the user
+             scrolls past the feature-tile threshold (computed in code-behind). -->
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              Margin="16,16,16,0">
+            <Grid x:Name="ShyHeaderCard"
+                  HorizontalAlignment="Center"
+                  MaxWidth="920"
+                  MinHeight="60"
+                  Visibility="Collapsed">
+                <!-- Floating chrome: matched-id card-shell pairs with the invisible
+                     chrome inside HeroOverlayPanel. TransitionHelper morphs this
+                     visible chrome FROM the source chrome bounds TO this floating
+                     position — true morph instead of a pop-in. -->
+                <Border transitions:TransitionHelper.Id="card-shell"
+                        CornerRadius="14"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1">
-                    <StackPanel Spacing="6">
-                        <TextBlock x:Uid="Views_ConcertPage__TextBlock_4" Text="Venue" FontWeight="Bold" FontSize="16"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE81D;" FontSize="14"
-                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <StackPanel>
-                                <TextBlock Text="{x:Bind ViewModel.Venue, Mode=OneWay}"
-                                           FontSize="14" FontWeight="SemiBold"/>
-                                <TextBlock FontSize="13" Opacity="0.7">
-                                    <Run Text="{x:Bind ViewModel.City, Mode=OneWay}"/>
-                                    <Run Text=", "/>
-                                    <Run Text="{x:Bind ViewModel.Country, Mode=OneWay}"/>
-                                </TextBlock>
-                            </StackPanel>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-                            <FontIcon Glyph="&#xE823;" FontSize="14"
-                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <TextBlock FontSize="13" Opacity="0.7">
-                                <Run x:Uid="Views_ConcertPage__Run_5" Text="Show at "/>
-                                <Run Text="{x:Bind ViewModel.ShowTime, Mode=OneWay}"/>
-                            </TextBlock>
-                        </StackPanel>
-                    </StackPanel>
+                    <Border.Background>
+                        <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                      TintOpacity="0.78"
+                                      FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
                 </Border>
 
-                <!-- Related Concerts + Location -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.HasRelatedConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock x:Uid="Views_ConcertPage__TextBlock_6" Text="More Concerts Nearby" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
-                        <appControls:LocationButton
-                            LocationName="{x:Bind ViewModel.UserLocationName, Mode=TwoWay}"
-                            LocationChanged="LocationButton_LocationChanged"/>
-                    </StackPanel>
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RelatedConcerts, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <StackLayout Orientation="Horizontal" Spacing="8"/>
-                        </ItemsRepeater.Layout>
-                        <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ConcertRelatedVm">
-                                <Button Click="RelatedConcert_Click" Tag="{x:Bind Uri}"
-                                        Padding="16,12" Width="200" CornerRadius="8"
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1" HorizontalContentAlignment="Left">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="{x:Bind DateFormatted}" FontWeight="Bold" FontSize="14"
-                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                        <TextBlock Text="{x:Bind Venue}" FontSize="13" FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis" MaxLines="1"/>
-                                        <TextBlock Text="{x:Bind City}" FontSize="12" Opacity="0.6"/>
-                                        <TextBlock Text="{x:Bind ArtistName}" FontSize="11" Opacity="0.5"
-                                                   TextTrimming="CharacterEllipsis" MaxLines="1"/>
-                                    </StackPanel>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
-                </StackPanel>
+                <Grid Padding="10,8" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-            </StackPanel>
-        </ScrollView>
+                    <!-- Thumbnail (matches the hero image via concert-image id — morphs from
+                         the large tile image down to a 40×40 rounded square). Placeholder
+                         fill lives on an underlying Grid so the ImageBrush sits on top
+                         cleanly without a duplicate Background assignment. -->
+                    <Grid Grid.Column="0"
+                          Width="40"
+                          Height="40">
+                        <Border CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+                        <Border transitions:TransitionHelper.Id="concert-image"
+                                CornerRadius="8">
+                            <Border.Background>
+                                <ImageBrush Stretch="UniformToFill"
+                                            ImageSource="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=96}"/>
+                            </Border.Background>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Column="1"
+                               transitions:TransitionHelper.Id="concert-title"
+                               Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"/>
+
+                    <!-- Primary Tickets button — independent fade-in, opens the first offer URL. -->
+                    <Button Grid.Column="2"
+                            Click="ShyHeaderTickets_Click"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Padding="14,8"
+                            CornerRadius="18"
+                            Visibility="{x:Bind ViewModel.HasOffers, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8A7;" FontSize="12"/>
+                            <TextBlock Text="Tickets" FontSize="13" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Grid>
+        </Grid>
     </Grid>
 </Page>

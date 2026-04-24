@@ -1,23 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
-using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
-using Microsoft.Graphics.Canvas.Geometry;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
-using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -27,6 +19,14 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
 {
     private readonly ILogger? _logger;
     private bool _showingContent;
+    private bool _isNavigatingAway;
+
+    // Shy-header morph state. Mirrors ArtistPage: one running transition at a time;
+    // scroll events arriving mid-flight queue a re-check via _shyHeaderRecheckPending.
+    private TransitionHelper? _shyHeaderTransition;
+    private bool _isShyHeaderPinned;
+    private bool _isShyHeaderTransitionRunning;
+    private bool _shyHeaderRecheckPending;
 
     public ConcertViewModel ViewModel { get; }
     public TabItemParameter? TabItemParameter => null;
@@ -39,25 +39,171 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         InitializeComponent();
         ContentContainer.Opacity = 0;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        ActualThemeChanged += OnActualThemeChanged;
+        Loaded += ConcertPage_Loaded;
         Unloaded += ConcertPage_Unloaded;
-        SetupGradientOverlay();
-        ActualThemeChanged += (_, _) => SetupGradientOverlay();
 
-        // Rebuild diagonal slices on resize (atomic swap, no flash)
-        HeroImageContainer.SizeChanged += (_, _) =>
+        // Seed the VM with the current theme so the palette brushes are correct as soon
+        // as the data lands. If the theme flips while we're alive, OnActualThemeChanged
+        // will tell the VM to rebuild.
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+    }
+
+    private void ConcertPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= ConcertPage_Loaded;
+        _isNavigatingAway = false;
+
+        ContentContainer.ViewChanged += ContentContainer_ViewChanged;
+        StoreHero.SizeChanged += (_, _) =>
         {
-            if (_heroSurfaces.Count > 0) SetupHeroImages();
+            UpdateHeroScrollFade();
+            _ = EvaluateShyHeaderAsync();
         };
+
+        EnsureShyHeaderTransition();
+        ResetShyHeaderState();
+        UpdateHeroScrollFade();
     }
 
     private void ConcertPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        _isNavigatingAway = true;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        TeardownHeroImages();
+        ActualThemeChanged -= OnActualThemeChanged;
+        ContentContainer.ViewChanged -= ContentContainer_ViewChanged;
+        ResetShyHeaderState();
     }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+    }
+
+    // ── Shy-header morph ───────────────────────────────────────────────────────
+
+    private void EnsureShyHeaderTransition()
+    {
+        if (_shyHeaderTransition != null)
+            return;
+
+        // XAML resources can't ElementName-bind, so Source/Target are wired here.
+        if (Resources.TryGetValue("ConcertShyHeaderTransition", out var resource)
+            && resource is TransitionHelper helper)
+        {
+            helper.Source = HeroOverlayPanel;
+            helper.Target = ShyHeaderCard;
+            _shyHeaderTransition = helper;
+        }
+    }
+
+    private void ResetShyHeaderState()
+    {
+        _isShyHeaderPinned = false;
+        _isShyHeaderTransitionRunning = false;
+        _shyHeaderRecheckPending = false;
+        _shyHeaderTransition?.Reset(toInitialState: true);
+        if (FeatureTileRoot != null) FeatureTileRoot.Opacity = 1.0;
+    }
+
+    private void ContentContainer_ViewChanged(ScrollView sender, object args)
+    {
+        UpdateHeroScrollFade();
+        _ = EvaluateShyHeaderAsync();
+    }
+
+    /// <summary>
+    /// Continuously fades the feature tile as the user scrolls through the hero —
+    /// 1.0 at the top, 0.0 by the time the hero has scrolled fully out of view.
+    /// Matches ArtistPage's HeroHeader.ScrollFadeProgress behaviour, but we drive
+    /// Opacity directly since StoreHero isn't a HeroHeader.
+    /// </summary>
+    private void UpdateHeroScrollFade()
+    {
+        if (FeatureTileRoot == null || StoreHero == null) return;
+        var heroH = StoreHero.ActualHeight;
+        if (heroH <= 0)
+        {
+            FeatureTileRoot.Opacity = 1.0;
+            return;
+        }
+        var progress = Math.Clamp(ContentContainer.VerticalOffset / heroH, 0.0, 1.0);
+        FeatureTileRoot.Opacity = 1.0 - progress;
+    }
+
+    private async Task EvaluateShyHeaderAsync()
+    {
+        if (_shyHeaderTransition == null || HeroOverlayPanel == null || ShyHeaderCard == null || StoreHero == null)
+            return;
+
+        if (_isShyHeaderTransitionRunning)
+        {
+            // Coalesce: re-check once the in-flight transition lands.
+            _shyHeaderRecheckPending = true;
+            return;
+        }
+
+        while (true)
+        {
+            if (_isNavigatingAway || !StoreHero.IsLoaded || !ShyHeaderHost.IsLoaded)
+                return;
+
+            double pinOffset = Math.Max(0, StoreHero.ActualHeight - 120);
+            bool shouldPin = ContentContainer.VerticalOffset >= pinOffset;
+
+            if (shouldPin == _isShyHeaderPinned)
+                return;
+
+            _isShyHeaderTransitionRunning = true;
+            _shyHeaderRecheckPending = false;
+
+            try
+            {
+                // Opacity is driven by UpdateHeroScrollFade per-scroll-tick (continuous
+                // fade like ArtistPage). Here we only run the matched-id morph.
+                if (shouldPin)
+                    await _shyHeaderTransition.StartAsync();
+                else
+                    await _shyHeaderTransition.ReverseAsync();
+
+                _isShyHeaderPinned = shouldPin;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Shy header transition skipped.");
+                return;
+            }
+            finally
+            {
+                _isShyHeaderTransitionRunning = false;
+            }
+
+            // Loop only if a scroll event arrived during the transition.
+            if (!_shyHeaderRecheckPending)
+                return;
+        }
+    }
+
+    private void ShyHeaderTickets_Click(object sender, RoutedEventArgs e)
+    {
+        var url = ViewModel.Offers.FirstOrDefault()?.Url;
+        if (!string.IsNullOrEmpty(url))
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+    }
+
+    // ── ViewModel / navigation ─────────────────────────────────────────────────
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ConcertViewModel.HasSupportingArtists))
+        {
+            // Grow the supporting column only when there are actually tiles to show;
+            // otherwise the feature tile gets the whole width (single-artist hero).
+            SupportingColumn.Width = ViewModel.HasSupportingArtists
+                ? new GridLength(380)
+                : new GridLength(0);
+        }
+
         if (e.PropertyName == nameof(ConcertViewModel.IsLoading) && !ViewModel.IsLoading && !_showingContent)
         {
             _showingContent = true;
@@ -69,162 +215,19 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
 
             ContentContainer.Opacity = 1;
             AnimationBuilder.Create()
-                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150),
+                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(200),
                          layer: FrameworkLayer.Xaml)
                 .Start(ContentContainer);
 
             _ = Task.Delay(160).ContinueWith(_ =>
                 DispatcherQueue.TryEnqueue(() => ShimmerContainer.Visibility = Visibility.Collapsed));
-
-            // Build diagonal hero images after content is ready
-            SetupHeroImages();
         }
-    }
-
-    private void SetupGradientOverlay()
-    {
-        // Use the actual theme background color so the gradient blends in both light and dark mode
-        var isDark = ActualTheme == Microsoft.UI.Xaml.ElementTheme.Dark;
-        var baseColor = isDark
-            ? Windows.UI.Color.FromArgb(255, 0, 0, 0)
-            : Windows.UI.Color.FromArgb(255, 245, 245, 245);
-
-        var gradient = new Microsoft.UI.Xaml.Media.LinearGradientBrush();
-        gradient.StartPoint = new Windows.Foundation.Point(0, 0);
-        gradient.EndPoint = new Windows.Foundation.Point(0, 1);
-        gradient.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop
-        {
-            Color = Windows.UI.Color.FromArgb(100, baseColor.R, baseColor.G, baseColor.B), Offset = 0.0
-        });
-        gradient.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop
-        {
-            Color = Windows.UI.Color.FromArgb(190, baseColor.R, baseColor.G, baseColor.B), Offset = 0.25
-        });
-        gradient.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop
-        {
-            Color = Windows.UI.Color.FromArgb(232, baseColor.R, baseColor.G, baseColor.B), Offset = 0.5
-        });
-        gradient.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop
-        {
-            Color = Windows.UI.Color.FromArgb(245, baseColor.R, baseColor.G, baseColor.B), Offset = 0.75
-        });
-
-        GradientOverlay.Background = gradient;
-    }
-
-    private readonly List<LoadedImageSurface> _heroSurfaces = [];
-    private readonly List<CompositionObject> _heroCompositionObjects = [];
-    private ContainerVisual? _heroContainerVisual;
-
-    /// <summary>
-    /// Creates diagonal-sliced Composition visuals for each artist's header image.
-    /// Uses Win2D CanvasPathBuilder for polygon clip geometry.
-    /// </summary>
-    private void SetupHeroImages()
-    {
-        TeardownHeroImages();
-
-        var imageUrls = ViewModel.Artists
-            .Where(a => !string.IsNullOrEmpty(a.HeaderImageUrl))
-            .Select(a => SpotifyImageHelper.ToHttpsUrl(a.HeaderImageUrl!))
-            .Where(u => !string.IsNullOrEmpty(u))
-            .ToList();
-
-        if (imageUrls.Count == 0) return;
-
-        var hostVisual = ElementCompositionPreview.GetElementVisual(HeroImageContainer);
-        var compositor = hostVisual.Compositor;
-
-        var containerVisual = compositor.CreateContainerVisual();
-        _heroContainerVisual = containerVisual;
-        containerVisual.RelativeSizeAdjustment = Vector2.One;
-        _heroCompositionObjects.Add(containerVisual);
-
-        var width = (float)HeroImageContainer.ActualWidth;
-        var height = (float)HeroImageContainer.ActualHeight;
-        if (width <= 0) width = 1400;
-        if (height <= 0) height = 400;
-
-        // Skew amount: how far the diagonal shifts horizontally
-        var skew = height * 0.4f; // ~30° angle
-
-        // Build diagonal split points: N-1 lines between N images
-        // Each line goes from (x + skew, 0) at the top to (x - skew, height) at the bottom
-        var n = imageUrls.Count;
-        var splitPoints = new float[n + 1];
-        splitPoints[0] = 0;
-        splitPoints[n] = width;
-        for (int j = 1; j < n; j++)
-            splitPoints[j] = width * j / n;
-
-        for (int i = 0; i < n; i++)
-        {
-            // Polygon corners in hero-space
-            float tl = i == 0 ? 0 : splitPoints[i] + skew;
-            float tr = i == n - 1 ? width : splitPoints[i + 1] + skew;
-            float br = i == n - 1 ? width : splitPoints[i + 1] - skew;
-            float bl = i == 0 ? 0 : splitPoints[i] - skew;
-
-            // Bounding box of this slice
-            float minX = Math.Min(tl, bl);
-            float maxX = Math.Max(tr, br);
-            float sliceW = maxX - minX;
-
-            var surface = LoadedImageSurface.StartLoadFromUri(
-                new Uri(imageUrls[i]!),
-                new Windows.Foundation.Size(Math.Max(1, Math.Ceiling(sliceW)), Math.Max(1, Math.Ceiling(height))));
-            _heroSurfaces.Add(surface);
-
-            var surfaceBrush = compositor.CreateSurfaceBrush();
-            surfaceBrush.Surface = surface;
-            surfaceBrush.Stretch = CompositionStretch.UniformToFill;
-            surfaceBrush.HorizontalAlignmentRatio = 0.5f;
-            surfaceBrush.VerticalAlignmentRatio = 0.3f;
-            _heroCompositionObjects.Add(surfaceBrush);
-
-            var sprite = compositor.CreateSpriteVisual();
-            sprite.Brush = surfaceBrush;
-            sprite.Size = new Vector2(sliceW, height);
-            sprite.Offset = new Vector3(minX, 0, 0);
-            _heroCompositionObjects.Add(sprite);
-
-            // Clip polygon relative to sprite's local coords (shifted by -minX)
-            using var pathBuilder = new CanvasPathBuilder(null);
-            pathBuilder.BeginFigure(tl - minX, 0);
-            pathBuilder.AddLine(tr - minX, 0);
-            pathBuilder.AddLine(br - minX, height);
-            pathBuilder.AddLine(bl - minX, height);
-            pathBuilder.EndFigure(CanvasFigureLoop.Closed);
-
-            var canvasGeo = CanvasGeometry.CreatePath(pathBuilder);
-            var pathGeo = compositor.CreatePathGeometry(new CompositionPath(canvasGeo));
-            sprite.Clip = compositor.CreateGeometricClip(pathGeo);
-            _heroCompositionObjects.Add(pathGeo);
-            _heroCompositionObjects.Add(sprite.Clip);
-
-            containerVisual.Children.InsertAtTop(sprite);
-        }
-
-        ElementCompositionPreview.SetElementChildVisual(HeroImageContainer, containerVisual);
-    }
-
-    private void TeardownHeroImages()
-    {
-        ElementCompositionPreview.SetElementChildVisual(HeroImageContainer, null);
-
-        foreach (var surface in _heroSurfaces)
-            surface.Dispose();
-        _heroSurfaces.Clear();
-
-        for (int i = _heroCompositionObjects.Count - 1; i >= 0; i--)
-            _heroCompositionObjects[i].Dispose();
-        _heroCompositionObjects.Clear();
-        _heroContainerVisual = null;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _isNavigatingAway = false;
 
         try
         {
@@ -244,9 +247,17 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         }
     }
 
+    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    {
+        _isNavigatingAway = true;
+        base.OnNavigatingFrom(e);
+    }
+
+    // ── Click handlers ─────────────────────────────────────────────────────────
+
     private void Artist_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string uri && !string.IsNullOrEmpty(uri))
+        if (sender is FrameworkElement fe && fe.Tag is string uri && !string.IsNullOrEmpty(uri))
         {
             var param = new ContentNavigationParameter { Uri = uri };
             NavigationHelpers.OpenArtist(param, "", NavigationHelpers.IsCtrlPressed());

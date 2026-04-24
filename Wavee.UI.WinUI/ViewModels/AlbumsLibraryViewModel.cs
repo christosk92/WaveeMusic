@@ -68,6 +68,9 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     private LibraryViewMode _viewMode = LibraryViewMode.DefaultGrid;
 
     [ObservableProperty]
+    private double _gridScale = 1.0;
+
+    [ObservableProperty]
     private TimeSpan _selectedAlbumDuration;
 
     // Wrapper properties for selected album (avoids null reference in x:Bind)
@@ -190,6 +193,8 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
             _sortDirection = sd;
         if (Enum.TryParse<LibraryViewMode>(saved.ViewMode, ignoreCase: true, out var vm))
             _viewMode = vm;
+        if (saved.GridScale >= 0.5 && saved.GridScale <= 2.0)
+            _gridScale = saved.GridScale;
 
         _preferencesLoaded = true;
     }
@@ -209,6 +214,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
             entry.SortBy = SortBy.ToString();
             entry.SortDirection = SortDirection.ToString();
             entry.ViewMode = ViewMode.ToString();
+            entry.GridScale = GridScale;
         });
 
         _ = _settingsService.SaveAsync();
@@ -227,6 +233,11 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     }
 
     partial void OnViewModeChanged(LibraryViewMode value)
+    {
+        SavePreferences();
+    }
+
+    partial void OnGridScaleChanged(double value)
     {
         SavePreferences();
     }

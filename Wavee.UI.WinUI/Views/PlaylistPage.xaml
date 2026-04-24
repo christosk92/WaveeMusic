@@ -9,6 +9,8 @@
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
+    xmlns:winUi="using:CommunityToolkit.WinUI"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -101,29 +103,34 @@
                     (see HeaderBackgroundHost on RootGrid + PlaylistPage.xaml.cs) and the
                     cover would just duplicate / compete with it.
                 -->
-                <Border x:Name="PlaylistArtContainer" CornerRadius="8"
-                        HorizontalAlignment="Stretch"
-                        SizeChanged="PlaylistArtContainer_SizeChanged"
-                        Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"
-                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Grid>
-                        <!-- Full-container shimmer BEHIND the Image. One visual
-                             state while PlaylistImageUrl is null (or mosaic
-                             compose is in flight), then FadeInOnLoad animates
-                             the Image from opacity 0→1 over the shimmer. No
-                             jump from small-glyph to bare-background to image
-                             — same rectangle size throughout. -->
-                        <controls:Shimmer HorizontalAlignment="Stretch"
-                                          VerticalAlignment="Stretch"
-                                          Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                        <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
-                               Stretch="UniformToFill"
-                               Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                               behaviors:ImageFallbackBehavior.HideOnError="True"
-                               behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                               behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
-                    </Grid>
-                </Border>
+                <Grid HorizontalAlignment="Stretch"
+                      Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}">
+                    <winUi:Effects.Shadow>
+                        <ui:AttachedCardShadow BlurRadius="32" Offset="0,12" Opacity="0.28" Color="Black" CornerRadius="8" InnerContentClipMode="CompositionMaskBrush"/>
+                    </winUi:Effects.Shadow>
+                    <Border x:Name="PlaylistArtContainer" CornerRadius="8"
+                            HorizontalAlignment="Stretch"
+                            SizeChanged="PlaylistArtContainer_SizeChanged"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <Grid>
+                            <!-- Full-container shimmer BEHIND the Image. One visual
+                                 state while PlaylistImageUrl is null (or mosaic
+                                 compose is in flight), then FadeInOnLoad animates
+                                 the Image from opacity 0→1 over the shimmer. No
+                                 jump from small-glyph to bare-background to image
+                                 — same rectangle size throughout. -->
+                            <controls:Shimmer HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch"
+                                              Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                            <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                   Stretch="UniformToFill"
+                                   Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                   behaviors:ImageFallbackBehavior.HideOnError="True"
+                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                   behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
+                        </Grid>
+                    </Border>
+                </Grid>
 
                 <Grid MinHeight="24" HorizontalAlignment="Stretch">
                     <TextBlock Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"

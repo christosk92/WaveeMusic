@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
+using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
@@ -18,6 +19,42 @@ public sealed class ConcertService : IConcertService
     {
         _pathfinder = pathfinder;
         _logger = logger;
+    }
+
+    private static ConcertPaletteTier? MapTier(ArtistExtractedColorPalette? palette)
+    {
+        if (palette?.BackgroundBase == null || palette.TextBrightAccent == null) return null;
+        var bg = palette.BackgroundBase;
+        var bgTint = palette.BackgroundTintedBase ?? palette.BackgroundBase;
+        var accent = palette.TextBrightAccent;
+        return new ConcertPaletteTier
+        {
+            BackgroundR = (byte)bg.Red,
+            BackgroundG = (byte)bg.Green,
+            BackgroundB = (byte)bg.Blue,
+            BackgroundTintedR = (byte)bgTint.Red,
+            BackgroundTintedG = (byte)bgTint.Green,
+            BackgroundTintedB = (byte)bgTint.Blue,
+            TextAccentR = (byte)accent.Red,
+            TextAccentG = (byte)accent.Green,
+            TextAccentB = (byte)accent.Blue,
+        };
+    }
+
+    private static ConcertArtistPalette? MapPalette(ArtistVisualIdentity? vi)
+    {
+        var set = vi?.WideFullBleedImage?.ExtractedColorSet;
+        if (set == null) return null;
+        var high = MapTier(set.HighContrast);
+        var higher = MapTier(set.HigherContrast);
+        var min = MapTier(set.MinContrast);
+        if (high == null && higher == null && min == null) return null;
+        return new ConcertArtistPalette
+        {
+            HighContrast = high,
+            HigherContrast = higher,
+            MinContrast = min,
+        };
     }
 
     public async Task<ConcertDetailResult> GetDetailAsync(string concertUri, CancellationToken ct = default)
@@ -64,7 +101,8 @@ public sealed class ConcertService : IConcertService
                         Uri = album.Uri,
                         CoverArtUrl = album.CoverArt?.Sources?.FirstOrDefault()?.Url,
                         ArtistName = album.Artists?.Items?.FirstOrDefault()?.Profile?.Name
-                    }).ToList() ?? []
+                    }).ToList() ?? [],
+                Palette = MapPalette(a.Data?.VisualIdentity),
             }).ToList() ?? [],
 
             Offers = c.Offers?.Items?.Select(o => new ConcertOfferResult
@@ -98,7 +136,21 @@ public sealed class ConcertService : IConcertService
                 .OrderByDescending(g => g.Weight)
                 .Select(g => g.Data?.Name ?? "")
                 .Where(n => !string.IsNullOrEmpty(n))
-                .ToList() ?? []
+                .ToList() ?? [],
+
+            // Pull featured playlists from the headliner only. Secondary-artist featureds
+            // would crowd the section and are best discovered via ArtistPage navigation.
+            FeaturedPlaylists = c.Artists?.Items?.FirstOrDefault()?.Data?.RelatedContent?.FeaturingV2?.Items?
+                .Select(item => item.Data)
+                .Where(d => d != null && !string.IsNullOrEmpty(d.Uri))
+                .Select(d => new ConcertFeaturedPlaylistResult
+                {
+                    Uri = d!.Uri,
+                    Name = d.Name,
+                    Description = d.Description,
+                    ImageUrl = d.Images?.Items?.FirstOrDefault()?.Sources?.FirstOrDefault()?.Url,
+                    OwnerName = d.OwnerV2?.Data?.Name,
+                }).ToList() ?? [],
         };
     }
 }

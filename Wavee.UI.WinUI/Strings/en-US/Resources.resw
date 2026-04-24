@@ -18,6 +18,9 @@
   <data name="AppDisplayName" xml:space="preserve">
     <value>Wavee</value>
   </data>
+  <data name="CardMenu_Open" xml:space="preserve">
+    <value>Open</value>
+  </data>
   <data name="CardMenu_OpenAlbum" xml:space="preserve">
     <value>Open album</value>
   </data>
@@ -29,6 +32,18 @@
   </data>
   <data name="CardMenu_OpenPlaylist" xml:space="preserve">
     <value>Open playlist</value>
+  </data>
+  <data name="CardMenu_Play" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="CardMenu_SaveToLibrary" xml:space="preserve">
+    <value>Save to library</value>
+  </data>
+  <data name="CardMenu_RemoveFromLibrary" xml:space="preserve">
+    <value>Remove from library</value>
+  </data>
+  <data name="CardMenu_Share" xml:space="preserve">
+    <value>Share</value>
   </data>
   <data name="Controls_ActivityBell_ActivityBell__Button_1.ToolTipService.ToolTip" xml:space="preserve">
     <value>Activity</value>
@@ -976,6 +991,96 @@ the music you previously queued?</value>
   </data>
   <data name="TrackMenu_StartRadio" xml:space="preserve">
     <value>Start radio</value>
+  </data>
+  <data name="TrackMenu_GoToRadio" xml:space="preserve">
+    <value>Go to radio</value>
+  </data>
+  <data name="TrackMenu_SongRadio" xml:space="preserve">
+    <value>Song radio</value>
+  </data>
+  <data name="TrackMenu_ArtistRadio" xml:space="preserve">
+    <value>Artist radio</value>
+  </data>
+  <data name="TrackMenu_AlbumRadio" xml:space="preserve">
+    <value>Album radio</value>
+  </data>
+  <data name="TrackMenu_PlayNext" xml:space="preserve">
+    <value>Play next</value>
+  </data>
+  <data name="TrackMenu_PlayAfter" xml:space="preserve">
+    <value>Play after</value>
+  </data>
+  <data name="TrackMenu_ViewCredits" xml:space="preserve">
+    <value>View credits</value>
+  </data>
+  <data name="TrackMenu_SaveShort" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="TrackMenu_SavedShort" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="PlaylistMenu_Shuffle" xml:space="preserve">
+    <value>Shuffle</value>
+  </data>
+  <data name="PlaylistMenu_EditDetails" xml:space="preserve">
+    <value>Edit details</value>
+  </data>
+  <data name="PlaylistMenu_Download" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="ArtistMenu_Follow" xml:space="preserve">
+    <value>Follow</value>
+  </data>
+  <data name="ArtistMenu_Unfollow" xml:space="preserve">
+    <value>Unfollow</value>
+  </data>
+  <data name="ArtistMenu_ArtistRadio" xml:space="preserve">
+    <value>Go to artist radio</value>
+  </data>
+  <data name="AlbumMenu_AlbumRadio" xml:space="preserve">
+    <value>Go to album radio</value>
+  </data>
+  <data name="SidebarMenu_Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="SidebarMenu_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SidebarMenu_PinFolder" xml:space="preserve">
+    <value>Pin folder</value>
+  </data>
+  <data name="SidebarMenu_UnpinFolder" xml:space="preserve">
+    <value>Unpin folder</value>
+  </data>
+  <data name="SidebarMenu_CreatePlaylist" xml:space="preserve">
+    <value>Create playlist</value>
+  </data>
+  <data name="SidebarMenu_CreateFolder" xml:space="preserve">
+    <value>Create folder</value>
+  </data>
+  <data name="SidebarMenu_MoveToFolder" xml:space="preserve">
+    <value>Move to folder</value>
+  </data>
+  <data name="SidebarMenu_AddToQueue" xml:space="preserve">
+    <value>Add to queue</value>
+  </data>
+  <data name="SidebarMenu_AddToProfile" xml:space="preserve">
+    <value>Add to profile</value>
+  </data>
+  <data name="SidebarMenu_Report" xml:space="preserve">
+    <value>Report</value>
+  </data>
+  <data name="SidebarMenu_SaveToLibrary" xml:space="preserve">
+    <value>Save to Your Library</value>
+  </data>
+  <data name="SidebarMenu_RemoveFromLibrary" xml:space="preserve">
+    <value>Remove from Your Library</value>
+  </data>
+  <data name="SidebarMenu_ExcludeFromTaste" xml:space="preserve">
+    <value>Exclude from your taste profile</value>
+  </data>
+  <data name="SidebarMenu_Share" xml:space="preserve">
+    <value>Share</value>
   </data>
   <data name="Views_AlbumPage__Run_1.Text" xml:space="preserve">
     <value> songs</value>

@@ -523,6 +523,9 @@ public static class AppLifecycleHelper
                         sp.GetService<IAudioPipelineControl>(),
                         sp.GetService<ISession>(),
                         sp.GetRequiredService<IUpdateService>(),
+                        sp.GetService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
+                        sp.GetService<CommunityToolkit.Mvvm.Messaging.IMessenger>(),
+                        sp.GetService<INotificationService>(),
                         sp.GetService<ILogger<SettingsViewModel>>()))
 
                 // Drag & drop

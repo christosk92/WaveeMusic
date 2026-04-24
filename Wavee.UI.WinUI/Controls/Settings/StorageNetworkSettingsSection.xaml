@@ -104,6 +104,13 @@
                 </controls:SettingsCard.HeaderIcon>
                 <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_15" Content="Clear Cache" Command="{x:Bind ViewModel.ClearCacheCommand}"/>
             </controls:SettingsCard>
+            <controls:SettingsCard Header="Clear collection revisions"
+                                   Description="Forces a full refresh of your library (Liked Songs, albums, artists, shows). Use if something looks out of date.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE895;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <Button Content="Clear &amp; resync" Click="ClearCollectionRevisions_Click"/>
+            </controls:SettingsCard>
 
             <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_16" Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_17" Header="Auto-reconnect"

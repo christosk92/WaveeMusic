@@ -193,6 +193,7 @@ public sealed class LibraryTabPreferences
     public string SortBy { get; set; } = "Recents";
     public string SortDirection { get; set; } = "Descending";
     public string ViewMode { get; set; } = "DefaultGrid";
+    public double GridScale { get; set; } = 1.0;
 }
 
 public sealed class HomeSectionSettings

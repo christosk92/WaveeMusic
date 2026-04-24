@@ -12,6 +12,8 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
@@ -1008,22 +1010,36 @@ public sealed partial class TrackItem : UserControl
     {
         if (RowRoot == null) return;
 
-        RowRoot.BorderBrush = null;
-        RowRoot.BorderThickness = new Thickness(0);
-
         bool nativePillShowing = IsSelected || _isHovered;
 
         if (!nativePillShowing && _isAlternateRow)
         {
-            // Match the sidebar's selected-item subtle neutral fill rather
-            // than the full CardBackground tint, which looked heavy-handed in
-            // light mode (every other row visibly boxed).
-            RowRoot.Background = _themeColors?.SubtleFillSecondary
-                ?? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            // CardBackground (Fluent card tint) gives visible alternating-row
+            // striping in both light and dark. The boxed-in-light-mode look
+            // users previously complained about was driven by the per-row
+            // drop shadow — that's been removed, and the card fill alone
+            // reads cleanly in both themes.
+            RowRoot.Background = _themeColors?.CardBackground
+                ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
         }
         else
         {
             RowRoot.Background = DefaultBackground;
+        }
+
+        if (!nativePillShowing && _isAlternateRow)
+        {
+            // Border only on rows with the card fill — transparent rows stay
+            // borderless so the alternating pattern reads as "card, gap, card"
+            // instead of a full grid. Matches the sidebar-selected chip look.
+            RowRoot.BorderBrush = _themeColors?.CardStroke
+                ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
+            RowRoot.BorderThickness = new Thickness(1);
+        }
+        else
+        {
+            RowRoot.BorderBrush = null;
+            RowRoot.BorderThickness = new Thickness(0);
         }
     }
 
@@ -1060,6 +1076,29 @@ public sealed partial class TrackItem : UserControl
 
     private void OnPlaybackStateChanged()
     {
+        // Cheap pre-check on the calling thread: skip the dispatch when this
+        // row's effective playback state can't have flipped. Across the four
+        // events that PlaybackStateChanged fans (CurrentTrackId, IsPlaying,
+        // IsBuffering, BufferingTrackId), only the previously-active row, the
+        // newly-active row, and the buffering row need to update — every
+        // other realized TrackItem is a no-op. At 500 visible rows that's a
+        // ~1 ms-per-event drop to a handful of µs. The reads below are
+        // lock-free statics + plain instance fields, safe on any thread.
+        var track = Track;
+        if (track == null) return;
+
+        var trackId = track.Id;
+        var isThisTrack = trackId == TrackStateBehavior.CurrentTrackId;
+        var nowPlaying = isThisTrack && TrackStateBehavior.IsCurrentlyPlaying;
+        var nowPaused = isThisTrack && !TrackStateBehavior.IsCurrentlyPlaying;
+        var nowBuffering = trackId == TrackStateBehavior.BufferingTrackId
+                           && TrackStateBehavior.IsCurrentlyBuffering;
+
+        if (nowPlaying == _isThisTrackPlaying
+            && nowPaused == _isThisTrackPaused
+            && nowBuffering == _isBuffering)
+            return;
+
         DispatcherQueue?.TryEnqueue(() =>
         {
             RefreshPlaybackState();
@@ -1463,7 +1502,7 @@ public sealed partial class TrackItem : UserControl
         var track = Track;
         if (track == null) return;
 
-        var options = new TrackContextMenuOptions
+        var ctx = new TrackMenuContext
         {
             PlayCommand = PlayCommand,
             AddToQueueCommand = AddToQueueCommand,
@@ -1471,8 +1510,8 @@ public sealed partial class TrackItem : UserControl
             RemoveLabel = RemoveCommandLabel
         };
 
-        var menu = TrackContextMenu.Create(track, options);
-        menu.ShowAt(this, position);
+        var items = TrackContextMenuBuilder.Build(track, ctx);
+        ContextMenuHost.Show(this, items, position);
     }
 
     #endregion

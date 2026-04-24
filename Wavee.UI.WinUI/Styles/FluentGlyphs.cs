@@ -15,9 +15,79 @@ namespace Wavee.UI.WinUI.Styles;
 /// </summary>
 public static class FluentGlyphs
 {
+    // ── Playback ──────────────────────────────────────────────────────────
+    /// <summary>Play — E768.</summary>
+    public const string Play = "";
+    /// <summary>Next — E893 (play-next glyph historically E71A Forward; we keep E71A).</summary>
+    public const string PlayNext = "";
+    /// <summary>Add (plus) — E710. Used for "Add to queue".</summary>
+    public const string AddToQueue = "";
+    /// <summary>Shuffle — E8B1.</summary>
+    public const string Shuffle = "";
+
+    // ── Library / save state ──────────────────────────────────────────────
+    /// <summary>HeartFill — EB52.</summary>
+    public const string HeartFilled = "";
+    /// <summary>Heart — EB51.</summary>
+    public const string HeartOutline = "";
+    /// <summary>Pinned — E840.</summary>
+    public const string Pin = "";
+    /// <summary>Unpin — E77A.</summary>
+    public const string Unpin = "";
+
+    // ── Navigation targets ────────────────────────────────────────────────
+    /// <summary>Contact — E77B. Used as generic "artist" glyph.</summary>
+    public const string Artist = "";
+    /// <summary>MusicAlbum — E93C.</summary>
+    public const string Album = "";
+    /// <summary>MusicNote — E8D6 / Playlist surface E8FD.</summary>
+    public const string Playlist = "";
     /// <summary>Folder (closed) — E8B7.</summary>
     public const string Folder = "";
-
     /// <summary>FolderOpen — E838.</summary>
     public const string FolderOpen = "";
+    /// <summary>Radio — EC05.</summary>
+    public const string Radio = "";
+
+    // ── Actions ──────────────────────────────────────────────────────────
+    /// <summary>Share — E72D.</summary>
+    public const string Share = "";
+    /// <summary>Delete — E74D.</summary>
+    public const string Delete = "";
+    /// <summary>Delete — E74D. Semantic alias used for "Remove from playlist" etc.</summary>
+    public const string Remove = "";
+    /// <summary>Edit — E70F.</summary>
+    public const string Edit = "";
+    /// <summary>Rename — E8AC.</summary>
+    public const string Rename = "";
+    /// <summary>Download — E896.</summary>
+    public const string Download = "";
+    /// <summary>OpenInNewWindow / OpenWith — E8A7.</summary>
+    public const string Open = "";
+    /// <summary>OpenInNewWindow — E8A7.</summary>
+    public const string OpenInNewTab = "";
+    /// <summary>MoveToFolder — E8DE.</summary>
+    public const string MoveTo = "";
+    /// <summary>Add — E710. Semantic alias.</summary>
+    public const string Add = "";
+    /// <summary>Add — E710.</summary>
+    public const string CreatePlaylist = "";
+    /// <summary>NewFolder — E8F4.</summary>
+    public const string CreateFolder = "";
+    /// <summary>Contact — E77B.</summary>
+    public const string AddToProfile = "";
+    /// <summary>Flag — E814.</summary>
+    public const string Report = "";
+    /// <summary>Blocked — ECCA.</summary>
+    public const string Exclude = "";
+
+    // ── Misc surfaces ─────────────────────────────────────────────────────
+    /// <summary>Info — E946. Used for "Show credits".</summary>
+    public const string Credits = "";
+    /// <summary>Picture — E91B. Used for "Background".</summary>
+    public const string Background = "";
+    /// <summary>Edit — E70F. Reused for Canvas editor.</summary>
+    public const string Canvas = "";
+    /// <summary>ChevronRight — E76C.</summary>
+    public const string ChevronRight = "";
 }

@@ -1,0 +1,155 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.AccentIcon">
+
+    <!--
+        Default template — a Viewbox holds a 16×16 Grid with two stacked Path elements.
+        Each keyed icon style below sets BasePathData and/or AccentPathData with the
+        mini-language (e.g. "M5,3 L13,8 L5,13 Z"). WinUI's GeometryTypeConverter picks
+        those strings up because the DPs are typed Geometry.
+    -->
+    <Style TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <Path Data="{TemplateBinding BasePathData}"
+                                  Fill="{ThemeResource App.Theme.IconBaseBrush}"/>
+                            <Path Data="{TemplateBinding AccentPathData}"
+                                  Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ──── Media icon styles ─────────────────────────────────────────────── -->
+
+    <!-- Play: filled triangle in accent. -->
+    <Style x:Key="App.AccentIcons.Media.Play" TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <Path Data="M 5,3 L 13,8 L 5,13 Z" Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Play Next: skip-forward (triangle + trailing bar). Base = bar, accent = triangle. -->
+    <Style x:Key="App.AccentIcons.Media.PlayNext" TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <Path Data="M 12,3 L 14,3 L 14,13 L 12,13 Z" Fill="{ThemeResource App.Theme.IconBaseBrush}"/>
+                            <Path Data="M 3,3 L 11,8 L 3,13 Z" Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Play After (add to queue): queue lines + plus in accent corner. -->
+    <Style x:Key="App.AccentIcons.Media.PlayAfter" TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <Path Data="M 2,4 L 12,4 L 12,5.5 L 2,5.5 Z M 2,7.25 L 12,7.25 L 12,8.75 L 2,8.75 Z M 2,10.5 L 8,10.5 L 8,12 L 2,12 Z"
+                                  Fill="{ThemeResource App.Theme.IconBaseBrush}"/>
+                            <Path Data="M 12,10 L 13,10 L 13,11.5 L 14.5,11.5 L 14.5,12.5 L 13,12.5 L 13,14 L 12,14 L 12,12.5 L 10.5,12.5 L 10.5,11.5 L 12,11.5 Z"
+                                  Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Save (not liked): heart outline, accent stroke visible only when hovered via icon color. -->
+    <Style x:Key="App.AccentIcons.Media.Save" TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <Path Data="M 8,13.5 C 7.8,13.5 7.6,13.42 7.45,13.28 L 2.65,8.6 C 1.6,7.58 1,6.18 1,4.7 C 1,2.66 2.66,1 4.7,1 C 6.02,1 7.23,1.72 8,2.85 C 8.77,1.72 9.98,1 11.3,1 C 13.34,1 15,2.66 15,4.7 C 15,6.18 14.4,7.58 13.35,8.6 L 8.55,13.28 C 8.4,13.42 8.2,13.5 8,13.5 Z M 4.7,2.2 C 3.32,2.2 2.2,3.32 2.2,4.7 C 2.2,5.85 2.67,6.94 3.5,7.74 L 8,12.12 L 12.5,7.74 C 13.33,6.94 13.8,5.85 13.8,4.7 C 13.8,3.32 12.68,2.2 11.3,2.2 C 10.18,2.2 9.19,2.93 8.83,4.01 L 8,6.5 L 7.17,4.01 C 6.81,2.93 5.82,2.2 4.7,2.2 Z"
+                                  Fill="{ThemeResource App.Theme.IconBaseBrush}"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Saved (liked): heart filled in accent. -->
+    <Style x:Key="App.AccentIcons.Media.Saved" TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <Path Data="M 8,13.5 C 7.8,13.5 7.6,13.42 7.45,13.28 L 2.65,8.6 C 1.6,7.58 1,6.18 1,4.7 C 1,2.66 2.66,1 4.7,1 C 6.02,1 7.23,1.72 8,2.85 C 8.77,1.72 9.98,1 11.3,1 C 13.34,1 15,2.66 15,4.7 C 15,6.18 14.4,7.58 13.35,8.6 L 8.55,13.28 C 8.4,13.42 8.2,13.5 8,13.5 Z"
+                                  Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Shuffle: two crossing arrows, Fluent-style. Back arrow in base color, front in accent. -->
+    <Style x:Key="App.AccentIcons.Media.Shuffle" TargetType="local:AccentIcon">
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="IconSize" Value="20"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="local:AccentIcon">
+                    <Viewbox Width="{TemplateBinding IconSize}" Height="{TemplateBinding IconSize}" Stretch="Uniform">
+                        <Grid Width="16" Height="16">
+                            <!-- Back arrow: left→right via bottom, drawn as a 1.3px-thick stroked path with
+                                 an arrowhead on the right. Base (muted) color. -->
+                            <Path Data="M 1,4.5 L 4.25,4.5 C 5,4.5 5.5,4.8 5.9,5.3 L 10.25,11.1 C 10.6,11.55 10.9,11.7 11.5,11.7 L 13,11.7 M 11.5,9.9 L 13.5,11.7 L 11.5,13.5"
+                                  Stroke="{ThemeResource App.Theme.IconBaseBrush}"
+                                  StrokeThickness="1.3"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"/>
+                            <!-- Front arrow: left→right via top, same shape mirrored. Accent color. -->
+                            <Path Data="M 1,11.5 L 4.25,11.5 C 5,11.5 5.5,11.2 5.9,10.7 L 10.25,4.9 C 10.6,4.45 10.9,4.3 11.5,4.3 L 13,4.3 M 11.5,2.5 L 13.5,4.3 L 11.5,6.1"
+                                  Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                                  StrokeThickness="1.3"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"/>
+                        </Grid>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

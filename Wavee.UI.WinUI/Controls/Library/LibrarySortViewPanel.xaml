@@ -291,6 +291,32 @@
                         </ToggleButton>
                     </StackPanel>
 
+                    <!-- Grid size slider: visible only when a grid view mode is selected and
+                         ShowGridScale is true (set by the consuming page). -->
+                    <StackPanel x:Name="GridScaleSection" Spacing="4" Padding="8,0,8,8" Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Size"
+                                       VerticalAlignment="Center"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <FontIcon Grid.Column="1" Glyph="&#xE71E;" FontSize="12"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
+                        <Slider x:Name="GridScaleSlider"
+                                Minimum="0.7"
+                                Maximum="1.6"
+                                StepFrequency="0.05"
+                                SmallChange="0.05"
+                                LargeChange="0.1"
+                                TickFrequency="0.1"
+                                Value="{x:Bind GridScale, Mode=TwoWay}"/>
+                    </StackPanel>
+
                 </StackPanel>
             </Flyout>
         </DropDownButton.Flyout>

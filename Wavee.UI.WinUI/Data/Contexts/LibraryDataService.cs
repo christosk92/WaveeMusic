@@ -231,7 +231,7 @@ public sealed class LibraryDataService : ILibraryDataService
 
     public async Task<IReadOnlyList<LikedSongDto>> GetLikedSongsAsync(CancellationToken ct = default)
     {
-        var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Track, 500, 0, ct);
+        var entities = await _database.GetSpotifyLibraryItemsAsync(SpotifyLibraryItemType.Track, int.MaxValue, 0, ct);
 
         var trackUris = entities.Select(e => e.Uri).ToList();
         var descriptorBytes = await _database
@@ -415,8 +415,16 @@ public sealed class LibraryDataService : ILibraryDataService
         };
     }
 
-    private static string ExtractBareId(string uri, string prefix) =>
-        uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
+    // Strip the prefix repeatedly — some cache entries arrived with the prefix applied
+    // multiple times (`spotify:user:spotify:user:id`) from an earlier write path, and a
+    // single-pass strip leaves the remainder still prefixed. Re-prefixing that in the
+    // DTO then produced `spotify:user:spotify:user:id` in the UI header.
+    private static string ExtractBareId(string uri, string prefix)
+    {
+        while (uri.StartsWith(prefix, StringComparison.Ordinal))
+            uri = uri[prefix.Length..];
+        return uri;
+    }
 
     private static PlaylistBasePermission MapBasePermission(CachedPlaylistBasePermission value)
     {

@@ -228,6 +228,11 @@ public interface IMetadataDatabase : IAsyncDisposable
         int itemCount,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Clears all sync_state rows, forcing a full re-sync of every collection type on the next sync.
+    /// </summary>
+    Task ClearAllSyncStateAsync(CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Play History Operations

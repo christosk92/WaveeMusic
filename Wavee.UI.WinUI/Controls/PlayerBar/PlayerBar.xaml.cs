@@ -10,7 +10,10 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
@@ -243,6 +246,18 @@ public sealed partial class PlayerBar : UserControl
         // active playback context (Playlist / Album / Artist / Liked Songs). The
         // expander is still reachable via ShellPage's dedicated trigger.
         NavigateToActiveContext();
+        e.Handled = true;
+    }
+
+    private void NowPlaying_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        if (_playbackStateService is null) return;
+        if (string.IsNullOrEmpty(_playbackStateService.CurrentTrackId)) return;
+
+        var adapter = new NowPlayingTrackAdapter(_playbackStateService);
+        var items = TrackContextMenuBuilder.Build(adapter);
+        ContextMenuHost.Show(fe, items, e.GetPosition(fe));
         e.Handled = true;
     }
 

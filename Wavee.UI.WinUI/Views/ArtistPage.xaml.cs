@@ -21,6 +21,8 @@ using Wavee.Core.Http;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -98,6 +100,21 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
         SizeChanged += OnSizeChanged;
         HeroGrid.SizeChanged += HeroGrid_SizeChanged;
+
+        HeroGrid.RightTapped += (_, e) =>
+        {
+            if (string.IsNullOrEmpty(ViewModel.ArtistId)) return;
+            var items = ArtistContextMenuBuilder.Build(new ArtistMenuContext
+            {
+                ArtistId = ViewModel.ArtistId!,
+                ArtistName = ViewModel.ArtistName ?? string.Empty,
+                IsFollowing = ViewModel.IsFollowing,
+                PlayCommand = ViewModel.PlayTopTracksCommand,
+                ToggleFollowCommand = ViewModel.ToggleFollowCommand
+            });
+            ContextMenuHost.Show(HeroGrid, items, e.GetPosition(HeroGrid));
+            e.Handled = true;
+        };
         PageScrollView.ViewChanged += PageScrollView_ViewChanged;
         EnsureShyHeaderTransition();
         ResetShyHeaderState();

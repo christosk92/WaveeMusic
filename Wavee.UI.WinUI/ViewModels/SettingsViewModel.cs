@@ -10,14 +10,17 @@ using System.Reflection;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Serilog.Events;
 // Processors now live in AudioHost — EQ config goes via IPC
+using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.Core.Session;
 using Wavee.Core.Time;
 using Wavee.UI.WinUI.Data.Models;
@@ -51,6 +54,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly InMemorySink _inMemorySink;
     private readonly ISession? _session;
     private readonly IUpdateService? _updateService;
+    private readonly IMetadataDatabase? _metadataDatabase;
+    private readonly IMessenger? _messenger;
+    private readonly INotificationService? _notificationService;
     private readonly ILogger? _logger;
     private readonly RestartSensitiveSettingsSnapshot _launchRestartSettings;
     private readonly HashSet<PendingRestartArea> _pendingRestartAreas = [];
@@ -112,6 +118,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IAudioPipelineControl? pipelineControl = null,
         ISession? session = null,
         IUpdateService? updateService = null,
+        IMetadataDatabase? metadataDatabase = null,
+        IMessenger? messenger = null,
+        INotificationService? notificationService = null,
         ILogger<SettingsViewModel>? logger = null)
     {
         _settingsService = settingsService;
@@ -120,6 +129,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _pipelineControl = pipelineControl;
         _session = session;
         _updateService = updateService;
+        _metadataDatabase = metadataDatabase;
+        _messenger = messenger;
+        _notificationService = notificationService;
         _logger = logger;
         LogEntries = inMemorySink.Entries;
 
@@ -718,6 +730,50 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(CacheSizeDisplay));
         }
         catch (Exception ex) { _logger?.LogDebug(ex, "Failed to clear cache"); }
+    }
+
+    [RelayCommand]
+    private async Task ClearCollectionRevisionsAsync(XamlRoot? xamlRoot)
+    {
+        if (_metadataDatabase == null)
+        {
+            _logger?.LogWarning("ClearCollectionRevisions invoked but metadata database is unavailable");
+            return;
+        }
+
+        if (xamlRoot != null)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Clear collection revisions?",
+                Content = "This forces a full refresh of your Spotify library. Your local cached lists (Liked Songs, albums, artists, shows) will be rebuilt from the server. Useful if something looks out of date.",
+                PrimaryButtonText = "Clear & resync",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = xamlRoot,
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        }
+
+        try
+        {
+            await _metadataDatabase.ClearAllSyncStateAsync();
+            _messenger?.Send(new RequestLibrarySyncMessage());
+            _notificationService?.Show(
+                "Collection revisions cleared — resyncing your library…",
+                NotificationSeverity.Success,
+                TimeSpan.FromSeconds(4));
+            _logger?.LogInformation("User cleared collection revisions; full resync requested");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to clear collection revisions");
+            _notificationService?.Show(
+                "Could not clear collection revisions.",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(4));
+        }
     }
 
     // ── Connection (requires restart) ──

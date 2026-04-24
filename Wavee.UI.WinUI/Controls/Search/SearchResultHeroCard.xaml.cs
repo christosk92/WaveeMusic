@@ -375,6 +375,24 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private void OnPlaybackStateChanged()
     {
+        // Same filter as TrackItem.OnPlaybackStateChanged — skip the dispatch
+        // when this card's effective playback state can't have flipped. Note
+        // the IsPaused condition mirrors RefreshPlaybackState exactly
+        // (CurrentTrackId != null guard) so the dedup is sound.
+        if (_trackId == null) return;
+
+        var isThisTrack = _trackId == TrackStateBehavior.CurrentTrackId;
+        var nowPlaying = isThisTrack && TrackStateBehavior.IsCurrentlyPlaying;
+        var nowPaused = isThisTrack && !TrackStateBehavior.IsCurrentlyPlaying
+                                    && TrackStateBehavior.CurrentTrackId != null;
+        var nowBuffering = _trackId == TrackStateBehavior.BufferingTrackId
+                           && TrackStateBehavior.IsCurrentlyBuffering;
+
+        if (nowPlaying == _isThisTrackPlaying
+            && nowPaused == _isThisTrackPaused
+            && nowBuffering == _isBuffering)
+            return;
+
         DispatcherQueue?.TryEnqueue(() =>
         {
             RefreshPlaybackState();

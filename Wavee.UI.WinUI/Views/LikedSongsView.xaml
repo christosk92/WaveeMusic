@@ -14,7 +14,49 @@
     Background="Transparent">
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- filter chip row -->
+            <RowDefinition Height="*"/>      <!-- TrackDataGrid -->
+        </Grid.RowDefinitions>
+
+        <!--
+            Filter chip row — ported back after commit 840d692 migrated to TrackDataGrid
+            and accidentally orphaned the chips in the legacy TrackListView.HeaderContent.
+            Bindings are unchanged: HasFilterChipsOrShimmer gates the whole row;
+            IsTagsLoading picks between the real TokenView and the shimmer placeholders.
+        -->
+        <Grid Grid.Row="0"
+              Padding="16,12,16,4"
+              Visibility="{x:Bind ViewModel.HasFilterChipsOrShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <toolkit:TokenView
+                x:Name="FilterTokenView"
+                IsWrapped="False"
+                CanRemoveTokens="False"
+                HorizontalAlignment="Stretch"
+                ItemsSource="{x:Bind ViewModel.FilterChips, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedFilterChip, Mode=TwoWay}"
+                Visibility="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                <toolkit:TokenView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LikedSongsFilterChipViewModel">
+                        <TextBlock Text="{x:Bind Label}" FontSize="13"/>
+                    </DataTemplate>
+                </toolkit:TokenView.ItemTemplate>
+            </toolkit:TokenView>
+
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <toolkit:Shimmer Width="48"  Height="28" CornerRadius="16"/>
+                <toolkit:Shimmer Width="72"  Height="28" CornerRadius="16"/>
+                <toolkit:Shimmer Width="96"  Height="28" CornerRadius="16"/>
+                <toolkit:Shimmer Width="64"  Height="28" CornerRadius="16"/>
+                <toolkit:Shimmer Width="84"  Height="28" CornerRadius="16"/>
+                <toolkit:Shimmer Width="56"  Height="28" CornerRadius="16"/>
+            </StackPanel>
+        </Grid>
+
         <tdg:TrackDataGrid
+            Grid.Row="1"
             x:Name="TrackGrid"
             PageKey="liked"
             ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
@@ -54,6 +96,7 @@
              code-behind still binds to this instance. Remove when AlbumPage + this
              view are fully migrated and the old control is retired. -->
         <trackList:TrackListView
+            Grid.Row="1"
             x:Name="TrackList"
             Visibility="Collapsed"
             ViewModel="{x:Bind ViewModel, Mode=OneWay}"
@@ -67,118 +110,6 @@
             RemoveActionLabel="Remove from Liked"
             ArtistClicked="TrackList_ArtistClicked"
             AlbumClicked="TrackList_AlbumClicked"
-            NewPlaylistRequested="TrackList_NewPlaylistRequested">
-
-            <!-- Page-specific Header -->
-            <trackList:TrackListView.HeaderContent>
-                <!--
-                    Grid with explicit rows so the chips row can ColumnSpan="2" and get the
-                    full header width. Previously the chips lived inside a StackPanel pinned
-                    to column 0 of a (*, Auto=200) grid, which capped their width at
-                    totalWidth - 200 even though the search box on the right is only at row 0.
-                -->
-                <Grid Padding="8,20,8,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- title + search -->
-                        <RowDefinition Height="Auto"/> <!-- stats -->
-                        <RowDefinition Height="Auto"/> <!-- filter chips (full width) -->
-                        <RowDefinition Height="Auto"/> <!-- action buttons -->
-                    </Grid.RowDefinitions>
-
-                    <!-- Title with heart icon -->
-                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="12">
-                        <FontIcon Glyph="&#xEB52;" FontSize="32" Foreground="{ThemeResource App.Theme.AccentBrush}"/>
-                        <TextBlock x:Uid="Views_LikedSongsView__TextBlock_1" Text="Liked Songs" Style="{StaticResource TitleTextBlockStyle}"/>
-                    </StackPanel>
-
-                    <!-- Search (pinned to top-right) -->
-                    <TextBox x:Uid="Views_LikedSongsView__TextBox_5"
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        PlaceholderText="Filter songs..."
-                        Width="200"
-                        VerticalAlignment="Top"
-                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-
-                    <!-- Stats -->
-                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                               Margin="0,8,0,0"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                        <Run Text="{x:Bind ViewModel.TotalSongs, Mode=OneWay}"/>
-                        <Run x:Uid="Views_LikedSongsView__Run_2" Text="songs"/>
-                        <Run Text=" &#x2022; "/>
-                        <Run Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"/>
-                    </TextBlock>
-
-                    <!-- Filter chips — spans both columns so TokenView gets full width -->
-                    <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                          Margin="0,8,0,0"
-                          Visibility="{x:Bind ViewModel.HasFilterChipsOrShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <!-- Real filter chips (CommunityToolkit Labs TokenView) — hidden while initial fetch runs -->
-                        <toolkit:TokenView
-                            x:Name="FilterTokenView"
-                            IsWrapped="False"
-                            CanRemoveTokens="False"
-                            HorizontalAlignment="Stretch"
-                            ItemsSource="{x:Bind ViewModel.FilterChips, Mode=OneWay}"
-                            SelectedItem="{x:Bind ViewModel.SelectedFilterChip, Mode=TwoWay}"
-                            Visibility="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                            <toolkit:TokenView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LikedSongsFilterChipViewModel">
-                                    <TextBlock Text="{x:Bind Label}" FontSize="13"/>
-                                </DataTemplate>
-                            </toolkit:TokenView.ItemTemplate>
-                        </toolkit:TokenView>
-
-                        <!-- Shimmer placeholder while initial TRACK_DESCRIPTOR bulk fetch runs -->
-                        <StackPanel
-                            Orientation="Horizontal"
-                            Spacing="8"
-                            Visibility="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <toolkit:Shimmer Width="48"  Height="28" CornerRadius="16"/>
-                            <toolkit:Shimmer Width="72"  Height="28" CornerRadius="16"/>
-                            <toolkit:Shimmer Width="96"  Height="28" CornerRadius="16"/>
-                            <toolkit:Shimmer Width="64"  Height="28" CornerRadius="16"/>
-                            <toolkit:Shimmer Width="84"  Height="28" CornerRadius="16"/>
-                            <toolkit:Shimmer Width="56"  Height="28" CornerRadius="16"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- Action buttons -->
-                    <StackPanel Grid.Row="3" Grid.Column="0"
-                                Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                        <Button Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.PlayAllCommand}" Padding="16,8">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                                <TextBlock x:Uid="Views_LikedSongsView__TextBlock_3" Text="Play"/>
-                            </StackPanel>
-                        </Button>
-                        <Button Command="{x:Bind ViewModel.ShuffleCommand}" Padding="16,8">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
-                                <TextBlock x:Uid="Views_LikedSongsView__TextBlock_4" Text="Shuffle"/>
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
-                </Grid>
-            </trackList:TrackListView.HeaderContent>
-
-            <!-- Empty State -->
-            <trackList:TrackListView.EmptyStateContent>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                    <FontIcon Glyph="&#xEB52;" FontSize="48" Opacity="0.3"/>
-                    <TextBlock x:Uid="Views_LikedSongsView__TextBlock_6"
-                        Text="No liked songs yet"
-                        Style="{StaticResource BodyTextBlockStyle}"
-                        Opacity="0.5"
-                        TextAlignment="Center"/>
-                </StackPanel>
-            </trackList:TrackListView.EmptyStateContent>
-        </trackList:TrackListView>
+            NewPlaylistRequested="TrackList_NewPlaylistRequested"/>
     </Grid>
 </UserControl>
