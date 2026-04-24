@@ -220,6 +220,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             MessageIdent = "local",
             SenderDeviceId = "",
             ContextUri = contextUri,
+            ContextFeature = PlayOriginFeatureForUri(contextUri),
             TrackUri = options?.StartTrackUri,
             SkipToIndex = options?.StartIndex,
             PositionMs = options?.PositionMs,
@@ -228,24 +229,55 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         return SendAsync("play", data, typedCmd, ct);
     }
 
-    public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, CancellationToken ct)
+    public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, PlaybackContextInfo? context, IReadOnlyList<QueueItem>? richTracks, CancellationToken ct)
     {
         // Normalize bare IDs to full spotify:track: URIs
         var normalizedUris = trackUris.Select(uri =>
             uri.StartsWith("spotify:", StringComparison.Ordinal) ? uri : $"spotify:track:{uri}").ToList();
 
-        var tracks = normalizedUris.Select(uri => new Dictionary<string, object>
+        // Align rich tracks one-to-one with normalizedUris when supplied. If the
+        // caller gave a mismatched count we ignore richTracks — the bare URI
+        // list still produces a valid play command.
+        var useRichTracks = richTracks is not null && richTracks.Count == normalizedUris.Count;
+
+        var tracks = new List<Dictionary<string, object>>(normalizedUris.Count);
+        var pageTracks = new List<Wavee.Connect.Commands.PageTrack>(normalizedUris.Count);
+        for (int i = 0; i < normalizedUris.Count; i++)
         {
-            ["uri"] = uri,
-            ["uid"] = ""
-        }).ToList();
+            var uri = normalizedUris[i];
+            var uid = useRichTracks ? (richTracks![i].Uid ?? string.Empty) : string.Empty;
+            var metadata = useRichTracks ? richTracks![i].Metadata : null;
+
+            var wireTrack = new Dictionary<string, object>
+            {
+                ["uri"] = uri,
+                ["uid"] = uid
+            };
+            if (metadata is { Count: > 0 })
+            {
+                var md = new Dictionary<string, object>(metadata.Count);
+                foreach (var kv in metadata) md[kv.Key] = kv.Value ?? string.Empty;
+                wireTrack["metadata"] = md;
+            }
+            tracks.Add(wireTrack);
+
+            pageTracks.Add(new Wavee.Connect.Commands.PageTrack(uri, uid) { Metadata = metadata });
+        }
+
+        var contextUri = context?.ContextUri ?? "spotify:internal:queue";
 
         var data = new Dictionary<string, object>
         {
             ["context"] = new Dictionary<string, object>
             {
-                ["uri"] = "spotify:internal:queue",
+                ["uri"] = contextUri,
+                ["url"] = $"context://{contextUri}",
                 ["pages"] = new[] { new Dictionary<string, object> { ["tracks"] = tracks } }
+            },
+            ["play_origin"] = new Dictionary<string, object>
+            {
+                ["feature_identifier"] = PlayOriginFeatureFor(context?.Type),
+                ["feature_version"] = "Wavee/1.0.0.0"
             }
         };
 
@@ -262,13 +294,37 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             MessageId = 0,
             MessageIdent = "local",
             SenderDeviceId = "",
-            ContextUri = "spotify:internal:queue",
+            ContextUri = contextUri,
+            ContextDescription = context?.Name,
+            ContextImageUrl = context?.ImageUrl,
+            ContextFeature = context is null ? null : PlayOriginFeatureFor(context.Type),
+            ContextTrackCount = context is null ? null : normalizedUris.Count,
+            ContextFormatAttributes = context?.FormatAttributes,
             SkipToIndex = startIndex > 0 ? startIndex : null,
-            PageTracks = normalizedUris.Select(uri => new Wavee.Connect.Commands.PageTrack(uri, "")).ToList(),
+            PageTracks = pageTracks,
         };
 
         return SendAsync("play", data, typedCmd, ct);
     }
+
+    private static string PlayOriginFeatureFor(PlaybackContextType? type) => type switch
+    {
+        PlaybackContextType.Playlist   => "playlist",
+        PlaybackContextType.Album      => "album",
+        PlaybackContextType.Artist     => "artist",
+        PlaybackContextType.LikedSongs => "collection",
+        _                              => "wavee"
+    };
+
+    private static string? PlayOriginFeatureForUri(string contextUri) =>
+        contextUri switch
+        {
+            _ when contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal) => "playlist",
+            _ when contextUri.StartsWith("spotify:album:",    StringComparison.Ordinal) => "album",
+            _ when contextUri.StartsWith("spotify:artist:",   StringComparison.Ordinal) => "artist",
+            _ when contextUri.Contains("collection",          StringComparison.OrdinalIgnoreCase) => "collection",
+            _ => null
+        };
 
     public Task<PlaybackResult> ResumeAsync(CancellationToken ct)
         => SendAsync("resume", null, ct);

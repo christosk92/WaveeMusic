@@ -59,7 +59,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v8: Removed FK constraint from spotify_library (decoupled from entities)
     // v9: Added media_overrides table
     // v11: Added playlist/rootlist cache snapshots
-    private const int CurrentSchemaVersion = 11;
+    // v12: Added header_image_url + format_attributes_json on spotify_playlists
+    private const int CurrentSchemaVersion = 12;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -100,6 +101,26 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     #region Schema Initialization
 
+    /// <summary>
+    /// Incremental, non-destructive schema migrations. Each entry is run
+    /// exactly once when an existing DB is opened at <c>FromVersion</c>.
+    /// ALL migrations must be additive-only (ALTER TABLE ADD COLUMN,
+    /// CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS). Never DROP
+    /// or restructure — users lose zero cached data on upgrade.
+    /// </summary>
+    private static readonly IReadOnlyList<SchemaMigration> Migrations =
+    [
+        new SchemaMigration(
+            FromVersion: 11,
+            ToVersion: 12,
+            Sql: """
+                ALTER TABLE spotify_playlists ADD COLUMN header_image_url TEXT;
+                ALTER TABLE spotify_playlists ADD COLUMN format_attributes_json TEXT;
+                """)
+    ];
+
+    private sealed record SchemaMigration(int FromVersion, int ToVersion, string Sql);
+
     private void InitializeSchema()
     {
         using var connection = CreateConnection();
@@ -112,22 +133,103 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.ExecuteNonQuery();
         }
 
-        // Check schema version - fresh start on version mismatch
         var currentVersion = GetSchemaVersion(connection);
-        if (currentVersion != CurrentSchemaVersion)
+
+        if (currentVersion == 0)
         {
-            if (currentVersion > 0)
-            {
-                _logger?.LogInformation("Schema version changed from {Old} to {New}, dropping all tables for fresh start",
-                    currentVersion, CurrentSchemaVersion);
-                DropAllTables(connection);
-            }
+            // Fresh DB — create all tables at the latest schema.
             CreateTables(connection);
             SetSchemaVersion(connection, CurrentSchemaVersion);
+            _logger?.LogInformation("Created fresh metadata DB at schema v{Version}", CurrentSchemaVersion);
         }
+        else if (currentVersion < CurrentSchemaVersion)
+        {
+            try
+            {
+                RunMigrations(connection, fromVersion: currentVersion);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex,
+                    "Metadata DB migration failed at v{From} → v{To}",
+                    currentVersion, CurrentSchemaVersion);
+                throw new MetadataMigrationException(
+                    $"Failed migrating metadata DB from v{currentVersion} to v{CurrentSchemaVersion}: {ex.Message}",
+                    currentVersion, CurrentSchemaVersion, ex)
+                {
+                    Reason = MetadataMigrationFailureReason.MigrationFailed
+                };
+            }
+        }
+        else if (currentVersion > CurrentSchemaVersion)
+        {
+            // DB was written by a newer Wavee version. We don't know what
+            // those future migrations did, so we can't safely use it.
+            _logger?.LogError(
+                "Metadata DB is at v{Actual}, this build supports up to v{Supported}",
+                currentVersion, CurrentSchemaVersion);
+            throw new MetadataMigrationException(
+                $"Database is at v{currentVersion}, but this build of Wavee supports up to v{CurrentSchemaVersion}. A newer Wavee version created this database.",
+                currentVersion, CurrentSchemaVersion)
+            {
+                Reason = MetadataMigrationFailureReason.Downgrade
+            };
+        }
+        // else: currentVersion == CurrentSchemaVersion, nothing to do.
 
         EnsureLocalizedMetadataTables(connection);
         EnsureAudioBlobTables(connection);
+    }
+
+    /// <summary>
+    /// Applies all registered migrations whose <c>FromVersion &gt;= fromVersion</c>,
+    /// in ascending order. Each step runs inside its own transaction and commits
+    /// the new <c>user_version</c> atomically — a mid-run crash leaves the DB
+    /// at the last successfully-committed intermediate version, so the next
+    /// open resumes from there.
+    /// </summary>
+    private void RunMigrations(SqliteConnection connection, int fromVersion)
+    {
+        foreach (var step in Migrations
+                     .Where(m => m.FromVersion >= fromVersion)
+                     .OrderBy(m => m.FromVersion))
+        {
+            using var tx = connection.BeginTransaction();
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = step.Sql;
+                cmd.ExecuteNonQuery();
+            }
+            SetSchemaVersion(connection, step.ToVersion, tx);
+            tx.Commit();
+            _logger?.LogInformation(
+                "Applied metadata DB migration v{From} → v{To}",
+                step.FromVersion, step.ToVersion);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the metadata DB file (and its WAL/SHM sidecars) from disk.
+    /// Used by the startup gate when the user opts to rebuild the cache
+    /// after a migration failure. Caller is responsible for disposing any
+    /// open connections before calling this.
+    /// </summary>
+    public static void DeleteDatabaseFile(string databasePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+
+        // In WAL mode SQLite keeps two sidecar files alongside the main DB —
+        // deleting only the .db leaves orphans that corrupt the next open.
+        foreach (var suffix in new[] { "", "-wal", "-shm" })
+        {
+            var path = databasePath + suffix;
+            if (File.Exists(path))
+            {
+                try { File.Delete(path); }
+                catch (IOException) { /* best-effort; will surface again on next open */ }
+            }
+        }
     }
 
     /// <summary>
@@ -192,6 +294,14 @@ public sealed class MetadataDatabase : IMetadataDatabase
     private static void SetSchemaVersion(SqliteConnection connection, int version)
     {
         using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA user_version = {version};";
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void SetSchemaVersion(SqliteConnection connection, int version, SqliteTransaction transaction)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.CommandText = $"PRAGMA user_version = {version};";
         cmd.ExecuteNonQuery();
     }
@@ -415,6 +525,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         owner_name          TEXT,
                         description         TEXT,
                         image_url           TEXT,
+                        header_image_url    TEXT,
                         track_count         INTEGER NOT NULL DEFAULT 0,
                         is_public           INTEGER NOT NULL DEFAULT 1,
                         is_collaborative    INTEGER NOT NULL DEFAULT 0,
@@ -428,6 +539,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         has_contents_snapshot INTEGER NOT NULL DEFAULT 0,
                         base_permission     INTEGER NOT NULL DEFAULT 0,
                         capabilities_json   TEXT,
+                        format_attributes_json TEXT,
                         deleted_by_owner    INTEGER NOT NULL DEFAULT 0,
                         abuse_reporting_enabled INTEGER NOT NULL DEFAULT 0,
                         last_accessed_at    INTEGER
@@ -2339,17 +2451,17 @@ public sealed class MetadataDatabase : IMetadataDatabase
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO spotify_playlists (
-                    id, name, owner_id, owner_name, description, image_url, track_count,
+                    id, name, owner_id, owner_name, description, image_url, header_image_url, track_count,
                     is_public, is_collaborative, is_owned, synced_at, cache_revision,
                     ordered_items_json, has_contents_snapshot, base_permission,
-                    capabilities_json, deleted_by_owner, abuse_reporting_enabled,
+                    capabilities_json, format_attributes_json, deleted_by_owner, abuse_reporting_enabled,
                     last_accessed_at, is_from_rootlist
                 )
                 VALUES (
-                    $id, $name, $owner_id, $owner_name, $description, $image_url, $track_count,
+                    $id, $name, $owner_id, $owner_name, $description, $image_url, $header_image_url, $track_count,
                     $is_public, $is_collaborative, $is_owned, $synced_at, $cache_revision,
                     $ordered_items_json, $has_contents_snapshot, $base_permission,
-                    $capabilities_json, $deleted_by_owner, $abuse_reporting_enabled,
+                    $capabilities_json, $format_attributes_json, $deleted_by_owner, $abuse_reporting_enabled,
                     $last_accessed_at, 1
                 )
                 ON CONFLICT(id) DO UPDATE SET
@@ -2358,6 +2470,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     owner_name = excluded.owner_name,
                     description = excluded.description,
                     image_url = excluded.image_url,
+                    header_image_url = excluded.header_image_url,
                     track_count = excluded.track_count,
                     is_public = excluded.is_public,
                     is_collaborative = excluded.is_collaborative,
@@ -2368,6 +2481,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     has_contents_snapshot = excluded.has_contents_snapshot,
                     base_permission = excluded.base_permission,
                     capabilities_json = excluded.capabilities_json,
+                    format_attributes_json = excluded.format_attributes_json,
                     deleted_by_owner = excluded.deleted_by_owner,
                     abuse_reporting_enabled = excluded.abuse_reporting_enabled,
                     last_accessed_at = excluded.last_accessed_at,
@@ -2380,6 +2494,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$owner_name", (object?)playlist.OwnerName ?? (object?)playlist.OwnerUsername ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$description", (object?)playlist.Description ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$image_url", (object?)playlist.ImageUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$header_image_url", (object?)playlist.HeaderImageUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$track_count", playlist.TrackCount ?? 0);
             cmd.Parameters.AddWithValue("$is_public", playlist.IsPublic ? 1 : 0);
             cmd.Parameters.AddWithValue("$is_collaborative", playlist.IsCollaborative ? 1 : 0);
@@ -2390,6 +2505,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$has_contents_snapshot", playlist.HasContentsSnapshot ? 1 : 0);
             cmd.Parameters.AddWithValue("$base_permission", (int)playlist.BasePermission);
             cmd.Parameters.AddWithValue("$capabilities_json", (object?)playlist.CapabilitiesJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$format_attributes_json", (object?)playlist.FormatAttributesJson ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$deleted_by_owner", playlist.DeletedByOwner ? 1 : 0);
             cmd.Parameters.AddWithValue("$abuse_reporting_enabled", playlist.AbuseReportingEnabled ? 1 : 0);
             cmd.Parameters.AddWithValue("$last_accessed_at", playlist.LastAccessedAt.HasValue
@@ -2419,7 +2535,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
             SELECT id, name, owner_id, owner_name, description, image_url, track_count,
                    is_public, is_collaborative, cache_revision, ordered_items_json,
                    has_contents_snapshot, base_permission, capabilities_json,
-                   deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at
+                   deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at,
+                   header_image_url, format_attributes_json
             FROM spotify_playlists
             WHERE id = $id;
             """;
@@ -2459,7 +2576,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
             SELECT id, name, owner_id, owner_name, description, image_url, track_count,
                    is_public, is_collaborative, cache_revision, ordered_items_json,
                    has_contents_snapshot, base_permission, capabilities_json,
-                   deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at
+                   deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at,
+                   header_image_url, format_attributes_json
             FROM spotify_playlists
             ORDER BY COALESCE(last_accessed_at, synced_at, 0) DESC
             LIMIT $limit;
@@ -2600,7 +2718,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
             CachedAt = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(16)),
             LastAccessedAt = reader.IsDBNull(17)
                 ? null
-                : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(17))
+                : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(17)),
+            HeaderImageUrl = reader.IsDBNull(18) ? null : reader.GetString(18),
+            FormatAttributesJson = reader.IsDBNull(19) ? null : reader.GetString(19)
         };
     }
 

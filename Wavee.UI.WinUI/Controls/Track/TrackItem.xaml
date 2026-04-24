@@ -15,13 +15,13 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <media:AttachedCardShadow x:Key="RowShadow" Offset="0,1" BlurRadius="4" Opacity="0.08" CornerRadius="6"/>
     </UserControl.Resources>
 
     <Grid>
         <!-- ═══════════════ COMPACT MODE (grid cells: artist top tracks, search) ═══════════════ -->
         <Border x:Name="CompactBorder" Visibility="Visible"
                 CornerRadius="6" BorderThickness="0" Background="Transparent">
+        <Grid>
         <Grid x:Name="CompactRoot"
               Padding="8,4" ColumnSpacing="12" Height="56">
 
@@ -126,13 +126,24 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        VerticalAlignment="Center" Padding="6,0"/>
         </Grid>
+        <!-- Selection indicator: left-edge accent bar, shown when IsSelected=true.
+             Declared last so it paints ON TOP of CompactRoot's 48-px album art. -->
+        <Border x:Name="CompactSelectionIndicator"
+                Width="4"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Stretch"
+                Margin="0,10"
+                CornerRadius="2"
+                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                Opacity="0"
+                IsHitTestVisible="False"/>
+        </Grid>
         </Border>
 
         <!-- ═══════════════ ROW MODE (table rows: playlists, albums, liked songs) ═══════════════ -->
         <Border x:Name="RowRoot" Visibility="Collapsed"
                 Padding="8,8" CornerRadius="6"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                ui:Effects.Shadow="{StaticResource RowShadow}">
+                Background="Transparent">
             <Grid>
                 <Grid x:Name="RowContentGrid" ColumnSpacing="0">
                     <!--
@@ -147,6 +158,7 @@
                         <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="RowAlbumColDef" Width="180"/>
                         <ColumnDefinition x:Name="RowDateColDef" Width="120"/>
+                        <ColumnDefinition x:Name="RowPlayCountColDef" Width="0"/>
                         <ColumnDefinition x:Name="RowDurationColDef" Width="60"/>
                     </Grid.ColumnDefinitions>
 
@@ -259,8 +271,15 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center"/>
 
+                    <!-- Play count (album page) -->
+                    <TextBlock x:Name="RowPlayCount" Grid.Column="6"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"/>
+
                     <!-- Duration -->
-                    <TextBlock x:Name="RowDuration" Grid.Column="6"
+                    <TextBlock x:Name="RowDuration" Grid.Column="7"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Right"
@@ -281,6 +300,7 @@
                         <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="ShimAlbumColDef" Width="180"/>
                         <ColumnDefinition x:Name="ShimDateColDef" Width="120"/>
+                        <ColumnDefinition x:Name="ShimPlayCountColDef" Width="0"/>
                         <ColumnDefinition x:Name="ShimDurationColDef" Width="60"/>
                     </Grid.ColumnDefinitions>
                     <controls1:Shimmer Grid.Column="2" Width="34" Height="34" CornerRadius="4" HorizontalAlignment="Left"/>
@@ -290,8 +310,17 @@
                     </StackPanel>
                     <controls1:Shimmer Grid.Column="4" Width="120" Height="12" HorizontalAlignment="Left"/>
                     <controls1:Shimmer Grid.Column="5" Width="80" Height="12" HorizontalAlignment="Left"/>
-                    <controls1:Shimmer Grid.Column="6" Width="36" Height="12" HorizontalAlignment="Right"/>
+                    <controls1:Shimmer Grid.Column="7" Width="36" Height="12" HorizontalAlignment="Right"/>
                 </Grid>
+                <Border x:Name="RowSelectionIndicator"
+                        Width="4"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Stretch"
+                        Margin="0,10"
+                        CornerRadius="2"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        Opacity="0"
+                        IsHitTestVisible="False"/>
             </Grid>
         </Border>
         <cards:PendingBorderBeam x:Name="PlaybackPendingBeam"

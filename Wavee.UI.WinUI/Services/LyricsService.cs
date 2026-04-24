@@ -51,7 +51,12 @@ public sealed class LyricsService : ILyricsService
         IMetadataDatabase? db = null,
         ISettingsService? settingsService = null,
         ILogger<LyricsService>? logger = null,
-        int memoryCacheCapacity = 150)
+        // 50 entries × ~75 KB avg (syllable-sync is the heavy case) ≈ 3.5 MB
+        // ceiling. Previously 150 ≈ 11 MB. SQLite is the authoritative lyrics
+        // store; the in-memory LRU just avoids re-parsing on track revisit.
+        // 50 covers a typical listening session (queue + a few manual picks)
+        // while keeping the ceiling small.
+        int memoryCacheCapacity = 50)
     {
         _session = session;
         _db = db;

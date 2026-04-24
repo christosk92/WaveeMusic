@@ -129,17 +129,19 @@ public sealed class ContextResolver
         var isInfinite = IsInfiniteContext(contextUri);
         var sortingCriteria = ExtractSortingCriteria(context);
         var contextOwner = ExtractContextOwner(context);
+        var contextMetadata = SnapshotContextMetadata(context);
 
         _logger?.LogDebug("Context resolved: {TrackCount} tracks, nextPage={HasNext}, sort={Sort}",
             trackInfos.Count, nextPageUrl != null, sortingCriteria);
 
-        // Cache the raw result
-        CacheContext(contextUri, trackInfos, nextPageUrl, totalCount, isInfinite);
+        // Cache the raw result (including rich metadata so cache hits don't
+        // lose the context-level decorations PlayerState needs).
+        CacheContext(contextUri, trackInfos, nextPageUrl, totalCount, isInfinite, contextMetadata, context.Pages.Count);
 
         // Enrich with metadata
         var tracks = enrichMetadata && trackInfos.Count > 0
             ? await EnrichTracksAsync(trackInfos, ct)
-            : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid)).ToList();
+            : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata }).ToList();
 
         return new ContextLoadResult(
             Tracks: tracks,
@@ -147,7 +149,9 @@ public sealed class ContextResolver
             NextPageUrl: nextPageUrl,
             IsInfinite: isInfinite,
             SortingCriteria: sortingCriteria,
-            ContextOwner: contextOwner);
+            ContextOwner: contextOwner,
+            ContextMetadata: contextMetadata,
+            PageCount: context.Pages.Count);
     }
 
     /// <summary>
@@ -164,12 +168,12 @@ public sealed class ContextResolver
 
         var trackInfos = page.Tracks
             .Where(t => !string.IsNullOrEmpty(t.Uri))
-            .Select(t => (t.Uri, t.Uid))
+            .Select(t => new CachedContextTrack(t.Uri, t.Uid, SnapshotTrackMetadata(t)))
             .ToList();
 
         var tracks = enrichMetadata && trackInfos.Count > 0
             ? await EnrichTracksAsync(trackInfos, ct)
-            : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid)).ToList();
+            : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata }).ToList();
 
         var nextPageUrl = !string.IsNullOrEmpty(page.NextPageUrl) ? page.NextPageUrl : null;
 
@@ -179,7 +183,8 @@ public sealed class ContextResolver
             NextPageUrl: nextPageUrl,
             IsInfinite: false,
             SortingCriteria: null,
-            ContextOwner: null);
+            ContextOwner: null,
+            PageCount: 1);
     }
 
     /// <summary>
@@ -199,22 +204,22 @@ public sealed class ContextResolver
 
         var context = await _spClient.ResolveAutoplayAsync(contextUri, recentTrackUris, ct);
 
-        var trackInfos = new List<(string Uri, string Uid)>();
+        var trackInfos = new List<CachedContextTrack>();
         foreach (var page in context.Pages)
         {
             foreach (var track in page.Tracks)
             {
                 if (!string.IsNullOrEmpty(track.Uri))
-                    trackInfos.Add((track.Uri, track.Uid));
+                    trackInfos.Add(new CachedContextTrack(track.Uri, track.Uid, SnapshotTrackMetadata(track)));
             }
         }
 
         var nextPageUrl = FindNextPageUrl(context);
 
         // Enrich with metadata and tag all as autoplay
-        var tracks = trackInfos.Count > 0
+        IReadOnlyList<QueueTrack> tracks = trackInfos.Count > 0
             ? await EnrichTracksAsync(trackInfos, ct)
-            : [];
+            : Array.Empty<QueueTrack>();
 
         // Tag all tracks as autoplay provider
         var autoplayTracks = tracks
@@ -230,7 +235,13 @@ public sealed class ContextResolver
             NextPageUrl: nextPageUrl,
             IsInfinite: true,
             SortingCriteria: null,
-            ContextOwner: null);
+            ContextOwner: null,
+            ContextMetadata: SnapshotContextMetadata(context),
+            PageCount: context.Pages.Count,
+            // Autoplay response URI is a station URI ("spotify:station:artist:xxx")
+            // distinct from the REQUEST URI. The orchestrator uses this to switch
+            // the queue's context URI over when autoplay takes over.
+            ResolvedContextUri: string.IsNullOrEmpty(context.Uri) ? null : context.Uri);
     }
 
     /// <summary>
@@ -309,9 +320,12 @@ public sealed class ContextResolver
     /// <summary>
     /// Batch fetches metadata for tracks. Uses 3-tier cache:
     /// hot cache → SQLite → API (batched, 500 per request).
+    /// Per-track recommender metadata (from <c>/context-resolve/v1/</c>) is
+    /// carried through verbatim on the resulting QueueTrack so
+    /// <c>ProvidedTrack.metadata</c> survives the enrichment step.
     /// </summary>
     public async Task<IReadOnlyList<QueueTrack>> EnrichTracksAsync(
-        IList<(string Uri, string? Uid)> trackInfos,
+        IList<CachedContextTrack> trackInfos,
         CancellationToken ct)
     {
         var cachedTracks = await _cacheService.GetTracksAsync(
@@ -356,20 +370,26 @@ public sealed class ContextResolver
         var result = new List<QueueTrack>(trackInfos.Count);
         var missingCount = 0;
 
-        foreach (var (uri, uid) in trackInfos)
+        foreach (var info in trackInfos)
         {
-            if (cachedTracks.TryGetValue(uri, out var cached))
+            if (cachedTracks.TryGetValue(info.Uri, out var cached))
             {
                 result.Add(new QueueTrack(
-                    Uri: uri, Uid: uid,
+                    Uri: info.Uri, Uid: info.Uid,
                     Title: cached.Title, Artist: cached.Artist, Album: cached.Album,
                     DurationMs: cached.DurationMs, AddedAt: null,
-                    IsPlayable: cached.IsPlayable, IsExplicit: cached.IsExplicit));
+                    IsPlayable: cached.IsPlayable, IsExplicit: cached.IsExplicit)
+                {
+                    Metadata = info.Metadata
+                });
             }
             else
             {
                 missingCount++;
-                result.Add(new QueueTrack(uri, uid, Title: null, Artist: null, IsPlayable: false));
+                result.Add(new QueueTrack(info.Uri, info.Uid, Title: null, Artist: null, IsPlayable: false)
+                {
+                    Metadata = info.Metadata
+                });
             }
         }
 
@@ -419,12 +439,14 @@ public sealed class ContextResolver
 
     /// <summary>
     /// Extracts all tracks from context pages. Loads additional pages eagerly
-    /// for bounded contexts, respects maxTracks limit.
+    /// for bounded contexts, respects maxTracks limit. Captures the server's
+    /// per-track metadata dict so it can round-trip through the cache and into
+    /// <c>PlayerState.track.metadata</c> on publish.
     /// </summary>
-    private async Task<List<(string Uri, string? Uid)>> LoadTracksFromPagesAsync(
+    private async Task<List<CachedContextTrack>> LoadTracksFromPagesAsync(
         Context context, string contextUri, int? maxTracks, CancellationToken ct)
     {
-        var trackInfos = new List<(string Uri, string? Uid)>();
+        var trackInfos = new List<CachedContextTrack>();
         var isInfinite = IsInfiniteContext(contextUri);
 
         // Extract tracks from initial response pages
@@ -433,7 +455,7 @@ public sealed class ContextResolver
             foreach (var track in page.Tracks)
             {
                 if (string.IsNullOrEmpty(track.Uri)) continue;
-                trackInfos.Add((track.Uri, track.Uid));
+                trackInfos.Add(new CachedContextTrack(track.Uri, track.Uid, SnapshotTrackMetadata(track)));
                 if (maxTracks.HasValue && trackInfos.Count >= maxTracks.Value) break;
             }
             if (maxTracks.HasValue && trackInfos.Count >= maxTracks.Value) break;
@@ -455,7 +477,7 @@ public sealed class ContextResolver
                     foreach (var track in page.Tracks)
                     {
                         if (string.IsNullOrEmpty(track.Uri)) continue;
-                        trackInfos.Add((track.Uri, track.Uid));
+                        trackInfos.Add(new CachedContextTrack(track.Uri, track.Uid, SnapshotTrackMetadata(track)));
                         if (maxTracks.HasValue && trackInfos.Count >= maxTracks.Value) break;
                     }
 
@@ -478,13 +500,40 @@ public sealed class ContextResolver
         return trackInfos;
     }
 
+    /// <summary>
+    /// Copy a ContextTrack's MapField&lt;string,string&gt; metadata into an
+    /// immutable snapshot. Returns null for empty maps so downstream
+    /// serializers can skip them without a null-check on every track.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? SnapshotTrackMetadata(ContextTrack track)
+    {
+        if (track.Metadata is null || track.Metadata.Count == 0) return null;
+        var snapshot = new Dictionary<string, string>(track.Metadata.Count, StringComparer.Ordinal);
+        foreach (var kv in track.Metadata) snapshot[kv.Key] = kv.Value ?? string.Empty;
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Copy the top-level context.metadata MapField into an immutable
+    /// snapshot. Null for empty so consumers can early-out.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? SnapshotContextMetadata(Context context)
+    {
+        if (context.Metadata is null || context.Metadata.Count == 0) return null;
+        var snapshot = new Dictionary<string, string>(context.Metadata.Count, StringComparer.Ordinal);
+        foreach (var kv in context.Metadata) snapshot[kv.Key] = kv.Value ?? string.Empty;
+        return snapshot;
+    }
+
     // ================================================================
     // INTERNAL: CACHING
     // ================================================================
 
     private void CacheContext(
-        string contextUri, List<(string Uri, string? Uid)> trackInfos,
-        string? nextPageUrl, int? totalCount, bool isInfinite)
+        string contextUri, List<CachedContextTrack> trackInfos,
+        string? nextPageUrl, int? totalCount, bool isInfinite,
+        IReadOnlyDictionary<string, string>? contextMetadata,
+        int pageCount)
     {
         var ttl = GetContextTtl(contextUri);
 
@@ -493,9 +542,11 @@ public sealed class ContextResolver
             Uri = contextUri,
             ExpiresAt = DateTimeOffset.UtcNow + ttl,
             Tracks = trackInfos,
+            ContextMetadata = contextMetadata,
             NextPageUrl = nextPageUrl,
             TotalCount = totalCount,
-            IsInfinite = isInfinite
+            IsInfinite = isInfinite,
+            PageCount = pageCount
         });
 
         _logger?.LogDebug("Context cached: {ContextUri}, TTL={TtlMinutes}m", contextUri, ttl.TotalMinutes);
@@ -510,7 +561,7 @@ public sealed class ContextResolver
 
         var tracks = enrichMetadata && trackInfos.Count > 0
             ? await EnrichTracksAsync(trackInfos, ct)
-            : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid)).ToList();
+            : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata }).ToList();
 
         return new ContextLoadResult(
             Tracks: tracks,
@@ -518,7 +569,9 @@ public sealed class ContextResolver
             NextPageUrl: cached.NextPageUrl,
             IsInfinite: cached.IsInfinite,
             SortingCriteria: null, // Not cached (server authority)
-            ContextOwner: null);
+            ContextOwner: null,
+            ContextMetadata: cached.ContextMetadata,
+            PageCount: cached.PageCount);
     }
 
     // ================================================================
@@ -594,7 +647,14 @@ public sealed record ContextLoadResult(
     string? NextPageUrl,
     bool IsInfinite,
     string? SortingCriteria,
-    string? ContextOwner
+    string? ContextOwner,
+    IReadOnlyDictionary<string, string>? ContextMetadata = null,
+    int PageCount = 1,
+    // Server-assigned URI for the resolved context. For autoplay this is the
+    // new station URI (e.g. "spotify:station:artist:xxx") which differs from
+    // the REQUEST URI. Null for regular contexts where request and response
+    // URIs match.
+    string? ResolvedContextUri = null
 )
 {
     public bool HasMoreTracks => !string.IsNullOrEmpty(NextPageUrl) ||

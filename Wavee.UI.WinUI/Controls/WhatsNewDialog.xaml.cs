@@ -67,7 +67,13 @@ public sealed partial class WhatsNewDialog : ContentDialog
 
         if (!string.IsNullOrEmpty(feature.ImageAssetPath))
         {
-            DetailImage.Source = new BitmapImage(new Uri(feature.ImageAssetPath));
+            // Downsample feature art — packaged assets can be 1000+ px; the
+            // dialog renders at ~400 px, so decoding full-res would hold several
+            // megabytes of unused bitmap for the dialog's lifetime.
+            DetailImage.Source = new BitmapImage(new Uri(feature.ImageAssetPath))
+            {
+                DecodePixelWidth = 400
+            };
             DetailImageBorder.Visibility = Visibility.Visible;
         }
         else

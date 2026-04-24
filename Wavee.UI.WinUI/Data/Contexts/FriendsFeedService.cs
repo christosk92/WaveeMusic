@@ -162,15 +162,6 @@ public sealed partial class FriendsFeedService
 
         _dealerSubscribed = true;
         _logger?.LogInformation("FriendsFeed: subscribed to dealer (ConnectionId + presence-like pushes)");
-
-        // BehaviorSubject replays the current value — but guard against it being null at this moment.
-        var currentId = dealer.CurrentConnectionId;
-        if (!string.IsNullOrEmpty(currentId))
-        {
-            _logger?.LogDebug("FriendsFeed: dealer already has ConnectionId={ConnId}, seeding now", currentId);
-            _seedConnectionId = currentId;
-            _ = SeedAsync(currentId, CancellationToken.None);
-        }
     }
 
     private static bool IsPresencePush(Wavee.Connect.Protocol.DealerMessage msg)

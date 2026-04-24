@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -462,16 +463,29 @@ public sealed class SpClient : ISpClient
 
         var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
 
-        // Build $-separated path: /context-resolve/v1/autoplay$contextUri$track1$track2$...
-        var pathParts = new List<string>(recentTrackUris.Count + 1) { contextUri };
-        pathParts.AddRange(recentTrackUris);
-        var pathSuffix = string.Join("$", pathParts);
-        var url = $"{_baseUrl}/context-resolve/v1/autoplay${Uri.EscapeDataString(pathSuffix)}";
+        // POST /context-resolve/v1/autoplay with an AutoplayContextRequest
+        // protobuf body. The prior GET-with-$-separated-path format (ported from
+        // old librespot) is stale — current Spotify rejects it. Request shape
+        // matches Spotify 1.2.52.442's player.proto.
+        var url = $"{_baseUrl}/context-resolve/v1/autoplay";
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var body = new Protocol.Playback.AutoplayContextRequest
+        {
+            ContextUri = contextUri,
+            IsVideo = false
+        };
+        foreach (var uri in recentTrackUris)
+        {
+            if (!string.IsNullOrEmpty(uri))
+                body.RecentTrackUri.Add(uri);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        request.Content = new ByteArrayContent(body.ToByteArray());
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
 
         _logger?.LogDebug("Resolving autoplay for context: {ContextUri} with {TrackCount} recent tracks",
             contextUri, recentTrackUris.Count);
@@ -488,6 +502,9 @@ public sealed class SpClient : ISpClient
         response.EnsureSuccessStatusCode();
 
         var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrEmpty(jsonContent))
+            throw new SpClientException(SpClientFailureReason.NotFound, $"Autoplay returned empty body for: {contextUri}");
+
         var context = Google.Protobuf.JsonParser.Default.Parse<Protocol.Context.Context>(jsonContent);
 
         _logger?.LogDebug("Autoplay resolved: {Uri}, tracks={TrackCount}",
@@ -1015,15 +1032,22 @@ public sealed class SpClient : ISpClient
     /// Formats a revision for the playlist API query string.
     /// </summary>
     /// <remarks>
-    /// Revision format: First 4 bytes are an int32 counter, rest is a hash.
-    /// Output: "{counter},{hash_hex}"
+    /// Wire format: 4-byte BIG-ENDIAN int32 counter followed by a 20-byte
+    /// server-computed SHA-1 hash (24 bytes total). Output is the
+    /// canonical "{counter_decimal},{hash_lowercase_hex}" form Spotify's
+    /// other clients send (e.g. "14,290adc01f15b96ab840355ee465c1657e8df437f").
+    /// Earlier versions used <see cref="BitConverter.ToInt32(byte[], int)"/>
+    /// which decodes as little-endian on x86/x64, producing nonsense
+    /// counters like 234881024 instead of 14 — Spotify's diff endpoint
+    /// usually still reconciles via the hash, but mismatched counters
+    /// likely contributed to spurious "diff too stale" fallbacks.
     /// </remarks>
     private static string FormatRevision(byte[] revision)
     {
         if (revision.Length < 4)
             return Convert.ToHexString(revision).ToLowerInvariant();
 
-        var counter = BitConverter.ToInt32(revision, 0);
+        var counter = BinaryPrimitives.ReadInt32BigEndian(revision.AsSpan(0, 4));
         var hash = Convert.ToHexString(revision.AsSpan(4)).ToLowerInvariant();
         return $"{counter},{hash}";
     }

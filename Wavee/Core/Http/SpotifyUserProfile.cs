@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Wavee.Core.Http;
@@ -104,6 +106,27 @@ public sealed record SpotifyUserProfile
     /// </summary>
     [JsonIgnore]
     public string? EffectiveImageUrl => ImageUrl ?? (Images?.Count > 0 ? Images[0].Url : null);
+
+    /// <summary>
+    /// Attempts to deserialize raw JSON bytes into a <see cref="SpotifyUserProfile"/>.
+    /// Used when the bytes come from a source that bypasses the usual
+    /// <see cref="SpClient.GetUserProfileAsync"/> path — e.g. the extended-metadata
+    /// extension (<c>ExtensionKind.UserProfile</c>) pipes its JSON payload through the
+    /// batching / caching <c>IExtendedMetadataClient</c>. Returns null on empty input
+    /// or any parse failure so callers can cleanly fall back.
+    /// </summary>
+    public static SpotifyUserProfile? TryParseJson(byte[]? bytes)
+    {
+        if (bytes is null || bytes.Length == 0) return null;
+        try
+        {
+            return JsonSerializer.Deserialize(bytes, SpotifyUserProfileJsonContext.Default.SpotifyUserProfile);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>

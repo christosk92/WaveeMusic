@@ -171,6 +171,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         };
 
         _normalizationEnabled = s.NormalizationEnabled;
+        _autoplayEnabled = s.AutoplayEnabled;
 
         // Initialize lyrics sources from persisted prefs or defaults
         InitializeLyricsSources(s);
@@ -538,6 +539,17 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         // Toggle normalization processor live
         _pipelineControl?.SetNormalizationEnabled(value);
+    }
+
+    [ObservableProperty]
+    private bool _autoplayEnabled;
+
+    partial void OnAutoplayEnabledChanged(bool value)
+    {
+        // Orchestrator reads AppSettings.AutoplayEnabled via a Func callback
+        // wired in AppLifecycleHelper, so this mutation takes effect on the
+        // next end-of-context evaluation with no further plumbing.
+        _settingsService.Update(s => s.AutoplayEnabled = value);
     }
 
     // ── Verbose logging ──

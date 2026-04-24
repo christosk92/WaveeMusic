@@ -63,6 +63,14 @@ public sealed class AppSettings
     /// </summary>
     public bool NormalizationEnabled { get; set; } = true;
 
+    /// <summary>
+    /// When true, playback continues with Spotify-recommended similar tracks
+    /// once the current context (album, playlist, artist discography) ends.
+    /// Default true — matches Spotify's own account default. When false, the
+    /// user hits end-of-context and sees a "Reached the end" notification.
+    /// </summary>
+    public bool AutoplayEnabled { get; set; } = true;
+
     // ── Cache (applied on next launch) ──
 
     /// <summary>

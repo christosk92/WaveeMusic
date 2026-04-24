@@ -44,7 +44,24 @@
             Grid.Row="0"
             Padding="8,6,8,6"
             Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!--
+                Page-specific left-side content (e.g. Liked Songs' Play/Shuffle + stats).
+                Empty by default, so pages that don't set ToolbarLeftContent keep today's
+                layout with the icon cluster spanning the full row.
+            -->
+            <ContentPresenter
+                Grid.Column="0"
+                Content="{x:Bind ToolbarLeftContent, Mode=OneWay}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center" />
+
             <StackPanel
+                Grid.Column="1"
                 HorizontalAlignment="Right"
                 Orientation="Horizontal"
                 Spacing="2">
@@ -222,29 +239,63 @@
                 TextChanged="FilterBox_TextChanged" />
         </Border>
 
-        <!--  Header + list.  -->
+        <!--  Header + list. The ListView uses its OWN internal ScrollViewer
+              for both axes (horizontal = Auto, vertical = Auto) so
+              virtualization is preserved per Microsoft's guidance. The
+              HeaderHost sits OUTSIDE the ListView and stays vertically pinned;
+              TrackDataGrid.xaml.cs syncs its X translation to the ListView's
+              internal ScrollViewer.HorizontalOffset via ViewChanged.  -->
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!--  Header row: built in code-behind from Columns.  -->
-            <Grid
-                x:Name="HeaderHost"
+            <!--  Header row: built in code-behind from Columns. The wrapping
+                  ScrollViewer with both scroll modes DISABLED provides
+                  automatic clipping of the HeaderHost's X translation so
+                  scrolled-out header content doesn't visually bleed out of
+                  the page bounds. The actual horizontal offset is driven
+                  programmatically from the RowsList's internal ScrollViewer
+                  via HeaderScrollTransform.  -->
+            <ScrollViewer
                 Grid.Row="0"
                 Height="40"
-                Padding="0,0,0,0"
+                HorizontalScrollMode="Disabled"
+                HorizontalScrollBarVisibility="Hidden"
+                VerticalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Hidden"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,0,0,1" />
+                BorderThickness="0,0,0,1">
+                <!-- HorizontalAlignment must be Stretch (NOT Left). With Left, the Grid
+                     measures itself in shrink-to-content mode and any * column collapses
+                     to MinWidth — producing exactly the same misalignment as the WinUI 3
+                     ListView.Header bug (#3682), even though this Grid is OUTSIDE the
+                     ListView. Rows inside RowsList stretch to viewport width via
+                     HorizontalContentAlignment="Stretch", so their * Title column expands
+                     to its MaxWidth (640) while a Left-aligned header would stay at
+                     MinWidth (120). Stretch makes both sides resolve identically.
+
+                     Padding="8,0" mirrors TrackItem.xaml's RowRoot Padding="8,8" — without
+                     it, every header column starts 8 px left of the matching row column. -->
+                <Grid
+                    x:Name="HeaderHost"
+                    HorizontalAlignment="Stretch"
+                    MinWidth="500"
+                    Padding="8,0">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="HeaderScrollTransform" />
+                    </Grid.RenderTransform>
+                </Grid>
+            </ScrollViewer>
 
             <ListView
                 x:Name="RowsList"
                 Grid.Row="1"
                 HorizontalContentAlignment="Stretch"
                 Padding="0"
-                ScrollViewer.HorizontalScrollMode="Disabled"
-                ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                ScrollViewer.HorizontalScrollMode="Auto"
+                ScrollViewer.HorizontalScrollBarVisibility="Auto"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 KeyDown="RowsList_KeyDown"
                 SelectionMode="Extended">
@@ -267,6 +318,23 @@
                         <track:TrackItem Track="{x:Bind}" Mode="Row" />
                     </DataTemplate>
                 </ListView.ItemTemplate>
+
+                <!-- Footer. StackPanel HorizontalAlignment=Stretch + ContentPresenter
+                     HorizontalContentAlignment=Stretch mirror the Header pattern used
+                     elsewhere: WinUI 3's implicit ListView.Footer container doesn't
+                     propagate viewport width during measure, so a bare ContentPresenter
+                     collapses to zero width.
+
+                     NOTE: pages hosting a horizontally-scrolling widget in FooterContent
+                     (e.g. a shelf) must set AllowHorizontalRowScroll="False" on the
+                     TrackDataGrid itself. Otherwise the widget's full content extent
+                     propagates upward and adds a page-level horizontal scrollbar. -->
+                <ListView.Footer>
+                    <StackPanel HorizontalAlignment="Stretch">
+                        <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"
+                                          HorizontalContentAlignment="Stretch"/>
+                    </StackPanel>
+                </ListView.Footer>
             </ListView>
         </Grid>
     </Grid>

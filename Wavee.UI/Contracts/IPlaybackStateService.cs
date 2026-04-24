@@ -148,4 +148,25 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// Clears the buffering indicator when an optimistic play command does not produce playback.
     /// </summary>
     void ClearBuffering();
+
+    /// <summary>
+    /// True once playback has reached end-of-context and auto-advance has
+    /// stopped. Clears on next resume. Drives the PlayerBar's inline
+    /// "You've reached the end" hint.
+    /// </summary>
+    bool IsAtEndOfContext { get; }
+
+    /// <summary>
+    /// Flip <see cref="IsAtEndOfContext"/> to true. Called from the
+    /// orchestrator's <c>EndOfContext</c> subscription in
+    /// <c>AppLifecycleHelper</c>.
+    /// </summary>
+    void NotifyEndOfContext();
+
+    /// <summary>
+    /// Clears the end-of-context hint bar immediately. Called by the bar's
+    /// dismiss (X) button. Same effect as the auto-clear on resume — just
+    /// user-initiated rather than state-driven.
+    /// </summary>
+    void DismissEndOfContext();
 }

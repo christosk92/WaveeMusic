@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Wavee.Core.Playlists;
@@ -34,6 +35,7 @@ internal enum PersistedRootlistEntryKind
 [JsonSerializable(typeof(CachedPlaylistCapabilities))]
 [JsonSerializable(typeof(PersistedPlaylistItems))]
 [JsonSerializable(typeof(PersistedRootlistData))]
+[JsonSerializable(typeof(Dictionary<string, string>), TypeInfoPropertyName = "DictionaryStringString")]
 internal partial class PlaylistCacheJsonContext : JsonSerializerContext
 {
 }

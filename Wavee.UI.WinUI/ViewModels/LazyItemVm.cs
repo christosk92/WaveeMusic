@@ -64,6 +64,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     [ObservableProperty] private int _index;
     [ObservableProperty] private bool _isLoaded;
     [ObservableProperty] private ITrackItem? _data;
+    [ObservableProperty] private bool _isSelected;
 
     public void Populate(ITrackItem data)
     {

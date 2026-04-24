@@ -35,11 +35,21 @@ public interface IPlaybackService : INotifyPropertyChanged
         CancellationToken ct = default);
 
     /// <summary>
-    /// Plays a list of track URIs directly (no context).
+    /// Plays a list of track URIs. When <paramref name="context"/> is supplied
+    /// (e.g. the playlist or album the tracks came from), its URI is published
+    /// in PlayerState.context_uri so remote Spotify clients see the real source
+    /// instead of an anonymous "internal queue". Pass <paramref name="richTracks"/>
+    /// with per-track uids / metadata (from the playlist API) when available —
+    /// those are published as <c>ProvidedTrack.uid</c> and
+    /// <c>ProvidedTrack.metadata</c> so remote clients see the full-fidelity
+    /// queue. When <paramref name="richTracks"/> is supplied, it must align
+    /// one-to-one with <paramref name="trackUris"/>.
     /// </summary>
     Task<PlaybackResult> PlayTracksAsync(
         IReadOnlyList<string> trackUris,
         int startIndex = 0,
+        PlaybackContextInfo? context = null,
+        IReadOnlyList<QueueItem>? richTracks = null,
         CancellationToken ct = default);
 
     // ── Transport controls ──

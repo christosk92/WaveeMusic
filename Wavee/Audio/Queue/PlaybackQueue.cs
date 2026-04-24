@@ -174,6 +174,83 @@ public sealed class PlaybackQueue : IDisposable
     }
 
     /// <summary>
+    /// Updates the context URI / infinite flag / total-tracks count in-place
+    /// without clearing the queue. Used when autoplay takes over — the original
+    /// context's tracks become prev_tracks (each already carries its own
+    /// <c>Metadata["context_uri"]</c>) while the queue-wide URI flips to the
+    /// autoplay station URI so newly-appended autoplay tracks and the current
+    /// track publish with the new context.
+    /// </summary>
+    public void UpdateContext(string contextUri, bool isInfinite, int? totalTracks = null)
+    {
+        lock (_lock)
+        {
+            _contextUri = contextUri;
+            _isInfinite = isInfinite;
+            _totalTracks = totalTracks;
+            _needsMoreTracksRequested = false;
+
+            _logger?.LogDebug("Context updated in-place: uri={Uri}, infinite={IsInfinite}, total={Total}",
+                contextUri, isInfinite, totalTracks);
+        }
+
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Returns the URIs of the last <paramref name="count"/> played tracks (most
+    /// recent first). Used to seed the autoplay recommender with recent-history
+    /// context. Currently-playing track is included as the newest entry.
+    /// </summary>
+    public IReadOnlyList<string> GetRecentTrackUris(int count = 5)
+    {
+        lock (_lock)
+        {
+            if (count <= 0 || _contextTracks.Count == 0) return System.Array.Empty<string>();
+
+            var result = new List<string>(count);
+            var start = _currentIndex >= 0 ? _currentIndex : _contextTracks.Count - 1;
+            for (var i = start; i >= 0 && result.Count < count; i--)
+            {
+                var actual = GetActualIndex(i);
+                if (actual >= 0 && actual < _contextTracks.Count)
+                {
+                    var uri = _contextTracks[actual].Uri;
+                    if (!string.IsNullOrEmpty(uri))
+                        result.Add(uri);
+                }
+            }
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Returns <paramref name="track"/> with <c>context_uri</c>/<c>entity_uri</c>
+    /// baked into its <see cref="QueueTrack.Metadata"/> dict (from the queue's
+    /// current <c>_contextUri</c>) if those keys aren't already set. Called from
+    /// <see cref="SetTracks"/> / <see cref="AppendTracks"/> so that once a track
+    /// is in the queue, its origin context is frozen — later context switchovers
+    /// (e.g. autoplay) don't retroactively rewrite its prev_track metadata.
+    /// </summary>
+    private QueueTrack StampContextUri(QueueTrack track)
+    {
+        if (string.IsNullOrEmpty(_contextUri)) return track;
+
+        var existing = track.Metadata;
+        if (existing is { } e && e.ContainsKey("context_uri") && e.ContainsKey("entity_uri"))
+            return track;
+
+        var merged = new Dictionary<string, string>(existing?.Count + 2 ?? 2);
+        if (existing is not null)
+        {
+            foreach (var (k, v) in existing) merged[k] = v;
+        }
+        if (!merged.ContainsKey("context_uri")) merged["context_uri"] = _contextUri;
+        if (!merged.ContainsKey("entity_uri")) merged["entity_uri"] = _contextUri;
+        return track with { Metadata = merged };
+    }
+
+    /// <summary>
     /// Sets the tracks for the queue, replacing any existing tracks.
     /// </summary>
     /// <param name="tracks">Tracks to set.</param>
@@ -183,7 +260,7 @@ public sealed class PlaybackQueue : IDisposable
         lock (_lock)
         {
             _contextTracks.Clear();
-            _contextTracks.AddRange(tracks);
+            _contextTracks.AddRange(tracks.Select(StampContextUri));
             _currentIndex = Math.Min(startIndex, Math.Max(0, _contextTracks.Count - 1));
             _needsMoreTracksRequested = false;
 
@@ -217,7 +294,7 @@ public sealed class PlaybackQueue : IDisposable
         lock (_lock)
         {
             var oldCount = _contextTracks.Count;
-            _contextTracks.AddRange(newTracks);
+            _contextTracks.AddRange(newTracks.Select(StampContextUri));
             _needsMoreTracksRequested = false;
 
             // If shuffled, add new tracks at random positions
@@ -639,12 +716,14 @@ public sealed class PlaybackQueue : IDisposable
 
         if (tracksRemaining <= threshold)
         {
-            // Only signal if infinite or we haven't loaded all tracks yet
-            if (_isInfinite || (_totalTracks.HasValue && _contextTracks.Count < _totalTracks.Value))
-            {
-                _needsMoreTracksRequested = true;
-                return true;
-            }
+            // Always signal near-end. The orchestrator's LoadMoreTracksAsync
+            // decides whether there's actually more to fetch: a non-null
+            // NextPageUrl means server-side pagination; otherwise it falls
+            // through to autoplay (once per context). Fully-loaded bounded
+            // contexts still need the signal so autoplay can prefetch before
+            // the last track finishes.
+            _needsMoreTracksRequested = true;
+            return true;
         }
 
         return false;

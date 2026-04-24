@@ -13,7 +13,7 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 internal interface IPlaybackCommandExecutor
 {
     Task<PlaybackResult> PlayContextAsync(string contextUri, PlayContextOptions? options, CancellationToken ct);
-    Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, CancellationToken ct);
+    Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, PlaybackContextInfo? context, IReadOnlyList<QueueItem>? richTracks, CancellationToken ct);
     Task<PlaybackResult> ResumeAsync(CancellationToken ct);
     Task<PlaybackResult> PauseAsync(CancellationToken ct);
     Task<PlaybackResult> SkipNextAsync(CancellationToken ct);

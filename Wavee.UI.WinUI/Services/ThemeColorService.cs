@@ -28,6 +28,13 @@ public sealed class ThemeColorService
     public Brush CardBackground { get; private set; } = new SolidColorBrush(Colors.Transparent);
     public Brush CardBackgroundSecondary { get; private set; } = new SolidColorBrush(Colors.Transparent);
     public Brush SubtleFillTransparent { get; private set; } = new SolidColorBrush(Colors.Transparent);
+
+    /// <summary>
+    /// Subtle neutral fill — same brush NavigationView uses for its selected
+    /// item background. Used for alternating track-list rows so they don't
+    /// look like full "cards" with heavy contrast in light mode.
+    /// </summary>
+    public Brush SubtleFillSecondary { get; private set; } = new SolidColorBrush(Colors.Transparent);
     public Brush TransparentBrush { get; } = new SolidColorBrush(Colors.Transparent);
 
     /// <summary>
@@ -73,6 +80,7 @@ public sealed class ThemeColorService
         CardBackground = Resolve("CardBackgroundFillColorDefaultBrush");
         CardBackgroundSecondary = Resolve("CardBackgroundFillColorSecondaryBrush");
         SubtleFillTransparent = Resolve("SubtleFillColorTransparentBrush");
+        SubtleFillSecondary = Resolve("SubtleFillColorSecondaryBrush");
     }
 
     private void RebuildThemeDictionaryCache()

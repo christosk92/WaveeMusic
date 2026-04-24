@@ -28,6 +28,9 @@ public sealed class PlaylistStore : EntityStore<string, PlaylistDetailDto>
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IDisposable _changeSubscription;
+    // Local copy used by ShouldPublish for the per-field "which field is bumping"
+    // diagnostic — base EntityStore stores the logger privately.
+    private readonly ILogger? _diagnosticsLogger;
     private bool _disposed;
 
     public PlaylistStore(
@@ -37,6 +40,7 @@ public sealed class PlaylistStore : EntityStore<string, PlaylistDetailDto>
         : base(StringComparer.Ordinal, logger)
     {
         _libraryDataService = libraryDataService;
+        _diagnosticsLogger = logger;
 
         _changeSubscription = playlistCache.Changes
             .Where(evt => !string.IsNullOrEmpty(evt.Uri))
@@ -61,6 +65,57 @@ public sealed class PlaylistStore : EntityStore<string, PlaylistDetailDto>
 
     protected override Task WriteColdAsync(string key, PlaylistDetailDto value, CancellationToken ct)
         => Task.CompletedTask;
+
+    // Suppress the OnNext when the post-fetch DTO is content-equivalent to the
+    // one already on subscribers. PlaylistCacheService can be tickled into
+    // emitting an Updated event by Spotify's curation pipeline bumping a
+    // playlist's revision without changing any field VMs care about. Without
+    // this gate, every echo Mercury push fans out a full ApplyDetail re-render
+    // (owner re-resolve, header backdrop reload, description re-tokenization).
+    // The hash covers the fields the playlist page actually renders against.
+    protected override bool ShouldPublish(string key, PlaylistDetailDto? previous, PlaylistDetailDto value)
+    {
+        if (previous is null) return true;
+        var prevHash = ComputeContentHash(previous);
+        var newHash = ComputeContentHash(value);
+        if (prevHash == newHash) return false;
+
+        // Diagnostic: hash differs but the user keeps reporting "Detail
+        // received #2/#3" on logically-identical playlist refreshes. Log a
+        // per-field equality breakdown so we can identify which field is
+        // bumping (most likely candidates for editorial Mixes: HeaderImageUrl
+        // session token, Description curation tagline, OwnerName casing).
+        // Strip this log once the bumping field is identified and either
+        // dropped from the hash or normalized.
+        _diagnosticsLogger?.LogDebug(
+            "ShouldPublish hash miss for {Key}: name={Name} desc={Desc} img={Img} hdr={Hdr} owner={Owner} ownerId={OwnerId} isOwner={IsOwner} isPublic={IsPublic} count={Count}",
+            key,
+            previous.Name == value.Name,
+            previous.Description == value.Description,
+            previous.ImageUrl == value.ImageUrl,
+            previous.HeaderImageUrl == value.HeaderImageUrl,
+            previous.OwnerName == value.OwnerName,
+            previous.OwnerId == value.OwnerId,
+            previous.IsOwner == value.IsOwner,
+            previous.IsPublic == value.IsPublic,
+            previous.TrackCount == value.TrackCount);
+        return true;
+    }
+
+    private static int ComputeContentHash(PlaylistDetailDto v)
+    {
+        var hash = new HashCode();
+        hash.Add(v.Name, StringComparer.Ordinal);
+        hash.Add(v.Description, StringComparer.Ordinal);
+        hash.Add(v.ImageUrl, StringComparer.Ordinal);
+        hash.Add(v.HeaderImageUrl, StringComparer.Ordinal);
+        hash.Add(v.OwnerName, StringComparer.Ordinal);
+        hash.Add(v.OwnerId, StringComparer.Ordinal);
+        hash.Add(v.IsOwner);
+        hash.Add(v.IsPublic);
+        hash.Add(v.TrackCount);
+        return hash.ToHashCode();
+    }
 
     public override void Dispose()
     {

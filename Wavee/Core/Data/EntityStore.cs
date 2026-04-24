@@ -71,6 +71,15 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     protected abstract void WriteHot(TKey key, TValue value);
     protected abstract Task WriteColdAsync(TKey key, TValue value, CancellationToken ct);
 
+    // Override to suppress the Ready emission when a freshly-fetched/pushed value
+    // is content-equivalent to the one already published. Default returns true
+    // (always publish). The hot/cold writes still run unconditionally above —
+    // we only skip the OnNext fan-out to subscribers, since their VMs would
+    // otherwise re-render an identical detail and trigger downstream work
+    // (mosaic rebuilds, owner resolution, hyperlink reparses, etc.). See
+    // PlaylistStore.ShouldPublish for the canonical override.
+    protected virtual bool ShouldPublish(TKey key, TValue? previous, TValue value) => true;
+
     // ── Public API ──────────────────────────────────────────────────────
 
     public IObservable<EntityState<TValue>> Observe(TKey key)
@@ -143,7 +152,9 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
 
         _ = WriteColdSafeAsync(key, value);
 
-        slot.Subject.OnNext(new EntityState<TValue>.Ready(value, DateTimeOffset.UtcNow, Freshness.Fresh));
+        TValue? previous = slot.Subject.Value is EntityState<TValue>.Ready prevReady ? prevReady.Value : default;
+        if (ShouldPublish(key, previous, value))
+            slot.Subject.OnNext(new EntityState<TValue>.Ready(value, DateTimeOffset.UtcNow, Freshness.Fresh));
     }
 
     public void Invalidate(TKey key)
@@ -324,7 +335,9 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
 
             await WriteColdSafeAsync(key, value).ConfigureAwait(false);
 
-            slot.Subject.OnNext(new EntityState<TValue>.Ready(value, DateTimeOffset.UtcNow, Freshness.Fresh));
+            TValue? prevForFetch = slot.Subject.Value is EntityState<TValue>.Ready prevReady ? prevReady.Value : default;
+            if (ShouldPublish(key, prevForFetch, value))
+                slot.Subject.OnNext(new EntityState<TValue>.Ready(value, DateTimeOffset.UtcNow, Freshness.Fresh));
         }
         catch (OperationCanceledException)
         {

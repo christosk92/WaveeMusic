@@ -154,6 +154,22 @@ public sealed partial class BaselineHomeCard : UserControl
         if (oldItem != null)
             oldItem.PropertyChanged -= Item_PropertyChanged;
 
+        // Item swap on a virtualized card = the previous item is leaving this
+        // container. Card_Unloaded does NOT fire on ListView recycling — the
+        // visual tree stays realized, just rebound to a new DataContext. If
+        // we don't stop the canvas preview + audio here, the OLD item's
+        // MediaSource stays pinned (each active preview is ~3.6 MB of
+        // decoded video frame) until the container is finally evicted.
+        if (oldItem != null && !ReferenceEquals(oldItem, newItem))
+        {
+            StopCanvasPreview();
+            StopPreviewVisualization();
+            UnregisterPreviewAudio();
+            _isPointerOver = false;
+            _hoverEnterVersion++;
+            CancelPreviewTransition(resetMotionHosts: false);
+        }
+
         _subscribedItem = newItem;
 
         if (newItem != null)
@@ -253,7 +269,11 @@ public sealed partial class BaselineHomeCard : UserControl
             BitmapImage? heroImage = _imageCache?.GetOrCreate(heroHttpsUrl, HeroImageDecodeSize);
             heroImage ??= new BitmapImage(new Uri(heroHttpsUrl))
             {
-               // DecodePixelWidth = HeroImageDecodeSize,
+                // Downsample the cache-miss path too. Without this, each fallback
+                // hero held a full-resolution CDN bitmap (~500×500 RGBA = ~1 MB)
+                // instead of the 240-px card size. ~20 visible Home cards × ~750 KB
+                // = ~15 MB of avoidable working set on every Home load.
+                DecodePixelWidth = HeroImageDecodeSize,
                 DecodePixelType = DecodePixelType.Logical
             };
             HeroImage.Source = heroImage;

@@ -18,13 +18,18 @@ public sealed partial class LikedSongsView : UserControl, IDisposable
         ViewModel = viewModel;
         InitializeComponent();
 
-        // Set up the date formatter for the track list
-        TrackList.DateAddedFormatter = item =>
+        // Set up the date formatter for both the live TrackGrid (TrackDataGrid)
+        // and the legacy TrackList (TrackListView, hidden but still bound).
+        // Without the TrackGrid wire, the visible Date Added column on the
+        // Liked Songs page renders empty cells.
+        Func<object, string> dateFormatter = item =>
         {
             if (item is LikedSongDto song)
                 return song.AddedAtFormatted;
             return "";
         };
+        TrackGrid.DateAddedFormatter = dateFormatter;
+        TrackList.DateAddedFormatter = dateFormatter;
 
         // Load is idempotent (guarded in the VM); called once on first creation.
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
@@ -60,5 +65,6 @@ public sealed partial class LikedSongsView : UserControl, IDisposable
 
         _disposed = true;
         TrackList.DateAddedFormatter = null;
+        TrackGrid.DateAddedFormatter = null;
     }
 }

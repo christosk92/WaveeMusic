@@ -10,7 +10,7 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
         <!-- Responsive: driven by SizeChanged in code-behind. Loading is bound to
@@ -35,9 +35,29 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <Grid x:Name="TwoColumnGrid">
+        <!-- Hero backdrop for editorial / radio playlists: the composition visual
+             is attached in code-behind. Image is left-anchored and fades out to the
+             right so the regular content (cover, metadata, track grid) layers on top
+             without competing. A theme-aware scrim sprite is layered above the image
+             in the same composition tree — see PlaylistPage.xaml.cs. Hit-test-invisible
+             so it doesn't eat pointer events.
+             VerticalAlignment="Top" + Height="440" constrain the backdrop to sit
+             behind the title/metadata band only — without them, the Border stretches
+             to the full page height and the image tint bleeds down into the track
+             rows area on the left column. Height is a bit taller than the hard-cutoff
+             value (was 360) because the composition mask now also fades vertically:
+             the bottom ~30-40% of the host is mostly transparent, so a 440 px host
+             gives roughly 280-300 px of actually-visible hero before it dissolves.
+             The composition visuals automatically track this host's ActualSize. -->
+        <Border x:Name="HeaderBackgroundHost"
+                VerticalAlignment="Top"
+                Height="440"
+                IsHitTestVisible="False"/>
+
+        <Grid x:Name="TwoColumnGrid"
+              Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LeftPanelColumn" Width="280" MinWidth="200" MaxWidth="500"/>
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="200" MinWidth="200" MaxWidth="500"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
@@ -76,36 +96,32 @@
                 </Grid>
 
                 <!--
-                    Hero image (editorial / radio playlists) — wide aspect ratio, no
-                    fixed height; shown instead of the square cover when the playlist
-                    carries a header_image_url_desktop format attribute.
+                    Square cover art. Hidden when the playlist carries a header image —
+                    that image composes behind the whole page as a left-anchored backdrop
+                    (see HeaderBackgroundHost on RootGrid + PlaylistPage.xaml.cs) and the
+                    cover would just duplicate / compete with it.
                 -->
-                <Border x:Name="PlaylistHeroContainer" CornerRadius="8"
-                        HorizontalAlignment="Stretch"
-                        Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Image Source="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='600'}"
-                           Stretch="UniformToFill"
-                           behaviors:ImageFallbackBehavior.HideOnError="True"
-                           behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                           behaviors:ImageFallbackBehavior.DecodePixelWidth="600"/>
-                </Border>
-
                 <Border x:Name="PlaylistArtContainer" CornerRadius="8"
                         HorizontalAlignment="Stretch"
                         SizeChanged="PlaylistArtContainer_SizeChanged"
                         Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Grid>
+                        <!-- Full-container shimmer BEHIND the Image. One visual
+                             state while PlaylistImageUrl is null (or mosaic
+                             compose is in flight), then FadeInOnLoad animates
+                             the Image from opacity 0→1 over the shimmer. No
+                             jump from small-glyph to bare-background to image
+                             — same rectangle size throughout. -->
+                        <controls:Shimmer HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch"
+                                          Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                         <Image Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
                                Stretch="UniformToFill"
                                Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                behaviors:ImageFallbackBehavior.HideOnError="True"
                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
                                behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
-                        <FontIcon Glyph="&#xE8FD;" FontSize="64" Opacity="0.3"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                     </Grid>
                 </Border>
 
@@ -119,31 +135,77 @@
                                       Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                 </Grid>
 
-                <TextBlock Text="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay}"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           TextAlignment="Center"
-                           MaxLines="3"
-                           TextTrimming="CharacterEllipsis"
-                           TextWrapping="Wrap"
-                           Visibility="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                <!-- Description card: RichTextBlock renders HTML-decoded description
+                     with embedded <a href="spotify:..."> links surfaced as real
+                     accent-styled Hyperlinks (see PlaylistPage.xaml.cs
+                     RebuildDescriptionInlines). MaxLines is 3 by default; the
+                     More/Less toggle below flips it to 0 (unlimited) and back.
+                     The Border's Visibility drives the whole card so empty-
+                     description playlists don't show blank card chrome. -->
+                <Border CornerRadius="{ThemeResource OverlayCornerRadius}"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Padding="14,10"
+                        Margin="0,4,0,0"
+                        Visibility="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                    <StackPanel Spacing="4">
+                        <RichTextBlock x:Name="DescriptionRichText"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextAlignment="Center"
+                                       MaxLines="3"
+                                       TextTrimming="CharacterEllipsis"
+                                       TextWrapping="Wrap"
+                                       IsTextTrimmedChanged="DescriptionRichText_IsTextTrimmedChanged"/>
 
-                <Grid MinHeight="16" HorizontalAlignment="Stretch">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4"
-                                Visibility="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                            <Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run x:Uid="Views_PlaylistPage__Run_3" Text=" songs"/>
-                        </TextBlock>
-                        <TextBlock Text=" · " Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                        <TextBlock Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                        <HyperlinkButton x:Name="DescriptionMoreButton"
+                                         HorizontalAlignment="Center"
+                                         Padding="4,2"
+                                         FontSize="12"
+                                         Visibility="Collapsed"
+                                         Click="DescriptionMoreButton_Click">
+                            <TextBlock x:Name="DescriptionMoreLabel" Text="More..."/>
+                        </HyperlinkButton>
                     </StackPanel>
-                    <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Center"
+                </Border>
+
+                <!-- Metadata pills: each metric ("X songs", "Y hr Z min") gets its own
+                     fully-rounded WinUI pill (CornerRadius=14 on a ~28 px-tall Border
+                     gives stadium ends). The bullet separator is dropped — the pills
+                     ARE the separator. ControlFillColor*Brush + ControlStrokeColor*
+                     give clearly-bounded chip chrome (the secondary card tint blended
+                     too softly into the page background). -->
+                <Grid MinHeight="28" HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                Spacing="6"
+                                Visibility="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <Border CornerRadius="14"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Padding="10,3">
+                            <!-- Two Runs with no x:Uid: the leading space in " songs"
+                                 was being stripped by the localization resource, producing
+                                 "50songs". xml:space="preserve" on the TextBlock keeps any
+                                 future literal whitespace inside the Runs intact too. -->
+                            <TextBlock xml:space="preserve"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"/><Run Text=" songs"/></TextBlock>
+                        </Border>
+                        <Border CornerRadius="14"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Padding="10,3"
+                                Visibility="{x:Bind ViewModel.TotalDuration, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock Text="{x:Bind ViewModel.TotalDuration, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+                    </StackPanel>
+                    <controls:Shimmer Width="140" Height="20" HorizontalAlignment="Center"
                                       Visibility="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
@@ -187,5 +249,12 @@
                 PlayCommand="{x:Bind ViewModel.PlayTrackCommand}" />
 
         </Grid>
+
+        <!-- Error overlay: shown when detail fetch or track fetch fails.
+             Retry re-invalidates the PlaylistStore and resets track-load state. -->
+        <controls1:ErrorStateView
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
     </Grid>
 </Page>

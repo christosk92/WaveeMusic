@@ -365,6 +365,27 @@
                                         <Setter Target="ItemNameTextBlock.Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
                                         <Setter Target="ItemNameTextBlock.Opacity" Value="0.7" />
                                         <Setter Target="ChildrenPresenter.Visibility" Value="Visible" />
+                                        <Setter Target="EmptyPlaceholder.Visibility" Value="Collapsed" />
+                                    </VisualState.Setters>
+                                </VisualState>
+
+                                <VisualState x:Name="SectionHeaderExpandedWithPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="ElementBorder.Height" Value="28" />
+                                        <Setter Target="ElementGrid.Background" Value="Transparent" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
+                                        <Setter Target="SelectionIndicator.Visibility" Value="Collapsed" />
+                                        <Setter Target="IconPresenter.Visibility" Value="Collapsed" />
+                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
+                                        <Setter Target="ItemDecoratorPresenter.Visibility" Value="Visible" />
+                                        <Setter Target="ItemNameTextBlock.Margin" Value="8,0,12,0" />
+                                        <Setter Target="ItemNameTextBlock.FontSize" Value="11" />
+                                        <Setter Target="ItemNameTextBlock.FontWeight" Value="SemiBold" />
+                                        <Setter Target="ItemNameTextBlock.CharacterSpacing" Value="50" />
+                                        <Setter Target="ItemNameTextBlock.Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        <Setter Target="ItemNameTextBlock.Opacity" Value="0.7" />
+                                        <Setter Target="ChildrenPresenter.Visibility" Value="Visible" />
+                                        <Setter Target="EmptyPlaceholder.Visibility" Value="Visible" />
                                     </VisualState.Setters>
                                 </VisualState>
 
@@ -383,6 +404,8 @@
                                         <Setter Target="ItemNameTextBlock.CharacterSpacing" Value="50" />
                                         <Setter Target="ItemNameTextBlock.Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
                                         <Setter Target="ItemNameTextBlock.Opacity" Value="0.7" />
+                                        <Setter Target="ChildrenPresenter.Visibility" Value="Collapsed" />
+                                        <Setter Target="EmptyPlaceholder.Visibility" Value="Collapsed" />
                                     </VisualState.Setters>
                                 </VisualState>
 
@@ -563,7 +586,32 @@
                             </VisualStateGroup>
 
                             <VisualStateGroup x:Name="DisplayModes">
-                                <VisualState x:Name="NonCompact" />
+                                <!--
+                                    NonCompact must explicitly restore every property Compact
+                                    touches. WinUI 3's VSM does not reliably roll back Visibility
+                                    (and some layout properties) when returning to an empty state,
+                                    so without these setters a row that transitioned Compact → Expanded
+                                    keeps its text hidden and icon centered. Values are the template's
+                                    literal base values. ExpandCollapseChevron / ChildrenPresenter
+                                    Visibility are intentionally NOT listed here — they're owned by
+                                    the ExpansionStates group, and duplicating them would race.
+                                -->
+                                <VisualState x:Name="NonCompact">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootPanel.MaxWidth" Value="Infinity" />
+                                        <Setter Target="RootPanel.Padding" Value="4,0,4,0" />
+                                        <Setter Target="ElementBorder.Visibility" Value="Visible" />
+                                        <Setter Target="ItemNameTextBlock.Visibility" Value="Visible" />
+                                        <Setter Target="ItemBadgeHost.Visibility" Value="Visible" />
+                                        <Setter Target="ItemDecoratorPresenter.Width" Value="Auto" />
+                                        <Setter Target="SelectionIndicator.Visibility" Value="Visible" />
+                                        <Setter Target="IconPresenter.Margin" Value="8,0,0,0" />
+                                        <Setter Target="IconPresenter.(Grid.Column)" Value="1" />
+                                        <Setter Target="IconPresenter.(Grid.ColumnSpan)" Value="1" />
+                                        <Setter Target="IconPresenter.HorizontalAlignment" Value="Center" />
+                                        <Setter Target="ChildrenPresenter.Margin" Value="0" />
+                                    </VisualState.Setters>
+                                </VisualState>
                                 <VisualState x:Name="Compact">
                                     <VisualState.Setters>
                                         <Setter Target="RootPanel.MaxWidth" Value="48" />

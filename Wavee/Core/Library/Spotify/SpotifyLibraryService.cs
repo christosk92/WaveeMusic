@@ -933,6 +933,13 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
                 {
                     foreach (var item in changeEvent.Items)
                     {
+                        // Verification log: confirm the binary PubSubUpdate path
+                        // actually carries spotify:track:... URIs (and not raw
+                        // GIDs that would silently no-op the SQLite write below).
+                        // Strip if logs come back consistently populated.
+                        _logger?.LogDebug("Library change item: uri={Uri} removed={IsRemoved}",
+                            item.ItemUri, item.IsRemoved);
+
                         // Determine item type from URI prefix for "collection" set,
                         // otherwise use set name
                         var itemType = GetItemTypeFromUri(item.ItemUri, changeEvent.Set);

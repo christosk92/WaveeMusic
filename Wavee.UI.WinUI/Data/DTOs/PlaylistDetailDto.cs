@@ -51,4 +51,14 @@ public sealed record PlaylistDetailDto
     public bool IsPublic { get; init; }
     public PlaylistBasePermission BasePermission { get; init; } = PlaylistBasePermission.Viewer;
     public PlaylistCapabilitiesDto Capabilities { get; init; } = PlaylistCapabilitiesDto.ViewOnly;
+
+    /// <summary>
+    /// Playlist-level format attributes returned by the playlist service —
+    /// editorial + recommender chrome (<c>format</c>, <c>request_id</c>,
+    /// <c>tag</c>, <c>source-loader</c>, <c>image_url</c>,
+    /// <c>session_control_display.displayName.*</c>, etc.). Forwarded into
+    /// <c>PlayerState.context_metadata</c> at play time. Null/empty for
+    /// user-authored playlists.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyDictionary<string, string>? FormatAttributes { get; init; }
 }

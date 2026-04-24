@@ -204,6 +204,44 @@ public sealed record PlaybackState
     public bool MixerEnabled { get; init; }
 
     /// <summary>
+    /// Cover-art URL for the context (playlist/album thumbnail). Published as
+    /// PlayerState.context_metadata["image_url"] so remote "Now Playing" cards
+    /// show the artwork even before they resolve the context on their own.
+    /// </summary>
+    public string? ContextImageUrl { get; init; }
+
+    /// <summary>
+    /// Context kind label ("playlist", "album", "artist", "collection"). Drives
+    /// PlayerState.play_origin.feature_identifier — mirrors how Spotify desktop
+    /// sets the feature based on the page the user started from.
+    /// </summary>
+    public string? ContextFeature { get; init; }
+
+    /// <summary>
+    /// Total track count for the context. Emitted as
+    /// PlayerState.context_metadata["playlist_number_of_tracks"] for playlists.
+    /// </summary>
+    public int? ContextTrackCount { get; init; }
+
+    /// <summary>
+    /// Context-level format attributes from the playlist API (<c>format</c>,
+    /// <c>request_id</c>, <c>tag</c>, <c>source-loader</c>, <c>image_url</c>,
+    /// <c>session_control_display.displayName.*</c>, etc.). Merged verbatim
+    /// into <c>PlayerState.context_metadata</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ContextFormatAttributes { get; init; }
+
+    /// <summary>
+    /// Number of pages in the active context (from <c>Context.Pages.Count</c> on
+    /// the context-resolve response). Drives the hidden <c>spotify:meta:page:N</c>
+    /// stub entries Spotify emits in <c>next_tracks</c> so remote clients know
+    /// the queue cuts on page boundaries. Default 1 = single-page context (no
+    /// stubs emitted). Currently only populated for contexts that actually
+    /// auto-paginate — see pagination TODO in <c>PlaybackOrchestrator</c>.
+    /// </summary>
+    public int ContextPageCount { get; init; } = 1;
+
+    /// <summary>
     /// Creates an empty playback state (no playback).
     /// </summary>
     public static PlaybackState Empty => new()

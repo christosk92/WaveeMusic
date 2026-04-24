@@ -39,14 +39,18 @@ public sealed partial class TrackDataGrid : UserControl
     private INotifyCollectionChanged? _subscribedSource;
     private string _filterText = string.Empty;
 
-    // Size-slider stops (matches the S/M/L/XL/XS segmentation in the view flyout).
-    private static readonly double[] DensityRowHeights = { 36d, 40d, 48d, 56d, 64d };
+    // Size-slider stops (matches the XS/S/M/L/XL segmentation in the view flyout).
+    // MinHeight floor per row; content (padding + art + text) may still push the
+    // row taller on larger steps, and that's intentional.
+    private static readonly double[] DensityRowHeights = { 32d, 40d, 48d, 60d, 76d };
 
     public TrackDataGrid()
     {
         InitializeComponent();
         RowsList.ItemsSource = _visibleRows;
         RowsList.ContainerContentChanging += RowsList_ContainerContentChanging;
+        RowsList.Loaded += RowsList_Loaded;
+        RowsList.Unloaded += RowsList_Unloaded;
 
         // Set Slider.Value AFTER InitializeComponent so Minimum/Maximum are already in
         // place — attribute-order parsing in XAML was failing to apply Value="2" before
@@ -59,6 +63,81 @@ public sealed partial class TrackDataGrid : UserControl
         SubscribeColumns(defaults);
         RebuildHeader();
         RebuildSortFlyout();
+    }
+
+    // Sticky-header sync: the HeaderHost Grid lives outside the ListView's
+    // internal ScrollViewer so it stays vertically pinned at the top. When the
+    // user scrolls the rows horizontally (via the ListView's own Scroll*
+    // attached props configured in XAML), we translate the header to match the
+    // ListView's HorizontalOffset. Pattern documented by Microsoft as the safe
+    // alternative to wrapping ListView in an outer ScrollViewer, which has
+    // known virtualization + input-routing bugs in WinUI 3 (microsoft-ui-xaml
+    // issue #10172).
+    private ScrollViewer? _rowsListScrollViewerWinUi;
+
+    private void RowsList_Loaded(object sender, RoutedEventArgs e)
+    {
+        HookRowsListScrollViewer();
+        ApplyHorizontalRowScroll();
+    }
+
+    private void RowsList_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (_rowsListScrollViewerWinUi is not null)
+        {
+            _rowsListScrollViewerWinUi.ViewChanged -= RowsListScrollViewer_ViewChanged;
+            _rowsListScrollViewerWinUi = null;
+        }
+    }
+
+    private void ApplyHorizontalRowScroll()
+    {
+        if (RowsList is null) return;
+        if (AllowHorizontalRowScroll)
+        {
+            ScrollViewer.SetHorizontalScrollMode(RowsList, ScrollMode.Auto);
+            ScrollViewer.SetHorizontalScrollBarVisibility(RowsList, ScrollBarVisibility.Auto);
+        }
+        else
+        {
+            ScrollViewer.SetHorizontalScrollMode(RowsList, ScrollMode.Disabled);
+            ScrollViewer.SetHorizontalScrollBarVisibility(RowsList, ScrollBarVisibility.Disabled);
+        }
+    }
+
+    private void HookRowsListScrollViewer()
+    {
+        if (_rowsListScrollViewerWinUi is not null) return;
+
+        // Walk the ListView's visual tree to find its template ScrollViewer.
+        // The template exposes it as part name "ScrollViewer" on ListViewBase
+        // in WinUI 3.
+        var sv = FindDescendant<ScrollViewer>(RowsList);
+        if (sv is null) return;
+
+        _rowsListScrollViewerWinUi = sv;
+        sv.ViewChanged += RowsListScrollViewer_ViewChanged;
+        // Apply initial offset (in case the ListView scrolled before Loaded fired).
+        HeaderScrollTransform.X = -sv.HorizontalOffset;
+    }
+
+    private void RowsListScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer sv)
+            HeaderScrollTransform.X = -sv.HorizontalOffset;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) return match;
+        int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+            var found = FindDescendant<T>(child);
+            if (found is not null) return found;
+        }
+        return null;
     }
 
     /// <summary>
@@ -78,20 +157,24 @@ public sealed partial class TrackDataGrid : UserControl
         switch (args.Phase)
         {
             case 0:
-                // Essential + cheap: play command + alternating zebra + density MinHeight.
+                // Essential + cheap: play command + alternating zebra + density.
                 if (_preferredRowHeight is double h) container.MinHeight = h;
+                container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
+                item.RowDensity = _preferredDensity;
                 item.PlayCommand = PlayCommand;
                 item.SetAlternatingBorder(args.ItemIndex % 2 != 0);
+                WireContainerToggleHandlers(container);
                 args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
                 break;
 
             case 1:
-                // Column show/hide flags — batched so the 4 setters trigger one layout pass.
+                // Column show/hide flags — batched so the setters trigger one layout pass.
                 item.BeginBatchUpdate();
                 item.ShowAlbumArt     = ColumnVisible("TrackArt");
                 item.ShowArtistColumn = PageKey != TrackDataGridDefaults.AlbumPageKey;
                 item.ShowAlbumColumn  = ColumnVisible("Album");
                 item.ShowDateAdded    = ColumnVisible("DateAdded");
+                item.ShowPlayCount    = ColumnVisible("PlayCount");
                 item.EndBatchUpdate();
                 args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
                 break;
@@ -105,11 +188,95 @@ public sealed partial class TrackDataGrid : UserControl
                 break;
 
             case 3:
-                // Final trim: date string is consumer-provided; do it last.
+                // Final trim: formatted strings are consumer-provided; do them last.
                 if (DateAddedFormatter != null && args.Item != null)
                     item.DateAddedText = DateAddedFormatter(args.Item);
+                if (PlayCountFormatter != null && args.Item != null)
+                    item.PlayCountText = PlayCountFormatter(args.Item);
                 break;
         }
+    }
+
+    // Plain click on an already-selected row must deselect it. The native ListView
+    // (SelectionMode=Extended) replaces rather than toggles on plain click, so we
+    // intercept PointerPressed to remember "pressed while already selected" and
+    // Tapped to complete the toggle. Ctrl/Shift taps keep native behavior.
+    private ListViewItem? _pressedWhileSelected;
+    private PointerEventHandler? _containerPointerPressedHandler;
+    private TappedEventHandler? _containerTappedHandler;
+
+    private void WireContainerToggleHandlers(ListViewItem container)
+    {
+        _containerPointerPressedHandler ??= Container_PointerPressed;
+        _containerTappedHandler ??= Container_Tapped;
+        // handledEventsToo=true: ListViewItemPresenter marks PointerPressed/Tapped
+        // handled during its internal selection path; we still need to run toggle logic.
+        container.RemoveHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler);
+        container.AddHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler, true);
+        container.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
+        container.AddHandler(UIElement.TappedEvent, _containerTappedHandler, true);
+    }
+
+    private void Container_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem lvi) return;
+
+        var (ctrl, shift) = GetCtrlShiftState();
+        if (ctrl || shift || !lvi.IsSelected || IsInteractiveElement(e.OriginalSource as DependencyObject))
+        {
+            _pressedWhileSelected = null;
+            return;
+        }
+
+        _pressedWhileSelected = lvi;
+    }
+
+    private void Container_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem lvi) return;
+        if (_pressedWhileSelected != lvi) return;
+        _pressedWhileSelected = null;
+
+        var (ctrl, shift) = GetCtrlShiftState();
+        if (ctrl || shift) return;
+
+        var item = lvi.Content ?? lvi.DataContext;
+        if (item != null && RowsList.SelectedItems.Contains(item))
+            RowsList.SelectedItems.Remove(item);
+        lvi.IsSelected = false;
+        if (lvi.ContentTemplateRoot is Track.TrackItem ti)
+            ti.IsSelected = false;
+    }
+
+    // CoreWindow.GetForCurrentThread() returns null on WinUI 3 threads that don't have a
+    // CoreWindow attached (some dispatcher contexts hit this); dereferencing it crashed
+    // the app. Use Microsoft.UI.Input.InputKeyboardSource — the WinUI 3 native key-state
+    // API — and treat any failure as "no modifier held".
+    private static (bool ctrl, bool shift) GetCtrlShiftState()
+    {
+        try
+        {
+            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+            return (
+                (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down,
+                (shiftState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down);
+        }
+        catch
+        {
+            return (false, false);
+        }
+    }
+
+    private static bool IsInteractiveElement(DependencyObject? element)
+    {
+        while (element != null)
+        {
+            if (element is ButtonBase or HyperlinkButton)
+                return true;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return false;
     }
 
     private bool ColumnVisible(string key) =>
@@ -127,6 +294,7 @@ public sealed partial class TrackDataGrid : UserControl
     {
         item.AlbumColumnWidth     = WidthOf("Album", 180);
         item.DateAddedColumnWidth = WidthOf("DateAdded", 120);
+        item.PlayCountColumnWidth = WidthOf("PlayCount", 100);
         item.DurationColumnWidth  = WidthOf("Duration", 60);
     }
 
@@ -141,6 +309,7 @@ public sealed partial class TrackDataGrid : UserControl
             ti.ShowAlbumArt    = ColumnVisible("TrackArt");
             ti.ShowAlbumColumn = ColumnVisible("Album");
             ti.ShowDateAdded   = ColumnVisible("DateAdded");
+            ti.ShowPlayCount   = ColumnVisible("PlayCount");
             PushWidthsToRow(ti);
             ti.EndBatchUpdate();
         }
@@ -163,6 +332,9 @@ public sealed partial class TrackDataGrid : UserControl
                     break;
                 case "DateAdded":
                     ti.DateAddedColumnWidth = WidthOf("DateAdded", 120);
+                    break;
+                case "PlayCount":
+                    ti.PlayCountColumnWidth = WidthOf("PlayCount", 100);
                     break;
                 case "Duration":
                     ti.DurationColumnWidth = WidthOf("Duration", 60);
@@ -214,6 +386,39 @@ public sealed partial class TrackDataGrid : UserControl
         set => SetValue(PlayCommandProperty, value);
     }
 
+    public static readonly DependencyProperty FooterContentProperty =
+        DependencyProperty.Register(nameof(FooterContent), typeof(object), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    public object? FooterContent
+    {
+        get => GetValue(FooterContentProperty);
+        set => SetValue(FooterContentProperty, value);
+    }
+
+    public static readonly DependencyProperty AllowHorizontalRowScrollProperty =
+        DependencyProperty.Register(nameof(AllowHorizontalRowScroll), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(true, OnAllowHorizontalRowScrollChanged));
+
+    /// <summary>
+    /// When <c>true</c> (default) the internal ListView permits horizontal scrolling
+    /// so wide row sets (many custom columns) remain usable. Set <c>false</c> on
+    /// pages that host a horizontally-scrollable widget in <see cref="FooterContent"/>
+    /// (e.g. a shelf) — otherwise that widget's content extent propagates upward
+    /// and adds a page-level horizontal scrollbar.
+    /// </summary>
+    public bool AllowHorizontalRowScroll
+    {
+        get => (bool)GetValue(AllowHorizontalRowScrollProperty);
+        set => SetValue(AllowHorizontalRowScrollProperty, value);
+    }
+
+    private static void OnAllowHorizontalRowScrollChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid self)
+            self.ApplyHorizontalRowScroll();
+    }
+
     public static readonly DependencyProperty DateAddedFormatterProperty =
         DependencyProperty.Register(nameof(DateAddedFormatter), typeof(Func<object, string>), typeof(TrackDataGrid),
             new PropertyMetadata(null));
@@ -228,6 +433,21 @@ public sealed partial class TrackDataGrid : UserControl
     {
         get => (Func<object, string>?)GetValue(DateAddedFormatterProperty);
         set => SetValue(DateAddedFormatterProperty, value);
+    }
+
+    public static readonly DependencyProperty PlayCountFormatterProperty =
+        DependencyProperty.Register(nameof(PlayCountFormatter), typeof(Func<object, string>), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Per-row formatter for the Play-Count column. AlbumPage sets this to reach
+    /// <c>AlbumTrackDto.PlayCountFormatted</c>; TrackItem doesn't know that type.
+    /// Same pattern as <see cref="DateAddedFormatter"/>.
+    /// </summary>
+    public Func<object, string>? PlayCountFormatter
+    {
+        get => (Func<object, string>?)GetValue(PlayCountFormatterProperty);
+        set => SetValue(PlayCountFormatterProperty, value);
     }
 
     public static readonly DependencyProperty ShowToolbarProperty =
@@ -258,6 +478,22 @@ public sealed partial class TrackDataGrid : UserControl
             grid.FilterToggle.IsChecked = false;
             grid.FilterHost.Visibility = Visibility.Collapsed;
         }
+    }
+
+    public static readonly DependencyProperty ToolbarLeftContentProperty =
+        DependencyProperty.Register(nameof(ToolbarLeftContent), typeof(object), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Content rendered on the left side of the toolbar row, opposite the built-in
+    /// filter/selection/sort/view/details icons. Pages slot page-specific affordances
+    /// here (e.g. Play/Shuffle + stats on Liked Songs). Unset → empty left column, and
+    /// the right-aligned icon cluster occupies the full row as before.
+    /// </summary>
+    public object? ToolbarLeftContent
+    {
+        get => GetValue(ToolbarLeftContentProperty);
+        set => SetValue(ToolbarLeftContentProperty, value);
     }
 
     // ------------------------------------------------------------- change handlers
@@ -608,22 +844,51 @@ public sealed partial class TrackDataGrid : UserControl
         ReprojectRows();
     }
 
+    /// <summary>
+    /// Clears the filter text + closes the filter bar. Exposed for consumers that
+    /// want to reset view-state when their bound data-context changes — e.g. a
+    /// cached page navigating to a different entity where the previous query no
+    /// longer makes sense.
+    /// </summary>
+    public void ResetFilter()
+    {
+        if (_filterText.Length == 0
+            && FilterBox.Text.Length == 0
+            && FilterToggle.IsChecked != true)
+            return;
+
+        _filterText = string.Empty;
+        FilterBox.Text = string.Empty;
+        FilterToggle.IsChecked = false;
+        FilterHost.Visibility = Visibility.Collapsed;
+        ReprojectRows();
+    }
+
     private void DensitySlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         var stop = (int)Math.Clamp(Math.Round(e.NewValue), 0, DensityRowHeights.Length - 1);
         var height = DensityRowHeights[stop];
-        // ItemContainerStyle's MinHeight lives on every materialized ListViewItem; tweak
-        // it directly so the change applies without a re-template pass.
+        var outerMargin = stop == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
+
+        // ItemContainerStyle's MinHeight lives on every materialized ListViewItem;
+        // tweak directly so the change applies without a re-template pass. Also push
+        // RowDensity into each TrackItem so padding / album-art / subline adjust.
         foreach (var item in RowsList.Items)
         {
-            if (RowsList.ContainerFromItem(item) is ListViewItem container)
-                container.MinHeight = height;
+            if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
+            container.MinHeight = height;
+            container.Margin = outerMargin;
+            if (container.ContentTemplateRoot is Track.TrackItem ti)
+                ti.RowDensity = stop;
         }
+
         // Preserve for future containers (virtualization materializes on demand).
         _preferredRowHeight = height;
+        _preferredDensity = stop;
     }
 
     private double? _preferredRowHeight;
+    private int _preferredDensity = 2;
 
     private void DetailsToggle_Click(object sender, RoutedEventArgs e)
     {

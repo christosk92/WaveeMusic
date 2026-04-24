@@ -450,7 +450,6 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         };
 
         _playbackStateService.LoadQueue(queueItems, context, startIndex);
-        _playbackStateService.PlayPause();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

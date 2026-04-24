@@ -276,6 +276,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<LibraryRecentsService>>()))
                 .AddSingleton<ProfileCache>()
                 .AddSingleton<IProfileCache>(sp => sp.GetRequiredService<ProfileCache>())
+                .AddSingleton<IUserProfileResolver, UserProfileResolver>()
                 .AddSingleton(sp => new ImageCacheService(cacheCapacities.ImageCacheMaxSize))
                 .AddSingleton(sp => new PlaylistMosaicService(
                     sp.GetRequiredService<ILibraryDataService>(),
@@ -692,6 +693,13 @@ public static class AppLifecycleHelper
             var orchestrator = new Wavee.Audio.PlaybackOrchestrator(
                 proxy, trackResolver, contextResolver!, session.CommandHandler, logger);
 
+            // Honor the user's autoplay preference. Read fresh on each check so
+            // a toggle in the Settings page takes effect immediately — no event
+            // plumbing / debounce needed.
+            var settingsForAutoplay = Ioc.Default.GetService<ISettingsService>();
+            if (settingsForAutoplay is not null)
+                orchestrator.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
+
             // Wire up orchestrator (not raw proxy) as the local engine
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
             executor?.EnableLocalPlayback(orchestrator);
@@ -756,6 +764,66 @@ public static class AppLifecycleHelper
             // what the user was hitting on the stuck-audiokey channel.
             _appSubscriptions.Add(orchestrator.Errors.Subscribe(showError));
 
+            // End-of-context: autoplay cascade exhausted. Without user-visible
+            // feedback, playback just silently stopped at the last track and
+            // the user had no idea why / what to do. Show an informational
+            // notification and keep the activity trail.
+            // One toast per session — the PlayerBar's inline "You've reached
+            // the end" hint handles subsequent end-of-context transitions.
+            // Toast exists for discovery; once the user has seen it, the
+            // inline hint is enough.
+            var endOfContextToastShown = false;
+            Action<Wavee.Audio.EndOfContextEvent> showEndOfContext = evt =>
+            {
+                var isAutoplayOn = settingsForAutoplay?.Settings.AutoplayEnabled ?? true;
+                var canNudgeAutoplay = evt.ContextSupportsAutoplay && !isAutoplayOn;
+
+                var (title, message) = evt switch
+                {
+                    _ when canNudgeAutoplay => (
+                        "Reached the end",
+                        "Turn on Autoplay to keep listening with similar songs."),
+                    { AutoplayAttempted: true } => (
+                        "Reached the end",
+                        "Couldn't find related songs to continue with. Click Play to restart."),
+                    _ => (
+                        "Reached the end",
+                        "Click Play to restart the queue.")
+                };
+                errorDispatcher?.TryEnqueue(() =>
+                {
+                    // Inline hint in the PlayerBar — fires every time.
+                    var playbackState = Ioc.Default.GetService<IPlaybackStateService>();
+                    playbackState?.NotifyEndOfContext();
+
+                    if (!endOfContextToastShown)
+                    {
+                        endOfContextToastShown = true;
+                        notificationService?.Show(new Data.Models.NotificationInfo
+                        {
+                            Message = message,
+                            Severity = Data.Models.NotificationSeverity.Informational,
+                            AutoDismissAfter = TimeSpan.FromSeconds(10),
+                            ActionLabel = canNudgeAutoplay ? "Turn on Autoplay" : null,
+                            Action = canNudgeAutoplay && settingsForAutoplay is not null
+                                ? () =>
+                                {
+                                    settingsForAutoplay.Update(s => s.AutoplayEnabled = true);
+                                    return Task.CompletedTask;
+                                }
+                                : null
+                        });
+                    }
+                    activityService?.Post(
+                        category: "playback",
+                        title: title,
+                        iconGlyph: "",
+                        status: Data.Models.ActivityStatus.Completed,
+                        message: message);
+                });
+            };
+            _appSubscriptions.Add(orchestrator.EndOfContext.Subscribe(showEndOfContext));
+
             // AudioKey channel sometimes goes silent for a specific FileId while the
             // rest of the AP socket works fine. AudioKeyManager recovers by
             // reconnecting after 2 consecutive timeouts (~5 s). That recovery is NOT
@@ -784,6 +852,8 @@ public static class AppLifecycleHelper
                 {
                     var newOrch = new Wavee.Audio.PlaybackOrchestrator(
                         newProxy, trackResolver, contextResolver!, session.CommandHandler, logger);
+                    if (settingsForAutoplay is not null)
+                        newOrch.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
                     exec?.EnableLocalPlayback(newOrch);
                     session.PlaybackState?.EnableBidirectionalMode(
@@ -793,6 +863,7 @@ public static class AppLifecycleHelper
                     // failures after a restart still reach the user.
                     _appSubscriptions.Add(newProxy.Errors.Subscribe(showError));
                     _appSubscriptions.Add(newOrch.Errors.Subscribe(showError));
+                    _appSubscriptions.Add(newOrch.EndOfContext.Subscribe(showEndOfContext));
                 });
             };
             _audioProcessManager.ProxyRestarted += _audioProxyRestartedHandler;

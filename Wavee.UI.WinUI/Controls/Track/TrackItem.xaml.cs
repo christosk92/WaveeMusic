@@ -104,6 +104,16 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(DateAddedColumnWidthProperty, value);
     }
 
+    public static readonly DependencyProperty PlayCountColumnWidthProperty =
+        DependencyProperty.Register(nameof(PlayCountColumnWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(100d, OnRowColumnWidthChanged));
+
+    public double PlayCountColumnWidth
+    {
+        get => (double)GetValue(PlayCountColumnWidthProperty);
+        set => SetValue(PlayCountColumnWidthProperty, value);
+    }
+
     public static readonly DependencyProperty DurationColumnWidthProperty =
         DependencyProperty.Register(nameof(DurationColumnWidth), typeof(double), typeof(TrackItem),
             new PropertyMetadata(60d, OnRowColumnWidthChanged));
@@ -146,9 +156,44 @@ public sealed partial class TrackItem : UserControl
         DependencyProperty.Register(nameof(DateAddedText), typeof(string), typeof(TrackItem),
             new PropertyMetadata(null, OnDateAddedTextChanged));
 
+    public static readonly DependencyProperty ShowPlayCountProperty =
+        DependencyProperty.Register(nameof(ShowPlayCount), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, OnColumnVisibilityChanged));
+
+    public static readonly DependencyProperty PlayCountTextProperty =
+        DependencyProperty.Register(nameof(PlayCountText), typeof(string), typeof(TrackItem),
+            new PropertyMetadata(null, OnPlayCountTextChanged));
+
     public static readonly DependencyProperty IsCompactRowProperty =
         DependencyProperty.Register(nameof(IsCompactRow), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(false, OnIsCompactRowChanged));
+
+    public static readonly DependencyProperty RowDensityProperty =
+        DependencyProperty.Register(nameof(RowDensity), typeof(int), typeof(TrackItem),
+            new PropertyMetadata(2, OnRowDensityChanged));
+
+    // XS → XL. Paddings shrink at XS so the row can actually hit its 32-px target;
+    // default (M) matches the original Padding="8,8" from XAML so unchanged rows are
+    // pixel-identical to before this DP existed.
+    private static readonly Thickness[] RowDensityPaddings =
+    {
+        new Thickness(4, 2, 4, 2),
+        new Thickness(6, 4, 6, 4),
+        new Thickness(8, 6, 8, 6),
+        new Thickness(10, 10, 10, 10),
+        new Thickness(12, 14, 12, 14),
+    };
+
+    // Album art square size per step. 0 at XS means "hidden". Column width is
+    // derived as artSize + 8 (right-side gap).
+    private static readonly double[] RowDensityArtSizes =
+    {
+        0d,
+        28d,
+        34d,
+        40d,
+        48d,
+    };
 
     public static readonly DependencyProperty PlaceholderColorHexProperty =
         DependencyProperty.Register(nameof(PlaceholderColorHex), typeof(string), typeof(TrackItem),
@@ -157,6 +202,10 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty UseImageColorHintProperty =
         DependencyProperty.Register(nameof(UseImageColorHint), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(true, (d, _) => ((TrackItem)d).ResolveImageColorHint()));
+
+    public static readonly DependencyProperty IsSelectedProperty =
+        DependencyProperty.Register(nameof(IsSelected), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, (d, _) => ((TrackItem)d).UpdateSelectionVisualState()));
 
     public ITrackItem? Track
     {
@@ -236,10 +285,28 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(DateAddedTextProperty, value);
     }
 
+    public bool ShowPlayCount
+    {
+        get => (bool)GetValue(ShowPlayCountProperty);
+        set => SetValue(ShowPlayCountProperty, value);
+    }
+
+    public string? PlayCountText
+    {
+        get => (string?)GetValue(PlayCountTextProperty);
+        set => SetValue(PlayCountTextProperty, value);
+    }
+
     public bool IsCompactRow
     {
         get => (bool)GetValue(IsCompactRowProperty);
         set => SetValue(IsCompactRowProperty, value);
+    }
+
+    public int RowDensity
+    {
+        get => (int)GetValue(RowDensityProperty);
+        set => SetValue(RowDensityProperty, value);
     }
 
     public string? PlaceholderColorHex
@@ -252,6 +319,12 @@ public sealed partial class TrackItem : UserControl
     {
         get => (bool)GetValue(UseImageColorHintProperty);
         set => SetValue(UseImageColorHintProperty, value);
+    }
+
+    public bool IsSelected
+    {
+        get => (bool)GetValue(IsSelectedProperty);
+        set => SetValue(IsSelectedProperty, value);
     }
 
     #endregion
@@ -279,6 +352,14 @@ public sealed partial class TrackItem : UserControl
     private bool _isBuffering;
     private string? _boundCompactImageUrl;
     private string? _boundRowImageUrl;
+    // URLs we currently hold a pin on in ImageCacheService. May lag _boundCompactImageUrl
+    // briefly during a rebind; always kept in sync before the method returns.
+    private string? _pinnedCompactUrl;
+    private string? _pinnedRowUrl;
+    // URL we've already retried once after ImageFailed. Prevents infinite retry loops
+    // on a genuinely broken URL. Reset when the URL changes.
+    private string? _retriedCompactUrl;
+    private string? _retriedRowUrl;
 
     // Guards against stale color-hint applies after a virtualized row is recycled.
     // Incremented on every ResolveImageColorHint invocation; an awaiting continuation
@@ -319,6 +400,10 @@ public sealed partial class TrackItem : UserControl
         // Row mode navigation links
         RowArtistLink.Click += OnArtistLinkClick;
         RowAlbumLink.Click += OnAlbumLinkClick;
+
+        // Transient CDN/network failures: retry once per URL with a fresh BitmapImage.
+        CompactAlbumArt.ImageFailed += OnCompactAlbumArtFailed;
+        RowAlbumArt.ImageFailed += OnRowAlbumArtFailed;
     }
 
     #region Mode Switching
@@ -343,6 +428,7 @@ public sealed partial class TrackItem : UserControl
         {
             CompactBorder.Visibility = Visibility.Collapsed;
             RowRoot.Visibility = Visibility.Visible;
+            ApplyRowDensityPadding();
             ApplyRowColumnVisibility();
         }
     }
@@ -444,9 +530,29 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyCompactAlbumArt(string? imageUrl)
     {
+        // Idempotent: same URL and the Image still has a Source → don't churn.
+        // Without this, recycled containers, OnLoaded rebinds, and shimmer→loaded
+        // transitions all force WinUI to drop its decoded bitmap and re-decode.
+        if (imageUrl == _boundCompactImageUrl && CompactAlbumArt.Source != null)
+        {
+            CompactAlbumArt.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Only clear the retry guard when the URL actually changes. A retry of the
+        // same URL must keep its guard set so we don't loop on a permanently-broken
+        // image.
+        bool urlChanged = imageUrl != _boundCompactImageUrl;
         _boundCompactImageUrl = imageUrl;
+        if (urlChanged) _retriedCompactUrl = null;
         CompactAlbumArt.Visibility = Visibility.Visible;
         CompactAlbumArt.Source = null;
+
+        if (!string.IsNullOrEmpty(_pinnedCompactUrl))
+        {
+            _cachedImageCache?.Unpin(_pinnedCompactUrl, 48);
+            _pinnedCompactUrl = null;
+        }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
@@ -454,12 +560,29 @@ public sealed partial class TrackItem : UserControl
 
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
         CompactAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        _cachedImageCache?.Pin(httpsUrl, 48);
+        _pinnedCompactUrl = httpsUrl;
     }
 
     private void ApplyRowAlbumArt(string? imageUrl)
     {
+        if (imageUrl == _boundRowImageUrl && RowAlbumArt.Source != null)
+        {
+            RowAlbumArt.Visibility = Visibility.Visible;
+            RowArtPlaceholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        bool urlChanged = imageUrl != _boundRowImageUrl;
         _boundRowImageUrl = imageUrl;
+        if (urlChanged) _retriedRowUrl = null;
         RowAlbumArt.Source = null;
+
+        if (!string.IsNullOrEmpty(_pinnedRowUrl))
+        {
+            _cachedImageCache?.Unpin(_pinnedRowUrl, 48);
+            _pinnedRowUrl = null;
+        }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
@@ -474,7 +597,38 @@ public sealed partial class TrackItem : UserControl
         RowArtPlaceholder.Visibility = Visibility.Visible;
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
         RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        _cachedImageCache?.Pin(httpsUrl, 48);
+        _pinnedRowUrl = httpsUrl;
         RowAlbumArt.Visibility = Visibility.Visible;
+    }
+
+    private void OnCompactAlbumArtFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        var url = _pinnedCompactUrl;
+        if (string.IsNullOrEmpty(url) || url == _retriedCompactUrl) return;
+        _retriedCompactUrl = url;
+
+        // Drop the poisoned BitmapImage so the next GetOrCreate creates a fresh one
+        // and does a new UriSource decode. Clearing Source trips the idempotent
+        // guard in ApplyCompactAlbumArt so the rebind actually runs.
+        _cachedImageCache?.Invalidate(url, 48);
+        _cachedImageCache?.Unpin(url, 48);
+        _pinnedCompactUrl = null;
+        CompactAlbumArt.Source = null;
+        DispatcherQueue?.TryEnqueue(() => ApplyCompactAlbumArt(_boundCompactImageUrl));
+    }
+
+    private void OnRowAlbumArtFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        var url = _pinnedRowUrl;
+        if (string.IsNullOrEmpty(url) || url == _retriedRowUrl) return;
+        _retriedRowUrl = url;
+
+        _cachedImageCache?.Invalidate(url, 48);
+        _cachedImageCache?.Unpin(url, 48);
+        _pinnedRowUrl = null;
+        RowAlbumArt.Source = null;
+        DispatcherQueue?.TryEnqueue(() => ApplyRowAlbumArt(_boundRowImageUrl));
     }
 
     private void ApplyPlaceholderColor(string? hex)
@@ -624,6 +778,12 @@ public sealed partial class TrackItem : UserControl
         item.RowDateAdded.Text = (string?)e.NewValue ?? "";
     }
 
+    private static void OnPlayCountTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        item.RowPlayCount.Text = (string?)e.NewValue ?? "";
+    }
+
     private static void OnIsCompactRowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
@@ -643,23 +803,10 @@ public sealed partial class TrackItem : UserControl
     public void SetAlternatingBorder(bool isAlternate)
     {
         _isAlternateRow = isAlternate;
-        if (isAlternate)
-        {
-            RowRoot.BorderBrush = _themeColors?.GetBrush("CardStrokeColorDefaultBrush")
-                ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-            RowRoot.BorderThickness = new Thickness(1);
-            RowRoot.Background = _themeColors?.CardBackground
-                ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-        }
-        else
-        {
-            RowRoot.BorderBrush = null;
-            RowRoot.BorderThickness = new Thickness(0);
-            RowRoot.Background = DefaultBackground;
-        }
+        ApplyRowBackground();
     }
 
-    private const int RowDurationColumnIndex = 7;
+    private const int RowDurationColumnIndex = 8;
     private readonly List<ColumnDefinition> _customColDefs = [];
     private readonly List<UIElement> _customColElements = [];
 
@@ -707,21 +854,57 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyRowColumnVisibility()
     {
-        RowArtColDef.Width      = ShowAlbumArt     ? new GridLength(42) : new GridLength(0);
-        RowAlbumColDef.Width    = ShowAlbumColumn  ? new GridLength(AlbumColumnWidth)    : new GridLength(0);
-        RowDateColDef.Width     = ShowDateAdded    ? new GridLength(DateAddedColumnWidth) : new GridLength(0);
-        RowDurationColDef.Width = new GridLength(DurationColumnWidth);
+        var density = Math.Clamp(RowDensity, 0, RowDensityArtSizes.Length - 1);
+        var artSize = RowDensityArtSizes[density];
+        // XS (density 0) force-hides the album art regardless of ShowAlbumArt — the
+        // whole point of XS is "image off + tight padding".
+        var effectiveShowArt = ShowAlbumArt && artSize > 0;
 
-        // Artist is now a subline under the title — ShowArtistColumn drives visibility
-        // of that HyperlinkButton rather than a grid column width.
-        RowArtistLink.Visibility = ShowArtistColumn ? Visibility.Visible : Visibility.Collapsed;
+        RowArtColDef.Width       = effectiveShowArt ? new GridLength(artSize + 8)           : new GridLength(0);
+        RowAlbumColDef.Width     = ShowAlbumColumn  ? new GridLength(AlbumColumnWidth)       : new GridLength(0);
+        RowDateColDef.Width      = ShowDateAdded    ? new GridLength(DateAddedColumnWidth)   : new GridLength(0);
+        RowPlayCountColDef.Width = ShowPlayCount    ? new GridLength(PlayCountColumnWidth)   : new GridLength(0);
+        RowDurationColDef.Width  = new GridLength(DurationColumnWidth);
+
+        // Collapsing the column to Width=0 alone isn't enough: RowAlbumArtBorder
+        // has a fixed Width/Height in XAML and would still render into the next
+        // column. Toggle visibility and resize to match the current density step.
+        if (RowAlbumArtBorder is not null)
+        {
+            RowAlbumArtBorder.Visibility = effectiveShowArt ? Visibility.Visible : Visibility.Collapsed;
+            if (effectiveShowArt)
+            {
+                RowAlbumArtBorder.Width = artSize;
+                RowAlbumArtBorder.Height = artSize;
+            }
+        }
+
+        // Artist subline is hidden at XS too — single-line rows are how we hit the
+        // 32-px target height.
+        RowArtistLink.Visibility = (ShowArtistColumn && density > 0) ? Visibility.Visible : Visibility.Collapsed;
 
         // Keep the shimmer overlay's columns in sync so loading rows align with the
         // real row layout (and with the column headers above).
-        ShimArtColDef.Width      = RowArtColDef.Width;
-        ShimAlbumColDef.Width    = RowAlbumColDef.Width;
-        ShimDateColDef.Width     = RowDateColDef.Width;
-        ShimDurationColDef.Width = RowDurationColDef.Width;
+        ShimArtColDef.Width       = RowArtColDef.Width;
+        ShimAlbumColDef.Width     = RowAlbumColDef.Width;
+        ShimDateColDef.Width      = RowDateColDef.Width;
+        ShimPlayCountColDef.Width = RowPlayCountColDef.Width;
+        ShimDurationColDef.Width  = RowDurationColDef.Width;
+    }
+
+    private void ApplyRowDensityPadding()
+    {
+        var density = Math.Clamp(RowDensity, 0, RowDensityPaddings.Length - 1);
+        RowRoot.Padding = RowDensityPaddings[density];
+    }
+
+    private static void OnRowDensityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        if (item.Mode != TrackItemDisplayMode.Row) return;
+        item.ApplyRowDensityPadding();
+        if (item._batchUpdateDepth == 0)
+            item.ApplyRowColumnVisibility();
     }
 
     #endregion
@@ -760,16 +943,11 @@ public sealed partial class TrackItem : UserControl
 
         if (Mode == TrackItemDisplayMode.Compact)
         {
-            CompactBorder.Background = _themeColors?.CardBackground
-                ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-            CompactBorder.BorderBrush = _themeColors?.GetBrush("CardStrokeColorDefaultBrush")
-                ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-            CompactBorder.BorderThickness = new Thickness(1);
+            ApplyCompactBackground();
         }
         else
         {
-            RowRoot.Background = _themeColors?.GetBrush("SubtleFillColorTertiaryBrush")
-                ?? (Brush)Application.Current.Resources["SubtleFillColorTertiaryBrush"];
+            ApplyRowBackground();
         }
 
         UpdateOverlayState();
@@ -787,16 +965,80 @@ public sealed partial class TrackItem : UserControl
 
         if (Mode == TrackItemDisplayMode.Compact)
         {
+            ApplyCompactBackground();
+        }
+        else
+        {
+            ApplyRowBackground();
+        }
+    }
+
+    private void ApplyCompactBackground()
+    {
+        if (CompactBorder == null) return;
+
+        if (IsSelected)
+        {
+            CompactBorder.Background = _isHovered
+                ? (_themeColors?.GetBrush("ListViewItemBackgroundSelectedPointerOver")
+                   ?? (Brush)Application.Current.Resources["ListViewItemBackgroundSelectedPointerOver"])
+                : (_themeColors?.GetBrush("ListViewItemBackgroundSelected")
+                   ?? (Brush)Application.Current.Resources["ListViewItemBackgroundSelected"]);
+            CompactBorder.BorderBrush = _themeColors?.AccentFill
+                ?? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
+            CompactBorder.BorderThickness = new Thickness(1.5);
+        }
+        else if (_isHovered)
+        {
+            CompactBorder.Background = _themeColors?.CardBackground
+                ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            CompactBorder.BorderBrush = _themeColors?.GetBrush("CardStrokeColorDefaultBrush")
+                ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
+            CompactBorder.BorderThickness = new Thickness(1);
+        }
+        else
+        {
             CompactBorder.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             CompactBorder.BorderBrush = null;
             CompactBorder.BorderThickness = new Thickness(0);
         }
+    }
+
+    private void ApplyRowBackground()
+    {
+        if (RowRoot == null) return;
+
+        RowRoot.BorderBrush = null;
+        RowRoot.BorderThickness = new Thickness(0);
+
+        bool nativePillShowing = IsSelected || _isHovered;
+
+        if (!nativePillShowing && _isAlternateRow)
+        {
+            // Match the sidebar's selected-item subtle neutral fill rather
+            // than the full CardBackground tint, which looked heavy-handed in
+            // light mode (every other row visibly boxed).
+            RowRoot.Background = _themeColors?.SubtleFillSecondary
+                ?? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+        }
         else
         {
-            RowRoot.Background = _isAlternateRow
-                ? (_themeColors?.CardBackground ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"])
-                : DefaultBackground;
+            RowRoot.Background = DefaultBackground;
         }
+    }
+
+    private void UpdateSelectionVisualState()
+    {
+        if (CompactSelectionIndicator != null)
+            CompactSelectionIndicator.Opacity = IsSelected ? 1 : 0;
+
+        if (RowSelectionIndicator != null)
+            RowSelectionIndicator.Opacity = IsSelected ? 1 : 0;
+
+        if (Mode == TrackItemDisplayMode.Compact)
+            ApplyCompactBackground();
+        else
+            ApplyRowBackground();
     }
 
     #endregion
@@ -1100,6 +1342,18 @@ public sealed partial class TrackItem : UserControl
         TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChanged;
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+
+        // Release image cache pins so off-screen containers stop blocking eviction.
+        if (!string.IsNullOrEmpty(_pinnedCompactUrl))
+        {
+            _cachedImageCache?.Unpin(_pinnedCompactUrl, 48);
+            _pinnedCompactUrl = null;
+        }
+        if (!string.IsNullOrEmpty(_pinnedRowUrl))
+        {
+            _cachedImageCache?.Unpin(_pinnedRowUrl, 48);
+            _pinnedRowUrl = null;
+        }
     }
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)

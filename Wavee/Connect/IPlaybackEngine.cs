@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Wavee.Audio.Queue;
 using Wavee.Connect.Commands;
 using Wavee.Playback.Contracts;
@@ -336,6 +337,38 @@ public sealed record LocalPlaybackState
     /// Flows into PlayerState.context_metadata["context_description"].
     /// </summary>
     public string? ContextDescription { get; init; }
+
+    /// <summary>
+    /// Cover-art URL for the context. Flows into context_metadata["image_url"].
+    /// </summary>
+    public string? ContextImageUrl { get; init; }
+
+    /// <summary>
+    /// Context kind label ("playlist", "album", "artist", "collection"). Drives
+    /// PlayerState.play_origin.feature_identifier.
+    /// </summary>
+    public string? ContextFeature { get; init; }
+
+    /// <summary>
+    /// Total track count for the context. Flows into
+    /// context_metadata["playlist_number_of_tracks"] for playlists.
+    /// </summary>
+    public int? ContextTrackCount { get; init; }
+
+    /// <summary>
+    /// Context-level format attributes (from the playlist API). Merged into
+    /// <c>PlayerState.context_metadata</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ContextFormatAttributes { get; init; }
+
+    /// <summary>
+    /// Number of pages in the active context (from <c>Context.Pages.Count</c>).
+    /// Defaults to 1. Drives the hidden <c>spotify:meta:page:N</c> stubs emitted
+    /// in <c>PlayerState.next_tracks</c>. Paired with auto-pagination in
+    /// <c>PlaybackOrchestrator.LoadMoreTracksAsync</c> so the stub count is an
+    /// honest advertisement of what we can actually serve.
+    /// </summary>
+    public int ContextPageCount { get; init; } = 1;
 
     /// <summary>
     /// True when this state change was system-initiated rather than user-initiated

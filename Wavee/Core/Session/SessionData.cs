@@ -17,6 +17,13 @@ namespace Wavee.Core.Session;
 internal sealed class SessionData : IDisposable
 {
     private readonly ReaderWriterLockSlim _lock = new();
+    // Gate reads on shutdown. Session.DisposeAsync → DisconnectInternalAsync
+    // calls GetTransport AFTER the DI container has disposed SessionData (which
+    // disposes _lock). Without the guard, _lock.EnterReadLock throws
+    // ObjectDisposedException and surfaces as a [HostDispose] unhandled
+    // exception. The flag is volatile so the async disposal path reads the
+    // post-Dispose value even without the lock.
+    private volatile bool _disposed;
 
     // Connection state
     private ApTransport? _transport;
@@ -109,6 +116,7 @@ internal sealed class SessionData : IDisposable
     /// </summary>
     public ApTransport? GetTransport()
     {
+        if (_disposed) return null;
         _lock.EnterReadLock();
         try
         {
@@ -341,6 +349,8 @@ internal sealed class SessionData : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+
         _lock.EnterWriteLock();
         try
         {
@@ -356,6 +366,10 @@ internal sealed class SessionData : IDisposable
             _lock.ExitWriteLock();
         }
 
+        // Set _disposed BEFORE disposing _lock so any concurrent GetTransport
+        // call sees the flag and short-circuits instead of entering a read
+        // lock on a disposed ReaderWriterLockSlim.
+        _disposed = true;
         _lock.Dispose();
     }
 }

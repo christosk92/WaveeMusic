@@ -29,10 +29,19 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class PlaylistMosaicService
 {
-    // 88px = 2x the existing 44px sidebar icon for Hi-DPI; matches DecodePixelWidth=44
-    // used today in ShellViewModel.CreatePlaylistIconSource.
-    private const int MosaicSizePx = 88;
-    private const int TileSizePx = MosaicSizePx / 2;
+    // Compose at ~1.4× the largest display surface (playlist-page hero is
+    // 280 logical px; 400 px source gives crisp output on Hi-DPI without
+    // ballooning compose peak). Sidebar consumers decode the same PNG at
+    // their smaller size via BitmapImage.DecodePixelWidth — WinUI's image
+    // pipeline downsamples on demand, so one cached asset per playlist serves
+    // both surfaces. Step 8 lowered this from 600 → 400 to halve the
+    // CanvasRenderTarget GPU allocation and the decoded-bitmap peak.
+    private const int MosaicSizePx = 400;
+    // Sidebar BitmapImage decode target — 88px = 2x the 44px rendered size for
+    // Hi-DPI sharpness. Applied in CreateIconFromPathAsync below; it does NOT
+    // affect the on-disk PNG, only how large a decoded bitmap the sidebar
+    // materialises from it.
+    private const int SidebarDecodePixelWidth = 88;
     private const string CacheFolderName = "playlist-mosaics";
 
     private readonly ILibraryDataService _libraryDataService;
@@ -44,7 +53,25 @@ public sealed class PlaylistMosaicService
 
     // In-flight de-dupe: if a row scrolls out and back in mid-build, the second call
     // awaits the first task instead of re-fetching tracks.
-    private readonly ConcurrentDictionary<string, Task<IconSource?>> _inFlight = new();
+    //
+    // Lazy<Task<T>> (NOT raw Task<T>): ConcurrentDictionary.GetOrAdd can invoke the
+    // factory more than once under concurrent misses; only one value wins the slot,
+    // but the loser's factory already ran — with a raw Task that means the loser's
+    // Task is running but never awaited. If it throws (e.g. SpClientException for
+    // a 404 playlist) the exception is unobserved and surfaces via the finalizer
+    // thread as an UnobservedTaskException (seen in the 2026-04-23 session log).
+    // Lazy<Task> defers the async method invocation until .Value is accessed on
+    // the winner, so the loser's Lazy is discarded before any Task is ever created.
+    private readonly ConcurrentDictionary<string, Lazy<Task<IconSource?>>> _inFlight = new();
+
+    // Permanent (process-lifetime) negative cache for playlists whose backing
+    // resource returned NotFound. Without this, every sidebar row recycle and
+    // every dealer push fires another GetPlaylistTracksAsync that re-404s for
+    // dead URIs — observed in user logs as endless "Mosaic build skipped …
+    // NotFound" warnings. NotFound is structural; a 404 today won't become a
+    // 200 mid-session. Process restarts get a fresh chance.
+    private readonly ConcurrentDictionary<string, byte> _deadPlaylistIds =
+        new(StringComparer.Ordinal);
 
     private StorageFolder? _cacheFolder;
     private readonly SemaphoreSlim _cacheFolderInit = new(1, 1);
@@ -72,9 +99,115 @@ public sealed class PlaylistMosaicService
         if (string.IsNullOrEmpty(playlistId))
             return Task.FromResult<IconSource?>(null);
 
+        // Short-circuit for known-dead playlists. See _deadPlaylistIds for context;
+        // without this guard the sidebar bangs on 404 URIs every time a row is
+        // realized.
+        if (_deadPlaylistIds.ContainsKey(playlistId))
+            return Task.FromResult<IconSource?>(null);
+
         // Coalesce concurrent calls for the same playlist onto a single in-flight task.
-        // The shared task is registered before any await so a re-entrant call sees it.
-        return _inFlight.GetOrAdd(playlistId, id => BuildAndForgetAsync(id, mosaicHint, ct));
+        // Lazy<Task<T>> (see _inFlight comment) defers async method invocation to
+        // the winning slot only — so concurrent GetOrAdd callers can't orphan a
+        // running Task whose exception would later fire as UnobservedTaskException.
+        //
+        // The cached build runs under CancellationToken.None — its result is per-playlist
+        // and reused across surfaces, so cancelling the build because one specific caller
+        // (e.g. a sidebar row that scrolled out) went away would poison the task for every
+        // other waiter. Each caller still observes its own ct via WaitAsync below.
+        var lazy = _inFlight.GetOrAdd(
+            playlistId,
+            id => new Lazy<Task<IconSource?>>(
+                () => BuildAndForgetAsync(id, mosaicHint, CancellationToken.None),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+        return lazy.Value.WaitAsync(ct);
+    }
+
+    /// <summary>
+    /// Ensures a cached PNG exists for the playlist and returns its absolute
+    /// path. Same on-disk asset the sidebar uses; WinUI's image decoder
+    /// downsamples via <c>BitmapImage.DecodePixelWidth</c> at each display
+    /// surface, so the playlist-page hero (~280px) and sidebar (~88px) both
+    /// render sharp from a single <see cref="MosaicSizePx"/> source PNG.
+    /// </summary>
+    public async Task<string?> GetMosaicFilePathAsync(string playlistId, string? mosaicHint, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(playlistId))
+            return null;
+
+        try
+        {
+            // Piggyback on the existing build pipeline. BuildMosaicAsync writes
+            // the PNG to disk before returning the IconSource, so by the time
+            // the IconSource materialises the file is already there. We then
+            // reconstruct the path from the same hash the builder used.
+            var icon = await BuildMosaicAsync(playlistId, mosaicHint, ct).ConfigureAwait(false);
+            if (icon is null)
+                return null;
+
+            var tileUrls = await ResolveTileUrlsAsync(playlistId, mosaicHint, ct).ConfigureAwait(false);
+            if (tileUrls.Count == 0)
+                return null;
+
+            var folder = await GetCacheFolderAsync().ConfigureAwait(false);
+            if (folder is null)
+                return null;
+
+            var fileName = BuildMosaicFileName(playlistId, ComputeHash(tileUrls));
+            var path = Path.Combine(folder.Path, fileName);
+            return File.Exists(path) ? path : null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetMosaicFilePathAsync failed for {PlaylistId}", playlistId);
+            return null;
+        }
+    }
+
+    // Bump this whenever the on-disk asset format changes in a way that
+    // requires a fresh compose:
+    //   v1 (removed): 88 px sidebar-only.
+    //   v2 (Step 7): 600 px single-source, shared between sidebar + page.
+    //   v3 (Step 8): 400 px — same topology, smaller. Existing v2 PNGs miss
+    //   on the next visit and get recomposed at the new size. v2 files are
+    //   left on disk (stale-sweep removed in Step 7b); they'll get swept by
+    //   the optional startup pass or overwritten for playlists that refresh.
+    private const string MosaicCacheVersion = "v3";
+    private static string BuildMosaicFileName(string playlistId, string hash) =>
+        $"{SanitizeId(playlistId)}_{hash}_{MosaicCacheVersion}.png";
+
+    /// <summary>
+    /// Invalidates a playlist's cached mosaic so the next <see cref="BuildMosaicAsync"/>
+    /// call recomposes from scratch. Call when the playlist's underlying tracks
+    /// change (e.g. after <see cref="PlaylistDiffApplier"/> applies a Mercury push)
+    /// — without this, sidebar rows keep displaying the stale composite forever
+    /// because the per-model <c>IconSource</c> is captured permanently after first
+    /// load. Removes the in-flight cache entry AND best-effort sweeps stale PNGs
+    /// from the disk cache so the cache folder doesn't grow over time.
+    /// </summary>
+    public void Invalidate(string playlistId)
+    {
+        if (string.IsNullOrEmpty(playlistId)) return;
+
+        _inFlight.TryRemove(playlistId, out _);
+
+        if (_cacheFolder is null) return;
+        try
+        {
+            var prefix = SanitizeId(playlistId) + "_";
+            var pattern = prefix + "*_" + MosaicCacheVersion + ".png";
+            foreach (var path in System.IO.Directory.EnumerateFiles(_cacheFolder.Path, pattern))
+            {
+                try { System.IO.File.Delete(path); } catch { /* best-effort sweep */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Mosaic disk sweep failed for {PlaylistId}", playlistId);
+        }
     }
 
     private async Task<IconSource?> BuildAndForgetAsync(string playlistId, string? mosaicHint, CancellationToken ct)
@@ -87,6 +220,30 @@ public sealed class PlaylistMosaicService
         {
             // Cancelled tasks are evicted so a future realization can retry from scratch.
             throw;
+        }
+        catch (Wavee.Core.Http.SpClientException ex)
+        {
+            // Playlist returned a real error (404 for pre-release / region-locked
+            // / deleted URIs, 401 for expired auth). Log + swallow so the caller
+            // in SidebarItem sees "no mosaic" instead of a retry-worthy exception
+            // — retry won't help and the outer 3-attempt retry loop would just
+            // re-hit the negative cache. Returning null also ensures the Task
+            // completes normally, so no UnobservedTaskException can fire even if
+            // some caller forgets to await.
+            _logger?.LogDebug(ex, "Mosaic build skipped for {PlaylistId}: {Reason}", playlistId, ex.Reason);
+            // Latch known-NotFound so future BuildMosaicAsync calls short-circuit.
+            // 4xx other than NotFound (e.g. 401 from expired auth) might recover
+            // mid-session, so we only persist-cache the structural NotFound case.
+            if (ex.Reason == Wavee.Core.Http.SpClientFailureReason.NotFound)
+                _deadPlaylistIds.TryAdd(playlistId, 0);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // Any other failure (network, GPU, etc.) — same story. Don't leak as
+            // unobserved and don't spam retries.
+            _logger?.LogDebug(ex, "Mosaic build failed for {PlaylistId}", playlistId);
+            return null;
         }
         finally
         {
@@ -101,7 +258,7 @@ public sealed class PlaylistMosaicService
             return null;
 
         var hash = ComputeHash(tileUrls);
-        var fileName = $"{SanitizeId(playlistId)}_{hash}.png";
+        var fileName = BuildMosaicFileName(playlistId, hash);
 
         await _buildThrottle.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -183,6 +340,8 @@ public sealed class PlaylistMosaicService
     private async Task<byte[]?> ComposeMosaicPngAsync(IReadOnlyList<string> tileUrls, CancellationToken ct)
     {
         var device = CanvasDevice.GetSharedDevice();
+        const int sizePx = MosaicSizePx;
+        const int tileSizePx = sizePx / 2;
 
         // Load tiles in parallel. Skip any that fail rather than aborting the whole mosaic.
         var loadTasks = tileUrls
@@ -200,19 +359,34 @@ public sealed class PlaylistMosaicService
 
         try
         {
-            using var renderTarget = new CanvasRenderTarget(device, MosaicSizePx, MosaicSizePx, 96f);
+            using var renderTarget = new CanvasRenderTarget(device, sizePx, sizePx, 96f);
             using (var ds = renderTarget.CreateDrawingSession())
             {
                 ds.Clear(Microsoft.UI.Colors.Transparent);
 
-                // Row-major quadrants. If we have fewer than 4 tiles, cycle through what we have
-                // so every quadrant is filled (matches Spotify's "fill" behaviour for sparse playlists).
-                for (int i = 0; i < 4; i++)
+                if (available.Length >= 4)
                 {
-                    var tile = available[i % available.Length];
-                    var destX = (i % 2) * TileSizePx;
-                    var destY = (i / 2) * TileSizePx;
-                    var destRect = new Windows.Foundation.Rect(destX, destY, TileSizePx, TileSizePx);
+                    // Full 2×2 mosaic — 4 unique covers in row-major order.
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var tile = available[i];
+                        var destX = (i % 2) * tileSizePx;
+                        var destY = (i / 2) * tileSizePx;
+                        var destRect = new Windows.Foundation.Rect(destX, destY, tileSizePx, tileSizePx);
+                        var srcRect = CenterSquareSourceRect(tile);
+                        ds.DrawImage(tile, destRect, srcRect);
+                    }
+                }
+                else
+                {
+                    // Fewer than 4 unique albums — draw the first cover at full
+                    // size instead of tiling duplicates (previously we cycled
+                    // `available[i % available.Length]` which rendered the same
+                    // cover in multiple quadrants). Matches the playlist-page
+                    // hero fallback ("1 playlist = 1 cover art" when there
+                    // isn't enough variety to justify a mosaic).
+                    var tile = available[0];
+                    var destRect = new Windows.Foundation.Rect(0, 0, sizePx, sizePx);
                     var srcRect = CenterSquareSourceRect(tile);
                     ds.DrawImage(tile, destRect, srcRect);
                 }
@@ -303,7 +477,11 @@ public sealed class PlaylistMosaicService
         {
             try
             {
-                var image = new BitmapImage { DecodePixelWidth = MosaicSizePx };
+                // Sidebar decodes the shared large PNG down to 88px. The image
+                // on disk is larger (MosaicSizePx); WinUI's decoder downsamples
+                // on demand so both the sidebar and the playlist-page hero
+                // reuse the same cached asset.
+                var image = new BitmapImage { DecodePixelWidth = SidebarDecodePixelWidth };
                 image.UriSource = new Uri(absolutePath);
                 tcs.TrySetResult(new ImageIconSource { ImageSource = image });
             }
@@ -329,7 +507,7 @@ public sealed class PlaylistMosaicService
             try
             {
                 stream.Seek(0);
-                var image = new BitmapImage { DecodePixelWidth = MosaicSizePx };
+                var image = new BitmapImage { DecodePixelWidth = SidebarDecodePixelWidth };
                 await image.SetSourceAsync(stream);
                 tcs.TrySetResult(new ImageIconSource { ImageSource = image });
             }
@@ -374,18 +552,18 @@ public sealed class PlaylistMosaicService
                 await fs.WriteAsync(pngBytes).ConfigureAwait(false);
             }
 
-            // Drop any prior mosaic files for this playlist whose hash no longer matches —
-            // these are stale (the playlist's first 4 albums changed since they were written).
-            var prefix = playlistIdSafe + "_";
-            foreach (var existing in Directory.EnumerateFiles(folderPath, prefix + "*"))
-            {
-                var existingName = Path.GetFileName(existing);
-                if (!string.Equals(existingName, fileName, StringComparison.Ordinal))
-                {
-                    try { File.Delete(existing); }
-                    catch { /* best-effort */ }
-                }
-            }
+            // Intentionally NO stale-sweep. Previously this deleted all files
+            // matching {playlistIdSafe}_* that weren't the exact new filename —
+            // meant to clean up "old hash" PNGs when the playlist's first 4
+            // albums changed. Problem: the UI's BitmapImage may still be
+            // decoding from the old path when the delete lands, causing the
+            // sidebar to flash back to the placeholder. Playlist covers are a
+            // high-hit cache (the user sees them every session), so pinning
+            // them on disk is worth a bit of extra storage — few hundred PNGs
+            // × <100 KB = under 30 MB total even for a large library. If disk
+            // ever becomes an issue, a targeted sweep at app startup that
+            // removes files whose playlist id is no longer in the rootlist is
+            // safer than a write-time sweep that races the image pipeline.
         }
         catch (Exception ex)
         {

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package spotify.player.proto;
+
+option csharp_namespace = "Wavee.Protocol.Playback";
+option optimize_for = CODE_SIZE;
+
+// Body for POST /context-resolve/v1/autoplay.
+// Extracted from librespot (mirrors Spotify 1.2.52.442's player.proto).
+// Server returns a Context message with autoplay/radio tracks based on
+// context_uri + the last-played track URIs for personalization.
+message AutoplayContextRequest {
+    string context_uri = 1;
+    repeated string recent_track_uri = 2;
+    bool is_video = 3;
+}

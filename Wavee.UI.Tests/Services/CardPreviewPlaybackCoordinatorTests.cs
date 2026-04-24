@@ -421,7 +421,7 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> PlayTrackInContextAsync(string trackUri, string contextUri, PlayContextOptions? options = null, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
-        public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex = 0, CancellationToken ct = default)
+        public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex = 0, PlaybackContextInfo? context = null, IReadOnlyList<QueueItem>? richTracks = null, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
         public Task<PlaybackResult> ResumeAsync(CancellationToken ct = default)

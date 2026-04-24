@@ -93,6 +93,26 @@ public partial class App : Application
         _host = AppLifecycleHelper.ConfigureHost();
         Ioc.Default.ConfigureServices(_host.Services);
 
+        // Force-resolve MetadataDatabase up-front so any schema migration
+        // runs *before* the main UI comes up. On failure we surface a
+        // blocking error window instead of silently dropping caches — users
+        // get to decide whether to rebuild (losing cached library data) or
+        // quit and try again later.
+        try
+        {
+            // Registered as IMetadataDatabase singleton; resolving it triggers
+            // the MetadataDatabase ctor (and the migration runner). The ctor
+            // throws MetadataMigrationException on schema failure, which DI
+            // wraps in a trivial initializer exception — unwrap to match.
+            _ = Ioc.Default.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>();
+        }
+        catch (Exception ex) when (UnwrapMigrationException(ex) is MetadataMigrationException migrationEx)
+        {
+            LogUnhandledException("MetadataMigration", migrationEx);
+            ShowMigrationErrorWindow(migrationEx);
+            return;
+        }
+
         // Get AppModel instance
         AppModel = Ioc.Default.GetRequiredService<AppModel>();
 
@@ -139,6 +159,76 @@ public partial class App : Application
                 // Best-effort; if the GC hint fails for any reason we just keep running.
             }
         });
+    }
+
+    /// <summary>
+    /// DI factory exceptions wrap the original throw in
+    /// <c>InvalidOperationException</c> (or similar). Walk the inner chain
+    /// looking for our typed marker so we can present the right UI.
+    /// </summary>
+    private static MetadataMigrationException? UnwrapMigrationException(Exception? ex)
+    {
+        while (ex is not null)
+        {
+            if (ex is MetadataMigrationException mig) return mig;
+            ex = ex.InnerException;
+        }
+        return null;
+    }
+
+    private void ShowMigrationErrorWindow(MetadataMigrationException migrationEx)
+    {
+        var window = new Views.MigrationErrorWindow(
+            migrationEx,
+            onRebuild: () => OnUserChoseRebuild(migrationEx),
+            onQuit: OnUserChoseQuit);
+        window.Activate();
+    }
+
+    private void OnUserChoseRebuild(MetadataMigrationException migrationEx)
+    {
+        // Downgrade failures can't be fixed by rebuilding — the DB on disk
+        // was made by a newer Wavee, rebuilding would still just recreate a
+        // v{Actual} DB next time that newer Wavee opens it. Treat Rebuild as
+        // "Quit" in that specific case (button copy already set to Quit by
+        // the window when reason is Downgrade).
+        if (migrationEx.Reason == MetadataMigrationFailureReason.Downgrade)
+        {
+            OnUserChoseQuit();
+            return;
+        }
+
+        try
+        {
+            // Find the DB path through the already-constructed options — the
+            // host was built successfully; only the DB ctor threw. Safe to
+            // resolve WaveeCacheOptions without re-triggering MetadataDatabase.
+            var opts = Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
+            var dbPath = opts.DatabasePath;
+
+            // Tear down the host so the DB singleton's (failed) connection
+            // strings and any open handles are released before we delete.
+            _host?.Dispose();
+            _host = null;
+
+            MetadataDatabase.DeleteDatabaseFile(dbPath);
+
+            // Re-enter launch. The next DB resolve sees a missing file and
+            // creates a fresh v{CurrentSchemaVersion} schema.
+            OnLaunched(null!);
+        }
+        catch (Exception ex)
+        {
+            LogUnhandledException("MetadataRebuild", ex);
+            OnUserChoseQuit();
+        }
+    }
+
+    private void OnUserChoseQuit()
+    {
+        try { _host?.Dispose(); } catch { /* best-effort */ }
+        _host = null;
+        Exit();
     }
 
     internal static Task ShutdownHostAsync()

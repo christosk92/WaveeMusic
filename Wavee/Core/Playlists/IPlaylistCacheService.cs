@@ -95,6 +95,17 @@ public sealed record CachedPlaylistItem
     public string? AddedBy { get; init; }
     public DateTimeOffset? AddedAt { get; init; }
     public byte[]? ItemId { get; init; }
+
+    /// <summary>
+    /// Format attributes returned by the playlist service for this item —
+    /// e.g. recommender signals like <c>core:list_uid</c>, <c>item-score</c>,
+    /// <c>decision_id</c>, <c>interaction_id</c>. Empty for user-authored
+    /// playlists. Forwarded verbatim into <c>ProvidedTrack.metadata</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> FormatAttributes { get; init; } = _emptyAttributes;
+
+    private static readonly IReadOnlyDictionary<string, string> _emptyAttributes
+        = new Dictionary<string, string>(0);
 }
 
 public sealed record CachedPlaylist : ICacheEntry
@@ -121,6 +132,19 @@ public sealed record CachedPlaylist : ICacheEntry
     public CachedPlaylistBasePermission BasePermission { get; init; } = CachedPlaylistBasePermission.Viewer;
     public CachedPlaylistCapabilities Capabilities { get; init; } = CachedPlaylistCapabilities.ViewOnly;
     public IReadOnlyList<CachedPlaylistItem> Items { get; init; } = Array.Empty<CachedPlaylistItem>();
+
+    /// <summary>
+    /// Playlist-level format attributes — editorial-playlist chrome and
+    /// recommender context (e.g. <c>format</c>, <c>request_id</c>, <c>tag</c>,
+    /// <c>source-loader</c>, <c>image_url</c>, session display names).
+    /// Forwarded into <c>PlayerState.context_metadata</c> to reproduce the
+    /// rich "Now Playing" context card on remote clients.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> FormatAttributes { get; init; } = _emptyAttributes;
+
+    private static readonly IReadOnlyDictionary<string, string> _emptyAttributes
+        = new Dictionary<string, string>(0);
+
     public IReadOnlyList<string> OrderedTrackUris => Items.Select(static item => item.Uri).ToArray();
     public DateTimeOffset FetchedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset CachedAt => FetchedAt;

@@ -89,6 +89,14 @@ public class SidebarItemModel : ISidebarItemModel
     }
 
     /// <summary>
+    /// Original cover image URL (or <c>spotify:mosaic:...</c>) the item was
+    /// created with. Used by the shell to decide whether a Mercury-driven
+    /// content change should trigger a sidebar mosaic rebuild — playlists
+    /// with a real uploaded cover (HTTPS URL) skip the rebuild.
+    /// </summary>
+    public string? ImageUrl { get; set; }
+
+    /// <summary>
     /// Whether to show an empty placeholder when this group has no children.
     /// </summary>
     public bool ShowEmptyPlaceholder

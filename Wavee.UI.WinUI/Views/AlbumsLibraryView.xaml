@@ -26,8 +26,8 @@
             IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
             EmptyStateText="Select an album to see tracks"
             EmptyStateGlyph="&#xE93C;"
-            MinItemWidth="120"
-            MinItemHeight="170"
+            MinItemWidth="180"
+            MinItemHeight="240"
             ViewMode="{x:Bind ViewModel.ViewMode, Mode=OneWay}"
             Visibility="{x:Bind ViewModel.IsWideLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
@@ -333,8 +333,8 @@
                             Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                             <ItemsView.Layout>
                                 <UniformGridLayout
-                                    MinItemWidth="120"
-                                    MinItemHeight="170"
+                                    MinItemWidth="180"
+                                    MinItemHeight="240"
                                     MinRowSpacing="12"
                                     MinColumnSpacing="12"
                                     ItemsStretch="Uniform"/>
@@ -364,8 +364,8 @@
                             Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ItemsRepeater.Layout>
                                 <UniformGridLayout
-                                    MinItemWidth="120"
-                                    MinItemHeight="170"
+                                    MinItemWidth="180"
+                                    MinItemHeight="240"
                                     MinRowSpacing="12"
                                     MinColumnSpacing="12"
                                     ItemsStretch="Uniform"/>

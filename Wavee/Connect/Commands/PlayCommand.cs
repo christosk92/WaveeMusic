@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using Wavee.Connect.Protocol;
 
@@ -59,6 +60,34 @@ public sealed record PlayCommand : ConnectCommand
     /// null if unknown (server won't attempt to resolve it for us).
     /// </summary>
     public string? ContextDescription { get; init; }
+
+    /// <summary>
+    /// Cover-art URL for the context (playlist/album thumbnail).
+    /// Flows into PlayerState.context_metadata["image_url"].
+    /// </summary>
+    public string? ContextImageUrl { get; init; }
+
+    /// <summary>
+    /// Short string describing the kind of context ("playlist", "album",
+    /// "artist", "collection"). Drives PlayerState.play_origin.feature_identifier
+    /// so remotes label the source correctly.
+    /// </summary>
+    public string? ContextFeature { get; init; }
+
+    /// <summary>
+    /// Total track count for the context. Emitted as
+    /// context_metadata.playlist_number_of_tracks for playlists.
+    /// </summary>
+    public int? ContextTrackCount { get; init; }
+
+    /// <summary>
+    /// Context-level format attributes returned by the playlist service
+    /// (<c>format</c>, <c>request_id</c>, <c>tag</c>, <c>source-loader</c>,
+    /// <c>image_url</c>, session display names, etc.). Merged verbatim into
+    /// <c>PlayerState.context_metadata</c> so remote clients see the same
+    /// rich context as a native Spotify session.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ContextFormatAttributes { get; init; }
 
     internal static PlayCommand FromJson(DealerRequest request, JsonElement json)
     {
@@ -179,9 +208,16 @@ public sealed record PlayCommand : ConnectCommand
 }
 
 /// <summary>
-/// A track from context.pages with URI and UID.
+/// A track from context.pages with URI, UID, and optional per-track metadata.
+/// <see cref="Metadata"/> forwards verbatim into <c>ProvidedTrack.metadata</c>
+/// when this track is published in <c>PlayerState</c> — used to reproduce
+/// playlist-API recommender fields (item-score, decision_id, PROBABLY_IN_*,
+/// core:list_uid, …) on remote Spotify clients.
 /// </summary>
-public sealed record PageTrack(string Uri, string Uid);
+public sealed record PageTrack(string Uri, string Uid)
+{
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+}
 
 /// <summary>
 /// Information about where playback was initiated from.

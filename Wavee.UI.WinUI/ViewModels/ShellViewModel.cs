@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -210,6 +211,22 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Subscribe to all library data changes (sync complete, Dealer deltas, etc.)
         _libraryDataService.DataChanged += OnLibraryDataChanged;
 
+        // Per-playlist change → sidebar mosaic refresh. PlaylistDiffApplier
+        // updates Items in the cache after a Mercury push, but the sidebar's
+        // cached IconSource keeps pointing at the old composite forever
+        // (LazyIconSourceLoader is cleared on first load). We listen for
+        // Updated events here, drop the in-flight + on-disk mosaic via
+        // PlaylistMosaicService.Invalidate, then kick off a fresh build and
+        // swap model.IconSource — the SidebarItem control listens for that
+        // PropertyChanged and re-renders the icon.
+        if (_mosaicService is not null)
+        {
+            _playlistMosaicChangesSubscription = _playlistCache.Changes
+                .Where(static evt => evt.Kind == PlaylistChangeKind.Updated
+                                  && !string.IsNullOrEmpty(evt.Uri))
+                .Subscribe(evt => OnPlaylistContentsChanged(evt.Uri));
+        }
+
         // Capture UI thread dispatcher for background → UI marshalling
         // Dispatcher captured via DI
         WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncStartedMessage>(this, (_, _) =>
@@ -322,6 +339,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// previous "rebuild on every event" path was the main culprit for app-wide slowness.
     /// </summary>
     private CancellationTokenSource? _playlistRefreshCts;
+
+    // Subscription that re-builds a sidebar mosaic when its playlist's items
+    // change (Mercury push → PlaylistDiffApplier mutates Items → Updated event
+    // fires → we rebuild the composite). Without this, the cached mosaic
+    // keeps showing the old top-4 album covers until app restart.
+    private IDisposable? _playlistMosaicChangesSubscription;
     private const int PlaylistRefreshDebounceMs = 250;
 
     private void OnLibraryDataChanged(object? sender, EventArgs e)
@@ -474,7 +497,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (uriOrId is not string s || string.IsNullOrWhiteSpace(s))
         {
-            SelectedSidebarItem = null;
+            // Only assign if not already null — otherwise the setter still fires
+            // PropertyChanged and cascades to every realized SidebarItem.
+            if (SelectedSidebarItem is not null)
+                SelectedSidebarItem = null;
             return;
         }
 
@@ -491,6 +517,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             if (match is null && !trimmed.StartsWith("spotify:playlist:", StringComparison.Ordinal))
                 match = FindSidebarItemByTag($"spotify:playlist:{id}");
         }
+
+        // De-dup: if the resolved item is already selected, skip the assignment.
+        // The SelectedSidebarItem setter fires PropertyChanged unconditionally, and
+        // every realized SidebarItem reacts via the SidebarView.SelectedItemProperty
+        // PropertyChangedCallback (running VisualStateManager.GoToState + folder
+        // glyph swaps synchronously). Without this guard, every nav — including
+        // tab-switches and re-clicks of the currently-selected playlist — produces
+        // a visible folder-flash cascade across the entire sidebar tree.
+        if (ReferenceEquals(SelectedSidebarItem, match)) return;
 
         SelectedSidebarItem = match;
     }
@@ -729,6 +764,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Text = playlist.Name,
             IconSource = CreatePlaylistIconSource(playlist),
             Tag = playlist.Id,
+            // Captured so OnPlaylistContentsChanged can gate mosaic rebuilds —
+            // only mosaic-backed (null or spotify:mosaic:...) playlists need
+            // re-composition on a content change.
+            ImageUrl = playlist.ImageUrl,
             BadgeCount = playlist.TrackCount,
             DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
         };
@@ -749,6 +788,54 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         return item;
     }
 
+    /// <summary>
+    /// Reacts to a per-playlist <see cref="PlaylistChangeKind.Updated"/> event by
+    /// refreshing the sidebar row's mosaic. Cheap no-op for playlists without a
+    /// mosaic-backed icon (real uploaded covers don't go through
+    /// <see cref="PlaylistMosaicService"/>). Idempotent across rapid pushes —
+    /// the in-flight cache in the mosaic service dedups concurrent rebuilds.
+    /// </summary>
+    private void OnPlaylistContentsChanged(string playlistUri)
+    {
+        if (_mosaicService is null) return;
+        if (string.IsNullOrEmpty(playlistUri)) return;
+
+        var item = FindSidebarItemByTag(playlistUri);
+        if (item is null) return;
+
+        // Quick gate: only mosaic-backed playlists need rebuilding. Real uploaded
+        // covers (HTTPS image URL) are static — skip.
+        if (!string.IsNullOrEmpty(item.ImageUrl)
+            && !SpotifyImageHelper.IsMosaicUri(item.ImageUrl))
+        {
+            return;
+        }
+
+        _mosaicService.Invalidate(playlistUri);
+
+        var capturedUri = playlistUri;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var icon = await _mosaicService.BuildMosaicAsync(capturedUri, mosaicHint: null, CancellationToken.None);
+                if (icon is null) return;
+                _dispatcher?.TryEnqueue(() =>
+                {
+                    // Re-resolve in case the sidebar item was removed/replaced
+                    // between the change event and the build completing.
+                    var current = FindSidebarItemByTag(capturedUri);
+                    if (current is not null)
+                        current.IconSource = icon;
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Mosaic refresh failed for {Uri}", capturedUri);
+            }
+        });
+    }
+
     private static IconSource CreatePlaylistIconSource(PlaylistSummaryDto playlist)
     {
         // spotify:mosaic: parses as a valid Uri (its scheme is "spotify") but BitmapImage can't
@@ -767,7 +854,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             };
         }
 
-        return new FontIconSource { Glyph = "\uE8FD" };
+        // ImageIconSource with null ImageSource (not FontIconSource) so
+        // SidebarItem.CreateSidebarIcon routes through CreateArtworkIcon
+        // and renders the same 32x32 rounded tile shape it uses for real
+        // artwork. A bare FontIconSource renders at 16px, so the icon
+        // rectangle would jump 16->32 when the lazy mosaic loader
+        // resolves -- fade animation can't mask a size change.
+        return new ImageIconSource { ImageSource = null };
     }
 
     private void ApplyPersistedSidebarState(SidebarItemModel item)
@@ -1313,13 +1406,26 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _searchDebouncer.Dispose();
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _playlistMosaicChangesSubscription?.Dispose();
+        _playlistMosaicChangesSubscription = null;
 
         // Cancel any in-flight debounced playlist refresh so we don't touch disposed state.
         var pending = Interlocked.Exchange(ref _playlistRefreshCts, null);
         pending?.Cancel();
         pending?.Dispose();
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
+        // Match the 5 Register<T> calls in the constructor — the 4 beyond
+        // ToggleRightPanelMessage were omitted, leaving each handler closure
+        // pinning the ShellViewModel (captured `this`) against GC. Although
+        // ShellViewModel is effectively a singleton per session so the leak
+        // is bounded, the closure chain also roots ILibraryDataService +
+        // DispatcherQueue references, which matters if the VM is ever
+        // reconstructed (e.g. on sign-out / sign-in cycles).
         WeakReferenceMessenger.Default.Unregister<ToggleRightPanelMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<Data.Messages.LibrarySyncStartedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<Data.Messages.LibrarySyncFailedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<Data.Messages.LibrarySyncCompletedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         TabInstances.CollectionChanged -= OnTabInstancesCollectionChanged;
 
         foreach (var tab in TabInstances)

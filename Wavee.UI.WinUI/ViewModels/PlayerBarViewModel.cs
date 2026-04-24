@@ -131,6 +131,15 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isBuffering;
 
+    /// <summary>
+    /// Mirrors <see cref="IPlaybackStateService.IsAtEndOfContext"/>. Drives the
+    /// inline "You've reached the end" hint in the PlayerBar — shows when
+    /// playback is stopped after a context exhausted its auto-advance /
+    /// autoplay tiers.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAtEndOfContext;
+
     [ObservableProperty]
     private bool _isShuffle;
 
@@ -243,6 +252,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _duration = _playbackStateService.Duration;
         _volume = _playbackStateService.Volume;
         _isVolumeRestricted = _playbackStateService.IsVolumeRestricted;
+        _isAtEndOfContext = _playbackStateService.IsAtEndOfContext;
     }
 
     private void OnPlaybackServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -258,6 +268,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var newBuf = _playbackStateService.IsBuffering;
                 _logger?.LogDebug("[PlayerBar] IsBuffering → {Value}", newBuf);
                 IsBuffering = newBuf;
+                break;
+            case nameof(IPlaybackStateService.IsAtEndOfContext):
+                IsAtEndOfContext = _playbackStateService.IsAtEndOfContext;
                 break;
             case nameof(IPlaybackStateService.CurrentTrackId):
                 var newTrackId = _playbackStateService.CurrentTrackId;

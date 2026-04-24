@@ -9,8 +9,10 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.PlayerBar;
@@ -28,6 +30,12 @@ public sealed partial class PlayerBar : UserControl
     private string? _currentLayoutState;
 
     private readonly ILogger<PlayerBar>? _logger;
+
+    // Hand cursor applied to both album-art hosts (wide + narrow) so the image
+    // advertises that it's clickable. Set once on Loaded via reflection-based
+    // ChangeCursor — ProtectedCursor isn't a public DP in WinUI 3.
+    private static readonly Microsoft.UI.Input.InputCursor HandCursor =
+        Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
 
     public PlayerBar()
     {
@@ -62,6 +70,9 @@ public sealed partial class PlayerBar : UserControl
     private void OnPlayerBarLoaded(object sender, RoutedEventArgs e)
     {
         UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : ActualWidth);
+
+        AlbumArtHost?.ChangeCursor(HandCursor);
+        NarrowAlbumArtHost?.ChangeCursor(HandCursor);
 
         // The Slider's inner Thumb captures pointer events and marks them handled,
         // so the Slider's own PointerPressed/Released routed events never bubble up
@@ -228,11 +239,20 @@ public sealed partial class PlayerBar : UserControl
 
     private void AlbumArt_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        ViewModel.ToggleAlbumArtExpandedCommand.Execute(null);
+        // Tapping the image used to toggle the big-art expander; now it opens the
+        // active playback context (Playlist / Album / Artist / Liked Songs). The
+        // expander is still reachable via ShellPage's dedicated trigger.
+        NavigateToActiveContext();
+        e.Handled = true;
     }
 
     private void TrackTitle_Click(object sender, RoutedEventArgs e) => NavigateToAlbum();
     private void TrackTitle_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => NavigateToAlbum();
+
+    private void EndOfContextDismiss_Click(object sender, RoutedEventArgs e)
+    {
+        _playbackStateService?.DismissEndOfContext();
+    }
 
     private void NavigateToAlbum()
     {
@@ -245,6 +265,46 @@ public sealed partial class PlayerBar : UserControl
             ImageUrl = ViewModel.AlbumArt
         };
         NavigationHelpers.OpenAlbum(param, param.Title);
+    }
+
+    private void NavigateToActiveContext()
+    {
+        var ctx = _playbackStateService?.CurrentContext;
+        if (ctx is null || string.IsNullOrEmpty(ctx.ContextUri))
+        {
+            // No known context (e.g. queue-only playback). Fall back to the track's
+            // album so the click does *something* reasonable.
+            NavigateToAlbum();
+            return;
+        }
+
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = ctx.ContextUri,
+            Title = ctx.Name ?? ViewModel.TrackTitle ?? string.Empty,
+            ImageUrl = ctx.ImageUrl ?? ViewModel.AlbumArt,
+        };
+
+        switch (ctx.Type)
+        {
+            case PlaybackContextType.Playlist:
+                NavigationHelpers.OpenPlaylist(param, param.Title);
+                break;
+            case PlaybackContextType.Album:
+                NavigationHelpers.OpenAlbum(param, param.Title);
+                break;
+            case PlaybackContextType.Artist:
+                NavigationHelpers.OpenArtist(param, param.Title);
+                break;
+            case PlaybackContextType.LikedSongs:
+                NavigationHelpers.OpenLikedSongs();
+                break;
+            default:
+                // Queue / Search / Unknown — no canonical destination; fall back
+                // to the album of the currently-playing track.
+                NavigateToAlbum();
+                break;
+        }
     }
 
     private void OverflowFlyout_Opening(object sender, object e)

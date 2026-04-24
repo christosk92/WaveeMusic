@@ -77,6 +77,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     public ArtistPage()
     {
+        _topTrackTappedHandler = TopTrackItem_Tapped;
         ViewModel = Ioc.Default.GetRequiredService<ArtistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
@@ -665,12 +666,128 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ViewModel.ColumnCount = columns;
     }
 
+    private int? _topTrackSelectionAnchor;
+    private readonly TappedEventHandler _topTrackTappedHandler;
+
     private void TopTracksRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
         if (args.Element is Controls.Track.TrackItem trackItem)
         {
             trackItem.PlayCommand = ViewModel.PlayTrackCommand;
+
+            var lazy = ViewModel?.PagedTopTracks.ElementAtOrDefault(args.Index);
+            trackItem.Tag = lazy;
+
+            // handledEventsToo=true: TrackItem may consume Tapped for single-tap play.
+            // Selection still needs to run on the same gesture.
+            trackItem.RemoveHandler(UIElement.TappedEvent, _topTrackTappedHandler);
+            trackItem.AddHandler(UIElement.TappedEvent, _topTrackTappedHandler, true);
+
+            trackItem.DataContextChanged -= TopTrackItem_DataContextChanged;
+            trackItem.DataContextChanged += TopTrackItem_DataContextChanged;
+
+            if (lazy is ViewModels.LazyTrackItem preparedLazy && ViewModel != null)
+            {
+                preparedLazy.IsSelected = ViewModel.IsTopTrackSelected(preparedLazy);
+                trackItem.IsSelected = preparedLazy.IsSelected;
+            }
         }
+    }
+
+    private void TopTrackItem_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        if (sender is Controls.Track.TrackItem ti &&
+            args.NewValue is ViewModels.LazyTrackItem lazy &&
+            ViewModel != null)
+        {
+            lazy.IsSelected = ViewModel.IsTopTrackSelected(lazy);
+            ti.IsSelected = lazy.IsSelected;
+        }
+    }
+
+    private void TopTrackItem_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not Controls.Track.TrackItem ti ||
+            ti.Tag is not ViewModels.LazyTrackItem lazy ||
+            ViewModel == null)
+            return;
+
+        var coreWindow = Windows.UI.Core.CoreWindow.GetForCurrentThread();
+        bool ctrl = (coreWindow.GetKeyState(Windows.System.VirtualKey.Control)
+                     & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+        bool shift = (coreWindow.GetKeyState(Windows.System.VirtualKey.Shift)
+                      & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+        var paged = ViewModel.PagedTopTracks.ToList();
+        int index = paged.IndexOf(lazy);
+        if (index < 0) return;
+
+        if (shift && _topTrackSelectionAnchor.HasValue)
+        {
+            int start = Math.Min(_topTrackSelectionAnchor.Value, index);
+            int end = Math.Max(_topTrackSelectionAnchor.Value, index);
+            ViewModel.SelectedTopTracks.Clear();
+            for (int i = start; i <= end; i++)
+                ViewModel.SelectedTopTracks.Add(paged[i]);
+        }
+        else if (ctrl)
+        {
+            if (ViewModel.SelectedTopTracks.Contains(lazy))
+                ViewModel.SelectedTopTracks.Remove(lazy);
+            else
+                ViewModel.SelectedTopTracks.Add(lazy);
+            _topTrackSelectionAnchor = index;
+        }
+        else
+        {
+            // Plain click toggles: re-clicking an already-selected item deselects it.
+            if (ViewModel.SelectedTopTracks.Contains(lazy))
+            {
+                ViewModel.SelectedTopTracks.Remove(lazy);
+                if (ViewModel.SelectedTopTracks.Count == 0)
+                    _topTrackSelectionAnchor = null;
+            }
+            else
+            {
+                ViewModel.SelectedTopTracks.Clear();
+                ViewModel.SelectedTopTracks.Add(lazy);
+                _topTrackSelectionAnchor = index;
+            }
+        }
+
+        RefreshTopTrackSelectionVisuals();
+    }
+
+    private void RefreshTopTrackSelectionVisuals()
+    {
+        if (ViewModel == null) return;
+        var paged = ViewModel.PagedTopTracks.ToList();
+        for (int i = 0; i < paged.Count; i++)
+        {
+            paged[i].IsSelected = ViewModel.IsTopTrackSelected(paged[i]);
+            if (TopTracksRepeater.TryGetElement(i) is Controls.Track.TrackItem ti)
+                ti.IsSelected = paged[i].IsSelected;
+        }
+    }
+
+    private void TopTracksSection_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (ViewModel == null) return;
+        if (IsWithinTrackItem(e.OriginalSource as DependencyObject)) return;
+
+        ViewModel.ClearTopTracksSelection();
+        _topTrackSelectionAnchor = null;
+        RefreshTopTrackSelectionVisuals();
+    }
+
+    private static bool IsWithinTrackItem(DependencyObject? element)
+    {
+        while (element != null)
+        {
+            if (element is Controls.Track.TrackItem) return true;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return false;
     }
 
     public void RefreshWithParameter(object? parameter)
@@ -686,6 +803,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // and any inflight Pathfinder query gets cancelled cleanly. Prevents
         // TaskCanceledException from leaking into the log after fast navs.
         ViewModel.Deactivate();
+
+        // Release the hero's LoadedImageSurface (~2–4 MB depending on page
+        // width). NavigationCacheMode="Enabled" keeps the page instance in
+        // the Frame cache, so HeroHeader.OnUnloaded never fires on
+        // navigate-away. RestoreSurface on OnNavigatedTo rehydrates from
+        // the VM's unchanged ImageUrl.
+        HeroGrid?.ReleaseSurface();
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -693,6 +817,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         base.OnNavigatedTo(e);
         _isNavigatingAway = false;
         ResetShyHeaderState();
+
+        // Rehydrate the hero surface if it was released on prior navigate-away.
+        // No-op on first visit (LoadImage's URL-equality guard short-circuits).
+        HeroGrid?.RestoreSurface();
 
         // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
         // ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);

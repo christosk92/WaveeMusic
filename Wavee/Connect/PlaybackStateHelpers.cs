@@ -382,7 +382,20 @@ public static class PlaybackStateHelpers
             IsSystemInitiated = localState.IsSystemInitiated,
             ContextDescription = !string.IsNullOrEmpty(localState.ContextDescription)
                 ? localState.ContextDescription
-                : prev.ContextDescription
+                : prev.ContextDescription,
+            ContextImageUrl = !string.IsNullOrEmpty(localState.ContextImageUrl)
+                ? localState.ContextImageUrl
+                : prev.ContextImageUrl,
+            ContextFeature = !string.IsNullOrEmpty(localState.ContextFeature)
+                ? localState.ContextFeature
+                : prev.ContextFeature,
+            ContextTrackCount = localState.ContextTrackCount ?? prev.ContextTrackCount,
+            ContextFormatAttributes = localState.ContextFormatAttributes ?? prev.ContextFormatAttributes,
+            // localState carries the orchestrator's authoritative page count
+            // (set from ContextLoadResult.PageCount). Overwrite unconditionally
+            // — on PlayAsync the value is reset to 1, then advanced once the
+            // resolver responds with the actual page count.
+            ContextPageCount = localState.ContextPageCount
         };
 
         // The AudioHost supplies UpstreamChanges as a hint derived from its own
@@ -444,8 +457,15 @@ public static class PlaybackStateHelpers
             // (the authoritative device lives in cluster.active_device_id).
             PlayOrigin = new PlayOrigin
             {
-                FeatureIdentifier = "wavee",
-                FeatureVersion = "Wavee/1.0.0.0"
+                // Feature identifier mirrors the page a Spotify client started from
+                // ("playlist", "album", "artist", "collection"). Fallback to the
+                // generic Wavee identifier when context kind is unknown.
+                FeatureIdentifier = !string.IsNullOrEmpty(state.ContextFeature) ? state.ContextFeature : "wavee",
+                FeatureVersion = "Wavee/1.0.0.0",
+                // Matches Spotify desktop's referrer when play originates from the
+                // Now Playing / context page. Only include it when we know the
+                // context kind, so ad-hoc queues don't claim a fake referrer.
+                ReferrerIdentifier = !string.IsNullOrEmpty(state.ContextFeature) ? "now_playing_panel" : string.Empty
             },
 
             // Context index - actual position in queue
@@ -492,6 +512,32 @@ public static class PlaybackStateHelpers
         if (!string.IsNullOrEmpty(state.ContextDescription))
         {
             playerState.ContextMetadata["context_description"] = state.ContextDescription;
+        }
+        if (!string.IsNullOrEmpty(state.ContextImageUrl))
+        {
+            playerState.ContextMetadata["image_url"] = state.ContextImageUrl;
+        }
+        if (state.ContextTrackCount is { } trackCount
+            && !string.IsNullOrEmpty(state.ContextUri)
+            && state.ContextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+        {
+            // Spotify desktop only sets this key on playlists. Albums/artists
+            // omit it and let clients resolve the length themselves.
+            playerState.ContextMetadata["playlist_number_of_tracks"] = trackCount.ToString();
+            playerState.ContextMetadata["playlist_number_of_episodes"] = "0";
+        }
+        // Merge playlist-service format attributes verbatim (format, request_id,
+        // tag, source-loader, image_url, session_control_display.*, etc.). We
+        // don't overwrite keys we set above — if the API supplied an image_url
+        // of its own, prefer the typed ContextImageUrl we just wrote.
+        if (state.ContextFormatAttributes is { Count: > 0 } contextAttrs)
+        {
+            foreach (var (key, value) in contextAttrs)
+            {
+                if (string.IsNullOrEmpty(key)) continue;
+                if (playerState.ContextMetadata.ContainsKey(key)) continue;
+                playerState.ContextMetadata[key] = value ?? string.Empty;
+            }
         }
 
         // Add track if present
@@ -637,10 +683,15 @@ public static class PlaybackStateHelpers
         }
 
         // Pagination hints — Spotify desktop appends hidden spotify:meta:page:N
-        // markers so paged clients know where the queue "cuts." Emit pages 2..64
-        // to match their shape; the existing ExtractQueueItems filter drops these
-        // on ingest so round-trip is stable.
-        for (var page = 2; page <= 64; page++)
+        // markers so paged clients know where the queue "cuts." Emit pages
+        // 2..ContextPageCount. Default is 1 → no stubs for single-page contexts
+        // (playlists, albums, internal queue). Previously hardcoded to 64 which
+        // made every context look like it had 63 trailing pages even when it
+        // didn't. Populating ContextPageCount from context-resolve is gated
+        // behind the pagination work (LoadMoreTracksAsync TODO in
+        // PlaybackOrchestrator) — without real auto-pagination, emitting stubs
+        // for pages we can't actually serve would be a lie.
+        for (var page = 2; page <= state.ContextPageCount; page++)
         {
             playerState.NextTracks.Add(new ProvidedTrack
             {
@@ -753,7 +804,13 @@ public static class PlaybackStateHelpers
         if (track.Album != null) meta["album_title"] = track.Album;
         if (!string.IsNullOrEmpty(track.AlbumUri)) meta["album_uri"] = track.AlbumUri;
         if (!string.IsNullOrEmpty(track.ArtistUri)) meta["artist_uri"] = track.ArtistUri;
-        if (!string.IsNullOrEmpty(contextUri))
+        // Queue-wide context URI is written only if the track's per-track
+        // Metadata doesn't already carry one. This preserves the original
+        // context URI on prev_tracks after an autoplay switchover (played
+        // album tracks keep "spotify:album:xyz"; autoplay tracks and the
+        // current track use the station URI).
+        var trackHasContextUri = track.Metadata is { } tm && tm.ContainsKey("context_uri");
+        if (!string.IsNullOrEmpty(contextUri) && !trackHasContextUri)
         {
             meta["context_uri"] = contextUri;
             meta["entity_uri"] = contextUri;
@@ -770,6 +827,19 @@ public static class PlaybackStateHelpers
 
         meta["track_player"] = "audio";
         meta["iteration"] = "0";
+
+        // Merge per-track format attributes from the playlist API — item-score,
+        // decision_id, core:list_uid, core:added_at, PROBABLY_IN_*, etc. Do not
+        // overwrite keys we've already set; those are our source of truth.
+        if (track.Metadata is { Count: > 0 } extra)
+        {
+            foreach (var (key, value) in extra)
+            {
+                if (string.IsNullOrEmpty(key)) continue;
+                if (meta.ContainsKey(key)) continue;
+                meta[key] = value ?? string.Empty;
+            }
+        }
 
         return pt;
     }

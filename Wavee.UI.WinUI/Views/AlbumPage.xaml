@@ -163,8 +163,162 @@
                         Margin="0,0,0,0"
                         PageKey="album"
                         ShowToolbar="False"
+                        AllowHorizontalRowScroll="False"
                         ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
-                        PlayCommand="{x:Bind ViewModel.PlayTrackCommand}" />
+                        PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">
+                        <tdg:TrackDataGrid.FooterContent>
+                            <StackPanel>
+                                <!-- More by artist -->
+                                <StackPanel x:Name="MoreByArtistSection" Margin="16,32,16,24" Spacing="12"
+                                            Visibility="{x:Bind ViewModel.HasMoreByArtist, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Style="{StaticResource SubtitleTextBlockStyle}"
+                                                   VerticalAlignment="Center">
+                                            <Run x:Uid="Views_AlbumPage__Run_5" Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                    Visibility="{x:Bind MoreByArtistShelf.HasOverflow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                    Command="{x:Bind MoreByArtistShelf.PageLeftCommand, Mode=OneTime}">
+                                                <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                            </Button>
+                                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                    Command="{x:Bind MoreByArtistShelf.PageRightCommand, Mode=OneTime}">
+                                                <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                    <!-- Grid wrapper + fade Border mirrors HomePage's shelf pattern
+                                         so the right edge fades when more cards are available. -->
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <shelf:ShelfScroller x:Name="MoreByArtistShelf"
+                                                             HorizontalAlignment="Stretch"
+                                                             ItemsSource="{x:Bind ViewModel.MoreByArtist, Mode=OneWay}"
+                                                             MinItemWidth="160" MaxItemWidth="200" Spacing="12">
+                                            <shelf:ShelfScroller.ItemTemplate>
+                                                <DataTemplate x:DataType="contracts:AlbumRelatedResult">
+                                                    <cards:ContentCard
+                                                        Width="160"
+                                                        Tag="{x:Bind}"
+                                                        ImageUrl="{x:Bind ImageUrl}"
+                                                        Title="{x:Bind Name}"
+                                                        Subtitle="{x:Bind Year}"
+                                                        NavigationUri="{x:Bind Uri}"
+                                                        CardClick="RelatedAlbum_Click"/>
+                                                </DataTemplate>
+                                            </shelf:ShelfScroller.ItemTemplate>
+                                        </shelf:ShelfScroller>
+                                        <Border
+                                            HorizontalAlignment="Right"
+                                            Width="96"
+                                            IsHitTestVisible="False"
+                                            Background="{ThemeResource ShelfFadeRightBrush}"
+                                            Visibility="{Binding ElementName=MoreByArtistShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- No related releases: friendly empty state -->
+                                <Border x:Name="NoRelatedSection"
+                                        Margin="16,32,16,24"
+                                        Padding="32,40"
+                                        CornerRadius="12"
+                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        HorizontalAlignment="Stretch"
+                                        Visibility="{x:Bind ViewModel.HasNoRelatedAlbums, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <StackPanel HorizontalAlignment="Center" MaxWidth="440" Spacing="16">
+                                        <Grid Width="64" Height="64"
+                                              HorizontalAlignment="Center"
+                                              CornerRadius="32"
+                                              Background="{ThemeResource AccentFillColorTertiaryBrush}">
+                                            <FontIcon Glyph="&#xE735;" FontSize="26"
+                                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        </Grid>
+
+                                        <TextBlock Text="One-of-a-kind"
+                                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                                   FontWeight="SemiBold"
+                                                   HorizontalAlignment="Center"
+                                                   TextAlignment="Center"/>
+
+                                        <TextBlock TextWrapping="Wrap"
+                                                   HorizontalAlignment="Center"
+                                                   TextAlignment="Center"
+                                                   Opacity="0.7"
+                                                   MaxWidth="380"
+                                                   Style="{StaticResource BodyTextBlockStyle}">
+                                            <Run Text="Nothing else quite like it. Jump back into more from "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=", or dip into your library."/>
+                                        </TextBlock>
+
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="12"
+                                                    HorizontalAlignment="Center"
+                                                    Margin="0,8,0,0">
+                                            <Button Style="{StaticResource AccentButtonStyle}"
+                                                    Command="{x:Bind ViewModel.OpenArtistCommand}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xE77B;" FontSize="14"/>
+                                                    <TextBlock>
+                                                        <Run Text="Go to "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Command="{x:Bind ViewModel.OpenLikedSongsCommand}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xEB52;" FontSize="14"/>
+                                                    <TextBlock Text="Liked Songs"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Merch -->
+                                <StackPanel x:Name="MerchSection" Margin="16,32,16,24" Spacing="12"
+                                            Visibility="{x:Bind ViewModel.HasMerch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock x:Uid="Views_AlbumPage__TextBlock_6" Text="Merch" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="Bold"/>
+                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.MerchItems, Mode=OneWay}">
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout Orientation="Horizontal" Spacing="12"/>
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="contracts:AlbumMerchItemResult">
+                                                <cards:ContentCard
+                                                    Width="160"
+                                                    ImageUrl="{x:Bind ImageUrl}"
+                                                    Title="{x:Bind Name}"
+                                                    Subtitle="{x:Bind Price}"
+                                                    CardClick="MerchItem_Click"/>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </StackPanel>
+
+                                <!-- Album info: release date, label, copyrights -->
+                                <StackPanel Margin="16,24,16,16" Spacing="6"
+                                            Visibility="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                    <TextBlock Text="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay}"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="{x:Bind ViewModel.Label, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Visibility="{x:Bind ViewModel.Label, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+                                    <TextBlock Text="{x:Bind ViewModel.CopyrightsText, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,8,0,0"
+                                               Visibility="{x:Bind ViewModel.CopyrightsText, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </tdg:TrackDataGrid.FooterContent>
+                    </tdg:TrackDataGrid>
 
                     <!-- Legacy TrackListView host kept hidden so CustomColumns + event handlers
                          in AlbumPage.xaml.cs continue to reference a live control. -->
@@ -259,91 +413,6 @@
                                 </StackPanel>
                             </Grid>
                         </trackList:TrackListView.HeaderContent>
-
-                        <trackList:TrackListView.FooterContent>
-                            <StackPanel>
-                                <!-- More by artist -->
-                                <StackPanel x:Name="MoreByArtistSection" Margin="16,32,16,24" Spacing="12"
-                                            Visibility="{x:Bind ViewModel.HasMoreByArtist, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Style="{StaticResource SubtitleTextBlockStyle}"
-                                                   VerticalAlignment="Center">
-                                            <Run x:Uid="Views_AlbumPage__Run_5" Text="More by "/><Run Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"/>
-                                        </TextBlock>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
-                                                    Visibility="{x:Bind MoreByArtistShelf.HasOverflow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
-                                                    Command="{x:Bind MoreByArtistShelf.PageLeftCommand, Mode=OneTime}">
-                                                <FontIcon Glyph="&#xE76B;" FontSize="12"/>
-                                            </Button>
-                                            <Button Style="{StaticResource ShelfChevronButtonStyle}"
-                                                    Command="{x:Bind MoreByArtistShelf.PageRightCommand, Mode=OneTime}">
-                                                <FontIcon Glyph="&#xE76C;" FontSize="12"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </Grid>
-                                    <shelf:ShelfScroller x:Name="MoreByArtistShelf"
-                                                         ItemsSource="{x:Bind ViewModel.MoreByArtist, Mode=OneWay}"
-                                                         MinItemWidth="160" Spacing="12">
-                                        <shelf:ShelfScroller.ItemTemplate>
-                                            <DataTemplate x:DataType="contracts:AlbumRelatedResult">
-                                                <cards:ContentCard
-                                                    Width="160"
-                                                    Tag="{x:Bind}"
-                                                    ImageUrl="{x:Bind ImageUrl}"
-                                                    Title="{x:Bind Name}"
-                                                    Subtitle="{x:Bind Year}"
-                                                    NavigationUri="{x:Bind Uri}"
-                                                    CardClick="RelatedAlbum_Click"/>
-                                            </DataTemplate>
-                                        </shelf:ShelfScroller.ItemTemplate>
-                                    </shelf:ShelfScroller>
-                                </StackPanel>
-
-                                <!-- Merch -->
-                                <StackPanel x:Name="MerchSection" Margin="16,32,16,24" Spacing="12"
-                                            Visibility="{x:Bind ViewModel.HasMerch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock x:Uid="Views_AlbumPage__TextBlock_6" Text="Merch" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="Bold"/>
-                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.MerchItems, Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <StackLayout Orientation="Horizontal" Spacing="12"/>
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="contracts:AlbumMerchItemResult">
-                                                <cards:ContentCard
-                                                    Width="160"
-                                                    ImageUrl="{x:Bind ImageUrl}"
-                                                    Title="{x:Bind Name}"
-                                                    Subtitle="{x:Bind Price}"
-                                                    CardClick="MerchItem_Click"/>
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-                                </StackPanel>
-
-                                <!-- Album info: release date, label, copyrights -->
-                                <StackPanel Margin="16,24,16,16" Spacing="6"
-                                            Visibility="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                    <TextBlock Text="{x:Bind ViewModel.ReleaseDateFormatted, Mode=OneWay}"
-                                               FontSize="14" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                    <TextBlock Text="{x:Bind ViewModel.Label, Mode=OneWay}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Visibility="{x:Bind ViewModel.Label, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
-                                    <TextBlock Text="{x:Bind ViewModel.CopyrightsText, Mode=OneWay}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               TextWrapping="Wrap"
-                                               Margin="0,8,0,0"
-                                               Visibility="{x:Bind ViewModel.CopyrightsText, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
-                                </StackPanel>
-                            </StackPanel>
-                        </trackList:TrackListView.FooterContent>
 
                         <trackList:TrackListView.EmptyStateContent>
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Wavee.Audio.Queue;
 
 namespace Wavee.UI.Models;
@@ -22,6 +23,22 @@ public sealed record QueueItem
     /// Track source: "context", "queue", or "autoplay".
     /// </summary>
     public string Provider { get; init; } = "context";
+
+    /// <summary>
+    /// Stable per-track uid within the source context (lower-case hex), derived
+    /// from the playlist/album/artist API's uid field. Published as
+    /// <c>ProvidedTrack.uid</c> so remote clients can address this specific
+    /// instance for skip-to-uid.
+    /// </summary>
+    public string? Uid { get; init; }
+
+    /// <summary>
+    /// Per-track metadata passed through to <c>ProvidedTrack.metadata</c> —
+    /// recommender decorations (<c>item-score</c>, <c>decision_id</c>,
+    /// <c>core:list_uid</c>, <c>PROBABLY_IN_*</c>, etc.) returned by the
+    /// playlist API.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
     /// <summary>
     /// True if metadata is present (title + artist populated).

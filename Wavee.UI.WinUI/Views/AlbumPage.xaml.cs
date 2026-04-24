@@ -72,20 +72,13 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
         InitializeComponent();
 
-        // Custom columns with compile-time delegate (no reflection)
-        TrackList.CustomColumns = new List<Controls.TrackList.TrackListColumnDefinition>
-        {
-            new()
-            {
-                Header = "Plays",
-                Width = new GridLength(80),
-                TextAlignment = HorizontalAlignment.Right,
-                ValueSelector = item => item is ViewModels.LazyTrackItem lazy
-                    && lazy.Data is Data.DTOs.AlbumTrackDto dto
-                    ? dto.PlayCountFormatted
-                    : ""
-            }
-        };
+        // Plays column formatter — TrackDataGrid's PlayCount column uses this delegate
+        // to reach AlbumTrackDto.PlayCountFormatted (TrackItem doesn't know that type).
+        // Same pattern as the DateAddedFormatter used on PlaylistPage.
+        TrackGrid.PlayCountFormatter = item =>
+            item is ViewModels.LazyTrackItem lazy && lazy.Data is Data.DTOs.AlbumTrackDto dto
+                ? dto.PlayCountFormatted
+                : "";
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -183,14 +176,22 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
                 var effectBrush = effectFactory.CreateBrush();
                 effectBrush.SetSourceParameter("image", surfaceBrush);
 
-                // Diagonal gradient mask: top-left opaque → center-right transparent
+                // Diagonal gradient mask: top-left opaque → center-right transparent.
+                // Mask alphas are theme-aware: in light mode the dark blurred album
+                // image was darkening the page noticeably (the white surface couldn't
+                // absorb the same alpha that reads as subtle on a dark surface).
+                // Mirror the proportional reduction HeroHeader.ApplyColor uses for the
+                // artist page tint (~50-56% of the dark-mode alpha).
+                var isLight = ActualTheme == ElementTheme.Light;
+                byte topAlpha = isLight ? (byte)90 : (byte)160;
+                byte midAlpha = isLight ? (byte)30 : (byte)60;
                 var gradientMask = compositor.CreateLinearGradientBrush();
                 gradientMask.StartPoint = new Vector2(0f, 0f);
                 gradientMask.EndPoint = new Vector2(0.7f, 0.6f);
                 gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0f,
-                    Windows.UI.Color.FromArgb(160, 255, 255, 255)));
+                    Windows.UI.Color.FromArgb(topAlpha, 255, 255, 255)));
                 gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0.4f,
-                    Windows.UI.Color.FromArgb(60, 255, 255, 255)));
+                    Windows.UI.Color.FromArgb(midAlpha, 255, 255, 255)));
                 gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(1f,
                     Windows.UI.Color.FromArgb(0, 255, 255, 255)));
 

@@ -186,6 +186,17 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
     /// <summary>
     /// AsyncWorker callback - processes a single command.
     /// </summary>
+    /// <remarks>
+    /// Dealer requests have a strict 10s ack window. Spotify's backend marks
+    /// the device as unhealthy if we don't reply in time and then returns
+    /// <c>502 Bad Gateway</c> to remote clients issuing further commands.
+    /// We therefore ack <c>Success</c> as soon as the command has been
+    /// accepted and pushed onto its observable — not after playback actually
+    /// starts. Mirrors librespot's <c>Responder::send(Response{success:true})</c>
+    /// immediately after handling dispatch (see <c>core/src/dealer/mod.rs</c>
+    /// <c>Responder</c>). The subsequent putstate updates carry the real
+    /// execution result.
+    /// </remarks>
     private async ValueTask ProcessCommandAsync(ConnectCommand command)
     {
         try
@@ -244,6 +255,13 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
             }
 
             _logger?.LogDebug("Command dispatched successfully: {Endpoint}", command.Endpoint);
+
+            // Ack the dealer request so Spotify stops treating the device as
+            // unresponsive. Subscribers have received the command synchronously
+            // via OnNext; any failure during actual execution surfaces through
+            // putstate (errors on the playback engine) rather than the dealer
+            // reply channel.
+            await SendReplyAsync(command.Key, RequestResult.Success);
         }
         catch (Exception ex)
         {

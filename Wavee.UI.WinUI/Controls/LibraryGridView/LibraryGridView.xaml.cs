@@ -344,10 +344,12 @@ public sealed partial class LibraryGridView : UserControl
                     MinItemHeight = MinItemHeight,
                     MinRowSpacing = 12,
                     MinColumnSpacing = 12,
-                    // Cells size to the card's natural height so an optional badge (e.g.
-                    // "Played 3h ago") is included without the consumer having to bump
-                    // MinItemHeight. MinItemWidth still floors the horizontal cell size.
-                    ItemsStretch = UniformGridLayoutItemsStretch.None
+                    // Uniform stretch: cells grow with the viewport while preserving the
+                    // MinItemWidth:MinItemHeight aspect, so the album art (square) and
+                    // the text band below scale together. Earlier we used None so cells
+                    // hugged MinItemWidth and titles like "Can This Love Be Translated?"
+                    // got truncated even on wide displays.
+                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
                 },
                 MinItemWidth,
                 MinItemHeight)

@@ -195,16 +195,21 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        ViewModel.ResumeBackgroundRefresh();
+        // Rehydrate rebuilds Sections + Chips from the cached home-feed
+        // response — paired with HibernateForNavigation on OnNavigatedFrom.
+        // Cheap (no network); avoids holding the parsed tree while away.
+        ViewModel.ResumeAndRehydrate();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Pause the 5-minute refresh timer while the user is on another
-        // page — it previously kept running and re-enriching home cards
-        // even when nobody could see the result (hot-spot #3).
-        ViewModel.SuspendBackgroundRefresh();
+        // Pause the 5-minute refresh timer AND drop the parsed section tree
+        // + baseline enrichment so the Home page's memory footprint goes to
+        // near-zero while the user is on another page. The raw feed stays
+        // cached (SQLite), so re-entry via OnNavigatedTo rebuilds without a
+        // network round-trip.
+        ViewModel.HibernateForNavigation();
     }
 
     public void Dispose()

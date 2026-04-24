@@ -143,9 +143,20 @@ public sealed partial class ShellPage : Page
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        var settingsVm = Ioc.Default.GetService<SettingsViewModel>();
-        if (settingsVm != null)
-            settingsVm.ZoomChanged -= OnSettingsZoomChanged;
+
+        // ShellPage_Unloaded can fire AFTER App.ShutdownHostCoreAsync has
+        // disposed the IServiceProvider (window closing → Host.Dispose runs
+        // first, then Page.Unloaded fires on the XAML teardown). Ioc.GetService
+        // then throws ObjectDisposedException('IServiceProvider'). Guard the
+        // service lookup since this is a best-effort cleanup path anyway.
+        try
+        {
+            var settingsVm = Ioc.Default.GetService<SettingsViewModel>();
+            if (settingsVm != null)
+                settingsVm.ZoomChanged -= OnSettingsZoomChanged;
+        }
+        catch (ObjectDisposedException) { /* host already disposed — nothing to unsubscribe from */ }
+
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<Data.Messages.ConnectivityChangedMessage>(this);

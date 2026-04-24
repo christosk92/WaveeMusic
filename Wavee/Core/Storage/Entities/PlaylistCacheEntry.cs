@@ -50,6 +50,14 @@ public sealed record PlaylistCacheEntry : ICacheEntry
     public string? ImageUrl { get; init; }
 
     /// <summary>
+    /// Wide editorial hero image URL (from the playlist's
+    /// <c>header_image_url_desktop</c> format attribute). Persisted alongside
+    /// <see cref="ImageUrl"/> so the banner survives cache eviction and app
+    /// restarts — without this, the square cover shows instead of the banner.
+    /// </summary>
+    public string? HeaderImageUrl { get; init; }
+
+    /// <summary>
     /// Whether the playlist is public.
     /// </summary>
     public bool IsPublic { get; init; }
@@ -88,6 +96,16 @@ public sealed record PlaylistCacheEntry : ICacheEntry
     /// JSON-serialized capability snapshot.
     /// </summary>
     public string? CapabilitiesJson { get; init; }
+
+    /// <summary>
+    /// JSON-serialized playlist-level format attributes
+    /// (<c>Dictionary&lt;string,string&gt;</c>). Preserves recommender /
+    /// editorial fields — <c>format</c>, <c>request_id</c>, <c>tag</c>,
+    /// <c>source-loader</c>, <c>image_url</c>,
+    /// <c>session_control_display.displayName.*</c>, etc. — so the published
+    /// <c>PlayerState.context_metadata</c> is identical after a cache reload.
+    /// </summary>
+    public string? FormatAttributesJson { get; init; }
 
     /// <summary>
     /// Whether the owner deleted the playlist while the user still has access.

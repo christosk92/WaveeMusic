@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Wavee.Audio.Queue;
 
 /// <summary>
@@ -42,4 +44,11 @@ public record QueueTrack(
 
     /// <summary>Whether this is an autoplay/radio track.</summary>
     public bool IsAutoplay => Provider is "autoplay";
+
+    /// <summary>
+    /// Extra per-track metadata supplied by the playlist API (recommender
+    /// signals like <c>item-score</c>, <c>decision_id</c>, <c>core:list_uid</c>,
+    /// <c>PROBABLY_IN_*</c>). Forwarded verbatim into <c>ProvidedTrack.metadata</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 }

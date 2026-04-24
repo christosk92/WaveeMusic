@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
@@ -101,4 +102,17 @@ public interface ITrackItem : INotifyPropertyChanged
     /// Empty when the DTO doesn't track plays.
     /// </summary>
     string PlayCountFormatted => string.Empty;
+
+    /// <summary>
+    /// Stable uid for this track within its source context (lower-case hex).
+    /// Derived from the Spotify playlist <c>itemId</c> / album/artist <c>uid</c>
+    /// at the API layer. Null when the source doesn't carry a uid (e.g. Liked Songs).
+    /// </summary>
+    string? Uid => null;
+
+    /// <summary>
+    /// Per-track recommender / format attributes returned by the context API
+    /// (e.g. playlist <c>formatAttributes</c>). Null when the source carries none.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? FormatAttributes => null;
 }

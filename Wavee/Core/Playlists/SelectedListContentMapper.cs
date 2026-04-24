@@ -40,7 +40,11 @@ public static class SelectedListContentMapper
             decorations[item.Uri] = new RootlistDecoration
             {
                 Revision = meta.Revision?.ToByteArray() ?? [],
-                Name = meta.Attributes?.Name,
+                // Store null (not "") when the rootlist payload has no usable
+                // name — downstream fallbacks in LibraryDataService use `??`
+                // which only catches null. Empty strings would otherwise
+                // propagate to the sidebar as a blank title row.
+                Name = string.IsNullOrWhiteSpace(meta.Attributes?.Name) ? null : meta.Attributes.Name,
                 Description = meta.Attributes?.Description,
                 ImageUrl = PickImageUrl(meta.Attributes),
                 OwnerUsername = meta.OwnerUsername,
@@ -89,6 +93,7 @@ public static class SelectedListContentMapper
             BasePermission = MapBasePermission(content.OwnerUsername, currentUsername, content.Capabilities),
             Capabilities = MapCapabilities(content.Capabilities, content.AbuseReportingEnabled),
             Items = items,
+            FormatAttributes = ExtractFormatAttributes(content.Attributes?.FormatAttributes),
             HasContentsSnapshot = content.Contents != null,
             FetchedAt = fetchedAt
         };
@@ -111,7 +116,9 @@ public static class SelectedListContentMapper
         return null;
     }
 
-    private static CachedPlaylistItem MapPlaylistItem(Item item)
+    // internal so PlaylistDiffApplier (same assembly) can reuse the protobuf
+    // Item → CachedPlaylistItem conversion when applying diff ADD ops.
+    internal static CachedPlaylistItem MapPlaylistItem(Item item)
     {
         var timestamp = item.Attributes?.Timestamp ?? 0;
         return new CachedPlaylistItem
@@ -119,9 +126,34 @@ public static class SelectedListContentMapper
             Uri = item.Uri,
             AddedBy = item.Attributes?.AddedBy,
             AddedAt = timestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp) : null,
-            ItemId = item.Attributes?.ItemId?.ToByteArray()
+            ItemId = item.Attributes?.ItemId?.ToByteArray(),
+            FormatAttributes = ExtractFormatAttributes(item.Attributes?.FormatAttributes)
         };
     }
+
+    /// <summary>
+    /// Flatten a repeated-message FormatAttributes list into a plain dictionary.
+    /// Spotify sometimes ships duplicate keys; last-write-wins matches the way
+    /// the web player treats the list.
+    /// </summary>
+    // internal so PlaylistDiffApplier (same assembly) can reuse this when merging
+    // ItemAttributesPartialState / ListAttributesPartialState payloads.
+    internal static IReadOnlyDictionary<string, string> ExtractFormatAttributes(
+        Google.Protobuf.Collections.RepeatedField<FormatListAttribute>? attrs)
+    {
+        if (attrs is null || attrs.Count == 0)
+            return _emptyAttributes;
+        var dict = new Dictionary<string, string>(attrs.Count, StringComparer.Ordinal);
+        foreach (var attr in attrs)
+        {
+            if (string.IsNullOrEmpty(attr.Key)) continue;
+            dict[attr.Key] = attr.Value ?? string.Empty;
+        }
+        return dict;
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> _emptyAttributes
+        = new Dictionary<string, string>(0);
 
     public static CachedPlaylistBasePermission MapBasePermission(
         string? ownerUsername,

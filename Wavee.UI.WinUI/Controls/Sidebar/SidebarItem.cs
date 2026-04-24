@@ -47,6 +47,12 @@ public sealed partial class SidebarItem : Control
 	private Action? _themeChangedHandler;
 	private Services.ThemeColorService? _themeColorService;
 	private CancellationTokenSource? _lazyIconCts;
+	// Tracks the model whose mosaic load is currently in-flight (or just
+	// completed) on this container. Lets TryStartLazyIconLoad detect "same
+	// model being re-bound" and skip the cancel-and-restart that would
+	// otherwise kill an in-progress build mid-realization (visible as
+	// playlists in expanded folders never showing their image).
+	private SidebarItemModel? _lastLazyIconModel;
 
 	public SidebarItem()
 	{
@@ -239,12 +245,28 @@ public sealed partial class SidebarItem : Control
 		_dragStateService = Ioc.Default.GetService<DragStateService>();
 		if (_dragStateService != null)
 			_dragStateService.DragStateChanged += OnGlobalDragStateChanged;
+
+		// Guaranteed icon rebuild on Loaded. Unloaded nulls iconPresenter.Content
+		// + Icon (for memory). HandleItemChange → HookupItemChangeListener calls
+		// UpdateIcon, but folder items specifically rely on _themeColorService
+		// being re-seated during HookupOwners — if that order varies, the green
+		// folder tile never materialises. Calling UpdateIconPresenter here after
+		// HookupOwners + HandleItemChange guarantees a full rebuild from the
+		// current Item state. Idempotent on pages where the icon was already
+		// populated by HookupItemChangeListener.
+		UpdateIconPresenter();
 	}
 
 	public void HandleItemChange()
 	{
 		HookupItemChangeListener(null, Item);
 		UpdateExpansionState();
+		// Reset the per-evaluation caches: the bound Item may have changed
+		// identity (container recycle), so the previous IsSelected /
+		// containsSelected verdict no longer applies — force ReevaluateSelection
+		// to do real work on this rebind.
+		_lastAppliedIsSelected = null;
+		_lastGroupContainsSelected = null;
 		ReevaluateSelection();
 
 		if (Item is not null)
@@ -263,12 +285,26 @@ public sealed partial class SidebarItem : Control
 	/// </summary>
 	private void TryStartLazyIconLoad()
 	{
-		// A new model is being bound — cancel any work tied to the previous one.
+		if (Item is not SidebarItemModel model) return;
+
+		// Same model being re-bound (Loaded fires twice in a virtualized
+		// expand-then-scroll, or the row was Unloaded+Loaded across the same
+		// frame) — don't kill the in-flight build. Without this guard, fast
+		// folder-expand cycles cancel mosaic loads mid-flight and the
+		// placeholder glyph sticks until app restart.
+		if (ReferenceEquals(_lastLazyIconModel, model) && _lazyIconCts is not null)
+			return;
+		// Already-completed load on this same model — model.IconSource is set
+		// and LazyIconSourceLoader is null; nothing more to do.
+		if (ReferenceEquals(_lastLazyIconModel, model) && model.LazyIconSourceLoader is null)
+			return;
+
+		// Different model than last time — cancel any work tied to the previous one.
 		_lazyIconCts?.Cancel();
 		_lazyIconCts?.Dispose();
 		_lazyIconCts = null;
 
-		if (Item is not SidebarItemModel model) return;
+		_lastLazyIconModel = model;
 		var loader = model.LazyIconSourceLoader;
 		if (loader is null) return;
 
@@ -391,10 +427,26 @@ public sealed partial class SidebarItem : Control
 			_themeColorService = null;
 		}
 
-		// Cancel any in-flight lazy icon (mosaic) load tied to this container.
-		_lazyIconCts?.Cancel();
-		_lazyIconCts?.Dispose();
+		// Don't cancel an in-flight mosaic load on Unloaded — the build's
+		// result is per-model and gets assigned to model.IconSource once it
+		// completes, so it's still useful even if THIS container scrolled out.
+		// The next time the row scrolls back in, IconSource is already set
+		// and TryStartLazyIconLoad's "already-completed" guard skips rework.
+		// Just sever this container's tracking pointer; the Task keeps its
+		// own CTS alive in its closure and finishes on the thread pool.
 		_lazyIconCts = null;
+		_lastLazyIconModel = null;
+
+		// Null the icon presenter content so the ImageBrush + BitmapImage
+		// referenced by the last-seen model are eligible for GC immediately,
+		// instead of waiting for WinUI's container-recycling pool to release
+		// them. Each held bitmap is ~30–400 KB; across a long session of
+		// rootlist churn this accumulates into tens of MB of deferred-free
+		// memory. Re-realization is guaranteed by the explicit
+		// UpdateIconPresenter() call in SidebarItem_Loaded (Step 9 Fix A).
+		if (iconPresenter is not null)
+			iconPresenter.Content = null;
+		Icon = null;
 	}
 
 	private void HookupItemChangeListener(ISidebarItemModel? oldItem, ISidebarItemModel? newItem)
@@ -474,11 +526,26 @@ public sealed partial class SidebarItem : Control
 		}
 	}
 
+	// Cached results of the previous evaluation. Without these, every
+	// SelectedItem change on the Owner re-runs UpdateSelectionState /
+	// UpdateExpansionState / SetFlyoutOpen on EVERY realized SidebarItem
+	// — even ones whose actual state didn't change. With them, per-nav
+	// cost drops from O(realized items) to O(items whose selection
+	// actually flipped) — at most 2 (old selected → false, new selected →
+	// true). HandleItemChange resets these on container recycle so a
+	// rebound row evaluates fresh.
+	private bool? _lastAppliedIsSelected;
+	private bool? _lastGroupContainsSelected;
+
 	private void ReevaluateSelection()
 	{
 		if (!IsGroupHeader)
 		{
-			IsSelected = Item == Owner?.SelectedItem;
+			bool isNowSelected = Item == Owner?.SelectedItem;
+			if (_lastAppliedIsSelected == isNowSelected) return;
+			_lastAppliedIsSelected = isNowSelected;
+
+			IsSelected = isNowSelected;
 			if (IsSelected)
 			{
 				Owner?.UpdateSelectedItemContainer(this);
@@ -486,8 +553,12 @@ public sealed partial class SidebarItem : Control
 		}
 		else if (Item?.Children is IList list)
 		{
+			bool containsSelected = list.Contains(Owner?.SelectedItem);
+			if (_lastGroupContainsSelected == containsSelected) return;
+			_lastGroupContainsSelected = containsSelected;
+
 			IsSelected = false; // Group headers should never be selected
-			if (list.Contains(Owner?.SelectedItem))
+			if (containsSelected)
 			{
 				selectedChildItem = Owner?.SelectedItem;
 				SetFlyoutOpen(false);
@@ -563,9 +634,24 @@ public sealed partial class SidebarItem : Control
 		if (!IsInFlyout)
 		{
 			if (DisplayMode == SidebarDisplayMode.Compact)
-				VisualStateManager.GoToState(this, IsGroupHeader ? "CompactGroupHeader" : "Compact", true);
+			{
+				// CompactGroupHeader force-shows ChildrenPresenter so section labels
+				// like "Your Library" keep their kids visible as icons in the rail.
+				// Folders are ALSO group headers (IsGroupHeader := has children), but
+				// they should actually collapse in compact mode — otherwise the whole
+				// folder subtree bleeds into the narrow rail. Gate on IsSectionHeader
+				// so only true section labels get the force-visible state.
+				var isSectionHeader = Item is SidebarItemModel { IsSectionHeader: true };
+				VisualStateManager.GoToState(this, isSectionHeader ? "CompactGroupHeader" : "Compact", true);
+			}
 			else
+			{
 				VisualStateManager.GoToState(this, "NonCompact", true);
+				// Compact / CompactGroupHeader forcibly hide layout owned by ExpansionStates
+				// (children, placeholder, chevron). Re-assert the expansion state after
+				// leaving the rail so expanded groups reliably restore their content.
+				UpdateExpansionState(false);
+			}
 		}
 	}
 
@@ -624,15 +710,58 @@ public sealed partial class SidebarItem : Control
 
 		if (imageSource != null)
 		{
-			host.Children.Add(new Border
+			// Fade the artwork in over the placeholder glyph instead of hard-
+			// swapping — UpdateIconPresenter replaces content synchronously when
+			// the lazy mosaic loader resolves, and a hard swap pops with no
+			// transition. Gate the fade on ImageBrush.ImageOpened, NOT Border.Loaded.
+			// If the BitmapImage fails (404, auth, network), ImageOpened never fires,
+			// so Opacity stays at 0 and the fallback glyph+tile underneath remain
+			// visible. Previously the fade ran on Loaded unconditionally — failed
+			// loads ended at opacity 1 with a transparent brush covering the
+			// fallback, producing the blank gray rectangles for folder-nested /
+			// Daily-Mix rows whose images don't actually load.
+			var imageBrush = new ImageBrush
+			{
+				ImageSource = imageSource,
+				Stretch = Stretch.UniformToFill
+			};
+			var artwork = new Border
 			{
 				CornerRadius = new CornerRadius(6),
-				Background = new ImageBrush
+				Background = imageBrush,
+				Opacity = 0
+			};
+
+			void FadeIn()
+			{
+				var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
 				{
-					ImageSource = imageSource,
-					Stretch = Stretch.UniformToFill
-				}
-			});
+					From = 0,
+					To = 1,
+					Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(250)),
+					EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+					{
+						EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
+					}
+				};
+				var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+				Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, artwork);
+				Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
+				sb.Children.Add(fade);
+				sb.Begin();
+			}
+
+			imageBrush.ImageOpened += (_, _) => FadeIn();
+			// Already-decoded BitmapImage (cache hit from a prior row) may not
+			// re-fire ImageOpened for this fresh ImageBrush — detect that and fade
+			// in from Loaded so the artwork still becomes visible.
+			if (imageSource is BitmapImage bmp && bmp.PixelWidth > 0)
+			{
+				artwork.Loaded += (_, _) => FadeIn();
+			}
+			// No explicit ImageFailed handler: opacity stays 0, placeholder shows through.
+
+			host.Children.Add(artwork);
 		}
 
 		return host;
@@ -692,11 +821,9 @@ public sealed partial class SidebarItem : Control
 			string state;
 			if (isSectionHeader)
 			{
-				// Section headers reuse Expanded/Collapsed chrome states regardless of children
-				// count; the placeholder follows IsExpanded only when ShowEmptyPlaceholder is set.
 				state = (showPlaceholder && IsExpanded)
-					? "SectionHeaderExpanded"
-					: "SectionHeaderCollapsed";
+					? "SectionHeaderExpandedWithPlaceholder"
+					: (IsExpanded ? "SectionHeaderExpanded" : "SectionHeaderCollapsed");
 			}
 			else if (showPlaceholder)
 			{
@@ -716,10 +843,22 @@ public sealed partial class SidebarItem : Control
 				var childHeight = 32d;
 				if (childrenRepeater?.ItemsSource is not null)
 				{
-					var firstChild = childrenRepeater.GetOrCreateElement(0);
+					// TryGetElement (not GetOrCreateElement): this path runs
+					// inside the measure cascade when DisplayMode changes
+					// during a splitter drag (SidebarView.UpdateDisplayModeForPaneWidth
+					// → set_DisplayMode → SidebarDisplayModeChanged).
+					// GetOrCreateElement forces realisation; invoking it while
+					// the repeater is mid-layout throws COMException("Element is
+					// already the child of another element") because the element
+					// tree is already being measured on another branch.
+					// TryGetElement returns the existing element or null, so we
+					// safely fall through to the 32d default when no container
+					// is realised yet (collapsed / never-expanded subtree).
+					var firstChild = childrenRepeater.TryGetElement(0) as FrameworkElement;
 
 					// Collapsed elements might have a desired size of 0 so we need to have a sensible fallback
-					childHeight = firstChild.DesiredSize.Height > 0 ? firstChild.DesiredSize.Height : 32d;
+					if (firstChild is not null && firstChild.DesiredSize.Height > 0)
+						childHeight = firstChild.DesiredSize.Height;
 				}
 
 				ChildrenPresenterHeight = enumerable.Count * childHeight;

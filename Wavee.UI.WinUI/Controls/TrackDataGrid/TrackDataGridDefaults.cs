@@ -47,8 +47,14 @@ public static class TrackDataGridDefaults
         Duration(),
     ];
 
+    // Index + Like must lead the column set: TrackItem (Row mode) ALWAYS renders
+    // those two columns at positions 0 and 1, so omitting them from the header
+    // shifts every header cell ~72 px left of its row content (visible as
+    // "Track" landing on the album-art column instead of the title column).
     private static TrackDataGridColumns BuildLikedColumns() =>
     [
+        Index(),
+        Like(),
         TrackArt(),
         Title(),
         Album(),

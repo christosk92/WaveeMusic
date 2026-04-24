@@ -29,6 +29,7 @@
             DragItemsCompleted="InternalListView_DragItemsCompleted"
             SelectionChanged="TrackListView_SelectionChanged"
             ContainerContentChanging="TrackListView_ContainerContentChanging"
+            HorizontalContentAlignment="Stretch"
             Padding="16,0,18,0">
 
             <ListView.ItemContainerTransitions>
@@ -38,20 +39,34 @@
                 </TransitionCollection>
             </ListView.ItemContainerTransitions>
 
-            <!-- Scrollable Header: Page Header + Column Headers -->
+            <!-- Scrollable Header: Page Header + Column Headers.
+                 HorizontalAlignment=Stretch on the StackPanel is required: WinUI 3's
+                 ListView.Header does NOT auto-stretch to viewport width even when the
+                 ListView itself has HorizontalContentAlignment=Stretch. Without it the
+                 header content sizes to its natural width and the column-header * column
+                 collapses to its MinWidth, making every header column appear shifted
+                 hundreds of pixels left of the actual row columns. -->
             <ListView.Header>
-                <StackPanel>
+                <StackPanel HorizontalAlignment="Stretch">
                     <!-- Page-specific Header Content -->
                     <ContentPresenter x:Name="HeaderContentPresenter" Content="{x:Bind HeaderContent, Mode=OneWay}"/>
 
                     <!-- Column Headers (scrolls with page header initially) -->
+                    <!-- Width is driven imperatively from TrackListView.xaml.cs (SyncHeaderWidthToListView,
+                         hooked off InternalListView.SizeChanged). WinUI 3's ListView.Header ContentPresenter
+                         doesn't propagate viewport width during measure (microsoft-ui-xaml issues #3682 / #9824),
+                         so any * column in here would otherwise collapse to MinWidth and the header would
+                         visually misalign with row content. Don't remove the code-behind assignment. -->
                     <Grid x:Name="ScrollableColumnHeaders" Padding="8,0,8,0" Margin="0,0,0,8" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
-                        <!-- 7 columns matching TrackItem Row layout (artist is a subline under Title, no standalone column) -->
+                        <!-- 7 columns matching TrackItem Row layout (artist is a subline under Title, no standalone column).
+                             MaxWidth on the Title column MUST match TrackItem.xaml's RowContentGrid (currently 640) — without
+                             it, the header's * column keeps expanding past 640 on wide displays while the row's column caps
+                             out, and every column right of Title slides hundreds of pixels out of alignment with the rows. -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="40"/>
                             <ColumnDefinition x:Name="HeartColumnDef" Width="32"/>
                             <ColumnDefinition x:Name="ArtColumnDef" Width="42"/>
-                            <ColumnDefinition Width="*" MinWidth="120"/>
+                            <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                             <ColumnDefinition x:Name="AlbumColumnDef" Width="180"/>
                             <ColumnDefinition x:Name="AddedColumnDef" Width="120"/>
                             <ColumnDefinition Width="60"/>
@@ -126,7 +141,14 @@
             </ListView.Header>
 
             <ListView.Footer>
-                <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"/>
+                <!-- StackPanel wrapper + HorizontalContentAlignment=Stretch mirror the Header pattern
+                     above (see comment on ScrollableColumnHeaders). Without this, WinUI 3's implicit
+                     ListView.Footer container doesn't propagate viewport width and anything the page
+                     puts in FooterContent collapses to zero width → invisible. -->
+                <StackPanel HorizontalAlignment="Stretch">
+                    <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"
+                                      HorizontalContentAlignment="Stretch"/>
+                </StackPanel>
             </ListView.Footer>
 
             <ListView.ItemContainerStyle>
@@ -160,13 +182,16 @@
                 BorderThickness="0"
                 Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
-            <Grid Padding="24,0,24,0">
-                <!-- 7 columns matching TrackItem Row layout (artist is subline under Title). -->
+            <Grid Padding="8,0,8,0">
+                <!-- 7 columns matching TrackItem Row layout (artist is subline under Title).
+                     Padding 8,0,8,0 + MaxWidth=640 on Title both intentionally mirror
+                     ScrollableColumnHeaders above and TrackItem.xaml's RowContentGrid so
+                     the sticky overlay sits flush with the rows it labels. -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="40"/>
                     <ColumnDefinition x:Name="StickyHeartColumnDef" Width="32"/>
                     <ColumnDefinition x:Name="StickyArtColumnDef" Width="42"/>
-                    <ColumnDefinition Width="*" MinWidth="120"/>
+                    <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                     <ColumnDefinition x:Name="StickyAlbumColumnDef" Width="180"/>
                     <ColumnDefinition x:Name="StickyAddedColumnDef" Width="120"/>
                     <ColumnDefinition Width="60"/>

@@ -393,6 +393,37 @@ public sealed partial class HeroHeader : UserControl
         ImageBorder.SizeChanged += OnImageBorderSizeChanged;
     }
 
+    /// <summary>
+    /// Dispose the backing <see cref="LoadedImageSurface"/> (typically
+    /// 1600×420 ≈ 2.6 MB at retina) without tearing the composition tree
+    /// apart. Intended for pages with <c>NavigationCacheMode="Enabled"</c>
+    /// where <see cref="OnUnloaded"/> never fires on navigate-away: the
+    /// page's <c>OnNavigatedFrom</c> should call this, and
+    /// <see cref="RestoreSurface"/> on <c>OnNavigatedTo</c>, so the hero
+    /// surface doesn't stay pinned across the full session.
+    /// </summary>
+    public void ReleaseSurface()
+    {
+        if (_surfaceBrush != null)
+            _surfaceBrush.Surface = null;
+        _imageSurface?.Dispose();
+        _imageSurface = null;
+        // Clear the last-loaded URL so RestoreSurface's LoadImage compare
+        // sees a mismatch and re-hydrates from the current ImageUrl.
+        _loadedImageUrl = null;
+    }
+
+    /// <summary>
+    /// Re-hydrate the surface from the current <see cref="ImageUrl"/> after
+    /// an earlier <see cref="ReleaseSurface"/>. Safe to call even if the
+    /// surface was never released (becomes a no-op because LoadImage's
+    /// URL-equality check returns early).
+    /// </summary>
+    public void RestoreSurface()
+    {
+        LoadImage(ImageUrl);
+    }
+
     private void LoadImage(string? url)
     {
         if (_surfaceBrush == null || _compositor == null) return;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Data.DTOs;
@@ -30,6 +31,21 @@ public sealed record PlaylistTrackDto : ITrackItem
     public int OriginalIndex { get; init; }
     public bool IsLoaded => true;
     public bool IsLiked { get; set; }
+
+    /// <summary>
+    /// Stable per-track uid derived from the playlist's binary <c>itemId</c>
+    /// (lower-case hex). Sent as <c>track.uid</c> in published PlayerState so
+    /// remote clients can issue skip-to-uid commands unambiguously.
+    /// </summary>
+    public string? Uid { get; init; }
+
+    /// <summary>
+    /// Per-track format attributes passed through from the playlist API —
+    /// recommender decorations (e.g. <c>item-score</c>, <c>decision_id</c>,
+    /// <c>core:list_uid</c>, the <c>PROBABLY_IN_*</c> signals). Empty for
+    /// user-authored playlists.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? FormatAttributes { get; init; }
 
     /// <summary>
     /// Duration formatted as "m:ss" or "h:mm:ss".

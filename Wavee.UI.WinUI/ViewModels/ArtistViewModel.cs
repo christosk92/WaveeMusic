@@ -129,6 +129,23 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private List<LazyTrackItem>? _pagedTopTracksCache;
     public IEnumerable<LazyTrackItem> PagedTopTracks => _pagedTopTracksCache ??= BuildPagedTopTracks();
 
+    // Top tracks selection
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTopTracksSelection))]
+    [NotifyPropertyChangedFor(nameof(SelectedTopTracksCount))]
+    private ObservableCollection<LazyTrackItem> _selectedTopTracks = [];
+
+    public int SelectedTopTracksCount => SelectedTopTracks.Count;
+    public bool HasTopTracksSelection => SelectedTopTracks.Count > 0;
+
+    public bool IsTopTrackSelected(LazyTrackItem item) => SelectedTopTracks.Contains(item);
+
+    public void ClearTopTracksSelection()
+    {
+        if (SelectedTopTracks.Count == 0) return;
+        SelectedTopTracks.Clear();
+    }
+
     private List<LazyTrackItem> BuildPagedTopTracks()
     {
         int start = CurrentPage * TracksPerPage;
@@ -221,6 +238,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
+
+        SelectedTopTracks.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(SelectedTopTracksCount));
+            OnPropertyChanged(nameof(HasTopTracksSelection));
+        };
     }
 
     // ── Initialization ──
@@ -991,28 +1014,76 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (track == null || string.IsNullOrEmpty(ArtistId)) return;
 
-        List<string>? allTrackUris = null;
+        // Build rich QueueItems from TopTracks so remote clients receive per-track
+        // uid + metadata (artist_uri, album_uri, album_title, title, track_player)
+        // the same way Spotify desktop does. Without this, the published queue
+        // comes across as bare track URIs with context_uri="spotify:internal:queue".
+        // Mirrors PlaylistViewModel.BuildQueueAndPlay.
+        var queueItems = new List<QueueItem>(TopTracks.Count);
         int startIndex = -1;
         foreach (var t in TopTracks)
         {
-            if (!t.IsLoaded || t.Data == null) continue;
-            var uri = t.Data.Uri;
-            if (string.IsNullOrEmpty(uri)) continue;
-            allTrackUris ??= new List<string>();
-            if (startIndex < 0 && uri == track.Uri)
-                startIndex = allTrackUris.Count;
-            allTrackUris.Add(uri);
+            if (!t.IsLoaded || t.Data is not ITrackItem item) continue;
+            if (string.IsNullOrEmpty(item.Uri)) continue;
+
+            if (startIndex < 0 && item.Uri == track.Uri)
+                startIndex = queueItems.Count;
+
+            var metadata = new Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(item.ArtistId))
+                metadata["artist_uri"] = $"spotify:artist:{item.ArtistId}";
+            if (!string.IsNullOrEmpty(item.AlbumId))
+                metadata["album_uri"] = $"spotify:album:{item.AlbumId}";
+            if (!string.IsNullOrEmpty(item.AlbumName))
+                metadata["album_title"] = item.AlbumName;
+            if (!string.IsNullOrEmpty(item.Title))
+                metadata["title"] = item.Title;
+            metadata["track_player"] = "audio";
+
+            queueItems.Add(new QueueItem
+            {
+                TrackId = item.Id,
+                Title = item.Title,
+                ArtistName = item.ArtistName,
+                AlbumArt = item.ImageUrl,
+                DurationMs = item.Duration.TotalMilliseconds,
+                IsUserQueued = false,
+                // "toptrack{id}" matches the uid pattern Spotify's
+                // context-resolve/v1/spotify:artist:{id} returns for page 0
+                // (the top-tracks page). The server uses this to address a
+                // specific instance for skip-to-uid.
+                Uid = $"toptrack{item.Id}",
+                Metadata = metadata,
+            });
         }
 
-        if (startIndex >= 0 && allTrackUris != null)
+        if (queueItems.Count == 0 || startIndex < 0)
         {
-            await _playbackService.PlayTracksAsync(allTrackUris, startIndex);
-        }
-        else
-        {
+            // Clicked track isn't in the local TopTracks cache — fall back to
+            // server-side context resolution.
             await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
                 new PlayContextOptions { PlayOriginFeature = "artist_page" });
+            return;
         }
+
+        var context = new PlaybackContextInfo
+        {
+            ContextUri = ArtistId,
+            Type = PlaybackContextType.Artist,
+            Name = ArtistName,
+            ImageUrl = ArtistImageUrl,
+            // Matches context-resolve/v1/spotify:artist:{id}.metadata. Forwarded
+            // into PlayerState.context_metadata so other clients render
+            // "Playing from {artist}" correctly.
+            FormatAttributes = new Dictionary<string, string>
+            {
+                ["context_description"] = ArtistName ?? string.Empty,
+                ["artist_context_type"] = "km_artist",
+            }
+        };
+
+        _playbackStateService.LoadQueue(queueItems, context, startIndex);
+        await Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -1047,11 +1118,16 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         OnPropertyChanged(nameof(PagedTopTracks));
     }
 
-    partial void OnCurrentPageChanged(int value) => NotifyPaginationChanged();
+    partial void OnCurrentPageChanged(int value)
+    {
+        ClearTopTracksSelection();
+        NotifyPaginationChanged();
+    }
 
     partial void OnColumnCountChanged(int value)
     {
         CurrentPage = 0;
+        ClearTopTracksSelection();
         NotifyPaginationChanged();
     }
 

@@ -45,6 +45,14 @@
                 <ToggleSwitch IsOn="{x:Bind ViewModel.AskPlayAction, Mode=TwoWay}"
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
+            <controls:SettingsCard Header="Autoplay"
+                                   Description="Keep playing similar songs when a playlist, album, or artist ends">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xEC4A;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AutoplayEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent=""/>
+            </controls:SettingsCard>
 
             <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_11" Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_12" Header="Streaming quality"

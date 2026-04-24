@@ -21,6 +21,17 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         ["revision", "attributes", "length", "owner", "capabilities"];
     private static readonly TimeSpan CacheTtl = TimeSpan.FromHours(24);
     private static readonly TimeSpan DealerDebounce = TimeSpan.FromMilliseconds(250);
+
+    // Settle window for dealer-driven refreshes per playlist URI.
+    // Spotify's curation pipeline pushes Mercury notifications for editorial Mix
+    // playlists faster than the diff endpoint can keep up — the diff returns 509,
+    // we fall back to a full fetch, the full fetch returns a freshly-bumped
+    // revision, the cache emits Updated, and Spotify echoes another Mercury
+    // notification a moment later, restarting the cycle. The throttle in
+    // EnsureDealerSubscription handles burst coalescing in a 250 ms window;
+    // this longer window suppresses the echo loop without dropping legitimate
+    // user-driven edits (which arrive many seconds apart).
+    private static readonly TimeSpan DealerSettleWindow = TimeSpan.FromSeconds(5);
     // Negative cache window: once SpClient has told us a URI is unfetchable
     // (404 / 403 / 401), remember that for NegativeCacheTtl so repeat callers
     // (sidebar mosaic + home enrichment + wherever) don't each fire their own
@@ -41,6 +52,11 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _pendingAccessTouches =
         new(StringComparer.Ordinal);
+    // Per-URI timestamp of the most recent dealer-driven refresh; consulted by
+    // HandleDealerRefreshAsync to enforce DealerSettleWindow.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastDealerRefreshAt =
+        new(StringComparer.Ordinal);
+
     private readonly ConcurrentDictionary<string, NegativeCacheEntry> _negativeCache =
         new(StringComparer.Ordinal);
 
@@ -56,6 +72,9 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
     private Task<RootlistSnapshot>? _rootlistRefreshTask;
     private LibraryChangeManager? _libraryChangeManager;
     private IDisposable? _dealerSubscription;
+    // Parallel subscription that routes Mercury pushes carrying the full diff
+    // payload directly to PlaylistDiffApplier — see EnsureDealerSubscription.
+    private IDisposable? _directApplySubscription;
     private bool _disposed;
 
     public PlaylistCacheService(
@@ -136,7 +155,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 if (!hot.HasContentsSnapshot)
                     return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: false).WaitAsync(ct);
 
-                if (ShouldRefresh(hot))
+                if (ShouldRefresh(hot) || ShouldFreshnessCheck(playlistUri))
                     _ = RefreshPlaylistSafeAsync(playlistUri);
 
                 return hot;
@@ -152,7 +171,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 if (!cachedPersisted.HasContentsSnapshot)
                     return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: false).WaitAsync(ct);
 
-                if (ShouldRefresh(cachedPersisted))
+                if (ShouldRefresh(cachedPersisted) || ShouldFreshnessCheck(playlistUri))
                     _ = RefreshPlaylistSafeAsync(playlistUri);
 
                 return cachedPersisted;
@@ -293,6 +312,15 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
     private Task<CachedPlaylist> GetOrCreatePlaylistRefreshTask(string playlistUri, bool emitChange)
     {
+        // Stamp the refresh timestamp on every path (nav-driven and
+        // dealer-driven) so HandleDealerRefreshAsync's settle window
+        // suppresses Mercury echoes that follow our own fetches by less
+        // than DealerSettleWindow. Without this, an editorial Mix open
+        // produces an immediate echo: nav-fetch → Mercury push within
+        // milliseconds → dealer handler sees no prior entry → diff (509)
+        // → full-fetch fallback → second publish to the VM.
+        _lastDealerRefreshAt[playlistUri] = DateTimeOffset.UtcNow;
+
         // GetOrAdd stores the Lazy *before* anyone calls .Value. The factory
         // may be invoked twice under contention, but only the Lazy that wins
         // the slot has its Value accessed — the losing Lazy is discarded
@@ -433,6 +461,72 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                     return refreshed;
                 }
 
+                // Delta form: Spotify returned an Ops array instead of a fresh
+                // Contents snapshot. Apply the ops to existing.Items locally —
+                // saves transferring the whole item list for a single-track edit
+                // (the entire point of the diff endpoint). Falls through to the
+                // existing Contents/full-fetch branches if ops application fails
+                // (out-of-range index ⇒ "diff too stale", same recovery as
+                // before this branch existed).
+                if (diff.Diff is { Ops.Count: > 0 } deltaDiff)
+                {
+                    try
+                    {
+                        var applied = PlaylistDiffApplier.Apply(existing.Items, deltaDiff.Ops);
+                        var newRevision = deltaDiff.ToRevision is { Length: > 0 } toRev
+                            ? toRev.ToByteArray()
+                            : (diff.Revision?.ToByteArray() ?? existing.Revision);
+
+                        var mergedFromOps = existing with
+                        {
+                            Items = applied.Items,
+                            Length = applied.Items.Count,
+                            Revision = newRevision,
+                            FetchedAt = DateTimeOffset.UtcNow,
+                        };
+
+                        // UPDATE_LIST_ATTRIBUTES ops accumulate into the applier's
+                        // result; merge them into the cached playlist's list-level
+                        // fields here (Name, Description, Picture, Collaborative,
+                        // FormatAttributes, …).
+                        if (applied.AccumulatedListAttrs is { } listAttrs)
+                            mergedFromOps = ApplyListAttrPartial(mergedFromOps, listAttrs);
+
+                        // Diff responses ship the current capabilities even on
+                        // item-only edits — refresh so the cached Capabilities
+                        // doesn't go stale until the next full fetch.
+                        if (diff.Capabilities is not null)
+                        {
+                            mergedFromOps = mergedFromOps with
+                            {
+                                Capabilities = SelectedListContentMapper.MapCapabilities(
+                                    diff.Capabilities, diff.AbuseReportingEnabled),
+                                AbuseReportingEnabled = diff.AbuseReportingEnabled,
+                            };
+                        }
+
+                        await PersistPlaylistAsync(mergedFromOps, ct);
+                        _hotCache.Set(playlistUri, mergedFromOps);
+
+                        if (emitChange && !RevisionsEqual(existing.Revision, mergedFromOps.Revision))
+                        {
+                            _changes.OnNext(new PlaylistChangeEvent
+                            {
+                                Uri = playlistUri,
+                                Kind = PlaylistChangeKind.Updated
+                            });
+                        }
+
+                        return mergedFromOps;
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _logger?.LogDebug(ex,
+                            "Diff ops apply failed for {Uri}, falling back to snapshot/full path", playlistUri);
+                        // intentional fall-through to the Contents branch below.
+                    }
+                }
+
                 if (diff.Contents != null)
                 {
                     var mappedFromDiff = SelectedListContentMapper.MapPlaylist(
@@ -524,6 +618,16 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         var capabilitiesJson = JsonSerializer.Serialize(
             playlist.Capabilities,
             PlaylistCacheJsonContext.Default.CachedPlaylistCapabilities);
+        string? formatAttributesJson = null;
+        if (playlist.FormatAttributes.Count > 0)
+        {
+            // Convert to the concrete Dictionary<string,string> type the source
+            // generator has a marshaller for; IReadOnlyDictionary isn't registered.
+            var attrs = new Dictionary<string, string>(playlist.FormatAttributes.Count, StringComparer.Ordinal);
+            foreach (var kv in playlist.FormatAttributes) attrs[kv.Key] = kv.Value;
+            formatAttributesJson = JsonSerializer.Serialize(
+                attrs, PlaylistCacheJsonContext.Default.DictionaryStringString);
+        }
 
         await _database.UpsertPlaylistCacheEntryAsync(
             new PlaylistCacheEntry
@@ -538,6 +642,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 OwnerName = playlist.OwnerUsername,
                 TrackCount = playlist.Length,
                 ImageUrl = playlist.ImageUrl,
+                HeaderImageUrl = playlist.HeaderImageUrl,
                 IsPublic = playlist.IsPublic,
                 IsCollaborative = playlist.IsCollaborative,
                 Revision = playlist.Revision,
@@ -545,6 +650,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 HasContentsSnapshot = playlist.HasContentsSnapshot,
                 BasePermission = playlist.BasePermission,
                 CapabilitiesJson = capabilitiesJson,
+                FormatAttributesJson = formatAttributesJson,
                 DeletedByOwner = playlist.DeletedByOwner,
                 AbuseReportingEnabled = playlist.AbuseReportingEnabled,
                 CachedAt = playlist.FetchedAt,
@@ -597,6 +703,72 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         };
     }
 
+    /// <summary>
+    /// Applies a coalesced <see cref="Wavee.Protocol.Playlist.ListAttributesPartialState"/>
+    /// (produced by <see cref="PlaylistDiffApplier"/> from a batch of
+    /// UPDATE_LIST_ATTRIBUTES ops) to the playlist's list-level fields. Fields
+    /// in <c>partial.Values</c> overwrite; kinds in <c>partial.NoValue</c> reset
+    /// to defaults; the rest are preserved.
+    /// </summary>
+    private static CachedPlaylist ApplyListAttrPartial(
+        CachedPlaylist current, Wavee.Protocol.Playlist.ListAttributesPartialState partial)
+    {
+        string name = current.Name;
+        string? description = current.Description;
+        string? imageUrl = current.ImageUrl;
+        string? headerImageUrl = current.HeaderImageUrl;
+        bool isCollab = current.IsCollaborative;
+        bool deletedByOwner = current.DeletedByOwner;
+        var formatAttrs = current.FormatAttributes;
+
+        if (partial.Values is { } v)
+        {
+            if (!string.IsNullOrEmpty(v.Name)) name = v.Name;
+            if (!string.IsNullOrEmpty(v.Description)) description = v.Description;
+            if (v.PictureSize.Count > 0)
+                imageUrl = SelectedListContentMapper.PickImageUrl(v) ?? imageUrl;
+            if (v.HasCollaborative) isCollab = v.Collaborative;
+            if (v.HasDeletedByOwner) deletedByOwner = v.DeletedByOwner;
+            if (v.FormatAttributes.Count > 0)
+            {
+                formatAttrs = SelectedListContentMapper.ExtractFormatAttributes(v.FormatAttributes);
+                headerImageUrl = SelectedListContentMapper
+                    .PickFormatAttribute(v, "header_image_url_desktop")
+                    ?? headerImageUrl;
+            }
+        }
+
+        foreach (var kind in partial.NoValue)
+        {
+            switch (kind)
+            {
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListName: name = "Unknown"; break;
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListDescription: description = null; break;
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListPicture:
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListPictureSize:
+                    imageUrl = null;
+                    break;
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListCollaborative: isCollab = false; break;
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListDeletedByOwner: deletedByOwner = false; break;
+                case Wavee.Protocol.Playlist.ListAttributeKind.ListFormatAttributes:
+                    formatAttrs = _emptyFormatAttributes;
+                    headerImageUrl = null;
+                    break;
+            }
+        }
+
+        return current with
+        {
+            Name = name,
+            Description = description,
+            ImageUrl = imageUrl,
+            HeaderImageUrl = headerImageUrl,
+            IsCollaborative = isCollab,
+            DeletedByOwner = deletedByOwner,
+            FormatAttributes = formatAttrs,
+        };
+    }
+
     private CachedPlaylist DeserializePlaylist(PlaylistCacheEntry entry)
     {
         var items = Array.Empty<CachedPlaylistItem>();
@@ -617,6 +789,16 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 ?? CachedPlaylistCapabilities.ViewOnly;
         }
 
+        IReadOnlyDictionary<string, string> formatAttributes = _emptyFormatAttributes;
+        if (!string.IsNullOrWhiteSpace(entry.FormatAttributesJson))
+        {
+            var parsed = JsonSerializer.Deserialize(
+                entry.FormatAttributesJson,
+                PlaylistCacheJsonContext.Default.DictionaryStringString);
+            if (parsed is { Count: > 0 })
+                formatAttributes = parsed;
+        }
+
         return new CachedPlaylist
         {
             Uri = entry.Uri,
@@ -624,6 +806,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             Name = entry.Name ?? "Playlist",
             Description = entry.Description,
             ImageUrl = entry.ImageUrl,
+            HeaderImageUrl = entry.HeaderImageUrl,
             OwnerUsername = entry.OwnerUsername ?? entry.OwnerName ?? "",
             Length = entry.TrackCount ?? 0,
             IsPublic = entry.IsPublic,
@@ -634,10 +817,14 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             BasePermission = entry.BasePermission,
             Capabilities = capabilities,
             Items = items,
+            FormatAttributes = formatAttributes,
             FetchedAt = entry.CachedAt,
             LastAccessedAt = entry.LastAccessedAt
         };
     }
+
+    private static readonly IReadOnlyDictionary<string, string> _emptyFormatAttributes
+        = new Dictionary<string, string>(0);
 
     private RootlistSnapshot? DeserializeRootlistSnapshot(RootlistCacheEntry entry)
     {
@@ -665,10 +852,122 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Direct ops application path for Mercury library-change events that carry
+    /// a <see cref="LibraryChangeEvent.FromRevision"/> + <see cref="LibraryChangeEvent.Ops"/>
+    /// payload. Skips the <c>/diff</c> network round-trip when the cached
+    /// <c>existing.Revision</c> matches the event's <c>FromRevision</c> — the
+    /// Mercury push *is* the diff. On revision mismatch (we missed an
+    /// intermediate push) or apply failure, returns false so the caller can
+    /// fall back to <see cref="HandleDealerRefreshAsync"/> which fetches via
+    /// the network.
+    /// </summary>
+    private async Task<bool> TryApplyMercuryOpsAsync(
+        string playlistUri,
+        byte[] fromRevision,
+        byte[]? newRevision,
+        IReadOnlyList<Wavee.Protocol.Playlist.Op> ops)
+    {
+        try
+        {
+            var existingEntry = await _database.GetPlaylistCacheEntryAsync(playlistUri, touchAccess: false);
+            var existing = existingEntry != null ? DeserializePlaylist(existingEntry) : null;
+
+            // Brand-new playlist: Mercury sends the initial state as ops on top
+            // of a zero-revision baseline. Synthesize an empty starting snapshot
+            // so the applier can write into it — saves a /diff fetch on
+            // playlist creation. UPDATE_LIST_ATTRIBUTES + initial ADD ops in
+            // the payload populate Name + Items.
+            if (existing is null && IsZeroRevisionCounter(fromRevision))
+            {
+                existing = new CachedPlaylist
+                {
+                    Uri = playlistUri,
+                    Name = "Playlist", // overwritten by UPDATE_LIST_ATTRIBUTES op below
+                    Revision = fromRevision,
+                    OwnerUsername = GetCurrentUsername() ?? string.Empty,
+                    Items = Array.Empty<CachedPlaylistItem>(),
+                    HasContentsSnapshot = true,
+                    FetchedAt = DateTimeOffset.UtcNow,
+                };
+            }
+            else if (existing is null || !existing.HasContentsSnapshot)
+                return false; // No baseline AND not a brand-new playlist — caller falls back to fetch.
+            else if (!RevisionsEqual(existing.Revision, fromRevision))
+                return false; // We missed an intermediate revision — fall back to fetch.
+
+            var applied = PlaylistDiffApplier.Apply(existing.Items, ops);
+            var resolvedNewRevision = newRevision is { Length: > 0 }
+                ? newRevision
+                : existing.Revision;
+
+            var merged = existing with
+            {
+                Items = applied.Items,
+                Length = applied.Items.Count,
+                Revision = resolvedNewRevision,
+                FetchedAt = DateTimeOffset.UtcNow,
+            };
+
+            // List-level attribute deltas (UPDATE_LIST_ATTRIBUTES ops) are merged
+            // identically to the diff-fetch path so name/description/image renames
+            // pushed via Mercury also land without a fetch.
+            if (applied.AccumulatedListAttrs is { } listAttrs)
+                merged = ApplyListAttrPartial(merged, listAttrs);
+
+            await PersistPlaylistAsync(merged, CancellationToken.None);
+            _hotCache.Set(playlistUri, merged);
+            // Stamp the settle window so the throttled refresh path that fires
+            // in parallel for the same Mercury event sees a fresh entry and
+            // bails — otherwise we'd do the work twice (apply locally + fetch).
+            _lastDealerRefreshAt[playlistUri] = DateTimeOffset.UtcNow;
+
+            if (!RevisionsEqual(existing.Revision, merged.Revision))
+            {
+                _changes.OnNext(new PlaylistChangeEvent
+                {
+                    Uri = playlistUri,
+                    Kind = PlaylistChangeKind.Updated
+                });
+            }
+
+            _logger?.LogDebug(
+                "Applied Mercury ops directly for {Uri}: {OpCount} ops, no /diff round-trip",
+                playlistUri, ops.Count);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            // PlaylistDiffApplier saw a torn op (out-of-range index, etc.) —
+            // not a bug in our code, just a baseline drift.
+            _logger?.LogDebug(ex,
+                "Mercury ops apply failed for {Uri}, falling back to fetch", playlistUri);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Unexpected error applying Mercury ops for {Uri}", playlistUri);
+            return false;
+        }
+    }
+
     private async Task HandleDealerRefreshAsync(string uri)
     {
         try
         {
+            // Settle window: drop echo-Mercury notifications that follow a fresh
+            // refresh by less than DealerSettleWindow. See the constant's comment
+            // for the full diff-509/full-fetch/echo cycle this guards against.
+            // Latches even before the refresh runs, so a burst of dealer pushes
+            // for the same URI all collapse to one network round-trip.
+            var now = DateTimeOffset.UtcNow;
+            if (_lastDealerRefreshAt.TryGetValue(uri, out var lastAt)
+                && now - lastAt < DealerSettleWindow)
+            {
+                return;
+            }
+            _lastDealerRefreshAt[uri] = now;
+
             if (IsRootlistKey(uri))
             {
                 await GetOrCreateRootlistRefreshTask(forceRefresh: true, emitChange: true);
@@ -776,10 +1075,39 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         return left.AsSpan().SequenceEqual(right);
     }
 
+    /// <summary>
+    /// True when the revision's 4-byte big-endian counter is zero — i.e. the
+    /// revision belongs to a brand-new playlist that has never been mutated.
+    /// Used by <see cref="TryApplyMercuryOpsAsync"/> to detect the "create
+    /// playlist from scratch" case where there's no existing cache entry but
+    /// the Mercury push still carries the initial-state ops.
+    /// </summary>
+    private static bool IsZeroRevisionCounter(byte[] revision)
+    {
+        if (revision is null || revision.Length < 4) return false;
+        return System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(revision.AsSpan(0, 4)) == 0;
+    }
+
     private static bool IsStale(DateTimeOffset fetchedAt) => DateTimeOffset.UtcNow - fetchedAt > CacheTtl;
 
     private static bool ShouldRefresh(CachedPlaylist playlist) =>
         !playlist.HasContentsSnapshot || IsStale(playlist.FetchedAt);
+
+    // Time window inside which a freshly-refreshed URI is considered "still
+    // fresh enough" — short enough that warm-cache nav-revisits trigger a
+    // diff round-trip ("web-client feel" — caller sees the update within
+    // ~1 s of any real edit), long enough that a tab-switch + back doesn't
+    // hammer the network. Reuses the same _lastDealerRefreshAt dictionary
+    // the dealer settle window uses, so dealer pushes and nav refreshes
+    // dedup against each other automatically.
+    private static readonly TimeSpan FreshnessWindow = TimeSpan.FromSeconds(30);
+
+    private bool ShouldFreshnessCheck(string playlistUri)
+    {
+        if (_lastDealerRefreshAt.TryGetValue(playlistUri, out var lastAt))
+            return DateTimeOffset.UtcNow - lastAt > FreshnessWindow;
+        return true; // never refreshed in this process — always do a freshness check.
+    }
 
     private void EnsureDealerSubscription()
     {
@@ -795,8 +1123,30 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 return;
 
             _libraryChangeManager = new LibraryChangeManager(concreteSession.Dealer, _logger);
+
+            // Direct-apply path: when a Mercury push carries the full diff
+            // payload (FromRevision + Ops), apply it locally with zero network
+            // round-trip. NOT throttled — applying ops requires processing
+            // every event in sequence (skipping intermediate pushes would mean
+            // we can't reconcile via a later FromRevision either). Per-event
+            // cost is microseconds; the throttle in the refresh path below
+            // is for a different purpose (network dedup).
+            _directApplySubscription = _libraryChangeManager.Changes
+                .Where(static change =>
+                    change.Set == "playlists"
+                    && !string.IsNullOrEmpty(change.PlaylistUri)
+                    && change.FromRevision is { Length: > 0 }
+                    && change.Ops is { Count: > 0 })
+                .Subscribe(change => _ = TryApplyMercuryOpsAndMaybeRefreshAsync(change));
+
+            // Refresh path (existing): collapses bursts and falls back to a
+            // network fetch. Still useful for events without ops (rootlist
+            // changes, parser failures) AND as a safety net when the direct
+            // apply hits a revision mismatch (TryApplyMercuryOpsAndMaybeRefreshAsync
+            // routes through here on its own).
             _dealerSubscription = _libraryChangeManager.Changes
                 .Where(static change => change.Set == "playlists" || change.IsRootlist)
+                .Where(static change => change.Ops is null || change.Ops.Count == 0)
                 .Select(static change => change.IsRootlist
                     ? PlaylistCacheUris.Rootlist
                     : change.PlaylistUri ?? PlaylistCacheUris.Rootlist)
@@ -806,6 +1156,20 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Tries the direct-apply path; if it can't reconcile (revision mismatch /
+    /// no baseline / torn op), falls back to <see cref="HandleDealerRefreshAsync"/>
+    /// which fetches from the network. Saves wiring two parallel subscriptions
+    /// that both have to know about each other.
+    /// </summary>
+    private async Task TryApplyMercuryOpsAndMaybeRefreshAsync(LibraryChangeEvent change)
+    {
+        var uri = change.PlaylistUri!;
+        if (await TryApplyMercuryOpsAsync(uri, change.FromRevision!, change.NewRevision, change.Ops!))
+            return;
+        await HandleDealerRefreshAsync(uri);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -813,6 +1177,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
         _disposed = true;
         _dealerSubscription?.Dispose();
+        _directApplySubscription?.Dispose();
         _libraryChangeManager?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _changes.OnCompleted();
         _changes.Dispose();

@@ -21,6 +21,7 @@ public sealed class ImageCacheService
 
     private readonly LinkedList<KeyValuePair<CacheKey, CacheEntry>> _lruList = new();
     private readonly Dictionary<CacheKey, LinkedListNode<KeyValuePair<CacheKey, CacheEntry>>> _cache = new();
+    private readonly Dictionary<CacheKey, int> _pinCounts = new();
     private readonly ReaderWriterLockSlim _rwLock = new();
     private readonly int _maxSize;
 
@@ -130,15 +131,86 @@ public sealed class ImageCacheService
             var newNode = _lruList.AddFirst(new KeyValuePair<CacheKey, CacheEntry>(key, entry));
             _cache[key] = newNode;
 
-            // Evict oldest if over capacity
-            if (_cache.Count > _maxSize && _lruList.Last != null)
+            // Evict oldest unpinned entry if over capacity. Pinned entries (held by
+            // visible Image controls) are skipped so we don't force WinUI to re-decode
+            // a BitmapImage that's still on screen.
+            if (_cache.Count > _maxSize)
             {
-                var oldest = _lruList.Last;
-                _cache.Remove(oldest.Value.Key);
-                _lruList.RemoveLast();
+                var candidate = _lruList.Last;
+                while (candidate != null)
+                {
+                    var prev = candidate.Previous;
+                    if (!_pinCounts.ContainsKey(candidate.Value.Key))
+                    {
+                        _cache.Remove(candidate.Value.Key);
+                        _lruList.Remove(candidate);
+                        break;
+                    }
+                    candidate = prev;
+                }
             }
 
             return bitmap;
+        }
+        finally { _rwLock.ExitWriteLock(); }
+    }
+
+    /// <summary>
+    /// Pins a cache entry so <see cref="GetOrCreate"/> and <see cref="CleanupStale"/>
+    /// will not evict it. Ref-counted — callers must balance each <see cref="Pin"/>
+    /// with one <see cref="Unpin"/>. Pinning a not-yet-present entry still increments
+    /// the count (protects the entry once it's inserted).
+    /// </summary>
+    public void Pin(string? uri, int decodePixelSize = 0)
+    {
+        if (string.IsNullOrEmpty(uri)) return;
+        var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
+        _rwLock.EnterWriteLock();
+        try
+        {
+            _pinCounts.TryGetValue(key, out var count);
+            _pinCounts[key] = count + 1;
+        }
+        finally { _rwLock.ExitWriteLock(); }
+    }
+
+    /// <summary>
+    /// Decrements the pin count. When it hits zero the entry is removed from the pin
+    /// table and becomes evictable again.
+    /// </summary>
+    public void Unpin(string? uri, int decodePixelSize = 0)
+    {
+        if (string.IsNullOrEmpty(uri)) return;
+        var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
+        _rwLock.EnterWriteLock();
+        try
+        {
+            if (_pinCounts.TryGetValue(key, out var count))
+            {
+                if (count <= 1) _pinCounts.Remove(key);
+                else _pinCounts[key] = count - 1;
+            }
+        }
+        finally { _rwLock.ExitWriteLock(); }
+    }
+
+    /// <summary>
+    /// Forcibly removes an entry from the cache (typically after a decode failure)
+    /// so the next <see cref="GetOrCreate"/> creates a fresh <c>BitmapImage</c>.
+    /// Does not touch pin counts — a poisoned entry can still be retried.
+    /// </summary>
+    public void Invalidate(string? uri, int decodePixelSize = 0)
+    {
+        if (string.IsNullOrEmpty(uri)) return;
+        var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
+        _rwLock.EnterWriteLock();
+        try
+        {
+            if (_cache.TryGetValue(key, out var node))
+            {
+                _cache.Remove(key);
+                _lruList.Remove(node);
+            }
         }
         finally { _rwLock.ExitWriteLock(); }
     }
@@ -154,13 +226,19 @@ public sealed class ImageCacheService
         _rwLock.EnterWriteLock();
         try
         {
+            // Walk from the tail (oldest) forward. Pinned entries are held by visible
+            // Image controls and must be skipped, not halted-on — an older pinned
+            // entry shouldn't block eviction of a newer-but-still-stale unpinned one.
             var node = _lruList.Last;
             while (node != null && node.Value.Value.LastAccessedTick < cutoffTick)
             {
                 var prev = node.Previous;
-                _cache.Remove(node.Value.Key);
-                _lruList.Remove(node);
-                removed++;
+                if (!_pinCounts.ContainsKey(node.Value.Key))
+                {
+                    _cache.Remove(node.Value.Key);
+                    _lruList.Remove(node);
+                    removed++;
+                }
                 node = prev;
             }
         }
@@ -179,6 +257,7 @@ public sealed class ImageCacheService
         {
             _cache.Clear();
             _lruList.Clear();
+            _pinCounts.Clear();
         }
         finally { _rwLock.ExitWriteLock(); }
     }

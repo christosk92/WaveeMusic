@@ -253,9 +253,20 @@ public sealed class DealerClient : IAsyncDisposable
         if (_disposed)
             throw new ObjectDisposedException(nameof(DealerClient));
 
-        // Build reply JSON: {"type":"reply","key":"...","payload":{"success":true}}
+        // Build reply JSON: {"type":"reply","key":"...","payload":{"success":true}}.
+        // Use System.Text.Json for proper escaping — librespot uses serde_json
+        // for the same reason. Keys are Spotify-opaque strings, but they've
+        // historically been "{messageId}/{deviceId}" which escape-safely; using
+        // the serializer guards against future format drift.
         var success = result == RequestResult.Success;
-        var replyJson = $"{{\"type\":\"reply\",\"key\":\"{key}\",\"payload\":{{\"success\":{success.ToString().ToLowerInvariant()}}}}}";
+#pragma warning disable IL2026, IL3050 // Anonymous-type serialization — AOT users should switch to JsonTypeInfo
+        var replyJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "reply",
+            key,
+            payload = new { success }
+        });
+#pragma warning restore IL2026, IL3050
 
         await _connection.SendAsync(replyJson, cancellationToken);
 

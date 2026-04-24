@@ -83,6 +83,7 @@
                     x:Name="HeaderText"
                     Grid.Column="0"
                     VerticalAlignment="Center"
+                    HorizontalAlignment="{x:Bind HorizontalContentAlignment, Mode=OneWay}"
                     FontSize="12"
                     FontWeight="SemiBold"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"

@@ -193,6 +193,37 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// </summary>
     public void ResumeBackgroundRefresh() => _homeFeedCache?.ResumeRefresh();
 
+    /// <summary>
+    /// Pause refresh AND release the parsed feed tree so the Home page's
+    /// footprint drops while the user is on another page. The raw home-feed
+    /// response stays cached in <see cref="Services.HomeFeedCache"/> (SQLite
+    /// + in-memory), so coming back via <see cref="ResumeAndRehydrate"/>
+    /// rebuilds the parsed sections without a network round-trip.
+    ///
+    /// Without this, 127 section items + baseline enrichment (preview tracks,
+    /// poster URLs, canvas JSON) stay pinned in <see cref="Sections"/> for
+    /// the navigation-cached page's entire lifetime — a few MB per Home
+    /// visit that never come back under GC.
+    /// </summary>
+    public void HibernateForNavigation()
+    {
+        SuspendBackgroundRefresh();
+        CancelBaselineEnrichment();
+        Sections.Clear();
+        DisplayedChips.Clear();
+    }
+
+    /// <summary>
+    /// Pair with <see cref="HibernateForNavigation"/>: rebuild sections from
+    /// the cached raw feed and resume the background refresh.
+    /// </summary>
+    public void ResumeAndRehydrate()
+    {
+        ResumeBackgroundRefresh();
+        if (_homeFeedCache?.GetCached() is { } snapshot)
+            ApplyBackgroundRefresh(snapshot);
+    }
+
     public void ApplyBackgroundRefresh(Services.HomeFeedSnapshot snapshot)
     {
         CancelBaselineEnrichment();

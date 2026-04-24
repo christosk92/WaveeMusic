@@ -65,9 +65,18 @@ internal static class SpotifyImageHelper
             return false;
         }
 
+        // Dedup: Spotify sometimes emits the same image id in multiple mosaic
+        // positions for sparse playlists (<4 unique album covers). Feeding the
+        // duplicates into the mosaic composition would render the same cover
+        // in multiple quadrants; the caller can then decide whether to draw a
+        // 2×2 or fall back to a single cover based on the distinct count.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var urls = new List<string>(ids.Length);
         foreach (var id in ids)
-            urls.Add($"https://i.scdn.co/image/{id}");
+        {
+            if (seen.Add(id))
+                urls.Add($"https://i.scdn.co/image/{id}");
+        }
 
         tileUrls = urls;
         return true;

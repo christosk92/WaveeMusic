@@ -136,7 +136,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         };
     }
 
-    public async Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, CancellationToken ct)
+    public async Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, PlaybackContextInfo? context, IReadOnlyList<QueueItem>? richTracks, CancellationToken ct)
     {
         if (startIndex >= 0 && startIndex < trackUris.Count)
             BufferingStarted?.Invoke(ExtractId(trackUris[startIndex]));
@@ -146,7 +146,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
             Controls.PlayAction.PlayNext or Controls.PlayAction.PlayLater =>
                 await ExecuteQueueMultipleAsync(trackUris, ct),
-            _ => await ExecuteWithRetryAsync(c => _executor.PlayTracksAsync(trackUris, startIndex, c), nameof(PlayTracksAsync), ct, maxRetries: 0, isPlayCommand: true)
+            _ => await ExecuteWithRetryAsync(c => _executor.PlayTracksAsync(trackUris, startIndex, context, richTracks, c), nameof(PlayTracksAsync), ct, maxRetries: 0, isPlayCommand: true)
         };
     }
 

@@ -101,6 +101,16 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private bool _isBuffering;
     [ObservableProperty] private string? _bufferingTrackId;
 
+    /// <summary>
+    /// True once playback has reached end-of-context and auto-advance has
+    /// stopped. Drives the inline "You've reached the end" hint in the
+    /// PlayerBar. Cleared as soon as playback resumes (track change or
+    /// transition back to Playing). Set by <see cref="NotifyEndOfContext"/>
+    /// which is called from the orchestrator's <c>EndOfContext</c>
+    /// subscription in <c>AppLifecycleHelper</c>.
+    /// </summary>
+    [ObservableProperty] private bool _isAtEndOfContext;
+
     public IReadOnlyList<QueueItem> Queue => _queue;
     public IReadOnlyList<QueueItem> PreviousTracks => _prevQueue;
     public IReadOnlyList<QueueItem> UserQueue => _userQueueCache ??= BuildUserQueueCache();
@@ -830,7 +840,22 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _nowPlayingDirty = true;
         else
             _messenger.Send(new NowPlayingChangedMessage(CurrentContext?.ContextUri, CurrentAlbumId, value));
+
+        // Resume clears the end-of-context banner. It would otherwise stick
+        // forever once shown, since EndOfContextAsync only fires once per
+        // exhausted context.
+        if (value && IsAtEndOfContext) IsAtEndOfContext = false;
     }
+
+    /// <summary>
+    /// Called from <c>AppLifecycleHelper</c>'s subscription to the
+    /// orchestrator's <c>EndOfContext</c> observable. Flips
+    /// <see cref="IsAtEndOfContext"/> so the PlayerBar can show its inline
+    /// "You've reached the end" hint.
+    /// </summary>
+    public void NotifyEndOfContext() => IsAtEndOfContext = true;
+
+    public void DismissEndOfContext() => IsAtEndOfContext = false;
 
     partial void OnCurrentTrackIdChanged(string? value) => _messenger.Send(new TrackChangedMessage(value));
 
@@ -1077,7 +1102,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         var trackUris = items.Select(i => i.TrackId).ToList();
         _logger?.LogInformation("[Cmd] LoadQueue: {Count} tracks, startIndex={StartIndex}, context={Context}",
             trackUris.Count, startIndex, context.ContextUri);
-        _ = _playbackService.PlayTracksAsync(trackUris, startIndex).ContinueWith(t =>
+        _ = _playbackService.PlayTracksAsync(trackUris, startIndex, context, items).ContinueWith(t =>
         {
             if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] LoadQueue FAILED: {Count} tracks", trackUris.Count);
             else _logger?.LogDebug("[Cmd] LoadQueue accepted: {Count} tracks", trackUris.Count);

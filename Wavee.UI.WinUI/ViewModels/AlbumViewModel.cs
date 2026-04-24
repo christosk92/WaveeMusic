@@ -340,7 +340,19 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         private set => this.RaiseAndSetIfChanged(ref _moreByArtist, value);
     }
 
-    public bool HasMoreByArtist => MoreByArtist.Count > 0;
+    private bool _hasMoreByArtist;
+    public bool HasMoreByArtist
+    {
+        get => _hasMoreByArtist;
+        private set => this.RaiseAndSetIfChanged(ref _hasMoreByArtist, value);
+    }
+
+    private bool _hasNoRelatedAlbums;
+    public bool HasNoRelatedAlbums
+    {
+        get => _hasNoRelatedAlbums;
+        private set => this.RaiseAndSetIfChanged(ref _hasNoRelatedAlbums, value);
+    }
 
     /// <summary>
     /// Merchandise items for this album.
@@ -591,7 +603,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             MoreByArtist.Clear();
             foreach (var r in detail.MoreByArtist)
                 MoreByArtist.Add(r);
-            this.RaisePropertyChanged(nameof(HasMoreByArtist));
+            HasMoreByArtist = MoreByArtist.Count > 0;
+            HasNoRelatedAlbums = !HasMoreByArtist;
 
             // Merch (non-blocking, loaded after main content)
             _ = LoadMerchAsync(albumId);
@@ -810,6 +823,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         {
             Helpers.Navigation.NavigationHelpers.OpenArtist(ArtistId, ArtistName ?? "Artist");
         }
+    }
+
+    [RelayCommand]
+    private void OpenLikedSongs()
+    {
+        Helpers.Navigation.NavigationHelpers.OpenLikedSongs();
     }
 
     [RelayCommand]

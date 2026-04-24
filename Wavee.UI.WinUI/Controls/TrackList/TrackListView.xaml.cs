@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -66,6 +67,11 @@ public sealed partial class TrackListView : UserControl
         {
             _scrollViewer.ViewChanged -= OnScrollViewChanged;
             _scrollViewer = null;
+        }
+
+        if (InternalListView != null)
+        {
+            InternalListView.SizeChanged -= OnInternalListViewSizeChanged;
         }
 
         // Clean up collection subscription
@@ -549,10 +555,32 @@ public sealed partial class TrackListView : UserControl
             _scrollViewer.ViewChanged += OnScrollViewChanged;
         }
 
+        // WinUI 3 ListView.Header doesn't propagate viewport width to its child
+        // during measure (issues #3682 / #9824), so the column-headers Grid's *
+        // column collapses to MinWidth and visually misaligns with the rows.
+        // Drive the header's Width imperatively from the ListView's actual width.
+        InternalListView.SizeChanged -= OnInternalListViewSizeChanged;
+        InternalListView.SizeChanged += OnInternalListViewSizeChanged;
+        SyncHeaderWidthToListView();
+
         UpdateRemoveButtonLabel();
         ApplyCustomColumns();
         UpdateColumnVisibility();
 
+    }
+
+    private void OnInternalListViewSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SyncHeaderWidthToListView();
+    }
+
+    private void SyncHeaderWidthToListView()
+    {
+        if (InternalListView is null || ScrollableColumnHeaders is null) return;
+        var pad = InternalListView.Padding;
+        var contentWidth = InternalListView.ActualWidth - pad.Left - pad.Right;
+        if (contentWidth <= 0) return;
+        ScrollableColumnHeaders.Width = contentWidth;
     }
 
     private void UpdateColumnVisibility()
@@ -761,10 +789,29 @@ public sealed partial class TrackListView : UserControl
 
     #region Item Container & Row Handling
 
+    private ListViewItem? _pressedWhileSelected;
+    private PointerEventHandler? _containerPointerPressedHandler;
+    private TappedEventHandler? _containerTappedHandler;
+
     private void TrackListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
+        if (args.ItemContainer is ListViewItem lvi)
+        {
+            _containerPointerPressedHandler ??= Container_PointerPressed;
+            _containerTappedHandler ??= Container_Tapped;
+            // handledEventsToo=true: ListViewItemPresenter marks PointerPressed/Tapped
+            // as handled during its internal selection path. We still need these to
+            // run our toggle-on-reclick logic.
+            lvi.RemoveHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler);
+            lvi.AddHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler, true);
+            lvi.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
+            lvi.AddHandler(UIElement.TappedEvent, _containerTappedHandler, true);
+        }
+
         if (args.ItemContainer?.ContentTemplateRoot is TrackItem trackItem)
         {
+            var container = args.ItemContainer as ListViewItem;
+
             // Configure TrackItem with current display settings
             trackItem.ShowAlbumArt = ShowAlbumArtColumn;
             trackItem.ShowArtistColumn = ShowArtistColumn;
@@ -774,6 +821,7 @@ public sealed partial class TrackListView : UserControl
             trackItem.RowIndex = args.ItemIndex + 1;
             trackItem.PlaceholderColorHex = PlaceholderColorHex;
             trackItem.UseImageColorHint = UseImageColorHint;
+            trackItem.IsSelected = container?.IsSelected == true;
 
             // Wire up commands from ViewModel, or fall back to raising TrackClicked event
             trackItem.PlayCommand = ViewModel?.PlayTrackCommand ?? _trackClickedCommand;
@@ -825,7 +873,7 @@ public sealed partial class TrackListView : UserControl
             }
 
             // Adjust item container margin for compact mode
-            if (args.ItemContainer is ListViewItem lvItem)
+            if (container is ListViewItem lvItem)
                 lvItem.Margin = IsCompact ? new Thickness(0, 1, 0, 1) : new Thickness(0, 2, 0, 2);
         }
     }
@@ -886,9 +934,92 @@ public sealed partial class TrackListView : UserControl
     {
         if (ViewModel == null) return;
 
+        SyncRealizedSelectionVisuals();
         var selectedItems = InternalListView.SelectedItems.Cast<object>().ToList();
         ViewModel.SelectedItems = selectedItems;
         UpdateSelectionCommandBar();
+    }
+
+    // Plain click on an already-selected row toggles it off.
+    // PointerPressed remembers if the row was already selected at press time;
+    // Tapped then fires the deselect (after ListView has already run its own
+    // single-click path, which for an already-selected item is a no-op).
+    private void Container_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem lvi)
+        {
+            _pressedWhileSelected = null;
+            return;
+        }
+
+        var (ctrl, shift) = GetCtrlShiftState();
+        if (ctrl || shift || !lvi.IsSelected || IsInteractiveElement(e.OriginalSource as DependencyObject))
+        {
+            _pressedWhileSelected = null;
+            return;
+        }
+
+        _pressedWhileSelected = lvi;
+        e.Handled = true;
+    }
+
+    private void Container_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem lvi) return;
+        if (_pressedWhileSelected != lvi) return;
+        _pressedWhileSelected = null;
+
+        var (ctrl, shift) = GetCtrlShiftState();
+        if (ctrl || shift) return;
+
+        var item = lvi.Content ?? lvi.DataContext;
+        if (item != null && InternalListView.SelectedItems.Contains(item))
+            InternalListView.SelectedItems.Remove(item);
+        lvi.IsSelected = false;
+        SyncRealizedSelectionVisuals();
+    }
+
+    // CoreWindow.GetForCurrentThread() can return null on WinUI 3 dispatcher contexts;
+    // dereferencing it crashes the app. Use Microsoft.UI.Input.InputKeyboardSource
+    // instead and tolerate any failure as "no modifier held".
+    private static (bool ctrl, bool shift) GetCtrlShiftState()
+    {
+        try
+        {
+            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift);
+            return (
+                (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down,
+                (shiftState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down);
+        }
+        catch
+        {
+            return (false, false);
+        }
+    }
+
+    private void SyncRealizedSelectionVisuals()
+    {
+        for (int i = 0; i < InternalListView.Items.Count; i++)
+        {
+            if (InternalListView.ContainerFromIndex(i) is ListViewItem container &&
+                container.ContentTemplateRoot is TrackItem trackItem)
+            {
+                trackItem.IsSelected = container.IsSelected;
+            }
+        }
+    }
+
+    private static bool IsInteractiveElement(DependencyObject? element)
+    {
+        while (element != null)
+        {
+            if (element is ButtonBase or HyperlinkButton)
+                return true;
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        return false;
     }
 
     private void UpdateSelectionCommandBar()

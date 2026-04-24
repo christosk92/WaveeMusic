@@ -176,10 +176,15 @@ public sealed class LibraryDataService : ILibraryDataService
                 : null;
 
             var ownerUsername = decoration?.OwnerUsername ?? persisted?.OwnerUsername ?? persisted?.OwnerName;
+            // Reject empty / whitespace names — `??` alone lets "" win over a
+            // valid persisted fallback, which renders as a blank sidebar row.
+            var name = !string.IsNullOrWhiteSpace(decoration?.Name) ? decoration!.Name
+                     : !string.IsNullOrWhiteSpace(persisted?.Name)  ? persisted!.Name
+                     : "Playlist";
             results.Add(new PlaylistSummaryDto
             {
                 Id = entry.Uri,
-                Name = decoration?.Name ?? persisted?.Name ?? "Playlist",
+                Name = name,
                 ImageUrl = decoration?.ImageUrl ?? persisted?.ImageUrl,
                 TrackCount = decoration?.Length ?? persisted?.TrackCount ?? 0,
                 IsOwner = !string.IsNullOrWhiteSpace(currentUsername)
@@ -365,7 +370,11 @@ public sealed class LibraryDataService : ILibraryDataService
                 AddedAt = item.AddedAt?.LocalDateTime,
                 AddedBy = item.AddedBy,
                 IsExplicit = track.Explicit,
-                OriginalIndex = tracks.Count + 1
+                OriginalIndex = tracks.Count + 1,
+                // Spotify's on-wire uid: lower-case hex of the 8-byte itemId. Matches
+                // the format web/mobile clients publish for skip-to-uid round-trip.
+                Uid = item.ItemId is { Length: > 0 } id ? Convert.ToHexString(id).ToLowerInvariant() : null,
+                FormatAttributes = item.FormatAttributes.Count > 0 ? item.FormatAttributes : null
             });
         }
 
@@ -378,6 +387,14 @@ public sealed class LibraryDataService : ILibraryDataService
     private async Task<PlaylistDetailDto> GetPlaylistCoreAsync(string playlistId, CancellationToken ct)
     {
         var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
+        // playlist.OwnerUsername sometimes arrives as a bare username and sometimes as
+        // the full "spotify:user:{id}" URI depending on which proto path filled it.
+        // Canonicalize at the DTO boundary so OwnerId is a single-prefix URI and
+        // OwnerName is the bare username (the resolver can replace it with a real
+        // display name once the round-trip completes).
+        var bareOwner = string.IsNullOrWhiteSpace(playlist.OwnerUsername)
+            ? string.Empty
+            : ExtractBareId(playlist.OwnerUsername, "spotify:user:");
         return new PlaylistDetailDto
         {
             Id = playlist.Uri,
@@ -385,15 +402,16 @@ public sealed class LibraryDataService : ILibraryDataService
             Description = playlist.Description,
             ImageUrl = playlist.ImageUrl,
             HeaderImageUrl = playlist.HeaderImageUrl,
-            OwnerName = playlist.OwnerUsername,
-            OwnerId = string.IsNullOrWhiteSpace(playlist.OwnerUsername) ? null : $"spotify:user:{playlist.OwnerUsername}",
+            OwnerName = bareOwner,
+            OwnerId = string.IsNullOrEmpty(bareOwner) ? null : $"spotify:user:{bareOwner}",
             TrackCount = playlist.Length,
             FollowerCount = 0,
             IsOwner = playlist.BasePermission == CachedPlaylistBasePermission.Owner,
             IsCollaborative = playlist.IsCollaborative,
             IsPublic = playlist.IsPublic,
             BasePermission = MapBasePermission(playlist.BasePermission),
-            Capabilities = MapCapabilities(playlist.Capabilities)
+            Capabilities = MapCapabilities(playlist.Capabilities),
+            FormatAttributes = playlist.FormatAttributes.Count > 0 ? playlist.FormatAttributes : null
         };
     }
 
