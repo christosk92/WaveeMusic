@@ -149,8 +149,7 @@
 
         <Border
             CornerRadius="4"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1">
+            BorderThickness="0">
             <Border.Background>
                 <AcrylicBrush
                     x:Name="PlayerBarTintBrush"

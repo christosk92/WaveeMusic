@@ -68,19 +68,17 @@ public sealed partial class PlaylistPage : Page
         };
         TrackGrid.DateAddedFormatter = addedFormatter;
 
-        // Added-by formatter — collapses to Empty for rows added by the current
-        // user (so their own rows stay visually clean) and for any row whose
-        // resolution hasn't completed yet (the avatar pops in once the VM's
-        // background resolution writes back). Falls back to bare "@username"
-        // when the resolver couldn't pin down a display name.
+        // Added-by formatter — emits a name + avatar URL for every row that
+        // has an addedBy (including the current user, on collaborative
+        // playlists where seeing "I added these, X added those" is the whole
+        // point of the column). Falls back to bare "@username" when the
+        // resolver hasn't pinned down a display name yet.
         TrackGrid.AddedByFormatter = item =>
         {
             var dto = item is PlaylistTrackDto direct
                 ? direct
                 : (item is LazyTrackItem lz ? lz.Data as PlaylistTrackDto : null);
             if (dto is null || string.IsNullOrEmpty(dto.AddedBy)) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
-            if (string.Equals(dto.AddedBy, ViewModel.CurrentUserId, StringComparison.OrdinalIgnoreCase))
-                return Controls.TrackDataGrid.AddedByCellInfo.Empty;
 
             var label = dto.AddedByDisplayName ?? "@" + dto.AddedBy;
             return new Controls.TrackDataGrid.AddedByCellInfo(label, dto.AddedByAvatarUrl);

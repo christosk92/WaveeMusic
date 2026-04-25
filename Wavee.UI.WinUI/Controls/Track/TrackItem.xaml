@@ -266,10 +266,13 @@
                         </HyperlinkButton.ContentTemplate>
                     </HyperlinkButton>
 
-                    <!-- Added By: avatar + display name. Visible only on collaborative
-                         playlists (TrackDataGrid sets ShowAddedByColumn). For rows the
-                         current user added themselves the consumer leaves the formatter
-                         output empty so the cell collapses cleanly. -->
+                    <!-- Added By: PersonPicture + display name. Visible on
+                         collaborative playlists and viewer-mode playlists
+                         (TrackDataGrid sets ShowAddedByColumn). PersonPicture
+                         handles every fallback automatically: image when set,
+                         initials from DisplayName when no image, generic
+                         person glyph when neither — same component used on
+                         the hero collab stack. -->
                     <Grid x:Name="RowAddedByCell" Grid.Column="5"
                           ColumnSpacing="6"
                           VerticalAlignment="Center"
@@ -279,10 +282,9 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Ellipse x:Name="RowAddedByAvatar"
-                                 Grid.Column="0"
-                                 Width="20" Height="20"
-                                 Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+                        <PersonPicture x:Name="RowAddedByAvatar"
+                                       Grid.Column="0"
+                                       Width="20" Height="20"/>
                         <TextBlock x:Name="RowAddedByText"
                                    Grid.Column="1"
                                    Style="{StaticResource CaptionTextBlockStyle}"

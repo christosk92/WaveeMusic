@@ -202,10 +202,19 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// True when the AddedBy column should render. Shown on collaborative playlists
     /// (multiple contributors expected) AND on any playlist the current user
     /// doesn't own (matches Spotify's desktop behaviour — an "Added by" column
-    /// shows on viewer-mode playlists so the contributor is attributed). Hidden
-    /// on owner-mode personal playlists where every row is "added by self".
+    /// shows on viewer-mode playlists so the contributor is attributed), AND on
+    /// owner-mode playlists that have any other contributor (typical of "shared
+    /// via invite link" playlists where Spotify doesn't toggle the proto-level
+    /// <c>attributes.collaborative</c> flag — only the membership list changes).
+    /// Hidden on owner-mode solo personal playlists where every row is added
+    /// by self.
+    ///
+    /// Reuses <see cref="HasCollaborators"/> as the multi-contributor signal —
+    /// it's already set inside <see cref="RebuildCollaboratorsFromContext"/>
+    /// to <c>IsCollaborative || Collaborators.Count &gt;= 2</c>, which captures
+    /// both the proto-flag case and the derived-from-tracks case.
     /// </summary>
-    public bool ShouldShowAddedByColumn => IsCollaborative || !IsOwner;
+    public bool ShouldShowAddedByColumn => HasCollaborators || !IsOwner;
 
     partial void OnIsCollaborativeChanged(bool value)
     {
@@ -215,6 +224,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         RebuildCollaboratorsFromContext();
     }
     partial void OnIsOwnerChanged(bool value) => OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+    partial void OnHasCollaboratorsChanged(bool value)
+        => OnPropertyChanged(nameof(ShouldShowAddedByColumn));
 
     partial void OnCanDeleteChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
     partial void OnCanEditCollaborativeChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
@@ -1784,18 +1795,23 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
 
         // Snapshot the current track list so we don't race with a swap.
+        // Resolve every distinct addedBy id INCLUDING the current user — on a
+        // collaborative playlist Spotify shows your own name in the AddedBy
+        // column too (so a glance at the column tells you "I added these, X
+        // added those"). The previous skip-self filter was the right default
+        // back when the column was hidden on owner-mode personal playlists,
+        // but the column gate now covers multi-contributor playlists where
+        // the self rows would otherwise render as blank.
         var snapshot = _allTracks;
-        var selfId = CurrentUserId;
         var unique = snapshot
             .Select(t => t.AddedBy)
-            .Where(id => !string.IsNullOrEmpty(id)
-                && !string.Equals(id, selfId, StringComparison.OrdinalIgnoreCase))
+            .Where(id => !string.IsNullOrEmpty(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         _logger?.LogInformation(
-            "[addedby] resolve start for '{Id}' — selfId={Self} uniqueCount={N} unique=[{List}]",
-            forPlaylistId, selfId, unique.Count, string.Join(",", unique));
+            "[addedby] resolve start for '{Id}' — uniqueCount={N} unique=[{List}]",
+            forPlaylistId, unique.Count, string.Join(",", unique));
 
         if (unique.Count == 0) return;
 
@@ -1829,16 +1845,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
 
         var anyChanged = 0;
-        var skippedSelf = 0;
         var skippedNullProfile = 0;
         foreach (var dto in snapshot)
         {
             if (string.IsNullOrEmpty(dto.AddedBy)) continue;
-            if (string.Equals(dto.AddedBy, selfId, StringComparison.OrdinalIgnoreCase))
-            {
-                skippedSelf++;
-                continue;
-            }
             if (!lookup.TryGetValue(dto.AddedBy, out var profile) || profile is null)
             {
                 skippedNullProfile++;
@@ -1850,8 +1860,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
 
         _logger?.LogInformation(
-            "[addedby] writeback complete for '{Id}': mutated={Changed} skippedSelf={Self} skippedNullProfile={Nul}",
-            forPlaylistId, anyChanged, skippedSelf, skippedNullProfile);
+            "[addedby] writeback complete for '{Id}': mutated={Changed} skippedNullProfile={Nul}",
+            forPlaylistId, anyChanged, skippedNullProfile);
 
         // The TrackDataGrid pushes formatter values imperatively at row
         // materialization, so DTO mutations don't reach already-rendered

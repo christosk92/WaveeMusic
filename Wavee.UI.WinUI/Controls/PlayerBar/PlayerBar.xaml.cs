@@ -68,6 +68,11 @@ public sealed partial class PlayerBar : UserControl
         // Apply initial color if available
         ApplyTintColor(ViewModel.AlbumArtColor);
         UpdatePlayerHeartState();
+
+        // Re-tint on theme switch — otherwise the bar stays stuck with
+        // whichever theme's blend was active when the track loaded
+        // (light-mode pastel under dark mode, or vice-versa).
+        ActualThemeChanged += (_, _) => ApplyTintColor(ViewModel.AlbumArtColor);
     }
 
     private void OnPlayerBarLoaded(object sender, RoutedEventArgs e)
@@ -218,21 +223,34 @@ public sealed partial class PlayerBar : UserControl
         try
         {
             var hex = hexColor.TrimStart('#');
-            if (hex.Length == 6)
-            {
-                var r = Convert.ToByte(hex[..2], 16);
-                var g = Convert.ToByte(hex[2..4], 16);
-                var b = Convert.ToByte(hex[4..6], 16);
-                var color = Windows.UI.Color.FromArgb(255, r, g, b);
-                PlayerBarTintBrush.TintColor = color;
+            if (hex.Length != 6) return;
+            var r = Convert.ToByte(hex[..2], 16);
+            var g = Convert.ToByte(hex[2..4], 16);
+            var b = Convert.ToByte(hex[4..6], 16);
 
-                // Color the album art thumbnail placeholder with the album's dominant color
-                // at reduced opacity so it looks like a tinted background (not a solid block).
-                var placeholderColor = Windows.UI.Color.FromArgb(100, r, g, b);
-                var placeholderBrush = new SolidColorBrush(placeholderColor);
-                if (AlbumArtHost != null) AlbumArtHost.Background = placeholderBrush;
-                if (NarrowAlbumArtHost != null) NarrowAlbumArtHost.Background = placeholderBrush;
+            // Light mode: pre-blend the album dominant colour toward white so
+            // the player bar reads as a gentle pastel pad instead of a fully
+            // saturated band that fights the page surface and tanks text
+            // contrast (the title / subtitle text is dark, so a saturated
+            // mid-tone tint kills legibility). Dark mode keeps the saturated
+            // tint — it pops against a dark background.
+            byte tr = r, tg = g, tb = b;
+            if (ActualTheme != ElementTheme.Dark)
+            {
+                const float blend = 0.62f; // 62% white, 38% album colour
+                tr = (byte)(r * (1 - blend) + 255 * blend);
+                tg = (byte)(g * (1 - blend) + 255 * blend);
+                tb = (byte)(b * (1 - blend) + 255 * blend);
             }
+            PlayerBarTintBrush.TintColor = Windows.UI.Color.FromArgb(255, tr, tg, tb);
+
+            // Album art thumbnail placeholder uses the RAW dominant colour at
+            // low alpha — a small, square tint chip looks fine even with the
+            // fully saturated colour, and matches what's behind the actual
+            // cover image once it loads.
+            var placeholderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(100, r, g, b));
+            if (AlbumArtHost != null) AlbumArtHost.Background = placeholderBrush;
+            if (NarrowAlbumArtHost != null) NarrowAlbumArtHost.Background = placeholderBrush;
         }
         catch
         {

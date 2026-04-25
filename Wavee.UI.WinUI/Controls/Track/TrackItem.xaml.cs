@@ -831,8 +831,12 @@ public sealed partial class TrackItem : UserControl
         var item = (TrackItem)d;
         var text = (string?)e.NewValue ?? "";
         item.RowAddedByText.Text = text;
-        // Empty text → collapse the cell entirely so the row added by the
-        // current user doesn't reserve space for an empty avatar + label.
+        // Feed the same text to PersonPicture so it can derive initials when
+        // the avatar URL is missing — without DisplayName, PersonPicture
+        // falls back to a generic person glyph instead of the user's initial.
+        item.RowAddedByAvatar.DisplayName = text;
+        // Empty text → collapse the cell entirely so empty rows don't
+        // reserve space for a placeholder avatar + label.
         item.RowAddedByCell.Visibility = string.IsNullOrEmpty(text)
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -844,18 +848,23 @@ public sealed partial class TrackItem : UserControl
         var url = (string?)e.NewValue;
         if (string.IsNullOrEmpty(url))
         {
-            item.RowAddedByAvatar.Fill = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+            // Clear the photo so PersonPicture renders its initials / glyph fallback.
+            item.RowAddedByAvatar.ProfilePicture = null;
             return;
         }
 
-        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(url))
+        // The resolver may return either a direct https URL or a Spotify
+        // internal `spotify:image:{hex}` reference; route both through the
+        // helper so PersonPicture always gets a loadable URI.
+        var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(url) ?? url;
+        if (!Uri.TryCreate(httpsUrl, UriKind.Absolute, out var avatarUri))
+        {
+            item.RowAddedByAvatar.ProfilePicture = null;
+            return;
+        }
+        item.RowAddedByAvatar.ProfilePicture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(avatarUri)
         {
             DecodePixelWidth = 40
-        };
-        item.RowAddedByAvatar.Fill = new ImageBrush
-        {
-            ImageSource = bitmap,
-            Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill
         };
     }
 
@@ -1102,21 +1111,28 @@ public sealed partial class TrackItem : UserControl
             RowRoot.Background = DefaultBackground;
         }
 
+        // BorderThickness is always 1 — only the BorderBrush colour changes
+        // between visible (alternating-row card stroke) and invisible
+        // (transparent). Toggling the THICKNESS instead would add / remove
+        // 2 px from the row's outer bounds on hover, shifting every cell's
+        // inner content by 1 px and producing the visible flicker the user
+        // reported. Keep the geometry stable; only repaint.
+        RowRoot.BorderThickness = new Thickness(1);
         if (!nativePillShowing && _isAlternateRow)
         {
-            // Border only on rows with the card fill — transparent rows stay
-            // borderless so the alternating pattern reads as "card, gap, card"
-            // instead of a full grid. Matches the sidebar-selected chip look.
             RowRoot.BorderBrush = _themeColors?.CardStroke
                 ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-            RowRoot.BorderThickness = new Thickness(1);
         }
         else
         {
-            RowRoot.BorderBrush = null;
-            RowRoot.BorderThickness = new Thickness(0);
+            RowRoot.BorderBrush = TransparentBrush;
         }
     }
+
+    // Cached transparent brush — reused across hover transitions so we don't
+    // allocate a new SolidColorBrush on every PointerEntered / PointerExited.
+    private static readonly Brush TransparentBrush =
+        new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
     private void UpdateSelectionVisualState()
     {
