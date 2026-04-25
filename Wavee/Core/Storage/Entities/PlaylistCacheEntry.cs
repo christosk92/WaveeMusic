@@ -132,4 +132,17 @@ public sealed record PlaylistCacheEntry : ICacheEntry
 
     /// <inheritdoc />
     public DateTimeOffset? LastAccessedAt { get; init; }
+
+    /// <summary>
+    /// Cache-schema version at the time this row was written. Compared against
+    /// <c>PlaylistCacheService.CurrentCacheSchemaVersion</c> on read; rows below
+    /// the current version are treated as cache misses and re-fetched from the
+    /// network. Bumped whenever the persisted JSON shapes
+    /// (<see cref="CapabilitiesJson"/>, <see cref="OrderedItemsJson"/>,
+    /// <see cref="FormatAttributesJson"/>, <see cref="AvailableSignalsJson"/>)
+    /// gain or change fields, so old caches don't silently produce degraded
+    /// state (e.g. owner sees "view-only" because a new capability flag wasn't
+    /// in the original payload).
+    /// </summary>
+    public int CacheSchemaVersion { get; init; }
 }

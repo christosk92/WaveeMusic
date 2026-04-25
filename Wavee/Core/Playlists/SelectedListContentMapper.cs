@@ -384,16 +384,21 @@ public static class SelectedListContentMapper
     {
         if (capabilities == null)
         {
+            System.Diagnostics.Debug.WriteLine("[caps] proto MapCapabilities: capabilities=NULL → ViewOnly");
             return CachedPlaylistCapabilities.ViewOnly with
             {
                 CanAbuseReport = abuseReportingEnabled
             };
         }
 
+        System.Diagnostics.Debug.WriteLine(
+            $"[caps] proto MapCapabilities: hasField? CanEditMetadata={capabilities.HasCanEditMetadata}={capabilities.CanEditMetadata} | View={capabilities.CanView} EditItems={capabilities.CanEditItems} Admin={capabilities.CanAdministratePermissions} Cancel={capabilities.CanCancelMembership}");
+
         return new CachedPlaylistCapabilities
         {
             CanView = capabilities.CanView,
             CanEditItems = capabilities.CanEditItems,
+            CanEditMetadata = capabilities.CanEditMetadata,
             CanAdministratePermissions = capabilities.CanAdministratePermissions,
             CanCancelMembership = capabilities.CanCancelMembership,
             CanAbuseReport = abuseReportingEnabled
@@ -402,11 +407,30 @@ public static class SelectedListContentMapper
 
     public static string? PickImageUrl(ListAttributes? attributes)
     {
-        if (attributes?.PictureSize.Count is not > 0)
-            return null;
+        if (attributes is null) return null;
 
-        return attributes.PictureSize.FirstOrDefault(static picture => picture.TargetName == "default")?.Url
-            ?? attributes.PictureSize.FirstOrDefault()?.Url;
+        // Preferred: pre-rendered URL from PictureSize (size-targeted CDN
+        // entries the server provides for editorial / featured playlists).
+        if (attributes.PictureSize.Count > 0)
+        {
+            var fromSized = attributes.PictureSize.FirstOrDefault(static p => p.TargetName == "default")?.Url
+                            ?? attributes.PictureSize.FirstOrDefault()?.Url;
+            if (!string.IsNullOrEmpty(fromSized)) return fromSized;
+        }
+
+        // Fallback: user-uploaded covers ship as a raw `picture` ByteString
+        // (the file id) with no PictureSize array. Hex-encode → standard
+        // `spotify:image:{id}` URI, which the UI image converter then maps
+        // to https://i.scdn.co/image/{id}. Without this fallback, every
+        // user-customised playlist with no PictureSize collapses to the
+        // mosaic placeholder.
+        if (attributes.HasPicture && attributes.Picture.Length > 0)
+        {
+            var hex = Convert.ToHexString(attributes.Picture.ToByteArray()).ToLowerInvariant();
+            return $"spotify:image:{hex}";
+        }
+
+        return null;
     }
 
     private static bool TryParseFolderStart(string uri, out string? folderId, out string? folderName)

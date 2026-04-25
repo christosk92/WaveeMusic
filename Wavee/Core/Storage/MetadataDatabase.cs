@@ -60,7 +60,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v9: Added media_overrides table
     // v11: Added playlist/rootlist cache snapshots
     // v12: Added header_image_url + format_attributes_json on spotify_playlists
-    private const int CurrentSchemaVersion = 13;
+    private const int CurrentSchemaVersion = 14;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -122,6 +122,21 @@ public sealed class MetadataDatabase : IMetadataDatabase
             ToVersion: 13,
             Sql: """
                 ALTER TABLE spotify_playlists ADD COLUMN available_signals_json TEXT;
+                """),
+
+        // v14: per-row cache schema version. Bumped via
+        // PlaylistCacheService.CurrentCacheSchemaVersion whenever any of the
+        // JSON blobs persisted on the playlist row (CapabilitiesJson,
+        // OrderedItemsJson, FormatAttributesJson, AvailableSignalsJson) change
+        // shape. The cache layer treats a row whose stored version is below
+        // current as cache-miss, forcing a fresh fetch. Existing rows default
+        // to 0, so the first version bump after upgrade re-fetches everything
+        // exactly once.
+        new SchemaMigration(
+            FromVersion: 13,
+            ToVersion: 14,
+            Sql: """
+                ALTER TABLE spotify_playlists ADD COLUMN cache_schema_version INTEGER NOT NULL DEFAULT 0;
                 """)
     ];
 
@@ -549,7 +564,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         available_signals_json TEXT,
                         deleted_by_owner    INTEGER NOT NULL DEFAULT 0,
                         abuse_reporting_enabled INTEGER NOT NULL DEFAULT 0,
-                        last_accessed_at    INTEGER
+                        last_accessed_at    INTEGER,
+                        cache_schema_version INTEGER NOT NULL DEFAULT 0
                     );
                     """;
                 cmd.ExecuteNonQuery();
@@ -2483,7 +2499,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     ordered_items_json, has_contents_snapshot, base_permission,
                     capabilities_json, format_attributes_json, available_signals_json,
                     deleted_by_owner, abuse_reporting_enabled,
-                    last_accessed_at, is_from_rootlist
+                    last_accessed_at, is_from_rootlist, cache_schema_version
                 )
                 VALUES (
                     $id, $name, $owner_id, $owner_name, $description, $image_url, $header_image_url, $track_count,
@@ -2491,7 +2507,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     $ordered_items_json, $has_contents_snapshot, $base_permission,
                     $capabilities_json, $format_attributes_json, $available_signals_json,
                     $deleted_by_owner, $abuse_reporting_enabled,
-                    $last_accessed_at, 1
+                    $last_accessed_at, 1, $cache_schema_version
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
@@ -2515,7 +2531,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     deleted_by_owner = excluded.deleted_by_owner,
                     abuse_reporting_enabled = excluded.abuse_reporting_enabled,
                     last_accessed_at = excluded.last_accessed_at,
-                    is_from_rootlist = 1;
+                    is_from_rootlist = 1,
+                    cache_schema_version = excluded.cache_schema_version;
                 """;
 
             cmd.Parameters.AddWithValue("$id", playlist.Uri);
@@ -2542,6 +2559,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$last_accessed_at", playlist.LastAccessedAt.HasValue
                 ? playlist.LastAccessedAt.Value.ToUnixTimeSeconds()
                 : DBNull.Value);
+            cmd.Parameters.AddWithValue("$cache_schema_version", playlist.CacheSchemaVersion);
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -2567,7 +2585,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                    is_public, is_collaborative, cache_revision, ordered_items_json,
                    has_contents_snapshot, base_permission, capabilities_json,
                    deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at,
-                   header_image_url, format_attributes_json, available_signals_json
+                   header_image_url, format_attributes_json, available_signals_json,
+                   cache_schema_version
             FROM spotify_playlists
             WHERE id = $id;
             """;
@@ -2608,7 +2627,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                    is_public, is_collaborative, cache_revision, ordered_items_json,
                    has_contents_snapshot, base_permission, capabilities_json,
                    deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at,
-                   header_image_url, format_attributes_json, available_signals_json
+                   header_image_url, format_attributes_json, available_signals_json,
+                   cache_schema_version
             FROM spotify_playlists
             ORDER BY COALESCE(last_accessed_at, synced_at, 0) DESC
             LIMIT $limit;
@@ -2767,7 +2787,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(17)),
             HeaderImageUrl = reader.IsDBNull(18) ? null : reader.GetString(18),
             FormatAttributesJson = reader.IsDBNull(19) ? null : reader.GetString(19),
-            AvailableSignalsJson = reader.IsDBNull(20) ? null : reader.GetString(20)
+            AvailableSignalsJson = reader.IsDBNull(20) ? null : reader.GetString(20),
+            CacheSchemaVersion = reader.IsDBNull(21) ? 0 : reader.GetInt32(21)
         };
     }
 

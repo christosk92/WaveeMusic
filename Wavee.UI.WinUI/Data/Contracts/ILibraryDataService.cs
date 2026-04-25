@@ -77,9 +77,102 @@ public interface ILibraryDataService
     Task<IReadOnlyList<PlaylistTrackDto>> GetPlaylistTracksAsync(string playlistId, CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches the playlist's follower count via the popcount endpoint.
+    /// Held out of <see cref="GetPlaylistAsync"/> so the detail load isn't blocked
+    /// on a stat-only round trip — the VM fires this in parallel and shimmers
+    /// the count chip until it arrives. Returns 0 if the count is hidden / unavailable.
+    /// </summary>
+    Task<long> GetPlaylistFollowerCountAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches the playlist's pre-extracted color palette (Spotify-side image
+    /// processing) via the <c>fetchPlaylist</c> Pathfinder query. Reuses the
+    /// album-page <see cref="AlbumPalette"/> type — the GraphQL shape is
+    /// identical for both surfaces. Returns null when the palette isn't
+    /// available (e.g. mosaic-cover playlists with no upstream extraction).
+    /// </summary>
+    Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Toggles whether the current user follows the given playlist. Backend
+    /// wire-up is currently stubbed — the call exists so the heart button on
+    /// the playlist hero can light up optimistically.
+    /// </summary>
+    Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default);
+
+    /// <summary>
     /// Removes tracks from a playlist.
     /// </summary>
     Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Renames a playlist owned by the current user.
+    /// Maps to Spotify Web API <c>PUT /v1/playlists/{id}</c> (name field).
+    /// </summary>
+    Task RenamePlaylistAsync(string playlistId, string newName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the description of a playlist owned by the current user. Pass an
+    /// empty string to clear the description.
+    /// Maps to Spotify Web API <c>PUT /v1/playlists/{id}</c> (description field).
+    /// </summary>
+    Task UpdatePlaylistDescriptionAsync(string playlistId, string description, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the playlist cover image. <paramref name="jpegBytes"/> must be a
+    /// JPEG ≤256 KB (use <c>PlaylistCoverHelper.PrepareForUploadAsync</c>).
+    /// Maps to Spotify Web API <c>PUT /v1/playlists/{id}/images</c> (base64 body).
+    /// </summary>
+    Task UpdatePlaylistCoverAsync(string playlistId, byte[] jpegBytes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes a custom cover, reverting to the auto-generated mosaic.
+    /// </summary>
+    Task RemovePlaylistCoverAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a playlist owned by the current user (Spotify implements this as
+    /// the owner unfollowing their own playlist).
+    /// Maps to Spotify Web API <c>DELETE /v1/playlists/{id}/followers</c>.
+    /// </summary>
+    Task DeletePlaylistAsync(string playlistId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Toggles a playlist between owner-only and collaborative. Collaborative
+    /// playlists must also be private (the API enforces this).
+    /// Maps to Spotify Web API <c>PUT /v1/playlists/{id}</c> (collaborative field).
+    /// </summary>
+    Task SetPlaylistCollaborativeAsync(string playlistId, bool collaborative, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists current members of a collaborative playlist. Empty result when the
+    /// caller lacks <c>canAdministratePermissions</c> AND the playlist isn't open
+    /// to the caller as a collaborator. Maps to
+    /// <c>GET /playlist-permission/v1/playlist/{id}/permission/members</c>.
+    /// </summary>
+    Task<IReadOnlyList<PlaylistMemberResult>> GetPlaylistMembersAsync(
+        string playlistId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets a member's permission role. Owner-administered playlists only.
+    /// Maps to <c>PUT /playlist-permission/v1/playlist/{id}/permission/members/{userId}</c>.
+    /// </summary>
+    Task SetPlaylistMemberRoleAsync(
+        string playlistId, string memberUserId, PlaylistMemberRole role, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes a member from the playlist's permission list (revokes access).
+    /// Maps to <c>DELETE /playlist-permission/v1/playlist/{id}/permission/members/{userId}</c>.
+    /// </summary>
+    Task RemovePlaylistMemberAsync(
+        string playlistId, string memberUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Generates a shareable invite link granting the supplied role for the supplied
+    /// duration. Maps to <c>POST /playlist-permission/v1/playlist/{id}/permission-grant</c>.
+    /// </summary>
+    Task<PlaylistInviteLink> CreatePlaylistInviteLinkAsync(
+        string playlistId, PlaylistMemberRole grantedRole, TimeSpan ttl, CancellationToken ct = default);
 
     /// <summary>
     /// Event raised when playlists change (created, deleted, updated).

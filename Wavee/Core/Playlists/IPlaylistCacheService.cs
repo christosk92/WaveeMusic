@@ -97,6 +97,15 @@ public sealed record CachedPlaylistCapabilities
 {
     public bool CanView { get; init; } = true;
     public bool CanEditItems { get; init; }
+
+    /// <summary>
+    /// Mirrors the proto <c>can_edit_metadata</c> flag — gates rename / description /
+    /// cover / collaborative-toggle. The Spotify HTTP playlist endpoint also returns
+    /// per-attribute flags under <c>listAttributeCapabilities</c>, but those don't
+    /// reach this cache layer; the UI derives the four per-attribute booleans from
+    /// this single flag for now.
+    /// </summary>
+    public bool CanEditMetadata { get; init; }
     public bool CanAdministratePermissions { get; init; }
     public bool CanCancelMembership { get; init; }
     public bool CanAbuseReport { get; init; }

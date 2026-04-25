@@ -224,26 +224,38 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         }
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _ = LoadParameterAsync(e.Parameter);
+    }
+
+    // Same-tab navigation between two concerts reuses this Page instance and
+    // never fires OnNavigatedTo — TabBarItem.Navigate routes through this method
+    // instead. Without this override, clicking a different concert from a shelf
+    // / search while ConcertPage is the active tab content silently drops the
+    // new parameter.
+    public void RefreshWithParameter(object? parameter) => _ = LoadParameterAsync(parameter);
+
+    private async Task LoadParameterAsync(object? parameter)
+    {
         _isNavigatingAway = false;
 
         try
         {
-            if (e.Parameter is ContentNavigationParameter nav)
+            if (parameter is ContentNavigationParameter nav)
             {
                 ViewModel.Title = nav.Title;
                 await ViewModel.LoadCommand.ExecuteAsync(nav.Uri);
             }
-            else if (e.Parameter is string uri)
+            else if (parameter is string uri)
             {
                 await ViewModel.LoadCommand.ExecuteAsync(uri);
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConcertPage] OnNavigatedTo failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[ConcertPage] LoadParameter failed: {ex}");
         }
     }
 

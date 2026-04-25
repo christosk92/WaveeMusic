@@ -292,6 +292,16 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fetches the follower count for a playlist via the popcount endpoint.
+    /// Returns 0 if the endpoint reports the count is hidden / unavailable.
+    /// </summary>
+    /// <param name="playlistId">Bare playlist id (no <c>spotify:playlist:</c> prefix) or the full URI — both accepted.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<long> GetPlaylistFollowerCountAsync(
+        string playlistId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches a user's following list via the spclient profile endpoint.
     /// </summary>
     Task<SpotifyFollowingResponse> GetUserFollowingAsync(

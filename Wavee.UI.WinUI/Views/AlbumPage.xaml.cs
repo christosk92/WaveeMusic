@@ -79,6 +79,13 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         ViewModel.Deactivate();
     }
 
+    // Same-tab navigation between two albums reuses this Page instance and never
+    // fires OnNavigatedTo — TabBarItem.Navigate routes through this method instead.
+    // Without this override, clicking a different album from the player bar / a
+    // shelf / search while AlbumPage is the active tab content silently drops the
+    // new parameter.
+    public void RefreshWithParameter(object? parameter) => LoadNewContent(parameter);
+
     private void LoadNewContent(object? parameter)
     {
         string? albumId = null;

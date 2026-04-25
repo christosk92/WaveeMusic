@@ -35,6 +35,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         ITrackLikeService? likeService = null,
         INotificationService? notificationService = null,
         DispatcherQueue? dispatcher = null,
+        IAuthState? authState = null,
         ILogger<LibrarySyncOrchestrator>? logger = null)
     {
         _messenger = messenger;
@@ -68,6 +69,17 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         });
 
         _logger?.LogDebug("LibrarySyncOrchestrator registered for AuthStatusChangedMessage and RequestLibrarySyncMessage");
+
+        // Cold-start race: this orchestrator is resolved on a Low-priority dispatcher tick
+        // after first paint, but stored credentials can drive Auth → Authenticated faster
+        // than that, so the messenger registration above misses the only Authenticated
+        // broadcast and the sync never runs (sidebar stays empty until LogOut/LogIn).
+        // Catch up by inspecting current AuthState on construction.
+        if (authState?.Status == AuthStatus.Authenticated)
+        {
+            _logger?.LogInformation("LibrarySyncOrchestrator constructed after auth already Authenticated — triggering catch-up sync");
+            _ = RunSyncAsync();
+        }
     }
 
     private async Task RunSyncAsync()

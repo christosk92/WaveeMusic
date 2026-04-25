@@ -14,14 +14,30 @@ public enum PlaylistBasePermission
 /// <summary>
 /// Mirror of Spotify's <c>currentUserCapabilities</c> object. Per-action booleans
 /// the server tells us about; we just pass them through and use them for UI gating.
+///
+/// <para>
+/// Per-attribute flags (<see cref="CanEditName"/>, <see cref="CanEditDescription"/>,
+/// <see cref="CanEditPicture"/>, <see cref="CanEditCollaborative"/>) shadow the
+/// server's <c>listAttributeCapabilities.{name|description|picture|collaborative}.canEdit</c>
+/// fields. Today the cache layer doesn't surface those individually, so each one
+/// is derived from <see cref="CanEditMetadata"/>; when fine-grained data starts
+/// flowing through the cache, the derivation can become a real per-field map.
+/// </para>
 /// </summary>
 public sealed record PlaylistCapabilitiesDto
 {
     public bool CanView { get; init; } = true;
     public bool CanEditItems { get; init; }
+    public bool CanEditMetadata { get; init; }
+    public bool CanDelete { get; init; }
     public bool CanAdministratePermissions { get; init; }
     public bool CanCancelMembership { get; init; }
     public bool CanAbuseReport { get; init; }
+
+    public bool CanEditName => CanEditMetadata;
+    public bool CanEditDescription => CanEditMetadata;
+    public bool CanEditPicture => CanEditMetadata;
+    public bool CanEditCollaborative => CanEditMetadata;
 
     /// <summary>Default view-only capability set used when the server hasn't provided one.</summary>
     public static PlaylistCapabilitiesDto ViewOnly { get; } = new();

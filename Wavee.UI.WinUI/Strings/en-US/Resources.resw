@@ -923,6 +923,9 @@ the music you previously queued?</value>
   <data name="TrackGrid_Column_DateAdded" xml:space="preserve">
     <value>Date added</value>
   </data>
+  <data name="TrackGrid_Column_AddedBy" xml:space="preserve">
+    <value>Added by</value>
+  </data>
   <data name="TrackGrid_Column_PlayCount" xml:space="preserve">
     <value>Plays</value>
   </data>

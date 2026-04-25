@@ -43,6 +43,9 @@ internal static class PathfinderOperations
     public const string GetAlbum = "getAlbum";
     public const string GetAlbumHash = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
 
+    public const string FetchPlaylist = "fetchPlaylist";
+    public const string FetchPlaylistHash = "a65e12194ed5fc443a1cdebed5fabe33ca5b07b987185d63c72483867ad13cb4";
+
     public const string UserLocation = "userLocation";
     public const string UserLocationHash = "079939378ca79b67c6d047be9152ea940d21f10bbfa2f5d4cf4d8320d87774c2";
 

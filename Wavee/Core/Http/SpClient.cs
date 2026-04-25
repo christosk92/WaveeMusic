@@ -1321,6 +1321,67 @@ public sealed class SpClient : ISpClient
     }
 
     /// <inheritdoc />
+    public async Task<long> GetPlaylistFollowerCountAsync(
+        string playlistId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        // Endpoint accepts the bare base62 id; tolerate full URI by stripping prefix.
+        var bareId = playlistId;
+        const string prefix = "spotify:playlist:";
+        if (bareId.StartsWith(prefix, StringComparison.Ordinal))
+            bareId = bareId[prefix.Length..];
+
+        var url = $"{_baseUrl}/popcount/v2/playlist/{Uri.EscapeDataString(bareId)}/count";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch { }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        // Hidden / unknown counts surface as 404 in this endpoint; treat as 0.
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return 0;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Failed to get playlist follower count: {response.StatusCode} - {body}");
+        }
+
+        // Response shape: { "count": "95038", "truncated": true, "rawCount": "95038" }
+        // count is a string-encoded long. Prefer rawCount (un-truncated) when present.
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        if (root.TryGetProperty("rawCount", out var rawProp)
+            && long.TryParse(rawProp.GetString(), out var rawCount))
+            return rawCount;
+
+        if (root.TryGetProperty("count", out var countProp)
+            && long.TryParse(countProp.GetString(), out var count))
+            return count;
+
+        return 0;
+    }
+
+    /// <inheritdoc />
     public async Task<List<string>> GetArtistTopTrackExtensionsAsync(
         string artistUri, CancellationToken cancellationToken = default)
     {

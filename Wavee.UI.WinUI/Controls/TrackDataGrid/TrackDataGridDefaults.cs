@@ -24,9 +24,12 @@ public static class TrackDataGridDefaults
         };
     }
 
-    // Playlist: 7-column layout that exactly matches TrackItem Row-mode's internal
+    // Playlist: 8-column layout that exactly matches TrackItem Row-mode's internal
     // RowContentGrid. Artist is rendered as a subline under the Title cell (driven
     // from TrackDataGrid based on PageKey), not as a standalone header column.
+    // The "Added by" column is registered here so the header always paints; the
+    // row cell is hidden via TrackItem.ShowAddedByColumn on non-collab playlists,
+    // and the page's AddedByVisible flag drives that show/hide.
     private static TrackDataGridColumns BuildPlaylistColumns() =>
     [
         Index(),
@@ -34,6 +37,7 @@ public static class TrackDataGridDefaults
         TrackArt(),
         Title(),
         Album(),
+        AddedBy(),
         DateAdded(),
         Duration(),
     ];
@@ -133,6 +137,16 @@ public static class TrackDataGridDefaults
         Length = new GridLength(120),
         MinLength = new GridLength(72),
         MaxLength = new GridLength(200),
+        SupportsResize = true,
+    };
+
+    private static TrackDataGridColumn AddedBy() => new()
+    {
+        Key = "AddedBy",
+        HeaderResourceKey = "TrackGrid_Column_AddedBy",
+        Length = new GridLength(140),
+        MinLength = new GridLength(96),
+        MaxLength = new GridLength(220),
         SupportsResize = true,
     };
 

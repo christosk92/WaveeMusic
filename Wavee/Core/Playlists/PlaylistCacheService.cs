@@ -53,6 +53,17 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
     private readonly ConcurrentDictionary<string, byte> _pendingAccessTouches =
         new(StringComparer.Ordinal);
     // Per-URI timestamp of the most recent dealer-driven refresh; consulted by
+    // URIs of cache rows whose persisted JSON is at an older schema version than
+    // the current build. Populated at warmup; entries are removed the first time
+    // GetPlaylistAsync (or related) returns the playlist, after a forced fresh
+    // fetch lands and re-persists the row at the current version. Hydrating
+    // stale rows into the hot cache anyway (rather than skipping them) keeps
+    // the sidebar populated on first launch — without this set the page-level
+    // schema check in the disk path never fired because hot-cache hits served
+    // first.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _staleSchemaUris =
+        new(StringComparer.Ordinal);
+
     // HandleDealerRefreshAsync to enforce DealerSettleWindow.
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastDealerRefreshAt =
         new(StringComparer.Ordinal);
@@ -152,6 +163,23 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             var hot = _hotCache.Get(playlistUri);
             if (hot != null)
             {
+                // Stale-schema rows hydrated by warmup should refetch on first
+                // user-facing access. Drop the marker BEFORE awaiting so a
+                // concurrent caller doesn't queue a second refresh.
+                if (_staleSchemaUris.TryRemove(playlistUri, out _))
+                {
+                    _logger?.LogInformation(
+                        "[caps] Hot-cache stale-schema for '{Uri}'; forcing network refresh", playlistUri);
+                    return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: true).WaitAsync(ct);
+                }
+
+                _logger?.LogInformation(
+                    "[caps] GetPlaylistAsync hot hit '{Uri}': BasePerm={Base} Caps=[EditItems={EI},EditMeta={EM},Admin={AD}]",
+                    playlistUri, hot.BasePermission,
+                    hot.Capabilities.CanEditItems, hot.Capabilities.CanEditMetadata, hot.Capabilities.CanAdministratePermissions);
+            }
+            if (hot != null)
+            {
                 if (!hot.HasContentsSnapshot)
                     return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: false).WaitAsync(ct);
 
@@ -164,6 +192,22 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             var persisted = await _database.GetPlaylistCacheEntryAsync(playlistUri, touchAccess: false, ct);
             if (persisted != null)
             {
+                _logger?.LogInformation(
+                    "[caps] GetPlaylistAsync disk hit '{Uri}' (rowSchemaV{V} vs currentV{C})",
+                    playlistUri, persisted.CacheSchemaVersion, CurrentCacheSchemaVersion);
+                // Stale schema: the row was written before this build's version
+                // bump, so its JSON blobs likely deserialize with default values
+                // for any new fields. Skip the cached value entirely and force a
+                // fresh fetch — preserves correctness over the slightly slower
+                // first load post-upgrade.
+                if (persisted.CacheSchemaVersion < CurrentCacheSchemaVersion)
+                {
+                    _logger?.LogInformation(
+                        "[caps] Cache schema stale for '{Id}' (row v{Row}, current v{Current}); forcing network refresh",
+                        playlistUri, persisted.CacheSchemaVersion, CurrentCacheSchemaVersion);
+                    return await GetOrCreatePlaylistRefreshTask(playlistUri, emitChange: false).WaitAsync(ct);
+                }
+
                 var cachedPersisted = DeserializePlaylist(persisted);
                 _hotCache.Set(playlistUri, cachedPersisted);
                 SchedulePlaylistAccessTouch(playlistUri);
@@ -290,16 +334,31 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             }
 
             var entries = await _database.GetRecentPlaylistCacheEntriesAsync(32);
+            var hydrated = 0;
+            var stale = 0;
             foreach (var entry in entries)
             {
+                // Hydrate every row so the sidebar and other read-only consumers
+                // get instant content. Tag stale-schema rows so the first
+                // GetPlaylistAsync access for them forces a fresh network fetch
+                // (re-persisting at the current version) — the user keeps stale
+                // metadata visible for a few hundred ms during that refresh, but
+                // never sees an empty sidebar.
                 _hotCache.Set(entry.Uri, DeserializePlaylist(entry));
+                hydrated++;
+
+                if (entry.CacheSchemaVersion < CurrentCacheSchemaVersion)
+                {
+                    _staleSchemaUris[entry.Uri] = 0;
+                    stale++;
+                }
             }
 
-            if (entries.Count > 0)
+            if (hydrated > 0)
             {
                 _logger?.LogInformation(
-                    "PlaylistCache warmup hydrated {Count} playlists from SQLite",
-                    entries.Count);
+                    "PlaylistCache warmup hydrated {Count} playlists from SQLite ({Stale} need a schema-bump refresh on first access)",
+                    hydrated, stale);
             }
         }
         catch (Exception ex)
@@ -720,10 +779,47 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 DeletedByOwner = playlist.DeletedByOwner,
                 AbuseReportingEnabled = playlist.AbuseReportingEnabled,
                 CachedAt = playlist.FetchedAt,
-                LastAccessedAt = DateTimeOffset.UtcNow
+                LastAccessedAt = DateTimeOffset.UtcNow,
+                CacheSchemaVersion = CurrentCacheSchemaVersion
             },
             ct);
+
+        _logger?.LogInformation(
+            "[caps] Persisted '{Uri}' at v{Ver}: BasePerm={Base} Caps=[View={V},EditItems={EI},EditMeta={EM},Admin={AD}] CapsJsonLen={Len}",
+            playlist.Uri, CurrentCacheSchemaVersion, playlist.BasePermission,
+            playlist.Capabilities.CanView, playlist.Capabilities.CanEditItems,
+            playlist.Capabilities.CanEditMetadata, playlist.Capabilities.CanAdministratePermissions,
+            capabilitiesJson.Length);
     }
+
+    /// <summary>
+    /// Cache shape version for the persisted JSON blobs on a playlist row.
+    /// Bump this whenever any field is added, removed, or has its semantics
+    /// change inside <see cref="CachedPlaylistCapabilities"/>,
+    /// <see cref="CachedPlaylist"/>, <see cref="CachedPlaylistItem"/>, or any
+    /// other shape we serialize into a <c>spotify_playlists</c> row.
+    ///
+    /// On read, rows whose stored <c>cache_schema_version</c> is below this
+    /// value are treated as cache misses — the playlist gets re-fetched from
+    /// the network and re-persisted at the current version. This avoids the
+    /// "owner sees view-only" / "old enum value treated as zero" failure mode
+    /// that happens when System.Text.Json silently fills missing fields with
+    /// their CLR defaults.
+    ///
+    /// History:
+    ///   1 — added <c>CachedPlaylistCapabilities.CanEditMetadata</c>
+    ///   2 — <c>SelectedListContentMapper.PickImageUrl</c> now falls back to the
+    ///       raw <c>attributes.picture</c> ByteString when PictureSize is empty,
+    ///       so user-customised playlist covers stop collapsing to mosaic. The
+    ///       persisted <c>ImageUrl</c> column on existing rows is null for those
+    ///       playlists; bumping forces a refetch so the URL fills in.
+    ///   3 — <c>ApplyListAttrPartial</c> (the diff path) now also fires
+    ///       <c>PickImageUrl</c> when only <c>Picture</c> is present (no
+    ///       PictureSize). v2 only fixed the full-fetch path, so playlists
+    ///       cached via diff still had <c>ImageUrl=null</c>. Re-bump invalidates
+    ///       those rows and forces a fresh full mapping that picks up the URL.
+    /// </summary>
+    public const int CurrentCacheSchemaVersion = 3;
 
     private PlaylistCacheEntry MergeSummaryEntry(
         string playlistUri,
@@ -752,7 +848,13 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             DeletedByOwner = existing?.DeletedByOwner ?? false,
             AbuseReportingEnabled = existing?.AbuseReportingEnabled ?? false,
             CachedAt = fetchedAt,
-            LastAccessedAt = existing?.LastAccessedAt
+            LastAccessedAt = existing?.LastAccessedAt,
+            // Preserve the existing row's stamp — we're merging summary fields,
+            // not rewriting the JSON blobs, so an existing v1 row stays v1. A
+            // brand-new row from a rootlist-only entry starts at the current
+            // version (we just don't have full contents yet, gated separately
+            // by HasContentsSnapshot).
+            CacheSchemaVersion = existing?.CacheSchemaVersion ?? CurrentCacheSchemaVersion
         };
     }
 
@@ -791,7 +893,12 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         {
             if (!string.IsNullOrEmpty(v.Name)) name = v.Name;
             if (!string.IsNullOrEmpty(v.Description)) description = v.Description;
-            if (v.PictureSize.Count > 0)
+            // PickImageUrl prefers PictureSize but falls back to the raw `picture`
+            // ByteString — gating the call on PictureSize.Count alone meant
+            // user-customised covers (which only ship as a Picture id) never
+            // flowed into the cache through the diff path, so those playlists
+            // collapsed to mosaic forever even after the v2 schema bump.
+            if (v.PictureSize.Count > 0 || (v.HasPicture && v.Picture.Length > 0))
                 imageUrl = SelectedListContentMapper.PickImageUrl(v) ?? imageUrl;
             if (v.HasCollaborative) isCollab = v.Collaborative;
             if (v.HasDeletedByOwner) deletedByOwner = v.DeletedByOwner;
@@ -854,6 +961,12 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                     PlaylistCacheJsonContext.Default.CachedPlaylistCapabilities)
                 ?? CachedPlaylistCapabilities.ViewOnly;
         }
+
+        _logger?.LogInformation(
+            "[caps] Deserialize '{Uri}' (rowSchemaV{V}): BasePerm={Base} Caps=[View={CV},EditItems={EI},EditMeta={EM},Admin={AD}] CapsJson={Has}",
+            entry.Uri, entry.CacheSchemaVersion, entry.BasePermission,
+            capabilities.CanView, capabilities.CanEditItems, capabilities.CanEditMetadata, capabilities.CanAdministratePermissions,
+            string.IsNullOrEmpty(entry.CapabilitiesJson) ? "missing" : $"{entry.CapabilitiesJson.Length}b");
 
         IReadOnlyDictionary<string, string> formatAttributes = _emptyFormatAttributes;
         if (!string.IsNullOrWhiteSpace(entry.FormatAttributesJson))

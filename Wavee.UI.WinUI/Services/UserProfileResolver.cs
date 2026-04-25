@@ -10,10 +10,18 @@ using Wavee.Protocol.ExtendedMetadata;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
+/// Lightweight summary returned by <see cref="IUserProfileResolver.GetProfileAsync"/>.
+/// Both fields are best-effort: <see cref="DisplayName"/> falls back to null when the
+/// profile lookup fails, and <see cref="AvatarUrl"/> is null for users who haven't
+/// uploaded a profile picture.
+/// </summary>
+public sealed record UserProfileSummary(string? DisplayName, string? AvatarUrl);
+
+/// <summary>
 /// Resolves a <c>spotify:user:{id}</c> URI (or a bare user id) to a human-readable
-/// display name. The data layer sometimes surfaces the raw URI / bare id as
-/// <c>OwnerName</c>; binding it directly to the playlist hero renders "spotify:user:…"
-/// instead of a real name. Consumers call this resolver to look up the friendly name.
+/// display name and avatar. The data layer sometimes surfaces the raw URI / bare id
+/// as <c>OwnerName</c>; binding it directly renders "spotify:user:…" instead of a
+/// real name. Consumers call this resolver to look up the friendly name + avatar.
 /// </summary>
 public interface IUserProfileResolver
 {
@@ -23,6 +31,13 @@ public interface IUserProfileResolver
     /// Results are memoised per-process; repeated calls for the same user hit the cache.
     /// </summary>
     Task<string?> GetDisplayNameAsync(string userUriOrId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the display name AND avatar URL for a user. Same caching as
+    /// <see cref="GetDisplayNameAsync"/>; one fetch serves both fields. Returns
+    /// null when the user can't be resolved at all.
+    /// </summary>
+    Task<UserProfileSummary?> GetProfileAsync(string userUriOrId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -39,10 +54,10 @@ public sealed class UserProfileResolver : IUserProfileResolver
     private readonly ISession _session;
     private readonly ILogger<UserProfileResolver>? _logger;
 
-    // Resolved → non-null display name. Cached misses → null entry (so we don't
-    // hammer the backend for ids that really have no display name).
-    private readonly ConcurrentDictionary<string, string?> _cache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Task<string?>> _inflight = new(StringComparer.Ordinal);
+    // Resolved profile summary. Cached misses → null entry (so we don't hammer
+    // the backend for ids that really have no public profile).
+    private readonly ConcurrentDictionary<string, UserProfileSummary?> _cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Task<UserProfileSummary?>> _inflight = new(StringComparer.Ordinal);
 
     public UserProfileResolver(
         IExtendedMetadataClient extendedMetadata,
@@ -54,12 +69,15 @@ public sealed class UserProfileResolver : IUserProfileResolver
         _logger = logger;
     }
 
-    public Task<string?> GetDisplayNameAsync(string userUriOrId, CancellationToken ct = default)
+    public async Task<string?> GetDisplayNameAsync(string userUriOrId, CancellationToken ct = default)
+        => (await GetProfileAsync(userUriOrId, ct).ConfigureAwait(false))?.DisplayName;
+
+    public Task<UserProfileSummary?> GetProfileAsync(string userUriOrId, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(userUriOrId)) return Task.FromResult<string?>(null);
+        if (string.IsNullOrWhiteSpace(userUriOrId)) return Task.FromResult<UserProfileSummary?>(null);
 
         var userUri = Normalize(userUriOrId);
-        if (userUri is null) return Task.FromResult<string?>(null);
+        if (userUri is null) return Task.FromResult<UserProfileSummary?>(null);
 
         if (_cache.TryGetValue(userUri, out var cached)) return Task.FromResult(cached);
 
@@ -76,7 +94,7 @@ public sealed class UserProfileResolver : IUserProfileResolver
         return task;
     }
 
-    private async Task<string?> ResolveAsync(string userUri, CancellationToken ct)
+    private async Task<UserProfileSummary?> ResolveAsync(string userUri, CancellationToken ct)
     {
         // 1) Extended-metadata path. Piggybacks on the store's batching + SQLite cache.
         try
@@ -85,8 +103,14 @@ public sealed class UserProfileResolver : IUserProfileResolver
                 .GetExtensionAsync(userUri, ExtensionKind.UserProfile, ct)
                 .ConfigureAwait(false);
             var profile = SpotifyUserProfile.TryParseJson(bytes);
-            if (!string.IsNullOrWhiteSpace(profile?.EffectiveDisplayName))
-                return profile!.EffectiveDisplayName;
+            if (profile is not null
+                && (!string.IsNullOrWhiteSpace(profile.EffectiveDisplayName)
+                    || !string.IsNullOrWhiteSpace(profile.EffectiveImageUrl)))
+            {
+                return new UserProfileSummary(
+                    string.IsNullOrWhiteSpace(profile.EffectiveDisplayName) ? null : profile.EffectiveDisplayName,
+                    string.IsNullOrWhiteSpace(profile.EffectiveImageUrl) ? null : profile.EffectiveImageUrl);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -103,7 +127,9 @@ public sealed class UserProfileResolver : IUserProfileResolver
         try
         {
             var profile = await _session.SpClient.GetUserProfileAsync(username, ct).ConfigureAwait(false);
-            return string.IsNullOrWhiteSpace(profile.EffectiveDisplayName) ? null : profile.EffectiveDisplayName;
+            var name = string.IsNullOrWhiteSpace(profile.EffectiveDisplayName) ? null : profile.EffectiveDisplayName;
+            var avatar = string.IsNullOrWhiteSpace(profile.EffectiveImageUrl) ? null : profile.EffectiveImageUrl;
+            return name is null && avatar is null ? null : new UserProfileSummary(name, avatar);
         }
         catch (OperationCanceledException)
         {

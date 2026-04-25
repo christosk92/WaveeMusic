@@ -219,13 +219,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // PlaylistMosaicService.Invalidate, then kick off a fresh build and
         // swap model.IconSource — the SidebarItem control listens for that
         // PropertyChanged and re-renders the icon.
-        if (_mosaicService is not null)
-        {
-            _playlistMosaicChangesSubscription = _playlistCache.Changes
-                .Where(static evt => evt.Kind == PlaylistChangeKind.Updated
-                                  && !string.IsNullOrEmpty(evt.Uri))
-                .Subscribe(evt => OnPlaylistContentsChanged(evt.Uri));
-        }
+        // Subscribe regardless of mosaic-service availability — the handler's
+        // first phase promotes real covers from the cache (works with or without
+        // the mosaic service), and the second phase only kicks in when a mosaic
+        // is actually appropriate.
+        _playlistMosaicChangesSubscription = _playlistCache.Changes
+            .Where(static evt => evt.Kind == PlaylistChangeKind.Updated
+                              && !string.IsNullOrEmpty(evt.Uri))
+            .Subscribe(evt => OnPlaylistContentsChanged(evt.Uri));
 
         // Capture UI thread dispatcher for background → UI marshalling
         // Dispatcher captured via DI
@@ -789,41 +790,82 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Reacts to a per-playlist <see cref="PlaylistChangeKind.Updated"/> event by
-    /// refreshing the sidebar row's mosaic. Cheap no-op for playlists without a
-    /// mosaic-backed icon (real uploaded covers don't go through
-    /// <see cref="PlaylistMosaicService"/>). Idempotent across rapid pushes —
-    /// the in-flight cache in the mosaic service dedups concurrent rebuilds.
+    /// Reacts to a per-playlist <see cref="PlaylistChangeKind.Updated"/> event.
+    /// Two-phase:
+    ///   1. **Promote.** Re-query the cache. If the cached <c>ImageUrl</c> now
+    ///      resolves to a real HTTPS URL (either editorial PictureSize or
+    ///      user-uploaded <c>spotify:image:{hex}</c>) and the sidebar row was
+    ///      seated without one, swap in a real <see cref="ImageIconSource"/>.
+    ///      Covers the common case of non-owned playlists whose rootlist
+    ///      decoration omits the picture — the persisted row only fills in
+    ///      after the first full detail fetch, and the sidebar wouldn't
+    ///      otherwise pick that up until the next sidebar refresh.
+    ///   2. **Mosaic refresh.** If the cache still has no real cover (null /
+    ///      <c>spotify:mosaic:</c>), invalidate + rebuild the composed mosaic.
+    ///      Real-cover rows skip this step entirely.
+    /// Idempotent across rapid pushes — the mosaic service's in-flight cache
+    /// dedups concurrent rebuilds.
     /// </summary>
     private void OnPlaylistContentsChanged(string playlistUri)
     {
-        if (_mosaicService is null) return;
         if (string.IsNullOrEmpty(playlistUri)) return;
 
         var item = FindSidebarItemByTag(playlistUri);
         if (item is null) return;
-
-        // Quick gate: only mosaic-backed playlists need rebuilding. Real uploaded
-        // covers (HTTPS image URL) are static — skip.
-        if (!string.IsNullOrEmpty(item.ImageUrl)
-            && !SpotifyImageHelper.IsMosaicUri(item.ImageUrl))
-        {
-            return;
-        }
-
-        _mosaicService.Invalidate(playlistUri);
 
         var capturedUri = playlistUri;
         _ = Task.Run(async () =>
         {
             try
             {
-                var icon = await _mosaicService.BuildMosaicAsync(capturedUri, mosaicHint: null, CancellationToken.None);
+                // Phase 1: real-cover promotion. Re-query the cache (cheap on a
+                // hot hit) so we see whatever the latest detail fetch wrote into
+                // the persisted row.
+                var cached = await _playlistCache
+                    .GetPlaylistAsync(capturedUri, ct: CancellationToken.None)
+                    .ConfigureAwait(false);
+                var httpsUrl = SpotifyImageHelper.ToHttpsUrl(cached.ImageUrl);
+
+                if (!string.IsNullOrEmpty(httpsUrl))
+                {
+                    _dispatcher?.TryEnqueue(() =>
+                    {
+                        var current = FindSidebarItemByTag(capturedUri);
+                        if (current is null) return;
+                        // Skip if the URL hasn't changed AND the icon is already
+                        // a loaded BitmapImage — avoids replacing a working icon
+                        // and triggering needless re-decode flicker.
+                        if (string.Equals(current.ImageUrl, cached.ImageUrl, StringComparison.Ordinal)
+                            && current.IconSource is ImageIconSource { ImageSource: BitmapImage })
+                            return;
+
+                        current.ImageUrl = cached.ImageUrl;
+                        current.IconSource = new ImageIconSource
+                        {
+                            ImageSource = new BitmapImage
+                            {
+                                UriSource = new Uri(httpsUrl),
+                                DecodePixelWidth = 44
+                            }
+                        };
+                        // No further mosaic work needed — a real cover trumps
+                        // any composed placeholder. Clear the lazy loader so a
+                        // subsequent realization doesn't overwrite our promotion.
+                        current.LazyIconSourceLoader = null;
+                    });
+                    return;
+                }
+
+                // Phase 2: mosaic refresh. Cache still has no usable URL — fall
+                // back to rebuilding the 2x2 composed tile from track covers.
+                if (_mosaicService is null) return;
+                _mosaicService.Invalidate(capturedUri);
+                var icon = await _mosaicService
+                    .BuildMosaicAsync(capturedUri, mosaicHint: null, CancellationToken.None)
+                    .ConfigureAwait(false);
                 if (icon is null) return;
                 _dispatcher?.TryEnqueue(() =>
                 {
-                    // Re-resolve in case the sidebar item was removed/replaced
-                    // between the change event and the build completing.
                     var current = FindSidebarItemByTag(capturedUri);
                     if (current is not null)
                         current.IconSource = icon;
@@ -831,24 +873,26 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.LogDebug(ex, "Mosaic refresh failed for {Uri}", capturedUri);
+                _logger?.LogDebug(ex, "Sidebar cover refresh failed for {Uri}", capturedUri);
             }
         });
     }
 
     private static IconSource CreatePlaylistIconSource(PlaylistSummaryDto playlist)
     {
-        // spotify:mosaic: parses as a valid Uri (its scheme is "spotify") but BitmapImage can't
-        // load it — handle that case before TryCreate or we'd seat a broken ImageIconSource.
-        if (!SpotifyImageHelper.IsMosaicUri(playlist.ImageUrl)
-            && Uri.TryCreate(playlist.ImageUrl, UriKind.Absolute, out var imageUri)
-            && (imageUri.Scheme == Uri.UriSchemeHttp || imageUri.Scheme == Uri.UriSchemeHttps))
+        // Route through SpotifyImageHelper so user-uploaded covers
+        // (spotify:image:{hex} — what the v3 cache schema produces from
+        // attributes.Picture) render alongside the editorial pre-rendered
+        // HTTPS PictureSize URLs. spotify:mosaic: still returns null and
+        // falls through to the lazy mosaic loader below.
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(playlist.ImageUrl);
+        if (!string.IsNullOrEmpty(httpsUrl))
         {
             return new ImageIconSource
             {
                 ImageSource = new BitmapImage
                 {
-                    UriSource = imageUri,
+                    UriSource = new Uri(httpsUrl),
                     DecodePixelWidth = 44
                 }
             };

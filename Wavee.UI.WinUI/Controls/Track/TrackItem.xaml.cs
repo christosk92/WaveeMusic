@@ -116,6 +116,16 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(PlayCountColumnWidthProperty, value);
     }
 
+    public static readonly DependencyProperty AddedByColumnWidthProperty =
+        DependencyProperty.Register(nameof(AddedByColumnWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(140d, OnRowColumnWidthChanged));
+
+    public double AddedByColumnWidth
+    {
+        get => (double)GetValue(AddedByColumnWidthProperty);
+        set => SetValue(AddedByColumnWidthProperty, value);
+    }
+
     public static readonly DependencyProperty DurationColumnWidthProperty =
         DependencyProperty.Register(nameof(DurationColumnWidth), typeof(double), typeof(TrackItem),
             new PropertyMetadata(60d, OnRowColumnWidthChanged));
@@ -165,6 +175,18 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty PlayCountTextProperty =
         DependencyProperty.Register(nameof(PlayCountText), typeof(string), typeof(TrackItem),
             new PropertyMetadata(null, OnPlayCountTextChanged));
+
+    public static readonly DependencyProperty ShowAddedByColumnProperty =
+        DependencyProperty.Register(nameof(ShowAddedByColumn), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, OnColumnVisibilityChanged));
+
+    public static readonly DependencyProperty AddedByTextProperty =
+        DependencyProperty.Register(nameof(AddedByText), typeof(string), typeof(TrackItem),
+            new PropertyMetadata(null, OnAddedByTextChanged));
+
+    public static readonly DependencyProperty AddedByAvatarUrlProperty =
+        DependencyProperty.Register(nameof(AddedByAvatarUrl), typeof(string), typeof(TrackItem),
+            new PropertyMetadata(null, OnAddedByAvatarUrlChanged));
 
     public static readonly DependencyProperty IsCompactRowProperty =
         DependencyProperty.Register(nameof(IsCompactRow), typeof(bool), typeof(TrackItem),
@@ -291,6 +313,24 @@ public sealed partial class TrackItem : UserControl
     {
         get => (bool)GetValue(ShowPlayCountProperty);
         set => SetValue(ShowPlayCountProperty, value);
+    }
+
+    public bool ShowAddedByColumn
+    {
+        get => (bool)GetValue(ShowAddedByColumnProperty);
+        set => SetValue(ShowAddedByColumnProperty, value);
+    }
+
+    public string? AddedByText
+    {
+        get => (string?)GetValue(AddedByTextProperty);
+        set => SetValue(AddedByTextProperty, value);
+    }
+
+    public string? AddedByAvatarUrl
+    {
+        get => (string?)GetValue(AddedByAvatarUrlProperty);
+        set => SetValue(AddedByAvatarUrlProperty, value);
     }
 
     public string? PlayCountText
@@ -786,6 +826,39 @@ public sealed partial class TrackItem : UserControl
         item.RowPlayCount.Text = (string?)e.NewValue ?? "";
     }
 
+    private static void OnAddedByTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        var text = (string?)e.NewValue ?? "";
+        item.RowAddedByText.Text = text;
+        // Empty text → collapse the cell entirely so the row added by the
+        // current user doesn't reserve space for an empty avatar + label.
+        item.RowAddedByCell.Visibility = string.IsNullOrEmpty(text)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private static void OnAddedByAvatarUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        var url = (string?)e.NewValue;
+        if (string.IsNullOrEmpty(url))
+        {
+            item.RowAddedByAvatar.Fill = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+            return;
+        }
+
+        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(url))
+        {
+            DecodePixelWidth = 40
+        };
+        item.RowAddedByAvatar.Fill = new ImageBrush
+        {
+            ImageSource = bitmap,
+            Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill
+        };
+    }
+
     private static void OnIsCompactRowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
@@ -808,7 +881,7 @@ public sealed partial class TrackItem : UserControl
         ApplyRowBackground();
     }
 
-    private const int RowDurationColumnIndex = 8;
+    private const int RowDurationColumnIndex = 9;
     private readonly List<ColumnDefinition> _customColDefs = [];
     private readonly List<UIElement> _customColElements = [];
 
@@ -862,11 +935,12 @@ public sealed partial class TrackItem : UserControl
         // whole point of XS is "image off + tight padding".
         var effectiveShowArt = ShowAlbumArt && artSize > 0;
 
-        RowArtColDef.Width       = effectiveShowArt ? new GridLength(artSize + 8)           : new GridLength(0);
-        RowAlbumColDef.Width     = ShowAlbumColumn  ? new GridLength(AlbumColumnWidth)       : new GridLength(0);
-        RowDateColDef.Width      = ShowDateAdded    ? new GridLength(DateAddedColumnWidth)   : new GridLength(0);
-        RowPlayCountColDef.Width = ShowPlayCount    ? new GridLength(PlayCountColumnWidth)   : new GridLength(0);
-        RowDurationColDef.Width  = new GridLength(DurationColumnWidth);
+        RowArtColDef.Width        = effectiveShowArt   ? new GridLength(artSize + 8)         : new GridLength(0);
+        RowAlbumColDef.Width      = ShowAlbumColumn    ? new GridLength(AlbumColumnWidth)     : new GridLength(0);
+        RowAddedByColDef.Width    = ShowAddedByColumn  ? new GridLength(AddedByColumnWidth)   : new GridLength(0);
+        RowDateColDef.Width       = ShowDateAdded      ? new GridLength(DateAddedColumnWidth) : new GridLength(0);
+        RowPlayCountColDef.Width  = ShowPlayCount      ? new GridLength(PlayCountColumnWidth) : new GridLength(0);
+        RowDurationColDef.Width   = new GridLength(DurationColumnWidth);
 
         // Collapsing the column to Width=0 alone isn't enough: RowAlbumArtBorder
         // has a fixed Width/Height in XAML and would still render into the next
@@ -889,6 +963,7 @@ public sealed partial class TrackItem : UserControl
         // real row layout (and with the column headers above).
         ShimArtColDef.Width       = RowArtColDef.Width;
         ShimAlbumColDef.Width     = RowAlbumColDef.Width;
+        ShimAddedByColDef.Width   = RowAddedByColDef.Width;
         ShimDateColDef.Width      = RowDateColDef.Width;
         ShimPlayCountColDef.Width = RowPlayCountColDef.Width;
         ShimDurationColDef.Width  = RowDurationColDef.Width;

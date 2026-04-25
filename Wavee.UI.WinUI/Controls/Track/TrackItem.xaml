@@ -157,6 +157,7 @@
                         <ColumnDefinition x:Name="RowArtColDef" Width="42"/>
                         <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="RowAlbumColDef" Width="180"/>
+                        <ColumnDefinition x:Name="RowAddedByColDef" Width="0"/>
                         <ColumnDefinition x:Name="RowDateColDef" Width="120"/>
                         <ColumnDefinition x:Name="RowPlayCountColDef" Width="0"/>
                         <ColumnDefinition x:Name="RowDurationColDef" Width="60"/>
@@ -265,21 +266,47 @@
                         </HyperlinkButton.ContentTemplate>
                     </HyperlinkButton>
 
+                    <!-- Added By: avatar + display name. Visible only on collaborative
+                         playlists (TrackDataGrid sets ShowAddedByColumn). For rows the
+                         current user added themselves the consumer leaves the formatter
+                         output empty so the cell collapses cleanly. -->
+                    <Grid x:Name="RowAddedByCell" Grid.Column="5"
+                          ColumnSpacing="6"
+                          VerticalAlignment="Center"
+                          Margin="0,0,8,0"
+                          Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Ellipse x:Name="RowAddedByAvatar"
+                                 Grid.Column="0"
+                                 Width="20" Height="20"
+                                 Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="RowAddedByText"
+                                   Grid.Column="1"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+
                     <!-- Date Added -->
-                    <TextBlock x:Name="RowDateAdded" Grid.Column="5"
+                    <TextBlock x:Name="RowDateAdded" Grid.Column="6"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                VerticalAlignment="Center"/>
 
                     <!-- Play count (album page) -->
-                    <TextBlock x:Name="RowPlayCount" Grid.Column="6"
+                    <TextBlock x:Name="RowPlayCount" Grid.Column="7"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Right"
                                VerticalAlignment="Center"/>
 
                     <!-- Duration -->
-                    <TextBlock x:Name="RowDuration" Grid.Column="7"
+                    <TextBlock x:Name="RowDuration" Grid.Column="8"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Right"
@@ -299,6 +326,7 @@
                         <ColumnDefinition x:Name="ShimArtColDef" Width="42"/>
                         <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="ShimAlbumColDef" Width="180"/>
+                        <ColumnDefinition x:Name="ShimAddedByColDef" Width="0"/>
                         <ColumnDefinition x:Name="ShimDateColDef" Width="120"/>
                         <ColumnDefinition x:Name="ShimPlayCountColDef" Width="0"/>
                         <ColumnDefinition x:Name="ShimDurationColDef" Width="60"/>
@@ -309,8 +337,8 @@
                         <controls1:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
                     </StackPanel>
                     <controls1:Shimmer Grid.Column="4" Width="120" Height="12" HorizontalAlignment="Left"/>
-                    <controls1:Shimmer Grid.Column="5" Width="80" Height="12" HorizontalAlignment="Left"/>
-                    <controls1:Shimmer Grid.Column="7" Width="36" Height="12" HorizontalAlignment="Right"/>
+                    <controls1:Shimmer Grid.Column="6" Width="80" Height="12" HorizontalAlignment="Left"/>
+                    <controls1:Shimmer Grid.Column="8" Width="36" Height="12" HorizontalAlignment="Right"/>
                 </Grid>
                 <Border x:Name="RowSelectionIndicator"
                         Width="4"

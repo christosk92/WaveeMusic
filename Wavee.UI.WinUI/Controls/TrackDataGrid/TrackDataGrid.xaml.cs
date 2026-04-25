@@ -170,11 +170,12 @@ public sealed partial class TrackDataGrid : UserControl
             case 1:
                 // Column show/hide flags — batched so the setters trigger one layout pass.
                 item.BeginBatchUpdate();
-                item.ShowAlbumArt     = ColumnVisible("TrackArt");
-                item.ShowArtistColumn = PageKey != TrackDataGridDefaults.AlbumPageKey;
-                item.ShowAlbumColumn  = ColumnVisible("Album");
-                item.ShowDateAdded    = ColumnVisible("DateAdded");
-                item.ShowPlayCount    = ColumnVisible("PlayCount");
+                item.ShowAlbumArt        = ColumnVisible("TrackArt");
+                item.ShowArtistColumn    = PageKey != TrackDataGridDefaults.AlbumPageKey;
+                item.ShowAlbumColumn     = ColumnVisible("Album");
+                item.ShowAddedByColumn   = AddedByVisible && ColumnVisible("AddedBy");
+                item.ShowDateAdded       = ColumnVisible("DateAdded");
+                item.ShowPlayCount       = ColumnVisible("PlayCount");
                 item.EndBatchUpdate();
                 args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
                 break;
@@ -193,6 +194,17 @@ public sealed partial class TrackDataGrid : UserControl
                     item.DateAddedText = DateAddedFormatter(args.Item);
                 if (PlayCountFormatter != null && args.Item != null)
                     item.PlayCountText = PlayCountFormatter(args.Item);
+                if (AddedByFormatter != null && args.Item != null)
+                {
+                    var info = AddedByFormatter(args.Item);
+                    item.AddedByText = info.Text;
+                    item.AddedByAvatarUrl = info.AvatarUrl;
+                }
+                else
+                {
+                    item.AddedByText = string.Empty;
+                    item.AddedByAvatarUrl = null;
+                }
                 break;
         }
     }
@@ -293,6 +305,7 @@ public sealed partial class TrackDataGrid : UserControl
     private void PushWidthsToRow(Track.TrackItem item)
     {
         item.AlbumColumnWidth     = WidthOf("Album", 180);
+        item.AddedByColumnWidth   = WidthOf("AddedBy", 140);
         item.DateAddedColumnWidth = WidthOf("DateAdded", 120);
         item.PlayCountColumnWidth = WidthOf("PlayCount", 100);
         item.DurationColumnWidth  = WidthOf("Duration", 60);
@@ -306,10 +319,11 @@ public sealed partial class TrackDataGrid : UserControl
             if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
             if (container.ContentTemplateRoot is not Track.TrackItem ti) continue;
             ti.BeginBatchUpdate();
-            ti.ShowAlbumArt    = ColumnVisible("TrackArt");
-            ti.ShowAlbumColumn = ColumnVisible("Album");
-            ti.ShowDateAdded   = ColumnVisible("DateAdded");
-            ti.ShowPlayCount   = ColumnVisible("PlayCount");
+            ti.ShowAlbumArt        = ColumnVisible("TrackArt");
+            ti.ShowAlbumColumn     = ColumnVisible("Album");
+            ti.ShowAddedByColumn   = AddedByVisible && ColumnVisible("AddedBy");
+            ti.ShowDateAdded       = ColumnVisible("DateAdded");
+            ti.ShowPlayCount       = ColumnVisible("PlayCount");
             PushWidthsToRow(ti);
             ti.EndBatchUpdate();
         }
@@ -329,6 +343,9 @@ public sealed partial class TrackDataGrid : UserControl
             {
                 case "Album":
                     ti.AlbumColumnWidth = WidthOf("Album", 180);
+                    break;
+                case "AddedBy":
+                    ti.AddedByColumnWidth = WidthOf("AddedBy", 140);
                     break;
                 case "DateAdded":
                     ti.DateAddedColumnWidth = WidthOf("DateAdded", 120);
@@ -384,6 +401,75 @@ public sealed partial class TrackDataGrid : UserControl
     {
         get => (ICommand?)GetValue(PlayCommandProperty);
         set => SetValue(PlayCommandProperty, value);
+    }
+
+    public static readonly DependencyProperty AddedByVisibleProperty =
+        DependencyProperty.Register(nameof(AddedByVisible), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnAddedByVisibleChanged));
+
+    /// <summary>
+    /// Re-invoke <see cref="AddedByFormatter"/> for every materialized row and
+    /// push the result onto the row's <c>TrackItem</c>. Use after the consumer
+    /// (e.g. PlaylistViewModel) has resolved usernames + avatars in the
+    /// background and needs the cells to refresh without a full grid rebuild.
+    /// Cheap — only walks already-realized containers.
+    /// </summary>
+    public void RefreshAddedByCells()
+    {
+        if (AddedByFormatter is null)
+        {
+            System.Diagnostics.Debug.WriteLine("[addedby] RefreshAddedByCells: formatter null, no-op");
+            return;
+        }
+        var walked = 0;
+        var refreshed = 0;
+        foreach (var item in RowsList.Items)
+        {
+            walked++;
+            if (item is null) continue;
+            if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
+            if (container.ContentTemplateRoot is not Track.TrackItem ti) continue;
+            var info = AddedByFormatter(item);
+            ti.AddedByText = info.Text;
+            ti.AddedByAvatarUrl = info.AvatarUrl;
+            refreshed++;
+        }
+        System.Diagnostics.Debug.WriteLine($"[addedby] RefreshAddedByCells: walked={walked} refreshed={refreshed}");
+    }
+
+    private static void OnAddedByVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // Re-push column show flags onto every realized row so a runtime flip
+        // (e.g. when the playlist toggles between collab and non-collab while
+        // the page stays mounted) actually shrinks/expands the AddedBy slot.
+        ((TrackDataGrid)d).RefreshRowShowFlags();
+    }
+
+    /// <summary>
+    /// When true, each row's "Added by" cell is shown (gated by per-row content
+    /// from <see cref="AddedByFormatter"/>). PlaylistPage flips this to true on
+    /// collaborative playlists and false otherwise.
+    /// </summary>
+    public bool AddedByVisible
+    {
+        get => (bool)GetValue(AddedByVisibleProperty);
+        set => SetValue(AddedByVisibleProperty, value);
+    }
+
+    public static readonly DependencyProperty AddedByFormatterProperty =
+        DependencyProperty.Register(nameof(AddedByFormatter), typeof(System.Func<object, AddedByCellInfo>), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Per-row formatter: returns the display text + avatar URL for the AddedBy
+    /// cell. Returning empty <c>Text</c> collapses the row's cell. Mirrors the
+    /// existing <see cref="DateAddedFormatter"/> pattern so the grid stays
+    /// agnostic of <c>PlaylistTrackDto</c>.
+    /// </summary>
+    public System.Func<object, AddedByCellInfo>? AddedByFormatter
+    {
+        get => (System.Func<object, AddedByCellInfo>?)GetValue(AddedByFormatterProperty);
+        set => SetValue(AddedByFormatterProperty, value);
     }
 
     public static readonly DependencyProperty FooterContentProperty =

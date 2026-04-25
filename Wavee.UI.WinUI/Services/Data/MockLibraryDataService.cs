@@ -279,6 +279,15 @@ public sealed class MockLibraryDataService : ILibraryDataService
         return Task.FromResult<IReadOnlyList<PlaylistTrackDto>>([]);
     }
 
+    public Task<long> GetPlaylistFollowerCountAsync(string playlistId, CancellationToken ct = default)
+        => Task.FromResult(0L);
+
+    public Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default)
+        => Task.FromResult<AlbumPalette?>(null);
+
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         if (_mockPlaylistTracks.TryGetValue(playlistId, out var tracks))
@@ -298,6 +307,43 @@ public sealed class MockLibraryDataService : ILibraryDataService
         }
         return Task.CompletedTask;
     }
+
+    public Task RenamePlaylistAsync(string playlistId, string newName, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task UpdatePlaylistDescriptionAsync(string playlistId, string description, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task UpdatePlaylistCoverAsync(string playlistId, byte[] jpegBytes, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task RemovePlaylistCoverAsync(string playlistId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task DeletePlaylistAsync(string playlistId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task SetPlaylistCollaborativeAsync(string playlistId, bool collaborative, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task<IReadOnlyList<PlaylistMemberResult>> GetPlaylistMembersAsync(string playlistId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<PlaylistMemberResult>>(Array.Empty<PlaylistMemberResult>());
+
+    public Task SetPlaylistMemberRoleAsync(string playlistId, string memberUserId, PlaylistMemberRole role, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task RemovePlaylistMemberAsync(string playlistId, string memberUserId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task<PlaylistInviteLink> CreatePlaylistInviteLinkAsync(string playlistId, PlaylistMemberRole grantedRole, TimeSpan ttl, CancellationToken ct = default)
+        => Task.FromResult(new PlaylistInviteLink
+        {
+            Token = "mock",
+            ShareUrl = $"https://open.spotify.com/playlist/{playlistId}?pt=mock",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Ttl = ttl,
+            GrantedRole = grantedRole
+        });
 
     private static string? GetPlaylistDescription(string name) => name switch
     {

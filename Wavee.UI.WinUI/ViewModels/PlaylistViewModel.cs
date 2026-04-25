@@ -12,8 +12,10 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Data;
 using Wavee.Core.Http;
+using Windows.UI;
 using Wavee.Core.Playlists;
 using Wavee.Core.Session;
 using Wavee.UI.Contracts;
@@ -24,6 +26,7 @@ using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -52,6 +55,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private readonly DispatcherTimer _searchDebounceTimer;
     private CompositeDisposable? _subscriptions;
     private CancellationTokenSource? _tracksCts;
+    private CancellationTokenSource? _followerCountCts;
+    private CancellationTokenSource? _paletteCts;
     private string? _tracksLoadedFor;
     private bool _disposed;
 
@@ -62,7 +67,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private string _playlistName = "";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDescriptionViewerCardVisible))]
     private string? _playlistDescription;
+
+    // Notify the same computed when CanEditDescription flips.
+    partial void OnCanEditDescriptionChanged(bool value)
+        => OnPropertyChanged(nameof(IsDescriptionViewerCardVisible));
 
     [ObservableProperty]
     private string? _playlistImageUrl;
@@ -115,6 +125,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     [ObservableProperty]
     private bool _isPublic;
 
+    /// <summary>True when the playlist is open for contribution by other users.
+    /// Drives the "Make collaborative" toggle in the owner overflow menu.</summary>
+    [ObservableProperty]
+    private bool _isCollaborative;
+
     /// <summary>Server-reported base role on this playlist (Viewer/Contributor/Owner).</summary>
     [ObservableProperty]
     private PlaylistBasePermission _basePermission = PlaylistBasePermission.Viewer;
@@ -136,8 +151,111 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     [ObservableProperty]
     private bool _canAbuseReport;
 
+    // Granular metadata gates surfaced from PlaylistCapabilitiesDto. Today they
+    // all derive from CanEditMetadata in the DTO; when the cache layer starts
+    // surfacing per-attribute flags, only the DTO derivation changes — these
+    // observable properties stay 1:1 with the new values.
+    [ObservableProperty] private bool _canEditMetadata;
+    [ObservableProperty] private bool _canEditName;
+    [ObservableProperty] private bool _canEditDescription;
+    [ObservableProperty] private bool _canEditPicture;
+    [ObservableProperty] private bool _canEditCollaborative;
+    [ObservableProperty] private bool _canDelete;
+
+    /// <summary>Resolved collaborator list. Populated by
+    /// <see cref="RebuildCollaboratorsFromContext"/> from the playlist's owner +
+    /// the unique <c>AddedBy</c> users discovered in the track list. The
+    /// stubbed members backend isn't a source of truth here — we derive purely
+    /// from data that's already on screen.</summary>
+    public ObservableCollection<PlaylistMemberResult> Collaborators { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasCollaborators;
+
+    /// <summary>Bare owner user id (no <c>spotify:user:</c> prefix). Captured
+    /// from the playlist detail; used to identify which addedBy user is the
+    /// owner so we don't double-list them in the collaborator stack.</summary>
+    [ObservableProperty]
+    private string? _ownerId;
+
+    /// <summary>Owner's profile image URL, resolved alongside the display name
+    /// in <see cref="ResolveOwnerDisplayNameAsync"/>. Drives the first avatar
+    /// in the collaborator stack.</summary>
+    [ObservableProperty]
+    private string? _ownerAvatarUrl;
+
+    /// <summary>Most recently generated invite link for "Invite collaborators…".
+    /// Cleared on playlist swap.</summary>
+    [ObservableProperty]
+    private PlaylistInviteLink? _latestInviteLink;
+
+    /// <summary>Bare current-user id, used to suppress the "added by" badge on
+    /// rows the current user added themselves.</summary>
+    public string? CurrentUserId => _session?.GetUserData()?.Username;
+
+    /// <summary>True when the page should render the "…" overflow button — owners
+    /// see Delete/Make-collaborative/Invite/Manage; collaborators see Leave.</summary>
+    public bool HasOverflowItems =>
+        CanDelete || CanEditCollaborative || CanCancelMembership || CanAdministratePermissions;
+
+    /// <summary>
+    /// True when the AddedBy column should render. Shown on collaborative playlists
+    /// (multiple contributors expected) AND on any playlist the current user
+    /// doesn't own (matches Spotify's desktop behaviour — an "Added by" column
+    /// shows on viewer-mode playlists so the contributor is attributed). Hidden
+    /// on owner-mode personal playlists where every row is "added by self".
+    /// </summary>
+    public bool ShouldShowAddedByColumn => IsCollaborative || !IsOwner;
+
+    partial void OnIsCollaborativeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+        // Toggling "open for collab" should reveal/hide the avatar stack even
+        // when the contributor list itself didn't change.
+        RebuildCollaboratorsFromContext();
+    }
+    partial void OnIsOwnerChanged(bool value) => OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+
+    partial void OnCanDeleteChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
+    partial void OnCanEditCollaborativeChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
+    partial void OnCanCancelMembershipChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
+    partial void OnCanAdministratePermissionsChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
+
     [ObservableProperty]
     private int _followerCount;
+
+    /// <summary>
+    /// True while the popcount fetch for the current playlist is in flight.
+    /// Drives a shimmer placeholder under the title; goes false on success
+    /// (whether the count came back as 0 or a real number) or on cancellation.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isFollowerCountLoading;
+
+    // ── Theme-aware palette (from the playlist cover) ─────────────────────
+    // Mirrors AlbumViewModel's palette pipeline: fetched via Pathfinder's
+    // fetchPlaylist persisted query, applied per-theme on load and on
+    // ActualThemeChanged. Same brush set as the album page so the two
+    // surfaces feel like siblings.
+
+    private AlbumPalette? _albumPalette;
+    private bool _isDarkTheme;
+
+    /// <summary>Subtle page-wash brush tinted toward the playlist's color. Null when no palette.</summary>
+    [ObservableProperty]
+    private Brush? _paletteBackdropBrush;
+
+    /// <summary>Hero gradient brush — palette-tinted left-to-right band, theme-aware alpha.</summary>
+    [ObservableProperty]
+    private Brush? _paletteHeroGradientBrush;
+
+    /// <summary>Accent pill background brush. Null falls back to system accent.</summary>
+    [ObservableProperty]
+    private Brush? _paletteAccentPillBrush;
+
+    /// <summary>Accent pill foreground brush — auto-computed from accent luminance.</summary>
+    [ObservableProperty]
+    private Brush? _paletteAccentPillForegroundBrush;
 
     [ObservableProperty]
     private bool _hasError;
@@ -221,6 +339,40 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _ => $"{FollowerCount / 1_000_000.0:N1}M followers"
     };
 
+    /// <summary>
+    /// Single dot-separated stats line shown under the owner row, mirroring the
+    /// album page's <c>MetaInlineLine</c>. Joins track count, duration, and
+    /// follower count with " · ", omitting empty segments — so the line grows
+    /// gracefully as values resolve (popcount lands later than tracks).
+    /// </summary>
+    public string MetaInlineLine
+    {
+        get
+        {
+            var parts = new List<string>(3);
+            if (TotalTracks > 0)
+                parts.Add(TotalTracks == 1 ? "1 song" : $"{TotalTracks} songs");
+            if (!string.IsNullOrWhiteSpace(TotalDuration))
+                parts.Add(TotalDuration);
+            if (!string.IsNullOrWhiteSpace(FollowerCountFormatted))
+                parts.Add(FollowerCountFormatted);
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>True if the current user follows this playlist (heart filled).
+    /// Toggled by <see cref="ToggleFollowAsync"/>; backend wire-up is pending.</summary>
+    [ObservableProperty]
+    private bool _isFollowed;
+
+    /// <summary>
+    /// Visibility gate for the resolved follower-count text. False while the
+    /// popcount fetch is in flight (the shimmer takes the slot) and false when
+    /// the playlist has no followers / hides its count (slot collapses entirely).
+    /// </summary>
+    public bool ShowFollowerCountText
+        => !IsFollowerCountLoading && !string.IsNullOrEmpty(FollowerCountFormatted);
+
     public int SelectedCount => SelectedItems.Count;
     public bool HasSelection => SelectedItems.Count > 0;
     public string SelectionHeaderText => SelectedCount == 1
@@ -236,6 +388,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
     public bool CanRemove => CanEditItems && HasSelection;
+
+    /// <summary>
+    /// True when the read-only description card should render — i.e. the user
+    /// CANNOT edit the description (so we keep the existing RichTextBlock +
+    /// hyperlink path) AND the playlist actually carries a description. Editors
+    /// get the editable branch instead, which is always visible (it shows the
+    /// placeholder when empty so they can add one).
+    /// </summary>
+    public bool IsDescriptionViewerCardVisible => !CanEditDescription && !string.IsNullOrEmpty(PlaylistDescription);
 
     public PlaylistViewModel(
         ILibraryDataService libraryDataService,
@@ -292,6 +453,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     partial void OnFollowerCountChanged(int value)
     {
         OnPropertyChanged(nameof(FollowerCountFormatted));
+        OnPropertyChanged(nameof(ShowFollowerCountText));
+        OnPropertyChanged(nameof(MetaInlineLine));
+    }
+
+    partial void OnTotalTracksChanged(int value) => OnPropertyChanged(nameof(MetaInlineLine));
+    partial void OnTotalDurationChanged(string value) => OnPropertyChanged(nameof(MetaInlineLine));
+
+    partial void OnIsFollowerCountLoadingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowFollowerCountText));
     }
 
     partial void OnPlaylistNameChanged(string value)
@@ -320,10 +491,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // Detail refresh now arrives via the store's push/invalidate stream
     // subscribed in Activate() — no manual DataChanged wire needed.
 
-    partial void OnIsOwnerChanged(bool value)
-    {
-        // CanRemove now reads CanEditItems, but keep notifying in case bindings depend on IsOwner.
-    }
+    // OnIsOwnerChanged consolidated above (line ~192) — also raises
+    // ShouldShowAddedByColumn so the AddedBy column gates correctly.
 
     partial void OnCanEditItemsChanged(bool value)
     {
@@ -461,8 +630,18 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             PlaylistImageUrl = null;
             HeaderImageUrl = null;
             OwnerName = string.Empty;
+            OwnerId = null;
+            OwnerAvatarUrl = null;
+            Collaborators.Clear();
+            HasCollaborators = false;
+            _albumPalette = null;
+            PaletteBackdropBrush = null;
+            PaletteHeroGradientBrush = null;
+            PaletteAccentPillBrush = null;
+            PaletteAccentPillForegroundBrush = null;
             IsOwner = false;
             IsPublic = false;
+            IsCollaborative = false;
             FollowerCount = 0;
             TotalTracks = 0;
             _playlistFormatAttributes = null;
@@ -470,6 +649,20 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _sessionControlGroupId = null;
             TotalDuration = string.Empty;
             HasAnyAddedAt = false;
+
+            // Reset granular capability gates so a stale "owner-only" affordance
+            // doesn't briefly leak into a viewer-mode playlist render.
+            CanEditMetadata = false;
+            CanEditName = false;
+            CanEditDescription = false;
+            CanEditPicture = false;
+            CanEditCollaborative = false;
+            CanDelete = false;
+
+            // Drop the previous playlist's collaborator state.
+            Collaborators.Clear();
+            HasCollaborators = false;
+            LatestInviteLink = null;
 
             // Drop chips from the previous playlist before the new DTO arrives
             // so they don't flicker visible during the reload.
@@ -510,6 +703,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _tracksCts?.Cancel();
         _tracksCts?.Dispose();
         _tracksCts = null;
+        _followerCountCts?.Cancel();
+        _followerCountCts?.Dispose();
+        _followerCountCts = null;
+        _paletteCts?.Cancel();
+        _paletteCts?.Dispose();
+        _paletteCts = null;
         // Search timer holds a Tick closure over `this`; stop it on nav-away so it
         // doesn't fire against a cached-but-hidden page.
         _searchDebounceTimer.Stop();
@@ -607,6 +806,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         BuildSessionControlChips(detail.SessionControlOptions);
         if (!string.IsNullOrEmpty(detail.OwnerName) && detail.OwnerName != "Unknown")
             OwnerName = detail.OwnerName;
+        // Stash the owner id (bare or full URI tolerated, both flow through the
+        // resolver) so RebuildCollaboratorsFromContext can dedupe against the
+        // unique addedBy set below.
+        OwnerId = string.IsNullOrWhiteSpace(detail.OwnerId)
+            ? detail.OwnerName
+            : detail.OwnerId;
 
         // The data layer sometimes hands us the raw `spotify:user:{id}` URI or bare id
         // in OwnerName (editorial / legacy accounts where the display-name lookup hasn't
@@ -636,13 +841,57 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         IsOwner = detail.IsOwner;
         IsPublic = detail.IsPublic;
+        IsCollaborative = detail.IsCollaborative;
         FollowerCount = detail.FollowerCount;
+
+        // Popcount runs out-of-band — the data layer holds FollowerCount at 0
+        // so the detail load doesn't block on a stat-only round trip. Kick off
+        // the dedicated fetch here and let the chip shimmer until it resolves.
+        // Same idea for the palette: Pathfinder fetchPlaylist is fired in
+        // parallel and the hero tints in once the colour set arrives.
+        if (!string.IsNullOrEmpty(PlaylistId))
+        {
+            _ = LoadFollowerCountAsync(PlaylistId);
+            _ = LoadPaletteAsync(PlaylistId);
+        }
 
         BasePermission = detail.BasePermission;
         CanEditItems = detail.Capabilities.CanEditItems;
         CanAdministratePermissions = detail.Capabilities.CanAdministratePermissions;
         CanCancelMembership = detail.Capabilities.CanCancelMembership;
         CanAbuseReport = detail.Capabilities.CanAbuseReport;
+
+        // Granular metadata gates — drive RenameAsync / UpdateDescriptionAsync /
+        // ChangeCoverAsync / DeletePlaylistAsync / ToggleCollaborativeAsync via
+        // their respective CanExecute predicates instead of the coarse IsOwner.
+        CanEditMetadata = detail.Capabilities.CanEditMetadata;
+        CanEditName = detail.Capabilities.CanEditName;
+        CanEditDescription = detail.Capabilities.CanEditDescription;
+        CanEditPicture = detail.Capabilities.CanEditPicture;
+        CanEditCollaborative = detail.Capabilities.CanEditCollaborative;
+        CanDelete = detail.Capabilities.CanDelete;
+
+        _logger?.LogInformation(
+            "[caps] VM ApplyDetail '{Id}': IsOwner={IsOwner} BasePerm={Base} | dto.Caps=[EditItems={EI},EditMeta={EM},Delete={DD},Admin={AD}] | VM gates=[CanEditName={CEN},CanEditDescription={CED},CanEditPicture={CEP},CanEditCollab={CEC},CanDelete={CD}]",
+            PlaylistId, IsOwner, BasePermission,
+            detail.Capabilities.CanEditItems, detail.Capabilities.CanEditMetadata,
+            detail.Capabilities.CanDelete, detail.Capabilities.CanAdministratePermissions,
+            CanEditName, CanEditDescription, CanEditPicture, CanEditCollaborative, CanDelete);
+
+        // Re-evaluate command CanExecute now that gates have refreshed.
+        RenameCommand.NotifyCanExecuteChanged();
+        UpdateDescriptionCommand.NotifyCanExecuteChanged();
+        ChangeCoverCommand.NotifyCanExecuteChanged();
+        RemoveCoverCommand.NotifyCanExecuteChanged();
+        DeletePlaylistCommand.NotifyCanExecuteChanged();
+        ToggleCollaborativeCommand.NotifyCanExecuteChanged();
+
+        // The mutating members backend (LoadCollaboratorsAsync) is still a stub,
+        // so it isn't called here — the collaborator stack is fed by data we
+        // already have on screen instead. Seed it now with whatever we know
+        // (owner only at this point); LoadTracksAsync + addedBy resolution will
+        // call rebuild again as track contributors materialise.
+        RebuildCollaboratorsFromContext();
 
         HasError = false;
         ErrorMessage = null;
@@ -929,20 +1178,24 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // LoadTracksAsync immediately after we're spawned. Staleness is gated by
             // the PlaylistId check in the dispatcher enqueue below; the resolver
             // memoises results so the network call isn't wasted on quick re-navigations.
-            var displayName = await _userProfileResolver
-                .GetDisplayNameAsync(ownerUri, CancellationToken.None)
+            // Use GetProfileAsync (instead of GetDisplayNameAsync) so we also pick up
+            // the owner's avatar URL — feeds the first slot of the collaborator stack.
+            var profile = await _userProfileResolver
+                .GetProfileAsync(ownerUri, CancellationToken.None)
                 .ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(displayName))
+            var displayName = profile?.DisplayName;
+            var avatarUrl = profile?.AvatarUrl;
+            if (string.IsNullOrWhiteSpace(displayName) && string.IsNullOrWhiteSpace(avatarUrl))
             {
                 _logger?.LogWarning(
-                    "ResolveOwnerDisplayNameAsync: resolver returned empty display name for '{OwnerUri}'",
+                    "ResolveOwnerDisplayNameAsync: resolver returned empty profile for '{OwnerUri}'",
                     ownerUri);
                 return;
             }
 
             _logger?.LogInformation(
-                "ResolveOwnerDisplayNameAsync: '{OwnerUri}' -> '{DisplayName}'",
-                ownerUri, displayName);
+                "ResolveOwnerDisplayNameAsync: '{OwnerUri}' -> name='{DisplayName}' avatar={Avatar}",
+                ownerUri, displayName ?? "<null>", string.IsNullOrEmpty(avatarUrl) ? "<null>" : "set");
             _dispatcherQueue.TryEnqueue(() =>
             {
                 // Drop the result if navigation moved on; also drop if a fresher
@@ -950,9 +1203,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 // the resolver was in flight — unlikely, but cheap to guard).
                 if (_disposed || !string.Equals(PlaylistId, pinnedPlaylistId, StringComparison.Ordinal))
                     return;
-                if (string.Equals(OwnerName, displayName, StringComparison.Ordinal))
-                    return;
-                OwnerName = displayName;
+                var changed = false;
+                if (!string.IsNullOrWhiteSpace(displayName)
+                    && !string.Equals(OwnerName, displayName, StringComparison.Ordinal))
+                {
+                    OwnerName = displayName;
+                    changed = true;
+                }
+                if (!string.IsNullOrWhiteSpace(avatarUrl)
+                    && !string.Equals(OwnerAvatarUrl, avatarUrl, StringComparison.Ordinal))
+                {
+                    OwnerAvatarUrl = avatarUrl;
+                    changed = true;
+                }
+                if (changed)
+                    RebuildCollaboratorsFromContext();
             });
         }
         catch (OperationCanceledException)
@@ -1004,6 +1269,141 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         {
             _logger?.LogWarning(ex, "ApplyMosaicHeroAsync failed for {PlaylistId}", playlistId);
         }
+    }
+
+    /// <summary>
+    /// Background follower-count fetch. Held out of the main detail-load path so
+    /// the playlist UI renders immediately and the count chip shimmers in
+    /// asynchronously when the popcount endpoint replies.
+    /// </summary>
+    private async Task LoadFollowerCountAsync(string playlistId)
+    {
+        _followerCountCts?.Cancel();
+        _followerCountCts?.Dispose();
+        _followerCountCts = new CancellationTokenSource();
+        var ct = _followerCountCts.Token;
+
+        IsFollowerCountLoading = true;
+        try
+        {
+            var count = await _libraryDataService
+                .GetPlaylistFollowerCountAsync(playlistId, ct)
+                .ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                // A nav-swap between fetch start and result arrival would otherwise
+                // paint the previous playlist's count under the new one's title.
+                if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                    return;
+                FollowerCount = (int)Math.Min(count, int.MaxValue);
+                IsFollowerCountLoading = false;
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer fetch — leave the loading flag for the new run to manage.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "LoadFollowerCountAsync failed for {PlaylistId}", playlistId);
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                    return;
+                IsFollowerCountLoading = false;
+            });
+        }
+    }
+
+    /// <summary>
+    /// Background palette fetch via Pathfinder's fetchPlaylist persisted query.
+    /// Runs in parallel with the main detail load so the hero starts in a
+    /// neutral state and tints in once the colour set lands. Mirrors
+    /// AlbumViewModel's palette pipeline so the two surfaces look like siblings.
+    /// </summary>
+    private async Task LoadPaletteAsync(string playlistId)
+    {
+        _paletteCts?.Cancel();
+        _paletteCts?.Dispose();
+        _paletteCts = new CancellationTokenSource();
+        var ct = _paletteCts.Token;
+
+        try
+        {
+            var palette = await _libraryDataService
+                .GetPlaylistPaletteAsync(playlistId, ct)
+                .ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                    return;
+                _albumPalette = palette;
+                ApplyTheme(_isDarkTheme);
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer fetch — silent.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "LoadPaletteAsync failed for {PlaylistId}", playlistId);
+        }
+    }
+
+    /// <summary>
+    /// Theme-aware palette refresh. Called by the page on init + on
+    /// ActualThemeChanged. Mirrors <c>AlbumViewModel.ApplyTheme</c>: dark theme
+    /// uses HigherContrast (deepest), light theme uses HighContrast (saturated
+    /// but a step brighter). MinContrast is skipped — too pastel for white
+    /// overlay text. When no palette is available the brushes are nulled so
+    /// the page renders untinted.
+    /// </summary>
+    public void ApplyTheme(bool isDark)
+    {
+        _isDarkTheme = isDark;
+
+        var tier = _albumPalette is null
+            ? null
+            : (isDark
+                ? (_albumPalette.HigherContrast ?? _albumPalette.HighContrast)
+                : (_albumPalette.HighContrast ?? _albumPalette.HigherContrast));
+
+        if (tier == null)
+        {
+            PaletteBackdropBrush = null;
+            PaletteHeroGradientBrush = null;
+            PaletteAccentPillBrush = null;
+            PaletteAccentPillForegroundBrush = null;
+            return;
+        }
+
+        var bg = Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
+        var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
+        var accent = Color.FromArgb(255, tier.TextAccentR, tier.TextAccentG, tier.TextAccentB);
+
+        PaletteBackdropBrush = new SolidColorBrush(Color.FromArgb(
+            (byte)(isDark ? 60 : 38), bg.R, bg.G, bg.B));
+
+        var heroGrad = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+        };
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(176, bg.R, bg.G, bg.B),         Offset = 0.35 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(80,  bg.R, bg.G, bg.B),         Offset = 0.65 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   bg.R, bg.G, bg.B),         Offset = 1.0 });
+        PaletteHeroGradientBrush = heroGrad;
+
+        PaletteAccentPillBrush = new SolidColorBrush(accent);
+        var accentLuma = (accent.R * 299 + accent.G * 587 + accent.B * 114) / 1000;
+        PaletteAccentPillForegroundBrush = new SolidColorBrush(
+            accentLuma > 160 ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255));
     }
 
     private async Task LoadTracksAsync(string playlistId)
@@ -1067,6 +1467,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                     "Tracks applied: {Count} tracks for '{PlaylistId}' first3={First3}",
                     _allTracks.Count, playlistId,
                     string.Join(",", _allTracks.Take(3).Select(t => t.Id)));
+
+                // _allTracks is populated — the unique addedBy set is now derivable.
+                // Rebuild seeds the stack with bare-id contributors immediately;
+                // ResolveAddedByUsernamesAsync upgrades the names + avatars below
+                // and calls rebuild again when its writeback completes.
+                RebuildCollaboratorsFromContext();
+
+                // Background addedBy resolution — fills AddedByDisplayName /
+                // AddedByAvatarUrl on each DTO. Runs whenever the AddedBy column
+                // will be visible (collab playlists OR any playlist where the
+                // current user isn't the owner) so the cells don't fall back to
+                // the long bare-id "@…" rendering. Captures the playlistId so a
+                // stale resolution doesn't write into a swapped page.
+                if (ShouldShowAddedByColumn)
+                    _ = ResolveAddedByUsernamesAsync(playlistId, ct);
             });
         }
         catch (OperationCanceledException)
@@ -1194,6 +1609,62 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         BuildQueueAndPlay(0, shuffle: true);
     }
 
+    /// <summary>
+    /// Toggles whether the current user follows this playlist. Visual flip is
+    /// optimistic — backend wire-up via
+    /// <see cref="ILibraryDataService.SetPlaylistFollowedAsync"/> is currently
+    /// stubbed; the call shape exists so the page chrome behaves correctly.
+    /// </summary>
+    [RelayCommand]
+    private async Task ToggleFollowAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+        var nextValue = !IsFollowed;
+        IsFollowed = nextValue;
+        try
+        {
+            await _libraryDataService
+                .SetPlaylistFollowedAsync(PlaylistId, nextValue)
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // Revert the optimistic flip on failure so the heart visual matches
+            // the actual backend state. Logged at Debug — the backend is stubbed
+            // for now so this is mostly a safety net for the future wire-up.
+            _logger?.LogDebug(ex, "ToggleFollowAsync failed for {PlaylistId} — reverting", PlaylistId);
+            IsFollowed = !nextValue;
+        }
+    }
+
+    /// <summary>
+    /// Copies the playlist's open.spotify.com link to the clipboard. Synchronous,
+    /// no backend; matches the album page's Share affordance.
+    /// </summary>
+    [RelayCommand]
+    private void SharePlaylist()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+        const string prefix = "spotify:playlist:";
+        var bareId = PlaylistId.StartsWith(prefix, StringComparison.Ordinal)
+            ? PlaylistId[prefix.Length..]
+            : PlaylistId;
+
+        try
+        {
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText($"https://open.spotify.com/playlist/{bareId}");
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Link copied to clipboard", NotificationSeverity.Informational, TimeSpan.FromSeconds(3));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "SharePlaylist failed for {PlaylistId}", PlaylistId);
+        }
+    }
+
     [RelayCommand]
     private void PlayTrack(object? track)
     {
@@ -1295,6 +1766,541 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private void AddToPlaylist(PlaylistSummaryDto? playlist)
     {
         if (playlist == null || !HasSelection) return;
+    }
+
+    /// <summary>
+    /// Resolves display name + avatar for every distinct <c>AddedBy</c> on the
+    /// current playlist (excluding the current user, whose row collapses the
+    /// AddedBy cell), and writes the results back into the <c>PlaylistTrackDto</c>
+    /// instances. Each successful write fires PropertyChanged on the affected
+    /// DTO so already-realized cells re-render without a full grid rebuild.
+    /// </summary>
+    private async Task ResolveAddedByUsernamesAsync(string forPlaylistId, CancellationToken ct)
+    {
+        if (_userProfileResolver is null)
+        {
+            _logger?.LogInformation("[addedby] resolver=null, skipping for '{Id}'", forPlaylistId);
+            return;
+        }
+
+        // Snapshot the current track list so we don't race with a swap.
+        var snapshot = _allTracks;
+        var selfId = CurrentUserId;
+        var unique = snapshot
+            .Select(t => t.AddedBy)
+            .Where(id => !string.IsNullOrEmpty(id)
+                && !string.Equals(id, selfId, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _logger?.LogInformation(
+            "[addedby] resolve start for '{Id}' — selfId={Self} uniqueCount={N} unique=[{List}]",
+            forPlaylistId, selfId, unique.Count, string.Join(",", unique));
+
+        if (unique.Count == 0) return;
+
+        var lookup = new Dictionary<string, UserProfileSummary?>(StringComparer.OrdinalIgnoreCase);
+        await Task.WhenAll(unique.Select(async id =>
+        {
+            try
+            {
+                var profile = await _userProfileResolver.GetProfileAsync(id, ct).ConfigureAwait(false);
+                lock (lookup) lookup[id] = profile;
+                _logger?.LogInformation(
+                    "[addedby] resolved '{Id}' -> name={Name} avatar={Avatar}",
+                    id,
+                    profile?.DisplayName ?? "<null>",
+                    string.IsNullOrEmpty(profile?.AvatarUrl) ? "<null>" : "set");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[addedby] resolve failed for '{Id}'", id);
+            }
+        })).ConfigureAwait(true);
+
+        // Bail if a swap landed mid-resolve.
+        if (PlaylistId != forPlaylistId || ct.IsCancellationRequested)
+        {
+            _logger?.LogInformation(
+                "[addedby] swap detected mid-resolve for '{For}' (current PlaylistId='{Cur}'), aborting",
+                forPlaylistId, PlaylistId);
+            return;
+        }
+
+        var anyChanged = 0;
+        var skippedSelf = 0;
+        var skippedNullProfile = 0;
+        foreach (var dto in snapshot)
+        {
+            if (string.IsNullOrEmpty(dto.AddedBy)) continue;
+            if (string.Equals(dto.AddedBy, selfId, StringComparison.OrdinalIgnoreCase))
+            {
+                skippedSelf++;
+                continue;
+            }
+            if (!lookup.TryGetValue(dto.AddedBy, out var profile) || profile is null)
+            {
+                skippedNullProfile++;
+                continue;
+            }
+            dto.AddedByDisplayName = profile.DisplayName ?? dto.AddedBy;
+            dto.AddedByAvatarUrl = profile.AvatarUrl;
+            anyChanged++;
+        }
+
+        _logger?.LogInformation(
+            "[addedby] writeback complete for '{Id}': mutated={Changed} skippedSelf={Self} skippedNullProfile={Nul}",
+            forPlaylistId, anyChanged, skippedSelf, skippedNullProfile);
+
+        // The TrackDataGrid pushes formatter values imperatively at row
+        // materialization, so DTO mutations don't reach already-rendered
+        // cells. Signal the page to walk visible rows and re-invoke the
+        // AddedByFormatter so the resolved name + avatar replace the
+        // bare-id "@…" fallback.
+        if (anyChanged > 0)
+        {
+            _logger?.LogInformation("[addedby] firing AddedByResolved event for '{Id}'", forPlaylistId);
+            AddedByResolved?.Invoke(this, EventArgs.Empty);
+
+            // Resolved names + avatars are now on the per-track DTOs — rebuild
+            // the collaborator stack so the placeholder bare-id entries upgrade
+            // to friendly avatars in the same beat as the AddedBy column.
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || PlaylistId != forPlaylistId)
+                    return;
+                RebuildCollaboratorsFromContext();
+            });
+        }
+    }
+
+    /// <summary>Fired after <see cref="ResolveAddedByUsernamesAsync"/> writes
+    /// resolved display names + avatars back into the playlist's track DTOs.
+    /// PlaylistPage uses this to call <c>TrackGrid.RefreshAddedByCells()</c>.</summary>
+    public event EventHandler? AddedByResolved;
+
+    // ── Members + invite + leave (collab playlist UI) ────────────────────────
+
+    /// <summary>
+    /// Builds the collaborator list shown in the hero avatar stack from data
+    /// already on screen — the playlist owner plus the unique <c>AddedBy</c>
+    /// users discovered across <c>_allTracks</c>. Independent of the stubbed
+    /// members backend (<see cref="LoadCollaboratorsAsync"/>) so the stack
+    /// works on any playlist with multiple contributors, not just ones the
+    /// current user can administrate.
+    ///
+    /// Visibility rule: stack is shown when the playlist is open for collab
+    /// (<see cref="IsCollaborative"/>) OR when ≥2 unique contributors are
+    /// present. Single-owner non-collab playlists collapse to nothing.
+    /// </summary>
+    private void RebuildCollaboratorsFromContext()
+    {
+        // Snapshot the track list — this method is dispatcher-thread but the
+        // backing field is reassigned on the same thread by LoadTracksAsync, so
+        // a local read keeps the dedupe stable.
+        var tracks = _allTracks;
+        var ownerId = string.IsNullOrEmpty(OwnerId)
+            ? string.Empty
+            : ExtractBareUserId(OwnerId);
+
+        var members = new List<PlaylistMemberResult>(capacity: 8);
+
+        // Owner always leads the stack — even when no other contributors exist
+        // yet, the single avatar serves as the "open for collaboration"
+        // affordance on collaborative playlists.
+        if (!string.IsNullOrEmpty(ownerId) || !string.IsNullOrEmpty(OwnerName))
+        {
+            members.Add(new PlaylistMemberResult
+            {
+                UserId = ownerId,
+                Username = ownerId,
+                DisplayName = string.IsNullOrWhiteSpace(OwnerName) ? null : OwnerName,
+                AvatarUrl = OwnerAvatarUrl,
+                Role = PlaylistMemberRole.Owner,
+            });
+        }
+
+        // Unique addedBy contributors, owner excluded. The display name +
+        // avatar come from whichever track DTO carries the resolved values
+        // (ResolveAddedByUsernamesAsync writes the same value to every track
+        // by the same user, so any one suffices).
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(ownerId)) seen.Add(ownerId);
+
+        foreach (var t in tracks)
+        {
+            var addedBy = t.AddedBy;
+            if (string.IsNullOrEmpty(addedBy)) continue;
+            if (!seen.Add(addedBy)) continue;
+
+            members.Add(new PlaylistMemberResult
+            {
+                UserId = addedBy,
+                Username = addedBy,
+                DisplayName = string.IsNullOrWhiteSpace(t.AddedByDisplayName) ? null : t.AddedByDisplayName,
+                AvatarUrl = t.AddedByAvatarUrl,
+                Role = PlaylistMemberRole.Contributor,
+            });
+        }
+
+        // Replace the collection in one shot — RebuildCollaboratorStack in the
+        // page subscribes to CollectionChanged and rebuilds visuals on any
+        // mutation, so we want a single Reset rather than incremental edits.
+        Collaborators.Clear();
+        foreach (var m in members)
+            Collaborators.Add(m);
+
+        HasCollaborators = IsCollaborative || Collaborators.Count >= 2;
+
+        _logger?.LogInformation(
+            "[collab-stack] rebuilt: count={Count} hasCollab={Has} isCollab={IsCollab} ownerId={Owner}",
+            Collaborators.Count, HasCollaborators, IsCollaborative, ownerId);
+    }
+
+    private static string ExtractBareUserId(string idOrUri)
+    {
+        const string prefix = "spotify:user:";
+        return idOrUri.StartsWith(prefix, StringComparison.Ordinal)
+            ? idOrUri[prefix.Length..]
+            : idOrUri;
+    }
+
+    /// <summary>Loads the collaborator list and resolves display names + avatars.
+    /// Dormant — pending the real members backend wire-up. The visual avatar
+    /// stack derives from track data via <see cref="RebuildCollaboratorsFromContext"/>;
+    /// this method is retained for the admin "Manage members" flyout, which still
+    /// needs the role-aware list once the backend lands.</summary>
+    [RelayCommand]
+    private async Task LoadCollaboratorsAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+
+        try
+        {
+            var raw = await _libraryDataService
+                .GetPlaylistMembersAsync(PlaylistId)
+                .ConfigureAwait(true);
+
+            // Resolve display name + avatar in parallel; UserProfileResolver
+            // memoises so repeated calls cost nothing on cache hits.
+            var enriched = await Task.WhenAll(raw.Select(async m =>
+            {
+                if (_userProfileResolver is null) return m;
+                var profile = await _userProfileResolver
+                    .GetProfileAsync(m.UserId)
+                    .ConfigureAwait(true);
+                return m with
+                {
+                    DisplayName = profile?.DisplayName ?? m.DisplayName,
+                    AvatarUrl = profile?.AvatarUrl ?? m.AvatarUrl
+                };
+            })).ConfigureAwait(true);
+
+            Collaborators.Clear();
+            foreach (var m in enriched) Collaborators.Add(m);
+            HasCollaborators = Collaborators.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "LoadCollaboratorsAsync failed for '{Id}'", PlaylistId);
+        }
+    }
+
+    /// <summary>Optimistically updates a member's role; reverts on failure.</summary>
+    [RelayCommand(CanExecute = nameof(CanAdministratePermissions))]
+    private async Task SetMemberRoleAsync((string memberUserId, PlaylistMemberRole role) args)
+    {
+        if (string.IsNullOrEmpty(PlaylistId) || string.IsNullOrEmpty(args.memberUserId)) return;
+
+        var existing = Collaborators.FirstOrDefault(m =>
+            string.Equals(m.UserId, args.memberUserId, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return;
+
+        var previous = existing.Role;
+        var index = Collaborators.IndexOf(existing);
+        Collaborators[index] = existing with { Role = args.role };
+
+        try
+        {
+            await _libraryDataService
+                .SetPlaylistMemberRoleAsync(PlaylistId, args.memberUserId, args.role)
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "SetMemberRoleAsync failed for '{Id}'/'{Member}'", PlaylistId, args.memberUserId);
+            Collaborators[index] = existing with { Role = previous };
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't update permission", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    /// <summary>Optimistically removes a member; restores on failure.</summary>
+    [RelayCommand(CanExecute = nameof(CanAdministratePermissions))]
+    private async Task RemoveMemberAsync(string memberUserId)
+    {
+        if (string.IsNullOrEmpty(PlaylistId) || string.IsNullOrEmpty(memberUserId)) return;
+
+        var existing = Collaborators.FirstOrDefault(m =>
+            string.Equals(m.UserId, memberUserId, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return;
+
+        var index = Collaborators.IndexOf(existing);
+        Collaborators.RemoveAt(index);
+        HasCollaborators = Collaborators.Count > 0;
+
+        try
+        {
+            await _libraryDataService
+                .RemovePlaylistMemberAsync(PlaylistId, memberUserId)
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "RemoveMemberAsync failed for '{Id}'/'{Member}'", PlaylistId, memberUserId);
+            Collaborators.Insert(index, existing);
+            HasCollaborators = Collaborators.Count > 0;
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't remove member", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    /// <summary>Generates a new invite link with the given TTL and stores it on
+    /// <see cref="LatestInviteLink"/>. The view's invite flyout watches that
+    /// property to swap from the "Generate" CTA to the URL display.</summary>
+    [RelayCommand(CanExecute = nameof(CanEditCollaborative))]
+    private async Task CreateInviteLinkAsync(TimeSpan ttl)
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+        if (ttl <= TimeSpan.Zero) ttl = TimeSpan.FromDays(7);
+
+        try
+        {
+            LatestInviteLink = await _libraryDataService
+                .CreatePlaylistInviteLinkAsync(PlaylistId, PlaylistMemberRole.Contributor, ttl)
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "CreateInviteLinkAsync failed for '{Id}'", PlaylistId);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't generate invite link", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    /// <summary>Collaborator-only: leave the playlist. The page is expected to
+    /// confirm before invoking, and to navigate away on success.</summary>
+    [RelayCommand(CanExecute = nameof(CanCancelMembership))]
+    private async Task LeavePlaylistAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId) || string.IsNullOrEmpty(CurrentUserId)) return;
+
+        try
+        {
+            await _libraryDataService
+                .RemovePlaylistMemberAsync(PlaylistId, CurrentUserId)
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "LeavePlaylistAsync failed for '{Id}'", PlaylistId);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't leave playlist", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    // ── Inline edit commands (Phase 1: rename + description) ────────────────
+
+    /// <summary>True while a metadata edit (rename or description) is being saved.
+    /// The view binds this to the InlineEditableText's IsBusy spinner.</summary>
+    [ObservableProperty] private bool _isRenaming;
+
+    [ObservableProperty] private bool _isUpdatingDescription;
+
+    /// <summary>
+    /// Optimistically sets <see cref="PlaylistName"/> to <paramref name="newName"/>
+    /// and persists via <see cref="ILibraryDataService.RenamePlaylistAsync"/>. On
+    /// failure the previous name is restored and a toast is shown.
+    /// Trims whitespace; rejects empty names (silent revert).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditName))]
+    private async Task RenameAsync(string newName)
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+
+        var trimmed = newName?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(trimmed) || string.Equals(trimmed, PlaylistName, StringComparison.Ordinal))
+            return;
+
+        var previous = PlaylistName;
+        PlaylistName = trimmed;
+        IsRenaming = true;
+        try
+        {
+            await _libraryDataService.RenamePlaylistAsync(PlaylistId, trimmed).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "RenameAsync failed for playlist '{Id}'; reverting", PlaylistId);
+            PlaylistName = previous;
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't rename playlist", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+        finally
+        {
+            IsRenaming = false;
+        }
+    }
+
+    /// <summary>True while a cover-photo upload is in flight.
+    /// Drives the spinner overlay on the cover edit affordance.</summary>
+    [ObservableProperty] private bool _isUploadingCover;
+
+    /// <summary>
+    /// Persists a freshly-picked cover image. <paramref name="jpegBytes"/> must
+    /// already be a JPEG ≤256 KB (use <c>PlaylistCoverHelper</c>). On failure
+    /// the page reverts the local preview and shows a toast; on success the
+    /// stored URL refreshes from the next AlbumStore push.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditPicture))]
+    private async Task ChangeCoverAsync(byte[] jpegBytes)
+    {
+        if (string.IsNullOrEmpty(PlaylistId) || jpegBytes is null || jpegBytes.Length == 0)
+            return;
+
+        IsUploadingCover = true;
+        try
+        {
+            await _libraryDataService.UpdatePlaylistCoverAsync(PlaylistId, jpegBytes).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "ChangeCoverAsync failed for playlist '{Id}'", PlaylistId);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't update cover photo", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+            throw; // let the page revert its local preview
+        }
+        finally
+        {
+            IsUploadingCover = false;
+        }
+    }
+
+    /// <summary>
+    /// Deletes the playlist (Spotify implements this as the owner unfollowing
+    /// their own playlist). The page should navigate away on success.
+    /// Caller is expected to confirm with the user before invoking.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private async Task DeletePlaylistAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+
+        try
+        {
+            await _libraryDataService.DeletePlaylistAsync(PlaylistId).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "DeletePlaylistAsync failed for playlist '{Id}'", PlaylistId);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't delete playlist", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    /// <summary>
+    /// Toggles the playlist between owner-only and collaborative. Optimistically
+    /// flips <see cref="IsCollaborative"/>; reverts on failure.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditCollaborative))]
+    private async Task ToggleCollaborativeAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+
+        var previous = IsCollaborative;
+        var next = !previous;
+        IsCollaborative = next;
+        try
+        {
+            await _libraryDataService.SetPlaylistCollaborativeAsync(PlaylistId, next).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "ToggleCollaborativeAsync failed for playlist '{Id}'; reverting", PlaylistId);
+            IsCollaborative = previous;
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't update sharing setting", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+    }
+
+    /// <summary>
+    /// Removes the custom cover and reverts to the auto-generated mosaic.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditPicture))]
+    private async Task RemoveCoverAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+
+        IsUploadingCover = true;
+        try
+        {
+            await _libraryDataService.RemovePlaylistCoverAsync(PlaylistId).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "RemoveCoverAsync failed for playlist '{Id}'", PlaylistId);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't remove cover photo", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+        finally
+        {
+            IsUploadingCover = false;
+        }
+    }
+
+    /// <summary>
+    /// Optimistically sets <see cref="PlaylistDescription"/> to
+    /// <paramref name="newDescription"/> and persists. Empty string clears the
+    /// description on the server. On failure the previous value is restored.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditDescription))]
+    private async Task UpdateDescriptionAsync(string newDescription)
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+
+        var value = newDescription ?? string.Empty;
+        if (string.Equals(value, PlaylistDescription ?? string.Empty, StringComparison.Ordinal))
+            return;
+
+        var previous = PlaylistDescription;
+        PlaylistDescription = value;
+        IsUpdatingDescription = true;
+        try
+        {
+            await _libraryDataService.UpdatePlaylistDescriptionAsync(PlaylistId, value).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "UpdateDescriptionAsync failed for playlist '{Id}'; reverting", PlaylistId);
+            PlaylistDescription = previous;
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't update description", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+        }
+        finally
+        {
+            IsUpdatingDescription = false;
+        }
     }
 
     public void Dispose()

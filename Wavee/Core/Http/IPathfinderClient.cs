@@ -96,6 +96,15 @@ public interface IPathfinderClient
     Task<GetAlbumResponse> GetAlbumAsync(
         string albumUri, CancellationToken ct = default);
 
+    /// <summary>
+    /// Fetches a playlist's visual identity (extracted colour palette) via the
+    /// <c>fetchPlaylist</c> persisted query. Items are deliberately requested
+    /// with <c>limit=0</c> — track data flows through the diff path elsewhere;
+    /// this call exists purely to drive the album-style hero tinting.
+    /// </summary>
+    Task<FetchPlaylistResponse> FetchPlaylistAsync(
+        string playlistUri, CancellationToken ct = default);
+
     /// <summary>Fetches the user's saved location from their Spotify profile.</summary>
     Task<UserLocationResponse> GetUserLocationAsync(CancellationToken ct = default);
 

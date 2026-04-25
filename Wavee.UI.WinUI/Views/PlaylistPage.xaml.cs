@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -67,6 +68,24 @@ public sealed partial class PlaylistPage : Page
         };
         TrackGrid.DateAddedFormatter = addedFormatter;
 
+        // Added-by formatter — collapses to Empty for rows added by the current
+        // user (so their own rows stay visually clean) and for any row whose
+        // resolution hasn't completed yet (the avatar pops in once the VM's
+        // background resolution writes back). Falls back to bare "@username"
+        // when the resolver couldn't pin down a display name.
+        TrackGrid.AddedByFormatter = item =>
+        {
+            var dto = item is PlaylistTrackDto direct
+                ? direct
+                : (item is LazyTrackItem lz ? lz.Data as PlaylistTrackDto : null);
+            if (dto is null || string.IsNullOrEmpty(dto.AddedBy)) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
+            if (string.Equals(dto.AddedBy, ViewModel.CurrentUserId, StringComparison.OrdinalIgnoreCase))
+                return Controls.TrackDataGrid.AddedByCellInfo.Empty;
+
+            var label = dto.AddedByDisplayName ?? "@" + dto.AddedBy;
+            return new Controls.TrackDataGrid.AddedByCellInfo(label, dto.AddedByAvatarUrl);
+        };
+
         WidePlaylistPanel.RightTapped += (_, e) =>
         {
             if (string.IsNullOrEmpty(ViewModel.PlaylistId)) return;
@@ -94,18 +113,41 @@ public sealed partial class PlaylistPage : Page
             else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
                 RebuildDescriptionInlines();
         };
+        // Rebuild the avatar stack visual whenever the resolved Collaborators
+        // collection mutates (full clear / refill on each load completion).
+        ViewModel.Collaborators.CollectionChanged += (_, _) => RebuildCollaboratorStack();
+
+        // Re-push AddedBy cell content onto realized rows once the VM finishes
+        // resolving display names + avatars. Without this hook the cells stay
+        // on the bare-id "@…" fallback because the imperative formatter only
+        // runs at row materialization, not when the source DTO mutates.
+        ViewModel.AddedByResolved += (_, _) =>
+        {
+            _logger?.LogInformation("[addedby] page received AddedByResolved → calling RefreshAddedByCells()");
+            if (DispatcherQueue is null) { TrackGrid.RefreshAddedByCells(); return; }
+            DispatcherQueue.TryEnqueue(() => TrackGrid.RefreshAddedByCells());
+        };
         ApplyDateAddedColumnVisibility();
         RebuildDescriptionInlines();
 
         HeaderBackgroundHost.Loaded += HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded += HeaderBackgroundHost_Unloaded;
         ActualThemeChanged += PlaylistPage_ActualThemeChanged;
+
+        // Seed the VM with the current theme so palette brushes are correct as
+        // soon as the data lands. ActualThemeChanged keeps them in sync from
+        // there. Mirrors AlbumPage.
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
     private void PlaylistPage_ActualThemeChanged(FrameworkElement sender, object args)
     {
         if (_heroScrimColorBrush != null)
             _heroScrimColorBrush.Color = GetHeroScrimColor();
+        // Re-derive the palette brushes for the new theme. The album-style
+        // ApplyTheme call rebuilds backdrop / hero / pill brushes against the
+        // appropriate contrast tier.
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
     private Windows.UI.Color GetHeroScrimColor()
@@ -137,17 +179,28 @@ public sealed partial class PlaylistPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        LoadParameter(e.Parameter);
+    }
 
+    // Same-tab navigation between two playlists reuses this Page instance and
+    // never fires OnNavigatedTo — TabBarItem.Navigate routes through this method
+    // instead. Without this override, clicking a different playlist from the
+    // player bar / sidebar / search while PlaylistPage is the active tab content
+    // silently drops the new parameter.
+    public void RefreshWithParameter(object? parameter) => LoadParameter(parameter);
+
+    private void LoadParameter(object? parameter)
+    {
         _logger?.LogInformation(
-            "PlaylistPage.OnNavigatedTo: parameter type={Type}, value={Value}",
-            e.Parameter?.GetType().FullName ?? "<null>", e.Parameter);
+            "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
+            parameter?.GetType().FullName ?? "<null>", parameter);
 
         string? playlistId = null;
 
-        if (e.Parameter is Data.Parameters.ContentNavigationParameter nav)
+        if (parameter is Data.Parameters.ContentNavigationParameter nav)
         {
             _logger?.LogInformation(
-                "PlaylistPage.OnNavigatedTo: ContentNavigationParameter Uri='{Uri}', Title='{Title}', Subtitle='{Subtitle}', ImageUrl='{ImageUrl}'",
+                "PlaylistPage.LoadParameter: ContentNavigationParameter Uri='{Uri}', Title='{Title}', Subtitle='{Subtitle}', ImageUrl='{ImageUrl}'",
                 nav.Uri, nav.Title, nav.Subtitle, nav.ImageUrl);
             playlistId = nav.Uri;
             // Activate first so its new-playlist clear-down runs BEFORE PrefillFrom
@@ -156,15 +209,15 @@ public sealed partial class PlaylistPage : Page
             ViewModel.Activate(nav.Uri);
             ViewModel.PrefillFrom(nav);
         }
-        else if (e.Parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
+        else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
-            _logger?.LogInformation("PlaylistPage.OnNavigatedTo: string parameter '{RawId}'", rawId);
+            _logger?.LogInformation("PlaylistPage.LoadParameter: string parameter '{RawId}'", rawId);
             playlistId = rawId;
             ViewModel.Activate(rawId);
         }
         else
         {
-            _logger?.LogWarning("PlaylistPage.OnNavigatedTo: unrecognized parameter shape — no load triggered");
+            _logger?.LogWarning("PlaylistPage.LoadParameter: unrecognized parameter shape — no load triggered");
         }
 
         if (!string.IsNullOrEmpty(playlistId))
@@ -478,6 +531,665 @@ public sealed partial class PlaylistPage : Page
         {
             _descriptionWasTrimmed = true;
             DescriptionMoreButton.Visibility = Visibility.Visible;
+        }
+    }
+
+    // ── Inline edit (title + description) — Phase 1 ──────────────────────────
+
+    private void PlaylistTitleEditor_Committed(object? sender, string newName)
+    {
+        if (ViewModel.RenameCommand.CanExecute(newName))
+            ViewModel.RenameCommand.Execute(newName);
+    }
+
+    private void PlaylistDescriptionEditor_Committed(object? sender, string newDescription)
+    {
+        if (ViewModel.UpdateDescriptionCommand.CanExecute(newDescription))
+            ViewModel.UpdateDescriptionCommand.Execute(newDescription);
+    }
+
+    // ── Cover photo edit — Phase 2 ───────────────────────────────────────────
+
+    private async void CoverEditOverlay_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        await CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+            .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(120))
+            .StartAsync(CoverEditOverlay);
+    }
+
+    private async void CoverEditOverlay_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        // Don't fade away while an upload is in flight — the spinner needs to stay visible.
+        if (ViewModel.IsUploadingCover) return;
+        await CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+            .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(120))
+            .StartAsync(CoverEditOverlay);
+    }
+
+    private async void CoverEditOverlay_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (!ViewModel.IsOwner || ViewModel.IsUploadingCover) return;
+
+        var file = await PickCoverFileAsync();
+        if (file is null) return;
+
+        try
+        {
+            // Show the picked image immediately as a local preview while the
+            // upload runs. On success the VM's PlaylistImageUrl will refresh
+            // from the next store push and CoverPreviewImage falls back behind
+            // the bound Image. On failure we revert.
+            using (var stream = await file.OpenReadAsync())
+            {
+                var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+                await bmp.SetSourceAsync(stream);
+                CoverPreviewImage.Source = bmp;
+                CoverPreviewImage.Visibility = Visibility.Visible;
+            }
+
+            CoverUploadRing.IsActive = true;
+            CoverUploadRing.Visibility = Visibility.Visible;
+
+            byte[] jpegBytes;
+            try
+            {
+                jpegBytes = await Helpers.PlaylistCoverHelper.PrepareForUploadAsync(file);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to prepare cover image for upload");
+                ClearCoverPreview();
+                Ioc.Default.GetService<INotificationService>()?
+                    .Show("Couldn't process that image", NotificationSeverity.Error, TimeSpan.FromSeconds(4));
+                return;
+            }
+
+            await ViewModel.ChangeCoverCommand.ExecuteAsync(jpegBytes);
+            // Success: leave the preview up until the bound URL refreshes.
+            // (The store push that lands the new URL will hide it implicitly
+            // because the underlying Image then renders the canonical URL.)
+        }
+        catch
+        {
+            // ChangeCoverCommand already toasts; revert the preview here.
+            ClearCoverPreview();
+        }
+        finally
+        {
+            CoverUploadRing.IsActive = false;
+            CoverUploadRing.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void CoverEditOverlay_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (!ViewModel.IsOwner) return;
+
+        var flyout = new MenuFlyout();
+        var remove = new MenuFlyoutItem
+        {
+            Text = "Remove photo",
+            Icon = new FontIcon { Glyph = "" }
+        };
+        remove.Click += (_, _) =>
+        {
+            ClearCoverPreview();
+            if (ViewModel.RemoveCoverCommand.CanExecute(null))
+                ViewModel.RemoveCoverCommand.Execute(null);
+        };
+        flyout.Items.Add(remove);
+        flyout.ShowAt((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
+    }
+
+    private async System.Threading.Tasks.Task<Windows.Storage.StorageFile?> PickCoverFileAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        picker.FileTypeFilter.Add(".jpg");
+        picker.FileTypeFilter.Add(".jpeg");
+        picker.FileTypeFilter.Add(".png");
+
+        // FileOpenPicker requires a window handle in WinUI 3 desktop.
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, MainWindow.Instance.WindowHandle);
+
+        return await picker.PickSingleFileAsync();
+    }
+
+    private void ClearCoverPreview()
+    {
+        CoverPreviewImage.Source = null;
+        CoverPreviewImage.Visibility = Visibility.Collapsed;
+    }
+
+    // ── Overflow menu (per-permission) ───────────────────────────────────────
+
+    private void OwnerOverflowButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || !ViewModel.HasOverflowItems) return;
+
+        var flyout = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
+        var addedAny = false;
+
+        if (ViewModel.CanEditCollaborative)
+        {
+            var toggleCollab = new MenuFlyoutItem
+            {
+                Text = ViewModel.IsCollaborative ? "Make solo" : "Make collaborative",
+                Icon = new FontIcon { Glyph = "" }
+            };
+            toggleCollab.Click += (_, _) =>
+            {
+                if (ViewModel.ToggleCollaborativeCommand.CanExecute(null))
+                    ViewModel.ToggleCollaborativeCommand.Execute(null);
+            };
+            flyout.Items.Add(toggleCollab);
+
+            var invite = new MenuFlyoutItem
+            {
+                Text = "Invite collaborators…",
+                Icon = new FontIcon { Glyph = "" }
+            };
+            invite.Click += async (_, _) => await ShowInviteFlyoutAsync(fe);
+            flyout.Items.Add(invite);
+            addedAny = true;
+        }
+
+        if (ViewModel.CanAdministratePermissions && ViewModel.HasCollaborators)
+        {
+            var manage = new MenuFlyoutItem
+            {
+                Text = "Manage members…",
+                Icon = new FontIcon { Glyph = "" }
+            };
+            manage.Click += (_, _) => ShowMembersFlyout(fe, adminMode: true);
+            flyout.Items.Add(manage);
+            addedAny = true;
+        }
+
+        if (ViewModel.CanCancelMembership)
+        {
+            if (addedAny) flyout.Items.Add(new MenuFlyoutSeparator());
+            var leave = new MenuFlyoutItem
+            {
+                Text = "Leave playlist",
+                Icon = new FontIcon { Glyph = "" }
+            };
+            leave.Click += async (_, _) => await ConfirmAndLeavePlaylistAsync();
+            flyout.Items.Add(leave);
+            addedAny = true;
+        }
+
+        if (ViewModel.CanDelete)
+        {
+            if (addedAny) flyout.Items.Add(new MenuFlyoutSeparator());
+            var delete = new MenuFlyoutItem
+            {
+                Text = "Delete playlist",
+                Icon = new FontIcon { Glyph = "" },
+                Foreground = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
+            };
+            delete.Click += async (_, _) => await ConfirmAndDeletePlaylistAsync();
+            flyout.Items.Add(delete);
+        }
+
+        if (flyout.Items.Count == 0) return;
+        flyout.ShowAt(fe);
+    }
+
+    // ── Collaborator avatar stack ────────────────────────────────────────────
+
+    private void RebuildCollaboratorStack()
+    {
+        const int MaxVisible = 4;
+        const int AvatarSize = 28;        // visible PersonPicture diameter
+        const int RingThickness = 2;      // halo width on each side
+        const int OuterSize = AvatarSize + 2 * RingThickness;
+        const int Overlap = 12;           // pixels each frame pulls left over its neighbour
+
+        CollaboratorStackHost.Children.Clear();
+
+        var members = ViewModel.Collaborators;
+        if (members.Count == 0) return;
+
+        var visible = Math.Min(members.Count, MaxVisible);
+        var hasOverflow = members.Count > visible;
+
+        // Page-base brush gives the ring the same colour as the surface behind
+        // the panel — so the halo reads as transparent space between stacked
+        // avatars (matching Spotify's stacked-profile-picture pattern).
+        var ringBrush = (Brush)Application.Current.Resources["SolidBackgroundFillColorBaseBrush"];
+
+        for (int i = 0; i < visible; i++)
+        {
+            var m = members[i];
+
+            // PersonPicture handles every fallback we need: image when set,
+            // initials from DisplayName when no image, and a generic person
+            // glyph when neither is available. Avoids the previous
+            // "solid blue circle" look for unsourced avatars (e.g. Lauti).
+            var person = new Microsoft.UI.Xaml.Controls.PersonPicture
+            {
+                Width = AvatarSize,
+                Height = AvatarSize,
+                DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Username : m.DisplayName,
+            };
+            if (!string.IsNullOrEmpty(m.AvatarUrl))
+            {
+                // Resolver may hand back either a https URL or spotify:image:{hex};
+                // route both through ToHttpsUrl so PersonPicture always gets a
+                // loadable URI.
+                var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(m.AvatarUrl) ?? m.AvatarUrl;
+                if (Uri.TryCreate(httpsUrl, UriKind.Absolute, out var avatarUri))
+                {
+                    person.ProfilePicture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(avatarUri)
+                    {
+                        DecodePixelWidth = AvatarSize * 2
+                    };
+                }
+            }
+
+            // Outer Border carries the ring colour as its Background; Padding
+            // pushes PersonPicture inward by RingThickness on every side. So
+            // the visible result is a 32-px disc with a 2-px ring halo
+            // wrapping a 28-px PersonPicture inside.
+            var frame = new Border
+            {
+                Width = OuterSize,
+                Height = OuterSize,
+                CornerRadius = new CornerRadius(OuterSize / 2.0),
+                Background = ringBrush,
+                Padding = new Thickness(RingThickness),
+                // Negative-left margin produces the overlap; the front frame's
+                // own ring background masks the back frame's content cleanly.
+                Margin = i == 0 ? new Thickness(0) : new Thickness(-Overlap, 0, 0, 0),
+                Child = person,
+            };
+            ToolTipService.SetToolTip(frame, m.DisplayName ?? m.Username);
+            CollaboratorStackHost.Children.Add(frame);
+        }
+
+        if (hasOverflow)
+        {
+            var more = new Border
+            {
+                Width = OuterSize,
+                Height = OuterSize,
+                CornerRadius = new CornerRadius(OuterSize / 2.0),
+                Background = ringBrush,
+                Padding = new Thickness(RingThickness),
+                Margin = new Thickness(-Overlap, 0, 0, 0),
+                Child = new Border
+                {
+                    Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+                    CornerRadius = new CornerRadius(AvatarSize / 2.0),
+                    Child = new TextBlock
+                    {
+                        Text = "+" + (members.Count - visible),
+                        FontSize = 10,
+                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                    }
+                },
+            };
+            CollaboratorStackHost.Children.Add(more);
+        }
+
+        // Trailing label so a new user understands what the avatar cluster
+        // actually means. Picks a phrase based on context: "Open to
+        // collaboration" if it's a collab playlist with only the owner shown
+        // (an invitation), or "N collaborators" once contributors have joined.
+        string labelText;
+        if (members.Count >= 2)
+            labelText = $"{members.Count} collaborators";
+        else if (ViewModel.IsCollaborative)
+            labelText = "Open to collaboration";
+        else
+            labelText = string.Empty;
+
+        if (!string.IsNullOrEmpty(labelText))
+        {
+            var label = new TextBlock
+            {
+                Text = labelText,
+                FontSize = 11,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(2, 0, 0, 0),
+            };
+            CollaboratorStackHost.Children.Add(label);
+
+            // Trailing right-chevron (Segoe Fluent E76C) — explicit "tap to open"
+            // hint without the visual weight of a button. Combined with the
+            // hover-pill background + hand cursor on the wrapping Border, the
+            // row reads as clickable on first glance.
+            var chevron = new FontIcon
+            {
+                Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.ChevronRight,
+                FontSize = 10,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(2, 0, 0, 0),
+            };
+            CollaboratorStackHost.Children.Add(chevron);
+        }
+    }
+
+    private void CollaboratorStackHost_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        // Anchor the flyout off the inner stack so it lines up with the
+        // avatars rather than the outer hover-pill (which has padding).
+        var anchor = (FrameworkElement?)CollaboratorStackHost ?? (sender as FrameworkElement);
+        if (anchor is null) return;
+        ShowMembersFlyout(anchor, adminMode: ViewModel.CanAdministratePermissions);
+        e.Handled = true;
+    }
+
+    private void CollaboratorStackHostFrame_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is not Wavee.UI.WinUI.Controls.ClickableBorder frame) return;
+        // Card hover state: bump from default card brush to the secondary tint
+        // — same pattern WinUI's SettingsCard uses on hover. ClearCursor in
+        // the exit handler restores the default card brush.
+        frame.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+        frame.ShowHandCursor();
+    }
+
+    private void CollaboratorStackHostFrame_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is not Wavee.UI.WinUI.Controls.ClickableBorder frame) return;
+        frame.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+        frame.ClearCursor();
+    }
+
+    // ── Members flyout ───────────────────────────────────────────────────────
+
+    private void ShowMembersFlyout(FrameworkElement anchor, bool adminMode)
+    {
+        var flyout = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
+        var content = new StackPanel { Spacing = 8, MinWidth = 300 };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"Members ({ViewModel.Collaborators.Count})",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"]
+        });
+
+        foreach (var m in ViewModel.Collaborators)
+            content.Children.Add(BuildMemberRow(m, adminMode));
+
+        flyout.Content = content;
+        flyout.ShowAt(anchor);
+    }
+
+    private FrameworkElement BuildMemberRow(Data.Contracts.PlaylistMemberResult member, bool adminMode)
+    {
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var avatar = new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 32,
+            Height = 32,
+            Fill = string.IsNullOrEmpty(member.AvatarUrl)
+                ? (Brush)Application.Current.Resources["AccentFillColorSecondaryBrush"]
+                : new ImageBrush
+                {
+                    Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill,
+                    ImageSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(member.AvatarUrl))
+                    {
+                        DecodePixelWidth = 64
+                    }
+                }
+        };
+        Grid.SetColumn(avatar, 0);
+        row.Children.Add(avatar);
+
+        var nameStack = new StackPanel { Spacing = 0, VerticalAlignment = VerticalAlignment.Center };
+        nameStack.Children.Add(new TextBlock
+        {
+            Text = member.DisplayName ?? member.Username,
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"]
+        });
+        nameStack.Children.Add(new TextBlock
+        {
+            Text = "@" + member.Username,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        });
+        Grid.SetColumn(nameStack, 1);
+        row.Children.Add(nameStack);
+
+        var roleChip = new Border
+        {
+            Background = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["ControlStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(8, 2, 8, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = member.Role.ToString(),
+                FontSize = 11,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            }
+        };
+        Grid.SetColumn(roleChip, 2);
+        row.Children.Add(roleChip);
+
+        if (adminMode && member.Role != Data.Contracts.PlaylistMemberRole.Owner)
+        {
+            var more = new Button
+            {
+                Content = new FontIcon { Glyph = "", FontSize = 14 },
+                Background = (Brush)Application.Current.Resources["SubtleFillColorTransparentBrush"],
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(6),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var memberMenu = new MenuFlyout();
+            foreach (var role in new[] {
+                Data.Contracts.PlaylistMemberRole.Contributor,
+                Data.Contracts.PlaylistMemberRole.Viewer,
+                Data.Contracts.PlaylistMemberRole.Blocked })
+            {
+                var item = new ToggleMenuFlyoutItem
+                {
+                    Text = $"Make {role}",
+                    IsChecked = member.Role == role
+                };
+                var captured = role;
+                item.Click += (_, _) =>
+                {
+                    if (ViewModel.SetMemberRoleCommand.CanExecute(null))
+                        ViewModel.SetMemberRoleCommand.Execute((member.UserId, captured));
+                };
+                memberMenu.Items.Add(item);
+            }
+            memberMenu.Items.Add(new MenuFlyoutSeparator());
+            var remove = new MenuFlyoutItem
+            {
+                Text = "Remove from playlist",
+                Foreground = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
+            };
+            remove.Click += (_, _) =>
+            {
+                if (ViewModel.RemoveMemberCommand.CanExecute(member.UserId))
+                    ViewModel.RemoveMemberCommand.Execute(member.UserId);
+            };
+            memberMenu.Items.Add(remove);
+            more.Flyout = memberMenu;
+
+            Grid.SetColumn(more, 3);
+            row.Children.Add(more);
+        }
+
+        return row;
+    }
+
+    // ── Invite flyout ────────────────────────────────────────────────────────
+
+    private async System.Threading.Tasks.Task ShowInviteFlyoutAsync(FrameworkElement anchor)
+    {
+        var flyout = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
+        // Fixed Width (not MinWidth) so a long URL TextBox can't blow out the
+        // flyout horizontally — without this the inner Grid measures the URL's
+        // intrinsic width, the * column inherits it, and the entire flyout grows
+        // wider than the screen, surfacing a horizontal scrollbar.
+        var stack = new StackPanel { Spacing = 8, Width = 380 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Invite collaborators",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"]
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Anyone with the link can add and remove tracks. The link expires in 7 days.",
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        // Slot whose content is swapped on Generate / Regenerate. Held inside
+        // the outer width-constrained `stack` so rebuilds don't escape the
+        // Width=380 cap. Previous code did `flyout.Content = BuildContent()`,
+        // which replaced the outer stack entirely and dropped the constraint
+        // — the TextBox then measured at its full URL length and pushed the
+        // flyout off-screen.
+        var contentSlot = new ContentControl
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+
+        FrameworkElement BuildContent()
+        {
+            var link = ViewModel.LatestInviteLink;
+            var inner = new StackPanel { Spacing = 8 };
+
+            if (link is null)
+            {
+                var generate = new Button
+                {
+                    Content = "Generate link",
+                    Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+                generate.Click += async (_, _) =>
+                {
+                    await ViewModel.CreateInviteLinkCommand.ExecuteAsync(TimeSpan.FromDays(7));
+                    contentSlot.Content = BuildContent();
+                };
+                inner.Children.Add(generate);
+            }
+            else
+            {
+                var row = new Grid { ColumnSpacing = 8 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var box = new TextBox
+                {
+                    Text = link.ShareUrl,
+                    IsReadOnly = true,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    FontSize = 12,
+                    // Without an explicit MinWidth the TextBox's measure pass
+                    // would otherwise still ask for its intrinsic content
+                    // width and starve the * column. 0 lets the * column
+                    // simply receive whatever the parent allocates.
+                    MinWidth = 0,
+                };
+                ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Hidden);
+                Grid.SetColumn(box, 0);
+                row.Children.Add(box);
+                var copy = new Button { Content = "Copy" };
+                copy.Click += (_, _) =>
+                {
+                    var pkg = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                    pkg.SetText(link.ShareUrl);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(pkg);
+                    Ioc.Default.GetService<INotificationService>()?
+                        .Show("Link copied", NotificationSeverity.Success, TimeSpan.FromSeconds(3));
+                };
+                Grid.SetColumn(copy, 1);
+                row.Children.Add(copy);
+                inner.Children.Add(row);
+
+                var meta = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                meta.Children.Add(new TextBlock
+                {
+                    Text = $"Expires in {Math.Max(1, (int)link.Ttl.TotalDays)} days",
+                    Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                var regen = new HyperlinkButton { Content = "Regenerate", Padding = new Thickness(0) };
+                regen.Click += async (_, _) =>
+                {
+                    await ViewModel.CreateInviteLinkCommand.ExecuteAsync(TimeSpan.FromDays(7));
+                    contentSlot.Content = BuildContent();
+                };
+                meta.Children.Add(regen);
+                inner.Children.Add(meta);
+            }
+            return inner;
+        }
+
+        contentSlot.Content = BuildContent();
+        stack.Children.Add(contentSlot);
+        flyout.Content = stack;
+        flyout.ShowAt(anchor);
+        await System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    private async System.Threading.Tasks.Task ConfirmAndLeavePlaylistAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Leave playlist?",
+            Content = $"You'll lose access to \"{ViewModel.PlaylistName}\". You can rejoin if the owner shares a new invite link.",
+            PrimaryButtonText = "Leave",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary) return;
+
+        if (ViewModel.LeavePlaylistCommand.CanExecute(null))
+        {
+            await ViewModel.LeavePlaylistCommand.ExecuteAsync(null);
+            NavigationHelpers.OpenHome();
+        }
+    }
+
+    private async System.Threading.Tasks.Task ConfirmAndDeletePlaylistAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Delete playlist?",
+            Content = $"\"{ViewModel.PlaylistName}\" will be removed from your library. This cannot be undone.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+        // Tint the primary button red so the destructive action reads correctly.
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary) return;
+
+        if (ViewModel.DeletePlaylistCommand.CanExecute(null))
+        {
+            await ViewModel.DeletePlaylistCommand.ExecuteAsync(null);
+            // Take the user back to a safe surface — Home — after the delete lands.
+            NavigationHelpers.OpenHome();
         }
     }
 

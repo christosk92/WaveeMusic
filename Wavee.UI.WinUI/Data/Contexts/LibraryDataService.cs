@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Http;
+using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Library.Spotify;
 using Wavee.Core.Playlists;
 using Wavee.Core.Session;
@@ -395,6 +396,184 @@ public sealed class LibraryDataService : ILibraryDataService
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    // Stubs for the inline edit Phase 1 work — the UI binds to these from day one
+    // so the eventual HTTP/protobuf wire-up is decoupled. Today they no-op so an
+    // edit looks successful locally but doesn't survive a refresh; replace with
+    // real Spotify Web API calls (PUT /v1/playlists/{id}) when that layer lands.
+    public Task RenamePlaylistAsync(string playlistId, string newName, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "RenamePlaylistAsync stub invoked: playlistId={Id}, newName='{Name}' (no backend wire-up yet)",
+            playlistId, newName);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdatePlaylistDescriptionAsync(string playlistId, string description, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "UpdatePlaylistDescriptionAsync stub invoked: playlistId={Id}, length={Len} (no backend wire-up yet)",
+            playlistId, description?.Length ?? 0);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdatePlaylistCoverAsync(string playlistId, byte[] jpegBytes, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "UpdatePlaylistCoverAsync stub invoked: playlistId={Id}, bytes={Len} (no backend wire-up yet)",
+            playlistId, jpegBytes?.Length ?? 0);
+        return Task.CompletedTask;
+    }
+
+    public Task RemovePlaylistCoverAsync(string playlistId, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "RemovePlaylistCoverAsync stub invoked: playlistId={Id} (no backend wire-up yet)", playlistId);
+        return Task.CompletedTask;
+    }
+
+    public Task DeletePlaylistAsync(string playlistId, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "DeletePlaylistAsync stub invoked: playlistId={Id} (no backend wire-up yet)", playlistId);
+        return Task.CompletedTask;
+    }
+
+    public Task SetPlaylistCollaborativeAsync(string playlistId, bool collaborative, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "SetPlaylistCollaborativeAsync stub invoked: playlistId={Id}, collaborative={Value} (no backend wire-up yet)",
+            playlistId, collaborative);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<PlaylistMemberResult>> GetPlaylistMembersAsync(string playlistId, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "GetPlaylistMembersAsync stub invoked: playlistId={Id} (no backend wire-up yet — returning empty)", playlistId);
+        return Task.FromResult<IReadOnlyList<PlaylistMemberResult>>(System.Array.Empty<PlaylistMemberResult>());
+    }
+
+    public Task SetPlaylistMemberRoleAsync(string playlistId, string memberUserId, PlaylistMemberRole role, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "SetPlaylistMemberRoleAsync stub invoked: playlistId={Id}, member={MemberId}, role={Role} (no backend wire-up yet)",
+            playlistId, memberUserId, role);
+        return Task.CompletedTask;
+    }
+
+    public Task RemovePlaylistMemberAsync(string playlistId, string memberUserId, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "RemovePlaylistMemberAsync stub invoked: playlistId={Id}, member={MemberId} (no backend wire-up yet)",
+            playlistId, memberUserId);
+        return Task.CompletedTask;
+    }
+
+    public Task<PlaylistInviteLink> CreatePlaylistInviteLinkAsync(string playlistId, PlaylistMemberRole grantedRole, TimeSpan ttl, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "CreatePlaylistInviteLinkAsync stub invoked: playlistId={Id}, role={Role}, ttl={Ttl} (no backend wire-up yet — returning placeholder)",
+            playlistId, grantedRole, ttl);
+
+        // Compose a plausible-looking placeholder so the UI renders end-to-end.
+        // Token is random; real impl returns it from the permission-grant endpoint.
+        var bareId = playlistId.StartsWith("spotify:playlist:", System.StringComparison.Ordinal)
+            ? playlistId["spotify:playlist:".Length..]
+            : playlistId;
+        var token = System.Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16))
+            .ToLowerInvariant();
+        return Task.FromResult(new PlaylistInviteLink
+        {
+            Token = token,
+            ShareUrl = $"https://open.spotify.com/playlist/{bareId}?pt={token}",
+            CreatedAt = System.DateTimeOffset.UtcNow,
+            Ttl = ttl,
+            GrantedRole = grantedRole
+        });
+    }
+
+    public async Task<long> GetPlaylistFollowerCountAsync(string playlistId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _session.SpClient.GetPlaylistFollowerCountAsync(playlistId, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetPlaylistFollowerCountAsync failed for {Id} — defaulting to 0", playlistId);
+            return 0;
+        }
+    }
+
+    public Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default)
+    {
+        _logger?.LogInformation(
+            "SetPlaylistFollowedAsync stub invoked: playlistId={Id}, followed={Followed} (no backend wire-up yet — succeeding silently)",
+            playlistId, followed);
+        return Task.CompletedTask;
+    }
+
+    public async Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _session.Pathfinder
+                .FetchPlaylistAsync(playlistId, ct)
+                .ConfigureAwait(false);
+            var set = response?.Data?.PlaylistV2?.VisualIdentity?.SquareCoverImage?.ExtractedColorSet;
+            if (set is null)
+            {
+                _logger?.LogDebug("[palette] {Id} -> no extractedColorSet on response", playlistId);
+                return null;
+            }
+            return MapPalette(set);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[palette] FetchPlaylistAsync failed for {Id} — palette unavailable", playlistId);
+            return null;
+        }
+    }
+
+    // Mirrors AlbumService.MapTier / MapPalette — duplicated here rather than
+    // hoisted into a shared helper because it's small and only two callers
+    // ever need it. If we add a third surface (concert?) consolidate then.
+    private static AlbumPaletteTier? MapPaletteTier(ArtistExtractedColorPalette? palette)
+    {
+        if (palette?.BackgroundBase == null || palette.TextBrightAccent == null) return null;
+        var bg = palette.BackgroundBase;
+        var bgTint = palette.BackgroundTintedBase ?? palette.BackgroundBase;
+        var accent = palette.TextBrightAccent;
+        return new AlbumPaletteTier
+        {
+            BackgroundR = (byte)bg.Red,
+            BackgroundG = (byte)bg.Green,
+            BackgroundB = (byte)bg.Blue,
+            BackgroundTintedR = (byte)bgTint.Red,
+            BackgroundTintedG = (byte)bgTint.Green,
+            BackgroundTintedB = (byte)bgTint.Blue,
+            TextAccentR = (byte)accent.Red,
+            TextAccentG = (byte)accent.Green,
+            TextAccentB = (byte)accent.Blue,
+        };
+    }
+
+    private static AlbumPalette? MapPalette(ArtistExtractedColorSet set)
+    {
+        var high = MapPaletteTier(set.HighContrast);
+        var higher = MapPaletteTier(set.HigherContrast);
+        var min = MapPaletteTier(set.MinContrast);
+        if (high == null && higher == null && min == null) return null;
+        return new AlbumPalette
+        {
+            HighContrast = high,
+            HigherContrast = higher,
+            MinContrast = min,
+        };
+    }
+
     private async Task<PlaylistDetailDto> GetPlaylistCoreAsync(string playlistId, CancellationToken ct)
     {
         var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
@@ -420,12 +599,17 @@ public sealed class LibraryDataService : ILibraryDataService
             OwnerName = bareOwner,
             OwnerId = string.IsNullOrEmpty(bareOwner) ? null : $"spotify:user:{bareOwner}",
             TrackCount = playlist.Length,
+            // Real value flows in via a separate background fetch (LoadFollowerCountAsync
+            // on the VM → ILibraryDataService.GetPlaylistFollowerCountAsync). Held at 0
+            // here so the playlist detail load isn't blocked on a stat-only round trip.
             FollowerCount = 0,
             IsOwner = playlist.BasePermission == CachedPlaylistBasePermission.Owner,
             IsCollaborative = playlist.IsCollaborative,
             IsPublic = playlist.IsPublic,
             BasePermission = MapBasePermission(playlist.BasePermission),
-            Capabilities = MapCapabilities(playlist.Capabilities),
+            Capabilities = MapCapabilities(
+                playlist.Capabilities,
+                isOwner: playlist.BasePermission == CachedPlaylistBasePermission.Owner),
             FormatAttributes = playlist.FormatAttributes.Count > 0 ? playlist.FormatAttributes : null,
             Revision = playlist.Revision.Length > 0 ? playlist.Revision : null,
             SessionControlOptions = BuildSessionControlOptions(playlist.FormatAttributes, playlist.AvailableSignals),
@@ -491,16 +675,31 @@ public sealed class LibraryDataService : ILibraryDataService
         };
     }
 
-    private static PlaylistCapabilitiesDto MapCapabilities(CachedPlaylistCapabilities value)
+    private PlaylistCapabilitiesDto MapCapabilities(CachedPlaylistCapabilities value, bool isOwner)
     {
-        return new PlaylistCapabilitiesDto
+        var dto = new PlaylistCapabilitiesDto
         {
             CanView = value.CanView,
-            CanEditItems = value.CanEditItems,
-            CanAdministratePermissions = value.CanAdministratePermissions,
+            // Owners can always edit / delete / administrate their own playlists.
+            // The proto's per-field flags are observed to be unreliable for owners
+            // (Spotify treats those as implied by base permission rather than
+            // setting them on the wire), so derive defensively. The OR'd-in
+            // explicit flag still covers the contributor case where the server
+            // grants edit-items via an explicit permission level.
+            CanEditItems = value.CanEditItems || isOwner,
+            CanEditMetadata = value.CanEditMetadata || isOwner,
+            CanDelete = isOwner,
+            CanAdministratePermissions = value.CanAdministratePermissions || isOwner,
             CanCancelMembership = value.CanCancelMembership,
             CanAbuseReport = value.CanAbuseReport
         };
+        _logger?.LogInformation(
+            "[caps] MapCapabilities: isOwner={IsOwner} | raw=[CanView={V},EditItems={EI},EditMeta={EM},Admin={AD},Cancel={CC},Abuse={AB}] | dto=[EditItems={DEI},EditMeta={DEM},Delete={DD},Admin={DAD}]",
+            isOwner,
+            value.CanView, value.CanEditItems, value.CanEditMetadata, value.CanAdministratePermissions,
+            value.CanCancelMembership, value.CanAbuseReport,
+            dto.CanEditItems, dto.CanEditMetadata, dto.CanDelete, dto.CanAdministratePermissions);
+        return dto;
     }
 
     private static string? GetSpotifyUri(Google.Protobuf.ByteString? gid, SpotifyIdType type)

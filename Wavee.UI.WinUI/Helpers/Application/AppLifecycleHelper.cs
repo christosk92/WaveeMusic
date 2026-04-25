@@ -239,6 +239,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ITrackLikeService>(),
                         sp.GetService<INotificationService>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
+                        sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>()))
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
                 .AddSingleton<IFriendsFeedService, Data.Contexts.FriendsFeedService>()

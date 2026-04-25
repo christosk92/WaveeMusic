@@ -27,6 +27,42 @@ public sealed record PlaylistTrackDto : ITrackItem
     /// </summary>
     public DateTime? AddedAt { get; init; }
     public string? AddedBy { get; init; }
+
+    /// <summary>
+    /// Resolved display name of <see cref="AddedBy"/>. Populated lazily by
+    /// <c>PlaylistViewModel</c> on collaborative playlists; null until resolved
+    /// (or for non-collab playlists where the badge is suppressed). Setter fires
+    /// <see cref="PropertyChanged"/> so any already-realized row cell that binds
+    /// this property updates without re-templating.
+    /// </summary>
+    private string? _addedByDisplayName;
+    public string? AddedByDisplayName
+    {
+        get => _addedByDisplayName;
+        set
+        {
+            if (_addedByDisplayName == value) return;
+            _addedByDisplayName = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(AddedByDisplayName)));
+        }
+    }
+
+    /// <summary>
+    /// Resolved profile avatar URL of <see cref="AddedBy"/>. Same lifecycle as
+    /// <see cref="AddedByDisplayName"/>.
+    /// </summary>
+    private string? _addedByAvatarUrl;
+    public string? AddedByAvatarUrl
+    {
+        get => _addedByAvatarUrl;
+        set
+        {
+            if (_addedByAvatarUrl == value) return;
+            _addedByAvatarUrl = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(AddedByAvatarUrl)));
+        }
+    }
+
     public bool IsExplicit { get; init; }
     public int OriginalIndex { get; init; }
     public bool IsLoaded => true;
