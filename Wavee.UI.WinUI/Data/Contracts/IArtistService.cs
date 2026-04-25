@@ -23,7 +23,18 @@ public sealed record ArtistOverviewResult
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
     public string? HeaderImageUrl { get; init; }
+    /// <summary>
+    /// First gallery shot (landscape-ish artist photo). Fallback for surfaces that
+    /// want a hero backdrop but the artist has no editorial HeaderImageUrl.
+    /// </summary>
+    public string? GalleryHeroUrl { get; init; }
     public string? HeroColorHex { get; init; }
+    /// <summary>
+    /// Spotify-extracted palette for the artist hero (3 contrast tiers). Null when
+    /// the API didn't return a visualIdentity block. Same shape as the concert-page
+    /// palette so the two page types can share styling logic.
+    /// </summary>
+    public ArtistPalette? Palette { get; init; }
     public long MonthlyListeners { get; init; }
     public long Followers { get; init; }
     public string? Biography { get; init; }
@@ -50,6 +61,26 @@ public sealed record ArtistOverviewResult
 
     // Concerts
     public required List<ArtistConcertResult> Concerts { get; init; }
+}
+
+public sealed record ArtistPalette
+{
+    public ArtistPaletteTier? HighContrast { get; init; }    // saturated dark bg
+    public ArtistPaletteTier? HigherContrast { get; init; }  // darkest bg
+    public ArtistPaletteTier? MinContrast { get; init; }     // light / pastel bg
+}
+
+public sealed record ArtistPaletteTier
+{
+    public byte BackgroundR { get; init; }
+    public byte BackgroundG { get; init; }
+    public byte BackgroundB { get; init; }
+    public byte BackgroundTintedR { get; init; }
+    public byte BackgroundTintedG { get; init; }
+    public byte BackgroundTintedB { get; init; }
+    public byte TextAccentR { get; init; }
+    public byte TextAccentG { get; init; }
+    public byte TextAccentB { get; init; }
 }
 
 public sealed record ArtistLatestReleaseResult

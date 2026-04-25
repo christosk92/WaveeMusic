@@ -36,6 +36,7 @@ internal enum PersistedRootlistEntryKind
 [JsonSerializable(typeof(PersistedPlaylistItems))]
 [JsonSerializable(typeof(PersistedRootlistData))]
 [JsonSerializable(typeof(Dictionary<string, string>), TypeInfoPropertyName = "DictionaryStringString")]
+[JsonSerializable(typeof(List<string>), TypeInfoPropertyName = "ListString")]
 internal partial class PlaylistCacheJsonContext : JsonSerializerContext
 {
 }

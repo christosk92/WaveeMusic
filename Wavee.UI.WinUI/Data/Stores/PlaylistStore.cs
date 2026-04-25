@@ -114,6 +114,21 @@ public sealed class PlaylistStore : EntityStore<string, PlaylistDetailDto>
         hash.Add(v.IsOwner);
         hash.Add(v.IsPublic);
         hash.Add(v.TrackCount);
+
+        // Include session-control chip signal state so a refresh that
+        // transitions SessionControlOptions from "no SignalIdentifiers
+        // resolved" (stale SQLite load) to "identifiers populated" (fresh
+        // network fetch) is not suppressed by this dedupe gate. The chip row
+        // needs the update to know clicks are actionable.
+        if (v.SessionControlOptions is { Count: > 0 } opts)
+        {
+            hash.Add(opts.Count);
+            foreach (var opt in opts)
+            {
+                hash.Add(opt.OptionKey, StringComparer.Ordinal);
+                hash.Add(opt.SignalIdentifier, StringComparer.Ordinal);
+            }
+        }
         return hash.ToHashCode();
     }
 

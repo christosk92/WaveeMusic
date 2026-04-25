@@ -28,9 +28,43 @@
                 <Border x:Name="ColorBackground"
                         Background="Transparent"
                         Margin="-22"/>
+                <!-- Clipped container so the bleed Image respects the rounded-corner chrome
+                     (the outer RootBorder has CornerRadius=26 + Padding=22; we inset by
+                     -22 to bleed the image to the card edges, and clip to the card shape). -->
                 <Border x:Name="BleedImageArea"
-                        Background="Transparent"
-                        Margin="-22"/>
+                        Margin="-22"
+                        CornerRadius="26">
+                    <!-- Concert-page structure: plain <Image> UniformToFill right-aligned,
+                         plus a <Border> with a left→right ink gradient on top. No
+                         composition mask or SpriteVisual — identical pattern to
+                         StoreHero in ConcertPage.xaml. -->
+                    <Grid>
+                        <Image x:Name="BleedImage"
+                               Stretch="UniformToFill"
+                               HorizontalAlignment="Right"
+                               Visibility="Collapsed"/>
+                        <!-- Ink gradient: darkens the left ~65% so the title stays readable
+                             over the hero image. Collapsed unless the item is an artist
+                             and we've resolved its HeaderImageUrl. -->
+                        <Border x:Name="HeroInkOverlay"
+                                Visibility="Collapsed">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#E0000000" Offset="0"/>
+                                    <GradientStop Color="#80000000" Offset="0.4"/>
+                                    <GradientStop Color="#00000000" Offset="0.8"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <!-- Palette-tinted gradient (Spotify's extractedColorSet). Layered
+                             on top of the black ink so the wash picks up artist colour;
+                             Background is assigned from code-behind whenever the palette
+                             and active theme resolve. Null brush renders transparent, so
+                             when the API returns no visualIdentity the black ink alone
+                             drives readability. -->
+                        <Border x:Name="PaletteHeroOverlay"/>
+                    </Grid>
+                </Border>
 
                 <Grid ColumnSpacing="20" VerticalAlignment="Bottom">
                     <Grid.ColumnDefinitions>

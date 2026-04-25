@@ -942,7 +942,17 @@ public sealed class SpClient : ISpClient
 
         var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
 
-        var url = $"{_baseUrl}/playlist/v2/{path}/diff?revision={revisionStr}";
+        // URL-shape matches Spotify's first-party client:
+        //   ?revision=<escaped>&handlesContent=&hint_revision=<escaped>
+        // The comma in "counter,hash" MUST be percent-encoded (%2C); the
+        // gateway rejects unencoded commas with a non-standard 509 even
+        // though RFC 3986 allows them in query components. `handlesContent=`
+        // is required (empty value). `hint_revision` reuses `revisionStr`
+        // on the first pass — we don't track the prior revision locally;
+        // Spotify only seems to validate the pair's presence, not their
+        // relation.
+        var encodedRevision = Uri.EscapeDataString(revisionStr);
+        var url = $"{_baseUrl}/playlist/v2/{path}/diff?revision={encodedRevision}&handlesContent=&hint_revision={encodedRevision}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
@@ -963,6 +973,29 @@ public sealed class SpClient : ISpClient
 
         if ((int)response.StatusCode >= 500)
         {
+            // Diff endpoint commonly returns 509 on editorial mixes in our logs —
+            // dump the server's reason phrase + a short slice of the response body
+            // so we can tell whether it's "revision too stale", a protobuf error
+            // envelope, or a real server fault. Debug-level on purpose; production
+            // can drop this once understood.
+            string? bodyPreview = null;
+            try
+            {
+                var errBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                if (errBytes.Length > 0)
+                {
+                    // Try UTF-8 first (Spotify error envelopes are usually JSON/text);
+                    // fall back to hex of first 64 bytes for binary payloads.
+                    var asText = System.Text.Encoding.UTF8.GetString(errBytes);
+                    bodyPreview = IsProbablyPrintable(asText)
+                        ? asText.Length > 512 ? asText[..512] + "…" : asText
+                        : Convert.ToHexString(errBytes.AsSpan(0, Math.Min(64, errBytes.Length))).ToLowerInvariant();
+                }
+            }
+            catch { /* already failing; don't compound */ }
+            _logger?.LogWarning(
+                "Diff endpoint failed: status={Status} reason='{Reason}' uri={Uri} rev={Rev} body={Body}",
+                (int)response.StatusCode, response.ReasonPhrase, playlistUri, revisionStr, bodyPreview ?? "<empty>");
             throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
         }
 
@@ -1029,6 +1062,114 @@ public sealed class SpClient : ISpClient
     }
 
     /// <summary>
+    /// Sends a session-control-display chip selection to the playlist signals endpoint.
+    /// The server re-personalises the playlist to the chosen option and returns a fresh
+    /// <see cref="Protocol.Playlist.SelectedListContent"/>.
+    /// </summary>
+    /// <param name="playlistUri">Playlist URI (e.g. "spotify:playlist:37i...").</param>
+    /// <param name="revision">Current 24-byte playlist revision from <c>CachedPlaylist.Revision</c>.</param>
+    /// <param name="signalKey">
+    /// Fully-formatted key, e.g.
+    /// <c>session_control_display$&lt;group_id&gt;$&lt;option_key&gt;</c>.
+    /// </param>
+    /// <param name="requestId">Fresh GUID for correlation.</param>
+    public async Task<Protocol.Playlist.SelectedListContent> SendPlaylistSignalAsync(
+        string playlistUri,
+        ReadOnlyMemory<byte> revision,
+        string signalKey,
+        string requestId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(signalKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
+
+        var path = playlistUri.Replace("spotify:", "").Replace(":", "/");
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        var url = $"{_baseUrl}/playlist/v2/{path}/signals";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token for playlist signal, continuing without");
+            }
+        }
+
+        var body = new Protocol.PlaylistSignals.PlaylistSignalsRequest
+        {
+            Revision = ByteString.CopyFrom(revision.Span),
+            Signal = new Protocol.PlaylistSignals.Signal
+            {
+                SignalKey = signalKey,
+                Correlation = new Protocol.PlaylistSignals.CorrelationId
+                {
+                    RequestId = requestId
+                }
+            }
+        };
+
+        var protobufBytes = body.ToByteArray();
+        request.Content = new ByteArrayContent(protobufBytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+       // request.Headers.Accept.Clear();
+       // request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        _logger?.LogDebug("Sending playlist signal: {Uri} key={Key}", playlistUri, signalKey);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Playlist not found: {playlistUri}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, $"Cannot post signal: {playlistUri}");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var parsed = Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+
+        // Diagnostic: how much state does Spotify ship in the /signals
+        // response? We need to know whether it carries fresh items inline
+        // (so we can apply them directly) or just an ack envelope (so we
+        // still need to re-GET).
+        var firstThree = parsed.Contents?.Items?.Take(3).Select(i => i.Uri ?? "<no-uri>")
+            ?? Enumerable.Empty<string>();
+        _logger?.LogInformation(
+            "[signals-response] uri={Uri} bytes={Bytes} length={Length} hasContents={HasContents} itemCount={ItemCount} signals={Signals} first3={First3}",
+            playlistUri,
+            responseBytes.Length,
+            parsed.Length,
+            parsed.Contents != null,
+            parsed.Contents?.Items?.Count ?? 0,
+            parsed.Contents?.AvailableSignals?.Count ?? 0,
+            string.Join(",", firstThree));
+
+        return parsed;
+    }
+
+    /// <summary>
     /// Formats a revision for the playlist API query string.
     /// </summary>
     /// <remarks>
@@ -1042,6 +1183,21 @@ public sealed class SpClient : ISpClient
     /// usually still reconciles via the hash, but mismatched counters
     /// likely contributed to spurious "diff too stale" fallbacks.
     /// </remarks>
+    private static bool IsProbablyPrintable(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        // Quick heuristic — if more than 90% of the first 128 chars are printable
+        // ASCII (letters/digits/punct/whitespace), treat as text.
+        int end = Math.Min(128, s.Length);
+        int printable = 0;
+        for (int i = 0; i < end; i++)
+        {
+            var c = s[i];
+            if (c >= 0x20 && c < 0x7F || c == '\n' || c == '\r' || c == '\t') printable++;
+        }
+        return printable * 10 >= end * 9;
+    }
+
     private static string FormatRevision(byte[] revision)
     {
         if (revision.Length < 4)

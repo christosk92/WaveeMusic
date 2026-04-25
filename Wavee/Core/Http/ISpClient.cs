@@ -267,6 +267,23 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sends a session-control-display chip selection to the playlist signals endpoint.
+    /// Server re-personalises the playlist to the chosen option and returns a fresh
+    /// <see cref="Protocol.Playlist.SelectedListContent"/>.
+    /// </summary>
+    /// <param name="playlistUri">Playlist URI.</param>
+    /// <param name="revision">Current 24-byte playlist revision.</param>
+    /// <param name="signalKey">e.g. <c>session_control_display$&lt;group_id&gt;$&lt;option_key&gt;</c>.</param>
+    /// <param name="requestId">Fresh GUID for correlation.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<Protocol.Playlist.SelectedListContent> SendPlaylistSignalAsync(
+        string playlistUri,
+        ReadOnlyMemory<byte> revision,
+        string signalKey,
+        string requestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches a user's profile via the spclient profile endpoint.
     /// Uses Login5 token + client-token (no public Web API, no 429 issues).
     /// </summary>

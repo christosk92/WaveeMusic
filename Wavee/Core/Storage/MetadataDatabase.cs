@@ -60,7 +60,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v9: Added media_overrides table
     // v11: Added playlist/rootlist cache snapshots
     // v12: Added header_image_url + format_attributes_json on spotify_playlists
-    private const int CurrentSchemaVersion = 12;
+    private const int CurrentSchemaVersion = 13;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -116,6 +116,12 @@ public sealed class MetadataDatabase : IMetadataDatabase
             Sql: """
                 ALTER TABLE spotify_playlists ADD COLUMN header_image_url TEXT;
                 ALTER TABLE spotify_playlists ADD COLUMN format_attributes_json TEXT;
+                """),
+        new SchemaMigration(
+            FromVersion: 12,
+            ToVersion: 13,
+            Sql: """
+                ALTER TABLE spotify_playlists ADD COLUMN available_signals_json TEXT;
                 """)
     ];
 
@@ -540,6 +546,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         base_permission     INTEGER NOT NULL DEFAULT 0,
                         capabilities_json   TEXT,
                         format_attributes_json TEXT,
+                        available_signals_json TEXT,
                         deleted_by_owner    INTEGER NOT NULL DEFAULT 0,
                         abuse_reporting_enabled INTEGER NOT NULL DEFAULT 0,
                         last_accessed_at    INTEGER
@@ -2474,14 +2481,16 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     id, name, owner_id, owner_name, description, image_url, header_image_url, track_count,
                     is_public, is_collaborative, is_owned, synced_at, cache_revision,
                     ordered_items_json, has_contents_snapshot, base_permission,
-                    capabilities_json, format_attributes_json, deleted_by_owner, abuse_reporting_enabled,
+                    capabilities_json, format_attributes_json, available_signals_json,
+                    deleted_by_owner, abuse_reporting_enabled,
                     last_accessed_at, is_from_rootlist
                 )
                 VALUES (
                     $id, $name, $owner_id, $owner_name, $description, $image_url, $header_image_url, $track_count,
                     $is_public, $is_collaborative, $is_owned, $synced_at, $cache_revision,
                     $ordered_items_json, $has_contents_snapshot, $base_permission,
-                    $capabilities_json, $format_attributes_json, $deleted_by_owner, $abuse_reporting_enabled,
+                    $capabilities_json, $format_attributes_json, $available_signals_json,
+                    $deleted_by_owner, $abuse_reporting_enabled,
                     $last_accessed_at, 1
                 )
                 ON CONFLICT(id) DO UPDATE SET
@@ -2502,6 +2511,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     base_permission = excluded.base_permission,
                     capabilities_json = excluded.capabilities_json,
                     format_attributes_json = excluded.format_attributes_json,
+                    available_signals_json = excluded.available_signals_json,
                     deleted_by_owner = excluded.deleted_by_owner,
                     abuse_reporting_enabled = excluded.abuse_reporting_enabled,
                     last_accessed_at = excluded.last_accessed_at,
@@ -2526,6 +2536,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("$base_permission", (int)playlist.BasePermission);
             cmd.Parameters.AddWithValue("$capabilities_json", (object?)playlist.CapabilitiesJson ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$format_attributes_json", (object?)playlist.FormatAttributesJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$available_signals_json", (object?)playlist.AvailableSignalsJson ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$deleted_by_owner", playlist.DeletedByOwner ? 1 : 0);
             cmd.Parameters.AddWithValue("$abuse_reporting_enabled", playlist.AbuseReportingEnabled ? 1 : 0);
             cmd.Parameters.AddWithValue("$last_accessed_at", playlist.LastAccessedAt.HasValue
@@ -2556,7 +2567,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                    is_public, is_collaborative, cache_revision, ordered_items_json,
                    has_contents_snapshot, base_permission, capabilities_json,
                    deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at,
-                   header_image_url, format_attributes_json
+                   header_image_url, format_attributes_json, available_signals_json
             FROM spotify_playlists
             WHERE id = $id;
             """;
@@ -2597,7 +2608,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                    is_public, is_collaborative, cache_revision, ordered_items_json,
                    has_contents_snapshot, base_permission, capabilities_json,
                    deleted_by_owner, abuse_reporting_enabled, synced_at, last_accessed_at,
-                   header_image_url, format_attributes_json
+                   header_image_url, format_attributes_json, available_signals_json
             FROM spotify_playlists
             ORDER BY COALESCE(last_accessed_at, synced_at, 0) DESC
             LIMIT $limit;
@@ -2755,7 +2766,8 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 ? null
                 : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(17)),
             HeaderImageUrl = reader.IsDBNull(18) ? null : reader.GetString(18),
-            FormatAttributesJson = reader.IsDBNull(19) ? null : reader.GetString(19)
+            FormatAttributesJson = reader.IsDBNull(19) ? null : reader.GetString(19),
+            AvailableSignalsJson = reader.IsDBNull(20) ? null : reader.GetString(20)
         };
     }
 

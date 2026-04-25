@@ -211,6 +211,45 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             DateTimeOffset.UtcNow + NegativeCacheTtl);
     }
 
+    public async Task<CachedPlaylist> ApplyFreshContentAsync(
+        string playlistUri,
+        Wavee.Protocol.Playlist.SelectedListContent content,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+        ArgumentNullException.ThrowIfNull(content);
+
+        var existing = _hotCache.Get(playlistUri);
+        if (existing is null)
+        {
+            var persisted = await _database.GetPlaylistCacheEntryAsync(playlistUri, touchAccess: false, ct);
+            if (persisted is not null)
+                existing = DeserializePlaylist(persisted);
+        }
+
+        var mapped = SelectedListContentMapper.MapPlaylist(
+            playlistUri,
+            content,
+            GetCurrentUsername(),
+            DateTimeOffset.UtcNow);
+
+        var merged = PreserveSummaryFields(existing, mapped);
+
+        await PersistPlaylistAsync(merged, ct);
+        _hotCache.Set(playlistUri, merged);
+
+        // Always emit — caller's whole point is to broadcast the new state.
+        // Don't gate on revision equality: the server may bump items / chips
+        // without bumping the revision counter for some signal types.
+        _changes.OnNext(new PlaylistChangeEvent
+        {
+            Uri = playlistUri,
+            Kind = existing == null ? PlaylistChangeKind.Replaced : PlaylistChangeKind.Updated
+        });
+
+        return merged;
+    }
+
     public Task InvalidateAsync(string playlistUri, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
@@ -505,6 +544,16 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                             };
                         }
 
+                        // Refresh AvailableSignals from the diff response too — otherwise
+                        // a SQLite-loaded existing entry (pre-schema-v13, empty signals)
+                        // would stay empty across diff-only refreshes, and the chip row
+                        // would never get its signal identifiers populated.
+                        var diffSignals = SelectedListContentMapper.ExtractAvailableSignals(diff.Contents);
+                        if (diffSignals.Count > 0)
+                        {
+                            mergedFromOps = mergedFromOps with { AvailableSignals = diffSignals };
+                        }
+
                         await PersistPlaylistAsync(mergedFromOps, ct);
                         _hotCache.Set(playlistUri, mergedFromOps);
 
@@ -574,7 +623,15 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             await PersistPlaylistAsync(merged, ct);
             _hotCache.Set(playlistUri, merged);
 
-            if (emitChange && (existing == null || !RevisionsEqual(existing.Revision, merged.Revision)))
+            // Emit when revision differs OR when AvailableSignals transitions
+            // (e.g. SQLite-loaded existing has empty signals, fresh fetch
+            // populated 5). Without the second clause, editorial Mixes that
+            // keep the same revision on refresh never tell the store to re-
+            // emit, leaving the UI stuck on chips that know their labels but
+            // not their signal identifiers.
+            if (emitChange && (existing == null
+                || !RevisionsEqual(existing.Revision, merged.Revision)
+                || existing.AvailableSignals.Count != merged.AvailableSignals.Count))
             {
                 _changes.OnNext(new PlaylistChangeEvent
                 {
@@ -629,6 +686,14 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 attrs, PlaylistCacheJsonContext.Default.DictionaryStringString);
         }
 
+        string? availableSignalsJson = null;
+        if (playlist.AvailableSignals.Count > 0)
+        {
+            availableSignalsJson = JsonSerializer.Serialize(
+                playlist.AvailableSignals.ToList(),
+                PlaylistCacheJsonContext.Default.ListString);
+        }
+
         await _database.UpsertPlaylistCacheEntryAsync(
             new PlaylistCacheEntry
             {
@@ -651,6 +716,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 BasePermission = playlist.BasePermission,
                 CapabilitiesJson = capabilitiesJson,
                 FormatAttributesJson = formatAttributesJson,
+                AvailableSignalsJson = availableSignalsJson,
                 DeletedByOwner = playlist.DeletedByOwner,
                 AbuseReportingEnabled = playlist.AbuseReportingEnabled,
                 CachedAt = playlist.FetchedAt,
@@ -799,6 +865,16 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 formatAttributes = parsed;
         }
 
+        IReadOnlyList<string> availableSignals = Array.Empty<string>();
+        if (!string.IsNullOrWhiteSpace(entry.AvailableSignalsJson))
+        {
+            var parsed = JsonSerializer.Deserialize(
+                entry.AvailableSignalsJson,
+                PlaylistCacheJsonContext.Default.ListString);
+            if (parsed is { Count: > 0 })
+                availableSignals = parsed;
+        }
+
         return new CachedPlaylist
         {
             Uri = entry.Uri,
@@ -818,6 +894,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             Capabilities = capabilities,
             Items = items,
             FormatAttributes = formatAttributes,
+            AvailableSignals = availableSignals,
             FetchedAt = entry.CachedAt,
             LastAccessedAt = entry.LastAccessedAt
         };

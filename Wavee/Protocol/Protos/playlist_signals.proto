@@ -1,0 +1,30 @@
+syntax = "proto2";
+
+package spotify.playlist_signals.proto;
+
+option optimize_for = CODE_SIZE;
+option csharp_namespace = "Wavee.Protocol.PlaylistSignals";
+
+// Body sent to POST /playlist/v2/playlist/{id}/signals when the user picks a
+// session-control-display chip ("Pop Rock", "K-Ballad", ...). Response is a
+// SelectedListContent (same type the GET endpoint returns) — the server
+// re-personalises the playlist to the chosen option and hands back the new
+// list inline.
+//
+// Wire shape was reverse-engineered from captured traffic: field numbers here
+// are the ones the server accepts. The outer field 288 is the Signal wrapper.
+message PlaylistSignalsRequest {
+    optional bytes revision = 1;
+    optional Signal signal = 288;
+}
+
+message Signal {
+    // "session_control_display$<control_group_id>$<option_key>"
+    optional string signal_key = 1;
+    optional CorrelationId correlation = 3;
+}
+
+message CorrelationId {
+    // Fresh GUID per click.
+    optional string request_id = 1;
+}

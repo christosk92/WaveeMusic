@@ -11,6 +11,8 @@
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -176,6 +178,35 @@
                         </HyperlinkButton>
                     </StackPanel>
                 </Border>
+
+                <!-- Session control chips: editorial / algorithmic playlists (e.g.
+                     Daily Mix family) ship a "session_control_display" group in
+                     FormatAttributes — a horizontal single-select chip row that
+                     re-personalises the playlist on click. Rendered via
+                     CommunityToolkit's TokenView for parity with the Liked Songs
+                     filter chips (LikedSongsView.xaml). Visibility is gated on
+                     HasSessionControlChips so user-authored playlists keep the
+                     original description → metadata spacing. -->
+                <Grid HorizontalAlignment="Center" Margin="0,8,0,0"
+                      Visibility="{x:Bind ViewModel.HasSessionControlChips, Mode=OneWay,
+                                   Converter={StaticResource BoolToVisibilityConverter}}">
+                    <sessionTokens:SessionTokenView
+                        IsWrapped="True"
+                        CanRemoveTokens="False"
+                        ItemsSource="{x:Bind ViewModel.SessionControlChips, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedSessionControlChip, Mode=TwoWay}">
+                        <sessionTokens:SessionTokenView.ItemContainerStyle>
+                            <Style TargetType="sessionTokens:SessionTokenItem" BasedOn="{StaticResource DefaultSessionTokenItemStyle}">
+                                <Setter Property="IsLoading" Value="{Binding IsLoading}"/>
+                            </Style>
+                        </sessionTokens:SessionTokenView.ItemContainerStyle>
+                        <sessionTokens:SessionTokenView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SessionControlChipViewModel">
+                                <TextBlock Text="{x:Bind Label}" FontSize="13"/>
+                            </DataTemplate>
+                        </sessionTokens:SessionTokenView.ItemTemplate>
+                    </sessionTokens:SessionTokenView>
+                </Grid>
 
                 <!-- Metadata pills: each metric ("X songs", "Y hr Z min") gets its own
                      fully-rounded WinUI pill (CornerRadius=14 on a ~28 px-tall Border

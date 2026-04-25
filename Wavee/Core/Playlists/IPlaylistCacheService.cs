@@ -9,6 +9,21 @@ public interface IPlaylistCacheService
     Task<RootlistTree> GetRootlistTreeAsync(bool forceRefresh = false, CancellationToken ct = default);
     Task<CachedPlaylist> GetPlaylistAsync(string playlistUri, bool forceRefresh = false, CancellationToken ct = default);
     Task InvalidateAsync(string playlistUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Apply a freshly-fetched <see cref="Wavee.Protocol.Playlist.SelectedListContent"/>
+    /// (e.g. the response from <c>POST /playlist/v2/playlist/{id}/signals</c>) to the
+    /// cache. Maps it to a <see cref="CachedPlaylist"/>, merges with the existing
+    /// hot/persisted entry via the same path used by the network-fetch flow,
+    /// updates SQLite + hot cache, and fires <see cref="Changes"/> so subscribers
+    /// (the playlist store) re-emit. Avoids a redundant GET round-trip and the
+    /// race between server-side signal processing and a follow-up fetch.
+    /// </summary>
+    Task<CachedPlaylist> ApplyFreshContentAsync(
+        string playlistUri,
+        Wavee.Protocol.Playlist.SelectedListContent content,
+        CancellationToken ct = default);
+
     IObservable<PlaylistChangeEvent> Changes { get; }
 }
 
@@ -141,6 +156,15 @@ public sealed record CachedPlaylist : ICacheEntry
     /// rich "Now Playing" context card on remote clients.
     /// </summary>
     public IReadOnlyDictionary<string, string> FormatAttributes { get; init; } = _emptyAttributes;
+
+    /// <summary>
+    /// Fully-formed signal identifiers the server advertises for this playlist
+    /// — e.g. <c>session_control_display$&lt;group&gt;$&lt;option&gt;</c> entries and
+    /// specials like <c>session-control-reset</c>. Pass the exact string back
+    /// to <c>/playlist/v2/playlist/{id}/signals</c> on click. Empty for
+    /// playlists without session-control chrome.
+    /// </summary>
+    public IReadOnlyList<string> AvailableSignals { get; init; } = Array.Empty<string>();
 
     private static readonly IReadOnlyDictionary<string, string> _emptyAttributes
         = new Dictionary<string, string>(0);

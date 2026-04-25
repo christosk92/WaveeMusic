@@ -387,6 +387,10 @@ public sealed class LibraryDataService : ILibraryDataService
     private async Task<PlaylistDetailDto> GetPlaylistCoreAsync(string playlistId, CancellationToken ct)
     {
         var playlist = await _playlistCache.GetPlaylistAsync(playlistId, ct: ct);
+        _logger?.LogInformation(
+            "[session-signals] GetPlaylistCoreAsync: playlist={Id} AvailableSignals.Count={Count} first={First}",
+            playlistId, playlist.AvailableSignals?.Count ?? -1,
+            playlist.AvailableSignals?.Count > 0 ? playlist.AvailableSignals[0] : "<none>");
         // playlist.OwnerUsername sometimes arrives as a bare username and sometimes as
         // the full "spotify:user:{id}" URI depending on which proto path filled it.
         // Canonicalize at the DTO boundary so OwnerId is a single-prefix URI and
@@ -411,8 +415,48 @@ public sealed class LibraryDataService : ILibraryDataService
             IsPublic = playlist.IsPublic,
             BasePermission = MapBasePermission(playlist.BasePermission),
             Capabilities = MapCapabilities(playlist.Capabilities),
-            FormatAttributes = playlist.FormatAttributes.Count > 0 ? playlist.FormatAttributes : null
+            FormatAttributes = playlist.FormatAttributes.Count > 0 ? playlist.FormatAttributes : null,
+            Revision = playlist.Revision.Length > 0 ? playlist.Revision : null,
+            SessionControlOptions = BuildSessionControlOptions(playlist.FormatAttributes, playlist.AvailableSignals),
+            SessionControlGroupId = null // no longer used — per-option identifiers come from AvailableSignals
         };
+    }
+
+    private static IReadOnlyList<SessionControlOption>? BuildSessionControlOptions(
+        IReadOnlyDictionary<string, string>? formatAttributes,
+        IReadOnlyList<string>? availableSignals)
+    {
+        var raw = SelectedListContentMapper.ExtractSessionControlOptions(formatAttributes);
+        if (raw.Count == 0) return null;
+
+        var result = new List<SessionControlOption>(raw.Count);
+        foreach (var (optionKey, displayName) in raw)
+        {
+            // Match the chip's OptionKey to the server's advertised signal
+            // identifier by suffix. Identifiers look like
+            //   "session_control_display$<group_id>$<option_key>"
+            // so we pick the one ending in "$<option_key>".
+            string? signal = null;
+            if (availableSignals is not null)
+            {
+                var suffix = "$" + optionKey;
+                foreach (var id in availableSignals)
+                {
+                    if (id.EndsWith(suffix, System.StringComparison.Ordinal))
+                    {
+                        signal = id;
+                        break;
+                    }
+                }
+            }
+            result.Add(new SessionControlOption
+            {
+                OptionKey = optionKey,
+                DisplayName = displayName,
+                SignalIdentifier = signal
+            });
+        }
+        return result;
     }
 
     // Strip the prefix repeatedly — some cache entries arrived with the prefix applied

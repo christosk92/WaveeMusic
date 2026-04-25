@@ -1,3 +1,4 @@
+using Google.Protobuf;
 using Wavee.Protocol.Playlist;
 
 namespace Wavee.Core.Playlists;
@@ -94,9 +95,143 @@ public static class SelectedListContentMapper
             Capabilities = MapCapabilities(content.Capabilities, content.AbuseReportingEnabled),
             Items = items,
             FormatAttributes = ExtractFormatAttributes(content.Attributes?.FormatAttributes),
+            AvailableSignals = ExtractAvailableSignals(content.Contents),
             HasContentsSnapshot = content.Contents != null,
             FetchedAt = fetchedAt
         };
+    }
+
+    /// <summary>
+    /// Extract the list of server-advertised signal identifiers from a
+    /// SelectedListContent's contents. Each entry is a ready-to-POST string
+    /// (e.g. <c>session_control_display$&lt;group&gt;$&lt;option&gt;</c>) — the caller
+    /// should not attempt to reconstruct it. Empty for playlists without
+    /// session-control chrome, or when the server omits the field.
+    /// </summary>
+    /// <remarks>
+    /// First tries the known field (via <see cref="ListItems.AvailableSignals"/>);
+    /// if empty, falls back to a tag-walk of the raw serialized bytes so we
+    /// can pick up the signals even if the proto field number we guessed
+    /// doesn't match what the server actually uses. This is a one-time
+    /// diagnostic fallback that should be cleaned up once the correct
+    /// field number is known.
+    /// </remarks>
+    public static IReadOnlyList<string> ExtractAvailableSignals(ListItems? contents)
+    {
+        if (contents is null)
+        {
+            System.Diagnostics.Debug.WriteLine("[session-signals] Contents is null");
+            return Array.Empty<string>();
+        }
+
+        if (contents.AvailableSignals is { Count: > 0 } known)
+        {
+            var result = new List<string>(known.Count);
+            foreach (var signal in known)
+                if (!string.IsNullOrEmpty(signal.Identifier))
+                    result.Add(signal.Identifier);
+            System.Diagnostics.Debug.WriteLine($"[session-signals] Known-field path matched {result.Count} signals: {string.Join(", ", result)}");
+            return result;
+        }
+
+        var probed = ProbeAvailableSignalsFromRawBytes(contents);
+        System.Diagnostics.Debug.WriteLine($"[session-signals] Byte-probe found {probed.Count} signals: {string.Join(", ", probed)}");
+        return probed;
+    }
+
+    /// <summary>
+    /// Fallback: re-serialize <paramref name="contents"/> (which preserves
+    /// unknown fields verbatim) and walk every top-level field tag. For each
+    /// length-delimited field, recursively scan for any nested length-
+    /// delimited field whose bytes parse as a UTF-8 string starting with
+    /// <c>session_control_display$</c> or equal to <c>session-control-reset</c>.
+    /// Returns the collected identifiers.
+    /// </summary>
+    private static IReadOnlyList<string> ProbeAvailableSignalsFromRawBytes(ListItems contents)
+    {
+        byte[] bytes;
+        try
+        {
+            bytes = contents.ToByteArray();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+
+        var found = new List<string>();
+        CollectSignalStrings(bytes, found, depth: 0);
+        return found;
+    }
+
+    private static void CollectSignalStrings(ReadOnlySpan<byte> bytes, List<string> collector, int depth)
+    {
+        if (depth > 4 || bytes.IsEmpty) return;
+
+        int i = 0;
+        while (i < bytes.Length)
+        {
+            if (!TryReadVarint(bytes, ref i, out var tag)) return;
+            var wireType = (int)(tag & 7);
+            switch (wireType)
+            {
+                case 0: // varint
+                    if (!TryReadVarint(bytes, ref i, out _)) return;
+                    break;
+                case 1: // 64-bit
+                    if (i + 8 > bytes.Length) return;
+                    i += 8;
+                    break;
+                case 2: // length-delimited
+                    if (!TryReadVarint(bytes, ref i, out var len)) return;
+                    if ((int)len < 0 || i + (int)len > bytes.Length) return;
+                    var slice = bytes.Slice(i, (int)len);
+                    TryMatchSignalString(slice, collector);
+                    CollectSignalStrings(slice, collector, depth + 1);
+                    i += (int)len;
+                    break;
+                case 5: // 32-bit
+                    if (i + 4 > bytes.Length) return;
+                    i += 4;
+                    break;
+                default:
+                    return; // groups / unknown — bail
+            }
+        }
+    }
+
+    private static void TryMatchSignalString(ReadOnlySpan<byte> slice, List<string> collector)
+    {
+        // Heuristic: a "session_control_display$..." or "session-control-reset"
+        // string will be at minimum ~20 ASCII-printable bytes.
+        if (slice.Length < 20 || slice.Length > 512) return;
+        for (int k = 0; k < slice.Length; k++)
+        {
+            var b = slice[k];
+            if (b < 0x20 || b > 0x7E) return; // non-printable → not our string
+        }
+        var s = System.Text.Encoding.ASCII.GetString(slice);
+        if (s.StartsWith("session_control_display$", StringComparison.Ordinal) ||
+            string.Equals(s, "session-control-reset", StringComparison.Ordinal))
+        {
+            if (!collector.Contains(s))
+                collector.Add(s);
+        }
+    }
+
+    private static bool TryReadVarint(ReadOnlySpan<byte> bytes, ref int offset, out ulong value)
+    {
+        value = 0;
+        int shift = 0;
+        while (offset < bytes.Length)
+        {
+            var b = bytes[offset++];
+            value |= (ulong)(b & 0x7F) << shift;
+            if ((b & 0x80) == 0) return true;
+            shift += 7;
+            if (shift > 63) return false;
+        }
+        return false;
     }
 
     /// <summary>
@@ -154,6 +289,77 @@ public static class SelectedListContentMapper
 
     private static readonly IReadOnlyDictionary<string, string> _emptyAttributes
         = new Dictionary<string, string>(0);
+
+    /// <summary>
+    /// Key prefix for session-control chip labels in a playlist's format attributes.
+    /// Each entry <c>session_control_display.displayName.&lt;option&gt; = &lt;Label&gt;</c>
+    /// becomes one chip in the UI row.
+    /// </summary>
+    public const string SessionControlDisplayNamePrefix = "session_control_display.displayName.";
+
+    /// <summary>
+    /// Candidate FormatAttributes keys that carry the session-control group id
+    /// (the base62 segment joined into the signal key between the
+    /// <c>session_control_display</c> literal and the chosen option). Ordered by
+    /// likelihood. The first entry with a non-empty value wins.
+    /// </summary>
+    /// <remarks>
+    /// The exact key was not captured in the original reverse-engineering paste;
+    /// leaving a priority list avoids a second packet capture before shipping.
+    /// If none of these match, the chip row still renders, but click-to-signal
+    /// is disabled — the consumer returns null from
+    /// <see cref="ExtractSessionControlGroupId"/> in that case.
+    /// </remarks>
+    private static readonly string[] SessionControlGroupIdKeys =
+    [
+        "session_control_display.id",
+        "session_control_display.sessionId",
+        "session_control_display.groupId",
+        "session_control_display.sessionControlId",
+        "session_control_display",
+    ];
+
+    /// <summary>
+    /// Extract ordered chip options from a playlist's format attributes.
+    /// Preserves insertion order so the chip row matches Spotify's UI.
+    /// Returns an empty list when no session-control-display entries are present.
+    /// </summary>
+    public static IReadOnlyList<(string OptionKey, string DisplayName)> ExtractSessionControlOptions(
+        IReadOnlyDictionary<string, string>? attrs)
+    {
+        if (attrs is null || attrs.Count == 0)
+            return Array.Empty<(string, string)>();
+
+        var results = new List<(string OptionKey, string DisplayName)>();
+        foreach (var kvp in attrs)
+        {
+            if (kvp.Key is null) continue;
+            if (!kvp.Key.StartsWith(SessionControlDisplayNamePrefix, StringComparison.Ordinal))
+                continue;
+            var optionKey = kvp.Key[SessionControlDisplayNamePrefix.Length..];
+            if (string.IsNullOrEmpty(optionKey) || string.IsNullOrEmpty(kvp.Value))
+                continue;
+            results.Add((optionKey, kvp.Value));
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// Resolve the session-control group id used in the signal key. Returns null
+    /// when no candidate key is present (chips can still render; click dispatch
+    /// should be disabled by the consumer).
+    /// </summary>
+    public static string? ExtractSessionControlGroupId(IReadOnlyDictionary<string, string>? attrs)
+    {
+        if (attrs is null || attrs.Count == 0)
+            return null;
+        foreach (var key in SessionControlGroupIdKeys)
+        {
+            if (attrs.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return null;
+    }
 
     public static CachedPlaylistBasePermission MapBasePermission(
         string? ownerUsername,

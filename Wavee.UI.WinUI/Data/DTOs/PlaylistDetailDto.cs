@@ -61,4 +61,47 @@ public sealed record PlaylistDetailDto
     /// user-authored playlists.
     /// </summary>
     public System.Collections.Generic.IReadOnlyDictionary<string, string>? FormatAttributes { get; init; }
+
+    /// <summary>
+    /// Current 24-byte playlist revision. Needed by endpoints that require
+    /// the caller to quote the revision they're acting against (e.g. the
+    /// playlist signals endpoint). Empty for cache misses.
+    /// </summary>
+    public byte[]? Revision { get; init; }
+
+    /// <summary>
+    /// Pre-parsed session-control-display chip options derived from
+    /// <see cref="FormatAttributes"/>. Null when the playlist has no
+    /// session-control chrome (the common case for user-authored lists).
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyList<SessionControlOption>? SessionControlOptions { get; init; }
+
+    /// <summary>
+    /// Opaque control-group id for the session-control chip row. Joined into
+    /// the signal key as <c>session_control_display$&lt;group_id&gt;$&lt;option&gt;</c>.
+    /// Null when <see cref="SessionControlOptions"/> is also null.
+    /// </summary>
+    public string? SessionControlGroupId { get; init; }
+}
+
+/// <summary>
+/// One chip in the session-control-display row — e.g. "Pop Rock", "K-Ballad".
+/// </summary>
+public sealed record SessionControlOption
+{
+    /// <summary>Raw option key from the format attribute (e.g. <c>pop_rock</c>).</summary>
+    public required string OptionKey { get; init; }
+
+    /// <summary>Display label Spotify wants us to render (e.g. <c>Pop Rock</c>).</summary>
+    public required string DisplayName { get; init; }
+
+    /// <summary>
+    /// Fully-formed signal identifier to POST on click (e.g.
+    /// <c>session_control_display$24pGOSaKeoU6bobuwqnMbJ$pop</c>). Pulled
+    /// directly from <c>SelectedListContent.Contents.AvailableSignals</c> by
+    /// matching the entry whose suffix is <c>$&lt;OptionKey&gt;</c>. Null when
+    /// the server didn't advertise a signal for this option — click is
+    /// disabled in that case.
+    /// </summary>
+    public string? SignalIdentifier { get; init; }
 }

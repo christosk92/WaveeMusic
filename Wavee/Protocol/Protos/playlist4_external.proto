@@ -25,6 +25,17 @@ message ListItems {
     required bool truncated = 2;
     repeated Item items = 3;
     repeated MetaItem meta_items = 4;
+    // Signals the server advertises on this playlist — including fully-formed
+    // session_control_display chip identifiers (e.g. "session_control_display
+    // $<group_id>$<option_key>") and special signals like "session-control-
+    // reset". Field number is a best-guess (5); if the server sends a
+    // different number our parser will silently put the payload into
+    // UnknownFields, and we'll need to adjust.
+    repeated AvailableSignal available_signals = 5;
+}
+
+message AvailableSignal {
+    optional string identifier = 1;
 }
 
 message FormatListAttribute {

@@ -1,7 +1,6 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
-using System.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
@@ -13,7 +12,6 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Search;
 using Wavee.UI.WinUI.Data.DTOs;
-using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -23,19 +21,13 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant
 {
     public SearchViewModel ViewModel { get; }
 
-    private readonly IColorService? _colorService;
     private readonly ILogger? _logger;
     private SearchPageSleepState? _pendingSleepState;
     private bool _sleepFilterRestoreRequested;
 
-    // Bumped on every TopResult change so late color-fetch results can be dropped
-    // (the user may have typed more while the previous fetch was in flight).
-    private int _colorRequestVersion;
-
     public SearchPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<SearchViewModel>();
-        _colorService = Ioc.Default.GetService<IColorService>();
         _logger = Ioc.Default.GetService<ILogger<SearchPage>>();
         InitializeComponent();
 
@@ -52,7 +44,10 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant
     {
         if (e.PropertyName == nameof(SearchViewModel.TopResult))
         {
-            _ = FetchAndApplyTopResultColorAsync(ViewModel.TopResult);
+            // No host-driven solid-colour background anymore. For artists the hero
+            // card fetches its own header image via ArtistStore; for everything
+            // else we deliberately fall back to the default card chrome.
+            TopResultCard.ColorHex = null;
         }
 
         if (e.PropertyName == nameof(SearchViewModel.SelectedFilter))
@@ -63,41 +58,6 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant
         if (e.PropertyName == nameof(SearchViewModel.IsLoading) && !ViewModel.IsLoading)
         {
             TryApplyPendingSleepState();
-        }
-    }
-
-    private async System.Threading.Tasks.Task FetchAndApplyTopResultColorAsync(SearchResultItem? item)
-    {
-        var requestVersion = Interlocked.Increment(ref _colorRequestVersion);
-
-        // Clear immediately so a stale color doesn't linger on top of the new hero.
-        TopResultCard.ColorHex = null;
-
-        if (item == null || _colorService == null || string.IsNullOrEmpty(item.ImageUrl))
-            return;
-
-        var imageUrl = SpotifyImageHelper.ToHttpsUrl(item.ImageUrl);
-        if (string.IsNullOrEmpty(imageUrl)) return;
-
-        try
-        {
-            var color = await _colorService.GetColorAsync(imageUrl);
-            if (color == null) return;
-
-            // Drop stale results — the user moved on to a new top result while we waited.
-            if (requestVersion != _colorRequestVersion) return;
-
-            var isDark = ActualTheme == ElementTheme.Dark;
-            var hex = isDark
-                ? color.DarkHex ?? color.RawHex
-                : color.LightHex ?? color.RawHex;
-
-            if (!string.IsNullOrEmpty(hex))
-                TopResultCard.ColorHex = hex;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Failed to fetch top-result accent color for {Uri}", item.Uri);
         }
     }
 

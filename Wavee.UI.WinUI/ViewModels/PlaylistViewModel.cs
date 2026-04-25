@@ -13,6 +13,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Wavee.Core.Data;
+using Wavee.Core.Http;
+using Wavee.Core.Playlists;
+using Wavee.Core.Session;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -38,6 +41,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly PlaylistStore _playlistStore;
+    private readonly ISession? _session;
+    private readonly IPlaylistCacheService? _playlistCache;
     private readonly Services.PlaylistMosaicService? _mosaicService;
     private readonly Services.IUserProfileResolver? _userProfileResolver;
     private readonly ILogger? _logger;
@@ -67,6 +72,24 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // and forwarded into the play command so PlayerState.context_metadata
     // reproduces what Spotify Connect clients expect to see.
     private IReadOnlyDictionary<string, string>? _playlistFormatAttributes;
+
+    // Current 24-byte playlist revision. Needed when POSTing to the
+    // session-control signals endpoint.
+    private byte[]? _currentRevision;
+
+    // Base62 group id for the session-control-display chip row. Joined
+    // into the signal key as "session_control_display$<id>$<option>".
+    private string? _sessionControlGroupId;
+
+    // Set to true while BuildSessionControlChips is replacing the chips
+    // collection so the OnSelectedSessionControlChipChanged handler doesn't
+    // fire a signal for the server-seeded default selection.
+    private bool _suppressSessionSignal;
+
+    // Cancellation scope for the in-flight session-control signal POST.
+    // Clicking a second chip while the first is still running cancels the
+    // prior request and supersedes it.
+    private CancellationTokenSource? _sessionSignalCts;
 
     /// <summary>
     /// Wide hero image populated from the playlist's <c>header_image_url_desktop</c>
@@ -163,6 +186,24 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     public ObservableCollection<ITrackItem> FilteredTracks { get; } = [];
 
     /// <summary>
+    /// Session-control chip row — e.g. "Pop Rock", "K-Ballad". Populated from
+    /// the playlist's <c>session_control_display.displayName.*</c> format
+    /// attributes. Empty for playlists without the session-control chrome.
+    /// </summary>
+    public ObservableCollection<SessionControlChipViewModel> SessionControlChips { get; } = [];
+
+    /// <summary>Drives the Visibility of the chip row; true iff the playlist has chips.</summary>
+    public bool HasSessionControlChips => SessionControlChips.Count > 0;
+
+    /// <summary>
+    /// Currently-selected chip. Two-way bound to <c>TokenView.SelectedItem</c>.
+    /// Setting this (when not suppressed and when the group id is known) fires
+    /// a POST to the playlist signals endpoint and refreshes the track list.
+    /// </summary>
+    [ObservableProperty]
+    private SessionControlChipViewModel? _selectedSessionControlChip;
+
+    /// <summary>
     /// Formatted follower count.
     /// </summary>
     public string FollowerCountFormatted => FollowerCount switch
@@ -195,11 +236,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         PlaylistStore playlistStore,
         ILogger<PlaylistViewModel>? logger = null,
         Services.PlaylistMosaicService? mosaicService = null,
-        Services.IUserProfileResolver? userProfileResolver = null)
+        Services.IUserProfileResolver? userProfileResolver = null,
+        ISession? session = null,
+        IPlaylistCacheService? playlistCache = null)
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _playlistStore = playlistStore;
+        _session = session;
+        _playlistCache = playlistCache;
         _mosaicService = mosaicService;
         _userProfileResolver = userProfileResolver;
         _logger = logger;
@@ -414,8 +459,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             FollowerCount = 0;
             TotalTracks = 0;
             _playlistFormatAttributes = null;
+            _currentRevision = null;
+            _sessionControlGroupId = null;
             TotalDuration = string.Empty;
             HasAnyAddedAt = false;
+
+            // Drop chips from the previous playlist before the new DTO arrives
+            // so they don't flicker visible during the reload.
+            _suppressSessionSignal = true;
+            SessionControlChips.Clear();
+            SelectedSessionControlChip = null;
+            _suppressSessionSignal = false;
+            OnPropertyChanged(nameof(HasSessionControlChips));
+            _sessionSignalCts?.Cancel();
+            _sessionSignalCts?.Dispose();
+            _sessionSignalCts = null;
 
             // Seed shimmer rows synchronously before any async work so the first
             // frame shows placeholders rather than an empty list.
@@ -537,6 +595,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
         HeaderImageUrl = string.IsNullOrWhiteSpace(detail.HeaderImageUrl) ? null : detail.HeaderImageUrl;
         _playlistFormatAttributes = detail.FormatAttributes;
+        _currentRevision = detail.Revision;
+        _sessionControlGroupId = detail.SessionControlGroupId;
+        BuildSessionControlChips(detail.SessionControlOptions);
         if (!string.IsNullOrEmpty(detail.OwnerName) && detail.OwnerName != "Unknown")
             OwnerName = detail.OwnerName;
 
@@ -578,6 +639,202 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         HasError = false;
         ErrorMessage = null;
+    }
+
+    // Rebuild the session-control chip row from the DTO's pre-parsed options.
+    // Preserves the previously-selected option across refreshes (e.g. a Mercury
+    // push that bumps the revision but doesn't change the chip set) so the
+    // user's current selection survives. Suppresses the SelectedChip change
+    // handler while re-seeding so we don't re-send a signal for a noop.
+    private void BuildSessionControlChips(IReadOnlyList<SessionControlOption>? options)
+    {
+        // One-shot dump of every FormatAttributes entry on any playlist that
+        // has session-control chips. Used to identify which attribute carries
+        // the base62 control-group id (the segment between "session_control_
+        // display$" and the option key in the signal POST). Once the key is
+        // pinned in SelectedListContentMapper.SessionControlGroupIdKeys this
+        // log can be demoted or removed.
+        if (options is { Count: > 0 })
+        {
+            var chipDump = string.Join(" | ", options.Select(o => $"{o.OptionKey}[{o.DisplayName}]→{o.SignalIdentifier ?? "<null>"}"));
+            _logger?.LogInformation(
+                "[session-control-chips] playlist={PlaylistId} options: {Chips}",
+                PlaylistId, chipDump);
+        }
+
+        _suppressSessionSignal = true;
+        try
+        {
+            var previouslySelectedKey = SelectedSessionControlChip?.OptionKey;
+
+            SessionControlChips.Clear();
+
+            if (options is null || options.Count == 0)
+            {
+                SelectedSessionControlChip = null;
+                return;
+            }
+
+            SessionControlChipViewModel? restored = null;
+            foreach (var option in options)
+            {
+                var chip = new SessionControlChipViewModel
+                {
+                    OptionKey = option.OptionKey,
+                    Label = option.DisplayName,
+                    SignalIdentifier = option.SignalIdentifier
+                };
+                SessionControlChips.Add(chip);
+                if (previouslySelectedKey is not null &&
+                    string.Equals(previouslySelectedKey, option.OptionKey, StringComparison.Ordinal))
+                {
+                    restored = chip;
+                }
+            }
+
+            SelectedSessionControlChip = restored;
+        }
+        finally
+        {
+            _suppressSessionSignal = false;
+        }
+
+        OnPropertyChanged(nameof(HasSessionControlChips));
+    }
+
+    // Fires when SelectedSessionControlChip changes. Skips during Build and
+    // when the VM is missing the bits needed to send a signal (no SpClient,
+    // no group id, no revision). Otherwise POSTs and refreshes tracks.
+    partial void OnSelectedSessionControlChipChanged(
+        SessionControlChipViewModel? oldValue,
+        SessionControlChipViewModel? newValue)
+    {
+        if (_suppressSessionSignal) return;
+        if (newValue is null) return;
+        if (ReferenceEquals(oldValue, newValue)) return;
+        if (_session is null || _playlistCache is null)
+        {
+            _logger?.LogDebug("Session control chip selected but Session/PlaylistCache not wired; ignoring");
+            return;
+        }
+        if (string.IsNullOrEmpty(newValue.SignalIdentifier))
+        {
+            _logger?.LogInformation(
+                "Session control chip '{Option}' has no advertised signal identifier; click ignored.",
+                newValue.OptionKey);
+            _suppressSessionSignal = true;
+            SelectedSessionControlChip = oldValue;
+            _suppressSessionSignal = false;
+            return;
+        }
+        if (_currentRevision is null || _currentRevision.Length == 0)
+        {
+            _logger?.LogWarning("Session control chip selected but no revision available; ignoring");
+            return;
+        }
+
+        // Cancel any prior in-flight signal so only the latest click's response
+        // is applied.
+        _sessionSignalCts?.Cancel();
+        _sessionSignalCts?.Dispose();
+        _sessionSignalCts = new CancellationTokenSource();
+        var ct = _sessionSignalCts.Token;
+
+        // Per-chip loading chase: clear any previously-loading chip (prior
+        // click superseded), light up the new one. The vendored
+        // SessionTokenItem binds its IsLoading DP to this flag via an
+        // ItemContainerStyle setter, so the border-chase storyboard starts
+        // immediately on the clicked chip.
+        foreach (var chip in SessionControlChips)
+            chip.IsLoading = false;
+        newValue.IsLoading = true;
+
+        // Move-to-front: reorder the clicked chip to index 0. The
+        // SessionTokenItem's Composition implicit Offset animation picks up
+        // the layout change and slides each affected token to its new
+        // position over ~250 ms.
+        var currentIdx = SessionControlChips.IndexOf(newValue);
+        if (currentIdx > 0)
+        {
+            _suppressSessionSignal = true;
+            try
+            {
+                SessionControlChips.Move(currentIdx, 0);
+            }
+            finally
+            {
+                _suppressSessionSignal = false;
+            }
+        }
+
+        IsLoadingTracks = true;
+
+        _ = ApplySessionControlSignalAsync(oldValue, newValue, ct);
+    }
+
+    private async Task ApplySessionControlSignalAsync(
+        SessionControlChipViewModel? oldValue,
+        SessionControlChipViewModel newValue,
+        CancellationToken ct)
+    {
+        var playlistId = PlaylistId;
+        var revision = _currentRevision;
+        var requestId = Guid.NewGuid().ToString();
+        // Use the server-advertised identifier verbatim — no client-side
+        // derivation. Each chip has its own unique group id embedded; the
+        // pair is held by newValue.SignalIdentifier.
+        var signalKey = newValue.SignalIdentifier!;
+
+        try
+        {
+            // Capture the POST response — Spotify ships the re-personalised
+            // SelectedListContent inline. No need for a follow-up GET (which
+            // would race the server's signal-processing pipeline) or for
+            // /diff (which 509s on editorial mixes). We hand the bytes
+            // straight to the cache, which maps + persists + emits Changes.
+            var freshContent = await _session!.SpClient.SendPlaylistSignalAsync(
+                playlistId,
+                revision!,
+                signalKey,
+                requestId,
+                ct).ConfigureAwait(false);
+
+            if (ct.IsCancellationRequested || PlaylistId != playlistId)
+                return;
+
+            await _playlistCache!.ApplyFreshContentAsync(playlistId, freshContent, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested || PlaylistId != playlistId)
+                return;
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (PlaylistId != playlistId) return;
+                newValue.IsLoading = false;
+                // The Changes event from ApplyFreshContentAsync wakes the
+                // PlaylistStore subscription that ApplyDetail listens to;
+                // the store re-runs FetchAsync against the now-fresh hot
+                // cache and re-emits Ready, which triggers ApplyDetail +
+                // LoadTracksAsync — same hot path as a normal refresh.
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by another click; the newer handler owns IsLoading
+            // on the replacement chip.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Session control signal failed: playlist={PlaylistId} key={SignalKey}", playlistId, signalKey);
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (PlaylistId != playlistId) return;
+                newValue.IsLoading = false;
+                _suppressSessionSignal = true;
+                SelectedSessionControlChip = oldValue;
+                _suppressSessionSignal = false;
+                IsLoadingTracks = false;
+            });
+        }
     }
 
     /// <summary>
@@ -726,6 +983,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 {
                     _tracksLoadedFor = playlistId;
                     IsLoadingTracks = false;
+                    _logger?.LogInformation(
+                        "Tracks unchanged after refresh: {Count} same Ids for '{PlaylistId}' first3={First3}",
+                        tracks.Count, playlistId,
+                        string.Join(",", tracks.Take(3).Select(t => t.Id)));
                     return;
                 }
 
@@ -736,7 +997,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 _tracksLoadedFor = playlistId;
                 IsLoadingTracks = false;
                 _logger?.LogInformation(
-                    "Tracks applied: {Count} tracks for '{PlaylistId}'", _allTracks.Count, playlistId);
+                    "Tracks applied: {Count} tracks for '{PlaylistId}' first3={First3}",
+                    _allTracks.Count, playlistId,
+                    string.Join(",", _allTracks.Take(3).Select(t => t.Id)));
             });
         }
         catch (OperationCanceledException)
@@ -958,4 +1221,33 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     ICommand ITrackListViewModel.AddToPlaylistCommand => AddToPlaylistCommand;
 
     #endregion
+}
+
+/// <summary>
+/// One chip in the <see cref="PlaylistViewModel.SessionControlChips"/> row.
+/// Selected state is owned by the parent VM's
+/// <see cref="PlaylistViewModel.SelectedSessionControlChip"/> property so it
+/// two-way binds cleanly to <c>SessionTokenView.SelectedItem</c>. The
+/// <see cref="IsLoading"/> flag bubbles up to the vendored
+/// <c>SessionTokenItem.IsLoading</c> DP via an ItemContainerStyle binding,
+/// driving the chase-around-border animation while the signal POST is
+/// in flight.
+/// </summary>
+public sealed partial class SessionControlChipViewModel : ObservableObject
+{
+    /// <summary>Raw option key (e.g. <c>pop_rock</c>) — used for identity/matching.</summary>
+    public required string OptionKey { get; init; }
+
+    /// <summary>Human-readable label rendered in the chip (e.g. <c>Pop Rock</c>).</summary>
+    public required string Label { get; init; }
+
+    /// <summary>
+    /// Fully-formed signal identifier this chip posts on click (e.g.
+    /// <c>session_control_display$24pGOSaKeoU6bobuwqnMbJ$pop</c>). Null when
+    /// the server didn't advertise one — click short-circuits in that case.
+    /// </summary>
+    public string? SignalIdentifier { get; init; }
+
+    [ObservableProperty]
+    private bool _isLoading;
 }

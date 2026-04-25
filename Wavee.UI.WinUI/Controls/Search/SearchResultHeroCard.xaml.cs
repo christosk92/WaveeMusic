@@ -1,18 +1,17 @@
 using System;
-using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.Core.Data;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 
@@ -61,14 +60,19 @@ public sealed partial class SearchResultHeroCard : UserControl
     private bool _isBuffering;
     private bool _subscribedToPlayback;
 
-    // Rich-background composition layer (see AlbumDetailPanel for the original pattern).
-    private Compositor? _compositor;
-    private LoadedImageSurface? _bleedImageSurface;
-    private CompositionSurfaceBrush? _bleedSurfaceBrush;
-    private SpriteVisual? _bleedSpriteVisual;
-    private bool _bleedCompositionReady;
-    private string? _pendingBleedImageUrl;
+    // Cached to skip re-setting Image.Source when the same URL comes through twice
+    // (e.g. ApplyItem fires for unrelated reasons).
     private string? _currentBleedImageUrl;
+
+    // Artist-only: when the item is an artist, subscribe to ArtistStore to fetch the
+    // artist's HeaderImageUrl (reactive, shares cache with ArtistPage so clicking through
+    // is instant). Disposed on item change or Unloaded.
+    private ArtistStore? _artistStore;
+    private IDisposable? _artistSubscription;
+    private string? _observedArtistId;
+    // Cached palette from the last Ready state, so ActualThemeChanged can rebuild the
+    // gradient brush with the correct tier without refetching.
+    private ArtistPalette? _currentPalette;
 
     public SearchResultHeroCard()
     {
@@ -95,6 +99,9 @@ public sealed partial class SearchResultHeroCard : UserControl
     {
         ApplyTitleAccent();
         ApplyHoverBackground();
+        // Rebuild the palette brush with the tier appropriate for the new theme
+        // (dark → HigherContrast, light → HighContrast — same policy as ConcertPage).
+        ApplyPaletteBrush();
     }
 
     private void ApplyHoverBackground()
@@ -144,12 +151,127 @@ public sealed partial class SearchResultHeroCard : UserControl
         _isTrack = item.Type == SearchResultType.Track;
         ApplyArtworkShape(isArtist);
         ApplyArtwork(item.ImageUrl, isArtist);
-        LoadBleedImage(item.ImageUrl);
+
+        // Hero background:
+        //   Artist → fetch the artist via ArtistStore (shared cache with ArtistPage, so
+        //            the click-through is instant), then apply HeaderImageUrl + the ink
+        //            overlay for readability.
+        //   Other  → no hero image, no overlay. The card falls back to its theme bg.
+        if (isArtist)
+        {
+            LoadBleedImage(null);
+            HeroInkOverlay.Visibility = Visibility.Collapsed;
+            SubscribeArtist(ExtractId(item.Uri));
+        }
+        else
+        {
+            DisposeArtistSubscription();
+            LoadBleedImage(null);
+            HeroInkOverlay.Visibility = Visibility.Collapsed;
+        }
 
         _trackId = _isTrack ? ExtractId(item.Uri) : null;
 
         RefreshPlaybackState();
         UpdateOverlayState();
+    }
+
+    // ── Artist hero header (fetched via ArtistStore) ──
+
+    private void SubscribeArtist(string? artistId)
+    {
+        if (string.Equals(_observedArtistId, artistId, StringComparison.Ordinal))
+            return;
+
+        DisposeArtistSubscription();
+        _observedArtistId = artistId;
+        if (string.IsNullOrEmpty(artistId)) return;
+
+        _artistStore ??= Ioc.Default.GetService<ArtistStore>();
+        if (_artistStore == null) return;
+
+        _artistSubscription = _artistStore.Observe(artistId)
+            .Subscribe(
+                state => DispatcherQueue?.TryEnqueue(() => ApplyArtistState(state, artistId)),
+                _ => { /* swallow — no hero bg is the graceful fallback */ });
+    }
+
+    private void ApplyArtistState(EntityState<ArtistOverviewResult> state, string expectedArtistId)
+    {
+        // Ignore late fetches for an artist the user has already moved past.
+        if (!string.Equals(_observedArtistId, expectedArtistId, StringComparison.Ordinal))
+            return;
+
+        if (state is not EntityState<ArtistOverviewResult>.Ready ready)
+            return;
+
+        // Pick the best available hero backdrop. Prefer the editorial HeaderImageUrl;
+        // fall back to the first gallery shot; finally the large avatar. The wash
+        // (ink + palette gradient) reads well in all three cases.
+        var bleedUrl = ready.Value.HeaderImageUrl
+            ?? ready.Value.GalleryHeroUrl
+            ?? ready.Value.ImageUrl;
+
+        LoadBleedImage(bleedUrl);
+        _currentPalette = ready.Value.Palette;
+
+        // Show the ink wash whenever we have EITHER a bleed image or a palette —
+        // even a palette-only artist still gets a tinted card instead of the
+        // default chrome, which is closer to what the user asked for.
+        var hasVisual = !string.IsNullOrEmpty(bleedUrl) || _currentPalette != null;
+        HeroInkOverlay.Visibility = hasVisual ? Visibility.Visible : Visibility.Collapsed;
+
+        ApplyPaletteBrush();
+    }
+
+    private void DisposeArtistSubscription()
+    {
+        _artistSubscription?.Dispose();
+        _artistSubscription = null;
+        _observedArtistId = null;
+        _currentPalette = null;
+        if (PaletteHeroOverlay != null) PaletteHeroOverlay.Background = null;
+    }
+
+    /// <summary>
+    /// Applies a theme-aware palette-tinted gradient brush on top of the black ink
+    /// overlay. Uses the same tier policy as ConcertViewModel.ApplyTheme:
+    ///   dark theme  → HigherContrast (deepest saturated) for a rich backdrop
+    ///   light theme → HighContrast   (saturated, one step brighter) so the wash
+    ///                                 doesn't read as inky on a light app
+    /// MinContrast is intentionally skipped — too pastel to read white text over.
+    /// </summary>
+    private void ApplyPaletteBrush()
+    {
+        if (PaletteHeroOverlay == null) return;
+
+        var tier = _currentPalette is null
+            ? null
+            : (ActualTheme == ElementTheme.Dark
+                ? (_currentPalette.HigherContrast ?? _currentPalette.HighContrast)
+                : (_currentPalette.HighContrast ?? _currentPalette.HigherContrast));
+
+        if (tier == null)
+        {
+            PaletteHeroOverlay.Background = null;
+            return;
+        }
+
+        var bg = Windows.UI.Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
+        var bgTint = Windows.UI.Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
+
+        // Left → right fade: deep palette ink at the left where the title sits,
+        // transparent on the right where the hero image should show through.
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+        };
+        brush.GradientStops.Add(new GradientStop { Color = Windows.UI.Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
+        brush.GradientStops.Add(new GradientStop { Color = Windows.UI.Color.FromArgb(176, bg.R, bg.G, bg.B),           Offset = 0.35 });
+        brush.GradientStops.Add(new GradientStop { Color = Windows.UI.Color.FromArgb(80,  bg.R, bg.G, bg.B),           Offset = 0.65 });
+        brush.GradientStops.Add(new GradientStop { Color = Windows.UI.Color.FromArgb(0,   bg.R, bg.G, bg.B),           Offset = 1.0 });
+        PaletteHeroOverlay.Background = brush;
     }
 
     // ── Rich background (ColorHex + composition-masked artwork) ──
@@ -193,105 +315,34 @@ public sealed partial class SearchResultHeroCard : UserControl
         return Windows.UI.Color.FromArgb(255, 30, 30, 35);
     }
 
-    private void SetupBleedComposition()
-    {
-        if (_bleedCompositionReady) return;
-
-        var visual = ElementCompositionPreview.GetElementVisual(BleedImageArea);
-        _compositor = visual.Compositor;
-
-        // Horizontal gradient mask: transparent on the left (where title/metadata sits)
-        // → opaque on the right (image visible). Matches AlbumDetailPanel.SetupCompositionMask.
-        var gradientBrush = _compositor.CreateLinearGradientBrush();
-        gradientBrush.StartPoint = new Vector2(0f, 0.5f);
-        gradientBrush.EndPoint = new Vector2(1f, 0.5f);
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f,
-            Windows.UI.Color.FromArgb(0, 255, 255, 255)));
-        gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0.5f,
-            Windows.UI.Color.FromArgb(255, 255, 255, 255)));
-
-        _bleedSurfaceBrush = _compositor.CreateSurfaceBrush();
-        _bleedSurfaceBrush.Stretch = CompositionStretch.UniformToFill;
-        _bleedSurfaceBrush.HorizontalAlignmentRatio = 1f; // right-aligned crop
-        _bleedSurfaceBrush.VerticalAlignmentRatio = 0.5f;
-
-        var maskBrush = _compositor.CreateMaskBrush();
-        maskBrush.Source = _bleedSurfaceBrush;
-        maskBrush.Mask = gradientBrush;
-
-        _bleedSpriteVisual = _compositor.CreateSpriteVisual();
-        _bleedSpriteVisual.Brush = maskBrush;
-        _bleedSpriteVisual.RelativeSizeAdjustment = Vector2.One;
-
-        ElementCompositionPreview.SetElementChildVisual(BleedImageArea, _bleedSpriteVisual);
-        _bleedCompositionReady = true;
-
-        // If an item was assigned before Loaded fired, apply its image now.
-        if (_pendingBleedImageUrl != null)
-        {
-            var pending = _pendingBleedImageUrl;
-            _pendingBleedImageUrl = null;
-            LoadBleedImage(pending);
-        }
-    }
-
+    /// <summary>
+    /// Sets the bleed image via plain XAML — same structure as ConcertPage's StoreHero
+    /// (an <see cref="Image"/> with <c>Stretch=UniformToFill</c> right-aligned, plus
+    /// a Border-gradient overlay for text readability). No composition SpriteVisual.
+    /// </summary>
     private void LoadBleedImage(string? imageUrl)
     {
-        if (!_bleedCompositionReady || _bleedSurfaceBrush == null)
-        {
-            // Composition not yet ready — queue for when SetupBleedComposition runs.
-            _pendingBleedImageUrl = imageUrl;
-            return;
-        }
-
-        // Same URL → no-op. Avoids thrashing when ApplyItem fires for unrelated reasons.
         if (string.Equals(_currentBleedImageUrl, imageUrl, StringComparison.Ordinal))
             return;
         _currentBleedImageUrl = imageUrl;
 
-        _bleedImageSurface?.Dispose();
-        _bleedImageSurface = null;
-
         if (string.IsNullOrEmpty(imageUrl))
         {
-            _bleedSurfaceBrush.Surface = null;
+            BleedImage.Source = null;
+            BleedImage.Visibility = Visibility.Collapsed;
             return;
         }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
-        if (string.IsNullOrEmpty(httpsUrl)) return;
-
-        // Use a fixed reasonable size — BleedImageArea.ActualWidth/Height may still be 0
-        // early in the layout pass. 640×640 matches AlbumDetailPanel's fallback.
-        var desiredSize = new Windows.Foundation.Size(640, 640);
-        _bleedImageSurface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), desiredSize);
-        _bleedSurfaceBrush.Surface = _bleedImageSurface;
-    }
-
-    private void DisposeBleedComposition()
-    {
-        _bleedImageSurface?.Dispose();
-        _bleedImageSurface = null;
-
-        if (_bleedSurfaceBrush != null)
+        if (string.IsNullOrEmpty(httpsUrl))
         {
-            _bleedSurfaceBrush.Surface = null;
-            _bleedSurfaceBrush.Dispose();
-            _bleedSurfaceBrush = null;
+            BleedImage.Source = null;
+            BleedImage.Visibility = Visibility.Collapsed;
+            return;
         }
 
-        if (_bleedSpriteVisual != null)
-        {
-            ElementCompositionPreview.SetElementChildVisual(BleedImageArea, null);
-            _bleedSpriteVisual.Brush?.Dispose();
-            _bleedSpriteVisual.Dispose();
-            _bleedSpriteVisual = null;
-        }
-
-        _compositor = null;
-        _bleedCompositionReady = false;
-        _currentBleedImageUrl = null;
-        _pendingBleedImageUrl = null;
+        BleedImage.Source = new BitmapImage(new Uri(httpsUrl));
+        BleedImage.Visibility = Visibility.Visible;
     }
 
     private void ApplyArtworkShape(bool isArtist)
@@ -354,8 +405,6 @@ public sealed partial class SearchResultHeroCard : UserControl
             _subscribedToPlayback = true;
         }
 
-        SetupBleedComposition();
-
         RefreshPlaybackState();
         UpdateOverlayState();
     }
@@ -370,7 +419,7 @@ public sealed partial class SearchResultHeroCard : UserControl
 
         NowPlayingEqualizer.IsActive = false;
         StopPendingBeam();
-        DisposeBleedComposition();
+        DisposeArtistSubscription();
     }
 
     private void OnPlaybackStateChanged()

@@ -108,6 +108,16 @@ public sealed record PlaylistCacheEntry : ICacheEntry
     public string? FormatAttributesJson { get; init; }
 
     /// <summary>
+    /// JSON-serialized list of fully-formed session-control signal identifiers
+    /// from <c>SelectedListContent.Contents.AvailableSignals</c> — e.g.
+    /// <c>session_control_display$&lt;group&gt;$&lt;option&gt;</c> entries and
+    /// specials like <c>session-control-reset</c>. Persisted so the chips on
+    /// an editorial playlist are clickable immediately on cache reload, rather
+    /// than waiting for the background refresh to land.
+    /// </summary>
+    public string? AvailableSignalsJson { get; init; }
+
+    /// <summary>
     /// Whether the owner deleted the playlist while the user still has access.
     /// </summary>
     public bool DeletedByOwner { get; init; }

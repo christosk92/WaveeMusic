@@ -50,6 +50,15 @@ public sealed class ArtistService : IArtistService
             ?.OrderByDescending(s => s.MaxWidth ?? s.Width ?? 0)
             .FirstOrDefault()?.Url;
 
+        // First gallery shot — used as a soft fallback for surfaces that want a hero
+        // backdrop even when the artist has no editorial header (e.g. search top-result
+        // card). Kept separate from HeaderImageUrl so ArtistPage's wide banner still
+        // only picks up the real editorial image and doesn't get a square avatar
+        // stretched into a landscape.
+        var galleryHeroUrl = artist.Visuals?.Gallery?.Items?.FirstOrDefault()?.Sources
+            ?.OrderByDescending(s => s.Width ?? 0)
+            .FirstOrDefault()?.Url;
+
         // Prefer Spotify's pre-extracted palette (matches web player: higherContrast.backgroundBase),
         // then the avatar's raw color, and finally fall back to a live IColorService extraction.
         var heroColorHex = artist.VisualIdentity?.WideFullBleedImage?.ExtractedColorSet
@@ -78,7 +87,9 @@ public sealed class ArtistService : IArtistService
             Name = artist.Profile?.Name,
             ImageUrl = artist.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url,
             HeaderImageUrl = headerImageUrl,
+            GalleryHeroUrl = galleryHeroUrl,
             HeroColorHex = heroColorHex,
+            Palette = MapPalette(artist.VisualIdentity),
             MonthlyListeners = artist.Stats?.MonthlyListeners ?? 0,
             Followers = artist.Stats?.Followers ?? 0,
             Biography = artist.Profile?.Biography?.Text,
@@ -203,6 +214,42 @@ public sealed class ArtistService : IArtistService
     }
 
     // ── Mapping helpers ──
+
+    private static ArtistPaletteTier? MapTier(ArtistExtractedColorPalette? palette)
+    {
+        if (palette?.BackgroundBase == null || palette.TextBrightAccent == null) return null;
+        var bg = palette.BackgroundBase;
+        var bgTint = palette.BackgroundTintedBase ?? palette.BackgroundBase;
+        var accent = palette.TextBrightAccent;
+        return new ArtistPaletteTier
+        {
+            BackgroundR = (byte)bg.Red,
+            BackgroundG = (byte)bg.Green,
+            BackgroundB = (byte)bg.Blue,
+            BackgroundTintedR = (byte)bgTint.Red,
+            BackgroundTintedG = (byte)bgTint.Green,
+            BackgroundTintedB = (byte)bgTint.Blue,
+            TextAccentR = (byte)accent.Red,
+            TextAccentG = (byte)accent.Green,
+            TextAccentB = (byte)accent.Blue,
+        };
+    }
+
+    private static ArtistPalette? MapPalette(ArtistVisualIdentity? vi)
+    {
+        var set = vi?.WideFullBleedImage?.ExtractedColorSet;
+        if (set == null) return null;
+        var high = MapTier(set.HighContrast);
+        var higher = MapTier(set.HigherContrast);
+        var min = MapTier(set.MinContrast);
+        if (high == null && higher == null && min == null) return null;
+        return new ArtistPalette
+        {
+            HighContrast = high,
+            HigherContrast = higher,
+            MinContrast = min,
+        };
+    }
 
     private static List<ArtistTopTrackResult> MapTopTracks(ArtistTopTracks? topTracks)
     {
