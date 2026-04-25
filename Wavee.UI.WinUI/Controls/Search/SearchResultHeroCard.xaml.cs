@@ -1,8 +1,12 @@
 using System;
+using System.Linq;
+using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -60,9 +64,16 @@ public sealed partial class SearchResultHeroCard : UserControl
     private bool _isBuffering;
     private bool _subscribedToPlayback;
 
-    // Cached to skip re-setting Image.Source when the same URL comes through twice
+    // Cached to skip re-loading the bleed surface when the same URL comes through twice
     // (e.g. ApplyItem fires for unrelated reasons).
     private string? _currentBleedImageUrl;
+
+    // Composition bleed: a SpriteVisual hosted on BleedImageArea renders the hero
+    // bitmap via LoadedImageSurface + CompositionSurfaceBrush. Lives entirely outside
+    // XAML measure so the bitmap's natural size can never drive up the card height.
+    private SpriteVisual? _bleedVisual;
+    private CompositionSurfaceBrush? _bleedBrush;
+    private LoadedImageSurface? _bleedSurface;
 
     // Artist-only: when the item is an artist, subscribe to ArtistStore to fetch the
     // artist's HeaderImageUrl (reactive, shares cache with ArtistPage so clicking through
@@ -152,16 +163,32 @@ public sealed partial class SearchResultHeroCard : UserControl
         ApplyArtworkShape(isArtist);
         ApplyArtwork(item.ImageUrl, isArtist);
 
-        // Hero background:
-        //   Artist → fetch the artist via ArtistStore (shared cache with ArtistPage, so
-        //            the click-through is instant), then apply HeaderImageUrl + the ink
-        //            overlay for readability.
-        //   Other  → no hero image, no overlay. The card falls back to its theme bg.
-        if (isArtist)
+        // Hero background: resolve an artist (Artist itself, or the primary
+        // artist of a Track/Album) via ArtistStore — shared cache with
+        // ArtistPage — and apply HeaderImageUrl + ink overlay for readability.
+        // Playlists have no artist context, so they fall back to the theme bg.
+        var heroArtistUri = item.Type switch
         {
-            LoadBleedImage(null);
-            HeroInkOverlay.Visibility = Visibility.Collapsed;
-            SubscribeArtist(ExtractId(item.Uri));
+            SearchResultType.Artist => item.Uri,
+            SearchResultType.Track or SearchResultType.Album => item.ArtistUris?.FirstOrDefault(),
+            _ => null,
+        };
+
+        // Only wipe the existing bleed when the resolved artist actually
+        // changes — otherwise re-typing the same query (or any path that
+        // re-sets Item to the same artist) would clear the loaded image and
+        // SubscribeArtist's same-uri early-return means no replay would refill
+        // it.
+        var sameArtist = string.Equals(_observedArtistId, heroArtistUri, StringComparison.Ordinal);
+
+        if (!string.IsNullOrEmpty(heroArtistUri))
+        {
+            if (!sameArtist)
+            {
+                LoadBleedImage(null);
+                HeroInkOverlay.Visibility = Visibility.Collapsed;
+            }
+            SubscribeArtist(heroArtistUri);
         }
         else
         {
@@ -316,9 +343,9 @@ public sealed partial class SearchResultHeroCard : UserControl
     }
 
     /// <summary>
-    /// Sets the bleed image via plain XAML — same structure as ConcertPage's StoreHero
-    /// (an <see cref="Image"/> with <c>Stretch=UniformToFill</c> right-aligned, plus
-    /// a Border-gradient overlay for text readability). No composition SpriteVisual.
+    /// Renders the bleed via a composition SpriteVisual hosted on BleedImageArea, so
+    /// the bitmap's natural source dimensions never participate in XAML measure (the
+    /// previous Image-based version blew up the card height when the bitmap loaded).
     /// </summary>
     private void LoadBleedImage(string? imageUrl)
     {
@@ -328,21 +355,64 @@ public sealed partial class SearchResultHeroCard : UserControl
 
         if (string.IsNullOrEmpty(imageUrl))
         {
-            BleedImage.Source = null;
-            BleedImage.Visibility = Visibility.Collapsed;
+            ClearBleedSurface();
             return;
         }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
-            BleedImage.Source = null;
-            BleedImage.Visibility = Visibility.Collapsed;
+            ClearBleedSurface();
             return;
         }
 
-        BleedImage.Source = new BitmapImage(new Uri(httpsUrl));
-        BleedImage.Visibility = Visibility.Visible;
+        EnsureBleedVisual();
+
+        // Dispose the previous surface before swapping — LoadedImageSurface is unmanaged.
+        _bleedSurface?.Dispose();
+        _bleedSurface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl));
+
+        var compositor = ElementCompositionPreview.GetElementVisual(BleedSurfaceHost).Compositor;
+        _bleedBrush = compositor.CreateSurfaceBrush(_bleedSurface);
+        _bleedBrush.Stretch = CompositionStretch.UniformToFill;
+        _bleedBrush.HorizontalAlignmentRatio = 0.5f;
+        _bleedBrush.VerticalAlignmentRatio = 0.5f;
+
+        if (_bleedVisual != null) _bleedVisual.Brush = _bleedBrush;
+    }
+
+    private void EnsureBleedVisual()
+    {
+        if (_bleedVisual != null) return;
+
+        // Host on BleedSurfaceHost (an empty Border sibling of the overlays) rather
+        // than BleedImageArea — composition children always render above the host's
+        // XAML descendants, so attaching to BleedImageArea would cover HeroInkOverlay
+        // and PaletteHeroOverlay. Hosting on a sibling lets normal XAML z-order put
+        // the overlays back on top.
+        var compositor = ElementCompositionPreview.GetElementVisual(BleedSurfaceHost).Compositor;
+        _bleedVisual = compositor.CreateSpriteVisual();
+        _bleedVisual.Size = new Vector2(
+            (float)BleedSurfaceHost.ActualWidth,
+            (float)BleedSurfaceHost.ActualHeight);
+
+        ElementCompositionPreview.SetElementChildVisual(BleedSurfaceHost, _bleedVisual);
+        BleedSurfaceHost.SizeChanged += BleedSurfaceHost_SizeChanged;
+    }
+
+    private void BleedSurfaceHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_bleedVisual == null) return;
+        _bleedVisual.Size = new Vector2((float)e.NewSize.Width, (float)e.NewSize.Height);
+    }
+
+    private void ClearBleedSurface()
+    {
+        if (_bleedVisual != null) _bleedVisual.Brush = null;
+        _bleedBrush?.Dispose();
+        _bleedBrush = null;
+        _bleedSurface?.Dispose();
+        _bleedSurface = null;
     }
 
     private void ApplyArtworkShape(bool isArtist)
@@ -420,6 +490,17 @@ public sealed partial class SearchResultHeroCard : UserControl
         NowPlayingEqualizer.IsActive = false;
         StopPendingBeam();
         DisposeArtistSubscription();
+
+        // Composition resources are unmanaged — dispose to release the GPU/D3D handles.
+        if (_bleedVisual != null)
+        {
+            BleedSurfaceHost.SizeChanged -= BleedSurfaceHost_SizeChanged;
+            ElementCompositionPreview.SetElementChildVisual(BleedSurfaceHost, null);
+            _bleedVisual.Dispose();
+            _bleedVisual = null;
+        }
+        ClearBleedSurface();
+        _currentBleedImageUrl = null;
     }
 
     private void OnPlaybackStateChanged()

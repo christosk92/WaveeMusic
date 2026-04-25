@@ -11,62 +11,53 @@
     mc:Ignorable="d">
 
     <Grid>
-        <Border x:Name="RootBorder"
+        <!-- ColorBackground (was inside RootBorder): solid extracted colour layer for
+             non-bleed cases, set via the ColorHex DP. -->
+        <Border x:Name="ColorBackground"
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                CornerRadius="26"/>
+
+        <!-- Bleed layer: a composition SpriteVisual is attached to BleedSurfaceHost
+             (LoadedImageSurface + CompositionSurfaceBrush, set in code-behind). The
+             ink + palette overlays sit as XAML siblings of that host so they render
+             ABOVE the composition visual (composition children always top their host's
+             own XAML descendants, hence the dedicated empty host). BleedImageArea's
+             CornerRadius=26 clips the whole stack to the rounded chrome shape. -->
+        <Border x:Name="BleedImageArea"
+                CornerRadius="26">
+            <Grid>
+                <!-- Empty host that owns the bleed SpriteVisual. -->
+                <Border x:Name="BleedSurfaceHost"/>
+                <!-- Ink gradient: darkens the left ~65% so the title stays readable
+                     over the hero image. Collapsed unless we've resolved a hero image. -->
+                <Border x:Name="HeroInkOverlay"
+                        Visibility="Collapsed">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#E0000000" Offset="0"/>
+                            <GradientStop Color="#80000000" Offset="0.4"/>
+                            <GradientStop Color="#00000000" Offset="0.8"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+                <!-- Palette-tinted gradient (Spotify's extractedColorSet), layered over
+                     the black ink so the wash picks up artist colour. Background is
+                     assigned from code-behind when palette + theme resolve. -->
+                <Border x:Name="PaletteHeroOverlay"/>
+            </Grid>
+        </Border>
+
+        <!-- Chrome stroke + padding wrapper. Background stays Transparent so the bleed
+             layer behind shows through. -->
+        <Border x:Name="RootBorder"
+                Background="Transparent"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="26"
                 Padding="22">
-            <Grid>
-                <!--
-                    Rich background layers (Album-inline style, see AlbumDetailPanel).
-                    ColorBackground: solid extracted colour, set via the ColorHex DP.
-                    BleedImageArea: hosts a composition SpriteVisual that renders the item
-                    artwork with a right-aligned UniformToFill stretch + a left→right alpha
-                    gradient so text remains readable. Filled in code-behind.
-                -->
-                <Border x:Name="ColorBackground"
-                        Background="Transparent"
-                        Margin="-22"/>
-                <!-- Clipped container so the bleed Image respects the rounded-corner chrome
-                     (the outer RootBorder has CornerRadius=26 + Padding=22; we inset by
-                     -22 to bleed the image to the card edges, and clip to the card shape). -->
-                <Border x:Name="BleedImageArea"
-                        Margin="-22"
-                        CornerRadius="26">
-                    <!-- Concert-page structure: plain <Image> UniformToFill right-aligned,
-                         plus a <Border> with a left→right ink gradient on top. No
-                         composition mask or SpriteVisual — identical pattern to
-                         StoreHero in ConcertPage.xaml. -->
-                    <Grid>
-                        <Image x:Name="BleedImage"
-                               Stretch="UniformToFill"
-                               HorizontalAlignment="Right"
-                               Visibility="Collapsed"/>
-                        <!-- Ink gradient: darkens the left ~65% so the title stays readable
-                             over the hero image. Collapsed unless the item is an artist
-                             and we've resolved its HeaderImageUrl. -->
-                        <Border x:Name="HeroInkOverlay"
-                                Visibility="Collapsed">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#E0000000" Offset="0"/>
-                                    <GradientStop Color="#80000000" Offset="0.4"/>
-                                    <GradientStop Color="#00000000" Offset="0.8"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
-                        <!-- Palette-tinted gradient (Spotify's extractedColorSet). Layered
-                             on top of the black ink so the wash picks up artist colour;
-                             Background is assigned from code-behind whenever the palette
-                             and active theme resolve. Null brush renders transparent, so
-                             when the API returns no visualIdentity the black ink alone
-                             drives readability. -->
-                        <Border x:Name="PaletteHeroOverlay"/>
-                    </Grid>
-                </Border>
-
-                <Grid ColumnSpacing="20" VerticalAlignment="Bottom">
+            <Grid x:Name="ContentRow"
+                  ColumnSpacing="20"
+                  VerticalAlignment="Bottom">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="140"/>
                         <ColumnDefinition Width="*"/>
@@ -156,7 +147,6 @@
                                                        ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                     </Border>
                 </Grid>
-            </Grid>
         </Border>
 
         <cards:PendingBorderBeam x:Name="PlaybackPendingBeam"

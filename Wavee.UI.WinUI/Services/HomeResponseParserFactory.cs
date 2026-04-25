@@ -104,6 +104,12 @@ public sealed class HomeResponseParserFactory
         if (combined.Items.Count == 0)
             return sections.Where(section => section.SectionType != HomeSectionType.Baseline).ToList();
 
+        // Visual-identity accent for the merged baseline grouping — pull from
+        // the first item that carries an extracted dark color so the combined
+        // shelf gets the same per-section tint treatment as Generic sections.
+        combined.AccentColorHex = combined.Items
+            .FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
+
         var result = sections
             .Where(section => section.SectionType != HomeSectionType.Baseline)
             .ToList();

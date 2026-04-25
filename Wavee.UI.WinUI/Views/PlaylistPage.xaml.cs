@@ -72,15 +72,20 @@ public sealed partial class PlaylistPage : Page
         // has an addedBy (including the current user, on collaborative
         // playlists where seeing "I added these, X added those" is the whole
         // point of the column). Falls back to bare "@username" when the
-        // resolver hasn't pinned down a display name yet.
+        // resolver hasn't pinned down a display name yet. Defensively, we
+        // also short-circuit when the VM's gate says hidden — keeps stale
+        // row content from rendering during a binding-propagation race.
         TrackGrid.AddedByFormatter = item =>
         {
+            if (!ViewModel.ShouldShowAddedByColumn) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
+
             var dto = item is PlaylistTrackDto direct
                 ? direct
                 : (item is LazyTrackItem lz ? lz.Data as PlaylistTrackDto : null);
             if (dto is null || string.IsNullOrEmpty(dto.AddedBy)) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
 
             var label = dto.AddedByDisplayName ?? "@" + dto.AddedBy;
+            System.Diagnostics.Debug.WriteLine($"[addedby-fmt] addedBy={dto.AddedBy} display={dto.AddedByDisplayName ?? "<null>"} avatar={(string.IsNullOrEmpty(dto.AddedByAvatarUrl) ? "<null>" : "set")}");
             return new Controls.TrackDataGrid.AddedByCellInfo(label, dto.AddedByAvatarUrl);
         };
 

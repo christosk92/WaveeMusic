@@ -76,6 +76,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private string? _artistImageUrl;
     [ObservableProperty] private string? _headerImageUrl;
     [ObservableProperty] private string? _headerHeroColorHex;
+
+    /// <summary>
+    /// Spotify-extracted visual identity palette for the artist hero (3 contrast
+    /// tiers). Code-behind picks a tier based on ActualTheme and uses BackgroundTinted
+    /// as the page-wash colour, which reads richer than the single-hex HeroColorHex.
+    /// Null when the API didn't return a visualIdentity block (older artists, etc.).
+    /// </summary>
+    [ObservableProperty] private ArtistPalette? _palette;
     [ObservableProperty] private string? _monthlyListeners;
     [ObservableProperty] private long _followers;
     [ObservableProperty] private string? _biography;
@@ -321,6 +329,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ArtistImageUrl = null;
         HeaderImageUrl = null;
         HeaderHeroColorHex = null;
+        Palette = null;
         MonthlyListeners = null;
         Followers = 0;
         Biography = null;
@@ -438,6 +447,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
             HeaderImageUrl = overview.HeaderImageUrl;
             HeaderHeroColorHex = overview.HeroColorHex;
+            Palette = overview.Palette;
             MonthlyListeners = overview.MonthlyListeners > 0
                 ? overview.MonthlyListeners.ToString("N0")
                 : null;

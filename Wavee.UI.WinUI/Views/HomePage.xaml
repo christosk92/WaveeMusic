@@ -14,12 +14,53 @@
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>
-        <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#66FFFFFF"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#33000000"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
+
+        <!-- Shy-header morph: hero overlay panel <-> floating compact card.
+             Matched ids on the avatar, greeting and featured card interpolate
+             between the two states. Unpaired chrome (the floating card border)
+             fades in via the helper's independent show animation. Mirrors the
+             ArtistShyHeaderTransition in ArtistPage.xaml — same durations,
+             same toggle-by-visibility approach. -->
+        <transitions:TransitionHelper x:Key="HomeShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="home-shell" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="home-avatar" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="home-greeting" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <waveeHelpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="home-featured" ScaleMode="Scale"/>
+        </transitions:TransitionHelper>
 
         <Style x:Key="HomeSectionDebugButtonStyle" TargetType="Button">
             <Setter Property="Content" Value="&#xEBE8;"/>
@@ -120,6 +161,10 @@
         <!-- Generic section: title + horizontal card row with per-item templates -->
         <DataTemplate x:Key="GenericSectionTemplate" x:DataType="vm:HomeSection">
             <StackPanel Margin="0,0,0,32">
+                <!-- Header row. WinUI/Fluent vertical-bar accent on the left
+                     of the title (Settings sub-categories pattern). Bound to
+                     AccentLineBrush, derived from the section's first item's
+                     extracted dark color. Null brush → invisible 3px gap. -->
                 <Grid Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -136,18 +181,33 @@
                         ProfilePicture="{x:Bind HeaderEntityImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=80}"
                         Visibility="{x:Bind HeaderEntityImageUrl, Converter={StaticResource NullToCollapsedConverter}}"/>
 
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <!-- Subtitle above title (e.g. "More like") -->
-                        <TextBlock
-                            Text="{x:Bind Subtitle}"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Visibility="{x:Bind Subtitle, Converter={StaticResource NullToCollapsedConverter}}"/>
-                        <TextBlock
-                            Text="{x:Bind Title}"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            FontWeight="Bold"/>
-                    </StackPanel>
+                    <Grid Grid.Column="1" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Width="3"
+                                MinHeight="22"
+                                CornerRadius="1.5"
+                                VerticalAlignment="Stretch"
+                                Margin="0,4,0,4"
+                                Background="{x:Bind AccentLineBrush, Mode=OneWay}"/>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <!-- Subtitle above title (e.g. "More like") -->
+                            <TextBlock
+                                Text="{x:Bind Subtitle}"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Visibility="{x:Bind Subtitle, Converter={StaticResource NullToCollapsedConverter}}"/>
+                            <TextBlock
+                                Text="{x:Bind Title}"
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                FontWeight="Bold"/>
+                        </StackPanel>
+                    </Grid>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                 VerticalAlignment="Center"
@@ -175,18 +235,23 @@
                      so cards run to the viewport edge. The fade overlay on the right
                      reuses the same curve as RightPanelView's tab-content fade so the
                      two surfaces read as the same app. -->
-                <Grid Margin="0,0,-24,0">
+                <Grid Margin="0,0,-32,0">
                     <shelf:ShelfScroller
                         x:Name="GenericSectionShelf"
                         ItemsSource="{x:Bind Items}"
                         ItemTemplateSelector="{StaticResource HomeItemSelector}"
                         MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
+                    <!-- Always-on right-edge fade — softens the page-edge cutoff
+                         even on shelves that don't currently overflow. The
+                         previous CanPageRight gate left a hard edge whenever
+                         the shelf happened to fit, which read as inconsistent.
+                         Wider (140 px) so the gradient takes longer to reach
+                         opaque, masking the cards more gracefully. -->
                     <Border
                         HorizontalAlignment="Right"
-                        Width="96"
+                        Width="140"
                         IsHitTestVisible="False"
-                        Background="{ThemeResource ShelfFadeRightBrush}"
-                        Visibility="{Binding ElementName=GenericSectionShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        Background="{ThemeResource ShelfFadeRightBrush}"/>
                 </Grid>
             </StackPanel>
         </DataTemplate>
@@ -194,21 +259,31 @@
         <!-- Baseline section: grouped Spotify-style cards enriched in the background -->
         <DataTemplate x:Key="BaselineSectionTemplate" x:DataType="vm:HomeSection">
             <StackPanel Margin="0,0,0,32" Spacing="12">
-                <Grid MinHeight="1">
+                <!-- WinUI vertical-bar accent (same pattern as GenericSectionTemplate). -->
+                <Grid MinHeight="1" ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
+                    <Border Grid.Column="0"
+                            Width="3"
+                            MinHeight="22"
+                            CornerRadius="1.5"
+                            VerticalAlignment="Stretch"
+                            Margin="0,4,0,4"
+                            Background="{x:Bind AccentLineBrush, Mode=OneWay}"/>
+
                     <TextBlock
-                        Grid.Column="0"
+                        Grid.Column="1"
                         Text="{x:Bind Title}"
                         Style="{StaticResource SubtitleTextBlockStyle}"
                         FontWeight="Bold"
                         VerticalAlignment="Center"/>
 
                     <Button
-                        Grid.Column="1"
+                        Grid.Column="2"
                         Style="{StaticResource HomeSectionDebugButtonStyle}"
                         Tag="{x:Bind}"
                         Click="HomeSectionDebugButton_Click"
@@ -234,83 +309,79 @@
                 </ItemsRepeater>
             </StackPanel>
         </DataTemplate>
+        </ResourceDictionary>
     </Page.Resources>
 
-    <Grid Padding="24,12,24,0">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header: Greeting + customize button -->
-        <Grid Margin="0,0,0,24">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock
-                Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
-                Style="{StaticResource TitleTextBlockStyle}"
-                FontWeight="Bold"
+        <!-- Page bleed — radial wash anchored at top-left, tinted from the
+             first home card's extracted color (Spotify visualIdentity). Sits
+             behind everything else so content renders on top. Width/height
+             are bounded so the wash actually has bounds to fade within
+             (without explicit dimensions a Border with Stretch alignment
+             would fill the whole page and the gradient's relative
+             coordinates would fade across the full viewport). -->
+        <Border x:Name="PageBleedHost"
                 HorizontalAlignment="Left"
-                VerticalAlignment="Center"/>
-
-            <!-- Filter chips (single row, morphs when parent chip has sub-chips) -->
-            <ItemsRepeater Grid.Column="1" 
-                           ItemsSource="{x:Bind ViewModel.DisplayedChips, Mode=OneWay}" 
-                           Margin="8,0,0,0">
-                <ItemsRepeater.Layout>
-                    <StackLayout Orientation="Horizontal" Spacing="8"/>
-                </ItemsRepeater.Layout>
-                <ItemsRepeater.ItemTemplate>
-                    <DataTemplate x:DataType="vm:HomeChipViewModel">
-                        <Button
-                            Click="Chip_Click"
-                            Padding="12,6"
-                            CornerRadius="16"
-                            MinWidth="0"
-                            FontSize="13" Tag="{x:Bind }"
-                            BorderThickness="0"
-                            Background="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipBackgroundConverter}}"
-                            Foreground="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipForegroundConverter}}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon
-                                    Glyph="&#xE711;"
-                                    FontSize="11"
-                                    Visibility="{x:Bind IsBackChip, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <TextBlock Text="{x:Bind Label}"/>
-                            </StackPanel>
-                        </Button>
-                    </DataTemplate>
-                </ItemsRepeater.ItemTemplate>
-            </ItemsRepeater>
-
-            <StackPanel
-                Grid.Column="2"
-                Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
-                <!-- Refresh button -->
-                <Button x:Uid="Views_HomePage__Button_1"
-                    ToolTipService.ToolTip="Refresh"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="8"
-                    Command="{x:Bind ViewModel.RefreshCommand}">
-                    <FontIcon Glyph="&#xE72C;" FontSize="16"/>
-                </Button>
-
-            </StackPanel>
-        </Grid>
+                VerticalAlignment="Top"
+                Width="900" Height="500"
+                IsHitTestVisible="False"
+                Background="{x:Bind ViewModel.PageBleedBrush, Mode=OneWay}"/>
 
         <!-- Loading: shimmer skeleton (crossfades to content) -->
         <ScrollView
             x:Name="ShimmerContainer"
             Margin="0,0,-24,0"
             Padding="0,0,24,0"
-            Grid.Row="1"
             VerticalScrollBarVisibility="Hidden"
             IsHitTestVisible="False">
-            <StackPanel Spacing="24">
+            <!-- Padding mirrors ContentContainer.StackPanel so the shimmer
+                 lays out at the same insets as the real content — no visible
+                 edge jump when the crossfade swaps shimmer → content. -->
+            <StackPanel Padding="32,24,32,0" Spacing="32">
+                <!-- Hero band shimmer: avatar + greeting/subtitle on left, square + 2 text lines on right.
+                     Mirrors the actual hero band that lands so there's no jump when content swaps in. -->
+                <Border CornerRadius="{ThemeResource OverlayCornerRadius}"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        Padding="20,18,20,18">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="14" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
+                                <StackPanel VerticalAlignment="Center" Spacing="6">
+                                    <controls:Shimmer Width="220" Height="22" CornerRadius="6"/>
+                                    <controls:Shimmer Width="160" Height="12" CornerRadius="6"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <controls:Shimmer Width="64" Height="28" CornerRadius="14"/>
+                                <controls:Shimmer Width="80" Height="28" CornerRadius="14"/>
+                                <controls:Shimmer Width="72" Height="28" CornerRadius="14"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                CornerRadius="{ThemeResource OverlayCornerRadius}"
+                                Padding="10"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <controls:Shimmer Width="56" Height="56" CornerRadius="6"/>
+                                <StackPanel VerticalAlignment="Center" Spacing="6" MinWidth="160">
+                                    <controls:Shimmer Width="120" Height="11" CornerRadius="6"/>
+                                    <controls:Shimmer Width="180" Height="14" CornerRadius="6"/>
+                                    <controls:Shimmer Width="140" Height="11" CornerRadius="6"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
                 <!-- Shimmer shortcuts (2 rows x 4 cols) -->
                 <Grid ColumnSpacing="8" RowSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -323,14 +394,14 @@
                         <RowDefinition Height="56"/>
                         <RowDefinition Height="56"/>
                     </Grid.RowDefinitions>
-                    <controls:Shimmer Grid.Row="0" Grid.Column="0"/>
-                    <controls:Shimmer Grid.Row="0" Grid.Column="1"/>
-                    <controls:Shimmer Grid.Row="0" Grid.Column="2"/>
-                    <controls:Shimmer Grid.Row="0" Grid.Column="3"/>
-                    <controls:Shimmer Grid.Row="1" Grid.Column="0"/>
-                    <controls:Shimmer Grid.Row="1" Grid.Column="1"/>
-                    <controls:Shimmer Grid.Row="1" Grid.Column="2"/>
-                    <controls:Shimmer Grid.Row="1" Grid.Column="3"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="0" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="1" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="2" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Row="0" Grid.Column="3" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Column="0" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Column="1" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Column="2" CornerRadius="{ThemeResource ControlCornerRadius}"/>
+                    <controls:Shimmer Grid.Column="3" CornerRadius="{ThemeResource ControlCornerRadius}"/>
                 </Grid>
 
                 <!-- Shimmer section 1 -->
@@ -529,16 +600,187 @@
 
         <!-- Error -->
         <controls1:ErrorStateView
-            Grid.Row="1"
+
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 
         <!-- Content (starts invisible via composition, crossfades in when loaded) -->
-        <ScrollView x:Name="ContentContainer" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+        <ScrollView x:Name="ContentContainer" VerticalScrollBarVisibility="Auto"
                     Margin="0,0,-28,0"
                     Padding="0,0,0,0"
                     Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+            <StackPanel Padding="32,24,32,0" Spacing="0">
+                <!-- Hero greeting band: avatar + greeting + chips on the left,
+                     "Pick up where you left off" featured card on the right. A
+                     palette-tinted backdrop wash sits behind it. Sits INSIDE
+                     the ContentContainer ScrollView so it scrolls away with
+                     the page rather than sticking to the top. -->
+                <!-- HeroSpacer reserves the hero's measured height even when
+                     HeroOverlayPanel collapses (Visibility=Collapsed via the
+                     TransitionHelper pin). Without this wrapper the StackPanel
+                     reflows and the user perceives a layout jump. MinHeight is
+                     set in code-behind from the live SizeChanged measurement. -->
+                <Grid x:Name="HeroSpacer" Margin="0,0,0,24" MinHeight="140">
+                <Grid x:Name="HeroOverlayPanel" MinHeight="140">
+                <!-- Backdrop wash (palette-tinted; null when no palette → invisible).
+                     Sits behind the hero content only — bounded by the band's row,
+                     doesn't bleed into the shelves below. -->
+                <Border IsHitTestVisible="False"
+                        CornerRadius="{ThemeResource OverlayCornerRadius}"
+                        Background="{x:Bind ViewModel.HeroBackdropBrush, Mode=OneWay}"/>
+
+                <!-- card-shell: invisible morph-anchor for the TransitionHelper.
+                     Same role as the artist hero's "card-shell" id — the helper
+                     interpolates this border's bounds into the floating
+                     ShyHeaderCard's bounds when the user scrolls past the pin
+                     threshold. Background stays Transparent so the palette wash
+                     above remains visible. -->
+                <Border transitions:TransitionHelper.Id="home-shell"
+                        Background="Transparent"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"/>
+
+                <Grid Padding="20,18,20,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left column: avatar + greeting + subtitle, with chips below. -->
+                    <StackPanel Grid.Column="0" Spacing="14" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <PersonPicture
+                                transitions:TransitionHelper.Id="home-avatar"
+                                Width="40" Height="40"
+                                DisplayName="{x:Bind ViewModel.CurrentUserName, Mode=OneWay}"
+                                ProfilePicture="{x:Bind ViewModel.CurrentUserAvatarUrl, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=80}"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock
+                                    transitions:TransitionHelper.Id="home-greeting"
+                                    Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
+                                    Style="{StaticResource TitleTextBlockStyle}"
+                                    FontWeight="Bold"/>
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.GreetingSubtitle, Mode=OneWay}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+    
+                        <!-- Filter chips (single row, morphs when parent chip has sub-chips).
+                             Custom chip styling via converters — TokenView doesn't fit the
+                             morph pattern (parent → sub-chips on tap) without templating
+                             work, so we keep the existing chip control but tighten the
+                             visuals to feel Fluent. -->
+                        <ItemsRepeater
+                            ItemsSource="{x:Bind ViewModel.DisplayedChips, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="8"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="vm:HomeChipViewModel">
+                                    <Button
+                                        Click="Chip_Click"
+                                        Padding="14,6"
+                                        CornerRadius="16"
+                                        MinWidth="0"
+                                        FontSize="13" Tag="{x:Bind }"
+                                        BorderThickness="0"
+                                        Background="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipBackgroundConverter}}"
+                                        Foreground="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipForegroundConverter}}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon
+                                                Glyph="&#xE711;"
+                                                FontSize="11"
+                                                Visibility="{x:Bind IsBackChip, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <TextBlock Text="{x:Bind Label}"/>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+
+                        <!-- Visual-identity accent line under the chips, tinted
+                             from the featured item's extracted color. Same shape
+                             as the section-header lines (120x3, 1.5 corner) so
+                             the page reads as one visual family. -->
+                        <Border Height="3"
+                                Width="120"
+                                HorizontalAlignment="Left"
+                                CornerRadius="1.5"
+                                Margin="0,4,0,0"
+                                Background="{x:Bind ViewModel.HeroAccentLineBrush, Mode=OneWay}"/>
+                    </StackPanel>
+
+                    <!-- Right column: "Pick up where you left off" featured card.
+                         Click navigates to the item; collapses entirely when no
+                         featured item is available (cold start before recently-
+                         played has populated). -->
+                    <Button Grid.Column="1"
+                            x:Name="FeaturedItemButton"
+                            transitions:TransitionHelper.Id="home-featured"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0"
+                            Margin="16,0,12,0"
+                            VerticalAlignment="Center"
+                            Click="FeaturedItem_Click"
+                            Visibility="{x:Bind ViewModel.FeaturedItem, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                        <Border CornerRadius="{ThemeResource OverlayCornerRadius}"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Padding="10,10,16,10">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0"
+                                        Width="56" Height="56"
+                                        CornerRadius="6"
+                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                    <Image Stretch="UniformToFill"
+                                           Source="{x:Bind ViewModel.FeaturedItem.ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='112'}"/>
+                                </Border>
+                                <StackPanel Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Spacing="2"
+                                            MaxWidth="220">
+                                    <TextBlock Text="Pick up where you left off"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{x:Bind ViewModel.FeaturedItem.Title, Mode=OneWay}"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="1"/>
+                                    <TextBlock Text="{x:Bind ViewModel.FeaturedItem.Subtitle, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="1"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Button>
+    
+                    <!-- Refresh button — tucked at the far right, visually separate
+                         from the featured card so it doesn't fight for attention. -->
+                    <Button Grid.Column="2"
+                            x:Uid="Views_HomePage__Button_1"
+                            ToolTipService.ToolTip="Refresh"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="8"
+                            VerticalAlignment="Center"
+                            Command="{x:Bind ViewModel.RefreshCommand}">
+                        <FontIcon Glyph="&#xE72C;" FontSize="16"/>
+                    </Button>
+                </Grid>
+            </Grid>
+            </Grid>
             <ItemsRepeater
                 x:Name="SectionsRepeater"
                 ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">
@@ -546,6 +788,93 @@
                     <layouts:SectionStackLayout Spacing="0"/>
                 </ItemsRepeater.Layout>
             </ItemsRepeater>
+            </StackPanel>
         </ScrollView>
+
+        <!-- Shy header: compact pinned variant of the hero band. Sits OUTSIDE
+             ContentContainer so it floats over the scrolled content once the
+             user scrolls past the in-flow hero. Visibility starts Collapsed —
+             the HomeShyHeaderTransition flips it via ByVisibility when the
+             pin state changes. ZIndex=5 keeps it above the scrolled content
+             but below any page-wide overlays / dialogs. -->
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              HorizontalAlignment="Stretch"
+              IsHitTestVisible="True"
+              Padding="32,16,32,0">
+            <Border x:Name="ShyHeaderCard"
+                    HorizontalAlignment="Center"
+                    MaxWidth="760"
+                    MinHeight="64"
+                    Visibility="Collapsed"
+                    CornerRadius="18"
+                    BorderBrush="{ThemeResource ShyHeaderBorderBrush}"
+                    BorderThickness="1.5"
+                    Padding="14,10,14,10">
+                <Border.Background>
+                    <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                  TintOpacity="0.78"
+                                  FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                </Border.Background>
+                <Border.Shadow>
+                    <ThemeShadow/>
+                </Border.Shadow>
+                <!-- card-shell mirror — picks up the morph from the in-flow hero. -->
+                <Grid transitions:TransitionHelper.Id="home-shell"
+                      ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <PersonPicture Grid.Column="0"
+                                   transitions:TransitionHelper.Id="home-avatar"
+                                   Width="32" Height="32"
+                                   VerticalAlignment="Center"
+                                   DisplayName="{x:Bind ViewModel.CurrentUserName, Mode=OneWay}"
+                                   ProfilePicture="{x:Bind ViewModel.CurrentUserAvatarUrl, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=64}"/>
+                    <TextBlock Grid.Column="1"
+                               transitions:TransitionHelper.Id="home-greeting"
+                               Text="{x:Bind ViewModel.Greeting, Mode=OneWay}"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"/>
+                    <!-- Filter chips mirror — same DisplayedChips collection
+                         and same Chip_Click handler as the in-flow hero, so
+                         tapping a chip in the pinned card filters home content
+                         identically. Compact styling: smaller padding/font. -->
+                    <ItemsRepeater Grid.Column="2"
+                                   transitions:TransitionHelper.Id="home-featured"
+                                   VerticalAlignment="Center"
+                                   ItemsSource="{x:Bind ViewModel.DisplayedChips, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Orientation="Horizontal" Spacing="6"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HomeChipViewModel">
+                                <Button Click="Chip_Click"
+                                        Padding="10,4"
+                                        CornerRadius="14"
+                                        MinWidth="0"
+                                        FontSize="12"
+                                        Tag="{x:Bind }"
+                                        BorderThickness="0"
+                                        Background="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipBackgroundConverter}}"
+                                        Foreground="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource ChipForegroundConverter}}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE711;"
+                                                  FontSize="10"
+                                                  Visibility="{x:Bind IsBackChip, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        <TextBlock Text="{x:Bind Label}"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

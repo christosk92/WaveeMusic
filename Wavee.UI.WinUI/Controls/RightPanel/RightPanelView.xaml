@@ -208,40 +208,92 @@
                     <RowDefinition Height="*"/>     <!-- Content -->
                 </Grid.RowDefinitions>
 
-                <!-- Tab header rail -->
-                <controls:Segmented
-                    x:Name="TabHeader"
-                    Grid.Row="0"
-                    Margin="10,10,10,6"
-                    SelectedIndex="0"
-                    Style="{StaticResource PivotSegmentedStyle}"
-                    SelectionChanged="TabHeader_SelectionChanged">
-                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_1"
-                                            x:Name="QueueTabItem"
-                                            Content="Queue"
-                                            Tag="Queue"/>
-                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_2"
-                                            x:Name="LyricsTabItem"
-                                            Content="Lyrics"
-                                            Tag="Lyrics"/>
-                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_3"
-                                            x:Name="FriendsTabItem"
-                                            Content="Friends"
-                                            Tag="Friends"/>
-                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_4"
-                                            x:Name="DetailsTabItem"
-                                            Content="Details"
-                                            Tag="Details"/>
-                    <!--
-                        Temporary "Track details" tab — invoked from TrackDataGrid's
-                        details toggle. Collapsed by default; code-behind shows it
-                        when ShellViewModel.SelectedTrackForDetails is set.
-                    -->
-                    <controls:SegmentedItem x:Name="TrackDetailsTabItem"
-                                            Content="Track"
-                                            Tag="TrackDetails"
-                                            Visibility="Collapsed"/>
-                </controls:Segmented>
+                <!-- Tab header rail. Wrapped in a 3-column Grid so chevron pager
+                     buttons can flank a horizontally-scrollable ScrollViewer.
+                     Edge-fade overlays sit on top of the scroll viewport to
+                     soften the cutoff when tab labels overflow (e.g. long
+                     localized strings like Korean "세부 정보"). -->
+                <Grid Grid.Row="0" Margin="6,10,6,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left pager — only visible when there's content scrolled off the left. -->
+                    <Button x:Name="TabPagerLeftButton"
+                            Grid.Column="0"
+                            Visibility="Collapsed"
+                            Click="TabPagerLeft_Click"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="2"
+                            Width="22" Height="28"
+                            MinWidth="0" MinHeight="0"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Scroll tabs left">
+                        <FontIcon Glyph="&#xE76B;" FontSize="11"/>
+                    </Button>
+
+                    <Grid Grid.Column="1">
+                        <ScrollViewer x:Name="TabHeaderScroller"
+                                      HorizontalScrollMode="Enabled"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollMode="Disabled"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      ViewChanged="TabHeaderScroller_ViewChanged"
+                                      SizeChanged="TabHeaderScroller_SizeChanged">
+                            <controls:Segmented
+                                x:Name="TabHeader"
+                                HorizontalAlignment="Left"
+                                SelectedIndex="0"
+                                Style="{StaticResource PivotSegmentedStyle}"
+                                SelectionChanged="TabHeader_SelectionChanged">
+                                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_1"
+                                                        x:Name="QueueTabItem"
+                                                        Content="Queue"
+                                                        Tag="Queue"/>
+                                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_2"
+                                                        x:Name="LyricsTabItem"
+                                                        Content="Lyrics"
+                                                        Tag="Lyrics"/>
+                                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_3"
+                                                        x:Name="FriendsTabItem"
+                                                        Content="Friends"
+                                                        Tag="Friends"/>
+                                <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_4"
+                                                        x:Name="DetailsTabItem"
+                                                        Content="Details"
+                                                        Tag="Details"/>
+                                <!--
+                                    Temporary "Track details" tab — invoked from TrackDataGrid's
+                                    details toggle. Collapsed by default; code-behind shows it
+                                    when ShellViewModel.SelectedTrackForDetails is set.
+                                -->
+                                <controls:SegmentedItem x:Name="TrackDetailsTabItem"
+                                                        Content="Track"
+                                                        Tag="TrackDetails"
+                                                        Visibility="Collapsed"/>
+                            </controls:Segmented>
+                        </ScrollViewer>
+
+                    </Grid>
+
+                    <!-- Right pager — visible when there's content cut off on the right. -->
+                    <Button x:Name="TabPagerRightButton"
+                            Grid.Column="2"
+                            Visibility="Collapsed"
+                            Click="TabPagerRight_Click"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="2"
+                            Width="22" Height="28"
+                            MinWidth="0" MinHeight="0"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Scroll tabs right">
+                        <FontIcon Glyph="&#xE76C;" FontSize="11"/>
+                    </Button>
+                </Grid>
 
                 <!-- Content area -->
                 <Grid Grid.Row="1" Padding="12,0,12,14">

@@ -150,29 +150,17 @@
 
                     <!-- Type / Year token row. -->
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <!-- Album type pill (TokenItem SELECTED state with palette overlay). -->
-                        <Grid>
-                            <Border CornerRadius="14"
-                                    Padding="10,3,10,5"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
-                                    BorderThickness="1">
-                                <TextBlock Text="{x:Bind ViewModel.AlbumTypeUpper, Mode=OneWay}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                            </Border>
-                            <Border CornerRadius="14"
-                                    Padding="10,3,10,5"
-                                    BorderThickness="1"
-                                    BorderBrush="Transparent"
-                                    Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}">
-                                <TextBlock Text="{x:Bind ViewModel.AlbumTypeUpper, Mode=OneWay}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
-                            </Border>
-                        </Grid>
+                        <!-- Album type pill (TokenItem SELECTED state, system accent). -->
+                        <Border CornerRadius="14"
+                                Padding="10,3,10,5"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                BorderThickness="1">
+                            <TextBlock Text="{x:Bind ViewModel.AlbumTypeUpper, Mode=OneWay}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                        </Border>
                         <!-- Year pill (neutral TokenItem look). -->
                         <Border CornerRadius="14"
                                 Padding="10,3,10,5"

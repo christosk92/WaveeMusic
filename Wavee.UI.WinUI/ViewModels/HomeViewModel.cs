@@ -8,11 +8,15 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers;
+using Windows.UI;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -23,6 +27,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Services.HomeFeedCache? _homeFeedCache;
     private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
     private readonly Services.HomeResponseParserFactory _parserFactory;
+    private readonly IAuthState? _authState;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _baselineEnrichmentCts;
@@ -57,6 +62,45 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [ObservableProperty]
     private ObservableCollection<HomeChipViewModel> _displayedChips = [];
 
+    // ── Hero band (greeting + featured "pick up where you left off") ──
+    // Mirrors the album/playlist palette pipeline so the hero feels like a
+    // sibling of those pages — backdrop wash is derived from the featured
+    // item's cover art and theme-aware via ApplyTheme.
+
+    /// <summary>Most-recently-played item promoted to the hero card slot
+    /// on the right of the greeting band. Drives the palette fetch too.</summary>
+    [ObservableProperty]
+    private HomeSectionItem? _featuredItem;
+
+    /// <summary>Subtle page-wash brush tinted toward the featured item's color.
+    /// Null when no palette is available (cold start, fetch failure).</summary>
+    [ObservableProperty]
+    private Brush? _heroBackdropBrush;
+
+    /// <summary>Crisp accent bar matching the section-header AccentLineBrush
+    /// treatment, tinted from the featured item's color (lifted for legibility).
+    /// Renders as a 120x3 colored bar under the greeting/chips.</summary>
+    [ObservableProperty]
+    private Brush? _heroAccentLineBrush;
+
+    /// <summary>Top-left page bleed — a large radial wash anchored at the
+    /// page's top-left corner, tinted from the first home card's extracted
+    /// color. Gives the whole page a per-day visual identity.</summary>
+    [ObservableProperty]
+    private Brush? _pageBleedBrush;
+
+    /// <summary>Greeting subtitle line under the time-of-day greeting.
+    /// Populated from a small canned set; refreshed on theme/time change.</summary>
+    [ObservableProperty]
+    private string _greetingSubtitle = "What do you feel like?";
+
+    /// <summary>Resolved current-user display name + avatar, surfaced from
+    /// IAuthState so the greeting can render without re-fetching the profile.</summary>
+    public string? CurrentUserName => _authState?.DisplayName ?? _authState?.Username;
+    public string? CurrentUserAvatarUrl => _authState?.ProfileImageUrl;
+
+    private bool _isDarkTheme;
+
     /// <summary>The original main chips (preserved for reverting from sub-chips).</summary>
     private List<HomeChipViewModel>? _mainChips;
 
@@ -73,6 +117,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         Services.HomeFeedCache? homeFeedCache = null,
         Services.RecentlyPlayedService? recentlyPlayedService = null,
         Services.HomeResponseParserFactory? parserFactory = null,
+        IAuthState? authState = null,
         ILogger<HomeViewModel>? logger = null)
     {
         _session = session;
@@ -80,11 +125,18 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         _homeFeedCache = homeFeedCache;
         _recentlyPlayedService = recentlyPlayedService;
         _parserFactory = parserFactory ?? new Services.HomeResponseParserFactory();
+        _authState = authState;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         if (_recentlyPlayedService != null)
             _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
+
+        // Surface auth-state changes (display name + avatar) into the hero
+        // greeting so a sign-in / profile-refresh during a Home session
+        // updates the avatar and name without a navigation away-and-back.
+        if (_authState is not null)
+            _authState.PropertyChanged += OnAuthStatePropertyChanged;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Home, null)
         {
@@ -260,6 +312,10 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         for (int i = 0; i < ordered.Count; i++)
         {
+            // Build the per-section accent brushes for the current theme just
+            // before adding to the bound collection, so x:Bind picks them up
+            // on the first realization (no second pass needed).
+            ordered[i].ApplyTheme(_isDarkTheme);
             Sections.Add(ordered[i]);
 
             // Yield back to the dispatcher every chunkSize items so realization cost
@@ -267,6 +323,10 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             if ((i + 1) % chunkSize == 0 && i + 1 < ordered.Count)
                 await Task.Yield();
         }
+
+        // Refresh page-level bleed now that Sections is populated. ApplyTheme
+        // reads Sections[0].Items[0].ColorHex to source the glow color.
+        ApplyTheme(_isDarkTheme);
     }
 
     private void ApplyChips(List<HomeChipViewModel>? chips)
@@ -294,6 +354,12 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
             var items = _recentlyPlayedService.Items;
             if (items.Count == 0) return;
+
+            // Promote the most-recently-played item to the hero card slot.
+            // FeaturedItem's setter triggers LoadHeroPaletteAsync via the
+            // partial-method hook below, which derives the hero backdrop
+            // wash from the cover (album/playlist Pathfinder palette route).
+            FeaturedItem = items[0];
 
             // Find existing "Recently played" section or create one
             var existing = Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
@@ -392,7 +458,17 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             }
 
             if (section.Items.Count > 0)
+            {
+                // Pull a visual-identity accent from the first item that
+                // carries an extracted dark color. Brushes are built later
+                // by section.ApplyTheme(isDark) on the instance side
+                // (PopulateSectionsChunkedAsync / HomeViewModel.ApplyTheme)
+                // — this method is static so it can't read _isDarkTheme.
+                section.AccentColorHex = section.Items
+                    .FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
+
                 sections.Add(section);
+            }
         }
 
         return sections;
@@ -1065,6 +1141,119 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         _baselineEnrichmentCts = null;
     }
 
+    // ── Hero palette pipeline ──
+    // The featured item already carries a `ColorHex` populated by the home
+    // feed parser (Spotify ships pre-extracted dark/light/raw colours for
+    // every cover via the home GraphQL response). Use it directly — no
+    // additional Pathfinder fetch needed. ApplyTheme just rebuilds the
+    // backdrop brush against the right alpha per theme.
+
+    private Color? _heroBaseColor;
+
+    partial void OnFeaturedItemChanged(HomeSectionItem? value)
+    {
+        _heroBaseColor = TryParseHex(value?.ColorHex);
+        ApplyTheme(_isDarkTheme);
+    }
+
+    /// <summary>
+    /// Theme-aware backdrop refresh for the hero band. Called by the page on
+    /// init and on ActualThemeChanged. Builds a soft palette wash by mixing
+    /// the featured item's dominant colour with a theme-appropriate alpha.
+    /// </summary>
+    public void ApplyTheme(bool isDark)
+    {
+        _isDarkTheme = isDark;
+
+        if (_heroBaseColor is Color bg)
+        {
+            // Subtle wash — alpha tuned per theme so the band reads as a tint,
+            // not a saturated band that fights the content above it. Dark-mode
+            // pops a bit harder because dark surfaces swallow alpha quickly.
+            HeroBackdropBrush = new SolidColorBrush(Color.FromArgb(
+                (byte)(isDark ? 90 : 56), bg.R, bg.G, bg.B));
+
+            // Crisp accent line under the chips. Lifted to stay legible when
+            // colorDark from Spotify is near-black. Matches the section-header
+            // line treatment so the page reads as one visual family.
+            var lifted = TintColorHelper.BrightenForTint(bg, targetMax: 210);
+            HeroAccentLineBrush = new SolidColorBrush(Color.FromArgb(255, lifted.R, lifted.G, lifted.B));
+        }
+        else
+        {
+            HeroBackdropBrush = null;
+            HeroAccentLineBrush = null;
+        }
+
+        // Propagate to per-section accents so each shelf header re-tints.
+        foreach (var section in Sections)
+            section.ApplyTheme(isDark);
+
+        // Page bleed — a soft radial glow at the top-left of the page,
+        // tinted from the first card's visual identity (or the first section
+        // accent if items haven't reached the bound collection yet).
+        var bleedHex = Sections
+            .SelectMany(s => s.Items.Select(i => i.ColorHex))
+            .FirstOrDefault(c => !string.IsNullOrEmpty(c))
+            ?? Sections.FirstOrDefault(s => !string.IsNullOrEmpty(s.AccentColorHex))?.AccentColorHex;
+
+        if (TintColorHelper.TryParseHex(bleedHex, out var bleedRaw))
+        {
+            var bleedLifted = TintColorHelper.BrightenForTint(bleedRaw, targetMax: 220);
+            var radial = new RadialGradientBrush
+            {
+                Center = new Windows.Foundation.Point(0.0, 0.0),
+                GradientOrigin = new Windows.Foundation.Point(0.0, 0.0),
+                RadiusX = 1.0,
+                RadiusY = 1.0,
+                MappingMode = Microsoft.UI.Xaml.Media.BrushMappingMode.RelativeToBoundingBox,
+            };
+            radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(isDark ? 130 : 80), bleedLifted.R, bleedLifted.G, bleedLifted.B), Offset = 0.0 });
+            radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(isDark ? 60  : 40), bleedLifted.R, bleedLifted.G, bleedLifted.B), Offset = 0.5 });
+            radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0, bleedLifted.R, bleedLifted.G, bleedLifted.B), Offset = 1.0 });
+            PageBleedBrush = radial;
+        }
+        else
+        {
+            PageBleedBrush = null;
+        }
+    }
+
+    private static Color? TryParseHex(string? hex)
+    {
+        if (string.IsNullOrEmpty(hex)) return null;
+        var trimmed = hex.TrimStart('#');
+        if (trimmed.Length != 6) return null;
+        try
+        {
+            var r = Convert.ToByte(trimmed[..2], 16);
+            var g = Convert.ToByte(trimmed[2..4], 16);
+            var b = Convert.ToByte(trimmed[4..6], 16);
+            return Color.FromArgb(255, r, g, b);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void OnAuthStatePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_isDisposed) return;
+        if (e.PropertyName is nameof(IAuthState.CurrentUser)
+                           or nameof(IAuthState.DisplayName)
+                           or nameof(IAuthState.Username)
+                           or nameof(IAuthState.ProfileImageUrl))
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_isDisposed) return;
+                OnPropertyChanged(nameof(CurrentUserName));
+                OnPropertyChanged(nameof(CurrentUserAvatarUrl));
+            });
+        }
+    }
+
     public void Dispose()
     {
         if (_isDisposed) return;
@@ -1072,6 +1261,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         if (_recentlyPlayedService != null)
             _recentlyPlayedService.ItemsChanged -= OnRecentlyPlayedItemsChanged;
+        if (_authState is not null)
+            _authState.PropertyChanged -= OnAuthStatePropertyChanged;
 
         CancelBaselineEnrichment();
     }
@@ -1265,7 +1456,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 public enum HomeSectionType { Shorts, Generic, RecentlyPlayed, Baseline }
 public enum HomeContentType { Artist, Playlist, Album, Podcast, Episode, Unknown }
 
-public sealed class HomeSection
+public sealed partial class HomeSection : ObservableObject
 {
     public string? Title { get; set; }
     public string? Subtitle { get; set; }
@@ -1294,6 +1485,82 @@ public sealed class HomeSection
     /// Header entity URI for navigation.
     /// </summary>
     public string? HeaderEntityUri { get; set; }
+
+    // ── Visual identity accent ──────────────────────────────────────────
+    // Derived from the section's first item that carries an extracted
+    // colorDark (Spotify Pathfinder visualIdentity). Drives the subtle
+    // colored underline + soft backdrop wash on the section header so each
+    // shelf reads with its own personality (Daily Mixes vs DJ vs Made For
+    // X) instead of a uniform gray title bar.
+    public string? AccentColorHex { get; set; }
+
+    [ObservableProperty]
+    private Brush? _accentLineBrush;
+
+    [ObservableProperty]
+    private Brush? _accentBackdropBrush;
+
+    /// <summary>
+    /// Slim fading streak — full-alpha accent on the left, transparent on
+    /// the right. Renders as a 2px tall trailing line under the section
+    /// title, giving the soft tinted backdrop a directional accent without
+    /// the hard right edge a solid bar would have.
+    /// </summary>
+    [ObservableProperty]
+    private Brush? _accentFadeBarBrush;
+
+    /// <summary>
+    /// Theme-aware refresh of the accent brushes. Mirrors the alpha cadence
+    /// used by HomeViewModel.ApplyTheme for the hero so the section accent
+    /// reads as "the same family" of palette wash as the page top.
+    /// </summary>
+    public void ApplyTheme(bool isDark)
+    {
+        if (!TintColorHelper.TryParseHex(AccentColorHex, out var raw))
+        {
+            AccentLineBrush = null;
+            AccentBackdropBrush = null;
+            AccentFadeBarBrush = null;
+            return;
+        }
+
+        // Dark spotify "colorDark" values can collapse to near-black at
+        // partial alpha. Lift them so the accent line stays legible.
+        var lifted = TintColorHelper.BrightenForTint(raw, targetMax: 210);
+
+        // Solid line: full alpha — reads as a clear "tag" mark rather than a
+        // ghost. Width/height are set by the consuming XAML.
+        AccentLineBrush = new SolidColorBrush(Color.FromArgb(
+            255, lifted.R, lifted.G, lifted.B));
+
+        // Backdrop: vertical fade from a stronger top tint to a near-zero
+        // bottom tint. Pairs with the horizontal-fading streak below to
+        // form a 2-axis gradient family (vertical here + horizontal there).
+        // Vertical orientation keeps both ends bounded by the rounded corners
+        // — no left/right edge cutoff issues like the earlier horizontal
+        // gradient attempts.
+        var backdrop = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint   = new Windows.Foundation.Point(0, 1),
+        };
+        backdrop.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(isDark ? 50 : 32), lifted.R, lifted.G, lifted.B), Offset = 0.0 });
+        backdrop.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(isDark ? 12 :  6), lifted.R, lifted.G, lifted.B), Offset = 1.0 });
+        AccentBackdropBrush = backdrop;
+
+        // Fading streak: thin horizontal bar that goes solid → transparent
+        // across the section width. Visual identity that doesn't have a hard
+        // right edge to cut off. Lives just below the title row.
+        var fade = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0.5),
+            EndPoint = new Windows.Foundation.Point(1, 0.5),
+        };
+        fade.GradientStops.Add(new GradientStop { Color = Color.FromArgb(255, lifted.R, lifted.G, lifted.B), Offset = 0.00 });
+        fade.GradientStops.Add(new GradientStop { Color = Color.FromArgb(180, lifted.R, lifted.G, lifted.B), Offset = 0.30 });
+        fade.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   lifted.R, lifted.G, lifted.B), Offset = 0.85 });
+        AccentFadeBarBrush = fade;
+    }
 }
 
 public sealed class HomeSectionItem : ObservableObject

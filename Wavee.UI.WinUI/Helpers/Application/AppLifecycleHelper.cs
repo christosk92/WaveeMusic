@@ -481,6 +481,7 @@ public static class AppLifecycleHelper
                         sp.GetService<HomeFeedCache>(),
                         sp.GetService<RecentlyPlayedService>(),
                         sp.GetService<HomeResponseParserFactory>(),
+                        sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<HomeViewModel>>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()

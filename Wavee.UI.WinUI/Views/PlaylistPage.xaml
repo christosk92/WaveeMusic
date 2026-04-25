@@ -32,6 +32,7 @@
                              between Wide/Narrow. If a narrow-mode header is reintroduced
                              later, re-add matching setters referencing the real name. -->
                         <Setter Target="WidePlaylistPanel.Visibility" Value="Collapsed"/>
+                        <Setter Target="WidePlaylistScroller.Visibility" Value="Collapsed"/>
                         <Setter Target="ShimmerContainer.Visibility" Value="Collapsed"/>
                         <Setter Target="PlaylistSplitter.Visibility" Value="Collapsed"/>
                     </VisualState.Setters>
@@ -102,11 +103,21 @@
             <!-- Wide left panel: shown once metadata has arrived. Restructured to
                  mirror the album page (AlbumPage.xaml lines 122-301) — left-aligned
                  throughout, cover at top, then title, owner row, stats line, action
-                 buttons, description, session-control chips, collaborator stack. -->
-            <StackPanel x:Name="WidePlaylistPanel" Grid.Column="0"
-                        Padding="32,24,16,24" Spacing="14" HorizontalAlignment="Stretch"
-                        VerticalAlignment="Top"
+                 buttons, description, session-control chips, collaborator stack.
+                 Wrapped in a ScrollView so long descriptions / session-control chip
+                 grids / collaborator lists can scroll vertically when the panel
+                 doesn't fit the window height. The vertical scrollbar fades in
+                 only when content actually overflows. -->
+            <ScrollView x:Name="WidePlaylistScroller" Grid.Column="0"
+                        ContentOrientation="Vertical"
+                        HorizontalScrollMode="Disabled"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollMode="Auto"
+                        VerticalScrollBarVisibility="Auto"
                         Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+            <StackPanel x:Name="WidePlaylistPanel"
+                        Padding="16,20,8,20" Spacing="14" HorizontalAlignment="Stretch"
+                        VerticalAlignment="Top">
 
                 <!-- 1. Cover art — leads the panel. Hidden when the playlist carries a
                      header image (composes behind the whole page as a left-anchored
@@ -350,6 +361,7 @@
                                 Spacing="8"/>
                 </controls1:ClickableBorder>
             </StackPanel>
+            </ScrollView>
 
             <controls1:GridSplitter
                 x:Name="PlaylistSplitter"

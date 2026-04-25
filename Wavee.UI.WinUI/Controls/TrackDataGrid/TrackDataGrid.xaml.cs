@@ -314,19 +314,33 @@ public sealed partial class TrackDataGrid : UserControl
     /// <summary>Re-push column flags + widths onto every materialized TrackItem.</summary>
     private void RefreshRowShowFlags()
     {
-        foreach (var item in RowsList.Items)
+        var walked = 0;
+        var addedByShow = AddedByVisible && ColumnVisible("AddedBy");
+
+        // Walk the panel children directly. ContainerFromItem returns null in
+        // the brief window between an items-source change and the container
+        // generator wiring up the new items — leaving in-flight TrackItems
+        // (already materialised but freshly rebound to the new playlist's
+        // rows) stuck with the previous playlist's column flags. The panel
+        // children are the actual containers regardless of items state.
+        if (RowsList.ItemsPanelRoot is not null)
         {
-            if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
-            if (container.ContentTemplateRoot is not Track.TrackItem ti) continue;
-            ti.BeginBatchUpdate();
-            ti.ShowAlbumArt        = ColumnVisible("TrackArt");
-            ti.ShowAlbumColumn     = ColumnVisible("Album");
-            ti.ShowAddedByColumn   = AddedByVisible && ColumnVisible("AddedBy");
-            ti.ShowDateAdded       = ColumnVisible("DateAdded");
-            ti.ShowPlayCount       = ColumnVisible("PlayCount");
-            PushWidthsToRow(ti);
-            ti.EndBatchUpdate();
+            foreach (var child in RowsList.ItemsPanelRoot.Children)
+            {
+                if (child is not ListViewItem container) continue;
+                if (container.ContentTemplateRoot is not Track.TrackItem ti) continue;
+                ti.BeginBatchUpdate();
+                ti.ShowAlbumArt        = ColumnVisible("TrackArt");
+                ti.ShowAlbumColumn     = ColumnVisible("Album");
+                ti.ShowAddedByColumn   = addedByShow;
+                ti.ShowDateAdded       = ColumnVisible("DateAdded");
+                ti.ShowPlayCount       = ColumnVisible("PlayCount");
+                PushWidthsToRow(ti);
+                ti.EndBatchUpdate();
+                walked++;
+            }
         }
+        System.Diagnostics.Debug.WriteLine($"[addedby-grid] RefreshRowShowFlags: walked={walked} addedByShow={addedByShow} (AddedByVisible={AddedByVisible} colVisible={ColumnVisible("AddedBy")})");
     }
 
     /// <summary>
@@ -439,10 +453,26 @@ public sealed partial class TrackDataGrid : UserControl
 
     private static void OnAddedByVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        // Re-push column show flags onto every realized row so a runtime flip
-        // (e.g. when the playlist toggles between collab and non-collab while
-        // the page stays mounted) actually shrinks/expands the AddedBy slot.
-        ((TrackDataGrid)d).RefreshRowShowFlags();
+        var grid = (TrackDataGrid)d;
+        var newVisible = (bool)e.NewValue;
+        System.Diagnostics.Debug.WriteLine($"[addedby-grid] AddedByVisible: {e.OldValue} -> {e.NewValue}");
+
+        // Toggle the AddedBy column's IsVisible so the HEADER also collapses,
+        // not just the per-row cells. The column's PropertyChanged flows into
+        // OnHeaderColumnChanged → RebuildHeader + RefreshRowShowFlags, so
+        // header chrome and row chrome stay in sync. Without this the row
+        // cells correctly went to width=0 but the column header label kept
+        // rendering at full width.
+        var addedByCol = grid.Columns?.FirstOrDefault(c => c.Key == "AddedBy");
+        if (addedByCol != null && addedByCol.IsVisible != newVisible)
+        {
+            addedByCol.IsVisible = newVisible;
+            // OnHeaderColumnChanged will run RefreshRowShowFlags as part of its
+            // IsVisible-change branch — no need to call it again here.
+            return;
+        }
+
+        grid.RefreshRowShowFlags();
     }
 
     /// <summary>

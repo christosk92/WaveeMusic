@@ -93,7 +93,8 @@
       "Bash(head -n 623 Wavee.UI.WinUI/ViewModels/ShellViewModel.cs)",
       "Bash(tail -n +625 Wavee.UI.WinUI/ViewModels/ShellViewModel.cs)",
       "Bash(printf '                Glyph = FluentGlyphs.FolderOpen,\\\\n')",
-      "Bash(sed -n 622,627p Wavee.UI.WinUI/ViewModels/ShellViewModel.cs)"
+      "Bash(sed -n 622,627p Wavee.UI.WinUI/ViewModels/ShellViewModel.cs)",
+      "Bash(git commit *)"
     ]
   }
 }

@@ -1494,6 +1494,51 @@ public sealed partial class RightPanelView : UserControl
 
     // ── Tab header ──
 
+    // ── Tab header pager + edge fades ───────────────────────────────────────
+    // Long localized labels (e.g. Korean "세부 정보") can overflow the panel
+    // width. The Segmented sits inside a horizontal ScrollViewer; these
+    // handlers drive the chevron pager visibility and the left/right gradient
+    // fade overlays based on scroll position.
+
+    private const double TabPagerScrollStepPx = 96;
+
+    private void TabHeaderScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+        => UpdateTabHeaderEdgeAffordances();
+
+    private void TabHeaderScroller_SizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateTabHeaderEdgeAffordances();
+
+    private void UpdateTabHeaderEdgeAffordances()
+    {
+        if (TabHeaderScroller == null) return;
+
+        double max = TabHeaderScroller.ScrollableWidth;
+        double off = TabHeaderScroller.HorizontalOffset;
+
+        const double eps = 0.5;
+        bool overflowsLeft  = off > eps;
+        bool overflowsRight = max - off > eps;
+
+        if (TabPagerLeftButton != null)
+            TabPagerLeftButton.Visibility = overflowsLeft ? Visibility.Visible : Visibility.Collapsed;
+        if (TabPagerRightButton != null)
+            TabPagerRightButton.Visibility = overflowsRight ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void TabPagerLeft_Click(object sender, RoutedEventArgs e)
+    {
+        if (TabHeaderScroller == null) return;
+        double target = Math.Max(0, TabHeaderScroller.HorizontalOffset - TabPagerScrollStepPx);
+        TabHeaderScroller.ChangeView(target, null, null);
+    }
+
+    private void TabPagerRight_Click(object sender, RoutedEventArgs e)
+    {
+        if (TabHeaderScroller == null) return;
+        double target = Math.Min(TabHeaderScroller.ScrollableWidth, TabHeaderScroller.HorizontalOffset + TabPagerScrollStepPx);
+        TabHeaderScroller.ChangeView(target, null, null);
+    }
+
     private void TabHeader_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressTabHeaderSelectionChanged || TabHeader?.SelectedItem is not SegmentedItem selectedItem)

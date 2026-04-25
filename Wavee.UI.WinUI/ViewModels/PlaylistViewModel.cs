@@ -199,33 +199,45 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         CanDelete || CanEditCollaborative || CanCancelMembership || CanAdministratePermissions;
 
     /// <summary>
-    /// True when the AddedBy column should render. Shown on collaborative playlists
-    /// (multiple contributors expected) AND on any playlist the current user
-    /// doesn't own (matches Spotify's desktop behaviour — an "Added by" column
-    /// shows on viewer-mode playlists so the contributor is attributed), AND on
-    /// owner-mode playlists that have any other contributor (typical of "shared
-    /// via invite link" playlists where Spotify doesn't toggle the proto-level
-    /// <c>attributes.collaborative</c> flag — only the membership list changes).
-    /// Hidden on owner-mode solo personal playlists where every row is added
-    /// by self.
+    /// True when the AddedBy column should render. Computed directly from the
+    /// current track snapshot so it can't lag a stale <see cref="Collaborators"/>
+    /// rebuild: we count distinct non-empty <c>AddedBy</c> values across
+    /// <c>_allTracks</c> and require ≥2.
     ///
-    /// Reuses <see cref="HasCollaborators"/> as the multi-contributor signal —
-    /// it's already set inside <see cref="RebuildCollaboratorsFromContext"/>
-    /// to <c>IsCollaborative || Collaborators.Count &gt;= 2</c>, which captures
-    /// both the proto-flag case and the derived-from-tracks case.
+    /// Cases the rule covers:
+    /// <list type="bullet">
+    ///   <item>Spotify editorial mixes with empty / uniform <c>addedBy</c> → 0 or 1 distinct → hidden.</item>
+    ///   <item>Owned solo personal playlist (every row added by self) → 1 distinct → hidden.</item>
+    ///   <item>Viewer of someone else's solo playlist → 1 distinct → hidden.</item>
+    ///   <item>Owned playlist that picked up a contributor via an invite-link grant
+    ///         (proto's <c>attributes.collaborative</c> flag is NOT toggled by those —
+    ///         only the membership list changes) → ≥2 distinct → shown.</item>
+    ///   <item>Viewer of a playlist with multiple contributors (David Laid case) → ≥2 distinct → shown.</item>
+    /// </list>
     /// </summary>
-    public bool ShouldShowAddedByColumn => HasCollaborators || !IsOwner;
+    public bool ShouldShowAddedByColumn
+    {
+        get
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in _allTracks)
+            {
+                if (string.IsNullOrEmpty(t.AddedBy)) continue;
+                if (seen.Add(t.AddedBy) && seen.Count >= 2)
+                    return true;
+            }
+            return false;
+        }
+    }
 
     partial void OnIsCollaborativeChanged(bool value)
     {
-        OnPropertyChanged(nameof(ShouldShowAddedByColumn));
         // Toggling "open for collab" should reveal/hide the avatar stack even
-        // when the contributor list itself didn't change.
+        // when the contributor list itself didn't change. The AddedBy column
+        // gate no longer depends on this flag — it reads directly from track
+        // addedBy values — so no PropertyChanged needed for it here.
         RebuildCollaboratorsFromContext();
     }
-    partial void OnIsOwnerChanged(bool value) => OnPropertyChanged(nameof(ShouldShowAddedByColumn));
-    partial void OnHasCollaboratorsChanged(bool value)
-        => OnPropertyChanged(nameof(ShouldShowAddedByColumn));
 
     partial void OnCanDeleteChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
     partial void OnCanEditCollaborativeChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
@@ -645,6 +657,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             OwnerAvatarUrl = null;
             Collaborators.Clear();
             HasCollaborators = false;
+            // Reset the track snapshot so ApplyDetail's RebuildCollaboratorsFromContext
+            // doesn't compute the AddedBy gate against the previous playlist's tracks
+            // (which produced wrong stale-true gate values during the brief window
+            // between Activate and LoadTracksAsync — those would latch into
+            // already-materializing ListView containers).
+            _allTracks = new List<PlaylistTrackDto>();
+            _tracksLoadedFor = null;
             _albumPalette = null;
             PaletteBackdropBrush = null;
             PaletteHeroGradientBrush = null;
@@ -1484,6 +1503,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 // ResolveAddedByUsernamesAsync upgrades the names + avatars below
                 // and calls rebuild again when its writeback completes.
                 RebuildCollaboratorsFromContext();
+                // Defensive: ShouldShowAddedByColumn reads directly from
+                // _allTracks (which we just reassigned), and the rebuild above
+                // already raised this — but raising again immediately after
+                // the assignment makes the dependency obvious if rebuild's
+                // behaviour changes later.
+                OnPropertyChanged(nameof(ShouldShowAddedByColumn));
 
                 // Background addedBy resolution — fills AddedByDisplayName /
                 // AddedByAvatarUrl on each DTO. Runs whenever the AddedBy column
@@ -1963,9 +1988,23 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         HasCollaborators = IsCollaborative || Collaborators.Count >= 2;
 
+        // The AddedBy gate reads directly off _allTracks (no observable source)
+        // so re-fire its change so the page-side OneWay binding picks up the
+        // new value whenever the track set has been rebuilt.
+        OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+
         _logger?.LogInformation(
             "[collab-stack] rebuilt: count={Count} hasCollab={Has} isCollab={IsCollab} ownerId={Owner}",
             Collaborators.Count, HasCollaborators, IsCollaborative, ownerId);
+
+        var uniqueAddedBys = _allTracks
+            .Select(t => t.AddedBy)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        _logger?.LogInformation(
+            "[addedby-gate] '{Id}' uniqueAddedBys={N} → ShouldShow={Show}",
+            PlaylistId, uniqueAddedBys, ShouldShowAddedByColumn);
     }
 
     private static string ExtractBareUserId(string idOrUri)

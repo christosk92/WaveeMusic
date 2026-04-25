@@ -154,7 +154,15 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             }
 
             if (section.Items.Count > 0)
+            {
+                // Pull a visual-identity accent from the section's first item
+                // that carries a Spotify-extracted dark color. Brushes are
+                // built later by HomeViewModel when the section is added to
+                // the bound Sections collection (theme dependency).
+                section.AccentColorHex = section.Items
+                    .FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
                 sections.Add(section);
+            }
         }
 
         return sections;

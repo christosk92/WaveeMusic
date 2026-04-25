@@ -46,6 +46,21 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private readonly List<SearchResultItem> _allItems = [];
     private int _requestVersion;
 
+    // Process-wide result cache (TTL 5 min). Survives SearchViewModel disposal so
+    // tab-sleep wake (which re-instantiates the page + VM and re-fires LoadAsync via
+    // OnNavigatedTo) hydrates without hitting the network. Keyed on (query|scope) so
+    // the All / Artists scopes don't cross-pollute. Bounded by ResultCacheMax to keep
+    // memory predictable; oldest entries are evicted when full.
+    private sealed record CachedResult(
+        IReadOnlyList<SearchResultItem> Items,
+        SearchResultItem? TopResult,
+        DateTimeOffset At);
+    private static readonly Dictionary<string, CachedResult> _resultCache =
+        new(StringComparer.Ordinal);
+    private static readonly object _resultCacheGate = new();
+    private static readonly TimeSpan ResultCacheTtl = TimeSpan.FromMinutes(5);
+    private const int ResultCacheMax = 32;
+
     [ObservableProperty]
     private bool _isLoading;
 
@@ -140,6 +155,35 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             return;
 
         var requestVersion = ++_requestVersion;
+        var scope = GetSearchScope();
+        var cacheKey = BuildCacheKey(query, scope);
+
+        // Cache hit: rehydrate without a network round-trip. Covers the tab-sleep
+        // wake path (page recreated, VM recreated, OnNavigatedTo re-fires with the
+        // same query), and any in-app navigation back to a prior search.
+        var cached = GetCachedResult(cacheKey);
+        if (cached != null)
+        {
+            Query = query;
+            HasError = false;
+            ErrorMessage = null;
+            ShowEmptyState = false;
+            IsLoading = false;
+
+            _allItems.Clear();
+            _allItems.AddRange(cached.Items);
+            DispatchResults(cached.Items);
+            TopResult = cached.TopResult;
+            UpdateVisibleResults();
+            UpdateEmptyState();
+
+            TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
+            {
+                Title = AppLocalization.Format("Search_TabTitle", query)
+            };
+            ContentChanged?.Invoke(this, TabItemParameter);
+            return;
+        }
 
         Query = query;
         IsLoading = true;
@@ -151,7 +195,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             var result = await Task.Run(() => _pathfinderClient.SearchAsync(
                 query,
-                GetSearchScope(),
+                scope,
                 limit: 30));
 
             if (requestVersion != _requestVersion)
@@ -162,6 +206,8 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             DispatchResults(result.Items);
             TopResult = result.TopResult;
             UpdateVisibleResults();
+
+            StoreCachedResult(cacheKey, result.Items, result.TopResult);
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
             {
@@ -322,6 +368,51 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             SearchFilterType.Artists => SearchScope.Artists,
             _ => SearchScope.All
         };
+    }
+
+    private static string BuildCacheKey(string query, SearchScope scope)
+        => string.Concat(query.Trim().ToLowerInvariant(), "|", scope.ToString());
+
+    private static CachedResult? GetCachedResult(string cacheKey)
+    {
+        lock (_resultCacheGate)
+        {
+            if (_resultCache.TryGetValue(cacheKey, out var entry)
+                && DateTimeOffset.UtcNow - entry.At < ResultCacheTtl)
+            {
+                return entry;
+            }
+
+            // Drop stale entry so it doesn't sit in the cache occupying a slot.
+            if (entry != null)
+                _resultCache.Remove(cacheKey);
+
+            return null;
+        }
+    }
+
+    private static void StoreCachedResult(
+        string cacheKey,
+        IReadOnlyList<SearchResultItem> items,
+        SearchResultItem? topResult)
+    {
+        lock (_resultCacheGate)
+        {
+            // Bound: when full, evict the single oldest entry. Cheap and good enough
+            // — typical session has well under ResultCacheMax distinct queries.
+            if (_resultCache.Count >= ResultCacheMax && !_resultCache.ContainsKey(cacheKey))
+            {
+                var oldestKey = string.Empty;
+                var oldestAt = DateTimeOffset.MaxValue;
+                foreach (var (k, v) in _resultCache)
+                {
+                    if (v.At < oldestAt) { oldestAt = v.At; oldestKey = k; }
+                }
+                if (oldestKey.Length > 0) _resultCache.Remove(oldestKey);
+            }
+
+            _resultCache[cacheKey] = new CachedResult(items, topResult, DateTimeOffset.UtcNow);
+        }
     }
 
     [RelayCommand]

@@ -90,6 +90,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // miss a fast load that completes before the page is added to the visual
         // tree — that race left the shimmer on forever after a tab restore.
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        // Refresh the palette-driven page tint when the user toggles app theme;
+        // tier selection (HighContrast vs HigherContrast) depends on it.
+        ActualThemeChanged += (_, _) => UpdatePageTint();
         Unloaded += ArtistPage_Unloaded;
         Loaded += ArtistPage_Loaded;
     }
@@ -257,7 +260,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             if (_showingContent)
                 UpdateAvatarLayout(animate: true);
         }
-        else if (e.PropertyName is nameof(ArtistViewModel.HeaderHeroColorHex))
+        else if (e.PropertyName is nameof(ArtistViewModel.HeaderHeroColorHex)
+                                 or nameof(ArtistViewModel.Palette))
         {
             UpdatePageTint();
         }
@@ -289,7 +293,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (_pageTintFadeStop != null) _pageTintFadeStop.Offset = fadeOffset;
         if (_pageTintEndStop != null) _pageTintEndStop.Offset = 1.0;
 
-        if (!TintColorHelper.TryParseHex(ViewModel.HeaderHeroColorHex, out var parsed))
+        // Prefer the visualIdentity palette (richer, two-tone — BackgroundTinted
+        // top → Background bottom — and theme-aware) over the single-hex
+        // HeaderHeroColorHex. Same tier policy as ConcertViewModel and
+        // SearchResultHeroCard: dark theme → HigherContrast; light → HighContrast.
+        // MinContrast is intentionally skipped; too pastel for white-on-tint text.
+        var (tintTop, tintBottom) = ResolveTintColors();
+        if (tintTop is null || tintBottom is null)
         {
             AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
             AnimatePageTintColor(_pageTintHeroStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
@@ -298,10 +308,43 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             return;
         }
 
-        AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(140, parsed.R, parsed.G, parsed.B));
-        AnimatePageTintColor(_pageTintHeroStop, Windows.UI.Color.FromArgb(120, parsed.R, parsed.G, parsed.B));
-        AnimatePageTintColor(_pageTintFadeStop, Windows.UI.Color.FromArgb(20, parsed.R, parsed.G, parsed.B));
-        AnimatePageTintColor(_pageTintEndStop, Windows.UI.Color.FromArgb(0, parsed.R, parsed.G, parsed.B));
+        var top = tintTop.Value;
+        var bottom = tintBottom.Value;
+        AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(170, top.R, top.G, top.B));
+        AnimatePageTintColor(_pageTintHeroStop,  Windows.UI.Color.FromArgb(140, top.R, top.G, top.B));
+        AnimatePageTintColor(_pageTintFadeStop,  Windows.UI.Color.FromArgb(40,  bottom.R, bottom.G, bottom.B));
+        AnimatePageTintColor(_pageTintEndStop,   Windows.UI.Color.FromArgb(0,   bottom.R, bottom.G, bottom.B));
+    }
+
+    /// <summary>
+    /// Resolves the top + bottom colours of the page tint gradient. Prefers the
+    /// theme-appropriate ArtistPalette tier (BackgroundTinted top, Background
+    /// bottom). Falls back to the single-hex HeaderHeroColorHex when no palette
+    /// exists (older artists with no visualIdentity block).
+    /// </summary>
+    private (Windows.UI.Color? Top, Windows.UI.Color? Bottom) ResolveTintColors()
+    {
+        var palette = ViewModel.Palette;
+        if (palette != null)
+        {
+            var tier = ActualTheme == ElementTheme.Dark
+                ? (palette.HigherContrast ?? palette.HighContrast)
+                : (palette.HighContrast ?? palette.HigherContrast);
+
+            if (tier != null)
+            {
+                var top = Windows.UI.Color.FromArgb(255,
+                    tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
+                var bottom = Windows.UI.Color.FromArgb(255,
+                    tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
+                return (top, bottom);
+            }
+        }
+
+        if (TintColorHelper.TryParseHex(ViewModel.HeaderHeroColorHex, out var parsed))
+            return (parsed, parsed);
+
+        return (null, null);
     }
 
     private void EnsurePageTintBrush()
