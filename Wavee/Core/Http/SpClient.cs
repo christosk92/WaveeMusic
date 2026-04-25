@@ -27,6 +27,15 @@ public sealed class SpClient : ISpClient
     private const int MaxRetries = 3;
     private const string CollectionContentType = "application/vnd.collection-v2.spotify.proto";
 
+    // Spotify's first-party desktop-client identity strings, captured from
+    // Fiddler. Required by /playlist/v2/.../signals — without the matching
+    // Spotify-App-Version / App-Platform / spotify-playlist-sync-reason set
+    // the gateway routes to a passive read-only handler that 200-OKs but
+    // never runs the signal pipeline. Keep these in one place so any future
+    // endpoint that needs the same identity can reuse them.
+    private const string SpotifyAppVersion = "128800483";
+    private const string SpotifyClientUserAgent = "Spotify/128800483 Win32_ARM64/Windows 10 (10.0.26200; ARM)";
+
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
@@ -1092,7 +1101,21 @@ public sealed class SpClient : ISpClient
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
-        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        // Mirror Spotify's first-party desktop POST verbatim. The gateway gates
+        // /signals routing on the full identity (Content-Type, App-Platform,
+        // Spotify-App-Version, spotify-playlist-sync-reason) — a request that
+        // looks generic 200-OKs against a read-only handler that echoes the
+        // playlist without recording the signal.
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.AcceptLanguage.ParseAdd("en");
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoStore = true };
+        request.Headers.TryAddWithoutValidation("App-Platform", "Win32_ARM64");
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        request.Headers.TryAddWithoutValidation("spotify-accept-geoblock", "dummy");
+        request.Headers.TryAddWithoutValidation("spotify-dsa-mode-enabled", "false");
+        request.Headers.TryAddWithoutValidation("spotify-playlist-sync-reason", "CA8QAQ==");
+        request.Headers.TryAddWithoutValidation("Origin", _baseUrl);
 
         if (_clientTokenManager != null)
         {
@@ -1123,7 +1146,10 @@ public sealed class SpClient : ISpClient
 
         var protobufBytes = body.ToByteArray();
         request.Content = new ByteArrayContent(protobufBytes);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+        // Body is binary protobuf — the form-urlencoded MIME is what Spotify's
+        // gateway expects on this endpoint despite the body type. Anything
+        // else routes to the wrong handler chain.
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
        // request.Headers.Accept.Clear();
        // request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _logger?.LogDebug("Sending playlist signal: {Uri} key={Key}", playlistUri, signalKey);

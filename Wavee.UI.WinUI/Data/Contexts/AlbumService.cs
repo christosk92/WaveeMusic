@@ -113,9 +113,11 @@ public sealed class AlbumService : IAlbumService
             ReleaseDate = ParseAlbumDate(album.Date),
             IsSaved = album.Saved,
             IsPreRelease = album.IsPreRelease,
+            PreReleaseEndDateTime = ParseIso(album.PreReleaseEndDateTime),
             TotalTracks = album.TracksV2?.TotalCount ?? 0,
             DiscCount = album.Discs?.TotalCount ?? 1,
             ShareUrl = album.SharingInfo?.ShareUrl,
+            Palette = MapPalette(album.VisualIdentity),
             Copyrights = album.Copyright?.Items?.Select(c => new AlbumCopyrightResult
             {
                 Text = c.Text,
@@ -140,7 +142,59 @@ public sealed class AlbumService : IAlbumService
                     Type = r.Type,
                     ImageUrl = r.CoverArt?.Sources?.LastOrDefault()?.Url,
                     Year = r.Date?.Year ?? 0
+                }).ToList() ?? [],
+            AlternateReleases = album.Releases?.Items?
+                .Where(r => !string.IsNullOrEmpty(r.Uri))
+                .Select(r => new AlbumAlternateReleaseResult
+                {
+                    Id = r.Id,
+                    Uri = r.Uri,
+                    Name = r.Name,
+                    Type = r.Type,
+                    Year = r.Date?.Year ?? 0,
+                    CoverArtUrl = r.CoverArt?.Sources?.LastOrDefault()?.Url,
                 }).ToList() ?? []
+        };
+    }
+
+    private static DateTimeOffset? ParseIso(string? iso)
+        => string.IsNullOrEmpty(iso) ? null
+            : (DateTimeOffset.TryParse(iso, out var dt) ? dt : null);
+
+    private static AlbumPaletteTier? MapTier(ArtistExtractedColorPalette? palette)
+    {
+        if (palette?.BackgroundBase == null || palette.TextBrightAccent == null) return null;
+        var bg = palette.BackgroundBase;
+        var bgTint = palette.BackgroundTintedBase ?? palette.BackgroundBase;
+        var accent = palette.TextBrightAccent;
+        return new AlbumPaletteTier
+        {
+            BackgroundR = (byte)bg.Red,
+            BackgroundG = (byte)bg.Green,
+            BackgroundB = (byte)bg.Blue,
+            BackgroundTintedR = (byte)bgTint.Red,
+            BackgroundTintedG = (byte)bgTint.Green,
+            BackgroundTintedB = (byte)bgTint.Blue,
+            TextAccentR = (byte)accent.Red,
+            TextAccentG = (byte)accent.Green,
+            TextAccentB = (byte)accent.Blue,
+        };
+    }
+
+    private static AlbumPalette? MapPalette(AlbumVisualIdentity? vi)
+    {
+        // Path is squareCoverImage on albums (vs wideFullBleedImage on artists/concerts).
+        var set = vi?.SquareCoverImage?.ExtractedColorSet;
+        if (set == null) return null;
+        var high = MapTier(set.HighContrast);
+        var higher = MapTier(set.HigherContrast);
+        var min = MapTier(set.MinContrast);
+        if (high == null && higher == null && min == null) return null;
+        return new AlbumPalette
+        {
+            HighContrast = high,
+            HigherContrast = higher,
+            MinContrast = min,
         };
     }
 
@@ -188,6 +242,7 @@ public sealed class AlbumService : IAlbumService
             AlbumId = albumUri,
             Duration = r.Duration,
             IsExplicit = r.IsExplicit,
+            HasCanvas = r.HasVideo,
             TrackNumber = r.TrackNumber,
             DiscNumber = r.DiscNumber,
             IsPlayable = r.IsPlayable,

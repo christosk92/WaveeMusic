@@ -91,6 +91,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // prior request and supersedes it.
     private CancellationTokenSource? _sessionSignalCts;
 
+    // Chip whose IsLoading flag is currently lit. Set when a click kicks off
+    // the POST; cleared from LoadTracksAsync once the new track list has been
+    // applied (or determined unchanged) — that's the visible boundary for
+    // "the click is done", and it's what the user expects the chase-border
+    // beam to track.
+    private SessionControlChipViewModel? _pendingSignalChip;
+
     /// <summary>
     /// Wide hero image populated from the playlist's <c>header_image_url_desktop</c>
     /// format attribute. Only editorial / radio playlists carry one; for user-created
@@ -667,15 +674,47 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         {
             var previouslySelectedKey = SelectedSessionControlChip?.OptionKey;
 
-            SessionControlChips.Clear();
-
             if (options is null || options.Count == 0)
             {
+                SessionControlChips.Clear();
                 SelectedSessionControlChip = null;
                 return;
             }
 
+            // Fast path: if the new option set has the exact same OptionKeys
+            // as the current chips, skip Clear+Add. A signal-driven refresh
+            // returns the same chip set 99 % of the time, and rebuilding
+            // makes the just-clicked chip flash through "removed → re-added
+            // at server position → animated back to 0", which the user reads
+            // as a bounce. Keeping the existing instances preserves both the
+            // current SelectedSessionControlChip and any prior move-to-front,
+            // so the click-time animation is the only one the user sees.
+            if (SessionControlChipsAreEquivalent(SessionControlChips, options))
+            {
+                OnPropertyChanged(nameof(HasSessionControlChips));
+                return;
+            }
+
+            SessionControlChips.Clear();
+
+            // The server tells us which chip is currently active via the
+            // `session_control.selected_signals` format attribute (value is
+            // the fully-formed signal identifier — same shape we'd POST on a
+            // click). Spotify writes it after each successful /signals call,
+            // so on first load we use it to seed the selection, and across
+            // refreshes a user-driven selection still takes priority.
+            string? serverSelectedIdentifier = null;
+            if (_playlistFormatAttributes is not null &&
+                _playlistFormatAttributes.TryGetValue("session_control.selected_signals", out var raw) &&
+                !string.IsNullOrWhiteSpace(raw))
+            {
+                // The key is plural in case Spotify ever ships a comma-list.
+                // For single-select chip rows we just take the first entry.
+                serverSelectedIdentifier = raw.Split(',', 2)[0].Trim();
+            }
+
             SessionControlChipViewModel? restored = null;
+            SessionControlChipViewModel? serverActive = null;
             foreach (var option in options)
             {
                 var chip = new SessionControlChipViewModel
@@ -690,9 +729,32 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 {
                     restored = chip;
                 }
+                if (serverSelectedIdentifier is not null &&
+                    chip.SignalIdentifier is not null &&
+                    string.Equals(serverSelectedIdentifier, chip.SignalIdentifier, StringComparison.Ordinal))
+                {
+                    serverActive = chip;
+                }
             }
 
-            SelectedSessionControlChip = restored;
+            // Restore the user's prior pick if they had one, otherwise honour
+            // the server's "currently active" signal, otherwise leave nothing
+            // selected (Spotify's first-party UI shows the default visual when
+            // no chip is active — same here).
+            SelectedSessionControlChip = restored ?? serverActive;
+
+            // Hoist the active chip to index 0 so the click-driven move-to-
+            // front survives every BuildSessionControlChips rebuild that
+            // follows the /signals refresh cycle. Without this, the refresh
+            // re-seats the chip in server order and the user sees their pick
+            // bounce back from the front to wherever the server placed it.
+            var active = SelectedSessionControlChip;
+            if (active is not null)
+            {
+                var idx = SessionControlChips.IndexOf(active);
+                if (idx > 0)
+                    SessionControlChips.Move(idx, 0);
+            }
         }
         finally
         {
@@ -742,12 +804,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         // Per-chip loading chase: clear any previously-loading chip (prior
         // click superseded), light up the new one. The vendored
-        // SessionTokenItem binds its IsLoading DP to this flag via an
-        // ItemContainerStyle setter, so the border-chase storyboard starts
+        // SessionTokenView wires its container's IsLoading DP to this flag
+        // via a programmatic binding in PrepareContainerForItemOverride, so
+        // the chase-border beam (PendingBorderBeam template part) starts
         // immediately on the clicked chip.
         foreach (var chip in SessionControlChips)
             chip.IsLoading = false;
         newValue.IsLoading = true;
+        _pendingSignalChip = newValue;
 
         // Move-to-front: reorder the clicked chip to index 0. The
         // SessionTokenItem's Composition implicit Offset animation picks up
@@ -806,21 +870,20 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             if (ct.IsCancellationRequested || PlaylistId != playlistId)
                 return;
 
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                if (PlaylistId != playlistId) return;
-                newValue.IsLoading = false;
-                // The Changes event from ApplyFreshContentAsync wakes the
-                // PlaylistStore subscription that ApplyDetail listens to;
-                // the store re-runs FetchAsync against the now-fresh hot
-                // cache and re-emits Ready, which triggers ApplyDetail +
-                // LoadTracksAsync — same hot path as a normal refresh.
-            });
+            // Don't clear IsLoading here. The chase beam should keep going
+            // until LoadTracksAsync re-renders the post-signal track list
+            // (the visible boundary). LoadTracksAsync does the clear when
+            // it sees _pendingSignalChip is non-null.
+            //
+            // The Changes event from ApplyFreshContentAsync wakes the
+            // PlaylistStore subscription that ApplyDetail listens to; the
+            // store re-runs FetchAsync against the now-fresh hot cache and
+            // re-emits Ready, which triggers ApplyDetail + LoadTracksAsync.
         }
         catch (OperationCanceledException)
         {
-            // Superseded by another click; the newer handler owns IsLoading
-            // on the replacement chip.
+            // Superseded by another click; the newer handler's "clear all
+            // chips' IsLoading" loop already turned this one off.
         }
         catch (Exception ex)
         {
@@ -829,6 +892,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             {
                 if (PlaylistId != playlistId) return;
                 newValue.IsLoading = false;
+                if (ReferenceEquals(_pendingSignalChip, newValue))
+                    _pendingSignalChip = null;
                 _suppressSessionSignal = true;
                 SelectedSessionControlChip = oldValue;
                 _suppressSessionSignal = false;
@@ -983,6 +1048,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 {
                     _tracksLoadedFor = playlistId;
                     IsLoadingTracks = false;
+                    ClearPendingSignalChip();
                     _logger?.LogInformation(
                         "Tracks unchanged after refresh: {Count} same Ids for '{PlaylistId}' first3={First3}",
                         tracks.Count, playlistId,
@@ -996,6 +1062,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 ApplyFilterAndSort();
                 _tracksLoadedFor = playlistId;
                 IsLoadingTracks = false;
+                ClearPendingSignalChip();
                 _logger?.LogInformation(
                     "Tracks applied: {Count} tracks for '{PlaylistId}' first3={First3}",
                     _allTracks.Count, playlistId,
@@ -1017,6 +1084,40 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 HasError = true;
                 ErrorMessage = ErrorMapper.ToUserMessage(ex);
             });
+        }
+    }
+
+    // Set-equality on OptionKeys for the chip row. Returns true when the
+    // server-provided `incoming` options have the exact same keys as the
+    // chips currently bound to the UI — order ignored. The fast-path in
+    // BuildSessionControlChips short-circuits the rebuild when this is
+    // true, so the click-time move-to-front survives the refresh cycle
+    // without bouncing.
+    private static bool SessionControlChipsAreEquivalent(
+        IReadOnlyList<SessionControlChipViewModel> current,
+        IReadOnlyList<SessionControlOption> incoming)
+    {
+        if (current.Count != incoming.Count) return false;
+        var currentKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var c in current)
+            currentKeys.Add(c.OptionKey);
+        foreach (var o in incoming)
+        {
+            if (!currentKeys.Contains(o.OptionKey))
+                return false;
+        }
+        return true;
+    }
+
+    // Stop the per-chip chase-border beam. Called from LoadTracksAsync once
+    // the post-click track list has been applied (or determined unchanged) —
+    // the visible boundary the user expects the beam to track.
+    private void ClearPendingSignalChip()
+    {
+        if (_pendingSignalChip is { } pending)
+        {
+            pending.IsLoading = false;
+            _pendingSignalChip = null;
         }
     }
 

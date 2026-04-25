@@ -54,8 +54,17 @@ public sealed class GetAlbumUnion
     [JsonPropertyName("isPreRelease")]
     public bool IsPreRelease { get; init; }
 
+    [JsonPropertyName("preReleaseEndDateTime")]
+    public string? PreReleaseEndDateTime { get; init; }
+
     [JsonPropertyName("courtesyLine")]
     public string? CourtesyLine { get; init; }
+
+    [JsonPropertyName("releases")]
+    public AlbumReleasesList? Releases { get; init; }
+
+    [JsonPropertyName("visualIdentity")]
+    public AlbumVisualIdentity? VisualIdentity { get; init; }
 
     [JsonPropertyName("date")]
     public AlbumDate? Date { get; init; }
@@ -262,6 +271,52 @@ public sealed class AlbumSharingInfo
 
     [JsonPropertyName("shareUrl")]
     public string? ShareUrl { get; init; }
+}
+
+// ── Alternate releases (deluxe / remaster / anniversary editions of THIS album) ──
+
+public sealed class AlbumReleasesList
+{
+    [JsonPropertyName("items")]
+    public List<AlbumReleaseItem>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+}
+
+public sealed class AlbumReleaseItem
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("date")]
+    public AlbumMoreByArtistDate? Date { get; init; }
+
+    [JsonPropertyName("coverArt")]
+    public AlbumMoreByArtistCoverArt? CoverArt { get; init; }
+}
+
+// ── Visual identity (Spotify's pre-extracted color palette for the cover) ──
+
+public sealed class AlbumVisualIdentity
+{
+    [JsonPropertyName("squareCoverImage")]
+    public AlbumVisualIdentityImage? SquareCoverImage { get; init; }
+}
+
+public sealed class AlbumVisualIdentityImage
+{
+    [JsonPropertyName("extractedColorSet")]
+    public ArtistExtractedColorSet? ExtractedColorSet { get; init; }
 }
 
 // ── JSON contexts ──

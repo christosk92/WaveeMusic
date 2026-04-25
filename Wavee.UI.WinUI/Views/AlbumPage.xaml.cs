@@ -1,26 +1,16 @@
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Numerics;
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Graphics.Canvas.Effects;
-using Microsoft.UI;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using Wavee.UI.WinUI.Controls.ContextMenu;
-using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
-using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
-using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -28,39 +18,8 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class AlbumPage : Page, ITabBarItemContent
 {
     private readonly ILogger? _logger;
+    private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
-    private LoadedImageSurface? _blurSurface;
-    private bool _isNarrowMode;
-    private SpriteVisual? _blurSprite;
-    private string? _lastBlurUrl;
-
-    // CompositionEffectFactory compiles a pixel shader on creation, which is
-    // expensive (Microsoft's Composition docs explicitly call this out). The
-    // previous version built a fresh factory inside SetupBlurredBackground per
-    // page instance, so every album navigation re-compiled the same blur shader
-    // and re-allocated intermediate render targets. Cache the factory once per
-    // Compositor (a single Compositor is shared across the whole app via the
-    // root visual) and reuse it for every AlbumPage instance.
-    private static CompositionEffectFactory? s_blurEffectFactory;
-    private static readonly object s_blurEffectFactoryLock = new();
-
-    private static CompositionEffectFactory GetBlurEffectFactory(Compositor compositor)
-    {
-        if (s_blurEffectFactory != null) return s_blurEffectFactory;
-        lock (s_blurEffectFactoryLock)
-        {
-            if (s_blurEffectFactory != null) return s_blurEffectFactory;
-            var blurEffect = new GaussianBlurEffect
-            {
-                Name = "Blur",
-                BlurAmount = 60f,
-                Source = new CompositionEffectSourceParameter("image"),
-                BorderMode = EffectBorderMode.Hard
-            };
-            s_blurEffectFactory = compositor.CreateEffectFactory(blurEffect);
-            return s_blurEffectFactory;
-        }
-    }
 
     public AlbumViewModel ViewModel { get; }
 
@@ -72,210 +31,45 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     {
         ViewModel = Ioc.Default.GetRequiredService<AlbumViewModel>();
         _logger = Ioc.Default.GetService<ILogger<AlbumPage>>();
+        _notificationService = Ioc.Default.GetService<INotificationService>();
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
         InitializeComponent();
 
-        // Plays column formatter — TrackDataGrid's PlayCount column uses this delegate
-        // to reach AlbumTrackDto.PlayCountFormatted (TrackItem doesn't know that type).
-        // Same pattern as the DateAddedFormatter used on PlaylistPage.
-        NarrowAlbumHeader.RightTapped += (_, e) =>
-        {
-            if (string.IsNullOrEmpty(ViewModel.AlbumId)) return;
-            var items = AlbumContextMenuBuilder.Build(new AlbumMenuContext
-            {
-                AlbumId = ViewModel.AlbumId!,
-                AlbumName = ViewModel.AlbumName ?? string.Empty,
-                ArtistId = ViewModel.ArtistId,
-                ArtistName = ViewModel.ArtistName,
-                IsSaved = ViewModel.IsSaved,
-                PlayCommand = ViewModel.PlayAlbumCommand,
-                ShuffleCommand = ViewModel.ShuffleAlbumCommand,
-                ToggleSaveCommand = ViewModel.ToggleSaveCommand
-            });
-            ContextMenuHost.Show(NarrowAlbumHeader, items, e.GetPosition(NarrowAlbumHeader));
-            e.Handled = true;
-        };
-
+        // PlayCount column formatter — TrackDataGrid's PlayCount column uses this
+        // delegate to reach AlbumTrackDto.PlayCountFormatted (TrackItem doesn't know
+        // about the album-specific DTO). Same pattern as PlaylistPage.
         TrackGrid.PlayCountFormatter = item =>
             item is ViewModels.LazyTrackItem lazy && lazy.Data is Data.DTOs.AlbumTrackDto dto
                 ? dto.PlayCountFormatted
                 : "";
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-        TrackList.SetItemTransitionsEnabled(false);
-        Loaded += AlbumPage_Loaded;
-        Unloaded += AlbumPage_Unloaded;
+        ActualThemeChanged += OnActualThemeChanged;
+
+        // Other-versions flyout is built dynamically — the data shape (name + year +
+        // type) is uniform per album but the count varies, so we rebuild on every
+        // collection change rather than templating it in XAML.
+        ViewModel.AlternateReleases.CollectionChanged += AlternateReleases_CollectionChanged;
+        RebuildOtherVersionsFlyout();
+
+        // Seed the VM with the current theme so palette brushes are correct as soon
+        // as the data lands. ActualThemeChanged keeps them in sync from there.
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
 
-    private void AlbumPage_Loaded(object sender, RoutedEventArgs e)
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
-        // Cached-page return: WinUI detaches the sprite's child-visual binding
-        // on Unloaded. Re-attach the existing sprite so it shows immediately —
-        // a subsequent ViewModel_PropertyChanged with a different URL will
-        // tear it down and build a new one via the URL-dedup miss path.
-        if (_blurSprite != null)
-            ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
-
-        // First-time setup: AlbumImageUrl was already populated by PrefillFrom
-        // during OnNavigatedTo. Deferred to Low priority so first paint
-        // completes before we spin up LoadedImageSurface + Compositor work.
-        if (!string.IsNullOrEmpty(ViewModel.AlbumImageUrl) && _blurSprite == null)
-        {
-            var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
-            if (!string.IsNullOrEmpty(url))
-                DispatcherQueue.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () => SetupBlurredBackground(url));
-        }
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
-    private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        // Page is now cached (NavigationCacheMode=Enabled): Unloaded fires on
-        // tab-switch but the instance comes back. Mirror PlaylistPage:
-        //   • Don't dispose the ViewModel — Activate/Deactivate handle the
-        //     subscription lifecycle in OnNavigatedTo/OnNavigatedFrom.
-        //   • Don't unhook ContentChanged/PropertyChanged — re-Loaded would
-        //     leave the page deaf to image/title updates without them.
-        //   • Don't dispose composition resources — keep _blurSurface and
-        //     _blurSprite alive so a cached return with the same album is a
-        //     no-op (URL dedup in SetupBlurredBackground), and a return with a
-        //     different album rebuilds them via the same dedup-miss path.
-        // Memory cost: ~512 KB per cached AlbumPage tab. Acceptable.
-    }
-
-    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(AlbumViewModel.AlbumImageUrl) && !string.IsNullOrEmpty(ViewModel.AlbumImageUrl))
-        {
-            var url = SpotifyImageHelper.ToHttpsUrl(ViewModel.AlbumImageUrl) ?? ViewModel.AlbumImageUrl;
-            if (!string.IsNullOrEmpty(url))
-                DispatcherQueue.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () => SetupBlurredBackground(url));
-        }
-    }
-
-    private void SetupBlurredBackground(string imageUrl)
-    {
-        // Skip the full teardown + re-decode + shader pass when the URL hasn't
-        // changed. AlbumImageUrl fires PropertyChanged twice with the same
-        // value (PrefillFrom → detail-load), and on cached-page returns to the
-        // same album the URL matches what's already loaded. Re-attach the
-        // sprite (Unloaded detached it) and bail.
-        if (string.Equals(imageUrl, _lastBlurUrl, StringComparison.Ordinal) && _blurSprite != null)
-        {
-            ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
-            return;
-        }
-
-        // Clean up previous
-        _blurSurface?.Dispose();
-        if (_blurSprite != null)
-        {
-            ElementCompositionPreview.SetElementChildVisual(BlurredBackground, null);
-            _blurSprite.Brush?.Dispose();
-            _blurSprite.Dispose();
-            _blurSprite = null;
-        }
-
-        _lastBlurUrl = imageUrl;
-
-        var visual = ElementCompositionPreview.GetElementVisual(BlurredBackground);
-        var compositor = visual.Compositor;
-
-        // Start loading image immediately (async, non-blocking)
-        _blurSurface = LoadedImageSurface.StartLoadFromUri(
-            new Uri(imageUrl),
-            new Windows.Foundation.Size(512, 512));
-
-        // Defer all GPU-heavy composition work (blur effect, gradient mask) until
-        // the image has actually loaded — avoids stalling the navigation transition.
-        _blurSurface.LoadCompleted += (_, _) =>
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (_blurSurface == null) return;
-
-                var surfaceBrush = compositor.CreateSurfaceBrush();
-                surfaceBrush.Surface = _blurSurface;
-                surfaceBrush.Stretch = CompositionStretch.UniformToFill;
-
-                // Use the shared static effect factory — see GetBlurEffectFactory.
-                // Compiling the GaussianBlurEffect shader once at app startup
-                // (lazily on first navigation) instead of per AlbumPage instance
-                // saves both CPU on navigation and GPU intermediate-target memory.
-                var effectFactory = GetBlurEffectFactory(compositor);
-                var effectBrush = effectFactory.CreateBrush();
-                effectBrush.SetSourceParameter("image", surfaceBrush);
-
-                // Diagonal gradient mask: top-left opaque → center-right transparent.
-                // Mask alphas are theme-aware: in light mode the dark blurred album
-                // image was darkening the page noticeably (the white surface couldn't
-                // absorb the same alpha that reads as subtle on a dark surface).
-                // Mirror the proportional reduction HeroHeader.ApplyColor uses for the
-                // artist page tint (~50-56% of the dark-mode alpha).
-                var isLight = ActualTheme == ElementTheme.Light;
-                byte topAlpha = isLight ? (byte)90 : (byte)160;
-                byte midAlpha = isLight ? (byte)30 : (byte)60;
-                var gradientMask = compositor.CreateLinearGradientBrush();
-                gradientMask.StartPoint = new Vector2(0f, 0f);
-                gradientMask.EndPoint = new Vector2(0.7f, 0.6f);
-                gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0f,
-                    Windows.UI.Color.FromArgb(topAlpha, 255, 255, 255)));
-                gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(0.4f,
-                    Windows.UI.Color.FromArgb(midAlpha, 255, 255, 255)));
-                gradientMask.ColorStops.Add(compositor.CreateColorGradientStop(1f,
-                    Windows.UI.Color.FromArgb(0, 255, 255, 255)));
-
-                // Mask: blurred image × gradient
-                var maskBrush = compositor.CreateMaskBrush();
-                maskBrush.Source = effectBrush;
-                maskBrush.Mask = gradientMask;
-
-                // Sprite visual fills the border
-                _blurSprite = compositor.CreateSpriteVisual();
-                _blurSprite.Brush = maskBrush;
-                _blurSprite.RelativeSizeAdjustment = Vector2.One;
-                _blurSprite.Opacity = 0f;
-                ElementCompositionPreview.SetElementChildVisual(BlurredBackground, _blurSprite);
-
-                // Fade in
-                var fadeAnim = compositor.CreateScalarKeyFrameAnimation();
-                fadeAnim.InsertKeyFrame(0f, 0f);
-                fadeAnim.InsertKeyFrame(1f, 1f,
-                    compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f)));
-                fadeAnim.Duration = TimeSpan.FromMilliseconds(600);
-                _blurSprite.StartAnimation("Opacity", fadeAnim);
-            });
-        };
-    }
-
-    public void RefreshWithParameter(object? parameter)
-    {
-        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph.
-        // Album → Album (refresh-in-place from TabBarItem.Navigate) never routes
-        // through OnNavigatedTo, so we have to start the connected animation here
-        // ourselves — otherwise the source ContentCard's PrepareToAnimate snapshot
-        // is discarded and nothing animates.
-        // Helpers.ConnectedAnimationHelper.TryStartAnimation(
-        //     Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
-
-        LoadNewContent(parameter);
-    }
+    // ── Navigation ───────────────────────────────────────────────────────────
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-
-        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
-        // Helpers.ConnectedAnimationHelper.TryStartAnimation(
-        //     Helpers.ConnectedAnimationHelper.AlbumArt, AlbumArtContainer);
-
         LoadNewContent(e.Parameter);
     }
 
@@ -292,8 +86,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         if (parameter is ContentNavigationParameter nav)
         {
             albumId = nav.Uri;
-            ViewModel.PrefillFrom(nav);
+            // Activate first so its new-album clear-down (in Initialize) runs BEFORE
+            // PrefillFrom writes the nav values — otherwise the clear would wipe the
+            // prefill and the cached page would keep showing the previous album's
+            // header until the store push arrived. Same pattern as PlaylistPage.
             ViewModel.Activate(nav.Uri);
+            ViewModel.PrefillFrom(nav);
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
@@ -304,6 +102,8 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         if (!string.IsNullOrEmpty(albumId))
             RestoreAlbumPanelWidth(albumId);
     }
+
+    // ── Left-panel sizing ────────────────────────────────────────────────────
 
     private void RestoreAlbumPanelWidth(string albumId)
     {
@@ -318,12 +118,6 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         LeftPanelColumn.Width = new GridLength(width, GridUnitType.Pixel);
     }
 
-    private void AlbumArtContainer_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (sender is Border border && e.NewSize.Width > 0)
-            border.Height = e.NewSize.Width;
-    }
-
     private void AlbumSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
     {
         var albumId = ViewModel.AlbumId;
@@ -332,7 +126,65 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         _settings.Update(s => s.PanelWidths[$"album:{albumId}"] = e.NewWidth);
     }
 
-    // ── Click handlers ──
+    // Keep the cover square as the splitter resizes the left column.
+    private void AlbumArtContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is Border border && e.NewSize.Width > 0)
+            border.Height = e.NewSize.Width;
+    }
+
+    // ── Other versions flyout ───────────────────────────────────────────────
+
+    private void AlternateReleases_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        => RebuildOtherVersionsFlyout();
+
+    private void RebuildOtherVersionsFlyout()
+    {
+        if (OtherVersionsFlyout == null) return;
+        OtherVersionsFlyout.Items.Clear();
+
+        foreach (var release in ViewModel.AlternateReleases)
+        {
+            if (string.IsNullOrEmpty(release.Uri)) continue;
+
+            var label = string.IsNullOrEmpty(release.Name)
+                ? FormatType(release.Type)
+                : release.Name;
+            if (release.Year > 0)
+                label = $"{label} · {release.Year}";
+
+            var item = new MenuFlyoutItem { Text = label, Tag = release };
+            item.Click += OtherVersion_Click;
+            OtherVersionsFlyout.Items.Add(item);
+        }
+    }
+
+    private static string FormatType(string? type)
+    {
+        if (string.IsNullOrEmpty(type)) return "Edition";
+        // "ALBUM" → "Album", "EP" stays uppercase per Spotify convention.
+        if (type.Equals("EP", StringComparison.OrdinalIgnoreCase)) return "EP";
+        return char.ToUpperInvariant(type[0]) + type[1..].ToLowerInvariant();
+    }
+
+    private void OtherVersion_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem item || item.Tag is not AlbumAlternateReleaseResult release)
+            return;
+
+        var targetUri = release.Uri ?? release.Id;
+        if (string.IsNullOrWhiteSpace(targetUri)) return;
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = targetUri,
+            Title = release.Name,
+            ImageUrl = release.CoverArtUrl
+        };
+        NavigationHelpers.OpenAlbum(param, release.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
+    }
+
+    // ── Click handlers ───────────────────────────────────────────────────────
 
     private void Artist_Click(object sender, RoutedEventArgs e)
     {
@@ -343,37 +195,15 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         }
     }
 
-    private void TrackList_ArtistClicked(object? sender, string artistId)
-    {
-        if (!string.IsNullOrEmpty(artistId))
-            NavigationHelpers.OpenArtist(artistId, "Artist");
-    }
-
-    private void TrackList_NewPlaylistRequested(object? sender, IReadOnlyList<string> trackIds)
-    {
-        NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: trackIds.ToList());
-    }
-
-    private void MerchItem_Click(object sender, EventArgs e)
-    {
-        if (sender is FrameworkElement fe && fe.DataContext is AlbumMerchItemResult merch
-            && !string.IsNullOrEmpty(merch.ShopUrl))
-        {
-            _ = ViewModel.OpenMerchItemCommand.ExecuteAsync(merch.ShopUrl);
-        }
-    }
-
     private void RelatedAlbum_Click(object sender, EventArgs e)
     {
-        if (sender is not FrameworkElement fe)
-            return;
+        if (sender is not FrameworkElement fe) return;
 
         var album = fe.Tag as AlbumRelatedResult ?? fe.DataContext as AlbumRelatedResult;
         if (album != null)
         {
             var targetUri = album.Uri ?? album.Id;
-            if (string.IsNullOrWhiteSpace(targetUri))
-                return;
+            if (string.IsNullOrWhiteSpace(targetUri)) return;
 
             var param = new ContentNavigationParameter
             {
@@ -397,33 +227,22 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
         }
     }
 
-    private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void MerchItem_Click(object sender, EventArgs e)
     {
-        var shouldBeNarrow = e.NewSize.Width < 600;
+        if (sender is FrameworkElement fe && fe.DataContext is AlbumMerchItemResult merch
+            && !string.IsNullOrEmpty(merch.ShopUrl))
+        {
+            _ = ViewModel.OpenMerchItemCommand.ExecuteAsync(merch.ShopUrl);
+        }
+    }
 
-        if (shouldBeNarrow && !_isNarrowMode)
-        {
-            _isNarrowMode = true;
-            LeftPanelColumn.MinWidth = 0;
-            LeftPanelColumn.Width = new GridLength(0);
-            VisualStateManager.GoToState(this, "NarrowState", true);
-        }
-        else if (!shouldBeNarrow && _isNarrowMode)
-        {
-            _isNarrowMode = false;
-            LeftPanelColumn.MinWidth = 200;
-            var albumId = ViewModel.AlbumId;
-            if (!string.IsNullOrEmpty(albumId))
-                RestoreAlbumPanelWidth(albumId);
-            else
-                LeftPanelColumn.Width = new GridLength(280, GridUnitType.Pixel);
-
-            VisualStateManager.GoToState(this, "WideState", true);
-        }
-        else if (!shouldBeNarrow && !_isNarrowMode)
-        {
-            // First SizeChanged fires before any state is set — ensure WideState
-            VisualStateManager.GoToState(this, "WideState", true);
-        }
+    private void Share_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(ViewModel.ShareUrl)) return;
+        ViewModel.ShareCommand.Execute(null);
+        _notificationService?.Show(
+            "Album link copied",
+            NotificationSeverity.Success,
+            TimeSpan.FromSeconds(3));
     }
 }

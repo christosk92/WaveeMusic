@@ -91,6 +91,25 @@
                                                        ActionForeground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                     </Button>
 
+                    <!-- "Open in browser" overlay for IsExternal cards (e.g. merch).
+                         Mutually exclusive with the play button — see UpdatePlayingState
+                         and the IsExternal branches in EnsurePlayOverlayRealized. -->
+                    <Button x:Name="SquareExternalButton"
+                            x:Load="False"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,8,8"
+                            Width="36" Height="36"
+                            CornerRadius="18"
+                            Padding="0"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="ExternalButton_Click"
+                            ToolTipService.ToolTip="Open in browser">
+                        <FontIcon Glyph="&#xE8A7;" FontSize="14"
+                                  Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                    </Button>
+
                     <!-- Playing indicator (shown when IsPlaying) -->
                     <Border x:Name="SquarePlayingIndicator"
                             x:Load="False"

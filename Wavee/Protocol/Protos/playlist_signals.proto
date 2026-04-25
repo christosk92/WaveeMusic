@@ -8,14 +8,17 @@ option csharp_namespace = "Wavee.Protocol.PlaylistSignals";
 // Body sent to POST /playlist/v2/playlist/{id}/signals when the user picks a
 // session-control-display chip ("Pop Rock", "K-Ballad", ...). Response is a
 // SelectedListContent (same type the GET endpoint returns) — the server
-// re-personalises the playlist to the chosen option and hands back the new
-// list inline.
+// records the preference signal and pushes a hm:// dealer notification once
+// the curation pipeline reshuffles the playlist contents.
 //
-// Wire shape was reverse-engineered from captured traffic: field numbers here
-// are the ones the server accepts. The outer field 288 is the Signal wrapper.
+// Wire shape verified byte-by-byte against Fiddler captures of Spotify's
+// first-party desktop client posting to gew4-spclient. The signal field
+// number is 2 (single-byte tag 0x12). An earlier draft used 288 (two-byte
+// tag 0x82 0x12) which Spotify's parser silently dropped as an unknown
+// field — the request 200-OK'd but no signal was recorded.
 message PlaylistSignalsRequest {
     optional bytes revision = 1;
-    optional Signal signal = 288;
+    optional Signal signal = 2;
 }
 
 message Signal {

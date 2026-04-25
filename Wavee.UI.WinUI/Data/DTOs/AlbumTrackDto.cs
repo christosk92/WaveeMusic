@@ -19,6 +19,12 @@ public sealed record AlbumTrackDto : ITrackItem
     public string? ImageUrl { get; init; }
     public TimeSpan Duration { get; init; }
     public bool IsExplicit { get; init; }
+    /// <summary>
+    /// True when the track has at least one Canvas video association
+    /// (track.associationsV3.videoAssociations.totalCount > 0). Drives a small
+    /// film-strip glyph next to the title in the album track grid.
+    /// </summary>
+    public bool HasCanvas { get; init; }
     public int TrackNumber { get; init; }
     public int DiscNumber { get; init; }
     public bool IsPlayable { get; init; } = true;

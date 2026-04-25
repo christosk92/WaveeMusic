@@ -146,6 +146,23 @@ public sealed partial class ContentCard : UserControl
         set => SetValue(NavigationTitleProperty, value);
     }
 
+    public static readonly DependencyProperty IsExternalProperty =
+        DependencyProperty.Register(nameof(IsExternal), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false));
+
+    /// <summary>
+    /// When true, the hover overlay shows an "open in browser" button (globe icon)
+    /// instead of the play button, and the play / now-playing chrome is suppressed.
+    /// Use for cards whose target is an external URL (e.g. merch shop links). Click
+    /// on the overlay fires <see cref="ExternalActionRequested"/>; clicking the card
+    /// body still fires <see cref="CardClick"/> as usual.
+    /// </summary>
+    public bool IsExternal
+    {
+        get => (bool)GetValue(IsExternalProperty);
+        set => SetValue(IsExternalProperty, value);
+    }
+
     public static readonly DependencyProperty IsPassiveProperty =
         DependencyProperty.Register(nameof(IsPassive), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(false, OnIsPassiveChanged));
@@ -200,6 +217,7 @@ public sealed partial class ContentCard : UserControl
     public event EventHandler? CardMiddleClick;
     public event EventHandler? CardHover;
     public event EventHandler? PlayRequested;
+    public event EventHandler? ExternalActionRequested;
     public event TypedEventHandler<ContentCard, RightTappedRoutedEventArgs>? CardRightTapped;
 
     // ── Constructor ──
@@ -225,6 +243,10 @@ public sealed partial class ContentCard : UserControl
         _themeColorService = Ioc.Default.GetService<ThemeColorService>();
         _highlightService = Ioc.Default.GetService<NowPlayingHighlightService>();
         InitializeComponent();
+        // Cards are always interactive (click navigates or opens). Set the hand cursor
+        // once on construction — the system shows it on hover automatically as long as
+        // the cursor stays assigned, no per-event toggling needed.
+        ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -546,11 +568,14 @@ public sealed partial class ContentCard : UserControl
         EnsurePlayOverlayRealized();
         UpdatePlayingState();
 
-        var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        if (playBtn != null)
+        var overlayBtn = GetActiveOverlayButton();
+        if (overlayBtn != null)
+        {
+            overlayBtn.Visibility = Visibility.Visible;
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
-                .Start(playBtn);
+                .Start(overlayBtn);
+        }
 
         // Scale up via composition with proper CenterPoint
         if (CardRoot != null)
@@ -570,17 +595,17 @@ public sealed partial class ContentCard : UserControl
     private async void Card_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         _isPointerOver = false;
-        var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        if (playBtn != null && !_isPlaybackPending && !IsContextPaused)
+        var overlayBtn = GetActiveOverlayButton();
+        if (overlayBtn != null && !_isPlaybackPending && !IsContextPaused)
         {
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(100))
-                .Start(playBtn);
+                .Start(overlayBtn);
 
             // Collapse after fade-out to reset for next hover
             await System.Threading.Tasks.Task.Delay(120);
             if (!_isPointerOver && !_isPlaybackPending && !IsContextPaused)
-                playBtn.Visibility = Visibility.Collapsed;
+                overlayBtn.Visibility = Visibility.Collapsed;
         }
 
         UpdatePlayingState();
@@ -703,18 +728,30 @@ public sealed partial class ContentCard : UserControl
         if (CirclePlayingEqualizer != null)
             CirclePlayingEqualizer.IsActive = showCirclePlaying && isPlaying;
 
-        var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
-        var playAction = IsCircularImage ? CirclePlayAction : SquarePlayAction;
-        if (playBtn != null && playAction != null)
+        if (IsExternal)
         {
-            playAction.IsPlaying = isPlaying;
-            playAction.IsPending = isPending;
+            // External cards have no play / pending / paused notion — overlay
+            // visibility is purely hover-driven, handled in Card_PointerEntered/Exited.
+            // Keep the play button collapsed in case a card flipped from non-external
+            // to external while realized.
+            if (SquarePlayButton != null) SquarePlayButton.Visibility = Visibility.Collapsed;
+            if (CirclePlayButton != null) CirclePlayButton.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            var playBtn = IsCircularImage ? CirclePlayButton : SquarePlayButton;
+            var playAction = IsCircularImage ? CirclePlayAction : SquarePlayAction;
+            if (playBtn != null && playAction != null)
+            {
+                playAction.IsPlaying = isPlaying;
+                playAction.IsPending = isPending;
 
-            playBtn.Visibility = (isPending || showPlayButton)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-            if (playBtn.Visibility == Visibility.Visible)
-                playBtn.Opacity = 1;
+                playBtn.Visibility = (isPending || showPlayButton)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+                if (playBtn.Visibility == Visibility.Visible)
+                    playBtn.Opacity = 1;
+            }
         }
 
         // Accent color on title when this is the active context
@@ -827,13 +864,25 @@ public sealed partial class ContentCard : UserControl
         var current = source as DependencyObject;
         while (current != null)
         {
-            if (ReferenceEquals(current, SquarePlayButton) || ReferenceEquals(current, CirclePlayButton))
+            if (ReferenceEquals(current, SquarePlayButton)
+                || ReferenceEquals(current, CirclePlayButton)
+                || ReferenceEquals(current, SquareExternalButton))
                 return true;
 
             current = VisualTreeHelper.GetParent(current);
         }
 
         return false;
+    }
+
+    private void ExternalButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Mirror the play button: the overlay is the explicit affordance, but the
+        // semantic action (open URL) belongs to the consumer. ExternalActionRequested
+        // is the precise hook; CardClick also fires so consumers wired only to
+        // CardClick (most current Merch usages) keep working.
+        ExternalActionRequested?.Invoke(this, EventArgs.Empty);
+        CardClick?.Invoke(this, EventArgs.Empty);
     }
 
     private void CardButton_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -940,11 +989,32 @@ public sealed partial class ContentCard : UserControl
 
     private void EnsurePlayOverlayRealized()
     {
+        if (IsExternal)
+        {
+            // External cards never need play / now-playing chrome — only the
+            // "open in browser" overlay. Square is the only supported shape today.
+            if (SquareExternalButton == null)
+                this.FindName("SquareExternalButton");
+            return;
+        }
+
         if (IsCircularImage)
             EnsureCircleRealized();
         else if (SquarePlayButton == null)
             this.FindName("SquarePlayButton");
     }
+
+    /// <summary>
+    /// Returns the button used for the hover overlay in the card's current mode:
+    /// the external (open-in-browser) button when <see cref="IsExternal"/> is true,
+    /// otherwise the play button matching the image shape. May return null if the
+    /// overlay subtree hasn't been realized yet (call <see cref="EnsurePlayOverlayRealized"/>
+    /// first if you intend to act on the result).
+    /// </summary>
+    private Button? GetActiveOverlayButton()
+        => IsExternal
+            ? SquareExternalButton
+            : (IsCircularImage ? CirclePlayButton : SquarePlayButton);
 
     private void SetPlaybackPending(bool pending)
     {
@@ -976,6 +1046,8 @@ public sealed partial class ContentCard : UserControl
             SquarePlayButton.Visibility = Visibility.Collapsed;
         if (CirclePlayButton != null)
             CirclePlayButton.Visibility = Visibility.Collapsed;
+        if (SquareExternalButton != null)
+            SquareExternalButton.Visibility = Visibility.Collapsed;
         IsPlaying = false;
         IsContextPaused = false;
     }
@@ -1007,6 +1079,11 @@ public sealed partial class ContentCard : UserControl
             {
                 CirclePlayButton.Opacity = 0;
                 CirclePlayButton.Visibility = Visibility.Collapsed;
+            }
+            if (SquareExternalButton != null)
+            {
+                SquareExternalButton.Opacity = 0;
+                SquareExternalButton.Visibility = Visibility.Collapsed;
             }
         }
 

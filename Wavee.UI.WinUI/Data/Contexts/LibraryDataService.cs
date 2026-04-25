@@ -89,10 +89,21 @@ public sealed class LibraryDataService : ILibraryDataService
             ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
         };
 
-        _playlistCache.Changes.Subscribe(_ =>
+        _playlistCache.Changes.Subscribe(evt =>
         {
-            _logger?.LogDebug("LibraryDataService: playlist cache change received");
-            ScheduleChangeEmit(dataChanged: true, playlistsChanged: true);
+            // Only the rootlist URI represents a sidebar-shape change (playlist
+            // added / removed / renamed / moved). Individual playlist URIs fire
+            // for content updates (dealer pushes after a /signals POST, item
+            // edits, etc.) — those don't mutate the sidebar's structure, so
+            // emitting playlistsChanged on them causes a full sidebar rebuild
+            // that flashes images and collapses/re-expands sections. Page-
+            // level VMs (PlaylistViewModel etc.) listen via PlaylistStore /
+            // DataChanged and refresh themselves.
+            var isRootlistUpdate = string.Equals(evt.Uri, PlaylistCacheUris.Rootlist, StringComparison.Ordinal);
+            _logger?.LogDebug(
+                "LibraryDataService: playlist cache change for {Uri} (rootlistUpdate={IsRootlist})",
+                evt.Uri, isRootlistUpdate);
+            ScheduleChangeEmit(dataChanged: true, playlistsChanged: isRootlistUpdate);
         });
     }
 

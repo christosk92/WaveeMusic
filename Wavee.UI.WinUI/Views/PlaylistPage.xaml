@@ -195,11 +195,6 @@
                         CanRemoveTokens="False"
                         ItemsSource="{x:Bind ViewModel.SessionControlChips, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.SelectedSessionControlChip, Mode=TwoWay}">
-                        <sessionTokens:SessionTokenView.ItemContainerStyle>
-                            <Style TargetType="sessionTokens:SessionTokenItem" BasedOn="{StaticResource DefaultSessionTokenItemStyle}">
-                                <Setter Property="IsLoading" Value="{Binding IsLoading}"/>
-                            </Style>
-                        </sessionTokens:SessionTokenView.ItemContainerStyle>
                         <sessionTokens:SessionTokenView.ItemTemplate>
                             <DataTemplate x:DataType="vm:SessionControlChipViewModel">
                                 <TextBlock Text="{x:Bind Label}" FontSize="13"/>

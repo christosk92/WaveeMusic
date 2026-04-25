@@ -91,6 +91,20 @@ public partial class SessionTokenView : ListViewBase
                 };
                 tokenItem.SetBinding(SessionTokenItem.IsRemoveableProperty, isRemovableBinding);
             }
+
+            // Convention: if the bound data item exposes an IsLoading bool,
+            // forward it to the container's IsLoading DP so the chase-border
+            // beam tracks per-item state. WinUI 3 Style Setters with
+            // {Binding} silently no-op (resolver scope limitations), so we
+            // can't do this from the consumer's XAML — has to be programmatic.
+            // Items without an IsLoading property silently no-op the binding,
+            // which is fine.
+            var isLoadingBinding = new Binding()
+            {
+                Path = new PropertyPath(nameof(SessionTokenItem.IsLoading)),
+                Mode = BindingMode.OneWay,
+            };
+            tokenItem.SetBinding(SessionTokenItem.IsLoadingProperty, isLoadingBinding);
         }
     }
 
