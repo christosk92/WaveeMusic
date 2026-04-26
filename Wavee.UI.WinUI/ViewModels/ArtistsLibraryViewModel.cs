@@ -343,7 +343,17 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     private void OpenArtistDetails()
     {
         if (SelectedArtist == null) return;
-        Helpers.Navigation.NavigationHelpers.OpenArtist(SelectedArtist.Id, SelectedArtist.Name);
+        // Pass the lean library data via ContentNavigationParameter so ArtistPage
+        // can PrefillFrom(...) and render hero name + avatar in the first frame
+        // without waiting on ArtistStore.
+        Helpers.Navigation.NavigationHelpers.OpenArtist(
+            new Data.Parameters.ContentNavigationParameter
+            {
+                Uri = SelectedArtist.Id,
+                Title = SelectedArtist.Name,
+                ImageUrl = SelectedArtist.ImageUrl,
+            },
+            SelectedArtist.Name);
     }
 
     [RelayCommand]
@@ -372,9 +382,19 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     private void OpenSelectedAlbum()
     {
         if (SelectedAlbumForTracks == null) return;
+        // Pass the lean album data + the parent artist's name as Subtitle so
+        // AlbumPage's hero shows cover + title + artist before the AlbumStore
+        // Pathfinder fetch lands.
+        var album = SelectedAlbumForTracks.Album;
         Helpers.Navigation.NavigationHelpers.OpenAlbum(
-            SelectedAlbumForTracks.Album.Id,
-            SelectedAlbumForTracks.Album.Name);
+            new Data.Parameters.ContentNavigationParameter
+            {
+                Uri = album.Id,
+                Title = album.Name,
+                Subtitle = SelectedArtist?.Name,
+                ImageUrl = album.ImageUrl,
+            },
+            album.Name);
     }
 
     partial void OnSelectedAlbumForTracksChanged(ArtistAlbumItemViewModel? value)

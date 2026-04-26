@@ -301,8 +301,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // HeaderHeroColorHex. Same tier policy as ConcertViewModel and
         // SearchResultHeroCard: dark theme → HigherContrast; light → HighContrast.
         // MinContrast is intentionally skipped; too pastel for white-on-tint text.
-        var (tintTop, tintBottom) = ResolveTintColors();
-        if (tintTop is null || tintBottom is null)
+        // Monochromatic alpha fade — only the lighter BackgroundTinted shade is
+        // used across all four stops. Mixing BackgroundTinted with the more
+        // saturated Background mid-gradient produced a visible hue seam.
+        var (tintTop, _) = ResolveTintColors();
+        if (tintTop is null)
         {
             AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
             AnimatePageTintColor(_pageTintHeroStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
@@ -312,11 +315,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
 
         var top = tintTop.Value;
-        var bottom = tintBottom.Value;
-        AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(170, top.R, top.G, top.B));
-        AnimatePageTintColor(_pageTintHeroStop,  Windows.UI.Color.FromArgb(140, top.R, top.G, top.B));
-        AnimatePageTintColor(_pageTintFadeStop,  Windows.UI.Color.FromArgb(40,  bottom.R, bottom.G, bottom.B));
-        AnimatePageTintColor(_pageTintEndStop,   Windows.UI.Color.FromArgb(0,   bottom.R, bottom.G, bottom.B));
+        AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(110, top.R, top.G, top.B));
+        AnimatePageTintColor(_pageTintHeroStop,  Windows.UI.Color.FromArgb(70,  top.R, top.G, top.B));
+        AnimatePageTintColor(_pageTintFadeStop,  Windows.UI.Color.FromArgb(20,  top.R, top.G, top.B));
+        AnimatePageTintColor(_pageTintEndStop,   Windows.UI.Color.FromArgb(0,   top.R, top.G, top.B));
     }
 
     /// <summary>
@@ -873,10 +875,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Drop the ArtistStore subscription so the store refcount hits zero
-        // and any inflight Pathfinder query gets cancelled cleanly. Prevents
-        // TaskCanceledException from leaking into the log after fast navs.
-        ViewModel.Deactivate();
+        // Hibernate releases the store subscription AND the heavy bound
+        // collections (TopTracks / Albums / Singles / Compilations / Related /
+        // Concerts / GalleryPhotos). NavigationCacheMode="Enabled" keeps the
+        // Page instance + visual tree alive, but its virtualizers discard
+        // realized item containers when their ItemsSource clears — that's where
+        // the cached-page composition memory really lives. The BehaviorSubject
+        // re-emits cached data instantly on revisit (see OnNavigatedTo back-nav).
+        ViewModel.Hibernate();
 
         // Release the hero's LoadedImageSurface (~2–4 MB depending on page
         // width). NavigationCacheMode="Enabled" keeps the page instance in
@@ -903,13 +909,17 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         var incomingUri = e.Parameter is ContentNavigationParameter nav ? nav.Uri
                         : e.Parameter as string;
 
-        // Back navigation or re-entering the same artist: skip re-fetch, restore watch feed
+        // Back navigation or re-entering the same artist: re-subscribe to the
+        // ArtistStore so the warm BehaviorSubject re-emits the cached overview
+        // and re-populates the collections that Hibernate cleared on the prior
+        // OnNavigatedFrom. No network re-fetch — Initialize is idempotent for
+        // the same artistId and the store value is in memory.
         if (e.NavigationMode == Microsoft.UI.Xaml.Navigation.NavigationMode.Back
             || (incomingUri != null && incomingUri == ViewModel.ArtistId))
         {
+            if (!string.IsNullOrEmpty(ViewModel.ArtistId))
+                ViewModel.Initialize(ViewModel.ArtistId);
             SetupWatchFeedVideo();
-            // If the cached VM already has data, surface the content immediately
-            // — otherwise we'd stay on the (now-empty) shimmer view.
             TryShowContentNow();
             return;
         }

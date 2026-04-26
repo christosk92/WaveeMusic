@@ -164,32 +164,6 @@
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Stretch"/>
 
-                        <!-- Bottom-anchored darkening scrim. Only applied when
-                             the artist has a header image — otherwise the page
-                             renders straight onto theme background which already
-                             has the right contrast for the foreground text.
-                             Without this scrim, white name text on a bright
-                             photo (e.g. sunset, sky) becomes unreadable. -->
-                        <Border IsHitTestVisible="False"
-                                VerticalAlignment="Bottom"
-                                HorizontalAlignment="Stretch"
-                                Height="320"
-                                Visibility="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                            <Border.Background>
-                                <!-- Scrim peaks under the text region (offset 0.90)
-                                     then fades back to transparent at offset 1.0 so
-                                     the scrim itself doesn't end with a hard line at
-                                     the hero's bottom edge — lets the page tint
-                                     below blend smoothly into the hero's built-in
-                                     image fade (HeroHeader.FadeEnd = 0.95). -->
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#00000000" Offset="0"/>
-                                    <GradientStop Color="#40000000" Offset="0.45"/>
-                                    <GradientStop Color="#A0000000" Offset="0.90"/>
-                                    <GradientStop Color="#00000000" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
                         <StackPanel Padding="32,0,32,24" Spacing="8"
                                     VerticalAlignment="Bottom">
                         <StackPanel Orientation="Horizontal">
@@ -471,7 +445,7 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            Visibility="{x:Bind ViewModel.HasPinnedItem, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            x:Load="{x:Bind ViewModel.HasPinnedItem, Mode=OneWay}">
                         <Border.Shadow>
                             <ThemeShadow/>
                         </Border.Shadow>
@@ -606,8 +580,9 @@
                 </Grid>
 
                 <!-- ─── Albums ─── -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                <StackPanel x:Name="AlbumsSection"
+                            Spacing="12"
+                            x:Load="{x:Bind ViewModel.HasAlbums, Mode=OneWay}">
                     <Grid>
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Border Width="3" MinHeight="22" CornerRadius="1.5"
@@ -622,6 +597,23 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="2">
                             <Button Background="Transparent" BorderThickness="0" Padding="8,6"
+                                    ToolTipService.ToolTip="Card size">
+                                <FontIcon Glyph="&#xE71E;" FontSize="14"/>
+                                <Button.Flyout>
+                                    <Flyout Placement="Bottom">
+                                        <StackPanel Width="220" Spacing="6" Padding="8">
+                                            <TextBlock Text="Card size"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       FontSize="13"/>
+                                            <Slider Minimum="0.7" Maximum="1.6"
+                                                    StepFrequency="0.05" SmallChange="0.05"
+                                                    LargeChange="0.1" TickFrequency="0.1"
+                                                    Value="{x:Bind ViewModel.DiscographyGridScale, Mode=TwoWay}"/>
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            <Button Background="Transparent" BorderThickness="0" Padding="8,6"
                                     Command="{x:Bind ViewModel.ToggleAlbumsViewCommand}">
                                 <FontIcon Glyph="{x:Bind ViewModel.AlbumsGridView, Mode=OneWay, Converter={StaticResource BoolToGridListGlyphConverter}}" FontSize="14"/>
                             </Button>
@@ -635,12 +627,13 @@
                          cover + eyebrow + title on the left, palette-tinted
                          Play + subtle Open buttons on the right. Whole card
                          click → open the album. Collapsed when no release. -->
-                    <Border CornerRadius="10"
+                    <Border x:Name="LatestReleaseCard"
+                            CornerRadius="10"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             Padding="12"
-                            Visibility="{x:Bind ViewModel.HasLatestRelease, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            x:Load="{x:Bind ViewModel.HasLatestRelease, Mode=OneWay}">
                         <Grid ColumnSpacing="14">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -712,9 +705,16 @@
                                    ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.AlbumsGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="140" MinItemHeight="200"
-                                               MinRowSpacing="12" MinColumnSpacing="12"
-                                               ItemsStretch="Uniform"/>
+                            <!-- MinItemWidth/Height come from ViewModel.DiscographyGridScale × base size
+                                 via GridScaleToSizeConverter. The size slider in the section header
+                                 (next to the grid/list toggle) writes the scale. UniformGridLayout's
+                                 properties don't evaluate x:Bind reliably so we use ElementName binding
+                                 against the page's named root, ArtistPageRoot. -->
+                            <UniformGridLayout
+                                MinItemWidth="{Binding ElementName=ArtistPageRoot, Path=ViewModel.DiscographyGridScale, Converter={StaticResource GridScaleToSizeConverter}, ConverterParameter=160}"
+                                MinItemHeight="{Binding ElementName=ArtistPageRoot, Path=ViewModel.DiscographyGridScale, Converter={StaticResource GridScaleToSizeConverter}, ConverterParameter=220}"
+                                MinRowSpacing="12" MinColumnSpacing="12"
+                                ItemsStretch="Uniform"/>
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:LazyReleaseItem">
@@ -786,8 +786,9 @@
                 </StackPanel>
 
                 <!-- ─── Singles ─── -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                <StackPanel x:Name="SinglesSection"
+                            Spacing="12"
+                            x:Load="{x:Bind ViewModel.HasSingles, Mode=OneWay}">
                     <Grid>
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Border Width="3" MinHeight="22" CornerRadius="1.5"
@@ -802,6 +803,23 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="2">
                             <Button Background="Transparent" BorderThickness="0" Padding="8,6"
+                                    ToolTipService.ToolTip="Card size">
+                                <FontIcon Glyph="&#xE71E;" FontSize="14"/>
+                                <Button.Flyout>
+                                    <Flyout Placement="Bottom">
+                                        <StackPanel Width="220" Spacing="6" Padding="8">
+                                            <TextBlock Text="Card size"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       FontSize="13"/>
+                                            <Slider Minimum="0.7" Maximum="1.6"
+                                                    StepFrequency="0.05" SmallChange="0.05"
+                                                    LargeChange="0.1" TickFrequency="0.1"
+                                                    Value="{x:Bind ViewModel.DiscographyGridScale, Mode=TwoWay}"/>
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            <Button Background="Transparent" BorderThickness="0" Padding="8,6"
                                     Command="{x:Bind ViewModel.ToggleSinglesViewCommand}">
                                 <FontIcon Glyph="{x:Bind ViewModel.SinglesGridView, Mode=OneWay, Converter={StaticResource BoolToGridListGlyphConverter}}" FontSize="14"/>
                             </Button>
@@ -812,9 +830,13 @@
                                    ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.SinglesGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="140" MinItemHeight="200"
-                                               MinRowSpacing="12" MinColumnSpacing="12"
-                                               ItemsStretch="Uniform"/>
+                            <!-- Same scale-driven sizing as Albums; both grids share
+                                 ViewModel.DiscographyGridScale so they always move in sync. -->
+                            <UniformGridLayout
+                                MinItemWidth="{Binding ElementName=ArtistPageRoot, Path=ViewModel.DiscographyGridScale, Converter={StaticResource GridScaleToSizeConverter}, ConverterParameter=160}"
+                                MinItemHeight="{Binding ElementName=ArtistPageRoot, Path=ViewModel.DiscographyGridScale, Converter={StaticResource GridScaleToSizeConverter}, ConverterParameter=220}"
+                                MinRowSpacing="12" MinColumnSpacing="12"
+                                ItemsStretch="Uniform"/>
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:LazyReleaseItem">
@@ -883,8 +905,9 @@
                 </StackPanel>
 
                 <!-- ─── Compilations ─── -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.CompilationsTotalCount, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                <StackPanel x:Name="CompilationsSection"
+                            Spacing="12"
+                            x:Load="{x:Bind ViewModel.HasCompilations, Mode=OneWay}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -952,8 +975,9 @@
                 </StackPanel>
 
                 <!-- ─── Concerts ─── -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel x:Name="ConcertsSection"
+                            Spacing="12"
+                            x:Load="{x:Bind ViewModel.HasConcerts, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                 VerticalAlignment="Stretch"
@@ -1017,10 +1041,12 @@
                 </StackPanel>
 
                 <!-- ─── Related Artists ─── -->
-                <shelf:SectionShelf x:Uid="Views_ArtistPage__SectionShelf_FansAlsoLike"
+                <shelf:SectionShelf x:Name="RelatedArtistsShelf"
+                                    x:Uid="Views_ArtistPage__SectionShelf_FansAlsoLike"
                                     Title="Fans Also Like"
                                     ItemsSource="{x:Bind ViewModel.RelatedArtists, Mode=OneWay}"
-                                    MinItemWidth="140">
+                                    MinItemWidth="140"
+                                    x:Load="{x:Bind ViewModel.HasRelatedArtists, Mode=OneWay}">
                     <shelf:SectionShelf.ItemTemplate>
                         <DataTemplate x:DataType="vm:RelatedArtistVm">
                             <cards:ContentCard
@@ -1038,8 +1064,9 @@
                 </shelf:SectionShelf>
 
                 <!-- ─── About (Fluent SettingsExpander) ─── -->
-                <StackPanel Spacing="8"
-                            Visibility="{x:Bind ViewModel.Biography, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                <StackPanel x:Name="BiographySection"
+                            Spacing="8"
+                            x:Load="{x:Bind ViewModel.HasBiography, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                 VerticalAlignment="Stretch"
@@ -1060,8 +1087,9 @@
                 </StackPanel>
 
                 <!-- ─── Connect & Markets ─── -->
-                <StackPanel Spacing="8"
-                            Visibility="{x:Bind ViewModel.HasConnectSection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel x:Name="ConnectSection"
+                            Spacing="8"
+                            x:Load="{x:Bind ViewModel.HasConnectSection, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                 VerticalAlignment="Stretch"
@@ -1070,8 +1098,9 @@
                     </StackPanel>
 
                     <!-- Social links — chip row, opens URL in default browser. -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.ExternalLinks, Mode=OneWay}"
-                                   Visibility="{x:Bind ViewModel.HasExternalLinks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ItemsRepeater x:Name="ExternalLinksRepeater"
+                                   ItemsSource="{x:Bind ViewModel.ExternalLinks, Mode=OneWay}"
+                                   x:Load="{x:Bind ViewModel.HasExternalLinks, Mode=OneWay}">
                         <ItemsRepeater.Layout>
                             <StackLayout Orientation="Horizontal" Spacing="8"/>
                         </ItemsRepeater.Layout>
@@ -1094,9 +1123,10 @@
                     </ItemsRepeater>
 
                     <!-- Top cities — bar chart, listener share normalized to widest bar. -->
-                    <StackPanel Spacing="6"
+                    <StackPanel x:Name="TopCitiesSection"
+                                Spacing="6"
                                 Margin="0,8,0,0"
-                                Visibility="{x:Bind ViewModel.HasTopCities, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                x:Load="{x:Bind ViewModel.HasTopCities, Mode=OneWay}">
                         <TextBlock Text="Where listeners are"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -1139,8 +1169,9 @@
                 </StackPanel>
 
                 <!-- ─── Gallery ─── -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.HasGallery, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel x:Name="GallerySection"
+                            Spacing="12"
+                            x:Load="{x:Bind ViewModel.HasGallery, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                 VerticalAlignment="Stretch"

@@ -54,6 +54,7 @@
 			Canvas.ZIndex="10"
 			XYFocusKeyboardNavigation="Enabled">
 			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto" />
 				<RowDefinition Height="*" />
 				<RowDefinition Height="Auto" />
 			</Grid.RowDefinitions>
@@ -63,15 +64,25 @@
 
 			<!--  Content  -->
 			<ContentPresenter
-				Grid.RowSpan="2"
+				Grid.RowSpan="3"
 				HorizontalAlignment="Stretch"
 				VerticalAlignment="Stretch"
 				HorizontalContentAlignment="Stretch"
 				VerticalContentAlignment="Stretch"
 				Content="{x:Bind SidebarContent, Mode=OneWay}" />
 
+			<!--  Header (above menu items — used by SidebarPlayerWidget mount)  -->
+			<ContentPresenter
+				x:Name="HeaderPresenter"
+				Grid.Row="0"
+				HorizontalAlignment="Stretch"
+				VerticalAlignment="Top"
+				HorizontalContentAlignment="Stretch"
+				VerticalContentAlignment="Top"
+				Content="{x:Bind Header, Mode=OneWay}" />
+
 			<!--  Menu Items  -->
-			<ItemsRepeaterScrollHost HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+			<ItemsRepeaterScrollHost Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 				<ScrollViewer
 					x:Name="MenuItemHostScrollViewer"
 					Padding="0,8,0,0"
@@ -95,7 +106,7 @@
 
 			<!--  Footer Items  -->
 			<ContentPresenter
-				Grid.Row="1"
+				Grid.Row="2"
 				HorizontalAlignment="Stretch"
 				VerticalAlignment="Stretch"
 				HorizontalContentAlignment="Stretch"
@@ -160,6 +171,8 @@
 				<VisualState x:Name="Compact">
 					<VisualState.Setters>
 						<Setter Target="PaneColumnDefinition.Width" Value="{StaticResource SidebarCompactOpenPaneLength}" />
+						<!-- Hide the Header (sidebar player widget) in compact mode — too narrow to render. -->
+						<Setter Target="HeaderPresenter.Visibility" Value="Collapsed" />
 					</VisualState.Setters>
 				</VisualState>
 				<VisualState x:Name="MinimalCollapsed">

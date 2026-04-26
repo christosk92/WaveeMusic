@@ -266,10 +266,12 @@ public sealed partial class PlaylistPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Drop the store subscription — refcount hits zero and any inflight
-        // fetch/CTS is cancelled cleanly (kills TaskCanceledException spam
-        // that comes from leaving fetches running after navigation).
-        ViewModel.Deactivate();
+        // Hibernate also releases FilteredTracks / Collaborators / SessionControlChips
+        // — bound collections that keep realized item containers alive while this
+        // cached page sits invisible in the Frame cache. Activate's isNewPlaylist
+        // branch (gated on _tracksLoadedFor, which Hibernate reset) re-seeds the
+        // shimmer placeholders before the warm PlaylistStore value lands.
+        ViewModel.Hibernate();
     }
 
     private void RestorePlaylistPanelWidth(string playlistId)

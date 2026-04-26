@@ -1,6 +1,10 @@
 ## Added
 Wavee/Protocol/Generated
 
+# Local SDK install (project-scoped dotnet tooling) and superpowers brainstorm sessions
+.dotnet/
+.superpowers/
+
 # Proprietary/Licensed code - cannot be open sourced
 Wavee/Core/Crypto/AudioDecryptStream.cs
 

@@ -9,6 +9,7 @@
     xmlns:tabbar="using:Wavee.UI.WinUI.Controls.TabBar"
     xmlns:navtoolbar="using:Wavee.UI.WinUI.Controls.NavigationToolbar"
     xmlns:playerbar="using:Wavee.UI.WinUI.Controls.PlayerBar"
+    xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
     xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
@@ -22,6 +23,8 @@
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
+        <converters:PlayerLocationToVisibilityConverter x:Key="PlayerLocationBottomConverter" TargetLocation="Bottom" />
+        <converters:PlayerLocationToVisibilityConverter x:Key="PlayerLocationSidebarConverter" TargetLocation="Sidebar" />
     </Page.Resources>
 
     <!-- F12 debug shortcut removed — use Settings > Diagnostics instead -->
@@ -177,6 +180,15 @@
                 </Grid>
             </sidebar:SidebarView.InnerContent>
 
+            <!-- Sidebar Header — sidebar player widget mount point. Visible only when
+                 PlayerLocation == Sidebar. The widget itself only renders when a
+                 track is loaded (HasTrack gate inside the control). -->
+            <sidebar:SidebarView.Header>
+                <sidebarplayer:SidebarPlayerWidget
+                    x:Name="SidebarPlayerControl"
+                    Visibility="{x:Bind ViewModel.PlayerLocation, Mode=OneWay, Converter={StaticResource PlayerLocationSidebarConverter}}" />
+            </sidebar:SidebarView.Header>
+
             <!-- Sidebar Footer (settings) -->
             <sidebar:SidebarView.Footer>
                 <StackPanel>
@@ -206,11 +218,12 @@
             </sidebar:SidebarView.Footer>
         </sidebar:SidebarView>
 
-        <!-- Player bar (docked at bottom) -->
+        <!-- Player bar (docked at bottom) — collapsed when player is hosted in the sidebar instead. -->
         <playerbar:PlayerBar
             x:Name="PlayerBarControl"
             Grid.Row="3"
-            HorizontalAlignment="Stretch"/>
+            HorizontalAlignment="Stretch"
+            Visibility="{x:Bind ViewModel.PlayerLocation, Mode=OneWay, Converter={StaticResource PlayerLocationBottomConverter}}"/>
 
     </Grid>
     </controls:ZoomContentControl>

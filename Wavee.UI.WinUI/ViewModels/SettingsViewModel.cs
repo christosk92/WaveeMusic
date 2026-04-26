@@ -582,6 +582,23 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// When on, reveals the in-app memory diagnostics panel under Settings → Diagnostics.
+    /// Persisted so a leak hunt across an app restart keeps the same workflow.
+    /// Toggling it on starts the periodic background logger; off stops it.
+    /// </summary>
+    public bool MemoryDiagnosticsEnabled
+    {
+        get => _settingsService.Settings.MemoryDiagnosticsEnabled;
+        set
+        {
+            if (_settingsService.Settings.MemoryDiagnosticsEnabled == value) return;
+            _settingsService.Update(s => s.MemoryDiagnosticsEnabled = value);
+            AppLifecycleHelper.SetMemoryDiagnostics(value);
+            OnPropertyChanged();
+        }
+    }
+
     // ── Lyrics sources ──
 
     private static readonly (string Name, string Description)[] DefaultLyricsSources =

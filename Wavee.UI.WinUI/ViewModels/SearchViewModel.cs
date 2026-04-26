@@ -129,6 +129,8 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             Title = "Search"
         };
+
+        Diagnostics.LiveInstanceTracker.Register(this);
     }
 
     partial void OnSelectedFilterChanged(SearchFilterType value)

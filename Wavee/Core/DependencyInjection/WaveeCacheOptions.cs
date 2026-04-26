@@ -33,22 +33,30 @@ public class WaveeCacheOptions
     public int TrackHotCacheSize { get; set; } = 10_000;
 
     /// <summary>
-    /// Maximum entries in the album hot cache.
-    /// Default: 2,000
+    /// Maximum entries in the album hot cache. Tuned for the rich
+    /// <c>AlbumDetailResult</c> path (track list + merch + alternate releases +
+    /// palette) — at ~30 KB/entry, 512 caps worst-case at ~15 MB.
+    /// Default: 512
     /// </summary>
-    public int AlbumHotCacheSize { get; set; } = 2_000;
+    public int AlbumHotCacheSize { get; set; } = 512;
 
     /// <summary>
-    /// Maximum entries in the artist hot cache.
-    /// Default: 1,000
+    /// Maximum entries in the artist hot cache. Tuned for the rich
+    /// <c>ArtistOverviewResult</c> path (palette + releases + concerts +
+    /// gallery + biography) — largest of the detail types, ~50 KB/entry, so
+    /// 256 caps worst-case at ~13 MB.
+    /// Default: 256
     /// </summary>
-    public int ArtistHotCacheSize { get; set; } = 1_000;
+    public int ArtistHotCacheSize { get; set; } = 256;
 
     /// <summary>
-    /// Maximum entries in the playlist hot cache.
-    /// Default: 500
+    /// Maximum entries in the playlist hot cache. The active playlist tier is
+    /// <c>PlaylistCacheService</c> (its own SQLite-backed cache); this size
+    /// applies to the lean <c>PlaylistCacheEntry</c> hot cache which has no
+    /// consumer today. Kept low to match.
+    /// Default: 256
     /// </summary>
-    public int PlaylistHotCacheSize { get; set; } = 500;
+    public int PlaylistHotCacheSize { get; set; } = 256;
 
     /// <summary>
     /// Maximum entries in the show hot cache.

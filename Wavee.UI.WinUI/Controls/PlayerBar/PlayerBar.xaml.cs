@@ -55,6 +55,13 @@ public sealed partial class PlayerBar : UserControl
         SizeChanged += OnPlayerBarSizeChanged;
         Loaded += OnPlayerBarLoaded;
 
+        // Drive the position-interpolation timer's visibility gate (Phase 6.2).
+        // While the bar is detached from the visual tree (right panel covering,
+        // tab in transition, etc.) the slider isn't being rendered so spending
+        // CPU updating its bound Position is wasted.
+        Loaded += (_, _) => ViewModel.SetSurfaceVisible("bar", true);
+        Unloaded += (_, _) => ViewModel.SetSurfaceVisible("bar", false);
+
         PlayerHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnPlayerHeartClicked);
 
         // Subscribe to save state changes for reactive heart updates
@@ -360,6 +367,18 @@ public sealed partial class PlayerBar : UserControl
     private void LikeOverflowMenuItem_Click(object sender, RoutedEventArgs e)
     {
         OnPlayerHeartClicked();
+    }
+
+    private void ShowInSidebar_Click(object sender, RoutedEventArgs e)
+    {
+        var shell = Ioc.Default.GetService<ViewModels.ShellViewModel>();
+        if (shell == null) return;
+        // Don't carry the expanded-album-art into sidebar mode — the widget
+        // already has a big art surface, and the sidebar footer expansion
+        // becomes orphaned (no bar tap to dismiss).
+        ViewModel.IsAlbumArtExpanded = false;
+        shell.PlayerLocation = Data.Enums.PlayerLocation.Sidebar;
+        _logger?.LogInformation("[PlayerBar] Player moved to sidebar via overflow menu");
     }
 
     private void ProgressSlider_PointerPressed(object sender, PointerRoutedEventArgs e)

@@ -529,6 +529,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+
+        Diagnostics.LiveInstanceTracker.Register(this);
     }
 
     public void Initialize(string albumId)
@@ -611,6 +613,30 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     {
         _subscriptions?.Dispose();
         _subscriptions = null;
+    }
+
+    /// <summary>
+    /// Heavy-state release for cached pages going off-screen. Drops the track grid,
+    /// More-by-artist, alternate releases, and merch — those are the bound
+    /// collections that cost the most composition memory while the page sits
+    /// invisible in the Frame cache. Lightweight identity (AlbumId, AlbumName,
+    /// AlbumImageUrl, palette brushes) is preserved so the hero still renders
+    /// correctly during the brief window between re-Activate and the
+    /// AlbumStore's BehaviorSubject re-emitting the cached value.
+    /// </summary>
+    public void Hibernate()
+    {
+        Deactivate();
+        _appliedDetailFor = null;
+
+        FilteredTracks = Array.Empty<LazyTrackItem>();
+        _allTracks = [];
+        AlternateReleases.Clear();
+        HasAlternateReleases = false;
+        MoreByArtist.Clear();
+        HasMoreByArtist = false;
+        MerchItems.Clear();
+        this.RaisePropertyChanged(nameof(HasMerch));
     }
 
     private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)

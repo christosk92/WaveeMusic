@@ -91,6 +91,24 @@ public static class FluentGlyphs
     /// <summary>ChevronRight — E76C.</summary>
     public const string ChevronRight = "";
 
+    // ── Device types (output-device picker icons) ─────────────────────
+    /// <summary>Devices2 — generic computer/PC icon (E977).</summary>
+    public const string DeviceComputer = "";
+    /// <summary>CellPhone — E8EA.</summary>
+    public const string DeviceSmartphone = "";
+    /// <summary>Speakers — E995.</summary>
+    public const string DeviceSpeaker = "";
+    /// <summary>Tv — E7F4 (also used for cast video).</summary>
+    public const string DeviceTv = "";
+    /// <summary>Tablet — E70A.</summary>
+    public const string DeviceTablet = "";
+    /// <summary>Headphone — E7F6.</summary>
+    public const string DeviceHeadphones = "";
+    /// <summary>Car — E804.</summary>
+    public const string DeviceCar = "";
+    /// <summary>XboxLogo — E7FC (game-console family).</summary>
+    public const string DeviceGameConsole = "";
+
     // -- Social-link icons -------------------------------------------------
     // Maps a URL/name to a FontAwesome6.EFontAwesomeIcon brand enum (via the
     // FontAwesome6.Svg.WinUI package). FontAwesome's Brands family carries

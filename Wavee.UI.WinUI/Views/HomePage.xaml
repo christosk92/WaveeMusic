@@ -292,13 +292,21 @@
 
                 <ItemsRepeater ItemsSource="{x:Bind Items}">
                     <ItemsRepeater.Layout>
+                        <!-- RealizeAllItems flipped from True to False (Phase 7.2). With
+                             True, every BaselineHomeCard in a section materialized on
+                             first paint regardless of scroll position — even cards
+                             below the fold paid for their full visual tree + image
+                             decode. The layout supports row-range virtualization via
+                             GetRealizedRowRange (see SafeUniformGridLayout.cs:164);
+                             switching to False activates it. Saves ~5–8 MB on first
+                             Home paint with no UX regression on standard scroll. -->
                         <layouts:SafeUniformGridLayout
                             MinItemWidth="220"
                             MaxItemWidth="290"
                             MinItemHeight="325"
                             MinColumnSpacing="12"
                             MinRowSpacing="16"
-                            RealizeAllItems="True"
+                            RealizeAllItems="False"
                             ItemAspectRatio="0.6764705882352941"/>
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
@@ -727,7 +735,7 @@
                             Margin="16,0,12,0"
                             VerticalAlignment="Center"
                             Click="FeaturedItem_Click"
-                            Visibility="{x:Bind ViewModel.FeaturedItem, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                            x:Load="{x:Bind ViewModel.HasFeaturedItem, Mode=OneWay}">
                         <Border CornerRadius="{ThemeResource OverlayCornerRadius}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

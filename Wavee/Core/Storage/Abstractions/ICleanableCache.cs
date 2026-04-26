@@ -20,4 +20,11 @@ public interface ICleanableCache
     /// </summary>
     /// <returns>Number of entries removed.</returns>
     Task<int> CleanupStaleEntriesAsync(TimeSpan maxAge, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes every entry from the cache. Used by the in-app memory diagnostics
+    /// panel to drop the entire warm tier on demand.
+    /// </summary>
+    /// <returns>Number of entries that were present before the clear.</returns>
+    Task<int> ClearAsync(CancellationToken ct = default);
 }

@@ -167,6 +167,22 @@ public sealed class AppSettings
     /// </summary>
     public bool VerboseLoggingEnabled { get; set; }
 
+    /// <summary>
+    /// When true, reveals the in-app memory diagnostics panel under Settings → Diagnostics
+    /// and starts a periodic logger emitting memory metrics so leak hunts can be done from
+    /// logs alone. Off by default — both the panel and the logger pay nothing while off.
+    /// </summary>
+    public bool MemoryDiagnosticsEnabled { get; set; }
+
+    // ── Artist page ──
+
+    /// <summary>
+    /// Scale multiplier applied to the Albums + Singles grids on the Artist page.
+    /// 1.0 = base sizing (160 × 220 px); slider range is 0.7–1.6 (matches the
+    /// Library album scale). Persisted so a chosen density survives restarts.
+    /// </summary>
+    public double ArtistDiscographyGridScale { get; set; } = 1.0;
+
     // ── Updates ──
 
     /// <summary>

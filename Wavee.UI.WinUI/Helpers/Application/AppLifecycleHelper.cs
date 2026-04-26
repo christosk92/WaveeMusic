@@ -80,6 +80,61 @@ public static class AppLifecycleHelper
         Log.Information("Verbose logging {State}", enabled ? "ENABLED" : "DISABLED");
     }
 
+    // ── Memory diagnostics periodic logger ────────────────────────────────
+    //
+    // While the user has the in-app Memory diagnostics panel turned on, we also
+    // emit a structured log line every 30 s so a leak hunt can be done from logs
+    // alone (without keeping the panel visible). Enable/disable is driven by
+    // SettingsViewModel.MemoryDiagnosticsEnabled.
+
+    private static CancellationTokenSource? _memoryDiagCts;
+    private static Task? _memoryDiagTask;
+    private static readonly TimeSpan MemoryDiagnosticsInterval = TimeSpan.FromSeconds(30);
+
+    public static void SetMemoryDiagnostics(bool enabled)
+    {
+        if (enabled)
+        {
+            if (_memoryDiagTask != null) return;
+            _memoryDiagCts = new CancellationTokenSource();
+            _memoryDiagTask = RunMemoryDiagnosticsLoopAsync(_memoryDiagCts.Token);
+            Log.Information("Memory diagnostics ENABLED — sampling every {Interval}", MemoryDiagnosticsInterval);
+        }
+        else
+        {
+            var cts = _memoryDiagCts;
+            _memoryDiagCts = null;
+            _memoryDiagTask = null;
+            try { cts?.Cancel(); cts?.Dispose(); } catch { /* best-effort */ }
+            Log.Information("Memory diagnostics DISABLED");
+        }
+    }
+
+    private static async Task RunMemoryDiagnosticsLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(MemoryDiagnosticsInterval);
+            // Resolve lazily — Ioc.Default may not be configured when the loop starts
+            // very early in launch. The first iteration tolerates a null service.
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                try
+                {
+                    var svc = Ioc.Default.GetService<Diagnostics.MemoryDiagnosticsService>();
+                    if (svc == null) continue;
+                    await svc.WriteSnapshotCsvAsync("periodic", ct);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Memory diagnostics periodic sample failed");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* normal shutdown */ }
+    }
+
     /// <summary>
     /// Set to true to use a separate audio process for GC isolation.
     /// When false (default), the AudioPipeline runs in-process as before.
@@ -416,10 +471,12 @@ public static class AppLifecycleHelper
                 .AddSingleton(sp =>
                     new Data.Stores.ArtistStore(
                         sp.GetRequiredService<IArtistService>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IHotCache<Data.Contracts.ArtistOverviewResult>>(),
                         sp.GetService<ILogger<Data.Stores.ArtistStore>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.AlbumStore(
                         sp.GetRequiredService<IAlbumService>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IHotCache<Data.Contracts.AlbumDetailResult>>(),
                         sp.GetService<ILogger<Data.Stores.AlbumStore>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.ExtendedMetadataStore(
@@ -538,6 +595,50 @@ public static class AppLifecycleHelper
 
                 // Image cache cleanup adapter
                 .AddSingleton<ICleanableCache, ImageCacheCleanupAdapter>()
+
+                // Rich-type detail-page hot caches. Wired into ArtistStore /
+                // AlbumStore / PlaylistStore's ReadHotAsync/WriteHot so a
+                // re-navigation after the EntityStore Slot evicts (MaxSlots=64
+                // LRU) hits memory instead of re-fetching from Pathfinder. The
+                // lean *CacheEntry HotCaches registered upstream in Wavee.Core
+                // are a separate concern (search results / sidebar tiles).
+                // Sizes reuse WaveeCacheOptions to keep one tuning surface.
+                .AddSingleton<Wavee.Core.Storage.Abstractions.IHotCache<Data.Contracts.ArtistOverviewResult>>(sp =>
+                {
+                    var opts = sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
+                    return new Wavee.Core.Storage.HotCache<Data.Contracts.ArtistOverviewResult>(
+                        opts.ArtistHotCacheSize,
+                        sp.GetService<ILogger<Wavee.Core.Storage.HotCache<Data.Contracts.ArtistOverviewResult>>>());
+                })
+                .AddSingleton<ICleanableCache>(sp =>
+                    (ICleanableCache)sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IHotCache<Data.Contracts.ArtistOverviewResult>>())
+
+                .AddSingleton<Wavee.Core.Storage.Abstractions.IHotCache<Data.Contracts.AlbumDetailResult>>(sp =>
+                {
+                    var opts = sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
+                    return new Wavee.Core.Storage.HotCache<Data.Contracts.AlbumDetailResult>(
+                        opts.AlbumHotCacheSize,
+                        sp.GetService<ILogger<Wavee.Core.Storage.HotCache<Data.Contracts.AlbumDetailResult>>>());
+                })
+                .AddSingleton<ICleanableCache>(sp =>
+                    (ICleanableCache)sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IHotCache<Data.Contracts.AlbumDetailResult>>())
+
+                .AddSingleton<Wavee.Core.Storage.Abstractions.IHotCache<Data.DTOs.PlaylistDetailDto>>(sp =>
+                {
+                    var opts = sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
+                    return new Wavee.Core.Storage.HotCache<Data.DTOs.PlaylistDetailDto>(
+                        opts.PlaylistHotCacheSize,
+                        sp.GetService<ILogger<Wavee.Core.Storage.HotCache<Data.DTOs.PlaylistDetailDto>>>());
+                })
+                .AddSingleton<ICleanableCache>(sp =>
+                    (ICleanableCache)sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IHotCache<Data.DTOs.PlaylistDetailDto>>())
+
+                // Memory diagnostics (in-app panel under Settings → Diagnostics).
+                // Off the hot path; resolved lazily when the user opens the panel
+                // and only samples while it's visible.
+                .AddSingleton<Diagnostics.MemoryDiagnosticsService>(sp =>
+                    new Diagnostics.MemoryDiagnosticsService(
+                        sp.GetService<ILogger<Diagnostics.MemoryDiagnosticsService>>()))
             )
             .Build();
     }

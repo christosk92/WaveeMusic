@@ -22,6 +22,8 @@ public sealed class ShellLayoutState
     public bool IsRightPanelOpen { get; set; }
     public RightPanelMode RightPanelMode { get; set; } = RightPanelMode.Queue;
     public int SelectedTabIndex { get; set; }
+    public PlayerLocation PlayerLocation { get; set; } = PlayerLocation.Bottom;
+    public bool SidebarPlayerCollapsed { get; set; }
 }
 
 public sealed class SidebarGroupState

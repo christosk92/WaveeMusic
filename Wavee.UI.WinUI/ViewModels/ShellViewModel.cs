@@ -119,6 +119,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private RightPanelMode _rightPanelMode = RightPanelMode.Queue;
 
     [ObservableProperty]
+    private PlayerLocation _playerLocation = PlayerLocation.Bottom;
+
+    [ObservableProperty]
+    private bool _sidebarPlayerCollapsed;
+
+    [ObservableProperty]
     private ObservableCollection<SidebarItemModel> _sidebarItems = [];
 
     [ObservableProperty]
@@ -195,6 +201,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _isRightPanelOpen = appModel.IsRightPanelOpen;
         _rightPanelMode = appModel.RightPanelMode;
         _selectedTabIndex = appModel.TabStripSelectedIndex;
+        _playerLocation = appModel.PlayerLocation;
+        _sidebarPlayerCollapsed = appModel.SidebarPlayerCollapsed;
 
         // Listen for right panel toggle requests from PlayerBar
         WeakReferenceMessenger.Default.Register<ToggleRightPanelMessage>(this, (r, m) =>
@@ -1108,6 +1116,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel.RightPanelMode = value;
         if (IsRightPanelOpen)
             WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(true, value));
+    }
+
+    partial void OnPlayerLocationChanged(PlayerLocation value)
+    {
+        _appModel.PlayerLocation = value;
+    }
+
+    partial void OnSidebarPlayerCollapsedChanged(bool value)
+    {
+        _appModel.SidebarPlayerCollapsed = value;
+    }
+
+    [RelayCommand]
+    private void TogglePlayerLocation()
+    {
+        PlayerLocation = PlayerLocation == PlayerLocation.Bottom
+            ? PlayerLocation.Sidebar
+            : PlayerLocation.Bottom;
     }
 
     private void ToggleRightPanel(RightPanelMode mode)

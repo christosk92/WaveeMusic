@@ -246,6 +246,7 @@
             <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter" />
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
             <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
+            <converters:GridScaleToSizeConverter x:Key="GridScaleToSizeConverter" />
             <converters:BoolToBackgroundConverter x:Key="BoolToBackgroundConverter" />
             <converters:BoolToBackgroundConverter x:Key="InverseBoolToBackgroundConverter" Invert="True" />
             <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>

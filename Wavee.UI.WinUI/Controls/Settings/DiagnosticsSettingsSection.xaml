@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:diag="using:Wavee.UI.WinUI.Controls.Diagnostics"
+    xmlns:settings="using:Wavee.UI.WinUI.Controls.Settings"
     xmlns:services="using:Wavee.UI.WinUI.Services"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d">
@@ -22,6 +23,18 @@
                 </controls:SettingsCard.HeaderIcon>
                 <ToggleSwitch IsOn="{x:Bind ViewModel.VerboseLoggingEnabled, Mode=TwoWay}"/>
             </controls:SettingsCard>
+
+            <controls:SettingsCard Margin="0,0,0,12"
+                                   Header="Memory diagnostics panel"
+                                   Description="Reveal the live memory + cache breakdown panel below. Off by default — sampling is only active while this is on.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE950;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.MemoryDiagnosticsEnabled, Mode=TwoWay}"/>
+            </controls:SettingsCard>
+
+            <settings:MemoryDiagnosticsCard
+                Visibility="{x:Bind ViewModel.MemoryDiagnosticsEnabled, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
             <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_1" Margin="0,0,0,12"
                                        Header="Audio Pipeline"

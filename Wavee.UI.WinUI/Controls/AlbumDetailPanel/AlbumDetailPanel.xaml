@@ -34,7 +34,7 @@
         </Path>
 
         <!-- Main panel body -->
-        <Grid x:Name="OuterGrid" CornerRadius="8" MinHeight="200" Margin="0,0,0,4">
+        <Grid x:Name="OuterGrid" CornerRadius="8" MinHeight="200" MaxHeight="620" Margin="0,0,0,4">
             <!-- Color gradient background (extracted from album art) -->
             <Border x:Name="ColorBackground" CornerRadius="8"/>
 
@@ -92,7 +92,9 @@
                             </Button>
                         </StackPanel>
 
-                        <!-- Track list (TrackListView with shimmer support for lazy items) -->
+                        <!-- Track list (TrackListView with shimmer support for lazy items).
+                             MaxHeight caps the row count to ~10 visible; longer albums
+                             scroll inside the panel rather than ballooning its height. -->
                         <trackList:TrackListView
                             x:Name="TrackListControl"
                             ShowColumnHeaders="False"
@@ -103,8 +105,9 @@
                             IsCompact="True"
                             IsLoading="False"
                             Background="Transparent"
-                            ScrollViewer.VerticalScrollMode="Disabled"
-                            ScrollViewer.VerticalScrollBarVisibility="Hidden"/>
+                            MaxHeight="380"
+                            ScrollViewer.VerticalScrollMode="Enabled"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"/>
 
                         <!-- Footer -->
                         <StackPanel Orientation="Horizontal" Spacing="12">

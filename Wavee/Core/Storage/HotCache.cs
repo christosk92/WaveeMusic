@@ -9,7 +9,7 @@ namespace Wavee.Core.Storage;
 /// Thread-safe with ReaderWriterLockSlim for concurrent read access.
 /// </summary>
 /// <typeparam name="TEntry">Cache entry type implementing ICacheEntry.</typeparam>
-public sealed class HotCache<TEntry> : IHotCache<TEntry>, ICleanableCache where TEntry : class, ICacheEntry
+public sealed class HotCache<TEntry> : IHotCache<TEntry>, ICleanableCache where TEntry : class
 {
     // Entry stores the cache entry, its LRU node, and last access time for TTL cleanup
     private sealed record CacheNode(TEntry Entry, LinkedListNode<string> Node, DateTimeOffset LastAccessed);
@@ -359,6 +359,29 @@ public sealed class HotCache<TEntry> : IHotCache<TEntry>, ICleanableCache where 
             _logger?.LogDebug("Cleaned {Count} stale entries from HotCache<{EntryType}>", removed, typeof(TEntry).Name);
 
         return Task.FromResult(removed);
+    }
+
+    Task<int> ICleanableCache.ClearAsync(CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        int before;
+        _lock.EnterWriteLock();
+        try
+        {
+            before = _cache.Count;
+            _cache.Clear();
+            _lruList.Clear();
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        if (before > 0)
+            _logger?.LogDebug("Cleared {Count} entries from HotCache<{EntryType}>", before, typeof(TEntry).Name);
+
+        return Task.FromResult(before);
     }
 
     #endregion

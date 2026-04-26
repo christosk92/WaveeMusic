@@ -34,6 +34,12 @@ public sealed partial class AppModel : ObservableObject
     [ObservableProperty]
     private RightPanelMode _rightPanelMode = RightPanelMode.Queue;
 
+    [ObservableProperty]
+    private PlayerLocation _playerLocation = PlayerLocation.Bottom;
+
+    [ObservableProperty]
+    private bool _sidebarPlayerCollapsed;
+
     public AppModel(IShellSessionService shellSession)
     {
         _shellSession = shellSession;
@@ -55,6 +61,8 @@ public sealed partial class AppModel : ObservableObject
             IsRightPanelOpen = layout.IsRightPanelOpen;
             RightPanelMode = layout.RightPanelMode;
             TabStripSelectedIndex = layout.SelectedTabIndex;
+            PlayerLocation = layout.PlayerLocation;
+            SidebarPlayerCollapsed = layout.SidebarPlayerCollapsed;
         }
         finally
         {
@@ -102,5 +110,17 @@ public sealed partial class AppModel : ObservableObject
     {
         if (_isHydrating) return;
         _shellSession.UpdateLayout(s => s.SelectedTabIndex = value);
+    }
+
+    partial void OnPlayerLocationChanged(PlayerLocation value)
+    {
+        if (_isHydrating) return;
+        _shellSession.UpdateLayout(s => s.PlayerLocation = value);
+    }
+
+    partial void OnSidebarPlayerCollapsedChanged(bool value)
+    {
+        if (_isHydrating) return;
+        _shellSession.UpdateLayout(s => s.SidebarPlayerCollapsed = value);
     }
 }

@@ -28,6 +28,12 @@ public sealed partial class AlbumDetailPanel : UserControl
     private Compositor? _compositor;
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
     private readonly IPlaybackService? _playbackService;
+    private string? _appliedColorHex;
+
+    // Alpha (0..255) that the palette colour is blended over the theme surface
+    // at. Keeps the album's accent recognisable without producing a saturated
+    // slab that fights the page in light mode.
+    private const byte PaletteTintAlpha = 60;
 
     public static readonly DependencyProperty AlbumProperty =
         DependencyProperty.Register(nameof(Album), typeof(ArtistReleaseVm), typeof(AlbumDetailPanel),
@@ -91,6 +97,7 @@ public sealed partial class AlbumDetailPanel : UserControl
         InitializeComponent();
         OuterGrid.SizeChanged += OuterGrid_SizeChanged;
         ImageArea.Loaded += ImageArea_Loaded;
+        ActualThemeChanged += OnPanelActualThemeChanged;
         Unloaded += OnUnloaded;
 
         // Wire up track click → play via IPlaybackService
@@ -117,6 +124,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     {
         Unloaded -= OnUnloaded;
         OuterGrid.SizeChanged -= OuterGrid_SizeChanged;
+        ActualThemeChanged -= OnPanelActualThemeChanged;
         TrackListControl.TrackClicked -= OnTrackClicked;
 
         // Dispose composition resources to prevent leaks
@@ -232,26 +240,19 @@ public sealed partial class AlbumDetailPanel : UserControl
             panel.LoadImage(album.ImageUrl);
 
             if (string.IsNullOrEmpty(panel.ColorHex))
-                panel.ApplyThemeDefaultColor();
+                panel.ApplyBackground();
         }
     }
 
     private static void OnColorHexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var panel = (AlbumDetailPanel)d;
-        var hex = e.NewValue as string;
-
-        if (!string.IsNullOrEmpty(hex))
-        {
-            var color = ParseHexColor(hex);
-            panel.ColorBackground.Background = new SolidColorBrush(color);
-            panel.NotchTriangle.Fill = new SolidColorBrush(color);
-        }
-        else
-        {
-            panel.ApplyThemeDefaultColor();
-        }
+        panel._appliedColorHex = e.NewValue as string;
+        panel.ApplyBackground();
     }
+
+    private void OnPanelActualThemeChanged(FrameworkElement sender, object args)
+        => ApplyBackground();
 
     private static void OnNotchOffsetXChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -260,15 +261,32 @@ public sealed partial class AlbumDetailPanel : UserControl
         panel.NotchTranslate.X = offset - (NotchWidth / 2);
     }
 
-    private void ApplyThemeDefaultColor()
+    private void ApplyBackground()
+    {
+        var surface = GetThemeSurfaceColor();
+        var color = string.IsNullOrEmpty(_appliedColorHex)
+            ? surface
+            : BlendOver(ParseHexColor(_appliedColorHex), surface, PaletteTintAlpha);
+
+        ColorBackground.Background = new SolidColorBrush(color);
+        NotchTriangle.Fill = new SolidColorBrush(color);
+    }
+
+    private Windows.UI.Color GetThemeSurfaceColor()
     {
         var isDark = ActualTheme == ElementTheme.Dark;
-        var bgColor = isDark
+        return isDark
             ? Windows.UI.Color.FromArgb(255, 30, 30, 35)
             : Windows.UI.Color.FromArgb(255, 230, 230, 235);
+    }
 
-        ColorBackground.Background = new SolidColorBrush(bgColor);
-        NotchTriangle.Fill = new SolidColorBrush(bgColor);
+    private static Windows.UI.Color BlendOver(Windows.UI.Color top, Windows.UI.Color bottom, byte topAlpha)
+    {
+        var a = topAlpha / 255f;
+        return Windows.UI.Color.FromArgb(255,
+            (byte)(top.R * a + bottom.R * (1f - a)),
+            (byte)(top.G * a + bottom.G * (1f - a)),
+            (byte)(top.B * a + bottom.B * (1f - a)));
     }
 
     private static Windows.UI.Color ParseHexColor(string hex)

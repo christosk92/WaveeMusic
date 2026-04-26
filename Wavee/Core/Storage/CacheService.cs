@@ -616,6 +616,25 @@ public sealed class CacheService : ICacheService, ICleanableCache
         return removed;
     }
 
+    Task<int> ICleanableCache.ClearAsync(CancellationToken ct)
+    {
+        // Diagnostics-only — clears the warm in-memory tiers (hot cache + aux caches).
+        // Does NOT touch the SQLite database, which is the canonical store for offline
+        // playback. Callers who want a full wipe call ICacheService.ClearAsync instead.
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        int before;
+        _hotCache.Clear();
+        lock (_auxCacheLock)
+        {
+            before = _audioKeyCache.Count + _cdnCache.Count + _headDataCache.Count;
+            _audioKeyCache.Clear();
+            _cdnCache.Clear();
+            _headDataCache.Clear();
+        }
+        return Task.FromResult(before);
+    }
+
     #endregion
 
     #region Disposal

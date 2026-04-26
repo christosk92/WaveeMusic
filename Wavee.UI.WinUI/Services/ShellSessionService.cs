@@ -39,7 +39,9 @@ public sealed class ShellSessionService : IShellSessionService
             RightPanelWidth = layout.RightPanelWidth,
             IsRightPanelOpen = layout.IsRightPanelOpen,
             RightPanelMode = layout.RightPanelMode,
-            SelectedTabIndex = layout.SelectedTabIndex
+            SelectedTabIndex = layout.SelectedTabIndex,
+            PlayerLocation = layout.PlayerLocation,
+            SidebarPlayerCollapsed = layout.SidebarPlayerCollapsed
         };
     }
 

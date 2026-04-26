@@ -119,6 +119,15 @@ public partial class App : Application
         // Start background cache cleanup
         Ioc.Default.GetRequiredService<CacheCleanupService>().Start();
 
+        // Resume the memory-diagnostics periodic logger if it was enabled in a prior session.
+        // Cheap when off (single bool check); when on it samples every 30s and appends to
+        // %AppData%\Wavee\diag\memory-{date}.csv so leak hunts persist across the panel
+        // being open or closed.
+        if (Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.ISettingsService>()?.Settings.MemoryDiagnosticsEnabled == true)
+        {
+            AppLifecycleHelper.SetMemoryDiagnostics(true);
+        }
+
         // Launch main window FIRST — these singletons used to be resolved
         // eagerly here, blocking first paint by 30-90 ms while their
         // constructors wired up IMessenger handlers + dealer subscriptions.

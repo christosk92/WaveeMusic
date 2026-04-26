@@ -169,8 +169,8 @@ public sealed partial class HeroHeader : UserControl
         byte scrimB = isDark ? (byte)0   : (byte)255;
         byte top    = 0;
         byte upper  = isDark ? (byte)6   : (byte)0;
-        byte mid    = isDark ? (byte)22  : (byte)70;
-        byte bottom = isDark ? (byte)60  : (byte)180;
+        byte mid    = isDark ? (byte)32  : (byte)90;
+        byte bottom = isDark ? (byte)96  : (byte)210;
 
         SetScrimStop(_scrimTopStop, scrimR, scrimG, scrimB, top, animate);
         SetScrimStop(_scrimUpperStop, scrimR, scrimG, scrimB, upper, animate);

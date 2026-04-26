@@ -121,6 +121,15 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string? _activeDeviceName;
 
+    /// <summary>
+    /// Name of the local audio output device (speakers / headphones / etc.) as
+    /// reported by the audio host. Mirrors <see cref="IPlaybackStateService.ActiveAudioDeviceName"/>.
+    /// Used when <see cref="IsPlayingRemotely"/> is false to surface where audio
+    /// is going on this machine.
+    /// </summary>
+    [ObservableProperty]
+    private string? _activeAudioDeviceName;
+
     [ObservableProperty]
     private bool _isVolumeRestricted;
 
@@ -199,10 +208,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         if (_connectivityService != null)
             _connectivityService.PropertyChanged += OnConnectivityPropertyChanged;
 
-        // Initialize position update timer (display concern)
+        // Display-only position interpolation timer. Audio sink pushes ~2 real
+        // updates/sec; this fills in the gaps so the slider value moves smoothly
+        // between updates. 1000 ms matches Spotify desktop / Apple Music — the
+        // slider's built-in transition animation interpolates pixel position
+        // between ticks, so the slower cadence is not perceptible. Going from
+        // 250 → 1000 ms cuts ~3 % sustained CPU across every page (player bar
+        // is global). See Phase 6.1 in the memory/CPU plan.
         _positionTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(250)
+            Interval = TimeSpan.FromMilliseconds(1000)
         };
         _positionTimer.Tick += OnPositionTimerTick;
 
@@ -253,6 +268,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _volume = _playbackStateService.Volume;
         _isVolumeRestricted = _playbackStateService.IsVolumeRestricted;
         _isAtEndOfContext = _playbackStateService.IsAtEndOfContext;
+        _activeDeviceName = _playbackStateService.ActiveDeviceName;
+        _activeAudioDeviceName = _playbackStateService.ActiveAudioDeviceName;
+        _isPlayingRemotely = _playbackStateService.IsPlayingRemotely;
     }
 
     private void OnPlaybackServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -347,6 +365,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.ActiveDeviceName):
                 ActiveDeviceName = _playbackStateService.ActiveDeviceName;
                 break;
+            case nameof(IPlaybackStateService.ActiveAudioDeviceName):
+                ActiveAudioDeviceName = _playbackStateService.ActiveAudioDeviceName;
+                break;
             case nameof(IPlaybackStateService.IsVolumeRestricted):
                 IsVolumeRestricted = _playbackStateService.IsVolumeRestricted;
                 break;
@@ -397,15 +418,53 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     partial void OnIsPlayingChanged(bool value)
     {
-        if (value)
+        UpdatePositionTimerState();
+    }
+
+    // ── Visibility gate for the position interpolation timer ────────────
+    //
+    // Each surface that renders the player (PlayerBar at the bottom,
+    // SidebarPlayerWidget at the top of the sidebar) calls SetSurfaceVisible
+    // from its Loaded / Unloaded handlers. The timer only ticks while at
+    // least one surface is on screen AND a track is playing. While every
+    // surface is hidden the slider isn't visible so spending CPU updating
+    // its bound value is wasted.
+    private bool _isBarVisible = true;
+    private bool _isWidgetVisible;
+
+    /// <summary>
+    /// Records visibility for a named surface. Surface ids in use today: "bar"
+    /// for the bottom-docked PlayerBar, "widget" for the SidebarPlayerWidget.
+    /// </summary>
+    public void SetSurfaceVisible(string surfaceId, bool visible)
+    {
+        switch (surfaceId)
         {
-            _logger?.LogDebug("[PlayerBar] IsPlaying=true — starting position interpolation timer");
-            _positionTimer?.Start();
+            case "bar":
+                if (_isBarVisible == visible) return;
+                _isBarVisible = visible;
+                break;
+            case "widget":
+                if (_isWidgetVisible == visible) return;
+                _isWidgetVisible = visible;
+                break;
+            default:
+                return;
+        }
+        UpdatePositionTimerState();
+    }
+
+    private void UpdatePositionTimerState()
+    {
+        if (_positionTimer == null) return;
+        var shouldRun = IsPlaying && (_isBarVisible || _isWidgetVisible);
+        if (shouldRun)
+        {
+            _positionTimer.Start();
         }
         else
         {
-            _logger?.LogDebug("[PlayerBar] IsPlaying=false — stopping position interpolation timer");
-            _positionTimer?.Stop();
+            _positionTimer.Stop();
         }
     }
 

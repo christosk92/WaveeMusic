@@ -326,14 +326,34 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     private void OpenAlbumDetails()
     {
         if (SelectedAlbum == null) return;
-        Helpers.Navigation.NavigationHelpers.OpenAlbum(SelectedAlbum.Id, SelectedAlbum.Name);
+        // Pass the lean library data via ContentNavigationParameter so AlbumPage
+        // can PrefillFrom(...) and render the hero (cover + name + artist) in
+        // the first frame, without waiting for the AlbumStore Pathfinder fetch.
+        Helpers.Navigation.NavigationHelpers.OpenAlbum(
+            new Data.Parameters.ContentNavigationParameter
+            {
+                Uri = SelectedAlbum.Id,
+                Title = SelectedAlbum.Name,
+                Subtitle = SelectedAlbum.ArtistName,
+                ImageUrl = SelectedAlbum.ImageUrl,
+            },
+            SelectedAlbum.Name);
     }
 
     [RelayCommand]
     private void OpenArtist()
     {
         if (SelectedAlbum?.ArtistId == null) return;
-        Helpers.Navigation.NavigationHelpers.OpenArtist(SelectedAlbum.ArtistId, SelectedAlbum.ArtistName);
+        // ArtistName ships as the title; the library album row doesn't carry a
+        // separate artist image, so ImageUrl is left null and ArtistPage falls
+        // back to the avatar URL once ArtistStore returns.
+        Helpers.Navigation.NavigationHelpers.OpenArtist(
+            new Data.Parameters.ContentNavigationParameter
+            {
+                Uri = SelectedAlbum.ArtistId,
+                Title = SelectedAlbum.ArtistName,
+            },
+            SelectedAlbum.ArtistName);
     }
 
     partial void OnSelectedAlbumChanged(LibraryAlbumDto? value)

@@ -21,4 +21,13 @@ public sealed class ImageCacheCleanupAdapter : ICleanableCache
         var removed = Ioc.Default.GetService<ImageCacheService>()?.CleanupStale(maxAge) ?? 0;
         return Task.FromResult(removed);
     }
+
+    public Task<int> ClearAsync(CancellationToken ct = default)
+    {
+        var svc = Ioc.Default.GetService<ImageCacheService>();
+        if (svc == null) return Task.FromResult(0);
+        var before = svc.Count;
+        svc.Clear();
+        return Task.FromResult(before);
+    }
 }

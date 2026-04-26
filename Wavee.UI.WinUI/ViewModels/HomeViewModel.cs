@@ -70,7 +70,13 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// <summary>Most-recently-played item promoted to the hero card slot
     /// on the right of the greeting band. Drives the palette fetch too.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFeaturedItem))]
     private HomeSectionItem? _featuredItem;
+
+    /// <summary>True when there's a "Pick up where you left off" item to render.
+    /// Drives the FeaturedItem card's `x:Load` so users without a featured item
+    /// never instantiate the card subtree (Phase 7.3).</summary>
+    public bool HasFeaturedItem => FeaturedItem != null;
 
     /// <summary>Subtle page-wash brush tinted toward the featured item's color.
     /// Null when no palette is available (cold start, fetch failure).</summary>
@@ -142,6 +148,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         {
             Title = "Home"
         };
+
+        Diagnostics.LiveInstanceTracker.Register(this);
     }
 
     [RelayCommand]
@@ -263,6 +271,17 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         CancelBaselineEnrichment();
         Sections.Clear();
         DisplayedChips.Clear();
+
+        // Phase 7.4 — release hero/featured state so the bound Image controls
+        // drop their textures and the cached page's residual footprint shrinks.
+        // ResumeAndRehydrate replays ApplyBackgroundRefresh which re-derives
+        // FeaturedItem and the hero brushes from the cached snapshot, so this
+        // is a pure transient release. HasFeaturedItem flips false → x:Load
+        // unloads the FeaturedItem button subtree.
+        FeaturedItem = null;
+        HeroBackdropBrush = null;
+        HeroAccentLineBrush = null;
+        PageBleedBrush = null;
     }
 
     /// <summary>

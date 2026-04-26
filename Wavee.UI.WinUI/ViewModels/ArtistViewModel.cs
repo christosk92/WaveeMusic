@@ -38,6 +38,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private string? _appliedOverviewFor;
     private readonly IColorService _colorService;
     private readonly ITrackLikeService? _likeService;
+    private readonly ISettingsService? _settingsService;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _discoCts;
@@ -56,7 +57,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     // ── Non-reactive collections (simple lists) ──
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRelatedArtists))]
     private ObservableCollection<RelatedArtistVm> _relatedArtists = [];
+
+    public bool HasRelatedArtists => RelatedArtists.Count > 0;
 
     [ObservableProperty]
     private ObservableCollection<ConcertVm> _concerts = [];
@@ -143,7 +147,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             ? string.Empty
             : $"{MonthlyListeners} monthly listeners";
     [ObservableProperty] private long _followers;
-    [ObservableProperty] private string? _biography;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBiography))]
+    private string? _biography;
+    public bool HasBiography => !string.IsNullOrWhiteSpace(Biography);
     [ObservableProperty] private bool _isVerified;
     [ObservableProperty] private bool _isFollowing;
     [ObservableProperty]
@@ -199,15 +206,35 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    // Per-group total counts
-    [ObservableProperty] private int _albumsTotalCount;
-    [ObservableProperty] private int _singlesTotalCount;
-    [ObservableProperty] private int _compilationsTotalCount;
+    // Per-group total counts. Drive `Has*` flags so the Albums/Singles/Compilations
+    // subtrees in ArtistPage.xaml can be x:Load-deferred — sparse artists (no
+    // singles, no compilations) never instantiate those StackPanels at all.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAlbums))]
+    private int _albumsTotalCount;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSingles))]
+    private int _singlesTotalCount;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCompilations))]
+    private int _compilationsTotalCount;
+
+    public bool HasAlbums => AlbumsTotalCount > 0;
+    public bool HasSingles => SinglesTotalCount > 0;
+    public bool HasCompilations => CompilationsTotalCount > 0;
 
     // Per-group view mode (Grid vs List)
     [ObservableProperty] private bool _albumsGridView = true;
     [ObservableProperty] private bool _singlesGridView = true;
     [ObservableProperty] private bool _compilationsGridView = true;
+
+    /// <summary>
+    /// Slider-driven scale for the Albums + Singles `UniformGridLayout` cell size.
+    /// Multiplies a base of 160 × 220 px through `GridScaleToSizeConverter`.
+    /// Persisted to <c>AppSettings.ArtistDiscographyGridScale</c>; mirror of the
+    /// Library album scale slider (range 0.7–1.6).
+    /// </summary>
+    [ObservableProperty] private double _discographyGridScale = 1.0;
 
     // Per-group error state (background pagination failures)
     [ObservableProperty] private bool _hasAlbumsError;
@@ -337,6 +364,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         IPlaybackStateService playbackStateService,
         IColorService colorService,
         ITrackLikeService? likeService = null,
+        ISettingsService? settingsService = null,
         ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
@@ -347,6 +375,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _playbackStateService = playbackStateService;
         _colorService = colorService;
         _likeService = likeService;
+        _settingsService = settingsService;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
@@ -359,6 +388,25 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             OnPropertyChanged(nameof(SelectedTopTracksCount));
             OnPropertyChanged(nameof(HasTopTracksSelection));
         };
+
+        // Hydrate the discography card-size scale from persisted settings,
+        // clamped to the slider's range so a stale config can't render the
+        // grid unusable.
+        if (_settingsService != null)
+        {
+            var saved = _settingsService.Settings.ArtistDiscographyGridScale;
+            _discographyGridScale = saved >= 0.7 && saved <= 1.6 ? saved : 1.0;
+        }
+
+        Diagnostics.LiveInstanceTracker.Register(this);
+    }
+
+    partial void OnDiscographyGridScaleChanged(double value)
+    {
+        // Mirror Library's GridScale persistence — clamp to slider range to
+        // protect against out-of-bounds writes from external callers.
+        var clamped = Math.Clamp(value, 0.7, 1.6);
+        _settingsService?.Update(s => s.ArtistDiscographyGridScale = clamped);
     }
 
     // ── Initialization ──
@@ -401,6 +449,45 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _subscriptions = null;
     }
 
+    /// <summary>
+    /// Light hibernation for cached pages going off-screen. Disposes the store
+    /// subscription and releases the things that pin DirectX textures (hero /
+    /// avatar / pinned-card / latest-release image URLs). Data collections
+    /// (TopTracks, _allReleases, Albums, Singles, Compilations, RelatedArtists,
+    /// Concerts, ExternalLinks, TopCities, GalleryPhotos) and the
+    /// <c>_appliedOverviewFor</c> marker are intentionally preserved so a
+    /// revisit to the same artist short-circuits in <see cref="ApplyOverviewState"/>
+    /// without re-running the heavy <see cref="LoadAsync"/> path (which costs
+    /// ~2 s on a popular artist: rebuilds 6 ObservableCollections, reseeds
+    /// virtualized item containers, kicks off background discography paging
+    /// + release-color prefetch). The hero URLs are restored via
+    /// <see cref="EnsureHeroUrls"/> in the Ready branch when LoadAsync is
+    /// skipped.
+    /// </summary>
+    public void Hibernate()
+    {
+        Deactivate();
+
+        // Drop transient UI-only state (selection / expanded-album drawer).
+        SelectedTopTracks.Clear();
+        ExpandedAlbumTracks.Clear();
+
+        // Cancel any in-flight discography paging — populated lists stay.
+        CancelAndDisposeDiscographyCts();
+
+        // Null hero/avatar/pinned/latest-release image URL bindings so the
+        // bound Image controls drop their BitmapImage references. WinUI
+        // auto-releases the DirectX texture after the next frame in the live
+        // tree (per docs/optimize-animations-and-media). On revisit,
+        // EnsureHeroUrls reads from the cached BehaviorSubject value and
+        // restores the URLs — single dispatcher tick, no LoadAsync re-run.
+        ArtistImageUrl = null;
+        HeaderImageUrl = null;
+        LatestReleaseImageUrl = null;
+        PinnedItem = null;
+        OnPropertyChanged(nameof(HasPinnedItem));
+    }
+
     private void ApplyOverviewState(EntityState<ArtistOverviewResult> state, string expectedArtistId)
     {
         if (_disposed || ArtistId != expectedArtistId)
@@ -419,6 +506,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 {
                     _ = LoadAsync(ready.Value, expectedArtistId);
                 }
+                else
+                {
+                    // Same artist, stale-but-not-fresh — Hibernate may have
+                    // null'd the hero URL bindings (texture release) without
+                    // touching data collections. Restore the URLs from the
+                    // cached overview without re-running the heavy LoadAsync.
+                    EnsureHeroUrls(ready.Value);
+                }
                 IsLoading = false;
                 break;
             case EntityState<ArtistOverviewResult>.Error error:
@@ -427,6 +522,26 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 IsLoading = false;
                 _logger?.LogError(error.Exception, "ArtistStore reported error for {ArtistId}", expectedArtistId);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Restore the hero / avatar / latest-release / pinned-card image URLs from
+    /// the cached overview after a Hibernate-triggered URL null-out. Cheap —
+    /// six property assignments. Pairs with <see cref="Hibernate"/>.
+    /// </summary>
+    private void EnsureHeroUrls(ArtistOverviewResult overview)
+    {
+        if (string.IsNullOrEmpty(ArtistImageUrl))
+            ArtistImageUrl = overview.ImageUrl;
+        if (string.IsNullOrEmpty(HeaderImageUrl))
+            HeaderImageUrl = overview.HeaderImageUrl;
+        if (overview.LatestRelease != null && string.IsNullOrEmpty(LatestReleaseImageUrl))
+            LatestReleaseImageUrl = overview.LatestRelease.ImageUrl;
+        if (PinnedItem == null && overview.PinnedItem != null)
+        {
+            PinnedItem = overview.PinnedItem;
+            OnPropertyChanged(nameof(HasPinnedItem));
         }
     }
 

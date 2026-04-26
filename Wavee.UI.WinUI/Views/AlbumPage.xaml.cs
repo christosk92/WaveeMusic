@@ -76,7 +76,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        ViewModel.Deactivate();
+        // Hibernate also releases FilteredTracks / MoreByArtist / AlternateReleases /
+        // Merch — the bound collections that pin the most realized item containers
+        // while this cached page sits invisible in the Frame cache. Activate's
+        // _appliedDetailFor reset (cleared in Hibernate) makes the next subscribe
+        // re-apply the warm AlbumStore value.
+        ViewModel.Hibernate();
     }
 
     // Same-tab navigation between two albums reuses this Page instance and never

@@ -17,7 +17,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // brushes, composition trees) — multiply by ~5 typical tabs and the cache
     // alone could account for hundreds of MB. Going deeper than 1 level back
     // is rare; the recreate cost there is acceptable.
-    private const int DefaultFrameCacheSize = 2;
+    private const int DefaultFrameCacheSize = 5;
 
     public Frame ContentFrame { get; }
 

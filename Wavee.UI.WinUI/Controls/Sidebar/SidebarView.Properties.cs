@@ -39,6 +39,18 @@ public sealed partial class SidebarView
 	public static readonly DependencyProperty FooterProperty =
 		DependencyProperty.Register("Footer", typeof(UIElement), typeof(SidebarView), new PropertyMetadata(null));
 
+	/// <summary>
+	/// Custom content rendered at the top of the sidebar pane, above the menu
+	/// items. Used by the SidebarPlayerWidget mount point. Mirrors <see cref="Footer"/>.
+	/// </summary>
+	public UIElement Header
+	{
+		get { return (UIElement)GetValue(HeaderProperty); }
+		set { SetValue(HeaderProperty, value); }
+	}
+	public static readonly DependencyProperty HeaderProperty =
+		DependencyProperty.Register("Header", typeof(UIElement), typeof(SidebarView), new PropertyMetadata(null));
+
 	public bool IsPaneOpen
 	{
 		get { return (bool)GetValue(IsPaneOpenProperty); }

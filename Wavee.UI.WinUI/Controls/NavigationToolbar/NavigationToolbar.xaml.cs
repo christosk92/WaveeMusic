@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.Controls.Omnibar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.NavigationToolbar;
 
@@ -305,6 +306,13 @@ public sealed partial class NavigationToolbar : UserControl
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
     {
         _themeService?.ToggleTheme();
+    }
+
+    private void RightPanelToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var shell = Ioc.Default.GetService<ShellViewModel>();
+        if (shell == null) return;
+        shell.IsRightPanelOpen = !shell.IsRightPanelOpen;
     }
 
     private void ViewProfileMenuItem_Click(object sender, RoutedEventArgs e)

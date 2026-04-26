@@ -227,6 +227,15 @@
                 Click="ThemeToggleButton_Click">
                 <FontIcon FontSize="14" Glyph="{x:Bind ThemeGlyph, Mode=OneWay}"/>
             </Button>
+
+            <!-- Right Panel Toggle -->
+            <Button
+                x:Name="RightPanelToggleButton"
+                Style="{StaticResource NavigationButtonStyle}"
+                ToolTipService.ToolTip="Toggle side panel"
+                Click="RightPanelToggleButton_Click">
+                <FontIcon FontSize="14" Glyph="&#xE91C;" />
+            </Button>
         </StackPanel>
     </Grid>
 </UserControl>

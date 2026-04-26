@@ -450,6 +450,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         // No more DataChanged subscription — the store pushes updates via the
         // subscription set up in Activate().
+
+        Diagnostics.LiveInstanceTracker.Register(this);
     }
 
     partial void OnSearchQueryChanged(string value)
@@ -742,6 +744,35 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         // Search timer holds a Tick closure over `this`; stop it on nav-away so it
         // doesn't fire against a cached-but-hidden page.
         _searchDebounceTimer.Stop();
+    }
+
+    /// <summary>
+    /// Heavy-state release for cached pages going off-screen. Drops the track
+    /// grid and collaborator state — these are the bound collections that pin
+    /// the most realized item containers (and therefore composition memory)
+    /// while the page sits invisible in the Frame cache.
+    ///
+    /// Lightweight identity (PlaylistId, name, image URL, palette brushes) is
+    /// preserved so the hero still renders correctly between re-Activate and
+    /// the BehaviorSubject re-emitting. Setting <c>_tracksLoadedFor = null</c>
+    /// forces Activate's <c>isNewPlaylist</c> branch on revisit so the shimmer
+    /// re-seeds before the warm store value lands.
+    /// </summary>
+    public void Hibernate()
+    {
+        _logger?.LogInformation("Hibernate: playlistId='{PlaylistId}'", PlaylistId);
+        Deactivate();
+        _tracksLoadedFor = null;
+
+        FilteredTracks.Clear();
+        _allTracks = new List<PlaylistTrackDto>();
+        Collaborators.Clear();
+        HasCollaborators = false;
+        _suppressSessionSignal = true;
+        SessionControlChips.Clear();
+        SelectedSessionControlChip = null;
+        _suppressSessionSignal = false;
+        OnPropertyChanged(nameof(HasSessionControlChips));
     }
 
     private void ApplyDetailState(EntityState<PlaylistDetailDto> state, string expectedPlaylistId)

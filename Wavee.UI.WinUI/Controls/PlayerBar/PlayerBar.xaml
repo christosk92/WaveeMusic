@@ -579,6 +579,14 @@
                                                 FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        Text="Show in sidebar"
+                                        Click="ShowInSidebar_Click">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE759;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                 </MenuFlyout>
                             </Button.Flyout>
                             <FontIcon Glyph="&#xE712;" FontSize="14" />
@@ -865,6 +873,14 @@
                                                 FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        Text="Show in sidebar"
+                                        Click="ShowInSidebar_Click">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE759;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                 </MenuFlyout>
                             </Button.Flyout>
                             <FontIcon Glyph="&#xE712;" FontSize="14" />

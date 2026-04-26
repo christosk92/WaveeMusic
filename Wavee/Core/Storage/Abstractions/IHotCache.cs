@@ -3,8 +3,13 @@ namespace Wavee.Core.Storage.Abstractions;
 /// <summary>
 /// Generic hot cache interface for O(1) LRU caching.
 /// </summary>
-/// <typeparam name="TEntry">Cache entry type implementing ICacheEntry.</typeparam>
-public interface IHotCache<TEntry> : IDisposable where TEntry : class, ICacheEntry
+/// <typeparam name="TEntry">Cache entry type — any reference type. Existing
+/// callers use <see cref="ICacheEntry"/> implementers, but the cache itself
+/// never reads those interface members (it tracks LRU/timestamps in its own
+/// nodes), so the constraint is intentionally minimal so detail-page result
+/// records (ArtistOverviewResult, AlbumDetailResult, PlaylistDetailDto) can
+/// be cached directly without polluting their public API surface.</typeparam>
+public interface IHotCache<TEntry> : IDisposable where TEntry : class
 {
     /// <summary>
     /// Gets the current number of entries in the cache.
