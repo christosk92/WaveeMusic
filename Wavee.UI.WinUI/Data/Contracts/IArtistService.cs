@@ -61,6 +61,27 @@ public sealed record ArtistOverviewResult
 
     // Concerts
     public required List<ArtistConcertResult> Concerts { get; init; }
+
+    // Connect & Markets — surfaced from Pathfinder visualIdentity / stats /
+    // externalLinks blocks. Empty (not null) when the API didn't return them.
+    public List<ArtistSocialLinkResult> ExternalLinks { get; init; } = new();
+    public List<ArtistTopCityResult> TopCities { get; init; } = new();
+
+    // Gallery — landscape/portrait photos of the artist (multiple resolutions).
+    public List<string> GalleryPhotos { get; init; } = new();
+}
+
+public sealed record ArtistSocialLinkResult
+{
+    public required string Name { get; init; }
+    public required string Url { get; init; }
+}
+
+public sealed record ArtistTopCityResult
+{
+    public required string City { get; init; }
+    public string? Country { get; init; }
+    public long NumberOfListeners { get; init; }
 }
 
 public sealed record ArtistPalette

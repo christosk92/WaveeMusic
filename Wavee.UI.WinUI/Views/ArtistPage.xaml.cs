@@ -37,8 +37,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 {
     private const int ShimmerCollapseDelayMs = 160;
     private const int ResizeDebounceDelayMs = 150;
-    private const int PinnedItemFlyoutDelayMs = 900;
-    private const int PinnedItemFlyoutCloseDelayMs = 220;
     private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
     private const double ShyHeaderPinThresholdPx = 24;
 
@@ -55,17 +53,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private bool _showingContent;
     private bool _isNavigatingAway;
     private bool _heroHeightPersisted;
-    private DispatcherQueueTimer? _pinnedItemHoverTimer;
-    private DispatcherQueueTimer? _pinnedItemCloseTimer;
-    private bool _isPointerOverPinnedItem;
-    private bool _isPointerOverPinnedPreview;
-    private bool _isPinnedItemPreviewOpen;
-    private bool _isPinnedItemPressed;
     private LinearGradientBrush? _pageTintBrush;
     private GradientStop? _pageTintStartStop;
     private GradientStop? _pageTintHeroStop;
     private GradientStop? _pageTintFadeStop;
     private GradientStop? _pageTintEndStop;
+    // Cached storyboard + animation per stop. Reused across palette/theme changes
+    // (stop + retarget + begin) instead of allocating a fresh Storyboard +
+    // ColorAnimation each call — palette + theme changes can fire 4× per
+    // event, and ApplyTheme cascades on every Palette change.
+    private readonly System.Collections.Generic.Dictionary<GradientStop, (Storyboard Sb, ColorAnimation Anim)> _pageTintAnims = new();
     private TransitionHelper? _shyHeaderTransition;
     private bool _isShyHeaderPinned;
     private bool _isShyHeaderTransitionRunning;
@@ -90,9 +87,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // miss a fast load that completes before the page is added to the visual
         // tree — that race left the shimmer on forever after a tab restore.
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-        // Refresh the palette-driven page tint when the user toggles app theme;
-        // tier selection (HighContrast vs HigherContrast) depends on it.
-        ActualThemeChanged += (_, _) => UpdatePageTint();
+        // Refresh the palette-driven page tint + VM brushes when the user
+        // toggles app theme; tier selection (HighContrast vs HigherContrast)
+        // depends on it.
+        ActualThemeChanged += (_, _) =>
+        {
+            ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+            UpdatePageTint();
+        };
+        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
         Unloaded += ArtistPage_Unloaded;
         Loaded += ArtistPage_Loaded;
     }
@@ -381,18 +384,30 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (stop.Color == targetColor)
             return;
 
-        var animation = new ColorAnimation
+        if (!_pageTintAnims.TryGetValue(stop, out var entry))
         {
-            To = targetColor,
-            Duration = new Duration(PageTintTransitionDuration),
-            EnableDependentAnimation = true
-        };
+            var anim = new ColorAnimation
+            {
+                Duration = new Duration(PageTintTransitionDuration),
+                EnableDependentAnimation = true
+            };
+            var sb = new Storyboard();
+            Storyboard.SetTarget(anim, stop);
+            Storyboard.SetTargetProperty(anim, nameof(GradientStop.Color));
+            sb.Children.Add(anim);
+            entry = (sb, anim);
+            _pageTintAnims[stop] = entry;
+        }
+        else
+        {
+            // Stop the previous run before retargeting so the in-flight
+            // animation releases its hold on the property and the new To
+            // animates from the current value.
+            entry.Sb.Stop();
+        }
 
-        var storyboard = new Storyboard();
-        Storyboard.SetTarget(animation, stop);
-        Storyboard.SetTargetProperty(animation, nameof(GradientStop.Color));
-        storyboard.Children.Add(animation);
-        storyboard.Begin();
+        entry.Anim.To = targetColor;
+        entry.Sb.Begin();
     }
 
     /// <summary>
@@ -603,7 +618,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         // because the page may be re-attached from navigation cache. Page and
         // VM share lifetime (VM is transient), so the handlers don't leak.
         _isNavigatingAway = true;
-        CancelPinnedItemPreview();
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
@@ -1153,7 +1167,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         base.OnNavigatingFrom(e);
         _isNavigatingAway = true;
-        CancelPinnedItemPreview();
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
@@ -1184,8 +1197,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void PinnedItem_Click(object sender, RoutedEventArgs e)
     {
-        CancelPinnedItemPreview();
-
         if (ViewModel.PinnedItem?.Uri == null) return;
 
         var type = ViewModel.PinnedItem.Type?.ToUpperInvariant();
@@ -1213,200 +1224,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
         else
             NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Release", NavigationHelpers.IsCtrlPressed());
-    }
-
-    private void PinnedItem_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        _isPointerOverPinnedItem = true;
-        _isPointerOverPinnedPreview = false;
-        _isPinnedItemPressed = false;
-        _pinnedItemCloseTimer?.Stop();
-        SetPinnedItemVisual(PinnedItemVisualState.Hover);
-        StartPinnedItemPreviewDelay();
-    }
-
-    private void PinnedItem_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        _isPointerOverPinnedItem = false;
-        _isPinnedItemPressed = false;
-        _pinnedItemHoverTimer?.Stop();
-        if (!_isPinnedItemPreviewOpen)
-            StartPinnedItemPreviewCloseDelay();
-        SetPinnedItemVisual(PinnedItemVisualState.Normal);
-    }
-
-    private void PinnedItem_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        _isPinnedItemPressed = true;
-        CancelPinnedItemPreview();
-        SetPinnedItemVisual(PinnedItemVisualState.Pressed);
-    }
-
-    private void PinnedItem_PointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        _isPinnedItemPressed = false;
-        SetPinnedItemVisual(_isPointerOverPinnedItem ? PinnedItemVisualState.Hover : PinnedItemVisualState.Normal);
-    }
-
-    private void PinnedItem_PointerCanceled(object sender, PointerRoutedEventArgs e)
-    {
-        _isPointerOverPinnedItem = false;
-        _isPointerOverPinnedPreview = false;
-        _isPinnedItemPressed = false;
-        CancelPinnedItemPreview();
-        SetPinnedItemVisual(PinnedItemVisualState.Normal);
-    }
-
-    private void PinnedItemPreview_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        _isPointerOverPinnedPreview = true;
-        _pinnedItemCloseTimer?.Stop();
-        SetPinnedItemVisual(PinnedItemVisualState.Hover);
-    }
-
-    private void PinnedItemPreview_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        _isPointerOverPinnedPreview = false;
-        StartPinnedItemPreviewCloseDelay();
-    }
-
-    private void PinnedItemPreviewFlyout_Opened(object? sender, object e)
-    {
-        _isPinnedItemPreviewOpen = true;
-        _pinnedItemCloseTimer?.Stop();
-    }
-
-    private void PinnedItemPreviewFlyout_Closed(object? sender, object e)
-    {
-        _isPinnedItemPreviewOpen = false;
-        _isPointerOverPinnedPreview = false;
-        if (!_isPointerOverPinnedItem)
-            SetPinnedItemVisual(PinnedItemVisualState.Normal);
-    }
-
-    private void StartPinnedItemPreviewDelay()
-    {
-        if (ViewModel.PinnedItem == null)
-            return;
-
-        _pinnedItemHoverTimer ??= CreatePinnedItemHoverTimer();
-        _pinnedItemHoverTimer.Stop();
-        _pinnedItemHoverTimer.Start();
-    }
-
-    private void StartPinnedItemPreviewCloseDelay()
-    {
-        _pinnedItemCloseTimer ??= CreatePinnedItemCloseTimer();
-        _pinnedItemCloseTimer.Stop();
-        _pinnedItemCloseTimer.Start();
-    }
-
-    private DispatcherQueueTimer CreatePinnedItemHoverTimer()
-    {
-        var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(PinnedItemFlyoutDelayMs);
-        timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
-        {
-            if (!_isPointerOverPinnedItem || _isPinnedItemPressed || _isNavigatingAway || ViewModel.PinnedItem == null)
-                return;
-
-            _pinnedItemCloseTimer?.Stop();
-            FlyoutBase.ShowAttachedFlyout(PinnedItemButton);
-        };
-        return timer;
-    }
-
-    private DispatcherQueueTimer CreatePinnedItemCloseTimer()
-    {
-        var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(PinnedItemFlyoutCloseDelayMs);
-        timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
-        {
-            if (_isPointerOverPinnedItem || _isPointerOverPinnedPreview)
-                return;
-
-            CancelPinnedItemPreview();
-            SetPinnedItemVisual(PinnedItemVisualState.Normal);
-        };
-        return timer;
-    }
-
-    private void CancelPinnedItemPreview()
-    {
-        _pinnedItemHoverTimer?.Stop();
-        _pinnedItemCloseTimer?.Stop();
-
-        if (PinnedItemButton != null)
-            FlyoutBase.GetAttachedFlyout(PinnedItemButton)?.Hide();
-
-        _isPinnedItemPreviewOpen = false;
-    }
-
-    private void SetPinnedItemVisual(PinnedItemVisualState state)
-    {
-        if (PinnedItemPill == null)
-            return;
-
-        PinnedItemPill.Background = GetPinnedItemBrush(state switch
-        {
-            PinnedItemVisualState.Hover => "PinnedItemHoverBackgroundBrush",
-            PinnedItemVisualState.Pressed => "PinnedItemPressedBackgroundBrush",
-            _ => "PinnedItemNormalBackgroundBrush"
-        });
-        PinnedItemPill.BorderBrush = GetPinnedItemBrush(state switch
-        {
-            PinnedItemVisualState.Hover => "PinnedItemHoverBorderBrush",
-            PinnedItemVisualState.Pressed => "PinnedItemPressedBorderBrush",
-            _ => "PinnedItemNormalBorderBrush"
-        });
-
-        var scale = state switch
-        {
-            PinnedItemVisualState.Hover => 1.025f,
-            PinnedItemVisualState.Pressed => 0.965f,
-            _ => 1f
-        };
-
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(PinnedItemPill);
-        visual.CenterPoint = new System.Numerics.Vector3(
-            (float)(PinnedItemPill.ActualWidth / 2),
-            (float)(PinnedItemPill.ActualHeight / 2),
-            0);
-
-        AnimationBuilder.Create()
-            .Scale(to: new System.Numerics.Vector3(scale, scale, 1),
-                   duration: TimeSpan.FromMilliseconds(state == PinnedItemVisualState.Pressed ? 80 : 140),
-                   easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
-            .Start(PinnedItemPill);
-    }
-
-    private Brush GetPinnedItemBrush(string resourceKey)
-    {
-        // The brushes live inside Page.Resources.ThemeDictionaries, and
-        // ResourceDictionary.TryGetValue does not traverse theme dictionaries.
-        // Resolve against the currently active theme explicitly.
-        var themeKey = ActualTheme == ElementTheme.Light ? "Light" : "Dark";
-        if (Resources.ThemeDictionaries.TryGetValue(themeKey, out var themeDictObj)
-            && themeDictObj is ResourceDictionary themeDict
-            && themeDict.TryGetValue(resourceKey, out var themeResource)
-            && themeResource is Brush themeBrush)
-        {
-            return themeBrush;
-        }
-
-        if (Resources.TryGetValue(resourceKey, out var resource) && resource is Brush brush)
-            return brush;
-
-        return PinnedItemPill.Background;
-    }
-
-    private enum PinnedItemVisualState
-    {
-        Normal,
-        Hover,
-        Pressed
     }
 
     private async Task FetchAlbumColorAsync(ArtistReleaseVm album, AlbumDetailPanel panel)
@@ -1494,4 +1311,149 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
     }
 
+    // ── Hero share / open menu ──────────────────────────────────────────
+    // ShareArtist + CopyArtistLink put the open.spotify.com URL on the
+    // clipboard; OpenInSpotify launches the spotify: URI which the OS
+    // routes to the desktop app if installed (else web fallback).
+
+    private void ShareArtist_Click(object sender, RoutedEventArgs e)
+        => CopyArtistShareUrlToClipboard();
+
+    private void CopyArtistLink_Click(object sender, RoutedEventArgs e)
+        => CopyArtistShareUrlToClipboard();
+
+    private void CopyArtistShareUrlToClipboard()
+    {
+        var artistId = ViewModel.ArtistId;
+        if (string.IsNullOrEmpty(artistId)) return;
+
+        var url = $"https://open.spotify.com/artist/{artistId}";
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(url);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+    }
+
+    // ── About bio expand/collapse ───────────────────────────────────────
+
+    private bool _biographyExpanded;
+
+    private void BiographyShowMore_Click(object sender, RoutedEventArgs e)
+    {
+        _biographyExpanded = !_biographyExpanded;
+        // MaxLines=0 on HtmlTextBlock means "no limit" — same convention TextBlock uses.
+        BiographyBlock.MaxLines = _biographyExpanded ? 0 : 4;
+        BiographyShowMoreButton.Content = _biographyExpanded ? "Show less" : "Show more";
+    }
+
+    // ── Connect & Markets / Gallery handlers ────────────────────────────
+
+    private async void SocialLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            try { await Windows.System.Launcher.LaunchUriAsync(uri); }
+            catch { }
+        }
+    }
+
+    // ── Gallery wrapping grid + lightbox ────────────────────────────────
+    // Tile invoke → cache the originating element for focus-restore on close,
+    // jump the FlipView to the right index, open the Popup. Close paths:
+    // explicit X button, click on the dim scrim (filter by OriginalSource),
+    // Escape KeyboardAccelerator on the lightbox root.
+
+    private Control? _galleryReturnFocus;
+
+    private void Gallery_ItemInvoked(ItemsView sender, ItemsViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is not string url) return;
+
+        // Restore-focus target on close — falls back to the ItemsView itself,
+        // which brings keyboard focus back into the gallery section so the
+        // user can keep arrow-navigating without a jarring focus jump.
+        _galleryReturnFocus = sender;
+
+        var idx = ViewModel.GalleryPhotos.IndexOf(url);
+        GalleryFlipView.SelectedIndex = Math.Max(0, idx);
+        UpdateGalleryCounterText();
+
+        GalleryLightbox.IsOpen = true;
+        // Defer focus until the popup has actually opened so it sticks.
+        DispatcherQueue.TryEnqueue(() => GalleryLightboxCloseButton.Focus(FocusState.Programmatic));
+    }
+
+    private void GalleryLightboxClose_Click(object sender, RoutedEventArgs e)
+        => CloseGalleryLightbox();
+
+    private void GalleryLightboxScrim_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        // Only close on clicks that actually land on the scrim itself —
+        // bubbled events from the FlipView, image, buttons must not dismiss.
+        if (ReferenceEquals(e.OriginalSource, GalleryLightboxRoot))
+            CloseGalleryLightbox();
+    }
+
+    private void GalleryLightboxEscape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        CloseGalleryLightbox();
+        args.Handled = true;
+    }
+
+    private void CloseGalleryLightbox()
+    {
+        GalleryLightbox.IsOpen = false;
+        _galleryReturnFocus?.Focus(FocusState.Programmatic);
+        _galleryReturnFocus = null;
+    }
+
+    private void GalleryFlipView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        => UpdateGalleryCounterText();
+
+    private void UpdateGalleryCounterText()
+    {
+        if (GalleryCounterText == null) return;
+        var total = ViewModel.GalleryPhotos.Count;
+        var idx = Math.Max(0, GalleryFlipView.SelectedIndex);
+        GalleryCounterText.Text = total > 0 ? $"{idx + 1} / {total}" : string.Empty;
+    }
+
+    // ── Latest release card ─────────────────────────────────────────────
+
+    private void LatestRelease_Click(object sender, RoutedEventArgs e)
+    {
+        var uri = ViewModel.LatestReleaseUri;
+        var name = ViewModel.LatestReleaseName;
+        if (string.IsNullOrEmpty(uri)) return;
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = uri,
+            Title = name,
+            ImageUrl = ViewModel.LatestReleaseImageUrl
+        };
+        NavigationHelpers.OpenAlbum(param, name ?? "Album", NavigationHelpers.IsCtrlPressed());
+    }
+
+    private void PlayLatestRelease_Click(object sender, RoutedEventArgs e)
+    {
+        // Same navigation for now — playback context-resolves on the album page.
+        // Could be replaced with a direct play command on the VM if/when one exists.
+        LatestRelease_Click(sender, e);
+    }
+
+    private async void OpenInSpotify_Click(object sender, RoutedEventArgs e)
+    {
+        var artistId = ViewModel.ArtistId;
+        if (string.IsNullOrEmpty(artistId)) return;
+
+        try
+        {
+            var uri = new Uri($"spotify:artist:{artistId}");
+            await Windows.System.Launcher.LaunchUriAsync(uri);
+        }
+        catch
+        {
+            // Best-effort — silently fail rather than throw on a user-initiated launch.
+        }
+    }
 }

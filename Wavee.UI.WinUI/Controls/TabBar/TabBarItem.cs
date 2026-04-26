@@ -10,7 +10,14 @@ namespace Wavee.UI.WinUI.Controls.TabBar;
 
 public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposable
 {
-    private const int DefaultFrameCacheSize = 5;
+    // 2 = current page + 1 cached predecessor. Keeps the "back-once is instant"
+    // UX (no page recreation / flicker on the most common back nav) while
+    // capping the cached-page footprint per tab. The previous value of 5 pinned
+    // up to 4 ancestor pages with their full ViewModels (track lists, palette
+    // brushes, composition trees) — multiply by ~5 typical tabs and the cache
+    // alone could account for hundreds of MB. Going deeper than 1 level back
+    // is rare; the recreate cost there is acceptable.
+    private const int DefaultFrameCacheSize = 2;
 
     public Frame ContentFrame { get; }
 

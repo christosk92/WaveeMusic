@@ -368,7 +368,12 @@ public sealed partial class SearchResultHeroCard : UserControl
 
         EnsureBleedVisual();
 
-        // Dispose the previous surface before swapping — LoadedImageSurface is unmanaged.
+        // Dispose the previous brush + surface before swapping — both are
+        // unmanaged. The old ones leaked GPU memory before this fix, which
+        // accumulated as the user scrolled fresh top-results into the card.
+        if (_bleedVisual != null) _bleedVisual.Brush = null;
+        _bleedBrush?.Dispose();
+        _bleedBrush = null;
         _bleedSurface?.Dispose();
         _bleedSurface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl));
 

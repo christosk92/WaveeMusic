@@ -90,4 +90,39 @@ public static class FluentGlyphs
     public const string Canvas = "";
     /// <summary>ChevronRight — E76C.</summary>
     public const string ChevronRight = "";
+
+    // -- Social-link icons -------------------------------------------------
+    // Maps a URL/name to a FontAwesome6.EFontAwesomeIcon brand enum (via the
+    // FontAwesome6.Svg.WinUI package). FontAwesome's Brands family carries
+    // the actual recognised marks (Instagram, YouTube, Spotify, etc.) that
+    // the generic Fluent icon set deliberately omits. Centralised here so
+    // the resolution lives alongside the rest of the icon vocabulary instead
+    // of being duplicated across view-models. Best-effort substring match on
+    // hostname; falls back to a generic external-link arrow when nothing
+    // matches.
+
+    public static FontAwesome6.EFontAwesomeIcon ResolveSocialIcon(string? url, string? name)
+    {
+        var lower = (url ?? string.Empty).ToLowerInvariant();
+        var n = (name ?? string.Empty).ToLowerInvariant();
+
+        if (lower.Contains("instagram") || n.Contains("instagram"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Instagram;
+        if (lower.Contains("twitter") || lower.Contains("x.com") || n.Contains("twitter"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Twitter;
+        if (lower.Contains("facebook") || n.Contains("facebook"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_FacebookF;
+        if (lower.Contains("youtube") || n.Contains("youtube"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Youtube;
+        if (lower.Contains("tiktok") || n.Contains("tiktok"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Tiktok;
+        if (lower.Contains("soundcloud") || n.Contains("soundcloud"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Soundcloud;
+        if (lower.Contains("spotify") || n.Contains("spotify"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Spotify;
+        if (lower.Contains("apple.com/music") || n.Contains("apple music")
+            || lower.Contains("apple.com") || n.Contains("apple"))
+            return FontAwesome6.EFontAwesomeIcon.Brands_Apple;
+        return FontAwesome6.EFontAwesomeIcon.Solid_ArrowUpRightFromSquare;
+    }
 }

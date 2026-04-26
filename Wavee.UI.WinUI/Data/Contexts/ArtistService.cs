@@ -123,7 +123,28 @@ public sealed class ArtistService : IArtistService
                 ThumbnailUrl = artist.WatchFeedEntrypoint.ThumbnailImage?.Data?.Sources?.FirstOrDefault()?.Url
             } : null,
 
-            Concerts = await MapConcertsAsync(artist.Goods?.Concerts, ct).ConfigureAwait(false)
+            Concerts = await MapConcertsAsync(artist.Goods?.Concerts, ct).ConfigureAwait(false),
+
+            ExternalLinks = (artist.Profile?.ExternalLinks?.Items ?? new())
+                .Where(l => !string.IsNullOrWhiteSpace(l.Name) && !string.IsNullOrWhiteSpace(l.Url))
+                .Select(l => new ArtistSocialLinkResult { Name = l.Name!, Url = l.Url! })
+                .ToList(),
+
+            TopCities = (artist.Stats?.TopCities?.Items ?? new())
+                .Where(c => !string.IsNullOrWhiteSpace(c.City))
+                .Select(c => new ArtistTopCityResult
+                {
+                    City = c.City!,
+                    Country = c.Country,
+                    NumberOfListeners = c.NumberOfListeners
+                })
+                .ToList(),
+
+            GalleryPhotos = (artist.Visuals?.Gallery?.Items ?? new())
+                .Select(g => g.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url)
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Select(u => u!)
+                .ToList()
         };
     }
 

@@ -35,12 +35,15 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
         public CancellationTokenSource? Cts;
         public Task? InFlight;
         public long StampTicks; // monotonic counter of state updates; guards against out-of-order fetches
+        public long LastTouchedTicks; // monotonic counter bumped on every Observe/Push — drives LRU eviction
         public bool ColdProbed;
     }
 
     private readonly ConcurrentDictionary<TKey, Slot> _slots;
     private readonly ILogger? _logger;
     private long _stampSeq;
+    private long _touchSeq;
+    private int _evictionScheduled; // 0 = idle, 1 = pending; debounces concurrent eviction kicks
     private volatile bool _disposed;
 
     protected EntityStore(IEqualityComparer<TKey>? comparer = null, ILogger? logger = null)
@@ -80,6 +83,14 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     // PlaylistStore.ShouldPublish for the canonical override.
     protected virtual bool ShouldPublish(TKey key, TValue? previous, TValue value) => true;
 
+    // Upper bound on resident slots. When exceeded, oldest-touched slots with
+    // RefCount==0 are evicted (the BehaviorSubject's Ready value is the bulk
+    // of the per-slot footprint, so dropping the slot drops the cached domain
+    // object). Subclasses can override to tune per entity size — e.g. larger
+    // for cheap entities, smaller for expensive ones (artist overviews carry
+    // hundreds of releases + concerts).
+    protected virtual int MaxSlots => 64;
+
     // ── Public API ──────────────────────────────────────────────────────
 
     public IObservable<EntityState<TValue>> Observe(TKey key)
@@ -90,6 +101,8 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
         {
             var slot = _slots.GetOrAdd(key, _ => new Slot());
             Interlocked.Increment(ref slot.RefCount);
+            slot.LastTouchedTicks = Interlocked.Increment(ref _touchSeq);
+            MaybeScheduleEviction();
 
             // BehaviorSubject replays last state to the new subscriber synchronously.
             var inner = slot.Subject.Subscribe(observer);
@@ -138,6 +151,8 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var slot = _slots.GetOrAdd(key, _ => new Slot());
+        slot.LastTouchedTicks = Interlocked.Increment(ref _touchSeq);
+        MaybeScheduleEviction();
         var stamp = Interlocked.Increment(ref _stampSeq);
 
         lock (slot.Gate)
@@ -384,6 +399,80 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
     {
         if (slot.Cts is null) return;
         try { slot.Cts.Cancel(); } catch { /* already disposed */ }
+    }
+
+    // ── LRU eviction ─────────────────────────────────────────────────────
+
+    private void MaybeScheduleEviction()
+    {
+        if (_slots.Count <= MaxSlots) return;
+        // Debounce: at most one eviction pass in flight at a time. The
+        // CompareExchange ensures concurrent Observe/Push callers don't queue
+        // a swarm of redundant passes when the store is hot.
+        if (Interlocked.CompareExchange(ref _evictionScheduled, 1, 0) != 0) return;
+
+        // Run on a thread-pool thread so we never block the caller (Observe
+        // is on the UI thread for ViewModel use). Snapshot inside the task.
+        _ = Task.Run(EvictOldestUnreferenced);
+    }
+
+    private void EvictOldestUnreferenced()
+    {
+        try
+        {
+            // Snapshot only unreferenced slots — never evict a slot with live
+            // observers (an active page subscription). Sort by oldest touch.
+            var candidates = new List<(TKey Key, Slot Slot, long Touched)>();
+            foreach (var kv in _slots)
+            {
+                var s = kv.Value;
+                if (Volatile.Read(ref s.RefCount) > 0) continue;
+                candidates.Add((kv.Key, s, Volatile.Read(ref s.LastTouchedTicks)));
+            }
+
+            int overflow = _slots.Count - MaxSlots;
+            if (overflow <= 0 || candidates.Count == 0) return;
+
+            candidates.Sort((a, b) => a.Touched.CompareTo(b.Touched));
+
+            int toEvict = Math.Min(overflow, candidates.Count);
+            for (int i = 0; i < toEvict; i++)
+            {
+                var (key, slot, _) = candidates[i];
+
+                // Re-check refcount under the slot's gate — a new Observe could
+                // have raced in between snapshot and removal. If so, skip it.
+                bool shouldEvict;
+                lock (slot.Gate)
+                {
+                    shouldEvict = slot.RefCount == 0;
+                    if (shouldEvict)
+                        CancelInflightUnderLock(slot);
+                }
+
+                if (!shouldEvict) continue;
+
+                if (!_slots.TryRemove(new KeyValuePair<TKey, Slot>(key, slot))) continue;
+
+                try { slot.Subject.OnCompleted(); } catch { /* already completed */ }
+                slot.Subject.Dispose();
+
+                _logger?.LogTrace("Evicted slot for key {Key} (LRU, slot count now {Count})", key, _slots.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Eviction pass failed");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _evictionScheduled, 0);
+
+            // If the store is still over budget (a flood of new Observes raced
+            // us), schedule another pass. Cheap when nothing to do.
+            if (_slots.Count > MaxSlots)
+                MaybeScheduleEviction();
+        }
     }
 
     // ── Testing hooks ────────────────────────────────────────────────────

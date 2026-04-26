@@ -28,6 +28,11 @@ public sealed class RecentlyPlayedService : IDisposable
     private readonly List<HomeSectionItem> _items = [];
     private bool _disposed;
 
+    // Keep the recently-played list bounded so a long session doesn't grow it
+    // indefinitely. Spotify's own surface only shows ~12 entries; 50 is a
+    // generous cap that still covers any reasonable UI need.
+    private const int MaxItems = 50;
+
     public event Action? ItemsChanged;
 
     public IReadOnlyList<HomeSectionItem> Items => _items;
@@ -186,6 +191,11 @@ public sealed class RecentlyPlayedService : IDisposable
                     _ = ResolveEntityMetadataAsync(newItem);
                 }
             }
+
+            // Cap the list so playing many distinct contexts in a session
+            // doesn't grow it indefinitely. Drop oldest from the tail.
+            while (_items.Count > MaxItems)
+                _items.RemoveAt(_items.Count - 1);
 
             ItemsChanged?.Invoke();
         });

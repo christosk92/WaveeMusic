@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Data;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
@@ -20,6 +21,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Helpers;
+using Windows.UI;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -62,6 +64,28 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     private ObservableCollection<LocationSearchResultVm> _locationSuggestions = [];
 
+    /// <summary>Artist's external links (Twitter, Instagram, YouTube, etc.).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasExternalLinks))]
+    [NotifyPropertyChangedFor(nameof(HasConnectSection))]
+    private ObservableCollection<ArtistSocialLinkVm> _externalLinks = [];
+
+    /// <summary>Top cities by listener count, with proportional bar widths.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTopCities))]
+    [NotifyPropertyChangedFor(nameof(HasConnectSection))]
+    private ObservableCollection<ArtistTopCityVm> _topCities = [];
+
+    /// <summary>Photo URLs from the artist's gallery (largest variant).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasGallery))]
+    private ObservableCollection<string> _galleryPhotos = [];
+
+    public bool HasExternalLinks => ExternalLinks.Count > 0;
+    public bool HasTopCities => TopCities.Count > 0;
+    public bool HasConnectSection => HasExternalLinks || HasTopCities;
+    public bool HasGallery => GalleryPhotos.Count > 0;
+
     [ObservableProperty]
     private string? _userLocationName;
 
@@ -84,7 +108,40 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// Null when the API didn't return a visualIdentity block (older artists, etc.).
     /// </summary>
     [ObservableProperty] private ArtistPalette? _palette;
-    [ObservableProperty] private string? _monthlyListeners;
+
+    // ── Palette-derived brushes ─────────────────────────────────────────
+    // Built in ApplyTheme(isDark) from the active Palette tier (HigherContrast
+    // for dark, HighContrast for light). Mirrors PlaylistViewModel/AlbumViewModel
+    // patterns so all detail pages use the same alpha cadence + tier policy.
+    // Null when no palette is available — bound XAML elements simply render
+    // without tint.
+
+    /// <summary>3 px vertical bar tint for section headers — matches the Home
+    /// section accent treatment so Artist + Home read as one app.</summary>
+    [ObservableProperty] private Brush? _sectionAccentBrush;
+
+    /// <summary>4-stop horizontal gradient for the hero scrim. Tier
+    /// BackgroundTinted top → Background bottom, fading right.</summary>
+    [ObservableProperty] private Brush? _paletteHeroGradientBrush;
+
+    /// <summary>Solid tier-accent brush for the primary Play button.</summary>
+    [ObservableProperty] private Brush? _paletteAccentPillBrush;
+
+    /// <summary>Luma-based contrast color (black/white) for text on the
+    /// PaletteAccentPillBrush. Auto-picked so the Play label stays legible.</summary>
+    [ObservableProperty] private Brush? _paletteAccentPillForegroundBrush;
+
+    private bool _isDarkTheme = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MonthlyListenersDescription))]
+    private string? _monthlyListeners;
+
+    /// <summary>Description-line variant for the About SettingsExpander header.</summary>
+    public string MonthlyListenersDescription =>
+        string.IsNullOrEmpty(MonthlyListeners)
+            ? string.Empty
+            : $"{MonthlyListeners} monthly listeners";
     [ObservableProperty] private long _followers;
     [ObservableProperty] private string? _biography;
     [ObservableProperty] private bool _isVerified;
@@ -104,12 +161,43 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     public string ArtistPlayButtonText => IsArtistContextPlaying ? "Pause" : "Play";
 
     // Latest release
-    [ObservableProperty] private string? _latestReleaseName;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLatestRelease))]
+    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
+    private string? _latestReleaseName;
     [ObservableProperty] private string? _latestReleaseImageUrl;
-    [ObservableProperty] private string? _latestReleaseUri;
-    [ObservableProperty] private string? _latestReleaseDate;
-    [ObservableProperty] private int _latestReleaseTrackCount;
-    [ObservableProperty] private string? _latestReleaseType;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLatestRelease))]
+    private string? _latestReleaseUri;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
+    private string? _latestReleaseDate;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
+    private int _latestReleaseTrackCount;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
+    private string? _latestReleaseType;
+
+    /// <summary>True when the artist has a latest release with valid metadata
+    /// — drives Visibility on the rich card above the Albums grid.</summary>
+    public bool HasLatestRelease =>
+        !string.IsNullOrEmpty(LatestReleaseName) && !string.IsNullOrEmpty(LatestReleaseUri);
+
+    /// <summary>Composite subtitle for the latest-release card:
+    /// "{Type} · {Date} · {TrackCount} tracks". Skips empty parts.</summary>
+    public string LatestReleaseSubtitle
+    {
+        get
+        {
+            var parts = new List<string>(3);
+            if (!string.IsNullOrEmpty(LatestReleaseType)) parts.Add(LatestReleaseType!);
+            if (!string.IsNullOrEmpty(LatestReleaseDate)) parts.Add(LatestReleaseDate!);
+            if (LatestReleaseTrackCount > 0)
+                parts.Add(LatestReleaseTrackCount == 1 ? "1 track" : $"{LatestReleaseTrackCount} tracks");
+            return string.Join(" · ", parts);
+        }
+    }
 
     // Per-group total counts
     [ObservableProperty] private int _albumsTotalCount;
@@ -172,10 +260,29 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty] private bool _isLoadingExpandedTracks;
 
     // Pinned item + Watch feed
-    [ObservableProperty] private ArtistPinnedItemResult? _pinnedItem;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPinnedItem))]
+    [NotifyPropertyChangedFor(nameof(HasPinnedComment))]
+    [NotifyPropertyChangedFor(nameof(PinnedBackdropImageUrl))]
+    private ArtistPinnedItemResult? _pinnedItem;
     [ObservableProperty] private ArtistWatchFeedResult? _watchFeed;
     public bool HasPinnedItem => PinnedItem != null;
     public bool HasWatchFeed => WatchFeed != null;
+
+    /// <summary>True when the pinned item has a non-empty artist note
+    /// (Pathfinder's <c>comment</c> field). Drives Visibility on the
+    /// italic quote line in the pinned card.</summary>
+    public bool HasPinnedComment => !string.IsNullOrWhiteSpace(PinnedItem?.Comment);
+
+    /// <summary>Best image URL to use as the pinned card's backdrop —
+    /// Spotify's editorial <c>backgroundImageV2</c> when present, else
+    /// falls back to the cover/playlist image. Both forms shipped from
+    /// Pathfinder; using whichever is set keeps the card visually rich
+    /// even when there's no dedicated backdrop.</summary>
+    public string? PinnedBackdropImageUrl =>
+        !string.IsNullOrWhiteSpace(PinnedItem?.BackgroundImageUrl)
+            ? PinnedItem!.BackgroundImageUrl
+            : PinnedItem?.ImageUrl;
     public bool HasConcerts => Concerts.Count > 0;
 
     // ── Location operations (delegated to ILocationService) ──
@@ -565,6 +672,33 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             WatchFeed = overview.WatchFeed;
             OnPropertyChanged(nameof(HasPinnedItem));
             OnPropertyChanged(nameof(HasWatchFeed));
+
+            // ── Connect & Markets + Gallery (batch swap) ──
+            ExternalLinks = new ObservableCollection<ArtistSocialLinkVm>(
+                overview.ExternalLinks.Select(l => new ArtistSocialLinkVm
+                {
+                    Name = l.Name,
+                    Url = l.Url,
+                    Icon = Wavee.UI.WinUI.Styles.FluentGlyphs.ResolveSocialIcon(l.Url, l.Name)
+                }));
+
+            // Bar widths normalized against the largest city's listener count.
+            var maxListeners = overview.TopCities.Count == 0
+                ? 1L
+                : overview.TopCities.Max(c => c.NumberOfListeners);
+            TopCities = new ObservableCollection<ArtistTopCityVm>(
+                overview.TopCities.Take(5).Select(c => new ArtistTopCityVm
+                {
+                    City = c.City,
+                    Country = c.Country,
+                    NumberOfListeners = c.NumberOfListeners,
+                    DisplayCount = FormatListenerCount(c.NumberOfListeners),
+                    RelativeWidth = maxListeners > 0
+                        ? Math.Max(8, c.NumberOfListeners * 200.0 / maxListeners)
+                        : 8
+                }));
+
+            GalleryPhotos = new ObservableCollection<string>(overview.GalleryPhotos);
 
             CurrentPage = 0;
             NotifyPaginationChanged();
@@ -1233,6 +1367,107 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         CancelAndDisposeDiscographyCts();
     }
+
+    /// <summary>
+    /// Theme-aware palette refresh. Page calls this on init + on
+    /// ActualThemeChanged + after Palette lands. Mirrors PlaylistViewModel
+    /// and AlbumViewModel: dark theme → HigherContrast (deepest), light →
+    /// HighContrast (saturated but a step brighter). MinContrast is skipped —
+    /// too pastel for white-on-tint text. When no palette is available the
+    /// brushes are nulled so bound elements render untinted.
+    /// </summary>
+    public void ApplyTheme(bool isDark)
+    {
+        _isDarkTheme = isDark;
+
+        var tier = Palette is null
+            ? null
+            : (isDark
+                ? (Palette.HigherContrast ?? Palette.HighContrast)
+                : (Palette.HighContrast ?? Palette.HigherContrast));
+
+        if (tier == null)
+        {
+            // Fall back to system accent when no palette is available so the
+            // Play button + avatar ring still render correctly on cold load.
+            SectionAccentBrush = ResolveSystemBrush("AccentFillColorDefaultBrush");
+            PaletteHeroGradientBrush = null;
+            PaletteAccentPillBrush = ResolveSystemBrush("AccentFillColorDefaultBrush");
+            PaletteAccentPillForegroundBrush = ResolveSystemBrush("TextOnAccentFillColorPrimaryBrush");
+            return;
+        }
+
+        var bg = Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
+        var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
+
+        // Use BackgroundTinted (the artist's actual cover-derived color) for
+        // accents instead of TextAccent. TextAccent often resolves to Spotify's
+        // brand green (#1DB954) regardless of the cover photo, which made every
+        // artist accent look identical (and disconnected from the visual).
+        var accentBase = TintColorHelper.BrightenForTint(bgTint, targetMax: 210);
+
+        // Section bar — full-alpha lifted accent, matches Home AccentLineBrush.
+        SectionAccentBrush = new SolidColorBrush(Color.FromArgb(255, accentBase.R, accentBase.G, accentBase.B));
+
+        // Hero scrim — same alpha cadence used by AlbumViewModel/PlaylistViewModel.
+        var heroGrad = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+        };
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(176, bg.R, bg.G, bg.B),         Offset = 0.35 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(80,  bg.R, bg.G, bg.B),         Offset = 0.65 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   bg.R, bg.G, bg.B),         Offset = 1.0 });
+        PaletteHeroGradientBrush = heroGrad;
+
+        // Play button — same lifted accent as the section bar so the page
+        // reads as one color identity, with luma-based contrast text.
+        PaletteAccentPillBrush = new SolidColorBrush(accentBase);
+        var accentLuma = (accentBase.R * 299 + accentBase.G * 587 + accentBase.B * 114) / 1000;
+        PaletteAccentPillForegroundBrush = new SolidColorBrush(
+            accentLuma > 160 ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255));
+    }
+
+    partial void OnPaletteChanged(ArtistPalette? value) => ApplyTheme(_isDarkTheme);
+
+    private static Brush? ResolveSystemBrush(string resourceKey)
+    {
+        if (Microsoft.UI.Xaml.Application.Current?.Resources is { } res
+            && res.TryGetValue(resourceKey, out var value)
+            && value is Brush brush)
+            return brush;
+        return null;
+    }
+
+    /// <summary>
+    /// Formats a long listener count like "1.2M" / "453K" / "812".
+    /// Mirrors monthly-listener formatting used elsewhere in the app.
+    /// </summary>
+    private static string FormatListenerCount(long count)
+    {
+        if (count >= 1_000_000)
+            return (count / 1_000_000.0).ToString("0.#") + "M";
+        if (count >= 1_000)
+            return (count / 1_000.0).ToString("0.#") + "K";
+        return count.ToString("N0");
+    }
+}
+
+public sealed record ArtistSocialLinkVm
+{
+    public required string Name { get; init; }
+    public required string Url { get; init; }
+    public required FontAwesome6.EFontAwesomeIcon Icon { get; init; }
+}
+
+public sealed record ArtistTopCityVm
+{
+    public required string City { get; init; }
+    public string? Country { get; init; }
+    public long NumberOfListeners { get; init; }
+    public required string DisplayCount { get; init; }
+    public double RelativeWidth { get; init; }
 }
 
 // ── View Models (UI-layer records) ──
