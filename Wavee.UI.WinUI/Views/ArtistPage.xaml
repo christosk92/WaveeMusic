@@ -633,7 +633,7 @@
                             BorderThickness="1"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             Padding="12"
-                            x:Load="{x:Bind ViewModel.HasLatestRelease, Mode=OneWay}">
+                            Visibility="{x:Bind ViewModel.HasLatestRelease, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid ColumnSpacing="14">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -656,14 +656,23 @@
                             </Button>
 
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                <TextBlock FontSize="11"
-                                           FontWeight="SemiBold"
-                                           CharacterSpacing="120"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                           TextTrimming="CharacterEllipsis" MaxLines="1">
-                                    <Run Text="NEW RELEASE · "/>
-                                    <Run Text="{x:Bind ViewModel.LatestReleaseSubtitle, Mode=OneWay}"/>
-                                </TextBlock>
+                                <!-- Two siblings instead of <Run>s in one TextBlock — Run.Text doesn't
+                                     reliably refresh from x:Bind property changes in WinUI 3, which
+                                     made this card stay stuck on the previous artist's release. -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontSize="11"
+                                               FontWeight="SemiBold"
+                                               CharacterSpacing="120"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               Text="NEW RELEASE · "/>
+                                    <TextBlock FontSize="11"
+                                               FontWeight="SemiBold"
+                                               CharacterSpacing="120"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="1"
+                                               Text="{x:Bind ViewModel.LatestReleaseSubtitle, Mode=OneWay}"/>
+                                </StackPanel>
                                 <HyperlinkButton Click="LatestRelease_Click"
                                                  Padding="0" Margin="0"
                                                  HorizontalAlignment="Left">

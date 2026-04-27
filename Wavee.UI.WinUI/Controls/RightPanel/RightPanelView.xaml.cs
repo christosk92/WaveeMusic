@@ -710,12 +710,20 @@ public sealed partial class RightPanelView : UserControl
         if (_pendingCanvasLayoutRetry || DispatcherQueue == null)
             return;
 
+        // Don't schedule when the panel is closed — Visibility=Collapsed means
+        // RootGrid.ActualWidth/Height are 0, UpdateCanvasLayout would bail and
+        // re-enqueue itself, producing an infinite low-priority retry loop that
+        // ate ~8% UI CPU. The retry is kicked manually from OnIsOpenChanged
+        // when the panel re-opens, so we don't lose the canvas-sizing pass.
+        if (!IsOpen)
+            return;
+
         _pendingCanvasLayoutRetry = true;
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             _pendingCanvasLayoutRetry = false;
 
-            if (!IsLoaded)
+            if (!IsLoaded || !IsOpen)
                 return;
 
             UpdateCanvasLayout();

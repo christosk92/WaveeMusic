@@ -152,6 +152,15 @@ public sealed partial class SidebarPlayerWidget : UserControl
         _playbackStateService?.DismissEndOfContext();
     }
 
+    // CompositionProgressBar drag started — flag the VM as seeking so incoming
+    // authoritative position updates don't overwrite the user's drag.
+    private void ProgressBar_SeekStarted(object sender, System.EventArgs e)
+        => ViewModel.StartSeeking();
+
+    // CompositionProgressBar drag released — commit the new position via the VM.
+    private void ProgressBar_SeekCommitted(object sender, double positionMs)
+        => ViewModel.CommitSeekFromBar(positionMs);
+
     // Device picker logic lives in the SidebarPlayerWidget.DeviceFlyout.cs partial.
 
     // ── Hover-to-reveal ─────────────────────────────────────────────────

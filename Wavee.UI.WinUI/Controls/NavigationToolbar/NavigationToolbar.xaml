@@ -12,6 +12,11 @@
 
     <UserControl.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Pulls in SubtleToggleButtonStyle used by RightPanelToggleButton -->
+                <ResourceDictionary Source="ms-appx:///Styles/PlayerBarStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
             <!-- Disabled button state overrides (match Files app) -->
             <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
             <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
@@ -228,14 +233,19 @@
                 <FontIcon FontSize="14" Glyph="{x:Bind ThemeGlyph, Mode=OneWay}"/>
             </Button>
 
-            <!-- Right Panel Toggle -->
-            <Button
+            <!-- Right Panel Toggle (accent foreground when panel is open) -->
+            <ToggleButton
                 x:Name="RightPanelToggleButton"
-                Style="{StaticResource NavigationButtonStyle}"
+                Style="{StaticResource SubtleToggleButtonStyle}"
+                Width="36"
+                Height="32"
+                Padding="0"
+                CornerRadius="4"
+                VerticalAlignment="Center"
                 ToolTipService.ToolTip="Toggle side panel"
-                Click="RightPanelToggleButton_Click">
-                <FontIcon FontSize="14" Glyph="&#xE91C;" />
-            </Button>
+                IsChecked="{x:Bind IsRightPanelOpen, Mode=TwoWay}">
+                <FontIcon FontSize="14" Glyph="&#xE90D;" />
+            </ToggleButton>
         </StackPanel>
     </Grid>
 </UserControl>

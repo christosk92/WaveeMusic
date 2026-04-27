@@ -45,8 +45,24 @@ public sealed class AudioEngine : IAsyncDisposable
     private readonly object _seekLock = new();
     private bool _disposed;
 
-    // Position publish cadence
-    private const long PositionPublishIntervalMs = 2000;
+    // Position publish cadence — how often the playback loop fires a
+    // position-only IPC StateUpdate to the UI process while a track is playing.
+    //
+    // The UI's PlayerBarViewModel runs a 1 Hz interpolation timer that fills
+    // the gap between authoritative ticks via wall-clock-based extrapolation
+    // (see ViewModels/PlayerBarViewModel.cs:209). PlaybackStateService also
+    // suppresses sub-250 ms drift corrections from incoming ticks
+    // (Data/Contexts/PlaybackStateService.cs:408). Together this means the
+    // user perceives no jump or jolt when the next authoritative tick lands —
+    // even after several seconds of pure interpolation — because the audio
+    // engine's drift vs wall clock stays well under that 250 ms threshold.
+    //
+    // Cadence is therefore a pure CPU vs IPC-traffic dial. Each tick costs
+    // a serialize + named-pipe write on this side, then a deserialize +
+    // dispatcher hop + Position-binding cascade (Slider thumb recompute,
+    // composition layout/paint) on the UI side. 5 s halves it vs the prior
+    // 2 s with no UX impact.
+    private const long PositionPublishIntervalMs = 5000;
 
     public AudioEngine(
         IAudioSink audioSink,

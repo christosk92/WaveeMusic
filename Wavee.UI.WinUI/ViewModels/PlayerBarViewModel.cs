@@ -159,6 +159,20 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private double _position;
 
+    /// <summary>
+    /// Authoritative position used by the Composition-driven progress bar. This
+    /// fires ONLY on real position events (IPC tick from AudioHost, user seek,
+    /// track change). The 1 Hz interpolation timer does NOT touch this — that
+    /// timer drives the textual position display via <see cref="Position"/>,
+    /// while the bar's GPU animation interpolates the fill width directly on
+    /// the composition thread between authoritative anchors.
+    ///
+    /// Bind only the CompositionProgressBar to this property; bind the
+    /// position TextBlock to <see cref="PositionText"/> as before.
+    /// </summary>
+    [ObservableProperty]
+    private double _anchorPositionMs;
+
     [ObservableProperty]
     private double _duration;
 
@@ -264,6 +278,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _isShuffle = _playbackStateService.IsShuffle;
         _repeatMode = _playbackStateService.RepeatMode;
         _position = _playbackStateService.Position;
+        _anchorPositionMs = _playbackStateService.Position;
         _duration = _playbackStateService.Duration;
         _volume = _playbackStateService.Volume;
         _isVolumeRestricted = _playbackStateService.IsVolumeRestricted;
@@ -331,6 +346,13 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 if (!IsSeeking)
                 {
                     Position = _playbackStateService.Position;
+                    // Anchor the GPU progress bar to this authoritative value —
+                    // distinct from Position (which the interpolation timer
+                    // overwrites 1× per second). Anchor only fires here, on
+                    // SetTrack/ClearTrack, on UpdatePosition, and on initial
+                    // SyncFromService — keeping the Composition animation
+                    // restart rate to ≤0.2 Hz instead of 1 Hz.
+                    AnchorPositionMs = _playbackStateService.Position;
                     _lastServicePosition = Position;
                     _lastServicePositionUpdate = DateTime.UtcNow;
                 }
@@ -630,7 +652,22 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         _logger?.LogInformation("[PlayerBar] Seek committed: {Pos}ms / {Dur}ms", (long)Position, (long)Duration);
         IsSeeking = false;
+        // Re-anchor the Composition bar to the new position immediately so the
+        // GPU animation restarts from the seek target instead of waiting for the
+        // AudioHost echo (which can take a beat).
+        AnchorPositionMs = Position;
         _playbackStateService.Seek(Position);
+    }
+
+    /// <summary>
+    /// Composition progress bar handed us a new seek target. Sets Position so
+    /// the existing Seek pipeline (and the textual position) follow the user's
+    /// drag, then re-anchors and dispatches Seek via <see cref="EndSeeking"/>.
+    /// </summary>
+    public void CommitSeekFromBar(double positionMs)
+    {
+        Position = Math.Clamp(positionMs, 0, Duration);
+        EndSeeking();
     }
 
     /// <summary>
@@ -643,6 +680,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         AlbumArt = albumArt;
         Duration = durationMs;
         Position = 0;
+        AnchorPositionMs = 0;
         HasTrack = !string.IsNullOrEmpty(title);
     }
 
@@ -656,6 +694,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         AlbumArt = null;
         Duration = 0;
         Position = 0;
+        AnchorPositionMs = 0;
         HasTrack = false;
         IsPlaying = false;
     }
@@ -668,6 +707,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         if (!IsSeeking)
         {
             Position = positionMs;
+            AnchorPositionMs = positionMs;
         }
     }
 

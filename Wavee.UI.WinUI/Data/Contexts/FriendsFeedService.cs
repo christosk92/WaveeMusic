@@ -90,10 +90,11 @@ public sealed partial class FriendsFeedService
 
         _messenger.Register<AuthStatusChangedMessage>(this);
 
-        // Row tick keeps IsCurrentlyListening / TrailingText in sync with the
-        // wall clock. Always running — cost is trivial and makes the feed feel
-        // alive even without pushes.
-        _rowTickTimer = new Timer(OnRowTick, null, RowTickInterval, RowTickInterval);
+        // Row tick (IsCurrentlyListening / TrailingText wall-clock sync) is
+        // started lazily by SetActive(true) when the FriendsActivity panel
+        // becomes visible. While the panel is hidden every tick is wasted —
+        // the feed isn't on screen, so timestamp-relative text doesn't matter
+        // until the user opens it (Refresh runs on SetActive(true) too).
 
         // Try now in case session is already authenticated (e.g. hot-reload).
         TrySubscribeToDealer();
@@ -337,6 +338,9 @@ public sealed partial class FriendsFeedService
         if (isActive)
         {
             _safetyTimer ??= new Timer(OnSafetyTick, null, WatchdogReseedInterval, WatchdogReseedInterval);
+            // Row tick is panel-visible-only — no point ticking timestamp-
+            // relative TrailingText every 30s when the feed isn't on screen.
+            _rowTickTimer ??= new Timer(OnRowTick, null, RowTickInterval, RowTickInterval);
 
             // If we have a connection but no data (e.g. service was idle when panel was closed), seed now.
             var connId = _session.Dealer?.CurrentConnectionId;
@@ -350,6 +354,8 @@ public sealed partial class FriendsFeedService
         {
             _safetyTimer?.Dispose();
             _safetyTimer = null;
+            _rowTickTimer?.Dispose();
+            _rowTickTimer = null;
         }
     }
 

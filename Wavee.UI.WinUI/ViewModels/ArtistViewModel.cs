@@ -678,15 +678,18 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             IsVerified = overview.IsVerified;
 
             // ── Latest release ──
-            if (overview.LatestRelease != null)
-            {
-                LatestReleaseName = overview.LatestRelease.Name;
-                LatestReleaseImageUrl = overview.LatestRelease.ImageUrl;
-                LatestReleaseUri = overview.LatestRelease.Uri;
-                LatestReleaseType = overview.LatestRelease.Type;
-                LatestReleaseTrackCount = overview.LatestRelease.TrackCount;
-                LatestReleaseDate = overview.LatestRelease.FormattedDate;
-            }
+            // Always overwrite — the BehaviorSubject can emit multiple times
+            // for the same artist (cached stale → fresh) and a previous emit
+            // may have populated these fields with a release that the latest
+            // emit no longer has. Without explicit null-out the card stays
+            // stuck on the prior emit's release. Same when navigating to an
+            // artist with no LatestRelease at all.
+            LatestReleaseName = overview.LatestRelease?.Name;
+            LatestReleaseImageUrl = overview.LatestRelease?.ImageUrl;
+            LatestReleaseUri = overview.LatestRelease?.Uri;
+            LatestReleaseType = overview.LatestRelease?.Type;
+            LatestReleaseTrackCount = overview.LatestRelease?.TrackCount ?? 0;
+            LatestReleaseDate = overview.LatestRelease?.FormattedDate;
 
             // ── Top tracks (batch to avoid N+1 CollectionChanged events) ──
             var newTracks = new ObservableCollection<LazyTrackItem>();

@@ -88,23 +88,22 @@ public sealed partial class PlayerBar : UserControl
 
         AlbumArtHost?.ChangeCursor(HandCursor);
         NarrowAlbumArtHost?.ChangeCursor(HandCursor);
-
-        // The Slider's inner Thumb captures pointer events and marks them handled,
-        // so the Slider's own PointerPressed/Released routed events never bubble up
-        // to the XAML attribute handlers when the user grabs the thumb (the most
-        // common drag path). Without handledEventsToo, IsSeeking stays false during
-        // the drag and the interpolation timer keeps overwriting Position.
-        var pressed = new PointerEventHandler(ProgressSlider_PointerPressed);
-        var released = new PointerEventHandler(ProgressSlider_PointerReleased);
-        var captureLost = new PointerEventHandler(ProgressSlider_PointerCaptureLost);
-        foreach (var slider in new[] { WideProgressSlider, CompactProgressSlider })
-        {
-            if (slider == null) continue;
-            slider.AddHandler(UIElement.PointerPressedEvent, pressed, handledEventsToo: true);
-            slider.AddHandler(UIElement.PointerReleasedEvent, released, handledEventsToo: true);
-            slider.AddHandler(UIElement.PointerCaptureLostEvent, captureLost, handledEventsToo: true);
-        }
+        // Progress bar drag handling now lives on CompositionProgressBar via its
+        // SeekStarted / SeekCommitted events — wired in XAML, dispatched below.
     }
+
+    // CompositionProgressBar drag started — pause the GPU animation source on
+    // the VM so position/anchor updates from the audio host don't overwrite
+    // what the user is dragging.
+    private void ProgressBar_SeekStarted(object sender, System.EventArgs e)
+        => ViewModel.StartSeeking();
+
+    // CompositionProgressBar drag released — commit the new position to the
+    // playback service via the VM, which also re-anchors the bar so the
+    // animation restarts from the new position immediately (no wait for the
+    // AudioHost echo).
+    private void ProgressBar_SeekCommitted(object sender, double positionMs)
+        => ViewModel.CommitSeekFromBar(positionMs);
 
     private void OnPlayerBarSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -381,24 +380,7 @@ public sealed partial class PlayerBar : UserControl
         _logger?.LogInformation("[PlayerBar] Player moved to sidebar via overflow menu");
     }
 
-    private void ProgressSlider_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        _logger?.LogDebug("[PlayerBar] Seek slider pressed: pos={Pos}ms", (long)ViewModel.Position);
-        ViewModel.StartSeeking();
-    }
-
-    private void ProgressSlider_PointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        _logger?.LogInformation("[PlayerBar] Seek slider released: committing pos={Pos}ms", (long)ViewModel.Position);
-        ViewModel.EndSeeking();
-    }
-
-    private void ProgressSlider_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
-    {
-        if (ViewModel.IsSeeking)
-        {
-            _logger?.LogDebug("[PlayerBar] Seek slider capture lost while seeking: committing pos={Pos}ms", (long)ViewModel.Position);
-            ViewModel.EndSeeking();
-        }
-    }
+    // Old Slider PointerPressed/Released/CaptureLost handlers were removed when
+    // the WideProgressSlider / CompactProgressSlider Sliders were replaced by
+    // CompositionProgressBar. Drag → seek now fires via the bar's typed events.
 }

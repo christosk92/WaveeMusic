@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Wavee.UI.WinUI.Data.Enums;
 
@@ -42,8 +43,23 @@ public sealed partial class RightPanelView
     {
         if (d is RightPanelView view)
         {
-            view.Visibility = (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed;
+            var isOpen = (bool)e.NewValue;
+            view.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
             view.UpdateTimerState();
+
+            // When the panel opens, kick a deferred UpdateCanvasLayout so the
+            // lyrics canvas picks up the now-real RootGrid dimensions. We pair
+            // this with the IsOpen gate inside ScheduleCanvasLayoutRetry — that
+            // gate prevents the closed-panel infinite retry loop, so we have to
+            // re-prime the canvas explicitly when the panel becomes visible.
+            if (isOpen && view.DispatcherQueue != null)
+            {
+                view.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+                {
+                    if (view.IsLoaded && view.IsOpen)
+                        view.UpdateCanvasLayout();
+                });
+            }
         }
     }
 

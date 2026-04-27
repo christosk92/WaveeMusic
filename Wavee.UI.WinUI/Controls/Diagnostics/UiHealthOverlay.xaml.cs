@@ -29,7 +29,13 @@ public sealed partial class UiHealthOverlay : UserControl
         _refreshTimer = DispatcherQueue.CreateTimer();
         _refreshTimer.Interval = TimeSpan.FromMilliseconds(500);
         _refreshTimer.Tick += OnRefreshTick;
-        _refreshTimer.Start();
+        // Don't auto-start — the overlay is created Visibility=Collapsed and the
+        // refresh tick reads Process.Refresh() (a syscall) twice per second to
+        // populate text bindings nobody can see. Tick lifecycle now follows
+        // Visibility: Visible → Start, Collapsed → Stop.
+        RegisterPropertyChangedCallback(VisibilityProperty, OnVisibilityChanged);
+        if (Visibility == Visibility.Visible)
+            _refreshTimer.Start();
     }
 
     public void Detach()
@@ -41,9 +47,18 @@ public sealed partial class UiHealthOverlay : UserControl
         _monitor = null;
     }
 
+    private void OnVisibilityChanged(DependencyObject sender, DependencyProperty dp)
+    {
+        if (_refreshTimer == null) return;
+        if (Visibility == Visibility.Visible)
+            _refreshTimer.Start();
+        else
+            _refreshTimer.Stop();
+    }
+
     private void OnRefreshTick(DispatcherQueueTimer sender, object args)
     {
-        if (_monitor == null) return;
+        if (_monitor == null || Visibility != Visibility.Visible) return;
 
         var s = _monitor.CurrentStats;
 

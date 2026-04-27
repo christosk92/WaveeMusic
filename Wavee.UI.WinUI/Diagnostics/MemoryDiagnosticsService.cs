@@ -39,6 +39,11 @@ public sealed class MemoryDiagnosticsService
     private DateTimeOffset _lastSampleAtUtc;
     private readonly int _processorCount = Math.Max(1, Environment.ProcessorCount);
 
+    // Cached current-process handle so the every-2-second poll doesn't churn
+    // finalizable Process wrappers (showed up as GC.RunFinalizers CPU under
+    // sampling profilers). Refresh() re-queries OS metrics.
+    private static readonly Process _selfProcess = Process.GetCurrentProcess();
+
     public MemoryDiagnosticsService(ILogger<MemoryDiagnosticsService>? logger = null)
     {
         _logger = logger;
@@ -111,10 +116,12 @@ public sealed class MemoryDiagnosticsService
         TimeSpan totalProcTime = default;
         try
         {
-            using var p = Process.GetCurrentProcess();
-            workingSet = p.WorkingSet64;
-            privateBytes = p.PrivateMemorySize64;
-            totalProcTime = p.TotalProcessorTime;
+            // Reuse cached self-Process — see MemoryReleaseHelper for why we don't
+            // re-allocate every sample. Refresh() re-queries OS metrics.
+            _selfProcess.Refresh();
+            workingSet = _selfProcess.WorkingSet64;
+            privateBytes = _selfProcess.PrivateMemorySize64;
+            totalProcTime = _selfProcess.TotalProcessorTime;
         }
         catch { /* best-effort */ }
 

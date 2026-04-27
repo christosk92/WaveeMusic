@@ -546,15 +546,17 @@
                         FontSize="10"
                         VerticalAlignment="Center"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <Slider
+                    <playback:CompositionProgressBar
                         x:Name="ExpandedProgressSlider"
                         Grid.Column="1"
                         VerticalAlignment="Center"
-                        Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
-                        Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
-                        IsThumbToolTipEnabled="False"
-                        Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                        Style="{StaticResource PlayerProgressSliderStyle}" />
+                        PositionMs="{x:Bind ViewModel.AnchorPositionMs, Mode=OneWay}"
+                        DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
+                        IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                        IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                        SeekStarted="ProgressBar_SeekStarted"
+                        SeekCommitted="ProgressBar_SeekCommitted"
+                        Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
                     <TextBlock
                         Grid.Column="2"
                         Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
@@ -770,16 +772,18 @@
                 </Grid>
 
                 <!-- Progress bar (no inline times) -->
-                <Slider
+                <playback:CompositionProgressBar
                     x:Name="CollapsedProgressSlider"
                     Grid.Row="1"
                     VerticalAlignment="Center"
                     Margin="2,0"
-                    Value="{x:Bind ViewModel.Position, Mode=TwoWay}"
-                    Maximum="{x:Bind ViewModel.SliderMaximum, Mode=OneWay}"
-                    IsThumbToolTipEnabled="False"
-                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                    Style="{StaticResource PlayerProgressSliderStyle}" />
+                    PositionMs="{x:Bind ViewModel.AnchorPositionMs, Mode=OneWay}"
+                    DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
+                    IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                    IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                    SeekStarted="ProgressBar_SeekStarted"
+                    SeekCommitted="ProgressBar_SeekCommitted"
+                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
 
                 <!-- Centered transport: shuffle | prev | play | next | repeat -->
                 <StackPanel

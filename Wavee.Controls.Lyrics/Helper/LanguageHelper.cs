@@ -110,23 +110,31 @@ namespace Wavee.Controls.Lyrics.Helper
 
         public static string? DetectLanguageCode(IEnumerable<string> lines)
         {
-            Dictionary<string, int> codeCount = new();
+            // Previous impl ran NTextCat.Identify() once per line — for a 50-line
+            // song that's 50× the n-gram statistical analysis on the same Wiki82
+            // language profile, with the per-line-majority vote rarely changing
+            // the answer vs the joined-text identification. Collapsing into one
+            // call cuts the language-detection cost ~50× per song change.
+            //
+            // Joining with newlines preserves line-boundary signal for NTextCat.
+            // Cap the joined size — Identify scales O(N) on input length and a
+            // few KB of text is plenty to disambiguate.
+            const int MaxCharsForDetection = 4096;
+
+            string joined;
+            int totalChars = 0;
+            var sb = new System.Text.StringBuilder(MaxCharsForDetection);
             foreach (var line in lines)
             {
-                var code = DetectLanguageCode(line);
-                if (code != null)
-                {
-                    if (!codeCount.ContainsKey(code))
-                    {
-                        codeCount[code] = 0;
-                    }
-                    codeCount[code]++;
-                }
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (totalChars + line.Length + 1 > MaxCharsForDetection) break;
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(line);
+                totalChars += line.Length + 1;
             }
+            joined = sb.ToString();
 
-            if (codeCount.Count == 0) return null;
-
-            return codeCount.OrderByDescending(kv => kv.Value).First().Key;
+            return string.IsNullOrWhiteSpace(joined) ? null : DetectLanguageCode(joined);
         }
 
         /// <summary>

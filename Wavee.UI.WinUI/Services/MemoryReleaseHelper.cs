@@ -51,12 +51,20 @@ public static class MemoryReleaseHelper
             (afterWorkingSet - beforeWorkingSet) / 1048576.0);
     }
 
+    // Cached single Process handle for the current process. Process is finalizable;
+    // creating + disposing one per call (which several diagnostics paths used to do)
+    // adds finalizer-queue pressure that shows up as GC.RunFinalizers CPU. Process
+    // for the *current* process is safe to cache for the app lifetime.
+    private static readonly Process _selfProcess = Process.GetCurrentProcess();
+
     private static long SafeWorkingSet()
     {
         try
         {
-            using var p = Process.GetCurrentProcess();
-            return p.WorkingSet64;
+            // Refresh() is required — WorkingSet64 is cached on the Process instance
+            // until Refresh re-queries the OS for the current process metrics.
+            _selfProcess.Refresh();
+            return _selfProcess.WorkingSet64;
         }
         catch
         {

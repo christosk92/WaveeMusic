@@ -49,6 +49,10 @@ internal sealed class UiHealthMonitor : IDisposable
     private int _criticalCount;
     private int _totalFrames;
 
+    // Cached current-process handle. The overlay polls every render frame when
+    // active — allocating a Process wrapper per call adds finalizer pressure.
+    private static readonly Process _selfProcess = Process.GetCurrentProcess();
+
     // GC tracking (sampled every tick)
     private int _lastGen0, _lastGen1, _lastGen2;
     private int _gcGen0Total, _gcGen1Total, _gcGen2Total;
@@ -220,9 +224,11 @@ internal sealed class UiHealthMonitor : IDisposable
                 double privateMb = 0;
                 try
                 {
-                    using var process = Process.GetCurrentProcess();
-                    workingSetMb = process.WorkingSet64 / 1048576.0;
-                    privateMb = process.PrivateMemorySize64 / 1048576.0;
+                    // Cached self-Process; Refresh re-queries OS metrics. Avoids
+                    // per-frame finalizable Process allocation.
+                    _selfProcess.Refresh();
+                    workingSetMb = _selfProcess.WorkingSet64 / 1048576.0;
+                    privateMb = _selfProcess.PrivateMemorySize64 / 1048576.0;
                 }
                 catch
                 {

@@ -55,6 +55,7 @@
         <navtoolbar:NavigationToolbar
             x:Name="NavToolbar"
             Grid.Row="1"
+            IsRightPanelOpen="{x:Bind ViewModel.IsRightPanelOpen, Mode=TwoWay}"
             CanGoBack="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
             CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}"
             IsOnHomePage="{x:Bind ViewModel.IsOnHomePage, Mode=OneWay}"
