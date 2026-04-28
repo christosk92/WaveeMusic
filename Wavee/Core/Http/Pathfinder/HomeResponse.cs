@@ -176,6 +176,14 @@ public sealed class HomeEntityData
 
     [JsonPropertyName("sharingInfo")]
     public JsonElement? SharingInfo { get; set; }
+
+    /// <summary>
+    /// V2 episode payload — populated when the wrapper's typename matches
+    /// <c>EpisodeOrChapterResponseWrapper</c>. Carries duration, played-state,
+    /// release date, mediaTypes, and the nested <c>podcastV2</c> show pointer.
+    /// </summary>
+    [JsonPropertyName("episode")]
+    public HomeEpisodeData? Episode { get; set; }
 }
 
 public sealed class HomeTypedEntity
@@ -333,6 +341,12 @@ public static class HomeItemContentExtensions
         if (content.Data is not { } el || el.ValueKind == JsonValueKind.Null) return null;
         return JsonSerializer.Deserialize(el, HomeJsonContext.Default.HomePodcastData);
     }
+
+    public static HomeEpisodeData? GetEpisodeData(this HomeItemContent content)
+    {
+        if (content.Data is not { } el || el.ValueKind == JsonValueKind.Null) return null;
+        return JsonSerializer.Deserialize(el, HomeJsonContext.Default.HomeEpisodeData);
+    }
 }
 
 // ── Artist ──
@@ -460,6 +474,95 @@ public sealed class HomePodcastPublisher
     public string? Name { get; set; }
 }
 
+// ── Episode (V2 + V1 both reuse this shape) ──
+
+public sealed class HomeEpisodeData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; set; }
+
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("coverArt")]
+    public HomeImageContainer? CoverArt { get; set; }
+
+    [JsonPropertyName("duration")]
+    public HomeDurationMs? Duration { get; set; }
+
+    [JsonPropertyName("playedState")]
+    public HomePlayedState? PlayedState { get; set; }
+
+    [JsonPropertyName("releaseDate")]
+    public HomeIsoDate? ReleaseDate { get; set; }
+
+    [JsonPropertyName("podcastV2")]
+    public HomePodcastWrapper? PodcastV2 { get; set; }
+
+    /// <summary>e.g. "PODCAST_EPISODE".</summary>
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    /// <summary>e.g. ["VIDEO", "AUDIO"]. Drives the small video glyph on the card.</summary>
+    [JsonPropertyName("mediaTypes")]
+    public List<string>? MediaTypes { get; set; }
+}
+
+public sealed class HomeDurationMs
+{
+    [JsonPropertyName("totalMilliseconds")]
+    public long TotalMilliseconds { get; set; }
+}
+
+public sealed class HomePlayedState
+{
+    [JsonPropertyName("playPositionMilliseconds")]
+    public long PlayPositionMilliseconds { get; set; }
+
+    /// <summary>One of "NOT_STARTED", "IN_PROGRESS", "COMPLETED".</summary>
+    [JsonPropertyName("state")]
+    public string? State { get; set; }
+}
+
+public sealed class HomeIsoDate
+{
+    [JsonPropertyName("isoString")]
+    public string? IsoString { get; set; }
+}
+
+public sealed class HomePodcastWrapper
+{
+    [JsonPropertyName("data")]
+    public HomeShowData? Data { get; set; }
+}
+
+public sealed class HomeShowData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("coverArt")]
+    public HomeImageContainer? CoverArt { get; set; }
+
+    [JsonPropertyName("publisher")]
+    public HomePodcastPublisher? Publisher { get; set; }
+}
+
 // ── Home Chips ──
 
 public sealed class HomeChip
@@ -548,6 +651,12 @@ public sealed class HomeImageSource
 [JsonSerializable(typeof(HomeAlbumArtists))]
 [JsonSerializable(typeof(HomeAlbumArtistItem))]
 [JsonSerializable(typeof(HomePodcastPublisher))]
+[JsonSerializable(typeof(HomeEpisodeData))]
+[JsonSerializable(typeof(HomeDurationMs))]
+[JsonSerializable(typeof(HomePlayedState))]
+[JsonSerializable(typeof(HomeIsoDate))]
+[JsonSerializable(typeof(HomePodcastWrapper))]
+[JsonSerializable(typeof(HomeShowData))]
 [JsonSerializable(typeof(HomeChip))]
 [JsonSerializable(typeof(HomeLabel))]
 // V2 entity/trait models

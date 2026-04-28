@@ -19,7 +19,7 @@ using Windows.System;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ProfilePage : Page, ITabBarItemContent
+public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
 {
     private static ImageCacheService? _imageCache;
     private readonly ProfileCache? _cache;
@@ -33,6 +33,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
     private bool _shyHeaderRecheckPending;
     private bool _identityCardRevealed;
     private bool _pageBleedRevealed;
+    private bool _isDisposed;
 
     public ProfileViewModel ViewModel { get; }
 
@@ -85,15 +86,34 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent
 
     private void ProfilePage_Unloaded(object sender, RoutedEventArgs e)
     {
+        CleanupSubscriptions();
+    }
+
+    private void CleanupSubscriptions()
+    {
         _isNavigatingAway = true;
-        PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
-        IdentityCardWrap.SizeChanged -= IdentityCardWrap_SizeChanged;
+        if (PageScrollView != null)
+            PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
+        if (IdentityCardWrap != null)
+            IdentityCardWrap.SizeChanged -= IdentityCardWrap_SizeChanged;
         ActualThemeChanged -= ProfilePage_ActualThemeChanged;
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
 
         if (_cache != null)
             _cache.DataRefreshed -= OnCacheDataRefreshed;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        Loaded -= ProfilePage_Loaded;
+        Unloaded -= ProfilePage_Unloaded;
+        CleanupSubscriptions();
+        if (ProfileAvatar != null)
+            ProfileAvatar.ProfilePicture = null;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

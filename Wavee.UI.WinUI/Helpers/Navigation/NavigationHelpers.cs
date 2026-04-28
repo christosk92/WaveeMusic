@@ -118,6 +118,29 @@ public static class NavigationHelpers
     }
 
     /// <summary>
+    /// Open a podcast / show. Stub for now — ShowPage is not yet built; tap
+    /// just logs the URI so the card binds to a real symbol and lights up
+    /// trace logs when interacted with. Replace the body with a Navigate(...)
+    /// call once <c>ShowPage</c> exists.
+    /// </summary>
+    public static void OpenShow(string showUri, string title, bool openInNewTab = false)
+    {
+        System.Diagnostics.Debug.WriteLine(
+            $"[NavigationHelpers] TODO: ShowPage not yet implemented — would open {showUri} ({title}, newTab={openInNewTab})");
+    }
+
+    /// <summary>
+    /// Start playback for an episode. Stub for now — episode playback path is
+    /// not yet wired through the same PlayCommand plumbing as albums/playlists.
+    /// Logs the URI so taps don't fail silently in production traces.
+    /// </summary>
+    public static void PlayEpisode(string episodeUri)
+    {
+        System.Diagnostics.Debug.WriteLine(
+            $"[NavigationHelpers] TODO: PlayEpisode not yet wired — would play {episodeUri}");
+    }
+
+    /// <summary>
     /// Navigate to a user profile. Pass <paramref name="parameter"/>=null for the
     /// authenticated user's own profile, or a <see cref="ContentNavigationParameter"/>
     /// carrying a <c>spotify:user:{id}</c> URI for someone else.

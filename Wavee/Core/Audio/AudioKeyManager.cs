@@ -63,6 +63,17 @@ public sealed class AudioKeyManager : IAsyncDisposable
     private bool _disposed;
 
     /// <summary>
+    /// Once AudioKey returns a permanent error (or times out completely) for any
+    /// file AND PlayPlay successfully covers the request, every subsequent
+    /// <see cref="RequestAudioKeyAsync"/> skips the AP retry loop and goes straight
+    /// to PlayPlay. Trips once per AudioKeyManager lifetime (per Session); reset
+    /// only on app restart — the underlying entitlement state isn't going to
+    /// change between requests within a session, and the AP retry loop costs
+    /// ~10 s per cache miss to confirm what we already know.
+    /// </summary>
+    private volatile bool _audioKeyDisabled;
+
+    /// <summary>
     /// Raised right before the AudioKey loop triggers an AP reconnect because the
     /// key channel has gone silent for a specific FileId. Fires on the AP dispatcher
     /// thread — UI consumers must marshal to their dispatcher. Distinct from
@@ -149,6 +160,24 @@ public sealed class AudioKeyManager : IAsyncDisposable
             }
         }
 
+        // Session-scoped bypass: once we've proven AudioKey is dead for this
+        // session (entitlement denied or channel chronically broken), skip the
+        // entire AP retry loop and go straight to PlayPlay. Saves ~10s per
+        // cache miss on accounts the AP refuses to issue keys to.
+        if (_audioKeyDisabled)
+        {
+            var directKey = await TryPlayPlayFallbackAsync(
+                trackId, fileId, "AudioKey disabled (prior session failure)", cancellationToken);
+            if (directKey is not null)
+                return directKey;
+
+            // PlayPlay deriver missing or failed — surface clearly rather than
+            // silently re-entering the AP retry loop we know will also fail.
+            throw new AudioKeyException(
+                AudioKeyFailureReason.KeyError,
+                "AudioKey disabled for this session and PlayPlay fallback unavailable");
+        }
+
         if (!_session.IsConnected())
             throw new AudioKeyException(AudioKeyFailureReason.NotConnected, "Session is not connected");
 
@@ -182,7 +211,10 @@ public sealed class AudioKeyManager : IAsyncDisposable
                 var fallbackKey = await TryPlayPlayFallbackAsync(
                     trackId, fileId, "permanent AP error", cancellationToken);
                 if (fallbackKey is not null)
+                {
+                    DisableAudioKeyForSession($"permanent AP error 0x{ex.ErrorCode ?? 0:X4}");
                     return fallbackKey;
+                }
 
                 throw;
             }
@@ -248,13 +280,32 @@ public sealed class AudioKeyManager : IAsyncDisposable
             var fallbackKey = await TryPlayPlayFallbackAsync(
                 trackId, fileId, "AP timeout exhaustion", cancellationToken);
             if (fallbackKey is not null)
+            {
+                DisableAudioKeyForSession("AP timeout exhaustion");
                 return fallbackKey;
+            }
         }
 
         throw new AudioKeyException(
             AudioKeyFailureReason.Timeout,
             $"AudioKey request failed after {MaxRetries} attempts",
             lastException!);
+    }
+
+    /// <summary>
+    /// Trips the session-scoped <see cref="_audioKeyDisabled"/> latch so every
+    /// subsequent <see cref="RequestAudioKeyAsync"/> bypasses the AP retry loop.
+    /// Idempotent — safe to call from multiple failure branches; the log line
+    /// emits exactly once per Session.
+    /// </summary>
+    private void DisableAudioKeyForSession(string trigger)
+    {
+        if (_audioKeyDisabled) return;
+        _audioKeyDisabled = true;
+        _logger?.LogInformation(
+            "AudioKey disabled for the rest of this session ({Trigger}); " +
+            "subsequent requests go straight to PlayPlay",
+            trigger);
     }
 
     /// <summary>

@@ -87,7 +87,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// treatment, tinted from the featured item's color (lifted for legibility).
     /// Renders as a 120x3 colored bar under the greeting/chips.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HeroAccentLineBrushOrFallback))]
     private Brush? _heroAccentLineBrush;
+
+    /// <summary>Same as <see cref="HeroAccentLineBrush"/>, but falls back to
+    /// the system accent brush when no palette is available — keeps the line
+    /// visible on featured items without ExtractedColors so the hero band
+    /// doesn't read as missing chrome.</summary>
+    public Brush HeroAccentLineBrushOrFallback =>
+        HeroAccentLineBrush
+        ?? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
 
     /// <summary>Top-left page bleed — a large radial wash anchored at the
     /// page's top-left corner, tinted from the first home card's extracted
@@ -180,9 +189,10 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     if (Sections.Count == 0)
                         await PopulateSectionsChunkedAsync(ordered);
                     else
-                        Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+                        Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
                     ApplyChips(snapshot.Chips);
                     BeginBaselineEnrichment();
+                    DispatchRecentsToService(ordered);
                     return;
                 }
             }
@@ -197,10 +207,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 if (Sections.Count == 0)
                     await PopulateSectionsChunkedAsync(ordered);
                 else
-                    Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+                    Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
 
                 ApplyChips(snapshot.Chips);
                 BeginBaselineEnrichment();
+                DispatchRecentsToService(ordered);
 
                 // Start background refresh
                 _homeFeedCache.StartBackgroundRefresh(_session);
@@ -215,14 +226,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 await PopulateSectionsChunkedAsync(ordered);
                 ApplyChips(result.Chips);
                 BeginBaselineEnrichment();
+                DispatchRecentsToService(ordered);
             }
 
             if (string.IsNullOrEmpty(Greeting))
                 UpdateGreeting();
-
-            // Fire-and-forget: load real recently played data (replaces stale Home API section)
-            if (_recentlyPlayedService != null)
-                _ = _recentlyPlayedService.LoadAsync();
         }
         catch (Exception ex)
         {
@@ -299,9 +307,10 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         CancelBaselineEnrichment();
         var ordered = ApplyPreferences(snapshot.Sections);
-        Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting);
+        Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
         ApplyChips(snapshot.Chips);
         BeginBaselineEnrichment();
+        DispatchRecentsToService(ordered);
     }
 
     /// <summary>
@@ -380,7 +389,19 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             // wash from the cover (album/playlist Pathfinder palette route).
             FeaturedItem = items[0];
 
-            // Find existing "Recently played" section or create one
+            // ── Note: we DO NOT mutate the Recents section in `Sections`
+            // here anymore. The parser owns that section now (built from
+            // HomeRecentlyPlayedSectionData on every Home parse), and
+            // HomeFeedCache.ApplyDiff keeps its items current via its
+            // SectionUri-keyed diff. Touching Sections here was racing with
+            // ApplyDiff on nav-back and producing the symptom where the
+            // Recents row briefly showed items from a different section.
+            // The standalone StartPage carousel + the FeaturedItem hero
+            // both still get fed from the service via this same event.
+            return;
+
+            // (legacy fallback retained as dead code below for reference,
+            // never hit because of the early return above.)
             var existing = Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
             if (existing != null)
             {
@@ -803,6 +824,21 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     // ── Section preferences ──
 
+    /// <summary>
+    /// Hand the parsed Recents section's items to <see cref="RecentlyPlayedService"/>.
+    /// Called from every code path that produces section data (cache hit, fresh
+    /// fetch, direct fetch, refetch-with-facet) so the carousel + featured-item
+    /// hero stay in sync with whatever the freshest Home response carried.
+    /// Safe to call with sections that have no Recents entry — no-ops in that case.
+    /// </summary>
+    private void DispatchRecentsToService(List<HomeSection> sections)
+    {
+        if (_recentlyPlayedService == null) return;
+        var recents = sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
+        if (recents == null) return;
+        _recentlyPlayedService.ApplyHomeRecents(recents.Items);
+    }
+
     private List<HomeSection> ApplyPreferences(List<HomeSection> apiSections)
     {
         // Customization removed — pass through directly
@@ -1089,16 +1125,14 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 Sections = new ObservableCollection<HomeSection>(ordered);
             else
                 Services.HomeFeedCache.ApplyDiff(Sections, ordered,
-                    g => Greeting = g ?? Greeting, snapshot.Greeting);
+                    g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
 
             System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] After diff: {Sections.Count} sections displayed");
             BeginBaselineEnrichment();
+            DispatchRecentsToService(ordered);
 
             if (string.IsNullOrEmpty(Greeting))
                 UpdateGreeting();
-
-            if (_recentlyPlayedService != null)
-                _ = _recentlyPlayedService.LoadAsync();
         }
         catch (Exception ex)
         {
@@ -1186,16 +1220,17 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         if (_heroBaseColor is Color bg)
         {
-            // Subtle wash — alpha tuned per theme so the band reads as a tint,
-            // not a saturated band that fights the content above it. Dark-mode
-            // pops a bit harder because dark surfaces swallow alpha quickly.
-            HeroBackdropBrush = new SolidColorBrush(Color.FromArgb(
-                (byte)(isDark ? 90 : 56), bg.R, bg.G, bg.B));
-
-            // Crisp accent line under the chips. Lifted to stay legible when
-            // colorDark from Spotify is near-black. Matches the section-header
-            // line treatment so the page reads as one visual family.
+            // Lift the source colour first. Spotify's ExtractedColors.colorDark
+            // is by spec near-black on most covers (the darkest swatch that
+            // keeps contrast with white text), and pushing that through a 22%
+            // alpha over a white surface lands at ~#dbdbdb — the wash dissolves
+            // and the hero stops reading as a tinted band. Liked Songs only
+            // looked right because its hard-coded #4B2A8A is already saturated.
+            // Lift to the same target the accent line uses so every featured
+            // item sits at comparable visibility.
             var lifted = TintColorHelper.BrightenForTint(bg, targetMax: 210);
+            HeroBackdropBrush = new SolidColorBrush(Color.FromArgb(
+                (byte)(isDark ? 90 : 56), lifted.R, lifted.G, lifted.B));
             HeroAccentLineBrush = new SolidColorBrush(Color.FromArgb(255, lifted.R, lifted.G, lifted.B));
         }
         else
@@ -1475,6 +1510,13 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 public enum HomeSectionType { Shorts, Generic, RecentlyPlayed, Baseline }
 public enum HomeContentType { Artist, Playlist, Album, Podcast, Episode, Unknown }
 
+/// <summary>
+/// Episode listening state from the Home GraphQL <c>playedState.state</c>.
+/// Drives the bottom-row layout of the episode card (date+duration vs progress
+/// bar vs played check).
+/// </summary>
+public enum EpisodePlayedState { NotStarted, InProgress, Completed }
+
 public sealed partial class HomeSection : ObservableObject
 {
     public string? Title { get; set; }
@@ -1512,6 +1554,22 @@ public sealed partial class HomeSection : ObservableObject
     // shelf reads with its own personality (Daily Mixes vs DJ vs Made For
     // X) instead of a uniform gray title bar.
     public string? AccentColorHex { get; set; }
+
+    /// <summary>
+    /// True when every item in the section is an Episode or Podcast. Drives
+    /// (1) a fixed podcast-purple accent override on <see cref="AccentColorHex"/>
+    /// so the shelf wash reads distinctly from album/playlist shelves, and
+    /// (2) a small microphone glyph next to the section title in the header.
+    /// Set by the parsers after <c>Items</c> is populated, and re-propagated
+    /// by <c>HomeFeedCache.UpdateSectionInPlace</c> across diff updates so the
+    /// header cannot keep a stale flag when items change to a non-podcast mix.
+    /// </summary>
+    private bool _isPodcastSection;
+    public bool IsPodcastSection
+    {
+        get => _isPodcastSection;
+        set => SetProperty(ref _isPodcastSection, value);
+    }
 
     [ObservableProperty]
     private Brush? _accentLineBrush;
@@ -1695,6 +1753,131 @@ public sealed class HomeSectionItem : ObservableObject
     {
         get => _previewTracks;
         set => SetProperty(ref _previewTracks, value);
+    }
+
+    // ── Liked Songs "X songs added" stack (Home Recents only) ──
+    // Spotify renders the Liked Songs Recents tile as a fanned stack of the
+    // three most-recently-added track covers behind the heart tile, with a
+    // "{N} songs added" subtitle and a green check glyph. The data comes from
+    // the home item's formatListAttributes.group_metadata (base64 protobuf):
+    //   field 1 varint = added_count
+    //   field 2 string repeat = up to 3 track URIs
+    // See HomeResponseParserV2 for the decode.
+
+    private int? _recentlyAddedCount;
+    private bool _isRecentlySaved;
+    private IReadOnlyList<string> _recentlyAddedThumbnailUris = [];
+    private string? _recentlyAddedThumbnail1Url;
+    private string? _recentlyAddedThumbnail2Url;
+    private string? _recentlyAddedThumbnail3Url;
+
+    /// <summary>
+    /// Number of items recently added to the entity (Liked Songs only today).
+    /// Drives the "{N} songs added" subtitle.
+    /// </summary>
+    public int? RecentlyAddedCount
+    {
+        get => _recentlyAddedCount;
+        set => SetProperty(ref _recentlyAddedCount, value);
+    }
+
+    /// <summary>
+    /// True when this Recents entry came from a "saved" event (a track was
+    /// added to the collection) rather than a "played" event. Drives the
+    /// green-check glyph + "added" wording vs the default play-history look.
+    /// </summary>
+    public bool IsRecentlySaved
+    {
+        get => _isRecentlySaved;
+        set => SetProperty(ref _isRecentlySaved, value);
+    }
+
+    /// <summary>
+    /// Up to 3 track URIs Spotify wants drawn as thumbnails behind the
+    /// foreground tile. Resolution to actual cover image URLs happens
+    /// asynchronously via the metadata cache; the resolved URLs land in the
+    /// three Thumbnail*Url properties.
+    /// </summary>
+    public IReadOnlyList<string> RecentlyAddedThumbnailUris
+    {
+        get => _recentlyAddedThumbnailUris;
+        set => SetProperty(ref _recentlyAddedThumbnailUris, value);
+    }
+
+    public string? RecentlyAddedThumbnail1Url
+    {
+        get => _recentlyAddedThumbnail1Url;
+        set => SetProperty(ref _recentlyAddedThumbnail1Url, value);
+    }
+
+    public string? RecentlyAddedThumbnail2Url
+    {
+        get => _recentlyAddedThumbnail2Url;
+        set => SetProperty(ref _recentlyAddedThumbnail2Url, value);
+    }
+
+    public string? RecentlyAddedThumbnail3Url
+    {
+        get => _recentlyAddedThumbnail3Url;
+        set => SetProperty(ref _recentlyAddedThumbnail3Url, value);
+    }
+
+    // ── Episode / podcast metadata (Home only — not enriched live) ──
+    // Populated by the Home parsers when an item carries an
+    // EpisodeOrChapterResponseWrapper payload. The episode card binds these
+    // OneWay; values do not refresh while playback advances — they refresh
+    // on the next Home parse only (deliberate: keeps the card cheap).
+
+    private long? _durationMs;
+    private long? _playedPositionMs;
+    private EpisodePlayedState? _playedState;
+    private string? _publisherName;
+    private bool _isVideoPodcast;
+    private string? _releaseDateIso;
+
+    /// <summary>Total episode duration in milliseconds. Null for non-episodes.</summary>
+    public long? DurationMs
+    {
+        get => _durationMs;
+        set => SetProperty(ref _durationMs, value);
+    }
+
+    /// <summary>Current play position in milliseconds (0 when NotStarted).</summary>
+    public long? PlayedPositionMs
+    {
+        get => _playedPositionMs;
+        set => SetProperty(ref _playedPositionMs, value);
+    }
+
+    /// <summary>Mapped from Home <c>playedState.state</c>.</summary>
+    public EpisodePlayedState? PlayedState
+    {
+        get => _playedState;
+        set => SetProperty(ref _playedState, value);
+    }
+
+    /// <summary>
+    /// Publisher / show name for an episode. Used as the card's secondary line.
+    /// For a standalone show, this carries the publisher name (Spotify hosts).
+    /// </summary>
+    public string? PublisherName
+    {
+        get => _publisherName;
+        set => SetProperty(ref _publisherName, value);
+    }
+
+    /// <summary>True when the episode's mediaTypes include "VIDEO".</summary>
+    public bool IsVideoPodcast
+    {
+        get => _isVideoPodcast;
+        set => SetProperty(ref _isVideoPodcast, value);
+    }
+
+    /// <summary>Raw ISO-8601 release date — formatted at render time.</summary>
+    public string? ReleaseDateIso
+    {
+        get => _releaseDateIso;
+        set => SetProperty(ref _releaseDateIso, value);
     }
 }
 

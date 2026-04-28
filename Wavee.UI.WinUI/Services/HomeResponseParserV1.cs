@@ -101,18 +101,33 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
 
             if (section.Items.Count > 0)
             {
+                // Podcast-only sections get their own visual identity — fixed
+                // podcast-purple wash + a mic glyph in the header — so the
+                // user clocks "this row is podcasts" before any card paints.
+                // Take precedence over the per-cover extracted accent below.
+                section.IsPodcastSection = section.Items.All(i =>
+                    i.ContentType is HomeContentType.Episode or HomeContentType.Podcast);
+
                 // Pull a visual-identity accent from the section's first item
                 // that carries a Spotify-extracted dark color. Brushes are
                 // built later by HomeViewModel when the section is added to
                 // the bound Sections collection (theme dependency).
-                section.AccentColorHex = section.Items
-                    .FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
+                section.AccentColorHex = section.IsPodcastSection
+                    ? PodcastSectionAccentHex
+                    : section.Items.FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
                 sections.Add(section);
             }
         }
 
         return sections;
     }
+
+    /// <summary>
+    /// Soft podcast-purple. Used as the accent override for podcast-only
+    /// shelves so the section header wash reads as a distinct visual family
+    /// from the album/playlist accents (which come from per-cover extraction).
+    /// </summary>
+    internal const string PodcastSectionAccentHex = "#9B5DE5";
 
     private static HomeSectionItem? MapSectionItem(HomeSectionItemEntry entry)
     {
@@ -125,6 +140,7 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
             "PlaylistResponseWrapper" => MapPlaylist(entry.Uri, content),
             "AlbumResponseWrapper" => MapAlbum(entry.Uri, content),
             "PodcastOrAudiobookResponseWrapper" => MapPodcast(entry.Uri, content),
+            "EpisodeOrChapterResponseWrapper" => MapEpisode(entry.Uri, content),
             _ => (HomeSectionItem?)null
         };
 
@@ -234,9 +250,57 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
             Title = data.Name,
             Subtitle = data.Publisher?.Name,
             ImageUrl = imageUrl,
-            ContentType = HomeContentType.Podcast
+            ContentType = HomeContentType.Podcast,
+            PublisherName = data.Publisher?.Name
         };
     }
+
+    private static HomeSectionItem? MapEpisode(string? uri, HomeItemContent content)
+    {
+        var data = content.GetEpisodeData();
+        if (data == null) return null;
+
+        // Cover art priority: episode cover → show cover (episodes often
+        // ship without their own art and inherit from the show).
+        var imageUrl = data.CoverArt?.Sources?
+                            .OrderByDescending(s => s.Width ?? 0)
+                            .FirstOrDefault()?.Url
+                       ?? data.PodcastV2?.Data?.CoverArt?.Sources?
+                            .OrderByDescending(s => s.Width ?? 0)
+                            .FirstOrDefault()?.Url;
+
+        var publisherName = data.PodcastV2?.Data?.Name
+                            ?? data.PodcastV2?.Data?.Publisher?.Name;
+
+        return new HomeSectionItem
+        {
+            Uri = data.Uri ?? uri,
+            Title = data.Name,
+            Subtitle = publisherName,
+            ImageUrl = imageUrl,
+            ContentType = HomeContentType.Episode,
+            DurationMs = data.Duration?.TotalMilliseconds,
+            PlayedPositionMs = data.PlayedState?.PlayPositionMilliseconds,
+            PlayedState = MapEpisodePlayedState(data.PlayedState?.State),
+            PublisherName = publisherName,
+            IsVideoPodcast = data.MediaTypes?.Any(m =>
+                string.Equals(m, "VIDEO", StringComparison.OrdinalIgnoreCase)) == true,
+            ReleaseDateIso = data.ReleaseDate?.IsoString
+        };
+    }
+
+    /// <summary>
+    /// Map Spotify's <c>playedState.state</c> string into the typed enum.
+    /// Returns null when the state is unknown / missing — the card collapses
+    /// to its NotStarted-ish layout (just "{duration}") in that case.
+    /// </summary>
+    internal static EpisodePlayedState? MapEpisodePlayedState(string? state) => state switch
+    {
+        "NOT_STARTED" => EpisodePlayedState.NotStarted,
+        "IN_PROGRESS" => EpisodePlayedState.InProgress,
+        "COMPLETED" => EpisodePlayedState.Completed,
+        _ => null
+    };
 
     // ── Raw JSON fallback ──
 

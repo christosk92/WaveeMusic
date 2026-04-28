@@ -17,7 +17,7 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
+    NavigationCacheMode="Disabled"
     Background="Transparent">
 
     <Page.Resources>
@@ -120,10 +120,33 @@
                 NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
         </DataTemplate>
 
+        <!-- Liked Songs (Recents-saved variant): foreground purple-heart tile
+             with up to 3 fanned thumbnails, "{N} songs added" + green check.
+             Picked by HomeItemTemplateSelector when the item carries
+             IsRecentlySaved + spotify:collection URI (parsed from
+             formatListAttributes.group_metadata in HomeResponseParserV2). -->
+        <DataTemplate x:Key="LikedSongsRecentTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:LikedSongsRecentCard
+                Title="{x:Bind Title, Mode=OneWay}"
+                AddedCount="{x:Bind RecentlyAddedCount, Mode=OneWay}"
+                Thumbnail1ImageUrl="{x:Bind RecentlyAddedThumbnail1Url, Mode=OneWay}"
+                Thumbnail2ImageUrl="{x:Bind RecentlyAddedThumbnail2Url, Mode=OneWay}"
+                Thumbnail3ImageUrl="{x:Bind RecentlyAddedThumbnail3Url, Mode=OneWay}"
+                NavigationUri="{x:Bind Uri, Mode=OneWay}"/>
+        </DataTemplate>
+
+        <!-- Episode card: cover + title + publisher + played-state row.
+             Picked by HomeItemTemplateSelector when ContentType == Episode. -->
+        <DataTemplate x:Key="EpisodeCardTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:EpisodeCard/>
+        </DataTemplate>
+
         <!-- Item template selector for mixed-type sections -->
         <local:HomeItemTemplateSelector x:Key="HomeItemSelector"
             ArtistTemplate="{StaticResource ArtistCardTemplate}"
-            DefaultTemplate="{StaticResource PlaylistCardTemplate}"/>
+            DefaultTemplate="{StaticResource PlaylistCardTemplate}"
+            LikedSongsRecentTemplate="{StaticResource LikedSongsRecentTemplate}"
+            EpisodeTemplate="{StaticResource EpisodeCardTemplate}"/>
 
         <!-- ════════════════════════════════════════════════════════════
              SECTION-LEVEL TEMPLATES
@@ -202,10 +225,23 @@
                                 FontSize="12"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Visibility="{x:Bind Subtitle, Converter={StaticResource NullToCollapsedConverter}}"/>
-                            <TextBlock
-                                Text="{x:Bind Title}"
-                                Style="{StaticResource SubtitleTextBlockStyle}"
-                                FontWeight="Bold"/>
+                            <!-- Title row — microphone glyph prefixes podcast-only
+                                 shelves so the row reads as "podcast section" before
+                                 cards realize. Glyph picks up the section's accent
+                                 brush so it reads as part of the same wash. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <FontIcon
+                                    Glyph="&#xE720;"
+                                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                    FontSize="16"
+                                    VerticalAlignment="Center"
+                                    Foreground="{x:Bind AccentLineBrush, Mode=OneWay}"
+                                    Visibility="{x:Bind IsPodcastSection, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <TextBlock
+                                    Text="{x:Bind Title}"
+                                    Style="{StaticResource SubtitleTextBlockStyle}"
+                                    FontWeight="Bold"/>
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 
@@ -631,9 +667,22 @@
                      set in code-behind from the live SizeChanged measurement. -->
                 <Grid x:Name="HeroSpacer" Margin="0,0,0,24" MinHeight="140">
                 <Grid x:Name="HeroOverlayPanel" MinHeight="140">
-                <!-- Backdrop wash (palette-tinted; null when no palette → invisible).
-                     Sits behind the hero content only — bounded by the band's row,
-                     doesn't bleed into the shelves below. -->
+                <!-- Card chrome — always-on background + border so the hero
+                     reads as a contained component regardless of whether the
+                     featured item ships an extracted palette. Previously the
+                     band's only background was the palette wash, so items
+                     with no ExtractedColors (e.g. some Spotify-curated
+                     playlists like "voKal") rendered the band as bare page
+                     and the user perceived the hero "missing." -->
+                <Border IsHitTestVisible="False"
+                        CornerRadius="{ThemeResource OverlayCornerRadius}"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"/>
+
+                <!-- Palette wash overlay — tints the chrome when the featured
+                     item ships ExtractedColors; sits on top of the chrome so
+                     it adds colour without hiding the card shape. -->
                 <Border IsHitTestVisible="False"
                         CornerRadius="{ThemeResource OverlayCornerRadius}"
                         Background="{x:Bind ViewModel.HeroBackdropBrush, Mode=OneWay}"/>
@@ -711,15 +760,18 @@
                         </ItemsRepeater>
 
                         <!-- Visual-identity accent line under the chips, tinted
-                             from the featured item's extracted color. Same shape
-                             as the section-header lines (120x3, 1.5 corner) so
-                             the page reads as one visual family. -->
+                             from the featured item's extracted color when
+                             available; falls back to the system accent so the
+                             line is always visible (otherwise the hero reads
+                             as missing chrome on items without ExtractedColors).
+                             Same shape as the section-header lines (120x3,
+                             1.5 corner) so the page reads as one visual family. -->
                         <Border Height="3"
                                 Width="120"
                                 HorizontalAlignment="Left"
                                 CornerRadius="1.5"
                                 Margin="0,4,0,0"
-                                Background="{x:Bind ViewModel.HeroAccentLineBrush, Mode=OneWay}"/>
+                                Background="{x:Bind ViewModel.HeroAccentLineBrushOrFallback, Mode=OneWay}"/>
                     </StackPanel>
 
                     <!-- Right column: "Pick up where you left off" featured card.

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Cards.EpisodeCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!-- Spotify-green; reused for in-progress + played glyphs/text. Local to the
+             card so this control doesn't depend on app-wide brush plumbing. -->
+        <Color x:Key="EpisodeAccentColor">#1ED760</Color>
+        <SolidColorBrush x:Key="EpisodeAccentBrush" Color="{StaticResource EpisodeAccentColor}"/>
+    </UserControl.Resources>
+
+    <!-- Card chrome — matches ContentCard sizing/padding so episode cards line up
+         vertically with playlist/album cards in the same row. -->
+    <Grid x:Name="CardRoot"
+          CornerRadius="{ThemeResource ControlCornerRadius}"
+          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+          BorderThickness="1"
+          Padding="8,8,8,12"
+          PointerEntered="CardRoot_PointerEntered"
+          PointerExited="CardRoot_PointerExited"
+          Tapped="CardRoot_Tapped">
+
+        <StackPanel Spacing="0">
+
+            <!-- Cover area — 1:1 square, generous rounded corners (vs the
+                 4-px album/playlist radius) so the episode silhouette reads as
+                 "podcast tile" at a glance, even before you parse the title. -->
+            <Grid x:Name="CoverContainer"
+                  CornerRadius="14"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                  HorizontalAlignment="Stretch"
+                  SizeChanged="CoverContainer_SizeChanged">
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="CoverScale" ScaleX="1.0" ScaleY="1.0"/>
+                </Grid.RenderTransform>
+
+                <!-- Placeholder podcast glyph while the cover loads. -->
+                <FontIcon x:Name="CoverPlaceholderIcon"
+                          Glyph="&#xE93E;"
+                          FontSize="36"
+                          Opacity="0.4"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+
+                <Image x:Name="CoverImage"
+                       Stretch="UniformToFill"
+                       ImageOpened="CoverImage_ImageOpened"/>
+
+                <!-- Video chip (always visible when IsVideoPodcast). Bottom-LEFT
+                     of the cover so it never collides with the hover play chip
+                     on the right; stays visible whether hovered or not.
+                     Standard media-type-badge placement (cf. Apple Music). -->
+                <Border x:Name="VideoChip"
+                        Visibility="Collapsed"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        Margin="8,0,0,8"
+                        Width="24" Height="24"
+                        CornerRadius="12"
+                        Background="#99000000">
+                    <FontIcon Glyph="&#xE714;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="12"
+                              Foreground="White"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Always-visible Spotify-green play chip, bottom-right. This
+                     is the single biggest "I'm an episode, not a playlist"
+                     signal — Spotify's own podcast tiles do the same. The
+                     hover state nudges it slightly larger via the cover-scale
+                     transform (whole cover scales 1.03 on hover, chip rides
+                     with it), so no separate animation needed. -->
+                <Border x:Name="PlayChip"
+                        Opacity="1"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,10,10"
+                        Width="32" Height="32"
+                        CornerRadius="16"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}">
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
+                    <FontIcon Glyph="&#xE768;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="14"
+                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+
+            <!-- Title — 8 px gap below cover. -->
+            <TextBlock x:Name="TitleText"
+                       Margin="0,8,0,0"
+                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                       TextTrimming="CharacterEllipsis"
+                       MaxLines="2"
+                       TextWrapping="Wrap"/>
+
+            <!-- Publisher — 2 px gap below title. -->
+            <TextBlock x:Name="PublisherText"
+                       Margin="0,2,0,0"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       MaxLines="1"/>
+
+            <!-- Progress bar — only visible for InProgress. 2 px tall, full card width.
+                 Inline two-Border trick: a base bar and an overlaid green fill whose
+                 width is set in code-behind from PlayedPositionMs / DurationMs. -->
+            <Grid x:Name="ProgressBar"
+                  Visibility="Collapsed"
+                  Margin="0,6,0,0"
+                  Height="2"
+                  HorizontalAlignment="Stretch">
+                <Border Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                        CornerRadius="1"/>
+                <Border x:Name="ProgressFill"
+                        HorizontalAlignment="Left"
+                        Background="{StaticResource EpisodeAccentBrush}"
+                        CornerRadius="1"
+                        Width="0"/>
+            </Grid>
+
+            <!-- State row: glyph (optional, played-state-dependent) + label. -->
+            <StackPanel x:Name="StateRow"
+                        Orientation="Horizontal"
+                        Spacing="4"
+                        VerticalAlignment="Center"
+                        Margin="0,4,0,0">
+                <FontIcon x:Name="StateGlyph"
+                          Visibility="Collapsed"
+                          Glyph="&#xE73E;"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="12"
+                          Foreground="{StaticResource EpisodeAccentBrush}"
+                          VerticalAlignment="Center"/>
+                <TextBlock x:Name="StateText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+
+        </StackPanel>
+    </Grid>
+</UserControl>

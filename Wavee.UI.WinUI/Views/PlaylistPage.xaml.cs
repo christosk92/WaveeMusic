@@ -27,7 +27,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PlaylistPage : Page
+public sealed partial class PlaylistPage : Page, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly ISettingsService _settings;
@@ -42,6 +42,7 @@ public sealed partial class PlaylistPage : Page
     private bool _showingContent;
     private bool _crossfadeScheduled;
     private bool _isNavigatingAway;
+    private bool _isDisposed;
 
     // Composition resources for the left-anchored hero backdrop. Surface is
     // (re)loaded whenever HeaderImageUrl changes. Null when no header image.
@@ -118,7 +119,6 @@ public sealed partial class PlaylistPage : Page
         // shimmer→content swap is a smooth crossfade. The previous BoolToVisibility
         // hard cut snapped distractingly when IsLoading flipped false.
         ElementCompositionPreview.GetElementVisual(WidePlaylistScroller).Opacity = 0;
-        //Loaded += PlaylistPage_Loaded;
         Unloaded += PlaylistPage_Unloaded;
         _logger?.LogDebug("[xfade][playlist:{Id}] ctor.enter", XfadeLog.Tag(ViewModel.PlaylistId));
 
@@ -181,6 +181,24 @@ public sealed partial class PlaylistPage : Page
         _isNavigatingAway = true;
     }
 
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        Unloaded -= PlaylistPage_Unloaded;
+        HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
+        HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
+        ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
+        _heroImageSurface?.Dispose();
+        _heroImageSurface = null;
+        _heroSurfaceBrush = null;
+        _heroSprite = null;
+        _heroScrimSprite = null;
+        _heroContainer = null;
+        (ViewModel as IDisposable)?.Dispose();
+    }
+
     private async void ScheduleCrossfade()
     {
         _crossfadeScheduled = true;
@@ -188,6 +206,20 @@ public sealed partial class PlaylistPage : Page
         await Task.Delay(16);
         if (_isNavigatingAway || _showingContent) return;
         CrossfadeToContent();
+    }
+
+    // Warm-cache fallback for the same-id re-navigation path. PlaylistViewModel.Activate
+    // (line 645) early-exits the inner state-reset block when PlaylistId matches the
+    // current one, so IsLoading stays at its previous value (false) and ApplyDetailState's
+    // IsLoading = false write is a no-op that fires no PropertyChanged. Without this
+    // helper, the IsLoading-driven ScheduleCrossfade above never runs and the hero/title
+    // shimmer stays pinned over an invisible WidePlaylistScroller. Mirrors AlbumPage's
+    // TryShowContentNow — same architecture, same fix.
+    private void TryShowContentNow()
+    {
+        if (_showingContent || _crossfadeScheduled || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.PlaylistName))
+            return;
+        ScheduleCrossfade();
     }
 
     private async void CrossfadeToContent()
@@ -211,6 +243,12 @@ public sealed partial class PlaylistPage : Page
 
     private void ResetCrossfadeForNewLoad()
     {
+        // Clear the navigation-away gate — Unloaded sets _isNavigatingAway = true
+        // and Frame caches the page instance, so on re-attach the gate is stale
+        // and ScheduleCrossfade's post-yield guard bails on every load. Same
+        // pattern proven by AlbumPage [xfade] log capture for the cached-page
+        // re-attach path.
+        _isNavigatingAway = false;
         _showingContent = false;
         _crossfadeScheduled = false;
         // Narrow mode keeps the whole left column collapsed via VisualState —
@@ -272,7 +310,7 @@ public sealed partial class PlaylistPage : Page
     // silently drops the new parameter.
     public void RefreshWithParameter(object? parameter) => LoadParameter(parameter);
 
-    private void LoadParameter(object? parameter)
+    private async void LoadParameter(object? parameter)
     {
         _logger?.LogInformation(
             "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
@@ -321,6 +359,15 @@ public sealed partial class PlaylistPage : Page
             }
             RestorePlaylistPanelWidth(playlistId);
         }
+
+        // Warm-cache trigger. PlaylistStore is a BehaviorSubject — Activate's subscribe
+        // queues ApplyDetailState via the dispatcher, which runs after this method
+        // returns. After one yield it has landed (PlaylistName populated, IsLoading
+        // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
+        // same-id case where the IsLoading=false write was a no-op.
+        await Task.Yield();
+        if (_isNavigatingAway) return;
+        TryShowContentNow();
     }
 
     /// <summary>

@@ -800,10 +800,36 @@ public sealed class HomeItemTemplateSelector : DataTemplateSelector
     public DataTemplate? ArtistTemplate { get; set; }
     public DataTemplate? DefaultTemplate { get; set; }
 
+    /// <summary>
+    /// Liked Songs (Recents-saved variant): chosen when the item is
+    /// <c>spotify:collection:tracks</c> AND <see cref="HomeSectionItem.IsRecentlySaved"/>
+    /// is true. Falls through to <see cref="DefaultTemplate"/> for the legacy
+    /// Liked-Songs-as-played case (no group_metadata payload).
+    /// </summary>
+    public DataTemplate? LikedSongsRecentTemplate { get; set; }
+
+    /// <summary>
+    /// Episode template — chosen when <see cref="HomeSectionItem.ContentType"/>
+    /// is <see cref="HomeContentType.Episode"/>. Falls through to
+    /// <see cref="DefaultTemplate"/> when null so a missing wire doesn't blank
+    /// out the section.
+    /// </summary>
+    public DataTemplate? EpisodeTemplate { get; set; }
+
     protected override DataTemplate SelectTemplateCore(object item)
     {
-        if (item is HomeSectionItem { ContentType: HomeContentType.Artist })
-            return ArtistTemplate ?? DefaultTemplate!;
+        if (item is HomeSectionItem hsi)
+        {
+            if (hsi.IsRecentlySaved
+                && hsi.Uri != null
+                && hsi.Uri.Contains(":collection", System.StringComparison.OrdinalIgnoreCase)
+                && LikedSongsRecentTemplate != null)
+                return LikedSongsRecentTemplate;
+            if (hsi.ContentType == HomeContentType.Episode && EpisodeTemplate != null)
+                return EpisodeTemplate;
+            if (hsi.ContentType == HomeContentType.Artist)
+                return ArtistTemplate ?? DefaultTemplate!;
+        }
         return DefaultTemplate!;
     }
 

@@ -20,7 +20,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumPage : Page, ITabBarItemContent
+public sealed partial class AlbumPage : Page, ITabBarItemContent, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
@@ -28,6 +28,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private bool _showingContent;
     private bool _crossfadeScheduled;
     private bool _isNavigatingAway;
+    private bool _isDisposed;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -113,6 +114,22 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
             XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled);
         _isNavigatingAway = true;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        Loaded -= AlbumPage_Loaded;
+        Unloaded -= AlbumPage_Unloaded;
+        ActualThemeChanged -= OnActualThemeChanged;
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.AlternateReleases.CollectionChanged -= AlternateReleases_CollectionChanged;
+        if (OtherVersionsFlyout != null)
+            OtherVersionsFlyout.Items.Clear();
+        (ViewModel as IDisposable)?.Dispose();
     }
 
     // ── Crossfade ──

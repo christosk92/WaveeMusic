@@ -34,7 +34,7 @@ using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ArtistPage : Page, ITabBarItemContent
+public sealed partial class ArtistPage : Page, ITabBarItemContent, IDisposable
 {
     private const int ShimmerCollapseDelayMs = 250;
     private const int ResizeDebounceDelayMs = 150;
@@ -70,6 +70,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private bool _shyHeaderRecheckPending;
     private bool _heroRevealed;
     private bool _crossfadeScheduled;
+    private bool _isDisposed;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -832,11 +833,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             ViewModel == null)
             return;
 
-        var coreWindow = Windows.UI.Core.CoreWindow.GetForCurrentThread();
-        bool ctrl = (coreWindow.GetKeyState(Windows.System.VirtualKey.Control)
-                     & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
-        bool shift = (coreWindow.GetKeyState(Windows.System.VirtualKey.Shift)
-                      & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+        var (ctrl, shift) = GetCtrlShiftState();
 
         var paged = ViewModel.PagedTopTracks.ToList();
         int index = paged.IndexOf(lazy);
@@ -876,6 +873,22 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         }
 
         RefreshTopTrackSelectionVisuals();
+    }
+
+    private static (bool ctrl, bool shift) GetCtrlShiftState()
+    {
+        try
+        {
+            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift);
+            return (
+                (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down,
+                (shiftState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down);
+        }
+        catch
+        {
+            return (false, false);
+        }
     }
 
     private void RefreshTopTrackSelectionVisuals()
@@ -919,20 +932,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Hibernate releases the store subscription AND the heavy bound
-        // collections (TopTracks / Albums / Singles / Compilations / Related /
-        // Concerts / GalleryPhotos). NavigationCacheMode="Enabled" keeps the
-        // Page instance + visual tree alive, but its virtualizers discard
-        // realized item containers when their ItemsSource clears — that's where
-        // the cached-page composition memory really lives. The BehaviorSubject
-        // re-emits cached data instantly on revisit (see OnNavigatedTo back-nav).
+        // Hibernate releases the store subscription and heavy bound collections
+        // before the page leaves the frame. Revisit speed comes from warm data
+        // caches, not retaining the full artist visual tree.
         ViewModel.Hibernate();
 
-        // Release the hero's LoadedImageSurface (~2–4 MB depending on page
-        // width). NavigationCacheMode="Enabled" keeps the page instance in
-        // the Frame cache, so HeroHeader.OnUnloaded never fires on
-        // navigate-away. RestoreSurface on OnNavigatedTo rehydrates from
-        // the VM's unchanged ImageUrl.
+        // Release the hero's LoadedImageSurface before navigation can retain
+        // composition resources longer than the current frame.
         HeroGrid?.ReleaseSurface();
     }
 
@@ -1230,6 +1236,27 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         CollapseExpandedAlbum();
         TeardownWatchFeed();
         try { _shyHeaderTransition?.Stop(); } catch { }
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        Loaded -= ArtistPage_Loaded;
+        Unloaded -= ArtistPage_Unloaded;
+        SizeChanged -= OnSizeChanged;
+        if (HeroGrid != null)
+            HeroGrid.SizeChanged -= HeroGrid_SizeChanged;
+        if (PageScrollView != null)
+            PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        CancelResizeDebounce();
+        CollapseExpandedAlbum();
+        TeardownWatchFeed();
+        try { _shyHeaderTransition?.Stop(); } catch { }
+        (ViewModel as IDisposable)?.Dispose();
     }
 
 

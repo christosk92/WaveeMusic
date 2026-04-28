@@ -62,8 +62,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private const int MaxCachedSuggestionQueries = 24;
     private static readonly TimeSpan RecentSearchesCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan QuerySuggestionsCacheLifetime = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan TabSleepTimeout = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan TabSleepEvaluationInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan TabSleepTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan TabSleepEvaluationInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TabSleepMemoryReleaseThrottle = TimeSpan.FromSeconds(45);
 
     // UI element references for cleanup

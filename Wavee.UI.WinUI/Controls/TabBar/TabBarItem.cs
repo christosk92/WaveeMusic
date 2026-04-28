@@ -20,7 +20,9 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // the hundreds of MB. That cost is accepted; the back/forward UX is the
     // headline. Look for memory wins elsewhere (image cache pin balance,
     // unbounded subscriptions, idle render loops) before touching this number.
-    private const int DefaultFrameCacheSize = 3;
+    // Current memory posture overrides that old tradeoff: 0 disables off-screen
+    // page visual caching and keeps only lightweight Frame history entries.
+    private const int DefaultFrameCacheSize = 0;
 
     public Frame ContentFrame { get; }
 
@@ -89,6 +91,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     public double TabOpacity => IsSleeping ? 0.72 : 1.0;
 
     private ITabBarItemContent? _previousContent;
+    private IDisposable? _contentPendingDisposal;
     private const int MaxBackStackSize = 20;
     private TabSleepSnapshot? _sleepSnapshot;
     private object? _pendingSleepRestoreState;
@@ -142,9 +145,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             CacheSize = DefaultFrameCacheSize,
             IsNavigationStackEnabled = true
         };
+        ContentFrame.Navigating += ContentFrame_Navigating;
         ContentFrame.Navigated += ContentFrame_Navigated;
         ContentFrame.NavigationFailed += (_, e) =>
         {
+            _contentPendingDisposal = null;
             e.Handled = true;
             System.Diagnostics.Debug.WriteLine(
                 $"NavigationFailed [{e.SourcePageType?.Name}]: {e.Exception?.Message}");
@@ -293,6 +298,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         _ => null
     };
 
+    private void ContentFrame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
+    {
+        _contentPendingDisposal = ContentFrame.Content as IDisposable;
+    }
+
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         // Close the ETW navigation pair opened in Navigate() / NavigationParameter setter.
@@ -313,6 +323,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         // Unsubscribe from previous page's ContentChanged to prevent leak
         if (_previousContent != null)
             _previousContent.ContentChanged -= TabItemContent_ContentChanged;
+
+        var contentToDispose = _contentPendingDisposal;
+        _contentPendingDisposal = null;
+        if (contentToDispose != null && !ReferenceEquals(contentToDispose, ContentFrame.Content))
+            contentToDispose.Dispose();
 
         _previousContent = TabItemContent;
 
@@ -342,6 +357,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void Dispose()
     {
+        ContentFrame.Navigating -= ContentFrame_Navigating;
         ContentFrame.Navigated -= ContentFrame_Navigated;
         DiscardSleepState();
 

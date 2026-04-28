@@ -35,6 +35,27 @@
                 NavigationUri="{x:Bind Uri}"
                 NavigationTitle="{x:Bind Title}"/>
         </DataTemplate>
+
+        <!-- Liked Songs (Recents-saved variant): foreground heart tile with up
+             to 3 cover thumbnails fanned out behind it, "{N} songs added"
+             subtitle + green-check glyph. Mirrors Spotify desktop's Recents
+             render for spotify:collection:tracks when recent_type_saved is set. -->
+        <DataTemplate x:Key="LikedSongsRecentTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:LikedSongsRecentCard
+                Title="{x:Bind Title, Mode=OneWay}"
+                AddedCount="{x:Bind RecentlyAddedCount, Mode=OneWay}"
+                Thumbnail1ImageUrl="{x:Bind RecentlyAddedThumbnail1Url, Mode=OneWay}"
+                Thumbnail2ImageUrl="{x:Bind RecentlyAddedThumbnail2Url, Mode=OneWay}"
+                Thumbnail3ImageUrl="{x:Bind RecentlyAddedThumbnail3Url, Mode=OneWay}"
+                NavigationUri="{x:Bind Uri}"/>
+        </DataTemplate>
+
+        <!-- Episode card mirror: Episodes aren't in Recents in the response we
+             have today, but if Spotify ever surfaces them here they need the
+             same template the Home shelf uses. -->
+        <DataTemplate x:Key="EpisodeCardTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:EpisodeCard/>
+        </DataTemplate>
     </UserControl.Resources>
 
     <StackPanel x:Name="RootPanel" Visibility="Collapsed">

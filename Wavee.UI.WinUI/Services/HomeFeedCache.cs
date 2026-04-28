@@ -80,7 +80,8 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         ObservableCollection<HomeSection> current,
         List<HomeSection> fresh,
         Action<string?>? onGreetingChanged = null,
-        string? newGreeting = null)
+        string? newGreeting = null,
+        Action<HomeSection>? onAccentChanged = null)
     {
         if (onGreetingChanged != null && newGreeting != null)
             onGreetingChanged(newGreeting);
@@ -105,7 +106,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
             if (i < current.Count && current[i].SectionUri == fresh[i].SectionUri)
             {
                 // Same position — diff items in-place
-                UpdateSectionInPlace(current[i], fresh[i]);
+                UpdateSectionInPlace(current[i], fresh[i], onAccentChanged);
             }
             else
             {
@@ -124,7 +125,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                 {
                     // Move existing section to correct position
                     current.Move(existingIdx, Math.Min(i, current.Count - 1));
-                    UpdateSectionInPlace(current[i], fresh[i]);
+                    UpdateSectionInPlace(current[i], fresh[i], onAccentChanged);
                 }
                 else
                 {
@@ -139,7 +140,10 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
             current.RemoveAt(current.Count - 1);
     }
 
-    private static void UpdateSectionInPlace(HomeSection target, HomeSection source)
+    private static void UpdateSectionInPlace(
+        HomeSection target,
+        HomeSection source,
+        Action<HomeSection>? onAccentChanged = null)
     {
         DiffItems(target.Items, source.Items);
         if (target.Title != source.Title) target.Title = source.Title;
@@ -149,6 +153,23 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         if (target.HeaderEntityName != source.HeaderEntityName) target.HeaderEntityName = source.HeaderEntityName;
         if (target.HeaderEntityImageUrl != source.HeaderEntityImageUrl) target.HeaderEntityImageUrl = source.HeaderEntityImageUrl;
         if (target.HeaderEntityUri != source.HeaderEntityUri) target.HeaderEntityUri = source.HeaderEntityUri;
+
+        // Visual-identity flags driven by item composition. Without this
+        // propagation the target's stale TRUE survives a mixed-content refresh
+        // and the section header keeps its podcast-purple wash + mic glyph
+        // even after Spotify swaps the items to playlists.
+        if (target.IsPodcastSection != source.IsPodcastSection)
+            target.IsPodcastSection = source.IsPodcastSection;
+
+        var accentChanged = target.AccentColorHex != source.AccentColorHex;
+        if (accentChanged)
+        {
+            target.AccentColorHex = source.AccentColorHex;
+            // The brushes derived from AccentColorHex (AccentLineBrush etc.)
+            // are theme-dependent — only the caller knows isDark, so it
+            // re-applies theme on the section via this callback.
+            onAccentChanged?.Invoke(target);
+        }
     }
 
     /// <summary>

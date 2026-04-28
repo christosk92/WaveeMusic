@@ -18,7 +18,7 @@ public sealed partial class RecentlyPlayedSection : UserControl
         Unloaded += OnUnloaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _service = Ioc.Default.GetService<RecentlyPlayedService>();
         if (_service == null) return;
@@ -27,7 +27,9 @@ public sealed partial class RecentlyPlayedSection : UserControl
         ItemsHost.ItemTemplate = new RecentlyPlayedItemTemplateSelector
         {
             ArtistTemplate = (DataTemplate)Resources["ArtistCardTemplate"],
-            DefaultTemplate = (DataTemplate)Resources["DefaultCardTemplate"]
+            DefaultTemplate = (DataTemplate)Resources["DefaultCardTemplate"],
+            LikedSongsRecentTemplate = (DataTemplate)Resources["LikedSongsRecentTemplate"],
+            EpisodeTemplate = (DataTemplate)Resources["EpisodeCardTemplate"]
         };
 
         // If already loaded, show immediately
@@ -36,24 +38,14 @@ public sealed partial class RecentlyPlayedSection : UserControl
             ShowItems();
         }
 
-        // Subscribe to updates
+        // Subscribe to updates. Items now arrive from the Home GraphQL parse
+        // pipeline (HomeViewModel → ApplyHomeRecents) — no separate fetch
+        // kicked off here. The carousel stays collapsed until the first Home
+        // load lands; then ItemsChanged fires and ShowItems takes over.
         if (!_isSubscribed)
         {
             _service.ItemsChanged += OnItemsChanged;
             _isSubscribed = true;
-        }
-
-        // Trigger load if empty
-        if (_service.Items.Count == 0)
-        {
-            try
-            {
-                await _service.LoadAsync();
-            }
-            catch
-            {
-                // Non-critical — silently fail
-            }
         }
     }
 
@@ -87,11 +79,26 @@ public sealed partial class RecentlyPlayedSection : UserControl
     {
         public DataTemplate? ArtistTemplate { get; set; }
         public DataTemplate? DefaultTemplate { get; set; }
+        public DataTemplate? LikedSongsRecentTemplate { get; set; }
+        public DataTemplate? EpisodeTemplate { get; set; }
 
         protected override DataTemplate SelectTemplateCore(object item)
         {
-            if (item is HomeSectionItem { ContentType: HomeContentType.Artist })
-                return ArtistTemplate ?? DefaultTemplate!;
+            if (item is HomeSectionItem hsi)
+            {
+                // Liked Songs (Recents-saved variant) gets the stack-of-3 + "N
+                // songs added" render; falls through to DefaultTemplate for the
+                // legacy Liked-Songs-as-played case (no group_metadata).
+                if (hsi.IsRecentlySaved
+                    && hsi.Uri != null
+                    && hsi.Uri.Contains(":collection", System.StringComparison.OrdinalIgnoreCase)
+                    && LikedSongsRecentTemplate != null)
+                    return LikedSongsRecentTemplate;
+                if (hsi.ContentType == HomeContentType.Episode && EpisodeTemplate != null)
+                    return EpisodeTemplate;
+                if (hsi.ContentType == HomeContentType.Artist)
+                    return ArtistTemplate ?? DefaultTemplate!;
+            }
             return DefaultTemplate!;
         }
 

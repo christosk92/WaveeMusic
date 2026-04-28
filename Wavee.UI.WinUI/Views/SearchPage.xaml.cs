@@ -17,13 +17,14 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class SearchPage : Page, ITabSleepParticipant
+public sealed partial class SearchPage : Page, ITabSleepParticipant, IDisposable
 {
     public SearchViewModel ViewModel { get; }
 
     private readonly ILogger? _logger;
     private SearchPageSleepState? _pendingSleepState;
     private bool _sleepFilterRestoreRequested;
+    private bool _isDisposed;
 
     public SearchPage()
     {
@@ -37,6 +38,15 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        Unloaded -= OnUnloaded;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 

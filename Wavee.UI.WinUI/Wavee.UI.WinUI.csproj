@@ -18,9 +18,12 @@
 		<FileVersion>0.1.0.0</FileVersion>
 		<!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
 		<LangVersion>preview</LangVersion>
-		<!-- Server GC: uses background threads for Gen2 collection instead of stopping the world.
-         Critical for audio playback — workstation GC pauses ALL threads for 50-200ms+ on Gen2. -->
-		<ServerGarbageCollection>true</ServerGarbageCollection>
+		<!-- Workstation GC is the right default for a desktop UI process.
+		     Server GC creates one heap per logical processor and grows working set
+		     aggressively, which is a bad trade for Wavee's image-heavy navigation UI.
+		     The audio pipeline runs out-of-process, so UI GC pauses no longer need a
+		     server-GC-sized memory footprint to protect playback. -->
+		<ServerGarbageCollection>false</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
 	</PropertyGroup>
 	<ItemGroup>

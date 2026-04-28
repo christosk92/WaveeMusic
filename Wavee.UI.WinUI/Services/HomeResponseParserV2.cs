@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
@@ -155,12 +156,19 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
 
             if (section.Items.Count > 0)
             {
+                // Podcast-only sections get their own visual identity — fixed
+                // podcast-purple wash + a mic glyph in the header — so the
+                // user clocks "this row is podcasts" before any card paints.
+                section.IsPodcastSection = section.Items.All(i =>
+                    i.ContentType is HomeContentType.Episode or HomeContentType.Podcast);
+
                 // Pull a visual-identity accent from the section's first item
                 // that carries a Spotify-extracted dark color. Brushes are
                 // built later by HomeViewModel when the section is added to
                 // the bound Sections collection (theme dependency).
-                section.AccentColorHex = section.Items
-                    .FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
+                section.AccentColorHex = section.IsPodcastSection
+                    ? HomeResponseParserV1.PodcastSectionAccentHex
+                    : section.Items.FirstOrDefault(i => !string.IsNullOrEmpty(i.ColorHex))?.ColorHex;
                 sections.Add(section);
             }
         }
@@ -246,7 +254,7 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage);
         var subtitle = BuildSubtitle(entityData, contentType, formatAttributes);
 
-        return new HomeSectionItem
+        var item = new HomeSectionItem
         {
             Uri = entityUri,
             Title = title,
@@ -254,6 +262,38 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             ImageUrl = imageUrl,
             ContentType = contentType
         };
+
+        // Episode-specific surface — only populated if the entity actually
+        // carries an Episode payload (some V2 responses do, some leave it on
+        // the V1 EpisodeOrChapterResponseWrapper which is handled elsewhere).
+        if (contentType == HomeContentType.Episode && entityData.Episode is { } ep)
+        {
+            var publisherName = ep.PodcastV2?.Data?.Name
+                                ?? ep.PodcastV2?.Data?.Publisher?.Name;
+
+            item.DurationMs = ep.Duration?.TotalMilliseconds;
+            item.PlayedPositionMs = ep.PlayedState?.PlayPositionMilliseconds;
+            item.PlayedState = HomeResponseParserV1.MapEpisodePlayedState(ep.PlayedState?.State);
+            item.PublisherName = publisherName;
+            item.IsVideoPodcast = ep.MediaTypes?.Any(m =>
+                string.Equals(m, "VIDEO", StringComparison.OrdinalIgnoreCase)) == true;
+            item.ReleaseDateIso = ep.ReleaseDate?.IsoString;
+
+            // Subtitle for an episode reads as the show name (Spotify desktop
+            // pattern). Fall back to whatever BuildSubtitle returned if the
+            // show name is missing.
+            if (!string.IsNullOrEmpty(publisherName))
+                item.Subtitle = publisherName;
+        }
+        else if (contentType == HomeContentType.Podcast)
+        {
+            // Standalone show — surface the publisher under PublisherName so
+            // the show card variant (re-using PlaylistCardTemplate) has it.
+            var publisher = GetContributorNames(entityData);
+            if (!string.IsNullOrEmpty(publisher)) item.PublisherName = publisher;
+        }
+
+        return item;
     }
 
     // ── V1 content fallback ──
@@ -269,8 +309,35 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             "ArtistResponseWrapper" => MapV1Artist(entry.Uri, content),
             "PlaylistResponseWrapper" => MapV1Playlist(entry.Uri, content),
             "PodcastOrAudiobookResponseWrapper" => MapV1Podcast(entry.Uri, content),
+            "EpisodeOrChapterResponseWrapper" => MapV1Episode(entry.Uri, content),
             "UnknownType" => MapUnknownType(entry.Uri),
             _ => MapV1FromRawJson(entry.Uri, content)
+        };
+    }
+
+    private static HomeSectionItem? MapV1Episode(string? uri, HomeItemContent content)
+    {
+        var data = content.GetEpisodeData();
+        if (data == null) return null;
+
+        var imageUrl = data.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url
+                       ?? data.PodcastV2?.Data?.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url;
+        var publisherName = data.PodcastV2?.Data?.Name ?? data.PodcastV2?.Data?.Publisher?.Name;
+
+        return new HomeSectionItem
+        {
+            Uri = data.Uri ?? uri,
+            Title = data.Name,
+            Subtitle = publisherName,
+            ImageUrl = imageUrl,
+            ContentType = HomeContentType.Episode,
+            DurationMs = data.Duration?.TotalMilliseconds,
+            PlayedPositionMs = data.PlayedState?.PlayPositionMilliseconds,
+            PlayedState = HomeResponseParserV1.MapEpisodePlayedState(data.PlayedState?.State),
+            PublisherName = publisherName,
+            IsVideoPodcast = data.MediaTypes?.Any(m =>
+                string.Equals(m, "VIDEO", StringComparison.OrdinalIgnoreCase)) == true,
+            ReleaseDateIso = data.ReleaseDate?.IsoString
         };
     }
 
@@ -355,7 +422,7 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                 Uri = uri,
                 Title = "Liked Songs",
                 ContentType = HomeContentType.Playlist,
-                PlaceholderGlyph = "\uEB52",
+                PlaceholderGlyph = FluentGlyphs.HeartFilled,
                 ColorHex = "#4B2A8A"
             };
         }
@@ -368,9 +435,34 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         List<HomeFormatListAttribute>? formatAttributes)
     {
         var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage);
-        var subtitle = "Playlist";
-        if (formatAttributes?.Any(a => a.Key == "recent_type_saved") == true)
-            subtitle = "Songs added";
+        var isSaved = formatAttributes?.Any(a => a.Key == "recent_type_saved") == true;
+
+        // group_metadata is a base64-encoded protobuf carrying the recently-
+        // added count + up to 3 track URIs Spotify wants drawn as thumbnails
+        // behind the heart tile. Decode shape (verified 2026-04-28):
+        //   field 1 varint                 = added_count
+        //   field 2 string (repeated, \u22643)  = track URIs
+        //   field 4 sub-message            = { "music", added_count } \u2014 ignored
+        int? addedCount = null;
+        IReadOnlyList<string> thumbnailUris = Array.Empty<string>();
+        var groupMetaB64 = formatAttributes?.FirstOrDefault(a => a.Key == "group_metadata")?.Value;
+        if (!string.IsNullOrEmpty(groupMetaB64))
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(groupMetaB64);
+                DecodeGroupMetadata(bytes, out addedCount, out var uris);
+                if (uris.Count > 0) thumbnailUris = uris;
+            }
+            catch
+            {
+                // Malformed base64 / unexpected wire shape \u2014 degrade silently.
+            }
+        }
+
+        var subtitle = isSaved
+            ? (addedCount.HasValue ? $"{addedCount} songs added" : "Songs added")
+            : "Playlist";
 
         return new HomeSectionItem
         {
@@ -379,9 +471,66 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             Subtitle = subtitle,
             ImageUrl = imageUrl,
             ContentType = HomeContentType.Playlist,
-            PlaceholderGlyph = "\uEB52",
-            ColorHex = "#4B2A8A"
+            PlaceholderGlyph = FluentGlyphs.HeartFilled,
+            ColorHex = "#4B2A8A",
+            IsRecentlySaved = isSaved,
+            RecentlyAddedCount = addedCount,
+            RecentlyAddedThumbnailUris = thumbnailUris
         };
+    }
+
+    /// <summary>
+    /// Minimal protobuf decoder for the formatListAttributes.group_metadata
+    /// payload. Hand-rolled because the schema is undocumented and unstable \u2014
+    /// a generated proto would break on every Spotify backend tweak.
+    /// </summary>
+    private static void DecodeGroupMetadata(byte[] data, out int? addedCount, out List<string> trackUris)
+    {
+        addedCount = null;
+        trackUris = new List<string>();
+        var i = 0;
+        while (i < data.Length)
+        {
+            if (!TryReadVarint(data, ref i, out var tag)) return;
+            var fieldNum = (int)(tag >> 3);
+            var wireType = (int)(tag & 7);
+            if (wireType == 0) // varint
+            {
+                if (!TryReadVarint(data, ref i, out var v)) return;
+                if (fieldNum == 1) addedCount = (int)v;
+            }
+            else if (wireType == 2) // length-delimited
+            {
+                if (!TryReadVarint(data, ref i, out var len)) return;
+                if (i + (int)len > data.Length) return;
+                if (fieldNum == 2 && trackUris.Count < 3)
+                {
+                    var s = System.Text.Encoding.UTF8.GetString(data, i, (int)len);
+                    if (s.StartsWith("spotify:track:", StringComparison.Ordinal))
+                        trackUris.Add(s);
+                }
+                i += (int)len;
+            }
+            else
+            {
+                return; // unsupported wire type \u2014 bail
+            }
+        }
+    }
+
+    private static bool TryReadVarint(byte[] data, ref int pos, out ulong value)
+    {
+        value = 0;
+        var shift = 0;
+        while (pos < data.Length)
+        {
+            var b = data[pos++];
+            value |= ((ulong)(b & 0x7F)) << shift;
+            if ((b & 0x80) == 0) return true;
+            shift += 7;
+            if (shift > 63) return false;
+        }
+        return false;
     }
 
     // ── Content type resolution ──

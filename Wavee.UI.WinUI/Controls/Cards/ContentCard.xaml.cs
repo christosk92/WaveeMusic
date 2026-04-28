@@ -232,6 +232,7 @@ public sealed partial class ContentCard : UserControl
     private bool _isPointerOver;
     private bool _isPlaybackPending;
     private int _playbackPendingVersion;
+    private bool _circleSizeHandlerAttached;
 
     private readonly ImageCacheService? _imageCache;
     private readonly ThemeColorService? _themeColorService;
@@ -297,8 +298,16 @@ public sealed partial class ContentCard : UserControl
             _highlightService.CurrentChanged -= OnHighlightServiceChanged;
 
         // Clean up SizeChanged subscription to prevent memory leaks
-        if (CircleImageContainer != null)
+        if (CircleImageContainer != null && _circleSizeHandlerAttached)
+        {
             CircleImageContainer.SizeChanged -= OnCircleContainerSizeChanged;
+            _circleSizeHandlerAttached = false;
+        }
+
+        if (SquareImage != null)
+            SquareImage.Source = null;
+        if (CircleImageBrush != null)
+            CircleImageBrush.ImageSource = null;
 
         // Remove passive pointer handlers using the SAME instances that were added
         if (_passiveHandlersAdded)
@@ -514,7 +523,11 @@ public sealed partial class ContentCard : UserControl
             SquareImageContainer.Visibility = Visibility.Collapsed;
             CircleImageContainer!.Visibility = Visibility.Visible;
             // Size will be set dynamically based on card width via SizeChanged
-            CircleImageContainer.SizeChanged += OnCircleContainerSizeChanged;
+            if (!_circleSizeHandlerAttached)
+            {
+                CircleImageContainer.SizeChanged += OnCircleContainerSizeChanged;
+                _circleSizeHandlerAttached = true;
+            }
         }
         else
         {
@@ -522,7 +535,14 @@ public sealed partial class ContentCard : UserControl
             // Only collapse the circle container if it was actually realized;
             // for square cards the x:Load-deferred subtree simply never exists.
             if (CircleImageContainer != null)
+            {
                 CircleImageContainer.Visibility = Visibility.Collapsed;
+                if (_circleSizeHandlerAttached)
+                {
+                    CircleImageContainer.SizeChanged -= OnCircleContainerSizeChanged;
+                    _circleSizeHandlerAttached = false;
+                }
+            }
         }
     }
 
@@ -956,6 +976,12 @@ public sealed partial class ContentCard : UserControl
                 return true;
             case "user":
                 Helpers.Navigation.NavigationHelpers.OpenProfile(param, title, openInNewTab);
+                return true;
+            case "show":
+                Helpers.Navigation.NavigationHelpers.OpenShow(uri, title, openInNewTab);
+                return true;
+            case "episode":
+                Helpers.Navigation.NavigationHelpers.PlayEpisode(uri);
                 return true;
         }
 

@@ -1,0 +1,2 @@
+"use strict";(("undefined"!=typeof self?self:global).webpackChunkclient_web=("undefined"!=typeof self?self:global).webpackChunkclient_web||[]).push([["8083"],{15104(e,t,l){l.r(t),l.d(t,{default:()=>n});var a=l(86070),s=l(61947),i=l(4790);let n=()=>(0,a.jsx)("section",{className:"contentSpacing","data-testid":"taste-profile-page",children:(0,a.jsx)(s.E,{as:"h1",variant:"titleMedium",semanticColor:"textBase",children:i.Ru.get("web-player.taste-profile.title")})})}}]);
+//# sourceMappingURL=xpui-routes-taste-profile.js.map

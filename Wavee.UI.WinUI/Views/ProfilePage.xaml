@@ -15,13 +15,8 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
+    NavigationCacheMode="Disabled"
     Background="Transparent">
-    <Page.Transitions>
-        <TransitionCollection>
-            <EntranceThemeTransition/>
-        </TransitionCollection>
-    </Page.Transitions>
     <Page.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
