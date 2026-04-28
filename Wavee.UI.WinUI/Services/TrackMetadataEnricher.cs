@@ -24,6 +24,7 @@ namespace Wavee.UI.WinUI.Services;
 internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestMessage>,
     IRecipient<ExtendedTopTracksRequest>,
     IRecipient<QueueEnrichmentRequestMessage>,
+    IRecipient<TrackImagesEnrichmentRequest>,
     IDisposable
 {
     private readonly IExtendedMetadataClient _metadataClient;
@@ -49,6 +50,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         messenger.Register<TrackEnrichmentRequestMessage>(this);
         messenger.Register<ExtendedTopTracksRequest>(this);
         messenger.Register<QueueEnrichmentRequestMessage>(this);
+        messenger.Register<TrackImagesEnrichmentRequest>(this);
     }
 
     // ── Track enrichment (from PlaybackStateService) ──
@@ -286,6 +288,60 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         {
             _logger?.LogWarning(ex, "Queue enrichment failed");
         }
+    }
+
+    // ── Track image enrichment (cover-art-only, used by ArtistViewModel top tracks) ──
+
+    public void Receive(TrackImagesEnrichmentRequest message)
+    {
+        message.Reply(GetTrackImagesAsync(message.TrackUris, message.CancellationToken));
+    }
+
+    private async Task<IReadOnlyDictionary<string, string?>> GetTrackImagesAsync(
+        IReadOnlyList<string> trackUris, CancellationToken ct)
+    {
+        var result = new Dictionary<string, string?>(trackUris.Count);
+        if (trackUris.Count == 0) return result;
+
+        try
+        {
+            // Mirror QueueEnrichmentRequestMessage's flow: cache lookup, then
+            // batch-fetch any missing/incomplete entries via TrackV4 extension.
+            var cached = await _cacheService.GetTracksAsync(trackUris, ct);
+            var uncached = trackUris.Where(u =>
+                !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
+
+            if (uncached.Count > 0)
+            {
+                const int batchSize = 500;
+                for (int i = 0; i < uncached.Count; i += batchSize)
+                {
+                    var batch = uncached.Skip(i).Take(batchSize)
+                        .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+                    try
+                    {
+                        await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Track-image enrichment batch failed at offset {Offset}", i);
+                    }
+                }
+
+                var newCached = await _cacheService.GetTracksAsync(uncached, ct);
+                foreach (var (uri, entry) in newCached)
+                    cached[uri] = entry;
+            }
+
+            foreach (var uri in trackUris)
+                result[uri] = cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Track-image enrichment failed for {Count} URIs", trackUris.Count);
+        }
+
+        return result;
     }
 
     // ── Helpers ──

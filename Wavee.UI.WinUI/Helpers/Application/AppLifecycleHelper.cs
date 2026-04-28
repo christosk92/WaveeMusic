@@ -311,6 +311,7 @@ public static class AppLifecycleHelper
                 .AddSingleton<IAppLocalizationService, AppLocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
                 .AddSingleton<IShellSessionService, ShellSessionService>()
+                .AddSingleton<Services.Docking.IPanelDockingService, Services.Docking.PanelDockingService>()
                 .AddSingleton<IMediaOverrideService, MediaOverrideService>()
                 .AddSingleton<IThemeService, ThemeService>()
                 .AddSingleton<ThemeColorService>()
@@ -332,6 +333,7 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<LibraryRecentsService>>()))
                 .AddSingleton<ProfileCache>()
                 .AddSingleton<IProfileCache>(sp => sp.GetRequiredService<ProfileCache>())
+                .AddSingleton<ProfileService>()
                 .AddSingleton<IUserProfileResolver, UserProfileResolver>()
                 .AddSingleton(sp => new ImageCacheService(cacheCapacities.ImageCacheMaxSize))
                 .AddSingleton(sp => new PlaylistMosaicService(
@@ -437,6 +439,13 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>(),
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<ILogger<Wavee.Core.Playlists.PlaylistCacheService>>()))
+                .AddSingleton<IUserScopeGuard>(sp =>
+                    new UserScopeGuard(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
+                        sp.GetRequiredService<ITrackLikeService>(),
+                        sp.GetRequiredService<IProfileCache>(),
+                        sp.GetService<ILogger<UserScopeGuard>>()))
                 .AddSingleton<ILibraryDataService>(sp =>
                     new Data.Contexts.LibraryDataService(
                         sp.GetRequiredService<IMetadataDatabase>(),
@@ -551,6 +560,7 @@ public static class AppLifecycleHelper
                 .AddTransient<ProfileViewModel>(sp =>
                     new ProfileViewModel(
                         sp.GetService<ProfileCache>(),
+                        sp.GetService<ProfileService>(),
                         sp.GetService<Session>(),
                         sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<ProfileViewModel>>()))
@@ -775,6 +785,40 @@ public static class AppLifecycleHelper
                 session.SetCacheService(cacheService);
             }
 
+            // PlayPlay fallback: AudioHost (x86_64, runs under WoA x64 emulation
+            // on ARM64 hosts) loads Spotify.dll directly and exposes a
+            // DerivePlayPlayKey RPC over the same named pipe used for playback.
+            // Register the deriver on the session before the first
+            // RequestAudioKeyAsync — same lifecycle constraint as the cache.
+            try
+            {
+                var dll = Wavee.Core.Audio.SpotifyDllLocator.Locate(logger: logger);
+                var manager = _audioProcessManager;
+                if (dll is not null && manager is not null)
+                {
+                    var deriver = new Wavee.Core.Audio.AudioHostPlayPlayKeyDeriver(
+                        spClient,
+                        proxyResolver: () => manager.Proxy,
+                        spotifyDllPath: dll,
+                        cacheService: cacheService,
+                        logger: logger);
+                    session.SetPlayPlayKeyDeriver(deriver);
+                    logger?.LogInformation(
+                        "PlayPlay fallback enabled via AudioHost (Spotify.dll v{Version}, dll={Dll})",
+                        Wavee.Core.Audio.PlayPlayConstants.SpotifyClientVersion, dll);
+                }
+                else
+                {
+                    logger?.LogInformation(
+                        "PlayPlay fallback disabled: Spotify.dll v{Version} not found or AudioHost manager not initialised",
+                        Wavee.Core.Audio.PlayPlayConstants.SpotifyClientVersion);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "PlayPlay fallback failed to initialise; AP-only mode");
+            }
+
             // Resolve the head-files URL template lazily from the session so we pick
             // up the CDN host Spotify hands us in ProductInfo (e.g.
             // heads-fa-tls13.spotifycdn.com) instead of the legacy hardcoded host.
@@ -797,7 +841,9 @@ public static class AppLifecycleHelper
             }
 
             var orchestrator = new Wavee.Audio.PlaybackOrchestrator(
-                proxy, trackResolver, contextResolver!, session.CommandHandler, logger);
+                proxy, trackResolver, contextResolver!, session.CommandHandler, logger,
+                events: session.Events,
+                localDeviceId: session.Config.DeviceId);
 
             // Honor the user's autoplay preference. Read fresh on each check so
             // a toggle in the Settings page takes effect immediately — no event
@@ -957,7 +1003,9 @@ public static class AppLifecycleHelper
                 notifDisp?.TryEnqueue(() =>
                 {
                     var newOrch = new Wavee.Audio.PlaybackOrchestrator(
-                        newProxy, trackResolver, contextResolver!, session.CommandHandler, logger);
+                        newProxy, trackResolver, contextResolver!, session.CommandHandler, logger,
+                        events: session.Events,
+                        localDeviceId: session.Config.DeviceId);
                     if (settingsForAutoplay is not null)
                         newOrch.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;

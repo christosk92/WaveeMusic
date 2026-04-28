@@ -327,7 +327,7 @@ public sealed partial class NavigationToolbar : UserControl
     private void ViewProfileMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var openInNewTab = NavigationHelpers.IsCtrlPressed();
-        NavigationHelpers.OpenProfile(openInNewTab);
+        NavigationHelpers.OpenProfile(parameter: null, title: null, openInNewTab: openInNewTab);
     }
 
     private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)

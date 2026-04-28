@@ -30,6 +30,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Services.Docking;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Core.Playlists;
 using Microsoft.UI.Xaml.Media;
@@ -46,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly IPlaybackStateService _playbackStateService;
     private readonly AppModel _appModel;
     private readonly IShellSessionService _shellSession;
+    private IPanelDockingService? _docking;
     private readonly ILogger? _logger;
     private readonly IDispatcherService? _dispatcher;
     private readonly PlaylistMosaicService? _mosaicService;
@@ -120,6 +122,44 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private PlayerLocation _playerLocation = PlayerLocation.Bottom;
+
+    /// <summary>
+    /// Single source of truth for tear-off state. Bound from XAML (visibility
+    /// gates) via <see cref="IsRightPanelVisibleInShell"/> /
+    /// <see cref="IsSidebarPlayerVisibleInShell"/>. Lazily resolved so existing
+    /// constructor wiring stays untouched.
+    /// </summary>
+    public IPanelDockingService Docking =>
+        _docking ??= ResolveAndSubscribeDocking();
+
+    private IPanelDockingService ResolveAndSubscribeDocking()
+    {
+        var svc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetRequiredService<IPanelDockingService>();
+        svc.PropertyChanged += OnDockingPropertyChanged;
+        return svc;
+    }
+
+    private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IPanelDockingService.IsRightPanelDetached))
+            OnPropertyChanged(nameof(IsRightPanelVisibleInShell));
+        else if (e.PropertyName == nameof(IPanelDockingService.IsPlayerDetached))
+            OnPropertyChanged(nameof(IsSidebarPlayerVisibleInShell));
+    }
+
+    /// <summary>
+    /// Right-panel slot is visible in the shell only when the panel is open
+    /// AND not torn off into its own window.
+    /// </summary>
+    public bool IsRightPanelVisibleInShell =>
+        IsRightPanelOpen && !Docking.IsRightPanelDetached;
+
+    /// <summary>
+    /// Sidebar player widget is visible in the shell only when the player is
+    /// hosted in the sidebar AND not torn off into its own window.
+    /// </summary>
+    public bool IsSidebarPlayerVisibleInShell =>
+        PlayerLocation == PlayerLocation.Sidebar && !Docking.IsPlayerDetached;
 
     [ObservableProperty]
     private bool _sidebarPlayerCollapsed;
@@ -1093,6 +1133,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     partial void OnSidebarDisplayModeChanged(SidebarDisplayMode value)
     {
         _appModel.SidebarDisplayMode = value;
+
+        // The sidebar player widget can't render meaningfully in Compact (icon
+        // rail) or Minimal (slide-in) modes — there's no width for it. If the
+        // user collapses the sidebar while the player is docked there, auto-
+        // demote it back to the bottom bar so the player stays visible.
+        if (value != SidebarDisplayMode.Expanded && PlayerLocation == PlayerLocation.Sidebar)
+        {
+            PlayerLocation = PlayerLocation.Bottom;
+        }
     }
 
     partial void OnIsSidebarPaneOpenChanged(bool value)
@@ -1109,6 +1158,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _appModel.IsRightPanelOpen = value;
         WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(value, RightPanelMode));
+        OnPropertyChanged(nameof(IsRightPanelVisibleInShell));
     }
 
     partial void OnRightPanelModeChanged(RightPanelMode value)
@@ -1121,6 +1171,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     partial void OnPlayerLocationChanged(PlayerLocation value)
     {
         _appModel.PlayerLocation = value;
+
+        // Moving the player INTO the sidebar — make sure the sidebar is in a
+        // mode that can host it. Compact rail and Minimal flyout don't have
+        // room. Auto-promote to Expanded; the existing SidebarWidth setting
+        // is the "last known width" and the visual states use it via
+        // OpenPaneLength → PaneColumnDefinition.Width.
+        if (value == PlayerLocation.Sidebar && SidebarDisplayMode != SidebarDisplayMode.Expanded)
+        {
+            SidebarDisplayMode = SidebarDisplayMode.Expanded;
+        }
+
+        OnPropertyChanged(nameof(IsSidebarPlayerVisibleInShell));
     }
 
     partial void OnSidebarPlayerCollapsedChanged(bool value)

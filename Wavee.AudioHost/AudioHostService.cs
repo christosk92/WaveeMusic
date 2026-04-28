@@ -7,6 +7,7 @@ using Wavee.AudioHost.Audio.Decoders;
 using Wavee.AudioHost.Audio.Processors;
 using Wavee.AudioHost.Audio.Sinks;
 using Wavee.AudioHost.Audio.Streaming;
+using Wavee.AudioHost.PlayPlay;
 using Wavee.Playback.Contracts;
 
 namespace Wavee.AudioHost;
@@ -42,6 +43,11 @@ internal sealed class AudioHostService : IAsyncDisposable
     private WindowsAudioDeviceWatcher? _deviceWatcher;
     private Timer? _deviceRefreshDebounceTimer;
     private readonly object _deviceRefreshLock = new();
+
+    // PlayPlay AES-key derivation (lazy — only constructed on first request).
+    // Derivations are serialized through the pipe message loop so a single
+    // instance is fine without extra locking.
+    private PlayPlayKeyEmulator? _playPlayEmu;
 
     public AudioHostService(string pipeName, ILogger logger)
     {
@@ -432,6 +438,45 @@ internal sealed class AudioHostService : IAsyncDisposable
                 await SendOk(msg.Id, ct);
                 break;
             }
+            case IpcMessageTypes.DerivePlayPlayKey:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<DerivePlayPlayKeyCommand>(msg);
+                if (cmd is null)
+                {
+                    await SendCommandResult(msg.Id, success: false,
+                        errorMessage: "DerivePlayPlayKey payload missing", ct);
+                    break;
+                }
+
+                try
+                {
+                    _playPlayEmu ??= new PlayPlayKeyEmulator(cmd.SpotifyDllPath, _logger);
+
+                    var aes = _playPlayEmu.DeriveAesKey(
+                        Convert.FromHexString(cmd.ObfuscatedKeyHex),
+                        Convert.FromHexString(cmd.ContentIdHex));
+
+                    var resultJson = IpcPayloadHelper.SerializeToUtf8(new DerivePlayPlayKeyResult
+                    {
+                        AesKeyHex = Convert.ToHexString(aes).ToLowerInvariant()
+                    });
+                    using var resultDoc = System.Text.Json.JsonDocument.Parse(resultJson);
+                    await _transport!.SendAsync(IpcMessageTypes.CommandResult,
+                        IpcPayloadHelper.SerializeToUtf8(new CommandResultMessage
+                        {
+                            RequestId = msg.Id,
+                            Success = true,
+                            Result = resultDoc.RootElement.Clone()
+                        }), ct: ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "PlayPlay derivation failed");
+                    await SendCommandResult(msg.Id, success: false,
+                        errorMessage: $"playplay: {ex.Message}", ct);
+                }
+                break;
+            }
             case IpcMessageTypes.Shutdown:
                 _logger.LogInformation("Shutdown requested by UI process");
                 await _cts.CancelAsync();
@@ -662,6 +707,10 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         if (_transport != null)
             await _transport.DisposeAsync();
+
+        // Tear down the PlayPlay emulator (removes the vectored exception
+        // handler and restores the patched int3 byte) before exiting.
+        _playPlayEmu?.Dispose();
 
         _cts.Dispose();
     }

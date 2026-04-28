@@ -954,6 +954,9 @@ public sealed partial class ContentCard : UserControl
             case "user" when uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
                 Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
                 return true;
+            case "user":
+                Helpers.Navigation.NavigationHelpers.OpenProfile(param, title, openInNewTab);
+                return true;
         }
 
         return false;

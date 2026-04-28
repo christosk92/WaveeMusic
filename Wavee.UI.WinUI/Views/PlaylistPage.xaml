@@ -80,11 +80,13 @@
                  Mirrors the post-load album-style layout below: cover up top,
                  title block, owner-row block, stats line, then the 5-button
                  action row. Left-anchored so the shimmer doesn't visually
-                 reflow into a left-aligned panel when content lands. -->
+                 reflow into a left-aligned panel when content lands.
+                 Visibility / opacity is now driven from code-behind so the
+                 shimmer→content swap is a true crossfade — the previous hard
+                 cut via BoolToVisibilityConverter snapped distractingly. -->
             <StackPanel x:Name="ShimmerContainer" Grid.Column="0" Spacing="14"
                         HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                        Padding="32,24,16,24"
-                        Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        Padding="32,24,16,24">
                 <controls:Shimmer Height="220" CornerRadius="8" HorizontalAlignment="Stretch"/>
                 <controls:Shimmer Width="220" Height="22" HorizontalAlignment="Left"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -113,8 +115,7 @@
                         HorizontalScrollMode="Disabled"
                         HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollMode="Auto"
-                        VerticalScrollBarVisibility="Auto"
-                        Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="WidePlaylistPanel"
                         Padding="16,20,8,20" Spacing="14" HorizontalAlignment="Stretch"
                         VerticalAlignment="Top">
@@ -199,11 +200,13 @@
                                       Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                 </Grid>
 
-                <!-- 3. Owner row — small avatar + linked name. PersonPicture handles
-                     image / initials / glyph fallback. No Click handler wired (the
-                     existing implementation didn't navigate either; hyperlink stays
-                     for visual affordance + future profile-navigation hook). -->
+                <!-- 3. Owner row — small avatar + linked name. Clicking the row
+                     opens the owner's profile (ProfilePage). PersonPicture handles
+                     image / initials / glyph fallback; HyperlinkButton's Command
+                     binds to PlaylistViewModel.OpenOwnerProfileCommand which is
+                     a no-op when OwnerId is missing. -->
                 <HyperlinkButton Padding="0"
+                                 Command="{x:Bind ViewModel.OpenOwnerProfileCommand}"
                                  Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <PersonPicture Width="24" Height="24"

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<winuiex:WindowEx
+    x:Class="Wavee.UI.WinUI.Floating.PlayerFloatingWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:winuiex="using:WinUIEx"
+    xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Wavee — Player"
+    MinWidth="280"
+    MinHeight="380"
+    PersistenceId="WaveePlayerFloating">
+
+    <winuiex:WindowEx.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </winuiex:WindowEx.SystemBackdrop>
+
+    <!-- Compact (vertical card) and Expanded (Apple-Music 2-column) views are
+         siblings in RootGrid. The TransitionHelper resource morphs matched-Id
+         elements between them on expand/collapse — Source = CompactHost,
+         Target = ExpandedHost (wired in code-behind). Same pattern as
+         ArtistPage.xaml's hero → shy-header transition.
+         CompactHost is capped (MaxWidth) so resizing the window doesn't blow
+         up the small layout — it just sits centered while ExpandedHost grows
+         around it during the morph. -->
+    <Grid x:Name="RootGrid">
+
+        <Grid.Resources>
+            <transitions:TransitionHelper x:Key="PlayerExpandTransition"
+                                          Duration="0:0:0.36"
+                                          ReverseDuration="0:0:0.30"
+                                          DefaultEasingMode="EaseInOut"
+                                          SourceToggleMethod="ByVisibility"
+                                          TargetToggleMethod="ByVisibility"
+                                          IndependentElementShowDuration="0:0:0.20"
+                                          IndependentElementShowDelay="0:0:0.12"
+                                          IndependentElementHideDuration="0:0:0.14"
+                                          IsHitTestVisibleWhenAnimating="False">
+                <transitions:TransitionConfig Id="albumArt" ScaleMode="Scale"/>
+                <transitions:TransitionConfig Id="trackTitle" ScaleMode="Scale"/>
+                <transitions:TransitionConfig Id="artistMetadata" ScaleMode="Scale"/>
+            </transitions:TransitionHelper>
+        </Grid.Resources>
+
+        <!-- Compact: vertical mini player. MaxWidth keeps the layout from
+             blowing up when the window is large (during/after expand). -->
+        <ScrollViewer
+            x:Name="CompactHost"
+            MaxWidth="380"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Stretch"
+            VerticalScrollBarVisibility="Auto"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollMode="Auto"
+            Padding="0,32,0,0">
+            <sidebarplayer:SidebarPlayerWidget
+                x:Name="PlayerHost"
+                VerticalAlignment="Top" />
+        </ScrollViewer>
+
+        <!-- Expanded: 2-column now-playing layout. Hidden until first expand. -->
+        <sidebarplayer:ExpandedPlayerView
+            x:Name="ExpandedHost"
+            Visibility="Collapsed" />
+
+        <!-- Title-bar drag region overlay (transparent). -->
+        <Border x:Name="DragRegion"
+                Height="32"
+                VerticalAlignment="Top"
+                Background="Transparent" />
+
+        <!-- Expand / collapse chevron, sits left of the OS caption buttons. -->
+        <Button x:Name="ExpandButton"
+                Height="28"
+                Width="36"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,2,142,0"
+                Padding="0"
+                Background="Transparent"
+                BorderThickness="0"
+                CornerRadius="4"
+                Click="ExpandButton_Click"
+                ToolTipService.ToolTip="Expand to full player">
+            <FontIcon x:Name="ExpandGlyph" Glyph="&#xE73F;" FontSize="12" />
+        </Button>
+    </Grid>
+</winuiex:WindowEx>

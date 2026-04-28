@@ -31,6 +31,17 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
     /// <summary>Forces the cache to be stale so next access fetches fresh data.</summary>
     public void Invalidate() => _lastFetchTime = DateTimeOffset.MinValue;
 
+    /// <summary>
+    /// Drops the cached snapshot entirely. Used when the signed-in user changes —
+    /// <see cref="Invalidate"/> only ages the timestamp, leaving the previous user's
+    /// data accessible via <see cref="GetCached"/> until the next fetch lands.
+    /// </summary>
+    public void Clear()
+    {
+        _cached = null;
+        _lastFetchTime = DateTimeOffset.MinValue;
+    }
+
     /// <summary>Suspends background refresh (e.g. during active audio playback).</summary>
     public void SuspendRefresh() => _suspended = true;
 

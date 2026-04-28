@@ -39,4 +39,6 @@
     <ProjectReference Include="..\Wavee\Wavee.csproj" />
   </ItemGroup>
 
+  <!-- PlayPlay tests live in Wavee.PlayPlay.Tests (x64-only, isolated). -->
+
 </Project>

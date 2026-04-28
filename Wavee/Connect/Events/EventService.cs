@@ -1,132 +1,231 @@
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Security.Cryptography;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Utilities;
+using Wavee.Protocol.EventSender;
 
 namespace Wavee.Connect.Events;
 
 /// <summary>
-/// Service for sending playback events to Spotify's event-service.
-/// Events are sent asynchronously in the background to not block playback.
+/// Posts playback events to Spotify's gabo-receiver-service. Each
+/// <see cref="IPlaybackEvent"/> is wrapped in an <see cref="EventEnvelope"/>
+/// (with the standard context fragments), batched into a
+/// <see cref="PublishEventsRequest"/>, and POSTed via
+/// <see cref="SpClient.PostGaboEventAsync"/>.
 /// </summary>
 /// <remarks>
-/// Based on librespot-java's EventService.
-/// Events are sent to hm://event-service/v1/events via Mercury,
-/// or via HTTP at spclient.wg.spotify.com/event-service/v1/events.
+/// <para>
+/// This is the surface that drives Spotify's Recently Played and play counts.
+/// The legacy librespot-java event-service path (Mercury <c>hm://event-service/v1/events</c>
+/// AND HTTPS <c>spclient.../event-service/v1/events</c>) both 404 — gabo is the
+/// only working transport.
+/// </para>
+/// <para>
+/// v1 ships one envelope per POST (no client-side batching). The desktop
+/// client batches ~30 s of events; we can layer that on later if request
+/// volume becomes an issue.
+/// </para>
 /// </remarks>
 public sealed class EventService : IAsyncDisposable
 {
     private readonly SpClient _spClient;
+    private readonly GaboContext _ctx;
+    private readonly byte[] _sequenceId;
+    private readonly Dictionary<string, long> _sequenceCounters = new();
+    private readonly object _seqLock = new();
     private readonly ILogger? _logger;
-    private readonly AsyncWorker<EventBuilder> _asyncWorker;
+    private readonly AsyncWorker<IPlaybackEvent> _asyncWorker;
     private readonly Subject<IPlaybackEvent> _eventSubject = new();
     private bool _disposed;
 
     /// <summary>
-    /// Observable stream of all playback events.
-    /// Local subscribers (like LibraryPlayRecorder) can use this to react to playback events.
+    /// In-process subscribers (e.g. a future LibraryPlayRecorder) can listen
+    /// to every published event without needing to mirror the network path.
     /// </summary>
     public IObservable<IPlaybackEvent> Events => _eventSubject.AsObservable();
 
     /// <summary>
-    /// Creates a new EventService.
+    /// Creates the EventService. <paramref name="installationId"/> should be
+    /// stable across runs (16-byte random per install). For now Wavee derives
+    /// it from the device id — same effect for play history attribution.
     /// </summary>
-    /// <param name="spClient">SpClient for HTTP requests.</param>
-    /// <param name="logger">Optional logger.</param>
-    public EventService(SpClient spClient, ILogger? logger = null)
+    public EventService(
+        SpClient spClient,
+        string deviceIdHex,
+        string clientIdHex,
+        ReadOnlySpan<byte> installationId,
+        string osVersion,
+        string deviceManufacturer,
+        string deviceModel,
+        string osLevelDeviceId,
+        ReadOnlySpan<byte> appSessionId,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(spClient);
+        ArgumentException.ThrowIfNullOrEmpty(deviceIdHex);
+        ArgumentException.ThrowIfNullOrEmpty(clientIdHex);
 
         _spClient = spClient;
         _logger = logger;
 
-        _asyncWorker = new AsyncWorker<EventBuilder>(
+        _ctx = new GaboContext
+        {
+            ClientIdBytes = HexOrEmpty(clientIdHex),
+            InstallationIdBytes = installationId.ToArray(),
+            ClientContextIdBytes = RandomNumberGenerator.GetBytes(20),
+            AppVersionString = "1.2.88.483",
+            AppVersionCode = 128800483L,
+            AppSessionIdBytes = appSessionId.ToArray(),
+            PlatformType = "windows",
+            // Match desktop's context_device_desktop verbatim — server-side
+            // anti-fraud checks gate batches on these strings. Fake values
+            // ("Wavee" / "Wavee Desktop") cause every event in the batch to
+            // get rejected with reason=3.
+            DeviceManufacturer = deviceManufacturer,
+            DeviceModel = deviceModel,
+            DeviceIdString = osLevelDeviceId,
+            OsVersion = osVersion,
+        };
+
+        _sequenceId = RandomNumberGenerator.GetBytes(20);
+
+        _asyncWorker = new AsyncWorker<IPlaybackEvent>(
             "EventService",
             SendEventInternalAsync,
             logger);
     }
 
     /// <summary>
-    /// Sends a playback event to Spotify.
-    /// The event is queued and sent asynchronously.
-    /// Also publishes to local subscribers via the Events observable.
+    /// Queues an event for asynchronous send. Local subscribers see it
+    /// immediately via the <see cref="Events"/> observable; the gabo POST
+    /// happens on the worker thread.
     /// </summary>
-    /// <param name="playbackEvent">Event to send.</param>
     public void SendEvent(IPlaybackEvent playbackEvent)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(playbackEvent);
 
-        // Publish to local subscribers first (for library recording, etc.)
         _eventSubject.OnNext(playbackEvent);
 
-        try
+        if (!_asyncWorker.TrySubmit(playbackEvent))
         {
-            var builder = playbackEvent.Build();
-            if (!_asyncWorker.TrySubmit(builder))
-            {
-                _logger?.LogWarning("Event queue full, dropping event: {EventType}", playbackEvent.GetType().Name);
-            }
-            else
-            {
-                _logger?.LogDebug("Event queued: {EventType}", playbackEvent.GetType().Name);
-            }
+            _logger?.LogWarning("Event queue full, dropping event: {EventType}",
+                playbackEvent.GetType().Name);
         }
-        catch (Exception ex)
+        else
         {
-            _logger?.LogError(ex, "Failed to build event: {EventType}", playbackEvent.GetType().Name);
+            _logger?.LogDebug("Event queued: {EventType}", playbackEvent.GetType().Name);
         }
     }
 
     /// <summary>
-    /// Sends an event builder directly.
+    /// Dispatches a group of events as ONE gabo POST. Mirrors the desktop
+    /// client's batching: a single <see cref="PublishEventsRequest"/> carries
+    /// every event in a per-track-start or per-track-end group.
     /// </summary>
-    public void SendEvent(EventBuilder builder)
+    public void SendEventBatch(IReadOnlyList<IPlaybackEvent> events)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _asyncWorker.TrySubmit(builder);
+        ArgumentNullException.ThrowIfNull(events);
+        if (events.Count == 0) return;
+
+        foreach (var ev in events) _eventSubject.OnNext(ev);
+
+        var batch = new EventBatch(events);
+        if (!_asyncWorker.TrySubmit(batch))
+        {
+            _logger?.LogWarning("Event queue full, dropping batch of {Count}", events.Count);
+        }
+        else
+        {
+            _logger?.LogDebug("Event batch queued: {Count} events", events.Count);
+        }
     }
 
-    private async ValueTask SendEventInternalAsync(EventBuilder builder)
+    private async ValueTask SendEventInternalAsync(IPlaybackEvent playbackEvent)
     {
         try
         {
-            var body = builder.ToArray();
-            var debugString = EventBuilder.ToDebugString(body);
+            var request = new PublishEventsRequest { SuppressPersist = false };
+            int eventCount;
 
-            _logger?.LogDebug("Sending event: {Event}", debugString);
+            if (playbackEvent is EventBatch batch)
+            {
+                foreach (var ev in batch.Events)
+                {
+                    var seq = NextSequenceNumber(ev.GetType().Name);
+                    request.Event.Add(ev.Build(_ctx, _sequenceId, seq));
+                }
+                eventCount = batch.Events.Count;
+            }
+            else
+            {
+                var seq = NextSequenceNumber(playbackEvent.GetType().Name);
+                request.Event.Add(playbackEvent.Build(_ctx, _sequenceId, seq));
+                eventCount = 1;
+            }
 
-            await _spClient.PostEventAsync(body);
+            var bytes = request.ToByteArray();
+            await _spClient.PostGaboEventAsync(bytes);
 
-            _logger?.LogDebug("Event sent successfully");
+            _logger?.LogDebug("gabo POST: {Count} envelope(s), {Bytes} bytes",
+                eventCount, bytes.Length);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to send event: {Event}", builder);
+            _logger?.LogWarning(ex, "Failed to send gabo POST: {EventType}",
+                playbackEvent.GetType().Name);
         }
+    }
+
+    /// <summary>
+    /// Marker carrier for batch dispatch through <see cref="AsyncWorker{T}"/>.
+    /// Never materialized into an envelope on its own; <see cref="SendEventInternalAsync"/>
+    /// type-checks for it and unwraps the contained events.
+    /// </summary>
+    private sealed record EventBatch(IReadOnlyList<IPlaybackEvent> Events) : IPlaybackEvent
+    {
+        public EventEnvelope Build(GaboContext ctx, byte[] seqId, long seqNum)
+            => throw new InvalidOperationException("EventBatch.Build called directly");
+    }
+
+    private long NextSequenceNumber(string eventName)
+    {
+        lock (_seqLock)
+        {
+            _sequenceCounters.TryGetValue(eventName, out var current);
+            current++;
+            _sequenceCounters[eventName] = current;
+            return current;
+        }
+    }
+
+    private static byte[] HexOrEmpty(string hex)
+    {
+        try { return Convert.FromHexString(hex); }
+        catch { return Array.Empty<byte>(); }
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-
+        if (_disposed) return;
         _disposed = true;
 
-        // Complete and dispose the event subject
         _eventSubject.OnCompleted();
         _eventSubject.Dispose();
 
-        // Wait for pending events to be sent (with timeout)
         try
         {
             await _asyncWorker.DisposeAsync();
-            _logger?.LogDebug("EventService disposed, all pending events sent");
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Error during EventService disposal");
+            _logger?.LogWarning(ex, "EventService disposal hiccup");
         }
     }
 }
+

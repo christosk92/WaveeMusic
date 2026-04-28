@@ -274,6 +274,11 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 data       BLOB NOT NULL,
                 cached_at  INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS playplay_obfuscated_keys (
+                file_id        TEXT PRIMARY KEY NOT NULL,
+                obf_key_bytes  BLOB NOT NULL,
+                cached_at      INTEGER NOT NULL
+            );
             """;
         cmd.ExecuteNonQuery();
     }
@@ -2965,6 +2970,41 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
     }
 
+    public async Task WipeAllUserDataAsync(CancellationToken cancellationToken = default)
+    {
+        _hotCache.Clear();
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var tx = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            using var cmd = connection.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                DELETE FROM extension_cache;
+                DELETE FROM localized_extension_cache;
+                DELETE FROM entities;
+                DELETE FROM localized_entities;
+                DELETE FROM spotify_library;
+                DELETE FROM sync_state;
+                DELETE FROM spotify_playlists;
+                DELETE FROM rootlist_cache;
+                DELETE FROM library_outbox;
+                """;
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+
+            _logger?.LogInformation("Wiped all user-bound tables (entities, library, sync_state, playlists, rootlist, outbox)");
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     #endregion
 
     #region Private Helpers
@@ -3164,6 +3204,48 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("@file_id", fileIdHex);
             cmd.Parameters.AddWithValue("@track_uri", (object?)trackUri ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@key", keyBytes);
+            cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]?> GetPersistedPlayPlayObfuscatedKeyAsync(string fileIdHex, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT obf_key_bytes FROM playplay_obfuscated_keys WHERE file_id = @file_id";
+        cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct) && !reader.IsDBNull(0))
+            return (byte[])reader.GetValue(0);
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task SetPersistedPlayPlayObfuscatedKeyAsync(string fileIdHex, byte[] obfuscatedKey, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO playplay_obfuscated_keys (file_id, obf_key_bytes, cached_at)
+                VALUES (@file_id, @key, @cached)
+                """;
+            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+            cmd.Parameters.AddWithValue("@key", obfuscatedKey);
             cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
             await cmd.ExecuteNonQueryAsync(ct);

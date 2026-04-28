@@ -10,6 +10,7 @@ using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Http.Presence;
 using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
+using Wavee.Protocol.Playplay;
 using Wavee.Protocol.Storage;
 
 namespace Wavee.Core.Http;
@@ -34,7 +35,13 @@ public sealed class SpClient : ISpClient
     // never runs the signal pipeline. Keep these in one place so any future
     // endpoint that needs the same identity can reuse them.
     private const string SpotifyAppVersion = "128800483";
-    private const string SpotifyClientUserAgent = "Spotify/128800483 Win32_ARM64/Windows 10 (10.0.26200; ARM)";
+    // Always identify as x86_64 — Spotify ships an x64 binary even on ARM
+    // Windows hosts (runs under x64 emulation), so Spotify's server allowlist
+    // for App-Platform / play-history attribution only knows Win32_x86_64.
+    // Any other value (e.g. Win32_ARM64) routes the request to a non-attribut-
+    // ing read-only handler. See SpotifyClientIdentity.GetUserAgent for the
+    // matching OS descriptor that uses x64[native:ARM] on ARM hosts.
+    private static readonly string SpotifyClientUserAgent = SpotifyClientIdentity.GetUserAgent();
 
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
@@ -68,6 +75,95 @@ public sealed class SpClient : ISpClient
         // Normalize base URL: remove port suffix and ensure https:// prefix
         var hostOnly = baseUrl.Split(':')[0];
         _baseUrl = $"https://{hostOnly}";
+    }
+
+    /// <summary>
+    /// POSTs a batched playback-event payload to gabo-receiver-service. The
+    /// payload is a serialized <c>spotify.event_sender.PublishEventsRequest</c>;
+    /// inside it lives one or more <c>EventEnvelope</c>s carrying RawCoreStream /
+    /// AudioSessionEvent / etc.
+    /// </summary>
+    /// <remarks>
+    /// This is what populates Spotify's Recently Played + play counts. The
+    /// older <c>event-service/v1/events</c> path (HTTPS and Mercury both) is
+    /// dead — Spotify routes play history exclusively through gabo now.
+    /// Headers mirror the desktop client byte-for-byte; missing client-token /
+    /// App-Platform / Spotify-App-Version is enough for Spotify to route the
+    /// request to a passive handler that 200-OKs but never ingests.
+    /// </remarks>
+    /// <param name="body">Serialized PublishEventsRequest bytes.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task PostGaboEventAsync(
+        byte[] body,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/gabo-receiver-service/v3/events/";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.AcceptLanguage.ParseAdd("en");
+        request.Headers.TryAddWithoutValidation("App-Platform", "Win32_x86_64");
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.TryAddWithoutValidation("Origin", _baseUrl);
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("deflate"));
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("br"));
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var ctok = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(ctok))
+                    request.Headers.TryAddWithoutValidation("client-token", ctok);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "client-token fetch failed for gabo POST — continuing without");
+            }
+        }
+
+        // Desktop sends Content-Encoding: gzip on every gabo POST (verified in
+        // 032_c.txt headers from the SAZ capture). Match the wire to avoid
+        // any gzip-only validation path on Spotify's ingestion side.
+        byte[] compressed;
+        using (var ms = new MemoryStream())
+        {
+            using (var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+                await gz.WriteAsync(body, cancellationToken);
+            compressed = ms.ToArray();
+        }
+
+        var content = new ByteArrayContent(compressed);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+        content.Headers.ContentEncoding.Add("gzip");
+        request.Content = content;
+
+        try
+        {
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger?.LogWarning("gabo-receiver returned {Status} for {Bytes}-byte body ({Compressed} gzipped)",
+                    response.StatusCode, body.Length, compressed.Length);
+            }
+            else
+            {
+                _logger?.LogDebug("gabo event delivered: {Bytes} bytes ({Compressed} gzipped), status={Status}",
+                    body.Length, compressed.Length, response.StatusCode);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger?.LogWarning(ex, "gabo POST failed");
+        }
     }
 
     /// <summary>
@@ -196,6 +292,132 @@ public sealed class SpClient : ISpClient
         return response;
     }
 
+    // PlayPlay is Spotify property. 16-byte token required by the gateway.
+    private static readonly byte[] PlayPlayToken =
+    [
+        0x02, 0x7B, 0x23, 0xA2, 0x44, 0x2C, 0x86, 0xCA,
+        0x4B, 0x00, 0x4D, 0xDF, 0xEF, 0x29, 0x19, 0x54,
+    ];
+
+    /// <inheritdoc />
+    public async Task<byte[]> ResolvePlayPlayObfuscatedKeyAsync(
+        FileId fileId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!fileId.IsValid)
+            throw new ArgumentException("FileId is not valid", nameof(fileId));
+
+        var url = $"{_baseUrl}/playplay/v1/key/{fileId.ToBase16()}";
+
+        // 403 is a soft failure; brief exponential backoff caps total wait at ~7s.
+        const int playPlayMaxAttempts = 3;
+        Exception? lastError = null;
+
+        for (int attempt = 0; attempt < playPlayMaxAttempts; attempt++)
+        {
+            if (attempt > 0)
+            {
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+            var body = new PlayPlayLicenseRequest
+            {
+                Version = 5,
+                Token = ByteString.CopyFrom(PlayPlayToken),
+                Interactivity = Interactivity.Interactive,
+                ContentType = ContentType.AudioTrack,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            };
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-protobuf"));
+
+            // Use the first-party desktop client identity for proper attribution.
+            request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+            request.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+            request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+
+            if (_clientTokenManager != null)
+            {
+                try
+                {
+                    var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                    if (!string.IsNullOrEmpty(clientToken))
+                        request.Headers.Add("client-token", clientToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to get client token, continuing without");
+                }
+            }
+
+            request.Content = new ByteArrayContent(body.ToByteArray());
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+
+            var response = await SendWithRetryAsync(request, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                lastError = new SpClientException(
+                    SpClientFailureReason.Unauthorized,
+                    $"PlayPlay license forbidden for {fileId.ToBase16()}");
+                _logger?.LogWarning(
+                    "PlayPlay license 403 for {FileId} (attempt {Attempt}/{Max})",
+                    fileId.ToBase16(), attempt + 1, playPlayMaxAttempts);
+                continue;
+            }
+
+            switch (response.StatusCode)
+            {
+                case HttpStatusCode.NotFound:
+                    throw new SpClientException(
+                        SpClientFailureReason.NotFound,
+                        $"PlayPlay license not found for {fileId.ToBase16()}");
+                case HttpStatusCode.Unauthorized:
+                    throw new SpClientException(
+                        SpClientFailureReason.Unauthorized,
+                        "Access token invalid or expired");
+                case HttpStatusCode.TooManyRequests:
+                    throw new SpClientException(
+                        SpClientFailureReason.RateLimited,
+                        "Rate limit exceeded");
+            }
+
+            if ((int)response.StatusCode >= 500)
+            {
+                throw new SpClientException(
+                    SpClientFailureReason.ServerError,
+                    $"Server error: {response.StatusCode}");
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            var parsed = PlayPlayLicenseResponse.Parser.ParseFrom(responseBytes);
+
+            if (parsed.ObfuscatedKey is null || parsed.ObfuscatedKey.Length != 16)
+            {
+                throw new SpClientException(
+                    SpClientFailureReason.InvalidResponse,
+                    $"PlayPlay response had unexpected obfuscated_key length: {parsed.ObfuscatedKey?.Length ?? 0}");
+            }
+
+            _logger?.LogDebug(
+                "Resolved PlayPlay obfuscated key for {FileId} (attempts={Attempts})",
+                fileId.ToBase16(), attempt + 1);
+
+            return parsed.ObfuscatedKey.ToByteArray();
+        }
+
+        throw lastError ?? new SpClientException(
+            SpClientFailureReason.Unauthorized,
+            $"PlayPlay license forbidden for {fileId.ToBase16()}");
+    }
+
     /// <summary>
     /// Announces device availability via Spotify Connect.
     /// </summary>
@@ -224,16 +446,54 @@ public sealed class SpClient : ISpClient
 
         var url = $"{_baseUrl}/connect-state/v1/devices/{deviceId}";
 
-        // Build request
+        // Build request — match the desktop client's wire envelope exactly so
+        // server-side handlers route us to the full play-history pipeline:
+        //   - Content-Type "application/protobuf" (no x- prefix)
+        //   - Body gzip-compressed and signaled via X-Transfer-Encoding (not
+        //     Content-Encoding — this is the non-standard header desktop uses)
+        //   - app-platform / spotify-app-version / desktop User-Agent / Origin
+        //   - client-token alongside the bearer token
         using var httpRequest = new HttpRequestMessage(HttpMethod.Put, url);
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
         httpRequest.Headers.Add("X-Spotify-Connection-Id", connectionId);
-        httpRequest.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        httpRequest.Headers.Add("X-Transfer-Encoding", "gzip");
+        httpRequest.Headers.Add("App-Platform", SpotifyClientIdentity.AppPlatform);
+        httpRequest.Headers.Add("Spotify-App-Version", SpotifyClientIdentity.AppVersionHeader);
+        httpRequest.Headers.UserAgent.ParseAdd(SpotifyClientIdentity.GetUserAgent());
+        httpRequest.Headers.AcceptLanguage.ParseAdd(GetEffectiveLocale() ?? "en");
+        httpRequest.Headers.Add("Origin", _baseUrl);
+        httpRequest.Headers.Add("Sec-Fetch-Site", "same-origin");
+        httpRequest.Headers.Add("Sec-Fetch-Mode", "no-cors");
+        httpRequest.Headers.Add("Sec-Fetch-Dest", "empty");
 
-        // Serialize protobuf to byte array
+        // client-token header — tied to the same identity the access token
+        // belongs to. Best-effort: if it fails, the bearer alone is enough for
+        // the PUT to succeed at the wire level (still HTTP 200), but pairing
+        // both matches what desktop emits.
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    httpRequest.Headers.Add("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "PutConnectState: failed to obtain client-token, continuing without");
+            }
+        }
+
+        // Serialize + gzip the protobuf body
         var protobufBytes = request.ToByteArray();
-        httpRequest.Content = new ByteArrayContent(protobufBytes);
-        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+        using var gzippedBody = new MemoryStream();
+        using (var gz = new System.IO.Compression.GZipStream(gzippedBody, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+        {
+            gz.Write(protobufBytes, 0, protobufBytes.Length);
+        }
+        var gzippedBytes = gzippedBody.ToArray();
+        httpRequest.Content = new ByteArrayContent(gzippedBytes);
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/protobuf");
 
         // Send request with retry logic
         var response = await SendWithRetryAsync(httpRequest, cancellationToken);
@@ -341,62 +601,6 @@ public sealed class SpClient : ISpClient
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Posts a playback event to Spotify's event-service.
-    /// </summary>
-    /// <remarks>
-    /// Events are used for playback reporting (artist payouts).
-    /// The event body uses tab-delimited (0x09) fields.
-    /// </remarks>
-    /// <param name="eventBody">Event body bytes (tab-delimited fields).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
-    public async Task PostEventAsync(
-        byte[] eventBody,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(eventBody);
-
-        // Get access token (auto-refreshes if needed)
-        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
-
-        var url = $"{_baseUrl}/event-service/v1/events";
-
-        // Build request matching librespot-java's format
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
-        var locale = GetEffectiveLocale();
-        if (!string.IsNullOrEmpty(locale))
-        {
-            request.Headers.AcceptLanguage.ParseAdd(locale);
-        }
-        request.Headers.Add("X-ClientTimeStamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
-        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
-
-        request.Content = new ByteArrayContent(eventBody);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-
-        // Send request (don't retry for events - they're fire-and-forget)
-        try
-        {
-            var response = await _httpClient.SendAsync(request, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger?.LogWarning("Event-service returned {StatusCode}", response.StatusCode);
-            }
-            else
-            {
-                _logger?.LogDebug("Event posted successfully to event-service");
-            }
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger?.LogWarning(ex, "Failed to post event to event-service");
-            // Don't throw - events are fire-and-forget
-        }
     }
 
     #region Context Resolution
@@ -1318,6 +1522,41 @@ public sealed class SpClient : ISpClient
         var json = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync(json, SpotifyUserProfileJsonContext.Default.SpotifyFollowingResponse, cancellationToken)
             ?? throw new SpClientException(SpClientFailureReason.InvalidResponse, "Empty following response");
+    }
+
+    /// <inheritdoc />
+    public Task<bool> FollowUserAsync(string usernameOrUri, CancellationToken cancellationToken = default)
+        => SetUserFollowAsync(usernameOrUri, follow: true, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> UnfollowUserAsync(string usernameOrUri, CancellationToken cancellationToken = default)
+        => SetUserFollowAsync(usernameOrUri, follow: false, cancellationToken);
+
+    private async Task<bool> SetUserFollowAsync(string usernameOrUri, bool follow, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(usernameOrUri);
+
+        var id = usernameOrUri.StartsWith("spotify:user:", StringComparison.Ordinal)
+            ? usernameOrUri["spotify:user:".Length..]
+            : usernameOrUri;
+        if (string.IsNullOrWhiteSpace(id)) return false;
+
+        var url = $"https://api.spotify.com/v1/me/following?type=user&ids={Uri.EscapeDataString(id)}";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(follow ? HttpMethod.Put : HttpMethod.Delete, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Content = new StringContent(string.Empty);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger?.LogWarning("{Verb} /me/following user={Id} failed: {Status} {Body}",
+                follow ? "PUT" : "DELETE", id, response.StatusCode, body);
+            return false;
+        }
+        return true;
     }
 
     /// <inheritdoc />

@@ -148,6 +148,32 @@ Areas where help is needed:
 - Platform-specific features
 - Documentation and examples
 
+## What Wavee sends to Spotify
+
+Wavee posts the bare minimum set of playback events Spotify's backend needs to credit your plays toward Recently Played, play counts, and the "made for you" recommendations you already get from any official client. Everything goes to `gabo-receiver-service/v3/events/` over HTTPS.
+
+**Events sent — playback only:**
+
+| Event | When | What |
+|---|---|---|
+| `RawCoreStream` | At the end of each track | Track URI, context URI, ms played, reason started/ended, audio format |
+| `RawCoreStreamSegment` | Per pause/resume/seek split inside a track | Same playback id + segment ms range |
+| `AudioSessionEvent` | When playback opens/seeks/closes | Session lifecycle markers |
+| `BoomboxPlaybackSession` | Once per track | Buffering / resolve / setup latencies + duration |
+| `Download`, `HeadFileDownload` | Per CDN fetch | File id, bytes, latency |
+| `CorePlaybackCommandCorrelation` | When a play command runs | Maps command id → playback id |
+| `ContentIntegrity` | Per track | Playback id + a flag stating we played in real-time (not ripping) |
+
+**Events Wavee deliberately does NOT send** (the desktop client sends these; we don't because none of them are required to make Recently Played work):
+
+- Ad pipeline (`AdEvent`, `AdRequestEvent`, `AdOpportunityEvent`, `AdSlotEvent`) — Premium-only client, no ads
+- UI interaction telemetry (`DesktopUIShellInteractionNonAuth`, `WindowSizeNonAuth`)
+- System / driver fingerprinting (`AudioDriverInfo`, `WasapiAudioDriverInfo`, `ModuleDebug`, `ConfigurationFetched`, `TimeMeasurement`, `ClientRuntimeDiag`)
+- Library / cache reports (`LocalFilesReport`, `CacheReport`, `OfflinePruneReport`, `CollectionEndpointUsage`)
+- Anything else from the 100+ event types defined in Spotify's binary
+
+The full list of events Wavee implements lives under `Wavee/Connect/Events/`. The bare envelope shape (and the anti-fraud-safe context fragments — manufacturer, OS version, machine SID, etc.) is documented in `Wavee/Connect/Events/GaboEnvelopeFactory.cs`.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

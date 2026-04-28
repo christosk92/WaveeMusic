@@ -33,11 +33,12 @@
 
         <!-- ── LOADING SKELETON ──────────────────────────────────────────────────
              Mirrors the two-column shape so the user perceives the layout
-             stabilising immediately. -->
+             stabilising immediately. Visibility / opacity is driven from
+             code-behind: ScheduleCrossfade fades shimmer→content over ~300ms
+             instead of the previous hard cut. -->
         <Grid x:Name="ShimmerContainer"
               Padding="40,32,40,40"
-              ColumnSpacing="24"
-              Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+              ColumnSpacing="24">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280"/>
                 <ColumnDefinition Width="*"/>
@@ -69,9 +70,11 @@
             </StackPanel>
         </Grid>
 
-        <!-- ── CONTENT ─────────────────────────────────────────────────────────── -->
-        <Grid x:Name="ContentContainer"
-              Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+        <!-- ── CONTENT ───────────────────────────────────────────────────────────
+             Composition opacity is set to 0 in the code-behind constructor;
+             ScheduleCrossfade fades it to 1 once IsLoading turns false (with
+             a Task.Yield + 16 ms wait so layout has time to settle first). -->
+        <Grid x:Name="ContentContainer">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>   <!-- Pre-release banner -->
                 <RowDefinition Height="*"/>      <!-- Two-column main area -->

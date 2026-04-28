@@ -10,5 +10,7 @@ public enum PlayerLocation
     /// <summary>Default. Player is the bottom-docked PlayerBar.</summary>
     Bottom,
     /// <summary>Player is the SidebarPlayerWidget at the top of the left sidebar pane.</summary>
-    Sidebar
+    Sidebar,
+    /// <summary>Player is detached into a floating top-level window (PlayerFloatingWindow).</summary>
+    Window
 }

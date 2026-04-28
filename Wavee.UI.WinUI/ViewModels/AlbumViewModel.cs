@@ -21,6 +21,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
@@ -202,7 +203,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool IsLoading
     {
         get => _isLoading;
-        set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+        set
+        {
+            var changed = _isLoading != value;
+            _logger?.LogDebug(
+                "[xfade][album-vm:{Id}] propset.isLoading old={Old} new={New} changed={Changed}",
+                XfadeLog.Tag(_albumId), _isLoading, value, changed);
+            this.RaiseAndSetIfChanged(ref _isLoading, value);
+        }
     }
 
     /// <summary>
@@ -535,6 +543,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void Initialize(string albumId)
     {
+        var branch = AlbumId != albumId ? "reset" : "same";
+        _logger?.LogDebug(
+            "[xfade][album-vm:{Id}] init incoming={Incoming} current={Current} branch={Branch}",
+            XfadeLog.Tag(albumId), XfadeLog.Tag(albumId), XfadeLog.Tag(AlbumId), branch);
         if (AlbumId != albumId)
         {
             _appliedDetailFor = null;
@@ -597,6 +609,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// </summary>
     public void Activate(string albumId)
     {
+        _logger?.LogDebug("[xfade][album-vm:{Id}] activate", XfadeLog.Tag(albumId));
         Initialize(albumId);
 
         _subscriptions?.Dispose();
@@ -642,22 +655,36 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)
     {
         if (AlbumId != expectedAlbumId)
+        {
+            _logger?.LogDebug(
+                "[xfade][album-vm:{Id}] state.skip expected={Expected} current={Current}",
+                XfadeLog.Tag(expectedAlbumId), XfadeLog.Tag(expectedAlbumId), XfadeLog.Tag(AlbumId));
             return;
+        }
 
         switch (state)
         {
             case EntityState<AlbumDetailResult>.Initial:
+                _logger?.LogDebug("[xfade][album-vm:{Id}] state.initial isLoadingPre={Pre}", XfadeLog.Tag(expectedAlbumId), IsLoading);
                 IsLoading = string.IsNullOrEmpty(AlbumImageUrl);
                 IsLoadingTracks = true;
                 break;
             case EntityState<AlbumDetailResult>.Loading loading:
+                _logger?.LogDebug(
+                    "[xfade][album-vm:{Id}] state.loading hasPrevious={HasPrev} hasImage={HasImage} isLoadingPre={Pre}",
+                    XfadeLog.Tag(expectedAlbumId), loading.Previous is not null, !string.IsNullOrEmpty(AlbumImageUrl), IsLoading);
                 IsLoading = loading.Previous is null && string.IsNullOrEmpty(AlbumImageUrl);
                 break;
             case EntityState<AlbumDetailResult>.Ready ready:
-                if (_appliedDetailFor != expectedAlbumId || ready.Freshness == Freshness.Fresh)
+                var willApply = _appliedDetailFor != expectedAlbumId || ready.Freshness == Freshness.Fresh;
+                _logger?.LogDebug(
+                    "[xfade][album-vm:{Id}] state.ready freshness={Freshness} appliedFor={AppliedFor} willApply={WillApply} isLoadingPre={Pre}",
+                    XfadeLog.Tag(expectedAlbumId), ready.Freshness, XfadeLog.Tag(_appliedDetailFor), willApply, IsLoading);
+                if (willApply)
                     _ = ApplyDetailAsync(ready.Value, expectedAlbumId);
                 break;
             case EntityState<AlbumDetailResult>.Error error:
+                _logger?.LogDebug("[xfade][album-vm:{Id}] state.error", XfadeLog.Tag(expectedAlbumId));
                 HasError = true;
                 ErrorMessage = error.Exception.Message;
                 IsLoading = false;

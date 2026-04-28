@@ -20,6 +20,12 @@ public interface ICacheService : IAsyncDisposable
     Task<byte[]?> GetAudioKeyAsync(string trackUri, FileId fileId, CancellationToken ct = default);
     Task SetAudioKeyAsync(string trackUri, FileId fileId, byte[] key, CancellationToken ct = default);
 
+    // PlayPlay obfuscated-key cache (keyed by fileId only). The obfuscated key
+    // is the spclient response — useless without the cipher, so it's safe to
+    // persist. Lets the fallback skip the HTTPS round-trip on cold start.
+    Task<byte[]?> GetPlayPlayObfuscatedKeyAsync(FileId fileId, CancellationToken ct = default);
+    Task SetPlayPlayObfuscatedKeyAsync(FileId fileId, byte[] obfuscatedKey, CancellationToken ct = default);
+
     // CDN URL operations (keyed by fileId, has TTL)
     Task<CdnCacheEntry?> GetCdnUrlAsync(FileId fileId, CancellationToken ct = default);
     Task SetCdnUrlAsync(FileId fileId, string url, TimeSpan ttl, CancellationToken ct = default);
@@ -323,6 +329,34 @@ public sealed class CacheService : ICacheService, ICleanableCache
             _logger?.LogDebug(ex, "Audio key persist to SQLite failed (in-memory cache still holds it)");
         }
         _logger?.LogTrace("Set audio key: {TrackUri}", trackUri);
+    }
+
+    public async Task<byte[]?> GetPlayPlayObfuscatedKeyAsync(FileId fileId, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        try
+        {
+            return await _database.GetPersistedPlayPlayObfuscatedKeyAsync(fileId.ToBase16(), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Obfuscated-key read from SQLite failed");
+            return null;
+        }
+    }
+
+    public async Task SetPlayPlayObfuscatedKeyAsync(FileId fileId, byte[] obfuscatedKey, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (obfuscatedKey.Length != 16) return;
+        try
+        {
+            await _database.SetPersistedPlayPlayObfuscatedKeyAsync(fileId.ToBase16(), obfuscatedKey, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Obfuscated-key persist to SQLite failed");
+        }
     }
 
     #endregion

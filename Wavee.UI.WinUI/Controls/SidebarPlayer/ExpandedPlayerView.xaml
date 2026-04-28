@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.SidebarPlayer.ExpandedPlayerView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
+    xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Apple-Music iPad-style now-playing.
+         Layers (back-to-front):
+           1) Atmospheric backdrop — tinted gradient bleeding the album-art palette
+              across the whole window so Mica isn't bare. Painted by code-behind
+              from PlayerBarViewModel.AlbumArtColor on track change.
+           2) 2-column content — ExpandedNowPlayingLayout (player) on the left,
+              RightPanelView (Lyrics / Queue) on the right; the right column
+              collapses to 0 when Mode == None and the player centers wider.
+           3) Toggle buttons (lyrics, queue) overlay bottom-right. -->
+    <Grid x:Name="RootGrid">
+
+        <!-- Backdrop: vertical gradient, top-saturated with album palette,
+             fading to transparent at the bottom to let Mica + caption buttons
+             read cleanly. The 4-stop layout gives a soft 'aura' feel. -->
+        <Border x:Name="AtmosphereBackdrop" IsHitTestVisible="False">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                    <GradientStop x:Name="AmbientStopTop" Offset="0" Color="Transparent" />
+                    <GradientStop x:Name="AmbientStopUpperMid" Offset="0.35" Color="Transparent" />
+                    <GradientStop x:Name="AmbientStopLowerMid" Offset="0.7" Color="Transparent" />
+                    <GradientStop x:Name="AmbientStopBottom" Offset="1" Color="Transparent" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!-- 2-column content. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftColumnDef" Width="*" />
+                <ColumnDefinition x:Name="RightColumnDef" Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left column — Apple-Music-style player layout. -->
+            <sidebarplayer:ExpandedNowPlayingLayout
+                x:Name="PlayerLayout"
+                Grid.Column="0"
+                MaxWidth="640"
+                HorizontalAlignment="Stretch" />
+
+            <!-- Right column — Lyrics or Queue, animated in/out. -->
+            <Border
+                x:Name="RightColumnContainer"
+                Grid.Column="1"
+                Margin="0,48,32,32">
+                <animations:Implicit.ShowAnimations>
+                    <animations:OpacityAnimation Duration="0:0:0.30" From="0" To="1" />
+                    <animations:TranslationAnimation Duration="0:0:0.30" From="56,0,0" To="0" />
+                </animations:Implicit.ShowAnimations>
+                <animations:Implicit.HideAnimations>
+                    <animations:OpacityAnimation Duration="0:0:0.18" From="1" To="0" />
+                    <animations:TranslationAnimation Duration="0:0:0.18" From="0" To="56,0,0" />
+                </animations:Implicit.HideAnimations>
+
+                <rightpanel:RightPanelView
+                    x:Name="ContentHost"
+                    IsOpen="True"
+                    IsTabHeaderVisible="False" />
+            </Border>
+        </Grid>
+
+        <!-- Mode toggles — bottom-right. ToggleButton's IsChecked mirrors Mode. -->
+        <StackPanel
+            Orientation="Horizontal"
+            Spacing="6"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="0,0,32,28"
+            Canvas.ZIndex="10">
+            <ToggleButton x:Name="LyricsToggleButton"
+                          Width="36" Height="36" Padding="0"
+                          CornerRadius="18"
+                          Click="LyricsToggleButton_Click"
+                          ToolTipService.ToolTip="Lyrics">
+                <FontIcon Glyph="&#xED1E;" FontSize="14" />
+            </ToggleButton>
+            <ToggleButton x:Name="QueueToggleButton"
+                          Width="36" Height="36" Padding="0"
+                          CornerRadius="18"
+                          Click="QueueToggleButton_Click"
+                          ToolTipService.ToolTip="Queue">
+                <FontIcon Glyph="&#xE142;" FontSize="14" />
+            </ToggleButton>
+        </StackPanel>
+    </Grid>
+</UserControl>

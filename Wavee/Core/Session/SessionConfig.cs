@@ -21,9 +21,11 @@ public sealed record SessionConfig
     public required string DeviceId { get; init; }
 
     /// <summary>
-    /// Device name shown in Spotify Connect UI.
+    /// Device name shown in Spotify Connect UI. Defaults to the host machine
+    /// name (matching the desktop Spotify client) so connect-state PUTs blend
+    /// with what real desktop sends. Override for explicit control.
     /// </summary>
-    public string DeviceName { get; init; } = "Wavee";
+    public string DeviceName { get; init; } = Environment.MachineName;
 
     /// <summary>
     /// Device type for Spotify Connect.

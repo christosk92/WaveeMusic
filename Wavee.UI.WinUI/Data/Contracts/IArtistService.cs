@@ -14,6 +14,15 @@ public interface IArtistService
     Task<List<ArtistReleaseResult>> GetDiscographyAllAsync(string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default);
     Task<List<ArtistReleaseResult>> GetDiscographyPageAsync(string artistUri, string type, int offset, int limit = 20, CancellationToken ct = default);
     Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(string artistUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves cover-art URLs for the given track URIs via the extended-metadata
+    /// pipeline. Used to backfill <see cref="ArtistTopTrackResult.AlbumImageUrl"/>
+    /// for tracks where Spotify's getArtistOverview GraphQL response omitted
+    /// <c>albumOfTrack.coverArt</c> (this happens unpredictably for many tracks).
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string?>> GetTrackImagesAsync(
+        IReadOnlyList<string> trackUris, CancellationToken ct = default);
 }
 
 // ── Domain result types (clean boundary — no Pathfinder types leak to ViewModel) ──

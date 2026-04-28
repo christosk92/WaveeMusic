@@ -17,6 +17,7 @@ public interface IProfileCache : IDisposable
     ProfileSnapshot? GetCached();
     Task<ProfileSnapshot> FetchFreshAsync(ISession session, CancellationToken ct = default);
     void Invalidate();
+    void Clear();
     void StartBackgroundRefresh(ISession session);
     void StopBackgroundRefresh();
     event Action<ProfileSnapshot>? DataRefreshed;

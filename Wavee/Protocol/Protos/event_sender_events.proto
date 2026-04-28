@@ -1,0 +1,304 @@
+// Per-event payload messages for Spotify's gabo-receiver-service v3.
+//
+// Each message in this file is serialized and stuffed into an
+// EventEnvelope.EventFragment with name="message". The envelope's event_name
+// field matches the message type: "RawCoreStream", "RawCoreStreamSegment",
+// "AudioSessionEvent", "HeadFileDownload", "AdOpportunityEvent", etc.
+//
+// RawCoreStream is the event that populates Spotify's Recently Played and
+// drives play counts. The other types are session/segment/audio telemetry that
+// the official client sends in the same batch but aren't strictly required for
+// play history to work.
+//
+// Schemas extracted from the official Spotify desktop binary; see memory
+// entry: reference_event_sender_proto_schemas.md. Only the messages needed for
+// play-history reporting are included here; the full upstream proto has 50+
+// telemetry types we don't need to mimic.
+
+syntax = "proto3";
+
+package spotify.event_sender.proto;
+
+option csharp_namespace = "Wavee.Protocol.EventSender.Events";
+option optimize_for = CODE_SIZE;
+
+// THE play-history event. One per track, sent at end-of-track.
+// Recently Played + play counts in Spotify's backend ingest from this.
+message RawCoreStream {
+  bytes  playback_id                = 1;   // 16-byte form of the 32-char hex id
+  bytes  parent_playback_id         = 2;
+  string video_session_id           = 3;
+  bytes  media_id                   = 4;   // Spotify file id
+  string media_type                 = 5;   // "audio"
+  string feature_identifier         = 6;   // "boombox" on desktop
+  string feature_version            = 7;   // "context-player"
+  string view_uri                   = 8;
+  string source_start               = 9;   // "playlist"/"album"/"artist"/"station"
+  string reason_start               = 10;  // "clickrow"/"playbtn"/"trackdone"/"fwdbtn"/...
+  string source_end                 = 11;  // mirrors source_start
+  string reason_end                 = 12;  // "trackdone"/"fwdbtn"/"backbtn"/"endplay"/...
+  int64  playback_start_time        = 13;  // Unix ms
+  int32  ms_played                  = 14;  // total ms actually played
+  int32  ms_played_nominal          = 15;
+  int32  ms_played_overlapping      = 16;
+  int32  ms_played_video            = 17;
+  int32  ms_played_background       = 18;
+  int32  ms_played_fullscreen       = 19;
+  bool   live                       = 20;
+  bool   shuffle                    = 21;
+  string audio_format               = 22;  // "Vorbis 160 kbps"
+  string play_context               = 23;  // "spotify:playlist:..."
+  string content_uri                = 24;  // "spotify:track:..."
+  string displayed_content_uri      = 25;
+  bool   content_is_downloaded      = 26;
+  bool   incognito_mode             = 27;
+  string provider                   = 28;  // "context"
+  string referrer                   = 29;  // "home"/"playlist"/"context"
+  string referrer_version           = 30;
+  string referrer_vendor            = 31;
+  string streaming_rule             = 32;
+  string connect_controller_device_id    = 33;
+  string page_instance_id           = 34;
+  string interaction_id             = 35;
+  string parent_content_uri         = 36;
+  int64  core_version               = 37;
+  // Wire reality: #38 carries an enum-shape string ("full"/"preview"/"ad"/...).
+  // Originally extracted as `core_bundle` but desktop puts "full" here and the
+  // actual core_bundle ("local"/"online") goes to field #44.
+  string play_type                  = 38;
+  bool   is_assumed_premium         = 39;
+  int32  ms_played_external         = 40;
+  string local_content_uri          = 41;
+  bool   client_offline_at_stream_start = 42;
+  bool   social_listening           = 43;
+  string core_bundle                = 44;  // "local"/"online" — desktop ALWAYS sends "local"
+  string playback_stack             = 45;
+  int32  ms_narration_overlapping   = 46;
+  string custom_reporting_attribution = 47;
+  // Wire field #48 — desktop sends `"ssp~<32 hex>"` as a string here (storage
+  // resolve session id). Schema dump labelled this `decision_id` but the wire
+  // value is the streaming-session pointer.
+  string decision_id                = 48;
+  string play_context_decision_id   = 49;
+  int32  ms_trimmed                 = 50;
+  int32  ms_nominal_trimmed         = 51;
+  string feature_uuid               = 52;
+  bytes  stream_id                  = 53;   // 16-byte form — desktop sends UUID-shape; we leave empty
+  reserved 54 to 58;                        // counters/timestamps we don't fill
+  string next_content_uri_base62    = 59;   // 22-char base62 of next track in queue
+  reserved 60 to 62;
+  string command_id                 = 63;   // hex(32), correlates to CorePlaybackCommandCorrelation
+  reserved 64 to 68;
+  string playback_stack_secondary   = 69;   // duplicate of playback_stack (always "boombox")
+  reserved 70;
+  string orchestration_stack        = 71;   // "context-player"
+}
+
+// Per-CDN-fetch metrics. One per audio file fetched (the body, not the head).
+// Desktop emits this after the file finishes downloading, batched with
+// the matching RawCoreStream / HeadFileDownload at end-of-track.
+//
+// Many fields below are unknown-semantic timing histograms / counters; we
+// fill the ones whose meaning we know (file_size, bytes_downloaded, cdn_*,
+// request_type, bitrate, latency) and zero / max-uint64 the rest. Spotify
+// treats `UInt64.MaxValue` as "not measured" — observed in desktop wire.
+message Download {
+  bytes  file_id                = 1;
+  bytes  playback_id            = 2;
+  int64  file_size              = 7;
+  int64  bytes_wasted           = 9;
+  int64  bytes_downloaded       = 10;
+  string realm                  = 11;
+  uint64 sentinel_12            = 12;
+  uint64 sentinel_13            = 13;
+  uint64 sentinel_14            = 14;
+  uint64 sentinel_15            = 15;
+  uint64 sentinel_16            = 16;
+  uint64 sentinel_17            = 17;
+  uint64 timing_18              = 18;
+  uint64 timing_19              = 19;
+  uint64 timing_20              = 20;
+  fixed64 timing_21             = 21;
+  uint64 timing_22              = 22;
+  uint64 timing_23              = 23;
+  uint64 timing_24              = 24;
+  uint64 timing_25              = 25;
+  fixed64 timing_26             = 26;
+  uint64 timing_27              = 27;
+  fixed64 timing_28             = 28;
+  fixed64 timing_29             = 29;
+  string cdn_uri_scheme         = 30;
+  string cdn_domain             = 31;
+  string socket_reuse           = 32;
+  int64  bytes_from_cache       = 33;
+  int64  bytes_predownloaded    = 34;
+  int64  bytes_streamed         = 35;
+  int64  total_bytes            = 36;
+  int64  errors                 = 37;
+  string request_type           = 38;
+  int64  http_latency_ms        = 39;
+  int64  bitrate                = 40;
+  int64  cdn_count              = 41;
+  int64  retry_count            = 42;
+  string initial_disk_state     = 44;
+  int64  request_count          = 45;
+  string error_kind             = 46;
+  int64  total_time_ms          = 47;
+}
+
+// Maps the per-play `command_id` (32 hex chars) to its `playback_id` (16 bytes).
+// Desktop emits this in the track-start batch alongside AudioSessionEvent(open).
+message CorePlaybackCommandCorrelation {
+  bytes  playback_id = 1;
+  string command_id  = 2;
+}
+
+// Per-track session summary. Desktop emits this in the track-start batch
+// once the playback_id is minted. Fields 6–11 and 16/18–22 are unknown-
+// semantic counters; we send zeros. The named ones are inferred from the
+// 062_c.txt capture (audio_key_ms=269, resolve_ms=121, total_setup_ms=405,
+// buffering_ms=248, duration_ms=262960, preset="default", etc.).
+message BoomboxPlaybackSession {
+  bytes  playback_id        = 1;
+  int64  audio_key_ms       = 2;
+  int64  resolve_ms         = 3;
+  int64  total_setup_ms     = 4;
+  int64  buffering_ms       = 5;
+  int64  counter_6          = 6;
+  int64  counter_7          = 7;
+  int64  counter_8          = 8;
+  int64  counter_9          = 9;
+  int64  counter_10         = 10;
+  int64  counter_11         = 11;
+  int64  duration_ms        = 12;
+  string preset             = 13;
+  string subsystem          = 14;
+  string interruption       = 15;
+  int64  counter_16         = 16;
+  bool   first_play         = 17;
+  int64  counter_18         = 18;
+  int64  counter_19         = 19;
+  int64  counter_20         = 20;
+  int64  counter_21         = 21;
+  int64  counter_22         = 22;
+}
+
+// One-shot start marker. Sent when a track starts; pairs with the closing
+// RawCoreStream + RawCoreStreamSegments.
+message RawCoreStreamStart {
+  bytes  playback_id  = 1;
+  string content_uri  = 2;
+  string media_type   = 3;
+  string reason_start = 4;
+  int64  core_version = 5;
+}
+
+// Per-segment data — one segment per pause/resume/seek split within a track.
+// Multiple of these are emitted between the start and end of a single track.
+message RawCoreStreamSegment {
+  bytes  playback_id              = 1;
+  int64  start_position           = 2;
+  int64  end_position             = 3;
+  int32  ms_played                = 4;
+  string reason_start             = 5;
+  string reason_end               = 6;
+  double playback_speed           = 7;
+  int64  start_timestamp          = 8;
+  int64  end_timestamp            = 9;
+  bool   is_seek                  = 10;
+  bool   is_pause                 = 11;
+  int64  sequence_id              = 12;
+  string media_type               = 13;
+  int64  core_version             = 14;
+  string content_uri              = 15;
+  int64  start_monotonic_timestamp = 16;
+  int64  end_monotonic_timestamp  = 17;
+  bool   is_last                  = 18;
+  string provider                 = 19;
+  string playback_stack           = 20;
+  string feature_uuid             = 21;
+  bytes  stream_id                = 22;
+  string page_instance_id         = 23;
+  string interaction_id           = 24;
+  string play_context             = 25;
+  int64  start_timestamp_internal = 26;
+  int64  end_timestamp_internal   = 27;
+  int64  sequence_id_internal     = 28;
+  bool   is_audio_on              = 29;
+  bool   is_video_on              = 30;
+  string video_surface            = 31;
+  bool   is_system_seek           = 32;
+}
+
+// Audio session lifecycle markers (open/close/seek/resume).
+message AudioSessionEvent {
+  string event              = 1;   // "open"/"close"/"seek"/"resume"/"pause"
+  string context            = 2;
+  string json_data          = 3;
+  bytes  playback_id        = 4;
+  string reason             = 5;
+  string feature_identifier = 6;
+  int32  seek_position      = 7;
+  bool   paused             = 8;
+  int64  speed              = 9;
+  int32  fade_start_position = 10;
+}
+
+// Audio output device info.
+message AudioDriverInfo {
+  string driver_name           = 1;
+  string output_device_name    = 2;
+  string output_device_category = 3;
+  string reason                = 4;   // "started"/"eos"/...
+}
+
+// Head-file download metrics. Optional but present in every desktop batch.
+message HeadFileDownload {
+  bytes  file_id            = 1;
+  bytes  playback_id        = 2;
+  string cdn_uri_scheme     = 3;
+  string cdn_domain         = 4;
+  int64  head_file_size     = 5;
+  int64  bytes_downloaded   = 6;
+  int64  bytes_wasted       = 7;
+  int64  http_latency       = 8;
+  int64  http_64k_latency   = 9;
+  int64  total_time         = 10;
+  int64  http_result        = 11;
+  int64  error_code         = 12;
+  int64  cached_bytes       = 13;
+  int64  bytes_from_cache   = 14;
+  string socket_reuse       = 15;
+  string request_type       = 16;
+  string initial_disk_state = 17;
+}
+
+// Ad slot state changes. We don't serve ads (Premium only) but desktop sends
+// these regardless to flag enabled/disabled state per track.
+message AdOpportunityEvent {
+  string trigger_id          = 1;
+  string trigger_type        = 2;
+  string decision_request_id = 3;
+  string trigger_state       = 4;
+  bool   focus_state         = 5;
+  string content_uri         = 6;
+  string playback_id         = 7;
+  string request_id          = 8;
+}
+
+// Anti-ripping attestation event. Desktop emits ONE per track in the same
+// gabo batch as the closing RawCoreStream, with `is_ripping_faster_than_rt`
+// = false on legitimate plays. Server-side play-history pipeline cross-
+// references this against RawCoreStream.playback_id; absent or "ripping"
+// flagged events cause the play to be excluded from Recently Played.
+//
+// Schema verified by structural-decoding three real envelopes from spot
+// SAZ session 291_c.txt (2026-04-28 capture, Spotify desktop 1.2.88.483):
+//   #1 BYTES(16) = 16-byte playback_id (matches RawCoreStream.playback_id)
+//   #2 VAR 0     = ripping_categories (bitmask/enum, 0 = none detected)
+//   #3 VAR 0     = is_ripping_faster_than_rt (bool encoded as varint)
+message ContentIntegrity {
+  bytes  playback_id               = 1;
+  int32  ripping_categories        = 2;
+  bool   is_ripping_faster_than_rt = 3;
+}

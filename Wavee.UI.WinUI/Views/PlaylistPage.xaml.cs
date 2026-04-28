@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
@@ -18,6 +20,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -32,6 +35,13 @@ public sealed partial class PlaylistPage : Page
     // Tracks the last-rendered playlist so the cached page can reset per-playlist
     // view state (filter text) when the bound playlist actually changes.
     private string? _lastPlaylistId;
+
+    // Shimmer→content crossfade state. Mirrors AlbumPage / ArtistPage / ProfilePage:
+    // ScheduleCrossfade waits Task.Yield + 16 ms so layout settles before the fade,
+    // and the shimmer is collapsed only after its fade-out completes.
+    private bool _showingContent;
+    private bool _crossfadeScheduled;
+    private bool _isNavigatingAway;
 
     // Composition resources for the left-anchored hero backdrop. Surface is
     // (re)loaded whenever HeaderImageUrl changes. Null when no header image.
@@ -104,6 +114,14 @@ public sealed partial class PlaylistPage : Page
             e.Handled = true;
         };
 
+        // Start the wide content panel invisible at composition level so the
+        // shimmer→content swap is a smooth crossfade. The previous BoolToVisibility
+        // hard cut snapped distractingly when IsLoading flipped false.
+        ElementCompositionPreview.GetElementVisual(WidePlaylistScroller).Opacity = 0;
+        //Loaded += PlaylistPage_Loaded;
+        Unloaded += PlaylistPage_Unloaded;
+        _logger?.LogDebug("[xfade][playlist:{Id}] ctor.enter", XfadeLog.Tag(ViewModel.PlaylistId));
+
         // Editorial / radio playlists don't carry added-at timestamps — hide the whole
         // Date Added column when the loaded tracks have none. Also watch HeaderImageUrl
         // so the composition backdrop reloads when the ViewModel's detail arrives.
@@ -115,6 +133,19 @@ public sealed partial class PlaylistPage : Page
                 ApplyHeaderBackground();
             else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
                 RebuildDescriptionInlines();
+            else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
+            {
+                string action;
+                if (ViewModel.IsLoading) action = "skip-still-loading";
+                else if (_showingContent) action = "skip-already-shown";
+                else if (_crossfadeScheduled) action = "skip-already-scheduled";
+                else action = "schedule";
+                _logger?.LogDebug(
+                    "[xfade][playlist:{Id}] propchg.isLoading val={Val} showing={Showing} scheduled={Scheduled} action={Action}",
+                    XfadeLog.Tag(ViewModel.PlaylistId), ViewModel.IsLoading, _showingContent, _crossfadeScheduled, action);
+                if (action == "schedule")
+                    ScheduleCrossfade();
+            }
         };
         // Rebuild the avatar stack visual whenever the resolved Collaborators
         // collection mutates (full clear / refill on each load completion).
@@ -141,6 +172,55 @@ public sealed partial class PlaylistPage : Page
         // soon as the data lands. ActualThemeChanged keeps them in sync from
         // there. Mirrors AlbumPage.
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+    }
+
+    // ── Crossfade ──
+
+    private void PlaylistPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _isNavigatingAway = true;
+    }
+
+    private async void ScheduleCrossfade()
+    {
+        _crossfadeScheduled = true;
+        await Task.Yield();
+        await Task.Delay(16);
+        if (_isNavigatingAway || _showingContent) return;
+        CrossfadeToContent();
+    }
+
+    private async void CrossfadeToContent()
+    {
+        if (_showingContent) return;
+        _showingContent = true;
+
+        AnimationBuilder.Create()
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+            .Start(ShimmerContainer);
+
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
+                     delay: TimeSpan.FromMilliseconds(100))
+            .Start(WidePlaylistScroller);
+
+        await Task.Delay(250);
+        if (_showingContent && !_isNarrowMode)
+            ShimmerContainer.Visibility = Visibility.Collapsed;
+    }
+
+    private void ResetCrossfadeForNewLoad()
+    {
+        _showingContent = false;
+        _crossfadeScheduled = false;
+        // Narrow mode keeps the whole left column collapsed via VisualState —
+        // honour that and don't force shimmer visible there.
+        if (!_isNarrowMode)
+        {
+            ShimmerContainer.Visibility = Visibility.Visible;
+            ShimmerContainer.Opacity = 1;
+        }
+        ElementCompositionPreview.GetElementVisual(WidePlaylistScroller).Opacity = 0;
     }
 
     private void PlaylistPage_ActualThemeChanged(FrameworkElement sender, object args)
@@ -197,6 +277,11 @@ public sealed partial class PlaylistPage : Page
         _logger?.LogInformation(
             "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
             parameter?.GetType().FullName ?? "<null>", parameter);
+
+        // Reset shimmer / content visual state for the fresh load — mirrors
+        // ArtistPage / AlbumPage so the next playlist fades in cleanly instead
+        // of inheriting the previous playlist's already-shown content layer.
+        ResetCrossfadeForNewLoad();
 
         string? playlistId = null;
 

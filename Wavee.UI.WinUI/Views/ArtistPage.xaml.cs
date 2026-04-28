@@ -13,6 +13,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -35,7 +36,7 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ArtistPage : Page, ITabBarItemContent
 {
-    private const int ShimmerCollapseDelayMs = 160;
+    private const int ShimmerCollapseDelayMs = 250;
     private const int ResizeDebounceDelayMs = 150;
     private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
     private const double ShyHeaderPinThresholdPx = 24;
@@ -67,6 +68,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     private bool _isShyHeaderPinned;
     private bool _isShyHeaderTransitionRunning;
     private bool _shyHeaderRecheckPending;
+    private bool _heroRevealed;
+    private bool _crossfadeScheduled;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -96,6 +99,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
             UpdatePageTint();
         };
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+
+        // Start hero overlay + content invisible at composition level so they
+        // can be faded in independently as their data arrives — prevents the
+        // hard pop where the avatar/name/buttons render blank, then suddenly
+        // fill while shimmer is still on screen below.
+        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 0;
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+
         Unloaded += ArtistPage_Unloaded;
         Loaded += ArtistPage_Loaded;
     }
@@ -132,9 +143,27 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
 
     private void TryShowContentNow()
     {
-        if (_showingContent || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.ArtistName))
+        if (_showingContent || _crossfadeScheduled || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.ArtistName))
             return;
-        DispatcherQueue.TryEnqueue(CrossfadeToContent);
+        // Reveal the hero immediately if we already have a name (data was
+        // pre-fetched / cache-served before the page attached).
+        RevealHeroIfReady();
+        ScheduleCrossfade();
+    }
+
+    // ── Scheduled crossfade ──
+    // Yield twice so XAML has time to: (1) propagate the data bindings,
+    // (2) measure ItemsRepeaters, (3) realize their cards. Without this,
+    // content height grows by hundreds of pixels mid-fade and the page
+    // visibly jumps. Mirrors ProfilePage.ScheduleCrossfade.
+
+    private async void ScheduleCrossfade()
+    {
+        _crossfadeScheduled = true;
+        await Task.Yield();
+        await Task.Delay(16);
+        if (_isNavigatingAway || _showingContent) return;
+        CrossfadeToContent();
     }
 
     private void HeroGrid_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -249,10 +278,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     {
         if (e.PropertyName is nameof(ArtistViewModel.IsLoading))
         {
-            if (!ViewModel.IsLoading && !_showingContent)
+            if (!ViewModel.IsLoading && !_showingContent && !_crossfadeScheduled)
             {
-                DispatcherQueue.TryEnqueue(CrossfadeToContent);
+                ScheduleCrossfade();
             }
+        }
+        else if (e.PropertyName is nameof(ArtistViewModel.ArtistName))
+        {
+            RevealHeroIfReady();
         }
         else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed)
                                  or nameof(ArtistViewModel.HeaderImageUrl))
@@ -268,6 +301,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         {
             UpdatePageTint();
         }
+    }
+
+    private void RevealHeroIfReady()
+    {
+        if (_heroRevealed || string.IsNullOrEmpty(ViewModel.ArtistName)) return;
+        _heroRevealed = true;
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(280))
+            .Start(HeroOverlayPanel);
     }
 
     // Pixels of tint spill past the hero's bottom edge before the wash fully fades.
@@ -413,18 +455,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
     }
 
     /// <summary>
-    /// Collapses or expands the circular avatar depending on whether the
-    /// artist has a header image (redundant with the hero) and a watch-feed
-    /// video (keep the avatar so the video can play inside it). Animated
-    /// with composition-backed Scale+Opacity plus a per-frame Width
-    /// interpolation so the name/stats block re-layouts smoothly.
+    /// Keeps the circular avatar fixed at the expanded width. The avatar is
+    /// always visible — the hero header image is a banner, the avatar is the
+    /// artist portrait, and they serve different purposes. Watch-feed videos
+    /// fade in over the avatar circle when available.
     /// </summary>
     private void UpdateAvatarLayout(bool animate)
     {
         if (AvatarWrapper == null || ArtistImageContainer == null) return;
 
-        bool shouldCollapse = !string.IsNullOrEmpty(ViewModel.HeaderImageUrl)
-                              && string.IsNullOrEmpty(ViewModel.WatchFeed?.VideoUrl);
+        const bool shouldCollapse = false;
 
         if (shouldCollapse == _avatarCollapsed) return;
         _avatarCollapsed = shouldCollapse;
@@ -587,19 +627,23 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         if (_showingContent) return;
         _showingContent = true;
 
-        // Start both simultaneously — content fades in AS shimmer fades out
+        // Slower, staggered timings (matches ProfilePage / HomePage rhythm) —
+        // 150 ms felt abrupt; 200 ms shimmer-out + 300 ms content-in @ +100 ms
+        // delay gives the visual seam more breathing room and hides any
+        // ItemsRepeater realisation work that lands inside the window.
         AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(150),
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
                      layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(ShimmerContainer);
 
-        ContentContainer.Opacity = 1;
         AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150),
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
+                     delay: TimeSpan.FromMilliseconds(100),
                      layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(ContentContainer);
 
-        // Collapse shimmer after animation completes
+        // Collapse shimmer after the fade completes so it stops participating
+        // in measure/arrange.
         await Task.Delay(ShimmerCollapseDelayMs);
         if (_showingContent)
             ShimmerContainer.Visibility = Visibility.Collapsed;
@@ -934,7 +978,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent
         ResetShyHeaderState();
         if (HeroGrid != null) HeroGrid.ScrollFadeProgress = 0;
         _showingContent = false;
+        _crossfadeScheduled = false;
+        _heroRevealed = false;
         ContentContainer.Opacity = 0;
+        // Hero overlay also resets to invisible so the new artist's chrome
+        // fades in on its own beat instead of inheriting the previous one.
+        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 0;
         ShimmerContainer.Visibility = Visibility.Visible;
         ShimmerContainer.Opacity = 1;
 

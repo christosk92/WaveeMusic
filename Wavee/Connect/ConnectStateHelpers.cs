@@ -1,5 +1,8 @@
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using Wavee.Core;
 using Wavee.Core.Session;
+using Wavee.Protocol.Media;
 using Wavee.Protocol.Player;
 
 namespace Wavee.Connect;
@@ -17,6 +20,29 @@ public static class ConnectStateHelpers
 
     // Default volume steps
     public const int DefaultVolumeSteps = 64;
+
+    /// <summary>
+    /// Full <c>supported_types</c> list emitted by the desktop client. Mirrors
+    /// the 14 entries observed in 2026-04-28 SAZ capture so the server treats
+    /// us as a full playback device rather than a thin remote-controller.
+    /// </summary>
+    private static readonly string[] DesktopSupportedTypes =
+    {
+        "audio/ad",
+        "audio/episode",
+        "audio/episode+track",
+        "audio/interruption",
+        "audio/local",
+        "audio/media",
+        "audio/podcast-chapter",
+        "audio/track",
+        "audio/user-highlight",
+        "video/ad",
+        "video/episode",
+        "video/podcast-chapter",
+        "video/track",
+        "video/user-highlight",
+    };
 
     /// <summary>
     /// Creates a DeviceInfo with full capabilities for Spotify Connect.
@@ -42,8 +68,26 @@ public static class ConnectStateHelpers
             DeviceSoftwareVersion = SpotifyClientIdentity.DeviceSoftwareVersion,
             ClientId = config.ClientId ?? KeymasterClientId,
             SpircVersion = SpotifyClientIdentity.SpircVersion,
-            Capabilities = CreateDefaultCapabilities(volumeSteps)
+            Capabilities = CreateDefaultCapabilities(volumeSteps),
+            // Brand/model: parity with desktop's own DeviceInfo. These show up in
+            // remote "Now Playing" device lists and feed device-fingerprint logic
+            // server-side. Pre-2026-04 captures show desktop sends "spotify"/"PC laptop".
+            Brand = "spotify",
+            Model = "PC laptop",
+            // license=premium is what tells the play-history pipeline that this
+            // device is eligible to register plays. Without it, plays from the
+            // device may be excluded from Recently Played.
+            License = "premium",
         };
+
+        // metadata_map — desktop sends a small set of debug/network keys here.
+        // Include the ones we can derive locally; desktop additionally sets
+        // public_ip on a sibling field, but that requires an external probe.
+        info.MetadataMap["debug_level"] = "1";
+        info.MetadataMap["tier1_port"] = "0";
+        var ipMask = TryGetLocalIpMask();
+        if (!string.IsNullOrEmpty(ipMask))
+            info.MetadataMap["device_address_mask"] = ipMask;
 
         // audio_output_device_info — Spotify desktop emits this on every DeviceInfo
         // so remote "Connect to" sheets can show the speaker/headphone we're routing
@@ -61,7 +105,10 @@ public static class ConnectStateHelpers
     }
 
     /// <summary>
-    /// Creates default capabilities for a Spotify Connect device.
+    /// Creates default capabilities for a Spotify Connect device. Mirrors the
+    /// full capability set the desktop client advertises in its PutStateRequest
+    /// so Spotify's Connect / play-history backends classify Wavee as a real
+    /// playback device, not a thin controller.
     /// </summary>
     /// <param name="volumeSteps">Number of volume steps (default 64).</param>
     /// <returns>Configured Capabilities instance.</returns>
@@ -77,18 +124,48 @@ public static class ConnectStateHelpers
             SupportsRename = false,
             SupportsPlaylistV2 = true,
             IsControllable = true,
+            SupportsExternalEpisodes = true,
+            SupportsSetBackendMetadata = true,
             SupportsTransferCommand = true,
             SupportsCommandRequest = true,
             VolumeSteps = volumeSteps,
             SupportsGzipPushes = true,
-            NeedsFullPlayerState = true
+            // Wavee deliberately keeps NeedsFullPlayerState=true so the server
+            // pushes complete cluster snapshots rather than incremental deltas.
+            // Do NOT flip — Wavee's state machine reconciles from full snapshots.
+            NeedsFullPlayerState = true,
+            SupportsSetOptionsCommand = true,
+            SupportsHifi = new CapabilitySupportDetails
+            {
+                FullySupported = true,
+                UserEligible = true,
+                DeviceSupported = true,
+            },
+            SupportsDj = true,
+            // Wavee streams 320 kbps OGG Vorbis. Advertise VeryHigh (matches
+            // BitrateLevel.Veryhigh in PlaybackQuality). Captures show desktop
+            // sends 5 (HIFI), but claiming HIFI would lie about FLAC support.
+            SupportedAudioQuality = AudioQuality.VeryHigh,
         };
 
-        // Add supported content types
-        capabilities.SupportedTypes.Add("audio/track");
-        capabilities.SupportedTypes.Add("audio/episode");
+        // Full supported_types list — desktop advertises 14 entries.
+        foreach (var t in DesktopSupportedTypes)
+            capabilities.SupportedTypes.Add(t);
 
         return capabilities;
+    }
+
+    /// <summary>
+    /// Creates the <c>private_device_info</c> submessage Spotify desktop attaches
+    /// to every connect-state PUT. Carries the host OS descriptor, used by
+    /// server-side device classification.
+    /// </summary>
+    public static PrivateDeviceInfo CreatePrivateDeviceInfo()
+    {
+        return new PrivateDeviceInfo
+        {
+            Platform = SpotifyClientIdentity.GetPrivateDevicePlatform(),
+        };
     }
 
     /// <summary>
@@ -112,6 +189,36 @@ public static class ConnectStateHelpers
     {
         // Enum values match, so we can cast directly
         return (global::Wavee.Protocol.Player.DeviceType)(int)deviceType;
+    }
+
+    /// <summary>
+    /// Best-effort local-IP-with-mask string ("192.168.x.y/24") used for the
+    /// <c>device_address_mask</c> metadata key. Returns null if no suitable
+    /// active IPv4 interface is found.
+    /// </summary>
+    private static string? TryGetLocalIpMask()
+    {
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                var props = nic.GetIPProperties();
+                foreach (var addr in props.UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    var prefix = addr.PrefixLength > 0 ? addr.PrefixLength : 24;
+                    return $"{addr.Address}/{prefix}";
+                }
+            }
+        }
+        catch
+        {
+            // NIC enumeration can throw on locked-down systems; the metadata key
+            // is non-essential, so swallow and skip.
+        }
+        return null;
     }
 
     /// <summary>

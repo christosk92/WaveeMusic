@@ -108,6 +108,14 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
 
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // Skip the spurious initial event fired by Segmented's XAML SelectedIndex=0
+        // before OnNavigatedTo has applied the navigation parameter. ContentHost.Content
+        // is null until ShowTab runs for the first time — once OnNavigatedTo has wired
+        // up the requested tab, this guard releases and real user-driven taps work.
+        // Without this, clicking "Liked Songs" in the sidebar transiently lands on
+        // Albums (the SelectedIndex=0 default) before swapping to Liked Songs.
+        if (ContentHost?.Content == null) return;
+
         if (LibrarySelectorBar.SelectedItem is SegmentedItem selectedItem)
         {
             ShowTab(selectedItem);

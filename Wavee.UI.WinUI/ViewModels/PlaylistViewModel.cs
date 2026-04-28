@@ -1647,6 +1647,25 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     }
 
     [RelayCommand]
+    private void OpenOwnerProfile()
+    {
+        if (string.IsNullOrWhiteSpace(OwnerId)) return;
+        var bareId = ExtractBareUserId(OwnerId);
+        if (string.IsNullOrWhiteSpace(bareId)) return;
+
+        var param = new Wavee.UI.WinUI.Data.Parameters.ContentNavigationParameter
+        {
+            Uri = $"spotify:user:{bareId}",
+            Title = OwnerName,
+            ImageUrl = OwnerAvatarUrl
+        };
+        Helpers.Navigation.NavigationHelpers.OpenProfile(
+            param,
+            OwnerName,
+            Helpers.Navigation.NavigationHelpers.IsCtrlPressed());
+    }
+
+    [RelayCommand]
     private void SortBy(string? columnName)
     {
         if (!Enum.TryParse<PlaylistSortColumn>(columnName, out var column))

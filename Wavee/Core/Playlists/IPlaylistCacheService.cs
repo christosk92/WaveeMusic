@@ -11,6 +11,15 @@ public interface IPlaylistCacheService
     Task InvalidateAsync(string playlistUri, CancellationToken ct = default);
 
     /// <summary>
+    /// Drops every in-memory cache held by this service: hot playlist cache, hot rootlist,
+    /// in-flight refresh tasks, negative cache, dealer-settle window, schema-stale markers.
+    /// Caller is responsible for clearing the underlying SQLite tables (spotify_playlists,
+    /// rootlist_cache) — usually via <c>IMetadataDatabase.WipeAllUserDataAsync</c>. Used
+    /// when the signed-in Spotify user changes.
+    /// </summary>
+    Task ClearAllAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Apply a freshly-fetched <see cref="Wavee.Protocol.Playlist.SelectedListContent"/>
     /// (e.g. the response from <c>POST /playlist/v2/playlist/{id}/signals</c>) to the
     /// cache. Maps it to a <see cref="CachedPlaylist"/>, merges with the existing

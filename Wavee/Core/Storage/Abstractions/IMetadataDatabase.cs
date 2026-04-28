@@ -145,6 +145,15 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// </summary>
     Task ClearAllAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Wipes every user-bound table in one transaction: entities, localized_entities,
+    /// extension_cache, localized_extension_cache, spotify_library, sync_state,
+    /// spotify_playlists, rootlist_cache, library_outbox. Used when the signed-in
+    /// Spotify user changes — the previous user's library/playlists/sync revisions
+    /// must not bleed into the new session.
+    /// </summary>
+    Task WipeAllUserDataAsync(CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Spotify Library Operations
@@ -425,6 +434,17 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// Persists an AudioKey. Overwrites any existing entry.
     /// </summary>
     Task SetPersistedAudioKeyAsync(string fileIdHex, string? trackUri, byte[] keyBytes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets a persisted PlayPlay obfuscated key (16 bytes), or null if not stored.
+    /// Useless without the cipher implementation, so safe to persist alongside AudioKeys.
+    /// </summary>
+    Task<byte[]?> GetPersistedPlayPlayObfuscatedKeyAsync(string fileIdHex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists a PlayPlay obfuscated key. Overwrites any existing entry.
+    /// </summary>
+    Task SetPersistedPlayPlayObfuscatedKeyAsync(string fileIdHex, byte[] obfuscatedKey, CancellationToken ct = default);
 
     /// <summary>
     /// Gets persisted head file data for a FileId (~128 KB of encrypted audio

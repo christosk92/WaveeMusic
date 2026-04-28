@@ -446,29 +446,33 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     // ── Visibility gate for the position interpolation timer ────────────
     //
     // Each surface that renders the player (PlayerBar at the bottom,
-    // SidebarPlayerWidget at the top of the sidebar) calls SetSurfaceVisible
+    // SidebarPlayerWidget at the top of the sidebar, the floating Player
+    // window, and the expanded floating layout) calls SetSurfaceVisible
     // from its Loaded / Unloaded handlers. The timer only ticks while at
-    // least one surface is on screen AND a track is playing. While every
-    // surface is hidden the slider isn't visible so spending CPU updating
-    // its bound value is wasted.
-    private bool _isBarVisible = true;
-    private bool _isWidgetVisible;
+    // least one surface is on screen AND a track is playing.
+    //
+    // Counter-based (not bool) so multiple live instances of the same
+    // surface key — e.g. a SidebarPlayerWidget docked in the sidebar AND
+    // another inside the expanded floating-player layout — don't fight each
+    // other when one unloads while the other is still visible.
+    private int _barVisibleCount = 1; // PlayerBar is always present in the shell at startup.
+    private int _widgetVisibleCount;
 
     /// <summary>
-    /// Records visibility for a named surface. Surface ids in use today: "bar"
-    /// for the bottom-docked PlayerBar, "widget" for the SidebarPlayerWidget.
+    /// Records visibility for a named surface. Each Loaded should pair with
+    /// an Unloaded (true / false). Surface ids: "bar" for the bottom-docked
+    /// PlayerBar, "widget" for any <see cref="Controls.SidebarPlayer.SidebarPlayerWidget"/>
+    /// instance (sidebar, floating window, expanded layout).
     /// </summary>
     public void SetSurfaceVisible(string surfaceId, bool visible)
     {
         switch (surfaceId)
         {
             case "bar":
-                if (_isBarVisible == visible) return;
-                _isBarVisible = visible;
+                _barVisibleCount = Math.Max(0, _barVisibleCount + (visible ? 1 : -1));
                 break;
             case "widget":
-                if (_isWidgetVisible == visible) return;
-                _isWidgetVisible = visible;
+                _widgetVisibleCount = Math.Max(0, _widgetVisibleCount + (visible ? 1 : -1));
                 break;
             default:
                 return;
@@ -479,7 +483,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private void UpdatePositionTimerState()
     {
         if (_positionTimer == null) return;
-        var shouldRun = IsPlaying && (_isBarVisible || _isWidgetVisible);
+        var shouldRun = IsPlaying && (_barVisibleCount > 0 || _widgetVisibleCount > 0);
         if (shouldRun)
         {
             _positionTimer.Start();

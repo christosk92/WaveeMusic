@@ -24,6 +24,32 @@ public sealed class ShellLayoutState
     public int SelectedTabIndex { get; set; }
     public PlayerLocation PlayerLocation { get; set; } = PlayerLocation.Bottom;
     public bool SidebarPlayerCollapsed { get; set; }
+
+    // ── Tear-off (floating-window) state per detachable panel ──
+    // Owned by PanelDockingService. On restart we recreate floating windows
+    // when *Detached is true, restoring saved geometry and clamping to a
+    // visible monitor when the saved coords aren't on any current display.
+    public bool PlayerWindowDetached { get; set; }
+    public double PlayerWindowX { get; set; }
+    public double PlayerWindowY { get; set; }
+    public double PlayerWindowWidth { get; set; } = 320;
+    public double PlayerWindowHeight { get; set; } = 540;
+
+    // Expanded "now playing" mode for the floating player (Apple-Music-style
+    // 2-column layout). Geometry is tracked separately so toggling expand
+    // restores each mode's last-known size.
+    public bool PlayerWindowExpanded { get; set; }
+    public string PlayerWindowExpandedMode { get; set; } = "Lyrics"; // "None" | "Lyrics" | "Queue"
+    public double PlayerWindowExpandedX { get; set; }
+    public double PlayerWindowExpandedY { get; set; }
+    public double PlayerWindowExpandedWidth { get; set; } = 1100;
+    public double PlayerWindowExpandedHeight { get; set; } = 640;
+
+    public bool RightPanelWindowDetached { get; set; }
+    public double RightPanelWindowX { get; set; }
+    public double RightPanelWindowY { get; set; }
+    public double RightPanelWindowWidth { get; set; } = 360;
+    public double RightPanelWindowHeight { get; set; } = 720;
 }
 
 public sealed class SidebarGroupState

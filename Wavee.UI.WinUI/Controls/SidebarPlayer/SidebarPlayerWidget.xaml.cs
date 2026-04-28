@@ -10,6 +10,7 @@ using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services.Docking;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
@@ -67,7 +68,6 @@ public sealed partial class SidebarPlayerWidget : UserControl
     private void OnWidgetLoaded(object sender, RoutedEventArgs e)
     {
         ViewModel.SetSurfaceVisible("widget", true);
-        ApplyTransportCompact(ActualWidth < TransportCompactBreakpoint);
         // Default to "not hovered" — buttons faded out until pointer enters the widget.
         ApplyHoverReveal(hovered: false, animate: false);
     }
@@ -80,27 +80,9 @@ public sealed partial class SidebarPlayerWidget : UserControl
         if (_likeService != null) _likeService.SaveStateChanged -= OnSaveStateChanged;
     }
 
-    // Below this width (in DIPs), the seven-button Expanded transport row stops
-    // fitting cleanly. Drop skip ±10/30 from the inline row and surface them in
-    // the ⋯ overflow instead.
-    private const double TransportCompactBreakpoint = 250d;
-    private bool? _lastTransportCompact;
-
     private void OnWidgetSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplyTransportCompact(e.NewSize.Width < TransportCompactBreakpoint);
-    }
-
-    private void ApplyTransportCompact(bool compact)
-    {
-        if (_lastTransportCompact == compact) return;
-        _lastTransportCompact = compact;
-
-        ExpandedSkipBackInline.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        ExpandedSkipForwardInline.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        ExpandedOverflowSkipBack.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
-        ExpandedOverflowSkipForward.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
-        ExpandedOverflowSkipSeparator.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        // Reserved for future responsive logic.
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -145,6 +127,11 @@ public sealed partial class SidebarPlayerWidget : UserControl
         // big-art view is owned by the bar and only the bar can toggle it off.
         ViewModel.IsAlbumArtExpanded = false;
         _shellViewModel.PlayerLocation = PlayerLocation.Bottom;
+    }
+
+    private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
+    {
+        Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
     }
 
     private void EndOfContextDismiss_Click(object sender, RoutedEventArgs e)
@@ -230,6 +217,18 @@ public sealed partial class SidebarPlayerWidget : UserControl
     {
         NavigateToActiveContext();
         e.Handled = true;
+    }
+
+    // Locks the Expanded album-art host to a square aspect ratio. Without this,
+    // the row collapses to 0×0 the moment a track's image source is null,
+    // because the host has HorizontalAlignment=Stretch but no explicit Height
+    // — the Image inside drove the height via its intrinsic size. CrossFadeImage
+    // already keeps an old layer painted during swaps, but this guarantees the
+    // slot stays the right size even before the very first image arrives.
+    private void ExpandedAlbumArtHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && e.NewSize.Width > 0 && fe.Height != e.NewSize.Width)
+            fe.Height = e.NewSize.Width;
     }
 
     private void TrackTitle_Click(object sender, RoutedEventArgs e)

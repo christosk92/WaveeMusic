@@ -914,7 +914,8 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 Device = new Device
                 {
                     DeviceInfo = deviceInfo,
-                    PlayerState = playerState
+                    PlayerState = playerState,
+                    PrivateDeviceInfo = ConnectStateHelpers.CreatePrivateDeviceInfo()
                 },
                 PutStateReason = PutStateReason.PlayerStateChanged,
                 IsActive = _isLocalPlaybackActive,
@@ -937,9 +938,23 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 _playbackStartedAt,
                 hasBeenPlayingForMs);
 
+            // Defensive deep-clone before queueing. The PutStateRequest holds
+            // references to PlayerState.NextTracks / PrevTracks / Metadata maps
+            // that share underlying state with the engine's queue model. Without
+            // a clone, a later mutation (e.g. the next state push clearing
+            // NextTracks before the worker calls ToByteArray) silently produces
+            // a malformed wire body: CalculateSize counts the populated lists,
+            // WriteTo serializes the now-empty lists, and the resulting length
+            // prefix is wildly larger than the actual contents — Spotify's
+            // protobuf parser then rejects the entire message and Recently
+            // Played stays empty. Cloning here freezes the snapshot.
+            // Confirmed via wire-dump diff (2026-04-28): Wavee was sending
+            // device length=27095 with only 2421 bytes of actual contents.
+            var snapshot = request.Clone();
+
             // Drop stale updates when the publish queue is saturated.
             // For playback state, freshest update is more important than every intermediate tick.
-            if (_statePublisher != null && !_statePublisher.TrySubmit(request))
+            if (_statePublisher != null && !_statePublisher.TrySubmit(snapshot))
             {
                 Interlocked.Increment(ref _publishDroppedCount);
                 _logger?.LogWarning(

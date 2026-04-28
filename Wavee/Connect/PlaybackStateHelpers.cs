@@ -3,6 +3,7 @@ using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
 using Wavee.Audio.Queue;
 using Wavee.Connect.Protocol;
+using Wavee.Core;
 using Wavee.Protocol.Player;
 
 namespace Wavee.Connect;
@@ -338,11 +339,29 @@ public static class PlaybackStateHelpers
             }
             : null;
 
-        // Generate new SessionId when track changes, otherwise carry over
-        var isNewTrack = prev.Track?.Uri != localState.TrackUri;
-        var sessionId = isNewTrack || prev.SessionId == null
+        // Stable IDs per librespot-java semantics:
+        //   • SessionId  → one per CONTEXT (album/playlist/artist). Regenerated
+        //                  only when the context URI changes. Stays stable
+        //                  across the dozens of tracks within a single playlist.
+        //   • PlaybackId → one per TRACK. Regenerated on every track change.
+        // Both must be stable across the many PutState publishes that happen
+        // for a single track (8+/min during normal playback). If either churns
+        // per-publish, Spotify's backend can't reconcile the stream into a
+        // coherent play and Recently Played / play counts silently break.
+        // Empty/whitespace context is treated as "no real context" so internal
+        // queue plays keep getting fresh session ids on every flip.
+        var newContextUri = localState.ContextUri ?? string.Empty;
+        var prevContextUri = prev.ContextUri ?? string.Empty;
+        var isContextChanged = !string.IsNullOrEmpty(newContextUri)
+                               && !string.Equals(newContextUri, prevContextUri, StringComparison.Ordinal);
+        var sessionId = isContextChanged || string.IsNullOrEmpty(prev.SessionId)
             ? Guid.NewGuid().ToString("N")
             : prev.SessionId;
+
+        var isNewTrack = prev.Track?.Uri != localState.TrackUri;
+        var playbackId = isNewTrack || string.IsNullOrEmpty(prev.PlaybackId)
+            ? Guid.NewGuid().ToString("N")
+            : prev.PlaybackId;
 
         // Merge: start from previous state, override only fields with real values
         var newState = prev with
@@ -378,6 +397,7 @@ public static class PlaybackStateHelpers
             Timestamp = localState.Timestamp,
             Source = localState.Source ?? StateSource.Local,
             SessionId = sessionId,
+            PlaybackId = playbackId,
             CanSeek = localState.CanSeek,
             IsSystemInitiated = localState.IsSystemInitiated,
             ContextDescription = !string.IsNullOrEmpty(localState.ContextDescription)
@@ -445,27 +465,36 @@ public static class PlaybackStateHelpers
 
             PlaybackSpeed = state.Status == PlaybackStatus.Paused ? 0.0 : 1.0,
 
-            // CRITICAL: Required fields that librespot sets (missing causes Spotify to ignore state)
-            PlaybackId = Guid.NewGuid().ToString("N"),  // 32-char hex, new per publish
+            // CRITICAL: Required fields that librespot sets (missing causes Spotify to ignore state).
+            // PlaybackId / SessionId now flow from PlaybackState — stable per-track
+            // and per-context respectively (see merge logic in MergeWithLocalState).
+            // Spotify's backend reconciles play history by these IDs; minting fresh
+            // values per publish silently breaks Recently Played and play counts.
+            // Fallback Guid generation here only kicks in for synthetic/test states
+            // that never went through MergeWithLocalState — never in normal flow.
+            PlaybackId = state.PlaybackId ?? Guid.NewGuid().ToString("N"),
             SessionId = state.SessionId ?? Guid.NewGuid().ToString("N"),
             QueueRevision = state.QueueRevision ?? string.Empty,
             // Only true for autoplay rollover / transfer resume. User-initiated play is false.
             IsSystemInitiated = state.IsSystemInitiated,
 
-            // Play origin - required for Spotify to recognize source.
-            // NOTE: omit device_identifier — Spotify desktop doesn't populate it here
-            // (the authoritative device lives in cluster.active_device_id).
+            // PlayOrigin tells Spotify *where the user initiated playback from*.
+            // Verified from 2026-04-28 desktop SAZ capture: feature_identifier
+            // is the canonical short name ("album", "playlist", "artist",
+            // "your_library", "home", "search"), NOT a "-page" suffixed form.
+            // Recently Played attribution lives off this — unknown identifiers
+            // fall outside the server's allowlist and the play is not credited.
+            // feature_version must be non-empty (desktop sends an xpui build
+            // hash; Wavee uses a stable build identifier).
+            // view_uri is the navigation route the user came from; we use the
+            // context URI itself as a sensible default when no explicit route
+            // tracker is wired through PlaybackState.
             PlayOrigin = new PlayOrigin
             {
-                // Feature identifier mirrors the page a Spotify client started from
-                // ("playlist", "album", "artist", "collection"). Fallback to the
-                // generic Wavee identifier when context kind is unknown.
-                FeatureIdentifier = !string.IsNullOrEmpty(state.ContextFeature) ? state.ContextFeature : "wavee",
-                FeatureVersion = "Wavee/1.0.0.0",
-                // Matches Spotify desktop's referrer when play originates from the
-                // Now Playing / context page. Only include it when we know the
-                // context kind, so ad-hoc queues don't claim a fake referrer.
-                ReferrerIdentifier = !string.IsNullOrEmpty(state.ContextFeature) ? "now_playing_panel" : string.Empty
+                FeatureIdentifier = MapContextFeatureToPlayOrigin(state.ContextFeature),
+                FeatureVersion = "wavee_" + SpotifyClientIdentity.DesktopSemver,
+                ViewUri = !string.IsNullOrEmpty(state.ContextUri) ? state.ContextUri : "home",
+                ReferrerIdentifier = MapContextFeatureToPlayOrigin(state.ContextFeature)
             },
 
             // Context index - actual position in queue
@@ -1011,6 +1040,24 @@ public static class PlaybackStateHelpers
     /// <summary>
     /// Builds restrictions based on playback state.
     /// Controls which buttons are enabled on remote devices.
+    /// <summary>
+    /// Maps Wavee's <see cref="PlaybackState.ContextFeature"/> (which carries
+    /// the context KIND — "playlist"/"album"/"artist"/"collection") to the
+    /// matching Spotify desktop play-origin UI-page name. Spotify uses the
+    /// play_origin to attribute Recently Played and the "you played X from Y"
+    /// surface, so this string has to match a known UI page or play history
+    /// won't link the play to anything.
+    /// </summary>
+    private static string MapContextFeatureToPlayOrigin(string? contextFeature) => contextFeature switch
+    {
+        "album"      => "album",
+        "playlist"   => "playlist",
+        "artist"     => "artist",
+        "collection" => "your_library",
+        "search"     => "search",
+        _            => "home",
+    };
+
     /// </summary>
     /// <param name="state">Current playback state.</param>
     /// <returns>Restrictions protobuf message.</returns>

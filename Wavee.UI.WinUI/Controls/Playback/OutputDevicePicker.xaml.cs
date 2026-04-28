@@ -13,38 +13,62 @@ using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.RightPanel;
 using Wavee.UI.WinUI.Styles;
 
-namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
+namespace Wavee.UI.WinUI.Controls.Playback;
 
 /// <summary>
-/// Device picker flyout partial — mirrors RightPanelView.OutputDevice.cs but renders
-/// inline below the chip in the sidebar widget. Reuses <see cref="OutputDeviceRowViewModel"/>
-/// from the right panel and <see cref="FluentGlyphs"/> for icons so visuals stay consistent.
+/// Reusable combobox-style output device picker. Self-contained:
+/// subscribes to <see cref="IPlaybackStateService"/>, builds the Local Audio
+/// + Spotify Connect device lists, handles row clicks via
+/// <see cref="IPlaybackService"/>. Drop-in anywhere in the app —
+/// the trigger renders the active device name + a chevron and opens a
+/// flyout with the full picker.
+///
+/// <para>
+/// Visuals match LibrarySortViewPanel's SortOptionRowStyle: transparent rows
+/// with subtle hover/press tint, accent check glyph at right when active.
+/// </para>
 /// </summary>
-public sealed partial class SidebarPlayerWidget
+public sealed partial class OutputDevicePicker : UserControl
 {
-    private readonly ObservableCollection<OutputDeviceRowViewModel> _devicePickerLocalRows = new();
-    private readonly ObservableCollection<OutputDeviceRowViewModel> _devicePickerConnectRows = new();
-    private bool _devicePickerWired;
+    private readonly ObservableCollection<OutputDeviceRowViewModel> _localRows = new();
+    private readonly ObservableCollection<OutputDeviceRowViewModel> _connectRows = new();
+    private IPlaybackStateService? _playbackStateService;
+    private bool _wired;
 
-    private void EnsureDevicePickerWired()
+    public OutputDevicePicker()
     {
-        if (_devicePickerWired) return;
-        if (_playbackStateService == null) return;
-        _devicePickerWired = true;
-
-        DeviceFlyoutLocalList.ItemsSource = _devicePickerLocalRows;
-        DeviceFlyoutConnectList.ItemsSource = _devicePickerConnectRows;
-
-        _playbackStateService.PropertyChanged += OnDevicePickerStateChanged;
-        Unloaded += (_, _) =>
-        {
-            if (_playbackStateService != null)
-                _playbackStateService.PropertyChanged -= OnDevicePickerStateChanged;
-            _devicePickerWired = false;
-        };
+        InitializeComponent();
+        LocalDeviceList.ItemsSource = _localRows;
+        ConnectDeviceList.ItemsSource = _connectRows;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
-    private void OnDevicePickerStateChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        EnsureWired();
+        UpdateTrigger();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_playbackStateService != null)
+            _playbackStateService.PropertyChanged -= OnStateChanged;
+        _playbackStateService = null;
+        _wired = false;
+    }
+
+    private void EnsureWired()
+    {
+        if (_wired) return;
+        _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+        if (_playbackStateService == null) return;
+
+        _playbackStateService.PropertyChanged += OnStateChanged;
+        _wired = true;
+    }
+
+    private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
@@ -57,19 +81,46 @@ public sealed partial class SidebarPlayerWidget
             case nameof(IPlaybackStateService.IsPlaying):
             case nameof(IPlaybackStateService.IsAudioEngineAvailable):
             case nameof(IPlaybackStateService.CurrentTrackId):
-                if (DevicePickerFlyout?.IsOpen == true)
-                    DispatcherQueue?.TryEnqueue(RebuildDevicePickerRows);
+                DispatcherQueue?.TryEnqueue(() =>
+                {
+                    UpdateTrigger();
+                    RebuildRows();
+                });
                 break;
         }
     }
 
-    private void DevicePickerFlyout_Opening(object sender, object e)
+    /// <summary>
+    /// Updates the trigger label + glyph based on the current active device.
+    /// Remote (Spotify Connect) devices show a remote glyph + accent foreground;
+    /// local audio outputs show a speaker glyph + neutral text.
+    /// </summary>
+    private void UpdateTrigger()
     {
-        EnsureDevicePickerWired();
-        // Best-effort rescan of live system audio devices so newly-plugged
-        // outputs appear without restarting playback.
+        var state = _playbackStateService;
+        if (state == null) return;
+
+        if (state.IsPlayingRemotely)
+        {
+            TriggerIcon.Glyph = FluentGlyphs.DeviceRemote;
+            TriggerIcon.Foreground = (Microsoft.UI.Xaml.Media.Brush?)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+            TriggerLabel.Foreground = (Microsoft.UI.Xaml.Media.Brush?)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+            TriggerLabel.Text = string.IsNullOrEmpty(state.ActiveDeviceName) ? "Remote device" : state.ActiveDeviceName;
+        }
+        else
+        {
+            TriggerIcon.Glyph = FluentGlyphs.DeviceLocalSpeaker;
+            TriggerIcon.Foreground = (Microsoft.UI.Xaml.Media.Brush?)Application.Current.Resources["TextFillColorSecondaryBrush"];
+            TriggerLabel.Foreground = (Microsoft.UI.Xaml.Media.Brush?)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            TriggerLabel.Text = string.IsNullOrEmpty(state.ActiveAudioDeviceName) ? "This device" : state.ActiveAudioDeviceName;
+        }
+    }
+
+    private void PickerFlyout_Opening(object sender, object e)
+    {
+        EnsureWired();
         _ = RequestDeviceListRefreshAsync();
-        RebuildDevicePickerRows();
+        RebuildRows();
     }
 
     private static async Task RequestDeviceListRefreshAsync()
@@ -82,17 +133,17 @@ public sealed partial class SidebarPlayerWidget
         }
         catch
         {
-            // Best effort — picker still shows whatever was cached.
+            // Best-effort.
         }
     }
 
-    private void RebuildDevicePickerRows()
+    private void RebuildRows()
     {
         var state = _playbackStateService;
         if (state == null) return;
 
-        _devicePickerLocalRows.Clear();
-        _devicePickerConnectRows.Clear();
+        _localRows.Clear();
+        _connectRows.Clear();
 
         var isRemote = state.IsPlayingRemotely;
         var isPlaying = state.IsPlaying;
@@ -101,11 +152,9 @@ public sealed partial class SidebarPlayerWidget
 
         if (isRemote)
         {
-            // Playing on another device: collapse Local Audio to a single
-            // "This device" row that transfers playback back here.
             if (!string.IsNullOrEmpty(selfDeviceId))
             {
-                _devicePickerLocalRows.Add(new OutputDeviceRowViewModel
+                _localRows.Add(new OutputDeviceRowViewModel
                 {
                     Name = "This device",
                     Icon = FluentGlyphs.DeviceComputer,
@@ -121,10 +170,10 @@ public sealed partial class SidebarPlayerWidget
             {
                 var isActive = !string.IsNullOrEmpty(activeAudioName) &&
                                string.Equals(activeAudioName, device.Name, StringComparison.Ordinal);
-                _devicePickerLocalRows.Add(new OutputDeviceRowViewModel
+                _localRows.Add(new OutputDeviceRowViewModel
                 {
                     Name = device.Name,
-                    Icon = DeviceTypeToFlyoutGlyph(GuessLocalFlyoutDeviceType(device.Name)),
+                    Icon = DeviceTypeToGlyph(GuessLocalDeviceType(device.Name)),
                     LocalDeviceIndex = device.DeviceIndex,
                     IsActive = isActive,
                     IsPlayingOnRow = isActive && isPlaying,
@@ -138,23 +187,21 @@ public sealed partial class SidebarPlayerWidget
                 string.Equals(device.DeviceId, selfDeviceId, StringComparison.Ordinal))
                 continue;
             var isActive = isRemote && device.IsActive;
-            _devicePickerConnectRows.Add(new OutputDeviceRowViewModel
+            _connectRows.Add(new OutputDeviceRowViewModel
             {
                 Name = device.Name,
-                Icon = DeviceTypeToFlyoutGlyph(device.Type),
+                Icon = DeviceTypeToGlyph(device.Type),
                 SpotifyDeviceId = device.DeviceId,
                 IsActive = isActive,
                 IsPlayingOnRow = isActive && isPlaying,
             });
         }
 
-        DeviceFlyoutLocalHeader.Visibility = _devicePickerLocalRows.Count > 0
+        LocalHeader.Visibility = _localRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ConnectHeader.Visibility = _connectRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ListSeparator.Visibility = (_localRows.Count > 0 && _connectRows.Count > 0)
             ? Visibility.Visible : Visibility.Collapsed;
-        DeviceFlyoutConnectHeader.Visibility = _devicePickerConnectRows.Count > 0
-            ? Visibility.Visible : Visibility.Collapsed;
-        DeviceFlyoutSeparator.Visibility = (_devicePickerLocalRows.Count > 0 && _devicePickerConnectRows.Count > 0)
-            ? Visibility.Visible : Visibility.Collapsed;
-        DeviceFlyoutEmptyText.Visibility = (_devicePickerLocalRows.Count == 0 && _devicePickerConnectRows.Count == 0)
+        EmptyText.Visibility = (_localRows.Count == 0 && _connectRows.Count == 0)
             ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -179,6 +226,11 @@ public sealed partial class SidebarPlayerWidget
         var playbackService = Ioc.Default.GetService<IPlaybackService>();
         if (playbackService == null) return;
 
+        // Optimistic: flip the highlight immediately so the UI doesn't lag the IPC echo.
+        foreach (var row in _localRows) row.IsActive = false;
+        foreach (var row in _connectRows) row.IsActive = false;
+        vm.IsActive = true;
+
         vm.IsSwitching = true;
         try
         {
@@ -200,11 +252,10 @@ public sealed partial class SidebarPlayerWidget
             vm.IsSwitching = false;
         }
 
-        // Dismiss the flyout once a switch is initiated.
-        DevicePickerFlyout?.Hide();
+        PickerFlyout?.Hide();
     }
 
-    private static string DeviceTypeToFlyoutGlyph(DeviceType type) => type switch
+    private static string DeviceTypeToGlyph(DeviceType type) => type switch
     {
         DeviceType.Smartphone => FluentGlyphs.DeviceSmartphone,
         DeviceType.Speaker => FluentGlyphs.DeviceSpeaker,
@@ -218,7 +269,7 @@ public sealed partial class SidebarPlayerWidget
         _ => FluentGlyphs.DeviceComputer,
     };
 
-    private static DeviceType GuessLocalFlyoutDeviceType(string? deviceName)
+    private static DeviceType GuessLocalDeviceType(string? deviceName)
     {
         if (string.IsNullOrEmpty(deviceName))
             return DeviceType.Computer;

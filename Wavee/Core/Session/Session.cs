@@ -77,6 +77,10 @@ public sealed class Session : ISession, IAsyncDisposable
     // Optional disk-backed cache injected by the app layer (see SetCacheService).
     // Flows into AudioKeyManager so AudioKeys can survive app restarts.
     private Wavee.Core.Storage.ICacheService? _cacheService;
+    // Optional PlayPlay-based fallback key deriver injected by the app layer
+    // (see SetPlayPlayKeyDeriver). Used by AudioKeyManager when the AP audio-key
+    // channel returns a permanent error or repeated timeouts. Null = feature disabled.
+    private IPlayPlayKeyDeriver? _playPlayKeyDeriver;
 
     // Keep-alive state machine (set by DispatchLoop, accessed by HandlePacket)
     private KeepAlive? _keepAlive;
@@ -363,9 +367,44 @@ public sealed class Session : ISession, IAsyncDisposable
             _playbackStateManager = new PlaybackStateManager(_dealerClient, _logger);
             _logger?.LogDebug("PlaybackStateManager created");
 
-            // Create event service for reporting playback events (artist payouts)
-            _eventService = new EventService((SpClient)SpClient, _logger);
-            _logger?.LogDebug("EventService created");
+            // Create event service for reporting playback events. Routes through
+            // gabo-receiver-service/v3/events/ — the legacy event-service paths
+            // (HTTPS + Mercury) are both 404. Installation id is derived from
+            // the device id for now (16-byte stable per-install). Could be
+            // promoted to its own persisted random value later if Spotify
+            // starts rate-limiting based on it.
+            //
+            // Wavee.Core can't see SessionConfig.ClientId directly (yet), so
+            // fall back to the keymaster id when the config doesn't override it.
+            const string KeymasterClientId = "65b708073fc0480ea92a077233ca87bd";
+            var clientIdHex = string.IsNullOrEmpty(_config.ClientId) ? KeymasterClientId : _config.ClientId;
+            var installationId = DeriveInstallationId(_config.DeviceId);
+            // Match what desktop Spotify ships in context_device_desktop —
+            // BIOS-reported manufacturer / product, Windows machine SID, and
+            // 3-part OS version (no trailing .0 revision). Empty values on
+            // non-Windows / locked-down hosts are still better than the
+            // obviously-fake "Wavee" / "Wavee Desktop" we used to send.
+            var manufacturer = WindowsHardwareInfo.GetManufacturer();
+            var model = WindowsHardwareInfo.GetModel();
+            var machineSid = WindowsHardwareInfo.GetMachineSid();
+            var osVersion = WindowsHardwareInfo.GetOsVersionThreePart();
+            // Stable per-app-process session id Spotify expects in
+            // context_application_desktop.session_id (16 random bytes,
+            // generated once per Session instance — same lifetime as the
+            // desktop client's "session id" semantics).
+            var appSessionId = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+            _eventService = new EventService(
+                (SpClient)SpClient,
+                deviceIdHex: _config.DeviceId,
+                clientIdHex: clientIdHex,
+                installationId: installationId,
+                osVersion: osVersion,
+                deviceManufacturer: !string.IsNullOrEmpty(manufacturer) ? manufacturer : "Microsoft Corporation",
+                deviceModel: !string.IsNullOrEmpty(model) ? model : "PC",
+                osLevelDeviceId: !string.IsNullOrEmpty(machineSid) ? machineSid : _config.DeviceId,
+                appSessionId: appSessionId,
+                logger: _logger);
+            _logger?.LogDebug("EventService created (gabo-receiver transport)");
 
             // Signal that subscribers are ready - flush any queued PUT state responses
             _dealerClient.StartProcessingMessages();
@@ -539,7 +578,7 @@ public sealed class Session : ISession, IAsyncDisposable
     {
         get
         {
-            _audioKeyManager ??= new AudioKeyManager(this, _logger, _cacheService);
+            _audioKeyManager ??= new AudioKeyManager(this, _logger, _cacheService, _playPlayKeyDeriver);
             return _audioKeyManager;
         }
     }
@@ -553,6 +592,25 @@ public sealed class Session : ISession, IAsyncDisposable
     public void SetCacheService(Wavee.Core.Storage.ICacheService cacheService)
     {
         _cacheService = cacheService;
+    }
+
+    /// <summary>
+    /// Injects a PlayPlay key-derivation fallback. Same lifecycle rule as
+    /// <see cref="SetCacheService"/>: register before the first track plays,
+    /// otherwise <see cref="AudioKeys"/> will already have been constructed
+    /// without the reference and the fallback will not fire.
+    /// </summary>
+    /// <remarks>
+    /// The implementation is expected to live in <c>Wavee.PlayPlay</c> and to
+    /// run a CPU emulator over a copy of <c>Spotify.dll</c>. If no deriver is
+    /// registered, <see cref="AudioKeyManager"/> behaves exactly as before:
+    /// permanent AP errors (<c>0x0001</c>) and timeout exhaustion remain hard
+    /// failures.
+    /// </remarks>
+    public void SetPlayPlayKeyDeriver(IPlayPlayKeyDeriver playPlayKeyDeriver)
+    {
+        ArgumentNullException.ThrowIfNull(playPlayKeyDeriver);
+        _playPlayKeyDeriver = playPlayKeyDeriver;
     }
 
     public UserData UserData => _data.UserData;
@@ -1458,6 +1516,19 @@ public sealed class Session : ISession, IAsyncDisposable
         _httpClient.Dispose();
         _connectLock.Dispose();
         _dispatchCts?.Dispose();
+    }
+
+    /// <summary>
+    /// Derives a stable 16-byte installation id from the device id. Spotify
+    /// expects a per-install random value here; deriving from the device id
+    /// gives the same stability without needing an extra persisted setting.
+    /// SHA-256 of the device id, truncated to 16 bytes.
+    /// </summary>
+    private static byte[] DeriveInstallationId(string deviceIdHex)
+    {
+        var input = System.Text.Encoding.UTF8.GetBytes(deviceIdHex ?? string.Empty);
+        var hash = System.Security.Cryptography.SHA256.HashData(input);
+        return hash.AsSpan(0, 16).ToArray();
     }
 }
 

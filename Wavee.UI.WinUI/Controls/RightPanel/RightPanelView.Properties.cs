@@ -33,6 +33,21 @@ public sealed partial class RightPanelView
         DependencyProperty.Register(nameof(SelectedMode), typeof(RightPanelMode), typeof(RightPanelView),
             new PropertyMetadata(RightPanelMode.Queue, OnSelectedModeChanged));
 
+    /// <summary>
+    /// Show/hide the segmented tab header at the top of the panel. Default
+    /// <c>true</c>. Hosts that supply their own mode switcher (the floating
+    /// player's expanded layout) set this <c>false</c> so the tab strip
+    /// doesn't duplicate the bottom-right toggle buttons.
+    /// </summary>
+    public bool IsTabHeaderVisible
+    {
+        get => (bool)GetValue(IsTabHeaderVisibleProperty);
+        set => SetValue(IsTabHeaderVisibleProperty, value);
+    }
+    public static readonly DependencyProperty IsTabHeaderVisibleProperty =
+        DependencyProperty.Register(nameof(IsTabHeaderVisible), typeof(bool), typeof(RightPanelView),
+            new PropertyMetadata(true, OnIsTabHeaderVisibleChanged));
+
     private static void OnPanelWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is RightPanelView view)
@@ -67,5 +82,11 @@ public sealed partial class RightPanelView
     {
         if (d is RightPanelView view)
             view.UpdateContentVisibility();
+    }
+
+    private static void OnIsTabHeaderVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is RightPanelView view)
+            view.ApplyTabHeaderVisibility();
     }
 }

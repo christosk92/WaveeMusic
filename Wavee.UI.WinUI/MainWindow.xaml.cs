@@ -51,34 +51,18 @@ public sealed partial class MainWindow : WindowEx
         ExtendsContentIntoTitleBar = true;
 
         // Make titlebar buttons blend with content (backgrounds are theme-neutral transparents)
-        AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
-        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        AppWindow.TitleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(20, 128, 128, 128);
-        AppWindow.TitleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(40, 128, 128, 128);
+        Helpers.Application.TitleBarHelper.ApplyTransparentButtonBackground(AppWindow);
 
         // Caption glyph color must track the *app* theme, not the system theme —
         // leaving it null causes white glyphs on a light app (or vice-versa) whenever
         // the app and system themes disagree. ActualThemeChanged fires both at load
         // and on every runtime theme switch.
         RootFrame.ActualThemeChanged += OnRootThemeChanged;
-        ApplyCaptionButtonColors(RootFrame.ActualTheme);
+        Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootFrame.ActualTheme);
     }
 
     private void OnRootThemeChanged(FrameworkElement sender, object args)
-        => ApplyCaptionButtonColors(sender.ActualTheme);
-
-    private void ApplyCaptionButtonColors(ElementTheme theme)
-    {
-        var isDark = theme == ElementTheme.Dark;
-        var foreground = isDark ? Colors.White : Windows.UI.Color.FromArgb(255, 0x1A, 0x1A, 0x1A);
-        var inactive = isDark
-            ? Windows.UI.Color.FromArgb(255, 0x9A, 0x9A, 0x9A)
-            : Windows.UI.Color.FromArgb(255, 0x80, 0x80, 0x80);
-        AppWindow.TitleBar.ButtonForegroundColor = foreground;
-        AppWindow.TitleBar.ButtonHoverForegroundColor = foreground;
-        AppWindow.TitleBar.ButtonPressedForegroundColor = foreground;
-        AppWindow.TitleBar.ButtonInactiveForegroundColor = inactive;
-    }
+        => Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, sender.ActualTheme);
 
     private async void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
     {
@@ -288,6 +272,20 @@ public sealed partial class MainWindow : WindowEx
 
         // Always navigate to ShellPage (app works without Spotify login)
         RootFrame.Navigate(typeof(ShellPage));
+
+        // Restore tear-off panel windows from persisted state. Must run AFTER
+        // the shell exists so the floating windows have a XamlRoot baseline
+        // and AppModel.PlayerLocation is hydrated. Fire-and-forget — the
+        // service queues onto the dispatcher so it returns immediately.
+        try
+        {
+            _ = Ioc.Default.GetRequiredService<Wavee.UI.WinUI.Services.Docking.IPanelDockingService>()
+                .RehydrateAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Panel docking rehydrate failed: {ex}");
+        }
 
         // Show "What's New" dialog once the shell has rendered
         _ = ShowWhatsNewAfterDelayAsync(settingsService);

@@ -6,7 +6,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <Description>A fully managed implementation of a Xiph.org Foundation Ogg Vorbis decoder.</Description>
-    <Platforms>AnyCPU;ARM64;x64</Platforms>
+    <!--
+        AnyCPU only. NVorbis is pure managed IL — it has no native code, no
+        intrinsics, no architecture-specific anything. Building it for
+        ARM64 or x64 would only embed a platform marker in the PE header
+        that the CLR then enforces ("Could not load file or assembly
+        'NVorbis': targets a different processor"). With AnyCPU, the same
+        dll loads cleanly into ARM64-native, x64-native, AND x64-emulated
+        processes — which is exactly what we need for AudioHost (x64) +
+        Wavee (ARM64) to share one build.
+    -->
+    <Platforms>AnyCPU</Platforms>
+    <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
 
 </Project>

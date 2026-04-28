@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Imaging.CrossFadeImage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Two stacked Image layers + an optional placeholder fill. The host Grid
+         honors the consumer's Width/Height and clips by CornerRadius, so the
+         layout footprint is stable regardless of whether either Image has a
+         live Source. Layer opacities are driven by Composition animations from
+         code-behind — XAML keeps both at 0 so the very first source fades in
+         from blank rather than popping. -->
+    <Grid x:Name="HostGrid"
+          CornerRadius="{x:Bind CornerRadius, Mode=OneWay}">
+        <Border x:Name="PlaceholderLayer"
+                Background="{x:Bind PlaceholderBrush, Mode=OneWay}" />
+        <Image x:Name="LayerA"
+               Stretch="{x:Bind Stretch, Mode=OneWay}"
+               Opacity="0"
+               IsHitTestVisible="False" />
+        <Image x:Name="LayerB"
+               Stretch="{x:Bind Stretch, Mode=OneWay}"
+               Opacity="0"
+               IsHitTestVisible="False" />
+    </Grid>
+</UserControl>

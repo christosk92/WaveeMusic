@@ -46,6 +46,16 @@
       <Compile Remove="Protocol\Generated\**\*.cs" />
     </ItemGroup>
 
+    <!--
+      PlayPlay constants (Spotify property; not bundled in the public repo).
+      The real file at Core/Audio/PlayPlayConstants.cs is gitignored. When it
+      exists locally, drop the stub from compilation. When it doesn't, the
+      stub stands in and the runtime feature stays disabled.
+    -->
+    <ItemGroup Condition="Exists('Core\Audio\PlayPlayConstants.cs')">
+      <Compile Remove="Core\Audio\PlayPlayConstants.Stub.cs" />
+    </ItemGroup>
+
     <ItemGroup>
       <InternalsVisibleTo Include="Wavee.Tests" />
       <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />

@@ -93,6 +93,20 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fetches the PlayPlay obfuscated key for an audio file.
+    /// </summary>
+    /// <remarks>
+    /// Posts a PlayPlayLicenseRequest to <c>/playplay/v1/key/{file_id_hex}</c> and returns
+    /// the 16-byte obfuscated key from the PlayPlayLicenseResponse. The obfuscated key
+    /// must then be unwrapped via the PlayPlay key emulator to obtain the actual AES-128
+    /// audio decryption key. Used as a fallback when the AP audio-key channel returns a
+    /// permanent error or repeated timeouts.
+    /// </remarks>
+    Task<byte[]> ResolvePlayPlayObfuscatedKeyAsync(
+        FileId fileId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Announces device availability via Spotify Connect.
     /// </summary>
     /// <remarks>
@@ -109,20 +123,6 @@ public interface ISpClient
         string deviceId,
         string connectionId,
         Protocol.Player.PutStateRequest request,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Posts a playback event to Spotify's event-service.
-    /// </summary>
-    /// <remarks>
-    /// Events are used for playback reporting (artist payouts).
-    /// The event body uses tab-delimited (0x09) fields.
-    /// </remarks>
-    /// <param name="eventBody">Event body bytes (tab-delimited fields).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <exception cref="SpClientException">Thrown if the request fails.</exception>
-    Task PostEventAsync(
-        byte[] eventBody,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -306,6 +306,24 @@ public interface ISpClient
     /// </summary>
     Task<SpotifyFollowingResponse> GetUserFollowingAsync(
         string username,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Follows a user via Web API <c>PUT /v1/me/following?type=user&amp;ids={id}</c>.
+    /// Accepts either a bare user id (<c>abc</c>) or a full URI (<c>spotify:user:abc</c>).
+    /// Returns true on success.
+    /// </summary>
+    Task<bool> FollowUserAsync(
+        string usernameOrUri,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Unfollows a user via Web API <c>DELETE /v1/me/following?type=user&amp;ids={id}</c>.
+    /// Accepts either a bare user id (<c>abc</c>) or a full URI (<c>spotify:user:abc</c>).
+    /// Returns true on success.
+    /// </summary>
+    Task<bool> UnfollowUserAsync(
+        string usernameOrUri,
         CancellationToken cancellationToken = default);
 
     /// <summary>

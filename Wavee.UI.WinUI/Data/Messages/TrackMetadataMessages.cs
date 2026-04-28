@@ -65,3 +65,16 @@ public sealed class ExtendedTopTracksRequest : AsyncRequestMessage<List<ArtistTo
     public required string ArtistUri { get; init; }
     public CancellationToken CancellationToken { get; init; }
 }
+
+/// <summary>
+/// Request to resolve cover-art image URLs for a list of track URIs via the
+/// extended-metadata pipeline (cache + batched fetch). Used by ArtistViewModel
+/// to patch missing AlbumImageUrl values on the initial top-tracks list, since
+/// Spotify's getArtistOverview GraphQL response is inconsistent about
+/// returning albumOfTrack.coverArt for every track.
+/// </summary>
+public sealed class TrackImagesEnrichmentRequest : AsyncRequestMessage<IReadOnlyDictionary<string, string?>>
+{
+    public required IReadOnlyList<string> TrackUris { get; init; }
+    public CancellationToken CancellationToken { get; init; }
+}

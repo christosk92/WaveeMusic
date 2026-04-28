@@ -7,6 +7,7 @@ using Wavee.Audio.Queue;
 using Wavee.AudioIpc;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
+using Wavee.Connect.Events;
 
 namespace Wavee.Audio;
 
@@ -15,7 +16,7 @@ namespace Wavee.Audio;
 /// Manages queue, resolves tracks, handles remote commands, auto-advances on track finish.
 /// Implements IPlaybackEngine so it slots into the existing executor/state manager wiring.
 /// </summary>
-public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
+public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 {
     private readonly AudioPipelineProxy _proxy;
 
@@ -100,12 +101,16 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         TrackResolver trackResolver,
         ContextResolver contextResolver,
         ConnectCommandHandler? commandHandler,
-        ILogger? logger)
+        ILogger? logger,
+        EventService? events = null,
+        string? localDeviceId = null)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _trackResolver = trackResolver ?? throw new ArgumentNullException(nameof(trackResolver));
         _contextResolver = contextResolver ?? throw new ArgumentNullException(nameof(contextResolver));
         _logger = logger;
+        _events = events;
+        _localDeviceId = localDeviceId ?? string.Empty;
         _queue = new PlaybackQueue(logger);
 
         // Forward proxy state enriched with queue info
@@ -150,6 +155,21 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
             // user as the initiator — the auto-advance path flips the latch back to
             // true before calling PlayCurrentTrackAsync.
             _isSystemInitiated = false;
+
+            // Event reporting: remember sender, capture play_origin, decide whether
+            // the next ReasonStart is "clickrow" (local UI) or "remote" (transfer
+            // from another device). Compared against _localDeviceId so a remote
+            // device's id is correctly classified.
+            RememberSender(command.SenderDeviceId);
+            _currentPlayOrigin = command.PlayOrigin;
+            // ConnectCommandExecutor sets SenderDeviceId="" for locally-initiated
+            // plays (no remote dealer command involved); only a non-empty,
+            // non-local id means a different device sent us this play.
+            var isLocalSender = string.IsNullOrEmpty(command.SenderDeviceId)
+                                || string.Equals(command.SenderDeviceId, _localDeviceId, StringComparison.Ordinal);
+            _nextStartReason = isLocalSender ? Wavee.Connect.Events.PlaybackReason.ClickRow
+                                              : Wavee.Connect.Events.PlaybackReason.Remote;
+
             _currentContextDescription = command.ContextDescription;
             _currentContextImageUrl = command.ContextImageUrl;
             _currentContextFeature = command.ContextFeature;
@@ -251,6 +271,16 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
                 _queue.SetTracks(tracks, command.SkipToIndex ?? 0);
             }
 
+            // Emit NewSessionIdEvent (and flush previous track's TrackTransition)
+            // now that the new context is established in the queue. Order matters:
+            // the in-flight metrics flush must use the OLD _queue.ContextUri, while
+            // the new session id is bound to the NEW context — that's what we have here.
+            var sessionContextUri = _queue.ContextUri ?? command.ContextUri ?? string.Empty;
+            var sessionContextSize = command.ContextTrackCount
+                                     ?? command.PageTracks?.Count
+                                     ?? Math.Max(1, _queue.LoadedCount);
+            OnContextStarted(sessionContextUri, sessionContextSize, isLocalSender);
+
             await PlayCurrentTrackAsync(command.PositionMs ?? 0, ct);
         }
         catch (Exception ex)
@@ -289,6 +319,11 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     public Task StopAsync(CancellationToken ct = default)
     {
         _logger?.LogInformation("Orchestrator: StopAsync → forwarding to proxy");
+
+        // Event reporting: Stop is endplay. Captures whatever the user was doing
+        // when they hit Stop, and the post-stop ReasonStart will be ClickRow.
+        DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.EndPlay, _stateSubject.Value.PositionMs);
+
         return _proxy.StopAsync(ct);
     }
 
@@ -312,6 +347,11 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 
     public async Task SkipNextAsync(CancellationToken ct = default)
     {
+        // Event reporting: forward-skip is fwdbtn, regardless of whether the
+        // skip lands on a real track or end-of-context. Dispatch before advance
+        // so wire ordering is transition-then-newPlaybackId.
+        DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.ForwardBtn, _stateSubject.Value.PositionMs);
+
         // Shared end-of-queue handling with OnTrackFinishedAsync. Without this
         // delegation, skip-next past the last track bypassed Phase E's autoplay
         // fallback entirely — it just called StopAsync and left the engine in
@@ -324,7 +364,7 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 
     public async Task SkipPreviousAsync(CancellationToken ct = default)
     {
-        // If more than 3 seconds in, restart current track
+        // If more than 3 seconds in, restart current track — NOT a transition.
         var state = _stateSubject.Value;
         if (state.PositionMs > 3000)
         {
@@ -335,6 +375,11 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
         var prev = _queue.MovePrevious();
         if (prev != null)
         {
+            // Event reporting: only the actual cross-track back-button case is
+            // a transition. The position≤3 s + no-prev-track path below also
+            // just re-seeks and isn't reported.
+            DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.BackBtn, state.PositionMs);
+
             ResetPrefetch();
             _logger?.LogInformation("Orchestrator: skip prev → {Uri}", prev.Uri);
             await PlayCurrentTrackAsync(0, ct);
@@ -383,6 +428,11 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 
         // 1. Resolve with head file (instant start) + deferred CDN/key
         var resolution = await _trackResolver.ResolveWithHeadAsync(current.Uri, ct);
+
+        // Event reporting: open a fresh playback metrics window for this track
+        // and emit NewPlaybackIdEvent. Done before PlayTrackDeferredAsync so the
+        // start interval's begin position lines up with what the audio engine sees.
+        OnTrackStarted(current.Uri, (int)Math.Min(positionMs, int.MaxValue), resolution);
 
         // 2. Generate deferred ID
         var deferredId = Guid.NewGuid().ToString("N");
@@ -443,6 +493,19 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
             // user next calls PlayAsync.
             _isSystemInitiated = true;
             _logger?.LogInformation("Track finished: {Uri} reason={Reason}", msg.TrackUri, msg.Reason);
+
+            // Event reporting: emit TrackTransitionEvent before starting the next
+            // track. trackdone for natural finish, trackerror for AudioHost-reported
+            // failures. End position = full duration for trackdone (the engine has
+            // already left position behind; trust the resolution duration if known).
+            var endPos = string.Equals(msg.Reason, "error", StringComparison.OrdinalIgnoreCase)
+                ? _stateSubject.Value.PositionMs
+                : (_currentResolution?.DurationMs ?? _stateSubject.Value.PositionMs);
+            DispatchTrackTransition(
+                string.Equals(msg.Reason, "error", StringComparison.OrdinalIgnoreCase)
+                    ? Wavee.Connect.Events.PlaybackReason.TrackError
+                    : Wavee.Connect.Events.PlaybackReason.TrackDone,
+                endPos);
 
             if (_repeatTrack)
             {
@@ -749,47 +812,56 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
 
         _subs.Add(handler.PlayCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: play context={Context}, track={Track}, index={Index}, sender={Sender}",
                 cmd.ContextUri ?? "<none>", cmd.TrackUri ?? "<none>", cmd.SkipToIndex, cmd.SenderDeviceId ?? "<none>");
             FireAndLog(PlayAsync(cmd), "play");
         }));
         _subs.Add(handler.PauseCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: pause (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
             FireAndLog(PauseAsync(), "pause");
         }));
         _subs.Add(handler.ResumeCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: resume (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
             FireAndLog(ResumeAsync(), "resume");
         }));
         _subs.Add(handler.SeekCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: seek → {Pos}ms (sender={Sender})", cmd.PositionMs, cmd.SenderDeviceId ?? "<none>");
             FireAndLog(SeekAsync(cmd.PositionMs), "seek");
         }));
         _subs.Add(handler.SkipNextCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: skip_next (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
             FireAndLog(SkipNextAsync(), "skip_next");
         }));
         _subs.Add(handler.SkipPrevCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: skip_prev (sender={Sender})", cmd.SenderDeviceId ?? "<none>");
             FireAndLog(SkipPreviousAsync(), "skip_prev");
         }));
         _subs.Add(handler.ShuffleCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: shuffle={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
             FireAndLog(SetShuffleAsync(cmd.Enabled), "shuffle");
         }));
         _subs.Add(handler.RepeatContextCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: repeat_context={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
             FireAndLog(SetRepeatContextAsync(cmd.Enabled), "repeat_context");
         }));
         _subs.Add(handler.RepeatTrackCommands.Subscribe(cmd =>
         {
+            RememberSender(cmd.SenderDeviceId);
             _logger?.LogInformation("Remote cmd: repeat_track={Enabled} (sender={Sender})", cmd.Enabled, cmd.SenderDeviceId ?? "<none>");
             FireAndLog(SetRepeatTrackAsync(cmd.Enabled), "repeat_track");
         }));
@@ -818,6 +890,11 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     private void OnProxyStateChanged(LocalPlaybackState engineState)
     {
         var prev = _stateSubject.Value;
+
+        // Event reporting: track pause/resume edges as PlaybackMetrics interval
+        // boundaries so TrackTransitionEvent's ms_played accurately reflects what
+        // the user actually heard (excluding paused time).
+        OnIntervalEdge(prev, engineState);
 
         // Log significant state transitions
         if (prev.TrackUri != engineState.TrackUri)
@@ -949,6 +1026,12 @@ public sealed class PlaybackOrchestrator : IPlaybackEngine, IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Event reporting: flush any in-flight track as endplay before tearing
+        // down the subscriptions. EventService's own DisposeAsync (driven by
+        // Session) drains its async worker queue separately.
+        DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.EndPlay, _stateSubject.Value.PositionMs);
+
         ResetPrefetch();
         _subs.Dispose();
         _stateSubject.Dispose();

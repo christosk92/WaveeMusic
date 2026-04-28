@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Wavee.UI.WinUI.Views;
@@ -117,11 +118,14 @@ public static class NavigationHelpers
     }
 
     /// <summary>
-    /// Navigate to user profile - within tab by default, new tab if openInNewTab=true
+    /// Navigate to a user profile. Pass <paramref name="parameter"/>=null for the
+    /// authenticated user's own profile, or a <see cref="ContentNavigationParameter"/>
+    /// carrying a <c>spotify:user:{id}</c> URI for someone else.
     /// </summary>
-    public static void OpenProfile(bool openInNewTab = false)
+    public static void OpenProfile(ContentNavigationParameter? parameter = null, string? title = null, bool openInNewTab = false)
     {
-        Navigate(typeof(ProfilePage), null, "Profile", CreateIconSource(typeof(ProfilePage), null), openInNewTab);
+        var header = parameter?.Title ?? title ?? "Profile";
+        Navigate(typeof(ProfilePage), parameter, header, CreateIconSource(typeof(ProfilePage), parameter), openInNewTab);
     }
 
     /// <summary>
@@ -305,7 +309,7 @@ public static class NavigationHelpers
             return "Search";
 
         if (pageType == typeof(ProfilePage))
-            return "Profile";
+            return (parameter as ContentNavigationParameter)?.Title ?? "Profile";
 
         if (pageType == typeof(SettingsPage))
             return "Settings";

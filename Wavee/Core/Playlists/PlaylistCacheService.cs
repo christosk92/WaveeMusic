@@ -103,6 +103,26 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
     public IObservable<PlaylistChangeEvent> Changes => _changes.AsObservable();
 
+    public Task ClearAllAsync(CancellationToken ct = default)
+    {
+        _hotCache.Clear();
+
+        lock (_rootlistGate)
+        {
+            _hotRootlist = null;
+            _rootlistRefreshTask = null;
+        }
+
+        _playlistRefreshes.Clear();
+        _pendingAccessTouches.Clear();
+        _staleSchemaUris.Clear();
+        _lastDealerRefreshAt.Clear();
+        _negativeCache.Clear();
+
+        _logger?.LogInformation("PlaylistCacheService: in-memory caches cleared (user-scope wipe)");
+        return Task.CompletedTask;
+    }
+
     public async Task<RootlistSnapshot> GetRootlistAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
         EnsureDealerSubscription();

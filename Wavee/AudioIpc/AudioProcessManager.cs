@@ -131,21 +131,20 @@ public sealed class AudioProcessManager : IAsyncDisposable
         {
             var audioHostBin = Path.Combine(solutionRoot, "Wavee.AudioHost", "bin");
 
-            // Prefer platform+config match (e.g. bin/ARM64/Debug/net10.0)
-            if (platform is not null && config is not null)
-            {
-                candidates.Add(Path.Combine(audioHostBin, platform, config, "net10.0", "Wavee.AudioHost.exe"));
-            }
+            // AudioHost is x64-only (loads Spotify.dll directly for PlayPlay).
+            // Build output is always bin/x64/{Config}/net10.0/win-x64/ (or
+            // bin/{Config}/... when invoked without -p:Platform). Don't probe
+            // bin/<host-platform>/ — on ARM64 builds that path can contain a
+            // half-built output from a stale build pipeline.
+            var configs = config is not null
+                ? new[] { config, config == "Debug" ? "Release" : "Debug" }
+                : new[] { "Debug", "Release" };
 
-            // Fall back to config without platform (AnyCPU, e.g. bin/Debug/net10.0)
-            if (config is not null)
+            foreach (var cfg in configs)
             {
-                candidates.Add(Path.Combine(audioHostBin, config, "net10.0", "Wavee.AudioHost.exe"));
+                candidates.Add(Path.Combine(audioHostBin, "x64", cfg, "net10.0", "win-x64", "Wavee.AudioHost.exe"));
+                candidates.Add(Path.Combine(audioHostBin, cfg, "net10.0", "win-x64", "Wavee.AudioHost.exe"));
             }
-
-            // Last-resort fallbacks
-            candidates.Add(Path.Combine(audioHostBin, "Debug", "net10.0", "Wavee.AudioHost.exe"));
-            candidates.Add(Path.Combine(audioHostBin, "Release", "net10.0", "Wavee.AudioHost.exe"));
         }
 
         _audioHostPath = "";

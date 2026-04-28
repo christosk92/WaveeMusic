@@ -54,6 +54,9 @@ public sealed class AudioKeyManager : IAsyncDisposable
     /// the in-process dictionary only, matching legacy behaviour.
     /// </summary>
     private readonly ICacheService? _cacheService;
+    // PlayPlay is Spotify property. Optional fallback for permanent AP errors
+    // and timeout exhaustion; null = AP-only.
+    private readonly IPlayPlayKeyDeriver? _playPlayKeyDeriver;
     private readonly ConcurrentDictionary<uint, (TaskCompletionSource<byte[]> Tcs, FileId FileId)> _pending = new();
     private readonly ConcurrentDictionary<FileId, byte[]> _keyCache = new();
     private uint _sequence;
@@ -85,12 +88,17 @@ public sealed class AudioKeyManager : IAsyncDisposable
     /// Optional disk-backed cache for persisting AudioKeys across app restarts.
     /// When null, keys are only held in process memory (legacy behaviour).
     /// </param>
-    public AudioKeyManager(ISession session, ILogger? logger = null, ICacheService? cacheService = null)
+    public AudioKeyManager(
+        ISession session,
+        ILogger? logger = null,
+        ICacheService? cacheService = null,
+        IPlayPlayKeyDeriver? playPlayKeyDeriver = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         _session = session;
         _logger = logger;
         _cacheService = cacheService;
+        _playPlayKeyDeriver = playPlayKeyDeriver;
     }
 
     /// <summary>
@@ -163,10 +171,19 @@ public sealed class AudioKeyManager : IAsyncDisposable
             }
             catch (AudioKeyException ex) when (ex.Reason == AudioKeyFailureReason.KeyError && !IsTransient(ex.ErrorCode))
             {
-                // Permanent error (e.g. 0x0001 entitlement denial). Do not retry; surface fast.
+                // Permanent error (e.g. 0x0001 entitlement denial). The AP will not
+                // change its mind on retry, so try the PlayPlay HTTP path instead
+                // before surfacing the failure. If no deriver is registered, behave
+                // exactly as before and re-throw.
                 _logger?.LogWarning(
                     "AudioKey permanent error code=0x{Code:X4}, not retrying",
                     ex.ErrorCode ?? 0);
+
+                var fallbackKey = await TryPlayPlayFallbackAsync(
+                    trackId, fileId, "permanent AP error", cancellationToken);
+                if (fallbackKey is not null)
+                    return fallbackKey;
+
                 throw;
             }
             catch (AudioKeyException ex) when (ex.Reason == AudioKeyFailureReason.KeyError && IsTransient(ex.ErrorCode))
@@ -223,10 +240,72 @@ public sealed class AudioKeyManager : IAsyncDisposable
             }
         }
 
+        // Last resort before surfacing the timeout: try PlayPlay. The audio-key
+        // channel has been silent through every retry (and likely a reconnect) —
+        // PlayPlay routes through spclient HTTPS instead, so it bypasses whatever
+        // is wedged on the AP socket.
+        {
+            var fallbackKey = await TryPlayPlayFallbackAsync(
+                trackId, fileId, "AP timeout exhaustion", cancellationToken);
+            if (fallbackKey is not null)
+                return fallbackKey;
+        }
+
         throw new AudioKeyException(
             AudioKeyFailureReason.Timeout,
             $"AudioKey request failed after {MaxRetries} attempts",
             lastException!);
+    }
+
+    /// <summary>
+    /// PlayPlay is Spotify property. AP-failure fallback; in-memory cache only.
+    /// </summary>
+    private async Task<byte[]?> TryPlayPlayFallbackAsync(
+        SpotifyId trackId,
+        FileId fileId,
+        string trigger,
+        CancellationToken cancellationToken)
+    {
+        if (_playPlayKeyDeriver is null)
+            return null;
+
+        try
+        {
+            _logger?.LogInformation(
+                "AudioKey {Trigger} for {FileId} — attempting PlayPlay fallback",
+                trigger, fileId.ToBase16());
+
+            var key = await _playPlayKeyDeriver.DeriveAsync(trackId, fileId, cancellationToken);
+
+            if (key is null || key.Length != 16)
+            {
+                _logger?.LogWarning(
+                    "PlayPlay fallback returned unexpected key length {Length} for {FileId}",
+                    key?.Length ?? 0, fileId.ToBase16());
+                return null;
+            }
+
+            // In-memory only. The derived key never touches disk on this path —
+            // a fresh session has to re-fetch the obfuscated key and re-run the
+            // cipher, so cold-start playback still goes through the proper
+            // entitlement check.
+            _keyCache.TryAdd(fileId, key);
+
+            return key;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Caller cancelled — propagate without swallowing. Do not log as a
+            // PlayPlay failure: it isn't one.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex,
+                "PlayPlay fallback failed for {FileId}; surfacing original AP failure",
+                fileId.ToBase16());
+            return null;
+        }
     }
 
     /// <summary>

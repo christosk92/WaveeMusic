@@ -163,10 +163,27 @@ public sealed record PlaybackState
     public StateChanges Changes { get; init; } = StateChanges.None;
 
     /// <summary>
-    /// Session ID for this playback session (persists across track changes).
-    /// Used for Spotify Connect state publishing.
+    /// Session ID for the current playback context (persists across track
+    /// changes within the same playlist/album/artist). Regenerated only when
+    /// the context URI changes — matches librespot-java's NewSessionId
+    /// semantics (one session per context). Spotify's backend reconciles
+    /// PutState pushes by this ID + PlaybackId together; if SessionId churned
+    /// every track, the backend would see fragmented "context plays."
     /// </summary>
     public string? SessionId { get; init; }
+
+    /// <summary>
+    /// Playback ID for the currently-playing track (persists across multiple
+    /// PutState pushes for the same track, regenerated on track change).
+    /// 32-char lowercase hex.
+    ///
+    /// CRITICAL: This MUST be stable per track. Earlier code regenerated it on
+    /// every PutState publish, which made each state push look like a brand-new
+    /// (and immediately-stopped) playback to Spotify's backend — breaking
+    /// Recently Played and play-count attribution. Match librespot-java's
+    /// NewPlaybackId semantics: one playback id per track.
+    /// </summary>
+    public string? PlaybackId { get; init; }
 
     /// <summary>
     /// Queue revision hash for change detection.

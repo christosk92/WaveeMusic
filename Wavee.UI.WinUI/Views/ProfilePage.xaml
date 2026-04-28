@@ -1,320 +1,477 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.ProfilePage"
+    x:Name="ProfilePageRoot"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:http="using:Wavee.Core.Http"
-    xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
     xmlns:layouts="using:Wavee.UI.WinUI.Controls.Layouts"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
+    <Page.Transitions>
+        <TransitionCollection>
+            <EntranceThemeTransition/>
+        </TransitionCollection>
+    </Page.Transitions>
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="ProfileShyHeaderBorderBrush" Color="#66FFFFFF"/>
+                    <SolidColorBrush x:Key="ProfileCardBorderBrush" Color="#33FFFFFF"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="ProfileShyHeaderBorderBrush" Color="#33000000"/>
+                    <SolidColorBrush x:Key="ProfileCardBorderBrush" Color="#22000000"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="ProfileShyHeaderBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="ProfileCardBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
-    <ScrollView>
-        <StackPanel>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
+            <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter"/>
 
-            <!-- ===== Hero Banner with gradient from extracted color ===== -->
-            <Grid x:Name="HeroBanner" MinHeight="340" HorizontalAlignment="Stretch">
-                <Grid.Background>
-                    <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
-                        <GradientStop x:Name="HeroColorTop" Color="Transparent" Offset="0"/>
-                        <GradientStop x:Name="HeroColorMid" Color="Transparent" Offset="0.6"/>
-                        <GradientStop Color="Transparent" Offset="1"/>
-                    </LinearGradientBrush>
-                </Grid.Background>
+            <!-- Shy-header morph: identity card content <-> floating compact card.
+                 Matched ids on the avatar / name / meta / follow button interpolate
+                 between source (identity card) and target (floating card) bounds.
+                 Unpaired chrome (the floating card border + acrylic) fades in via
+                 the helper's independent show animation. -->
+            <transitions:TransitionHelper x:Key="ProfileShyHeaderTransition"
+                                          Duration="0:0:0.36"
+                                          ReverseDuration="0:0:0.30"
+                                          DefaultEasingMode="EaseInOut"
+                                          SourceToggleMethod="ByVisibility"
+                                          TargetToggleMethod="ByVisibility"
+                                          IndependentElementShowDuration="0:0:0.18"
+                                          IndependentElementShowDelay="0:0:0.10"
+                                          IndependentElementHideDuration="0:0:0.12"
+                                          IsHitTestVisibleWhenAnimating="False">
+                <transitions:TransitionConfig Id="profile-avatar" ScaleMode="Scale"/>
+                <transitions:TransitionConfig Id="profile-name" ScaleMode="Custom">
+                    <transitions:TransitionConfig.CustomScalingCalculator>
+                        <waveeHelpers:TransitionTextScalingCalculator/>
+                    </transitions:TransitionConfig.CustomScalingCalculator>
+                </transitions:TransitionConfig>
+                <transitions:TransitionConfig Id="profile-meta" ScaleMode="Custom">
+                    <transitions:TransitionConfig.CustomScalingCalculator>
+                        <waveeHelpers:TransitionTextScalingCalculator/>
+                    </transitions:TransitionConfig.CustomScalingCalculator>
+                </transitions:TransitionConfig>
+                <transitions:TransitionConfig Id="profile-follow" ScaleMode="Scale"/>
+            </transitions:TransitionHelper>
+        </ResourceDictionary>
+    </Page.Resources>
 
-                <StackPanel Orientation="Horizontal" Spacing="24" Padding="32,40"
-                            VerticalAlignment="Bottom">
-                    <!-- Large circular profile avatar -->
-                    <PersonPicture x:Name="ProfileAvatar" Width="192" Height="192"
-                                   DisplayName="{x:Bind ViewModel.DisplayName, Mode=OneWay}"/>
+    <Grid>
+        <!-- Page bleed — top-left anchored radial wash tinted from the
+             extracted profile color. Same pattern as HomePage's PageBleedHost.
+             900x500 bounds let the radial fade gracefully off the page edge.
+             Sits behind everything; ProfilePage code-behind opacity-fades it
+             on scroll past the identity card. -->
+        <Border x:Name="PageBleedHost"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Width="900" Height="500"
+                IsHitTestVisible="False"
+                Background="{x:Bind ViewModel.PageBleedBrush, Mode=OneWay}"/>
 
-                    <!-- Name + stats -->
-                    <StackPanel Spacing="8" VerticalAlignment="Bottom" Padding="0,0,0,8">
-                        <TextBlock x:Uid="Views_ProfilePage__TextBlock_1" Text="Profile"
-                                   Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7"/>
+        <ScrollView x:Name="PageScrollView">
+            <StackPanel>
+                    <!-- ════════════════════════════════════════════════════════
+                         IDENTITY CARD — compact Fluent header. Palette wash bleeds
+                         from the page tint behind; the card itself sits on a soft
+                         palette tint set in code-behind, with subtle border and
+                         theme shadow. The avatar+name+meta cluster also acts as
+                         the source for the shy-header morph. ──────────────── -->
+                    <Border x:Name="IdentityCardWrap"
+                            Margin="32,32,32,8"
+                            CornerRadius="18"
+                            Padding="24"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource ProfileCardBorderBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <Border.Shadow>
+                            <ThemeShadow/>
+                        </Border.Shadow>
+
+                        <Grid x:Name="HeroOverlayPanel" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Avatar -->
+                            <PersonPicture x:Name="ProfileAvatar"
+                                           Grid.Column="0"
+                                           Width="96" Height="96"
+                                           VerticalAlignment="Center"
+                                           DisplayName="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
+                                           transitions:TransitionHelper.Id="profile-avatar"/>
+
+                            <!-- Identity column: eyebrow, name, meta -->
+                            <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                                <Grid>
+                                    <TextBlock x:Uid="Views_ProfilePage__Eyebrow_Profile"
+                                               Text="PROFILE"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               CharacterSpacing="120" Opacity=".75"
+                                               Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                    <TextBlock x:Uid="Views_ProfilePage__Eyebrow_ProfileYou"
+                                               Text="PROFILE · YOU"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               CharacterSpacing="120" Opacity=".75"
+                                               Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </Grid>
+
+                                <TextBlock Text="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
+                                           Style="{StaticResource TitleLargeTextBlockStyle}"
+                                           FontWeight="Bold"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"
+                                           transitions:TransitionHelper.Id="profile-name"/>
+
+                                <TextBlock FontSize="14"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"
+                                           transitions:TransitionHelper.Id="profile-meta">
+                                    <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/><Run x:Uid="Views_ProfilePage__Stat_Playlists" Text=" Public Playlists"/><Run Text="  ·  "/><Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/><Run x:Uid="Views_ProfilePage__Stat_Following" Text=" Following"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- Action row: Follow (other user) + Share + More -->
+                            <StackPanel Grid.Column="2"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        VerticalAlignment="Center">
+                                <Button Style="{StaticResource AccentButtonStyle}"
+                                        Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                                        Padding="18,10" CornerRadius="20" MinWidth="120"
+                                        Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                        transitions:TransitionHelper.Id="profile-follow">
+                                    <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
+                                </Button>
+                                <Button Style="{StaticResource SubtleButtonStyle}"
+                                        Width="40" Height="40" Padding="0" CornerRadius="20"
+                                        ToolTipService.ToolTip="Share"
+                                        Click="ShareProfile_Click">
+                                    <FontIcon Glyph="&#xE72D;" FontSize="14"/>
+                                </Button>
+                                <Button Style="{StaticResource SubtleButtonStyle}"
+                                        Width="40" Height="40" Padding="0" CornerRadius="20"
+                                        ToolTipService.ToolTip="More">
+                                    <FontIcon Glyph="&#xE712;" FontSize="14"/>
+                                    <Button.Flyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem x:Uid="Views_ProfilePage__Menu_CopyLink"
+                                                            Text="Copy link to profile"
+                                                            Click="CopyProfileLink_Click">
+                                                <MenuFlyoutItem.Icon>
+                                                    <FontIcon Glyph="&#xE71B;"/>
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem x:Uid="Views_ProfilePage__Menu_OpenInSpotify"
+                                                            Text="Open in Spotify"
+                                                            Click="OpenInSpotify_Click">
+                                                <MenuFlyoutItem.Icon>
+                                                    <FontIcon Glyph="&#xE8A7;"/>
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <MenuFlyoutItem x:Uid="Views_ProfilePage__Menu_SignOut"
+                                                            Text="Sign out of Spotify"
+                                                            Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                            Command="{x:Bind ViewModel.SignOutCommand}">
+                                                <MenuFlyoutItem.Icon>
+                                                    <FontIcon Glyph="&#xF3B1;"/>
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- ════════════════════════════════════════════════════════
+                         SHIMMER + CONTENT — overlap in a single Grid cell so
+                         crossfading between them never causes a layout shift
+                         (StackPanel children would jump when shimmer collapses).
+                         Mirrors HomePage's two-sibling pattern. ────────────── -->
+                    <Grid>
+                    <StackPanel x:Name="ShimmerContainer"
+                                Padding="32,16,32,32" Spacing="32"
+                                VerticalAlignment="Top">
+                        <!-- Playlists section skeleton -->
+                        <StackPanel Spacing="12">
+                            <controls:Shimmer Width="180" Height="22" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
+                                    <controls:Shimmer Width="100" Height="14"/>
+                                </StackPanel>
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
+                                    <controls:Shimmer Width="120" Height="14"/>
+                                </StackPanel>
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
+                                    <controls:Shimmer Width="90" Height="14"/>
+                                </StackPanel>
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
+                                    <controls:Shimmer Width="110" Height="14"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                        <!-- Following section skeleton -->
+                        <StackPanel Spacing="12">
+                            <controls:Shimmer Width="140" Height="22" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
+                                    <controls:Shimmer Width="80" Height="14" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
+                                    <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
+                                    <controls:Shimmer Width="90" Height="14" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Spacing="8">
+                                    <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
+                                    <controls:Shimmer Width="70" Height="14" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- ════════════════════════════════════════════════════════
+                         CONTENT — public sections always render; the auth-only
+                         "this month" sections are visible only when the loaded
+                         profile belongs to the signed-in user. Lives inside the
+                         shimmer/content overlap Grid (same layout slot). ──── -->
+                    <StackPanel x:Name="ContentContainer"
+                                Padding="32,16,32,32" Spacing="32"
+                                VerticalAlignment="Top">
+
+                        <!-- Public Playlists -->
+                        <StackPanel Spacing="16">
+                            <Grid Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock x:Uid="Views_ProfilePage__Section_PublicPlaylists"
+                                               Text="Public Playlists" FontWeight="Bold" FontSize="20"/>
+                                </StackPanel>
+                                <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_11"
+                                                 Content="Show all"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.PublicPlaylists, Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <layouts:SingleRowLayout MinItemWidth="160" Spacing="12"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="http:SpotifyProfilePlaylist">
+                                        <cards:ContentCard
+                                            ImageUrl="{x:Bind ImageUrl}"
+                                            Title="{x:Bind Name}"
+                                            Subtitle="{x:Bind OwnerName}"
+                                            IsCircularImage="False"
+                                            NavigationUri="{x:Bind Uri}"
+                                            NavigationTitle="{x:Bind Name}"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+
+                        <!-- Top artists this month — only visible to you -->
+                        <StackPanel Spacing="16"
+                                    Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock x:Uid="Views_ProfilePage__TextBlock_4"
+                                               Text="Top artists this month" FontWeight="Bold" FontSize="20"/>
+                                    <TextBlock x:Uid="Views_ProfilePage__TextBlock_5"
+                                               Text="Only visible to you"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_6"
+                                                 Content="Show all"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentArtists, Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <layouts:SingleRowLayout MinItemWidth="160" Spacing="12"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="http:SpotifyProfileArtist">
+                                        <cards:ContentCard
+                                            ImageUrl="{x:Bind ImageUrl}"
+                                            Title="{x:Bind Name}"
+                                            Subtitle="Artist"
+                                            PlaceholderGlyph="&#xE77B;"
+                                            IsCircularImage="True"
+                                            CenterText="True"
+                                            NavigationUri="{x:Bind Uri}"
+                                            NavigationTitle="{x:Bind Name}"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+
+                        <!-- Top tracks this month — only visible to you -->
+                        <StackPanel Spacing="16"
+                                    Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock x:Uid="Views_ProfilePage__TextBlock_7"
+                                               Text="Top tracks this month" FontWeight="Bold" FontSize="20"/>
+                                    <TextBlock x:Uid="Views_ProfilePage__TextBlock_8"
+                                               Text="Only visible to you"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_9"
+                                                 Content="Show all"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                            <trackList:TrackListView
+                                ViewModel="{x:Bind ViewModel, Mode=OneWay}"
+                                ItemsSource="{x:Bind ViewModel.TopTrackItems, Mode=OneWay}"
+                                IsCompact="False"
+                                ShowColumnHeaders="False"
+                                ShowAlbumArtColumn="True"
+                                ShowAlbumColumn="True"
+                                ShowArtistColumn="False"
+                                ShowDateAddedColumn="False"
+                                IsLoading="False"/>
+                        </StackPanel>
+
+                        <!-- Following -->
+                        <StackPanel Spacing="16">
+                            <Grid Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock x:Uid="Views_ProfilePage__Section_Following"
+                                               Text="Following" FontWeight="Bold" FontSize="20"/>
+                                </StackPanel>
+                                <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_13"
+                                                 Content="Show all"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.FollowingArtists, Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <layouts:SingleRowLayout MinItemWidth="160" Spacing="12"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="http:SpotifyProfileArtist">
+                                        <cards:ContentCard
+                                            ImageUrl="{x:Bind ImageUrl}"
+                                            Title="{x:Bind Name}"
+                                            Subtitle="Artist"
+                                            PlaceholderGlyph="&#xE77B;"
+                                            IsCircularImage="True"
+                                            CenterText="True"
+                                            NavigationUri="{x:Bind Uri}"
+                                            NavigationTitle="{x:Bind Name}"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+                    </StackPanel>
+                    </Grid>
+                </StackPanel>
+        </ScrollView>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             FLOATING SHY HEADER — collapsed initially. EvaluateShyHeaderAsync
+             pins it via TransitionHelper when the identity card scrolls past.
+             Matched ids morph the avatar / name / meta from inside the
+             identity card into this compact pinned card. ──────────────── -->
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              Margin="16,16,16,0">
+            <Grid x:Name="ShyHeaderCard"
+                  HorizontalAlignment="Center"
+                  MaxWidth="760"
+                  MinHeight="68"
+                  Visibility="Collapsed">
+                <Border CornerRadius="18"
+                        BorderBrush="{ThemeResource ProfileShyHeaderBorderBrush}"
+                        BorderThickness="1.5">
+                    <Border.Background>
+                        <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                      TintOpacity="0.78"
+                                      FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
+                </Border>
+
+                <Grid Padding="12,10" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <PersonPicture Grid.Column="0"
+                                   Width="40" Height="40"
+                                   DisplayName="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
+                                   transitions:TransitionHelper.Id="profile-avatar"/>
+
+                    <StackPanel Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Spacing="2">
                         <TextBlock Text="{x:Bind ViewModel.DisplayName, Mode=OneWay}"
-                                   FontSize="48" FontWeight="Bold"/>
-                        <StackPanel Orientation="Horizontal" Spacing="4" Opacity="0.7">
-                            <TextBlock Style="{StaticResource BodyTextBlockStyle}">
-                                <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/>
-                                <Run x:Uid="Views_ProfilePage__Run_2" Text=" Public Playlists"/>
-                            </TextBlock>
-                            <TextBlock Text="&#x00B7;" Style="{StaticResource BodyTextBlockStyle}"/>
-                            <TextBlock Style="{StaticResource BodyTextBlockStyle}">
-                                <Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/>
-                                <Run x:Uid="Views_ProfilePage__Run_3" Text=" Following"/>
-                            </TextBlock>
-                        </StackPanel>
+                                   FontSize="16" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
+                                   transitions:TransitionHelper.Id="profile-name"/>
+                        <TextBlock FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
+                                   transitions:TransitionHelper.Id="profile-meta">
+                            <Run Text="{x:Bind ViewModel.PublicPlaylistCount, Mode=OneWay}"/><Run Text=" playlists · "/><Run Text="{x:Bind ViewModel.FollowingCount, Mode=OneWay}"/><Run Text=" following"/>
+                        </TextBlock>
                     </StackPanel>
-                </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                                Padding="14,6" CornerRadius="16" MinWidth="96"
+                                Visibility="{x:Bind ViewModel.IsCurrentUser, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                transitions:TransitionHelper.Id="profile-follow">
+                            <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
             </Grid>
-
-            <!-- ===== Loading shimmer skeletons ===== -->
-            <StackPanel x:Name="ShimmerContainer"
-                        Padding="32,0,32,32" Spacing="32" Margin="0,-30,0,0">
-
-                <!-- Artist section skeleton -->
-                <StackPanel Spacing="12">
-                    <controls:Shimmer Width="220" Height="22" HorizontalAlignment="Left"/>
-                    <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
-                            <controls:Shimmer Width="80" Height="14" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
-                            <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
-                            <controls:Shimmer Width="90" Height="14" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
-                            <controls:Shimmer Width="70" Height="14" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="75"/>
-                            <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </StackPanel>
-                </StackPanel>
-
-                <!-- Track list skeleton -->
-                <StackPanel Spacing="12">
-                    <controls:Shimmer Width="200" Height="22" HorizontalAlignment="Left"/>
-                    <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Left"/>
-                    <StackPanel Spacing="4">
-                        <Grid Height="56" Padding="8,0" ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30"/><ColumnDefinition Width="44"/>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
-                            </Grid.ColumnDefinitions>
-                            <controls:Shimmer Grid.Column="0" Width="16" Height="16"/>
-                            <controls:Shimmer Grid.Column="1" Width="40" Height="40" CornerRadius="4"/>
-                            <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
-                                <controls:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
-                                <controls:Shimmer Width="100" Height="12" HorizontalAlignment="Left"/>
-                            </StackPanel>
-                            <controls:Shimmer Grid.Column="3" Width="40" Height="14"/>
-                        </Grid>
-                        <Grid Height="56" Padding="8,0" ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30"/><ColumnDefinition Width="44"/>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
-                            </Grid.ColumnDefinitions>
-                            <controls:Shimmer Grid.Column="0" Width="16" Height="16"/>
-                            <controls:Shimmer Grid.Column="1" Width="40" Height="40" CornerRadius="4"/>
-                            <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
-                                <controls:Shimmer Width="220" Height="14" HorizontalAlignment="Left"/>
-                                <controls:Shimmer Width="120" Height="12" HorizontalAlignment="Left"/>
-                            </StackPanel>
-                            <controls:Shimmer Grid.Column="3" Width="40" Height="14"/>
-                        </Grid>
-                        <Grid Height="56" Padding="8,0" ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30"/><ColumnDefinition Width="44"/>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
-                            </Grid.ColumnDefinitions>
-                            <controls:Shimmer Grid.Column="0" Width="16" Height="16"/>
-                            <controls:Shimmer Grid.Column="1" Width="40" Height="40" CornerRadius="4"/>
-                            <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
-                                <controls:Shimmer Width="160" Height="14" HorizontalAlignment="Left"/>
-                                <controls:Shimmer Width="90" Height="12" HorizontalAlignment="Left"/>
-                            </StackPanel>
-                            <controls:Shimmer Grid.Column="3" Width="40" Height="14"/>
-                        </Grid>
-                        <Grid Height="56" Padding="8,0" ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30"/><ColumnDefinition Width="44"/>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="60"/>
-                            </Grid.ColumnDefinitions>
-                            <controls:Shimmer Grid.Column="0" Width="16" Height="16"/>
-                            <controls:Shimmer Grid.Column="1" Width="40" Height="40" CornerRadius="4"/>
-                            <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
-                                <controls:Shimmer Width="200" Height="14" HorizontalAlignment="Left"/>
-                                <controls:Shimmer Width="110" Height="12" HorizontalAlignment="Left"/>
-                            </StackPanel>
-                            <controls:Shimmer Grid.Column="3" Width="40" Height="14"/>
-                        </Grid>
-                    </StackPanel>
-                </StackPanel>
-
-                <!-- Playlist section skeleton -->
-                <StackPanel Spacing="12">
-                    <controls:Shimmer Width="180" Height="22" HorizontalAlignment="Left"/>
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
-                            <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
-                            <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
-                            <controls:Shimmer Width="90" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                        <StackPanel Spacing="8">
-                            <controls:Shimmer Width="150" Height="150" CornerRadius="8"/>
-                            <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </StackPanel>
-                </StackPanel>
-            </StackPanel>
-
-            <!-- ===== Content sections (negative margin to overlap gradient) ===== -->
-            <StackPanel x:Name="ContentContainer" Padding="32,0,32,32" Spacing="32" Margin="0,-30,0,0">
-
-                <!-- ────────────────────────────────────────────── -->
-                <!-- Section 1: Top Artists This Month              -->
-                <!-- ────────────────────────────────────────────── -->
-                <StackPanel Spacing="16">
-                    <Grid Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_4" Text="Top artists this month" FontWeight="Bold" FontSize="20"/>
-                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_5" Text="Only visible to you"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        </StackPanel>
-                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_6" Content="Show all" HorizontalAlignment="Right"
-                                         VerticalAlignment="Top"
-                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Grid>
-
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentArtists, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <layouts:SingleRowLayout MinItemWidth="160" Spacing="12"/>
-                        </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="http:SpotifyProfileArtist">
-                                    <cards:ContentCard
-                                        ImageUrl="{x:Bind ImageUrl}"
-                                        Title="{x:Bind Name}"
-                                        Subtitle="Artist"
-                                        PlaceholderGlyph="&#xE77B;"
-                                        IsCircularImage="True"
-                                        CenterText="True"
-                                        NavigationUri="{x:Bind Uri}"
-                                        NavigationTitle="{x:Bind Name}"/>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
-                </StackPanel>
-
-                <!-- ────────────────────────────────────────────── -->
-                <!-- Section 2: Top Tracks This Month               -->
-                <!-- ────────────────────────────────────────────── -->
-                <StackPanel Spacing="16">
-                    <Grid Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_7" Text="Top tracks this month" FontWeight="Bold" FontSize="20"/>
-                            <TextBlock x:Uid="Views_ProfilePage__TextBlock_8" Text="Only visible to you"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        </StackPanel>
-                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_9" Content="Show all" HorizontalAlignment="Right"
-                                         VerticalAlignment="Top"
-                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Grid>
-
-                    <trackList:TrackListView
-                        ViewModel="{x:Bind ViewModel, Mode=OneWay}"
-                        ItemsSource="{x:Bind ViewModel.TopTrackItems, Mode=OneWay}"
-                        IsCompact="False"
-                        ShowColumnHeaders="False"
-                        ShowAlbumArtColumn="True"
-                        ShowAlbumColumn="True"
-                        ShowArtistColumn="False"
-                        ShowDateAddedColumn="False"
-                        IsLoading="False"/>
-                </StackPanel>
-
-                <!-- ────────────────────────────────────────────── -->
-                <!-- Section 3: Public Playlists                    -->
-                <!-- ────────────────────────────────────────────── -->
-                <StackPanel Spacing="16">
-                    <Grid Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock FontWeight="Bold" FontSize="20">
-                                <Run x:Uid="Views_ProfilePage__Run_10" Text="Public Playlists"/>
-                            </TextBlock>
-                        </StackPanel>
-                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_11" Content="Show all" HorizontalAlignment="Right"
-                                         VerticalAlignment="Top"
-                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Grid>
-
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.PublicPlaylists, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <layouts:SingleRowLayout MinItemWidth="160" Spacing="12"/>
-                        </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="http:SpotifyProfilePlaylist">
-                                    <cards:ContentCard
-                                        ImageUrl="{x:Bind ImageUrl}"
-                                        Title="{x:Bind Name}"
-                                        Subtitle="{x:Bind OwnerName}"
-                                        IsCircularImage="False"
-                                        NavigationUri="{x:Bind Uri}"
-                                        NavigationTitle="{x:Bind Name}"/>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
-                </StackPanel>
-
-                <!-- ────────────────────────────────────────────── -->
-                <!-- Section 4: Following                           -->
-                <!-- ────────────────────────────────────────────── -->
-                <StackPanel Spacing="16">
-                    <Grid Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock FontWeight="Bold" FontSize="20">
-                                <Run x:Uid="Views_ProfilePage__Run_12" Text="Following"/>
-                            </TextBlock>
-                        </StackPanel>
-                        <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_13" Content="Show all" HorizontalAlignment="Right"
-                                         VerticalAlignment="Top"
-                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Grid>
-
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.FollowingArtists, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <layouts:SingleRowLayout MinItemWidth="160" Spacing="12"/>
-                        </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="http:SpotifyProfileArtist">
-                                    <cards:ContentCard
-                                        ImageUrl="{x:Bind ImageUrl}"
-                                        Title="{x:Bind Name}"
-                                        Subtitle="Artist"
-                                        PlaceholderGlyph="&#xE77B;"
-                                        IsCircularImage="True"
-                                        CenterText="True"
-                                        NavigationUri="{x:Bind Uri}"
-                                        NavigationTitle="{x:Bind Name}"/>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
-                </StackPanel>
-
-                <!-- Sign out link -->
-                <HyperlinkButton x:Uid="Views_ProfilePage__HyperlinkButton_14" Content="Sign out of Spotify" HorizontalAlignment="Center"
-                                 Command="{x:Bind ViewModel.SignOutCommand}"
-                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                 Margin="0,16,0,0"/>
-            </StackPanel>
-        </StackPanel>
-    </ScrollView>
+        </Grid>
+    </Grid>
 </Page>

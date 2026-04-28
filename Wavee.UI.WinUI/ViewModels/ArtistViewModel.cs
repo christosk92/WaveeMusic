@@ -728,6 +728,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             }
             TopTracks = newTracks;
 
+            // ── Backfill missing cover art (background, parallel) ──
+            // Spotify's getArtistOverview GraphQL response is inconsistent: many
+            // tracks come back without albumOfTrack.coverArt populated. Resolve
+            // them via the extended-metadata pipeline and patch the VMs.
+            _ = EnrichMissingTopTrackImagesAsync();
+
             // ── Extended top tracks (background, parallel) ──
             _ = LoadExtendedTopTracksAsync(ArtistId!);
 
@@ -1405,6 +1411,78 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     }
 
     // ── Extended top tracks ──
+
+    /// <summary>
+    /// Backfills <see cref="ArtistTopTrackVm.AlbumImageUrl"/> for any
+    /// initial top tracks the GraphQL overview returned without cover art.
+    /// Resolves the missing URLs via the extended-metadata pipeline (cache
+    /// + batched TrackV4 fetch) and replaces the affected
+    /// <see cref="LazyTrackItem"/> entries so <c>TrackItem</c> picks up
+    /// the new <c>Track.ImageUrl</c> on the next layout pass.
+    /// </summary>
+    private async Task EnrichMissingTopTrackImagesAsync()
+    {
+        try
+        {
+            // Snapshot URIs needing enrichment (called off-dispatcher right
+            // after TopTracks is replaced — safe to read without a lock).
+            var snapshot = TopTracks.ToList();
+            var missing = snapshot
+                .Where(item => item.IsLoaded && item.Data is ArtistTopTrackVm vm
+                               && !string.IsNullOrEmpty(vm.Uri)
+                               && string.IsNullOrEmpty(vm.AlbumImageUrl))
+                .Select(item => ((ArtistTopTrackVm)item.Data!).Uri!)
+                .Distinct()
+                .ToList();
+
+            if (missing.Count == 0) return;
+
+            var images = await Task.Run(() => _artistService.GetTrackImagesAsync(missing));
+            if (images.Count == 0) return;
+
+            _dispatcherQueue?.TryEnqueue(() =>
+            {
+                bool anyPatched = false;
+                for (int i = 0; i < TopTracks.Count; i++)
+                {
+                    var entry = TopTracks[i];
+                    if (!entry.IsLoaded || entry.Data is not ArtistTopTrackVm vm) continue;
+                    if (vm.Uri is not { Length: > 0 } uri) continue;
+                    if (!string.IsNullOrEmpty(vm.AlbumImageUrl)) continue;
+                    if (!images.TryGetValue(uri, out var imageUrl) || string.IsNullOrEmpty(imageUrl)) continue;
+
+                    var patched = new ArtistTopTrackVm
+                    {
+                        Id = vm.Id,
+                        Index = vm.Index,
+                        Title = vm.Title,
+                        Uri = vm.Uri,
+                        AlbumName = vm.AlbumName,
+                        AlbumImageUrl = imageUrl,
+                        AlbumUri = vm.AlbumUri,
+                        Duration = vm.Duration,
+                        PlayCountRaw = vm.PlayCountRaw,
+                        ArtistNames = vm.ArtistNames,
+                        IsExplicit = vm.IsExplicit,
+                        IsPlayable = vm.IsPlayable,
+                        HasVideo = vm.HasVideo,
+                    };
+                    TopTracks[i] = LazyTrackItem.Loaded(patched.Id, vm.Index, patched);
+                    anyPatched = true;
+                }
+
+                if (anyPatched)
+                {
+                    _pagedTopTracksCache = null;
+                    OnPropertyChanged(nameof(PagedTopTracks));
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to enrich missing top-track images");
+        }
+    }
 
     private async Task LoadExtendedTopTracksAsync(string artistUri)
     {

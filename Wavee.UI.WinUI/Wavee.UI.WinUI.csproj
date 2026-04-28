@@ -134,9 +134,46 @@
 		<PublishReadyToRun>false</PublishReadyToRun>
 	</PropertyGroup>
 
-	<!-- Auto-build Wavee.AudioHost and copy the exe to our output (for out-of-process audio) -->
-	<Target Name="BuildAudioHost" BeforeTargets="Build">
-		<MSBuild Projects="..\Wavee.AudioHost\Wavee.AudioHost.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+	<!--
+	    Auto-build Wavee.AudioHost (x64-only — LoadLibrarys Spotify.dll which
+	    is x86_64). AudioHost has zero ProjectReferences on Wavee* assemblies
+	    — IPC contract types are baked into AudioHost.dll itself via
+	    Compile-Include.
+
+	    The remaining ProjectReference (NVorbis) is enough to reintroduce the
+	    "stale-neighbour-dll" class of bug under MSBuild's incremental rules,
+	    because the parent ARM64 WinUI build can leave the NVorbis x64 output
+	    out of sync with what AudioHost's bin already has. Wiping AudioHost's
+	    bin/obj before each call guarantees all neighbour DLLs are re-copied
+	    from the freshly-built sources. Cost: a few seconds per WinUI launch;
+	    benefit: the FileNotFoundException-on-startup class of bug is
+	    structurally impossible.
+	-->
+	<!--
+	    BeforeTargets list: hit several entry points so the target fires on
+	    every VS code path — full Build, incremental Build, F5 Run, and the
+	    Hot-Reload "Skipping analyzers" fast path. Targets is a SET, so the
+	    body executes at most once per build even when multiple hooks fire.
+	-->
+	<Target Name="BuildAudioHost" BeforeTargets="PrepareForBuild;ResolveProjectReferences;CoreCompile;Build">
+		<Message Importance="high"
+		         Text="[BuildAudioHost] Building AudioHost in an isolated 'dotnet build' subprocess..." />
+		<!--
+		    Spawn 'dotnet build' as a separate process. The previous approach
+		    used MSBuild Task which ran inside the parent VS build's MSBuild
+		    instance — that meant Wavee.AudioHost's transitive ProjectReferences
+		    (NVorbis) inherited the parent's project-evaluation cache. The
+		    parent build is ARM64, so cached NVorbis evaluations were ARM64,
+		    and AudioHost's bin would silently get the wrong-arch NVorbis.dll.
+		    A fresh 'dotnet build' process has zero cache poisoning — its
+		    project graph evaluates from scratch with Platform=x64, so every
+		    transitive reference is x64 and every neighbour DLL alongside
+		    Wavee.AudioHost.exe is the right architecture.
+		-->
+		<Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\Wavee.AudioHost\Wavee.AudioHost.csproj&quot; -c $(Configuration) -p:Platform=x64 --nologo -v quiet"
+		      ConsoleToMSBuild="true" />
+		<Message Importance="high"
+		         Text="[BuildAudioHost] AudioHost rebuilt at ..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\Wavee.AudioHost.exe" />
 	</Target>
 
 	<!-- WinUI AppX packaging copies <Content> items from referenced projects twice:

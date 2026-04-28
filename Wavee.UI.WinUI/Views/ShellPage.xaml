@@ -161,9 +161,10 @@
                         </Border>
                     </Border>
 
-                    <!-- Right panel card -->
+                    <!-- Right panel card. Visibility ANDs IsRightPanelOpen with !IsRightPanelDetached
+                         so tearing the panel into a floating window collapses the slot and main content reflows. -->
                     <Border Grid.Column="1"
-                            Visibility="{x:Bind ViewModel.IsRightPanelOpen, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.IsRightPanelVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <toolkit:Effects.Shadow>
                             <media:AttachedCardShadow BlurRadius="32" Offset="4,-2"
                                                       Opacity="0.3" Color="Black" CornerRadius="8"/>
@@ -182,12 +183,13 @@
             </sidebar:SidebarView.InnerContent>
 
             <!-- Sidebar Header — sidebar player widget mount point. Visible only when
-                 PlayerLocation == Sidebar. The widget itself only renders when a
-                 track is loaded (HasTrack gate inside the control). -->
+                 PlayerLocation == Sidebar AND the player isn't torn off into a floating
+                 window. The widget itself only renders when a track is loaded (HasTrack
+                 gate inside the control). -->
             <sidebar:SidebarView.Header>
                 <sidebarplayer:SidebarPlayerWidget
                     x:Name="SidebarPlayerControl"
-                    Visibility="{x:Bind ViewModel.PlayerLocation, Mode=OneWay, Converter={StaticResource PlayerLocationSidebarConverter}}" />
+                    Visibility="{x:Bind ViewModel.IsSidebarPlayerVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
             </sidebar:SidebarView.Header>
 
             <!-- Sidebar Footer (settings) -->

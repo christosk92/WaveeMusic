@@ -167,9 +167,9 @@
                         <StackPanel Padding="32,0,32,24" Spacing="8"
                                     VerticalAlignment="Bottom">
                         <StackPanel Orientation="Horizontal">
-                            <!-- Avatar wrapper — Width animates 136 → 0 when the artist has a
-                                 header image but no watch-feed video, reclaiming the space for
-                                 the name/stats block. 136 = 120 avatar + 16 gap. -->
+                            <!-- Avatar wrapper — fixed at 136 (120 avatar + 16 gap). The
+                                 avatar is always visible regardless of whether the artist has
+                                 a hero header image; they're complementary (banner vs portrait). -->
                             <Grid x:Name="AvatarWrapper" Width="136">
                                 <!-- Avatar / Watch Feed Video (connected animation target) -->
                                 <Grid x:Name="ArtistImageContainer"
@@ -351,7 +351,10 @@
             <!-- ═══════════════════════════════════════════════ -->
             <!-- SHIMMER LOADING SKELETON (sections below hero)  -->
             <!-- ═══════════════════════════════════════════════ -->
-            <StackPanel x:Name="ShimmerContainer" Grid.Row="2">
+            <!-- Shares Row 3 with ContentContainer so the two overlap in the same
+                 layout slot. Stacking them in different rows caused content to
+                 jump upward when shimmer collapsed. -->
+            <StackPanel x:Name="ShimmerContainer" Grid.Row="3" VerticalAlignment="Top">
                 <!-- Top tracks shimmer -->
                 <StackPanel Padding="32,24,32,0" Spacing="12">
                     <controls:Shimmer Width="140" Height="22" HorizontalAlignment="Left"/>

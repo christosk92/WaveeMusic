@@ -12,6 +12,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     mc:Ignorable="d"
     MinWidth="200"
     MaxWidth="500"
@@ -213,10 +214,14 @@
                      Edge-fade overlays sit on top of the scroll viewport to
                      soften the cutoff when tab labels overflow (e.g. long
                      localized strings like Korean "세부 정보"). -->
-                <Grid Grid.Row="0" Margin="6,10,6,6">
+                <Grid x:Name="TabHeaderRow"
+                      Grid.Row="0"
+                      Margin="6,10,6,6"
+                      behaviors:DragToDetachBehavior.Panel="RightPanel">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
@@ -292,6 +297,23 @@
                             VerticalAlignment="Center"
                             ToolTipService.ToolTip="Scroll tabs right">
                         <FontIcon Glyph="&#xE76C;" FontSize="11"/>
+                    </Button>
+
+                    <!-- Pop-out: tear the right panel into its own window. The header strip
+                         carries DragToDetachBehavior too, so dragging it outside the main
+                         window achieves the same. -->
+                    <Button x:Name="PopOutButton"
+                            Grid.Column="3"
+                            Click="PopOutButton_Click"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="2"
+                            Margin="2,0,0,0"
+                            Width="22" Height="28"
+                            MinWidth="0" MinHeight="0"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Pop out to window">
+                        <FontIcon Glyph="&#xE8A7;" FontSize="11"/>
                     </Button>
                 </Grid>
 

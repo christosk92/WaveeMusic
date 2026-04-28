@@ -26,6 +26,10 @@ public sealed record ProfileSnapshot
     public required List<SpotifyProfilePlaylist> PublicPlaylists { get; init; }
     public required List<SpotifyProfileArtist> FollowingArtists { get; init; }
     public required List<TopTrackItem> TopTracks { get; init; }
+    public bool IsCurrentUser { get; init; }
+    public string? Username { get; init; }
+    public string? UserUri { get; init; }
+    public bool IsFollowing { get; init; }
 }
 
 /// <summary>
@@ -41,93 +45,11 @@ public sealed class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
         _colorService = colorService;
     }
 
-    protected override async Task<ProfileSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
+    protected override Task<ProfileSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
     {
         var userData = session.GetUserData()
             ?? throw new InvalidOperationException("No user data available");
-
-        var profile = await session.SpClient.GetUserProfileAsync(userData.Username);
-
-        var displayName = profile.EffectiveDisplayName ?? userData.Username;
-        var profileImageUrl = profile.EffectiveImageUrl;
-        var followingCount = profile.FollowingCount ?? 0;
-        var publicPlaylistCount = profile.TotalPublicPlaylistsCount ?? 0;
-        var profileColor = profile.Color ?? 0;
-
-        // Fetch extracted color for hero gradient
-        string? heroColorHex = null;
-        if (!string.IsNullOrEmpty(profileImageUrl))
-        {
-            try
-            {
-                var color = await _colorService.GetColorAsync(profileImageUrl, ct).ConfigureAwait(false);
-                heroColorHex = color?.DarkHex ?? color?.RawHex ?? color?.LightHex;
-            }
-            catch { /* Non-fatal: hero gradient is cosmetic */ }
-        }
-
-        // Recent artists (from profile initially)
-        var recentArtists = profile.RecentlyPlayedArtists?.ToList() ?? [];
-
-        // Public playlists
-        var publicPlaylists = profile.PublicPlaylists?.ToList() ?? [];
-
-        // Following
-        var followingArtists = new List<SpotifyProfileArtist>();
-        try
-        {
-            var following = await session.SpClient.GetUserFollowingAsync(userData.Username);
-            if (following.Profiles != null)
-                followingArtists.AddRange(following.Profiles);
-        }
-        catch (Exception ex)
-        {
-            Logger?.LogWarning(ex, "Failed to fetch following list");
-        }
-
-        // Top content (replaces recent artists with better data)
-        var topTracks = new List<TopTrackItem>();
-        try
-        {
-            var topContent = await session.Pathfinder.GetUserTopContentAsync(artistLimit: 10, trackLimit: 10);
-            if (topContent?.Data?.Me?.Profile?.TopArtists?.Items != null)
-            {
-                recentArtists = topContent.Data.Me.Profile.TopArtists.Items
-                    .Where(i => i.Data != null)
-                    .Select(i => new SpotifyProfileArtist
-                    {
-                        Name = i.Data!.Profile?.Name,
-                        Uri = i.Data.Uri,
-                        ImageUrl = i.Data.Visuals?.AvatarImage?.Sources?.FirstOrDefault()?.Url
-                    })
-                    .ToList();
-            }
-            if (topContent?.Data?.Me?.Profile?.TopTracks?.Items != null)
-            {
-                topTracks = topContent.Data.Me.Profile.TopTracks.Items.ToList();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger?.LogWarning(ex, "Failed to fetch top content from Pathfinder");
-        }
-
-        Logger?.LogDebug("Profile cached: {Artists} artists, {Playlists} playlists, {Tracks} tracks",
-            recentArtists.Count, publicPlaylists.Count, topTracks.Count);
-
-        return new ProfileSnapshot
-        {
-            DisplayName = displayName,
-            ProfileImageUrl = profileImageUrl,
-            FollowingCount = followingCount,
-            PublicPlaylistCount = publicPlaylistCount,
-            ProfileColor = profileColor,
-            HeroColorHex = heroColorHex,
-            RecentArtists = recentArtists,
-            PublicPlaylists = publicPlaylists,
-            FollowingArtists = followingArtists,
-            TopTracks = topTracks
-        };
+        return ProfileFetcher.LoadAsync(session, userData.Username, _colorService, Logger, ct);
     }
 
     // ── Flat-list diff helpers ──

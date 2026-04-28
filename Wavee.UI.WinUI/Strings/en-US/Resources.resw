@@ -1555,6 +1555,33 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Views_ProfilePage__TextBlock_8.Text" xml:space="preserve">
     <value>Only visible to you</value>
   </data>
+  <data name="Views_ProfilePage__Eyebrow_Profile.Text" xml:space="preserve">
+    <value>PROFILE</value>
+  </data>
+  <data name="Views_ProfilePage__Eyebrow_ProfileYou.Text" xml:space="preserve">
+    <value>PROFILE · YOU</value>
+  </data>
+  <data name="Views_ProfilePage__Stat_Playlists.Text" xml:space="preserve">
+    <value> Public Playlists</value>
+  </data>
+  <data name="Views_ProfilePage__Stat_Following.Text" xml:space="preserve">
+    <value> Following</value>
+  </data>
+  <data name="Views_ProfilePage__Section_PublicPlaylists.Text" xml:space="preserve">
+    <value>Public Playlists</value>
+  </data>
+  <data name="Views_ProfilePage__Section_Following.Text" xml:space="preserve">
+    <value>Following</value>
+  </data>
+  <data name="Views_ProfilePage__Menu_CopyLink.Text" xml:space="preserve">
+    <value>Copy link to profile</value>
+  </data>
+  <data name="Views_ProfilePage__Menu_OpenInSpotify.Text" xml:space="preserve">
+    <value>Open in Spotify</value>
+  </data>
+  <data name="Views_ProfilePage__Menu_SignOut.Text" xml:space="preserve">
+    <value>Sign out of Spotify</value>
+  </data>
   <data name="Views_SearchPage__RadioButton_1.Content" xml:space="preserve">
     <value>Songs</value>
   </data>

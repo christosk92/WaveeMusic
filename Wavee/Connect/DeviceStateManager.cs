@@ -202,7 +202,8 @@ public sealed class DeviceStateManager : IAsyncDisposable
                 Device = new Device
                 {
                     DeviceInfo = _deviceInfo,
-                    PlayerState = _pendingPlayerState ?? ConnectStateHelpers.CreateEmptyPlayerState()
+                    PlayerState = _pendingPlayerState ?? ConnectStateHelpers.CreateEmptyPlayerState(),
+                    PrivateDeviceInfo = ConnectStateHelpers.CreatePrivateDeviceInfo()
                 },
                 PutStateReason = reason,
                 IsActive = _isActive,

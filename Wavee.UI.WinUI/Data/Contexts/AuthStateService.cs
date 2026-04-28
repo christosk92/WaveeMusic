@@ -38,6 +38,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
     private readonly SessionConfig? _sessionConfig;
     private readonly IPlaybackStateService? _playbackStateService;
     private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
+    private readonly IUserScopeGuard? _userScopeGuard;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAuthenticated))]
@@ -74,6 +75,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         SessionConfig? sessionConfig = null,
         IPlaybackStateService? playbackStateService = null,
         System.Net.Http.IHttpClientFactory? httpClientFactory = null,
+        IUserScopeGuard? userScopeGuard = null,
         ILogger<AuthStateService>? logger = null)
     {
         _messenger = messenger;
@@ -83,6 +85,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         _sessionConfig = sessionConfig;
         _playbackStateService = playbackStateService;
         _httpClientFactory = httpClientFactory;
+        _userScopeGuard = userScopeGuard;
         _logger = logger;
     }
 
@@ -282,6 +285,22 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
 
         CurrentUser = userData;
         AccountType = await _session.GetAccountTypeAsync(ct);
+
+        // If this is a different Spotify user than the last session, wipe every
+        // user-bound cache (memory + SQLite) BEFORE anyone hears Authenticated.
+        // Without this, the previous user's library/playlists/sync revisions
+        // bleed into the new account because metadata.db is a single global file.
+        if (_userScopeGuard != null && !string.IsNullOrWhiteSpace(userData.Username))
+        {
+            try
+            {
+                await _userScopeGuard.EnsureScopeAsync(userData.Username, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "User-scope guard failed — caches may contain stale data");
+            }
+        }
 
         // Initialize local playback engine — either in-process or out-of-process
         if (Helpers.Application.AppLifecycleHelper.UseOutOfProcessAudio)

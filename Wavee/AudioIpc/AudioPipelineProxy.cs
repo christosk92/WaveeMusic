@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Reactive.Linq;
@@ -28,6 +29,14 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     private long _nextRequestId;
     private Task? _receiveLoop;
+
+    // ── Awaitable RPC ──
+    // Most commands are fire-and-forget — the proxy logs the CommandResult
+    // failure but doesn't surface it to the caller. PlayPlay derivation needs
+    // a real request/reply: the caller awaits the AES key. Each call
+    // registers a TCS keyed by the message id; the receive loop completes it
+    // when the matching CommandResult comes back.
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<CommandResultMessage>> _pendingRequests = new();
 
     // ── IPC Metrics ──
     private long _lastPingSentTimestamp;
@@ -279,6 +288,39 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
             SessionId = sessionId
         }, ct);
 
+    // PlayPlay is Spotify property. Forwards a derivation request to AudioHost.
+    public async Task<byte[]> DerivePlayPlayKeyAsync(
+        ReadOnlyMemory<byte> obfuscatedKey,
+        ReadOnlyMemory<byte> contentId16,
+        string spotifyDllPath,
+        CancellationToken ct = default)
+    {
+        if (obfuscatedKey.Length != 16) throw new ArgumentException("obfuscated key must be 16 bytes", nameof(obfuscatedKey));
+        if (contentId16.Length != 16) throw new ArgumentException("content id must be 16 bytes", nameof(contentId16));
+        if (string.IsNullOrWhiteSpace(spotifyDllPath)) throw new ArgumentException("spotifyDllPath required", nameof(spotifyDllPath));
+
+        var cmd = new DerivePlayPlayKeyCommand
+        {
+            ObfuscatedKeyHex = Convert.ToHexString(obfuscatedKey.Span).ToLowerInvariant(),
+            ContentIdHex = Convert.ToHexString(contentId16.Span).ToLowerInvariant(),
+            SpotifyDllPath = spotifyDllPath,
+        };
+
+        var result = await SendRequestAsync(IpcMessageTypes.DerivePlayPlayKey, cmd, ct).ConfigureAwait(false);
+
+        if (!result.Success || result.Result is not JsonElement resultElem)
+            throw new InvalidOperationException(
+                $"AudioHost rejected DerivePlayPlayKey: {result.ErrorMessage ?? "no result payload"}");
+
+        var derived = resultElem.Deserialize(IpcJsonContext.Default.DerivePlayPlayKeyResult)
+            ?? throw new InvalidOperationException("AudioHost returned malformed DerivePlayPlayKeyResult");
+        var aes = Convert.FromHexString(derived.AesKeyHex);
+        if (aes.Length != 16)
+            throw new InvalidOperationException(
+                $"AudioHost returned AES key of length {aes.Length}, expected 16");
+        return aes;
+    }
+
     // ── Internals ──
 
     private async Task SendCommandAsync<T>(string type, T payload, CancellationToken ct)
@@ -299,6 +341,42 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         {
             _logger?.LogWarning(ex, "IPC send FAILED (pipe broken): type={Type}, id={Id}", type, id);
         }
+    }
+
+    /// <summary>
+    /// Send a command and await its CommandResult reply. Use only for RPCs
+    /// where the caller actually needs the result; everything else should
+    /// remain fire-and-forget so a hung audio process doesn't stall the UI.
+    /// </summary>
+    private async Task<CommandResultMessage> SendRequestAsync<T>(string type, T payload, CancellationToken ct)
+    {
+        var id = Interlocked.Increment(ref _nextRequestId);
+        var tcs = new TaskCompletionSource<CommandResultMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pendingRequests.TryAdd(id, tcs))
+            throw new InvalidOperationException($"Duplicate request id {id}");
+
+        // Hook cancellation: if the caller cancels, fail the awaiter and stop
+        // tracking the id. A late-arriving CommandResult will simply be dropped.
+        using var reg = ct.Register(() =>
+        {
+            if (_pendingRequests.TryRemove(id, out var pending))
+                pending.TrySetCanceled(ct);
+        });
+
+        try
+        {
+            Interlocked.Increment(ref _messagesSent);
+            var payloadBytes = IpcPayloadHelper.SerializeToUtf8(payload);
+            _logger?.LogTrace("IPC request: type={Type}, id={Id}, bytes={Bytes}", type, id, payloadBytes.Length);
+            await _transport.SendAsync(type, payloadBytes, id, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _pendingRequests.TryRemove(id, out _);
+            tcs.TrySetException(ex);
+        }
+
+        return await tcs.Task.ConfigureAwait(false);
     }
 
     private async Task SendSimpleCommandAsync(string type, CancellationToken ct)
@@ -363,6 +441,10 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         }
 
         IsConnected = false;
+
+        // Fail any callers awaiting a CommandResult that will never come.
+        FailAllPendingRequests("Audio pipe connection lost");
+
         _logger?.LogWarning(
             "AudioPipelineProxy receive loop ended: messagesReceived={Received}, stateUpdatesReceived={StateUpdates}, outOfOrder={OutOfOrder}, lastFreshness={FreshnessMs:F0}ms",
             Interlocked.Read(ref _messagesReceived),
@@ -370,6 +452,16 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
             Interlocked.Read(ref _stateUpdatesOutOfOrder),
             StateFreshnessMs);
         Disconnected?.Invoke("Audio pipe connection lost");
+    }
+
+    private void FailAllPendingRequests(string reason)
+    {
+        if (_pendingRequests.IsEmpty) return;
+        foreach (var kv in _pendingRequests)
+        {
+            if (_pendingRequests.TryRemove(kv.Key, out var pending))
+                pending.TrySetException(new IOException(reason));
+        }
     }
 
     private void HandleIncomingMessage(IpcMessage msg)
@@ -478,7 +570,18 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
             case IpcMessageTypes.CommandResult:
             {
                 var result = IpcPayloadHelper.Deserialize<CommandResultMessage>(msg);
-                if (result is { Success: false })
+                if (result is null) break;
+
+                // Complete the awaiter (if any) BEFORE surfacing as a generic
+                // error toast — request/reply callers want to handle their own
+                // failures (e.g. PlayPlay falls through to "stay disabled").
+                if (_pendingRequests.TryRemove(result.RequestId, out var pending))
+                {
+                    pending.TrySetResult(result);
+                    break;
+                }
+
+                if (!result.Success)
                 {
                     var errMsg = result.ErrorMessage ?? "Audio host command failed";
                     _logger?.LogWarning("Command {Id} failed: {Error}", result.RequestId, errMsg);

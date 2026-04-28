@@ -66,6 +66,8 @@ public static class FluentGlyphs
     public const string Open = "";
     /// <summary>OpenInNewWindow — E8A7.</summary>
     public const string OpenInNewTab = "";
+    /// <summary>OpenInNewWindow — E8A7. Semantic alias for "tear off into floating window".</summary>
+    public const string OpenInNewWindow = "";
     /// <summary>MoveToFolder — E8DE.</summary>
     public const string MoveTo = "";
     /// <summary>Add — E710. Semantic alias.</summary>
@@ -90,6 +92,11 @@ public static class FluentGlyphs
     public const string Canvas = "";
     /// <summary>ChevronRight — E76C.</summary>
     public const string ChevronRight = "";
+
+    /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
+    public const string DeviceRemote = "";
+    /// <summary>Volume — single-speaker glyph used for local audio chips (E767).</summary>
+    public const string DeviceLocalSpeaker = "";
 
     // ── Device types (output-device picker icons) ─────────────────────
     /// <summary>Devices2 — generic computer/PC icon (E977).</summary>

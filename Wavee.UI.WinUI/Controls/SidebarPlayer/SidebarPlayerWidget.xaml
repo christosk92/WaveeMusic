@@ -10,6 +10,7 @@
     xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:media="using:CommunityToolkit.WinUI.Media"
@@ -37,6 +38,8 @@
                 <Setter Property="Padding" Value="12" />
                 <Setter Property="MinWidth" Value="0" />
             </Style>
+
+            <!-- DevicePickerRowStyle moved into OutputDevicePicker control. -->
 
             <!-- Theme-aware chevron pill: white-ish translucent over album art in dark mode,
                  black-ish translucent over album art in light mode. Glyph follows the theme's
@@ -68,10 +71,11 @@
          via WidgetTintColor / WidgetTintColorTransparent (animations on color changes). -->
     <Border
         x:Name="WidgetRoot"
-        Padding="12,10,12,18"
+        Padding="12,10,12,6"
         BorderThickness="0"
         PointerEntered="WidgetRoot_PointerEntered"
         PointerExited="WidgetRoot_PointerExited"
+        behaviors:DragToDetachBehavior.Panel="Player"
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
         <animations:Implicit.ShowAnimations>
             <animations:OpacityAnimation Duration="0:0:0.25" From="0" To="1" />
@@ -148,22 +152,25 @@
                             CornerRadius="6"
                             InnerContentClipMode="CompositionMaskBrush" />
                     </toolkit:Effects.Shadow>
+                    <!-- ExpandedAlbumArtHost: width-stretches to the column, height is
+                         locked to width via SizeChanged in code-behind so the slot stays
+                         square even before the first image arrives. The CrossFadeImage
+                         inside swaps covers without ever nulling the visible layer, so
+                         the row no longer collapses to 0×0 between tracks. -->
                     <Grid
                         x:Name="ExpandedAlbumArtHost"
                         HorizontalAlignment="Stretch"
                         CornerRadius="6"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        SizeChanged="ExpandedAlbumArtHost_SizeChanged"
                         Tapped="AlbumArt_Tapped">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <Image
+                        <imaging:CrossFadeImage
                             x:Name="ExpandedAlbumArtImage"
-                            Stretch="UniformToFill"
-                            Source="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=300}"
-                            behaviors:ImageFallbackBehavior.HideOnError="True"
-                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                            behaviors:ImageFallbackBehavior.DecodePixelWidth="600" />
+                            toolkit:TransitionHelper.Id="albumArt"
+                            Source="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}"
+                            DecodePixelWidth="512"
+                            CornerRadius="6"
+                            Stretch="UniformToFill" />
                         <FontIcon
                             Glyph="&#xE8D6;"
                             FontSize="32"
@@ -190,6 +197,7 @@
                             Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
                             Click="TrackTitle_Click">
                             <TextBlock
+                                toolkit:TransitionHelper.Id="trackTitle"
                                 Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
                                 FontSize="14"
                                 FontWeight="SemiBold"
@@ -197,6 +205,7 @@
                                 TextTrimming="CharacterEllipsis" />
                         </HyperlinkButton>
                         <ctk:MetadataControl
+                            toolkit:TransitionHelper.Id="artistMetadata"
                             Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
                             Separator=", ">
                             <ctk:MetadataControl.TextBlockStyle>
@@ -274,26 +283,27 @@
                                 </ToggleMenuFlyoutItem>
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem
-                                    x:Name="ExpandedOverflowSkipBack"
                                     Text="Skip back 10 seconds"
-                                    Visibility="Collapsed"
                                     Command="{x:Bind ViewModel.SkipBackwardCommand}">
                                     <MenuFlyoutItem.Icon>
                                         <FontIcon Glyph="&#xED3C;" FontSize="14" />
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem
-                                    x:Name="ExpandedOverflowSkipForward"
                                     Text="Skip forward 30 seconds"
-                                    Visibility="Collapsed"
                                     Command="{x:Bind ViewModel.SkipForwardCommand}">
                                     <MenuFlyoutItem.Icon>
                                         <FontIcon Glyph="&#xED3D;" FontSize="14" />
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
-                                <MenuFlyoutSeparator
-                                    x:Name="ExpandedOverflowSkipSeparator"
-                                    Visibility="Collapsed" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem
+                                    Text="Pop out to window"
+                                    Click="PopOutToWindow_Click">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
                                 <MenuFlyoutItem
                                     Text="Move back to bottom bar"
                                     Click="MoveToBottomBar_Click">
@@ -308,230 +318,16 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Output device chip — single Button hosting two mutually-exclusive content
-                     stacks (remote vs local) and a custom Flyout containing the inline
-                     device picker. The picker mirrors the right-panel Output Device card's
-                     Local Audio + Spotify Connect sections but is rendered here so the user
-                     doesn't have to switch panels. Wired in code-behind. -->
-                <Button
-                    x:Name="ExpandedDeviceChipButton"
+                <!-- Output device picker — reusable combobox-style control.
+                     Self-contained: subscribes to IPlaybackStateService and
+                     handles row click → IPlaybackService internally. The
+                     trigger renders the active device + chevron. Replaces a
+                     ~200-line chip+flyout block previously inlined here. -->
+                <playback:OutputDevicePicker
                     Grid.Row="2"
                     Margin="2,0,2,0"
-                    Style="{StaticResource TransparentButtonStyle}"
-                    Padding="4,2"
-                    CornerRadius="4"
-                    HorizontalAlignment="Left"
-                    ToolTipService.ToolTip="Choose output device">
-                    <Grid>
-                        <StackPanel
-                            x:Name="ExpandedRemoteChipContent"
-                            Orientation="Horizontal"
-                            Spacing="4"
-                            Visibility="{x:Bind ViewModel.IsPlayingRemotely, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <FontIcon
-                                Glyph="&#xE703;"
-                                FontSize="9"
-                                VerticalAlignment="Center"
-                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                            <TextBlock
-                                Text="{x:Bind ViewModel.ActiveDeviceName, Mode=OneWay, FallbackValue='Remote device'}"
-                                FontSize="10"
-                                Opacity="0.85"
-                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                VerticalAlignment="Center"
-                                TextTrimming="CharacterEllipsis" />
-                            <FontIcon
-                                Glyph="&#xE76C;"
-                                FontSize="8"
-                                Margin="2,0,0,0"
-                                VerticalAlignment="Center"
-                                Opacity="0.5"
-                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                        </StackPanel>
-                        <StackPanel
-                            x:Name="ExpandedLocalChipContent"
-                            Orientation="Horizontal"
-                            Spacing="4"
-                            Visibility="{x:Bind ViewModel.IsPlayingRemotely, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                            <FontIcon
-                                Glyph="&#xE767;"
-                                FontSize="9"
-                                VerticalAlignment="Center"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock
-                                Text="{x:Bind ViewModel.ActiveAudioDeviceName, Mode=OneWay, FallbackValue='This device'}"
-                                FontSize="10"
-                                Opacity="0.85"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                VerticalAlignment="Center"
-                                TextTrimming="CharacterEllipsis" />
-                            <FontIcon
-                                Glyph="&#xE76C;"
-                                FontSize="8"
-                                Margin="2,0,0,0"
-                                VerticalAlignment="Center"
-                                Opacity="0.5"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Grid>
-                    <Button.Flyout>
-                        <Flyout
-                            x:Name="DevicePickerFlyout"
-                            Placement="BottomEdgeAlignedLeft"
-                            Opening="DevicePickerFlyout_Opening">
-                            <Flyout.FlyoutPresenterStyle>
-                                <Style TargetType="FlyoutPresenter" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}">
-                                    <Setter Property="Padding" Value="0" />
-                                    <Setter Property="MinWidth" Value="240" />
-                                    <Setter Property="MaxWidth" Value="320" />
-                                </Style>
-                            </Flyout.FlyoutPresenterStyle>
-                            <StackPanel Padding="4" Spacing="2">
-                                <TextBlock
-                                    x:Name="DeviceFlyoutLocalHeader"
-                                    Text="LOCAL AUDIO"
-                                    FontSize="10"
-                                    FontWeight="SemiBold"
-                                    CharacterSpacing="80"
-                                    Margin="12,8,12,4"
-                                    Opacity="0.55"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <ItemsRepeater x:Name="DeviceFlyoutLocalList">
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="rightpanel:OutputDeviceRowViewModel">
-                                            <Button
-                                                Click="DevicePickerRow_Click"
-                                                Tag="{x:Bind}"
-                                                Style="{StaticResource TransparentButtonStyle}"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Stretch"
-                                                Padding="0"
-                                                BorderThickness="0"
-                                                CornerRadius="6">
-                                                <Grid Height="34">
-                                                    <Border
-                                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                                        CornerRadius="6"
-                                                        Visibility="{x:Bind IsActive, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                    <Grid Padding="10,0" ColumnSpacing="10" VerticalAlignment="Center">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="18" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <FontIcon
-                                                            Grid.Column="0"
-                                                            Glyph="{x:Bind Icon}"
-                                                            FontSize="13"
-                                                            HorizontalAlignment="Center"
-                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                                        <TextBlock
-                                                            Grid.Column="1"
-                                                            Text="{x:Bind Name}"
-                                                            FontSize="12"
-                                                            VerticalAlignment="Center"
-                                                            TextTrimming="CharacterEllipsis"
-                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                                        <Grid Grid.Column="2" Width="14" Height="14">
-                                                            <FontIcon
-                                                                Glyph="&#xE73E;"
-                                                                FontSize="12"
-                                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                                Visibility="{x:Bind IsActive, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                            <ProgressRing
-                                                                Width="14"
-                                                                Height="14"
-                                                                IsActive="True"
-                                                                Visibility="{x:Bind SpinnerVisibility, Mode=OneWay}" />
-                                                        </Grid>
-                                                    </Grid>
-                                                </Grid>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
-                                <Border
-                                    x:Name="DeviceFlyoutSeparator"
-                                    Height="1"
-                                    Margin="12,8,12,4"
-                                    Opacity="0.4"
-                                    Background="{ThemeResource CardStrokeColorDefaultBrush}" />
-                                <TextBlock
-                                    x:Name="DeviceFlyoutConnectHeader"
-                                    Text="SPOTIFY CONNECT"
-                                    FontSize="10"
-                                    FontWeight="SemiBold"
-                                    CharacterSpacing="80"
-                                    Margin="12,4,12,4"
-                                    Opacity="0.55"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <ItemsRepeater x:Name="DeviceFlyoutConnectList">
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="rightpanel:OutputDeviceRowViewModel">
-                                            <Button
-                                                Click="DevicePickerRow_Click"
-                                                Tag="{x:Bind}"
-                                                Style="{StaticResource TransparentButtonStyle}"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Stretch"
-                                                Padding="0"
-                                                BorderThickness="0"
-                                                CornerRadius="6">
-                                                <Grid Height="34">
-                                                    <Border
-                                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                                        CornerRadius="6"
-                                                        Visibility="{x:Bind IsActive, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                    <Grid Padding="10,0" ColumnSpacing="10" VerticalAlignment="Center">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="18" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <FontIcon
-                                                            Grid.Column="0"
-                                                            Glyph="{x:Bind Icon}"
-                                                            FontSize="13"
-                                                            HorizontalAlignment="Center"
-                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                                        <TextBlock
-                                                            Grid.Column="1"
-                                                            Text="{x:Bind Name}"
-                                                            FontSize="12"
-                                                            VerticalAlignment="Center"
-                                                            TextTrimming="CharacterEllipsis"
-                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                                                        <Grid Grid.Column="2" Width="14" Height="14">
-                                                            <FontIcon
-                                                                Glyph="&#xE73E;"
-                                                                FontSize="12"
-                                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                                Visibility="{x:Bind IsActive, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                            <ProgressRing
-                                                                Width="14"
-                                                                Height="14"
-                                                                IsActive="True"
-                                                                Visibility="{x:Bind SpinnerVisibility, Mode=OneWay}" />
-                                                        </Grid>
-                                                    </Grid>
-                                                </Grid>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
-                                <TextBlock
-                                    x:Name="DeviceFlyoutEmptyText"
-                                    Text="No other devices available"
-                                    FontSize="12"
-                                    Opacity="0.55"
-                                    Margin="12,16,12,16"
-                                    HorizontalAlignment="Center"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Visibility="Collapsed" />
-                            </StackPanel>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
+                    HorizontalAlignment="Left" />
+
 
                 <!-- Progress: time | slider | time -->
                 <Grid Grid.Row="3" Margin="2,0,2,0" ColumnSpacing="6">
@@ -584,16 +380,6 @@
                         <FontIcon Glyph="&#xE8B1;" FontSize="12" />
                     </ToggleButton>
                     <Button
-                        x:Name="ExpandedSkipBackInline"
-                        Style="{StaticResource TransparentButtonStyle}"
-                        Width="30"
-                        Height="30"
-                        Padding="0"
-                        Command="{x:Bind ViewModel.SkipBackwardCommand}"
-                        ToolTipService.ToolTip="Skip back 10 seconds">
-                        <FontIcon Glyph="&#xED3C;" FontSize="14" />
-                    </Button>
-                    <Button
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="30"
                         Height="30"
@@ -624,16 +410,6 @@
                         Command="{x:Bind ViewModel.NextCommand}"
                         ToolTipService.ToolTip="Next">
                         <FontIcon Glyph="&#xF8AD;" FontSize="14" />
-                    </Button>
-                    <Button
-                        x:Name="ExpandedSkipForwardInline"
-                        Style="{StaticResource TransparentButtonStyle}"
-                        Width="30"
-                        Height="30"
-                        Padding="0"
-                        Command="{x:Bind ViewModel.SkipForwardCommand}"
-                        ToolTipService.ToolTip="Skip forward 30 seconds">
-                        <FontIcon Glyph="&#xED3D;" FontSize="14" />
                     </Button>
                     <ToggleButton
                         Style="{StaticResource SubtleToggleButtonStyle}"
@@ -714,16 +490,14 @@
                         CornerRadius="4"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         Tapped="AlbumArt_Tapped">
-                        <Image
+                        <imaging:CrossFadeImage
                             x:Name="CollapsedAlbumArtImage"
                             Width="44"
                             Height="44"
-                            IsHitTestVisible="False"
-                            Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=48}"
-                            Stretch="UniformToFill"
-                            behaviors:ImageFallbackBehavior.HideOnError="True"
-                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                            behaviors:ImageFallbackBehavior.DecodePixelWidth="96" />
+                            Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
+                            DecodePixelWidth="96"
+                            CornerRadius="4"
+                            Stretch="UniformToFill" />
                         <FontIcon
                             Glyph="&#xE8D6;"
                             FontSize="16"
@@ -913,6 +687,13 @@
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
+                                <MenuFlyoutItem
+                                    Text="Pop out to window"
+                                    Click="PopOutToWindow_Click">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
                                 <MenuFlyoutItem
                                     Text="Move back to bottom bar"
                                     Click="MoveToBottomBar_Click">

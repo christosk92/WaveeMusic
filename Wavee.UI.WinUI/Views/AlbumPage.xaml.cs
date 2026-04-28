@@ -1,15 +1,20 @@
 using System;
 using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -20,6 +25,9 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
+    private bool _showingContent;
+    private bool _crossfadeScheduled;
+    private bool _isNavigatingAway;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -44,7 +52,16 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
                 : "";
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         ActualThemeChanged += OnActualThemeChanged;
+        Loaded += AlbumPage_Loaded;
+        Unloaded += AlbumPage_Unloaded;
+        _logger?.LogDebug("[xfade][album:{Id}] ctor.enter", XfadeLog.Tag(ViewModel.AlbumId));
+
+        // Start the content layer invisible at composition level so the
+        // shimmer→content transition is a smooth crossfade, not the previous
+        // hard cut the BoolToVisibilityConverter produced.
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
 
         // Other-versions flyout is built dynamically — the data shape (name + year +
         // type) is uniform per album but the count varies, so we rebuild on every
@@ -60,21 +77,149 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
 
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AlbumViewModel.IsLoading))
+        {
+            string action;
+            if (ViewModel.IsLoading) action = "skip-still-loading";
+            else if (_showingContent) action = "skip-already-shown";
+            else if (_crossfadeScheduled) action = "skip-already-scheduled";
+            else action = "schedule";
+            _logger?.LogDebug(
+                "[xfade][album:{Id}] propchg.isLoading val={Val} showing={Showing} scheduled={Scheduled} action={Action}",
+                XfadeLog.Tag(ViewModel.AlbumId), ViewModel.IsLoading, _showingContent, _crossfadeScheduled, action);
+            if (action == "schedule")
+                ScheduleCrossfade();
+        }
+    }
+
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+    }
+
+    private void AlbumPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] loaded showing={Showing} scheduled={Scheduled} navAway={NavAway}",
+            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);
+    }
+
+    private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] unloaded showing={Showing} scheduled={Scheduled}",
+            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled);
+        _isNavigatingAway = true;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
+
+    // ── Crossfade ──
+    // Mirrors ProfilePage / ArtistPage: yield twice so XAML has time to
+    // propagate bindings + measure the inner panels before the fade starts;
+    // collapse shimmer once it has fully faded out so it stops participating
+    // in measure/arrange.
+
+    private async void ScheduleCrossfade()
+    {
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] schedule.enter showing={Showing} scheduled={Scheduled} navAway={NavAway} isLoading={IsLoading}",
+            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway, ViewModel.IsLoading);
+        _crossfadeScheduled = true;
+        await Task.Yield();
+        await Task.Delay(16);
+        var bail = _isNavigatingAway || _showingContent;
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] schedule.gate navAway={NavAway} showing={Showing} action={Action}",
+            XfadeLog.Tag(ViewModel.AlbumId), _isNavigatingAway, _showingContent, bail ? "bail" : "run");
+        if (bail) return;
+        CrossfadeToContent();
+    }
+
+    // Warm-cache fallback for the same-id re-navigation path. AlbumViewModel.Initialize
+    // (line 538) early-exits when the incoming AlbumId matches the current one, so
+    // IsLoading stays at its previous value (false) and ApplyDetailAsync's
+    // IsLoading = false write is a no-op that fires no PropertyChanged. Without this
+    // helper, the IsLoading-driven ScheduleCrossfade in ViewModel_PropertyChanged
+    // never runs and the page paints empty (shimmer composition opacity stuck at 0
+    // from the prior fade, content composition opacity at 0 from the reset).
+    // Confirmed by [xfade] capture: state.ready freshness=Fresh + two
+    // propset.isLoading old=false new=false changed=false events, schedule.enter
+    // never observed.
+    private void TryShowContentNow()
+    {
+        if (_showingContent || _crossfadeScheduled || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.AlbumName))
+            return;
+        ScheduleCrossfade();
+    }
+
+    private async void CrossfadeToContent()
+    {
+        if (_showingContent) return;
+        _showingContent = true;
+
+        var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
+        var contentVisualOpacity = ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity;
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] xfade.start shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} contentVisual={ContentVisual} shimmerVisible={ShimmerVisible}",
+            XfadeLog.Tag(ViewModel.AlbumId), ShimmerContainer.Opacity, shimmerVisualOpacity, contentVisualOpacity, ShimmerContainer.Visibility);
+
+        AnimationBuilder.Create()
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+            .Start(ShimmerContainer);
+
+        AnimationBuilder.Create()
+            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
+                     delay: TimeSpan.FromMilliseconds(100))
+            .Start(ContentContainer);
+
+        await Task.Delay(250);
+        if (_showingContent)
+        {
+            ShimmerContainer.Visibility = Visibility.Collapsed;
+            _logger?.LogDebug(
+                "[xfade][album:{Id}] xfade.shimmerCollapsed contentVisual={ContentVisual}",
+                XfadeLog.Tag(ViewModel.AlbumId), ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity);
+        }
+    }
+
+    private void ResetCrossfadeForNewLoad()
+    {
+        // Clear the navigation-away gate — Unloaded sets _isNavigatingAway = true
+        // and Frame caches the page instance, so on re-attach the gate is stale
+        // and ScheduleCrossfade's post-yield guard bails on every load.
+        // Confirmed by [xfade] capture: load.enter and reset both reported
+        // navAway=true on a same-id Frame.Navigate to a cached AlbumPage.
+        _isNavigatingAway = false;
+        _showingContent = false;
+        _crossfadeScheduled = false;
+        ShimmerContainer.Visibility = Visibility.Visible;
+        ShimmerContainer.Opacity = 1;
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+        var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] reset shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} navAway={NavAway}",
+            XfadeLog.Tag(ViewModel.AlbumId), ShimmerContainer.Opacity, shimmerVisualOpacity, _isNavigatingAway);
     }
 
     // ── Navigation ───────────────────────────────────────────────────────────
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        var incomingId = e.Parameter is ContentNavigationParameter nav ? nav.Uri
+                       : e.Parameter as string;
+        var sameId = !string.IsNullOrEmpty(incomingId) && string.Equals(incomingId, ViewModel.AlbumId, StringComparison.Ordinal);
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] nav.to mode={Mode} incoming={Incoming} sameId={SameId}",
+            XfadeLog.Tag(ViewModel.AlbumId), e.NavigationMode, XfadeLog.Tag(incomingId), sameId);
         base.OnNavigatedTo(e);
         LoadNewContent(e.Parameter);
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        _logger?.LogDebug("[xfade][album:{Id}] nav.from", XfadeLog.Tag(ViewModel.AlbumId));
         base.OnNavigatedFrom(e);
         // Hibernate also releases FilteredTracks / MoreByArtist / AlternateReleases /
         // Merch — the bound collections that pin the most realized item containers
@@ -89,10 +234,28 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
     // Without this override, clicking a different album from the player bar / a
     // shelf / search while AlbumPage is the active tab content silently drops the
     // new parameter.
-    public void RefreshWithParameter(object? parameter) => LoadNewContent(parameter);
-
-    private void LoadNewContent(object? parameter)
+    public void RefreshWithParameter(object? parameter)
     {
+        var incomingId = parameter is ContentNavigationParameter nav ? nav.Uri
+                       : parameter as string;
+        var sameId = !string.IsNullOrEmpty(incomingId) && string.Equals(incomingId, ViewModel.AlbumId, StringComparison.Ordinal);
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] refresh incoming={Incoming} sameId={SameId}",
+            XfadeLog.Tag(ViewModel.AlbumId), XfadeLog.Tag(incomingId), sameId);
+        LoadNewContent(parameter);
+    }
+
+    private async void LoadNewContent(object? parameter)
+    {
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] load.enter showing={Showing} scheduled={Scheduled} navAway={NavAway}",
+            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);
+
+        // Reset shimmer/content visual state for the fresh load — mirrors
+        // ArtistPage's LoadNewContent reset so the next album fades in
+        // cleanly instead of inheriting the previous album's faded-in chrome.
+        ResetCrossfadeForNewLoad();
+
         string? albumId = null;
 
         if (parameter is ContentNavigationParameter nav)
@@ -113,6 +276,15 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent
 
         if (!string.IsNullOrEmpty(albumId))
             RestoreAlbumPanelWidth(albumId);
+
+        // Warm-cache trigger. AlbumStore is a BehaviorSubject — Activate's subscribe
+        // queues ApplyDetailState via the dispatcher, which runs after this method
+        // returns. After one yield it has landed (AlbumName populated, IsLoading
+        // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
+        // same-id case where the IsLoading=false write was a no-op.
+        await Task.Yield();
+        if (_isNavigatingAway) return;
+        TryShowContentNow();
     }
 
     // ── Left-panel sizing ────────────────────────────────────────────────────

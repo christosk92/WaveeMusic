@@ -326,6 +326,31 @@ public sealed class ArtistService : IArtistService
         }
     }
 
+    public async Task<IReadOnlyDictionary<string, string?>> GetTrackImagesAsync(
+        IReadOnlyList<string> trackUris, CancellationToken ct = default)
+    {
+        if (trackUris.Count == 0)
+            return new Dictionary<string, string?>();
+
+        try
+        {
+            var request = _messenger.Send(new TrackImagesEnrichmentRequest
+            {
+                TrackUris = trackUris,
+                CancellationToken = ct
+            });
+
+            if (!request.HasReceivedResponse)
+                return new Dictionary<string, string?>();
+            return await request.Response.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to resolve track images for {Count} URIs", trackUris.Count);
+            return new Dictionary<string, string?>();
+        }
+    }
+
     private static List<ArtistReleaseResult> MapReleaseGroup(ArtistReleaseGroup? group, string type)
     {
         if (group?.Items == null) return [];

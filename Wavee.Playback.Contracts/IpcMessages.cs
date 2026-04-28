@@ -228,6 +228,25 @@ public sealed class StopPreviewAnalysisCommand
     public required string SessionId { get; init; }
 }
 
+// PlayPlay is Spotify property. UI → AudioHost RPC for AES-key derivation.
+public sealed class DerivePlayPlayKeyCommand
+{
+    [JsonPropertyName("obfuscatedKeyHex")]
+    public required string ObfuscatedKeyHex { get; init; }
+
+    [JsonPropertyName("contentIdHex")]
+    public required string ContentIdHex { get; init; }
+
+    [JsonPropertyName("spotifyDllPath")]
+    public required string SpotifyDllPath { get; init; }
+}
+
+public sealed class DerivePlayPlayKeyResult
+{
+    [JsonPropertyName("aesKeyHex")]
+    public required string AesKeyHex { get; init; }
+}
+
 // ── Audio → UI State ──
 
 public sealed class PlaybackStateSnapshot
@@ -347,6 +366,10 @@ public sealed class CommandResultMessage
 
     [JsonPropertyName("errorMessage")]
     public string? ErrorMessage { get; init; }
+
+    // Optional structured payload for request/reply RPCs. Null otherwise.
+    [JsonPropertyName("result")]
+    public JsonElement? Result { get; init; }
 }
 
 /// <summary>
@@ -516,6 +539,7 @@ public static class IpcMessageTypes
     public const string RefreshAudioDevices = "refresh_audio_devices";
     public const string StartPreviewAnalysis = "start_preview_analysis";
     public const string StopPreviewAnalysis = "stop_preview_analysis";
+    public const string DerivePlayPlayKey = "derive_playplay_key";
     public const string Configure = "configure";
     public const string Shutdown = "shutdown";
     public const string Ping = "ping";
@@ -555,6 +579,8 @@ public static class IpcMessageTypes
 [JsonSerializable(typeof(AudioOutputDeviceDto[]))]
 [JsonSerializable(typeof(StartPreviewAnalysisCommand))]
 [JsonSerializable(typeof(StopPreviewAnalysisCommand))]
+[JsonSerializable(typeof(DerivePlayPlayKeyCommand))]
+[JsonSerializable(typeof(DerivePlayPlayKeyResult))]
 [JsonSerializable(typeof(PlaybackStateSnapshot))]
 [JsonSerializable(typeof(PlaybackErrorMessage))]
 [JsonSerializable(typeof(CommandResultMessage))]

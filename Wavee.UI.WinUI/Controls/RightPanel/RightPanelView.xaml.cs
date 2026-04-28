@@ -21,6 +21,7 @@ using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Services.Docking;
 using Wavee.UI.WinUI.ViewModels;
 using System.Numerics;
 using CommunityToolkit.WinUI.Animations;
@@ -137,7 +138,15 @@ public sealed partial class RightPanelView : UserControl
     private CancellationTokenSource? _backgroundTintCts;
     private string? _backgroundTintImageUrl;
     private ExtractedColor? _backgroundTintExtractedColor;
-    private bool _suppressTabHeaderSelectionChanged;
+    // Initially suppressed: the Segmented inside RightPanelView ships with
+    // SelectedIndex="0" in XAML so the Queue tab is the visual default. During
+    // construction the SelectionChanged handler used to fire for that initial
+    // Queue selection BEFORE the SelectedMode binding pushed the persisted /
+    // requested mode (e.g. Lyrics) — which then wrote Queue back through the
+    // TwoWay binding to ShellViewModel.RightPanelMode and made the Lyrics
+    // button effectively a no-op the first click. Released in OnLoaded once
+    // the binding has settled.
+    private bool _suppressTabHeaderSelectionChanged = true;
 
     public RightPanelView()
     {
@@ -175,6 +184,11 @@ public sealed partial class RightPanelView : UserControl
         RefreshBackgroundTint();
         UpdatePanelBackgroundState();
         UpdateTabHeaderVisualState();
+
+        // Release the suppression flag now that the SelectedMode binding has
+        // settled and the visual selection matches it. From here on, real user
+        // taps on the tab bar are honored.
+        _suppressTabHeaderSelectionChanged = false;
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
@@ -1545,6 +1559,17 @@ public sealed partial class RightPanelView : UserControl
         if (TabHeaderScroller == null) return;
         double target = Math.Min(TabHeaderScroller.ScrollableWidth, TabHeaderScroller.HorizontalOffset + TabPagerScrollStepPx);
         TabHeaderScroller.ChangeView(target, null, null);
+    }
+
+    private void PopOutButton_Click(object sender, RoutedEventArgs e)
+    {
+        Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.RightPanel);
+    }
+
+    private void ApplyTabHeaderVisibility()
+    {
+        if (TabHeaderRow != null)
+            TabHeaderRow.Visibility = IsTabHeaderVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void TabHeader_SelectionChanged(object sender, SelectionChangedEventArgs e)
