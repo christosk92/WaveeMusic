@@ -174,3 +174,15 @@ Wavee.PlayPlay.Tests/Program.cs
 # Local Spotify.dll copies (binary belongs to Spotify; verified at runtime
 # against a SHA-256 baked into PlayPlayConstants).
 **/Spotify.dll
+
+# Out-of-tree dev tooling and per-user state — kept local, not in source control.
+# - worker/: Cloudflare Worker for feedback-proxy (separate deploy lifecycle)
+# - scripts/: Local diagnostic / WPA-profiling scripts
+# - docs/superpowers/specs/: superpowers-skill working specs
+# - .dotnet-cli/: project-scoped dotnet SDK install (per-machine path)
+# - .claude/: Claude Code per-user settings + memory
+worker/
+scripts/
+docs/superpowers/specs/
+.dotnet-cli/
+.claude/
