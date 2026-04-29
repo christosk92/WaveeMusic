@@ -91,6 +91,9 @@ namespace Wavee.Controls.Lyrics.Helper
                 return transliterationCode;
             }
 
+            if (IsLatinOnly(text) && EnglishBlockerRegex().IsMatch(text))
+                return EnglishCode;
+
             // First touch here triggers the ~14.6 MB Wiki82 profile load (see _lazyIdentifier above).
             var guessList = _lazyIdentifier.Value.Identify(text);
             var bestMatch = guessList?.FirstOrDefault();

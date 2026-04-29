@@ -91,7 +91,7 @@ namespace Wavee.Controls.Lyrics.Renderer
         // IBackgroundRenderer
         void IBackgroundRenderer.LoadResources(ICanvasResourceCreator creator) => LoadResources();
 
-        void IBackgroundRenderer.Update(RenderContext ctx)
+        void IBackgroundRenderer.Update(in RenderContext ctx)
         {
             var bg = ctx.Settings.LyricsBackgroundSettings;
             IsEnabled = bg.IsFluidOverlayEnabled;
@@ -102,7 +102,7 @@ namespace Wavee.Controls.Lyrics.Renderer
                    ctx.BassEnergy, bg.FluidOverlayBreathingIntensity);
         }
 
-        void IBackgroundRenderer.Draw(CanvasDrawingSession ds, RenderContext ctx)
+        void IBackgroundRenderer.Draw(CanvasDrawingSession ds, in RenderContext ctx)
         {
             Draw(ctx.Control, ds, ctx.Settings.LyricsBackgroundSettings.IsFluidOverlayBrethingEffectEnabled);
         }

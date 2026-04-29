@@ -178,28 +178,33 @@ namespace Wavee.Controls.Lyrics.Renderer
             strokeStops[2].Position = progressInRegion + fadeProgressInRegion * firstCharProgressInRegion; strokeStops[2].Color = unplayedStrokeColor.WithAlpha((byte)(255 * unplayedOpacity));
             strokeStops[3].Position = 1 + fadeProgressInRegion; strokeStops[3].Color = unplayedStrokeColor.WithAlpha((byte)(255 * unplayedOpacity));
 
-            using var fillGradientBrush = new CanvasLinearGradientBrush(resourceCreator, fillStops)
-            {
-                StartPoint = new Vector2((float)subLineRect.X, (float)subLineRect.Y),
-                EndPoint = new Vector2((float)(subLineRect.X + subLineRect.Width), (float)subLineRect.Y)
-            };
             var fillGradientLayer = region.GetFillGradientLayer(resourceCreator);
             using (var gds = fillGradientLayer.CreateDrawingSession())
             {
                 gds.Clear(Microsoft.UI.Colors.Transparent);
-                gds.FillRectangle(subLineRect, fillGradientBrush);
+                if (progressInRegion >= 1f)
+                {
+                    gds.FillRectangle(subLineRect, fillStops[1].Color);
+                }
+                else if (progressInRegion <= 0f && firstCharProgressInRegion <= 0f)
+                {
+                    gds.FillRectangle(subLineRect, fillStops[2].Color);
+                }
+                else
+                {
+                    using var fillGradientBrush = new CanvasLinearGradientBrush(resourceCreator, fillStops)
+                    {
+                        StartPoint = new Vector2((float)subLineRect.X, (float)subLineRect.Y),
+                        EndPoint = new Vector2((float)(subLineRect.X + subLineRect.Width), (float)subLineRect.Y)
+                    };
+                    gds.FillRectangle(subLineRect, fillGradientBrush);
+                }
             }
 
             region.FinalFillEffect.Source = fillGradientLayer;
             ICanvasImage finalOutputImage = region.FinalFillEffect;
 
             bool hasStroke = cachedStroke != null && region.FinalStrokeEffect != null && region.CombinedEffect != null;
-
-            using var strokeGradientBrush = hasStroke ? new CanvasLinearGradientBrush(resourceCreator, strokeStops)
-            {
-                StartPoint = new Vector2((float)subLineRect.X, (float)subLineRect.Y),
-                EndPoint = new Vector2((float)(subLineRect.X + subLineRect.Width), (float)subLineRect.Y)
-            } : null;
 
             var strokeGradientLayer = hasStroke ? region.GetStrokeGradientLayer(resourceCreator) : null;
 
@@ -208,7 +213,23 @@ namespace Wavee.Controls.Lyrics.Renderer
                 using (var gds = strokeGradientLayer!.CreateDrawingSession())
                 {
                     gds.Clear(Microsoft.UI.Colors.Transparent);
-                    gds.FillRectangle(subLineRect, strokeGradientBrush);
+                    if (progressInRegion >= 1f)
+                    {
+                        gds.FillRectangle(subLineRect, strokeStops[1].Color);
+                    }
+                    else if (progressInRegion <= 0f && firstCharProgressInRegion <= 0f)
+                    {
+                        gds.FillRectangle(subLineRect, strokeStops[2].Color);
+                    }
+                    else
+                    {
+                        using var strokeGradientBrush = new CanvasLinearGradientBrush(resourceCreator, strokeStops)
+                        {
+                            StartPoint = new Vector2((float)subLineRect.X, (float)subLineRect.Y),
+                            EndPoint = new Vector2((float)(subLineRect.X + subLineRect.Width), (float)subLineRect.Y)
+                        };
+                        gds.FillRectangle(subLineRect, strokeGradientBrush);
+                    }
                 }
 
                 region.FinalStrokeEffect!.Source = strokeGradientLayer;

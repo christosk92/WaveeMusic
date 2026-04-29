@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
@@ -55,6 +57,7 @@ public sealed partial class RightPanelView : UserControl
 
     private bool _draggingResizer;
     private double _preManipulationWidth;
+    private bool _isOpenCached;
 
     // Tracks whether the deferred LyricsContent / DetailsContent subtrees have been
     // materialized into the visual tree yet. Both use x:Load="False" in XAML and are
@@ -75,6 +78,9 @@ public sealed partial class RightPanelView : UserControl
     private double _lastCanvasPositionMs = -1;
     private bool _lyricsInitialized;
     private bool _pendingCanvasLayoutRetry;
+    private LyricsData? _appliedLyricsData;
+    private SongInfo? _appliedSongInfo;
+    private bool _lyricsCanvasDataCleared = true;
     private readonly ThemeColorService? _themeColors;
     private readonly ILyricsService? _lyricsService;
     private readonly IColorService? _colorService;
@@ -172,13 +178,15 @@ public sealed partial class RightPanelView : UserControl
             _themeColorsSubscribed = true;
         }
 
-        InitializeLyrics();
+        if (ShouldInitializeLyricsForMode())
+            InitializeLyrics();
         // RegisterDetailsWheelHandler is deferred: the DetailsContent subtree is
         // x:Load="False" and doesn't exist until the Details tab is first opened.
         // See EnsureDetailsTreeLoaded().
         ActualThemeChanged += OnActualThemeChanged;
         SizeChanged += OnPanelSizeChanged;
         UpdateCanvasClearColor();
+        ApplyEmbeddedChrome();
         EnsureTabContentFadeComposition();
         UpdateBackgroundChrome();
         RefreshBackgroundTint();
@@ -189,6 +197,12 @@ public sealed partial class RightPanelView : UserControl
         // settled and the visual selection matches it. From here on, real user
         // taps on the tab bar are honored.
         _suppressTabHeaderSelectionChanged = false;
+
+        // Re-apply tab content visibility now that we're loaded. UpdateContentVisibility
+        // guards on `!IsLoaded` and bails when the SelectedMode change fires before
+        // Loaded — without this re-apply, the panel can render the previous mode's
+        // content (e.g. Queue list visible while the Lyrics tab is selected).
+        UpdateContentVisibility();
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
@@ -299,7 +313,7 @@ public sealed partial class RightPanelView : UserControl
         // Position timer — 50ms (~20fps) is enough for readable lyric progression
         // and keeps dispatcher pressure lower during playback.
         _positionTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _positionTimer.Interval = TimeSpan.FromMilliseconds(50);
+        _positionTimer.Interval = TimeSpan.FromMilliseconds(DetailsSnippetTickMs);
         _positionTimer.Tick += OnPositionTimerTick;
 
         // If there's already a track loaded, apply it
@@ -308,6 +322,9 @@ public sealed partial class RightPanelView : UserControl
         // Start the timer if lyrics tab is visible and playing
         UpdateTimerState();
     }
+
+    private bool ShouldInitializeLyricsForMode()
+        => SelectedMode is RightPanelMode.Lyrics or RightPanelMode.Details;
 
     private void TeardownLyrics()
     {
@@ -324,6 +341,9 @@ public sealed partial class RightPanelView : UserControl
 
         NowPlayingCanvas.SeekRequested -= OnSeekRequested;
         NowPlayingCanvas.SetIsPlaying(false);
+        _appliedLyricsData = null;
+        _appliedSongInfo = null;
+        _lyricsCanvasDataCleared = true;
 
         _lyricsInitialized = false;
     }
@@ -334,8 +354,13 @@ public sealed partial class RightPanelView : UserControl
     {
         if (e.PropertyName is nameof(IPlaybackStateService.IsPlaying))
         {
+            SyncNowPlayingCanvasPosition();
             UpdateTimerState();
             UpdateDetailsLyricsUpdateMode();
+        }
+        else if (e.PropertyName is nameof(IPlaybackStateService.Position))
+        {
+            SyncNowPlayingCanvasPosition();
         }
 
         if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
@@ -458,10 +483,23 @@ public sealed partial class RightPanelView : UserControl
         // resizes the panel. See dazzling-foraging-stroustrup.md Fix 1.
         if (showCanvas) UpdateCanvasLayout();
 
-        if (hasLyrics)
+        if (showCanvas)
         {
-            NowPlayingCanvas.SetLyricsData(_lyricsVm.CurrentLyrics!);
-            NowPlayingCanvas.SetSongInfo(_lyricsVm.CurrentSongInfo);
+            var lyrics = _lyricsVm.CurrentLyrics!;
+            if (!ReferenceEquals(_appliedLyricsData, lyrics))
+            {
+                NowPlayingCanvas.SetLyricsData(lyrics);
+                _appliedLyricsData = lyrics;
+                _lyricsCanvasDataCleared = false;
+            }
+
+            var songInfo = _lyricsVm.CurrentSongInfo;
+            if (!ReferenceEquals(_appliedSongInfo, songInfo))
+            {
+                NowPlayingCanvas.SetSongInfo(songInfo);
+                _appliedSongInfo = songInfo;
+            }
+
             NowPlayingCanvas.SetIsPlaying(_lyricsVm.PlaybackState.IsPlaying);
             var position = _lyricsVm.GetInterpolatedPosition();
             _lastCanvasPositionMs = position.TotalMilliseconds;
@@ -471,7 +509,14 @@ public sealed partial class RightPanelView : UserControl
         {
             // No lyrics and not loading — clear stale engine data so a subsequent
             // successful load doesn't accidentally composite on top of an old frame.
-            NowPlayingCanvas.SetLyricsData(null);
+            if (!_lyricsCanvasDataCleared)
+            {
+                NowPlayingCanvas.SetLyricsData(null);
+                _appliedLyricsData = null;
+                _appliedSongInfo = null;
+                _lyricsCanvasDataCleared = true;
+            }
+
             NowPlayingCanvas.SetIsPlaying(false);
         }
 
@@ -492,15 +537,13 @@ public sealed partial class RightPanelView : UserControl
                         && _lyricsVm.HasLyrics
                         && _lyricsVm.CurrentLyrics != null;
 
-        // Realtime updates are only needed while playback is progressing.
-        var shouldRunPositionTimer = canRender && _lyricsVm.PlaybackState.IsPlaying;
-        var shouldRunSharedTimer = shouldRunPositionTimer || ShouldRunDetailsLyricsSharedTimer();
+        var shouldRunSharedTimer = ShouldRunDetailsLyricsSharedTimer();
 
         // Keep rendering active only for realtime playback or direct user interaction.
         var isInteracting = NowPlayingCanvas.IsMouseInLyricsArea
                             || NowPlayingCanvas.IsMousePressing
                             || NowPlayingCanvas.IsMouseScrolling;
-        var shouldRender = canRender && (shouldRunPositionTimer || isInteracting);
+        var shouldRender = canRender && (_lyricsVm.PlaybackState.IsPlaying || isInteracting);
 
         NowPlayingCanvas.SetRenderingActive(shouldRender);
         NowPlayingCanvas.SetIsPlaying(canRender && _lyricsVm.PlaybackState.IsPlaying);
@@ -516,7 +559,7 @@ public sealed partial class RightPanelView : UserControl
             NowPlayingCanvas.SetIsPlaying(false);
             _lastCanvasPositionMs = -1;
         }
-        else if (!shouldRunPositionTimer)
+        else if (!_lyricsVm.PlaybackState.IsPlaying)
         {
             NowPlayingCanvas.SetIsPlaying(false);
             _lastCanvasPositionMs = -1;
@@ -529,23 +572,6 @@ public sealed partial class RightPanelView : UserControl
     private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
     {
         if (_lyricsVm == null) return;
-
-        if (SelectedMode == RightPanelMode.Lyrics
-            && Visibility == Visibility.Visible
-            && _lyricsVm.HasLyrics
-            && _lyricsVm.CurrentLyrics != null
-            && _lyricsVm.PlaybackState.IsPlaying)
-        {
-            var position = _lyricsVm.GetInterpolatedPosition();
-            var positionMs = position.TotalMilliseconds;
-
-            // Skip tiny deltas to avoid unnecessary DP churn every tick.
-            if (_lastCanvasPositionMs < 0 || Math.Abs(positionMs - _lastCanvasPositionMs) >= 35)
-            {
-                _lastCanvasPositionMs = positionMs;
-                NowPlayingCanvas.SetPosition(position);
-            }
-        }
 
         if (!ShouldRunDetailsLyricsSharedTimer())
             return;
@@ -565,7 +591,27 @@ public sealed partial class RightPanelView : UserControl
 
     private void OnSeekRequested(object? sender, TimeSpan position)
     {
+        if (_lyricsInitialized && SelectedMode == RightPanelMode.Lyrics)
+            NowPlayingCanvas.SetPosition(position);
+
         _lyricsVm?.PlaybackState.Seek(position.TotalMilliseconds);
+    }
+
+    private void SyncNowPlayingCanvasPosition()
+    {
+        if (!_lyricsInitialized
+            || _lyricsVm == null
+            || SelectedMode != RightPanelMode.Lyrics
+            || Visibility != Visibility.Visible
+            || !_lyricsVm.HasLyrics
+            || _lyricsVm.CurrentLyrics == null)
+        {
+            return;
+        }
+
+        var position = _lyricsVm.GetInterpolatedPosition();
+        _lastCanvasPositionMs = position.TotalMilliseconds;
+        NowPlayingCanvas.SetPosition(position);
     }
 
     // ── Mouse interaction ──
@@ -662,6 +708,9 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateCanvasLayout()
     {
+        if (SelectedMode != RightPanelMode.Lyrics || !_lyricsInitialized || !_isOpenCached)
+            return;
+
         var w = RootGrid.ActualWidth;
         var h = RootGrid.ActualHeight;
 
@@ -729,18 +778,21 @@ public sealed partial class RightPanelView : UserControl
         // re-enqueue itself, producing an infinite low-priority retry loop that
         // ate ~8% UI CPU. The retry is kicked manually from OnIsOpenChanged
         // when the panel re-opens, so we don't lose the canvas-sizing pass.
-        if (!IsOpen)
+        if (!_isOpenCached)
             return;
 
         _pendingCanvasLayoutRetry = true;
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
-            _pendingCanvasLayoutRetry = false;
-
-            if (!IsLoaded || !IsOpen)
+            if (!IsLoaded || !_isOpenCached)
+            {
+                _pendingCanvasLayoutRetry = false;
                 return;
+            }
 
             UpdateCanvasLayout();
+
+            _pendingCanvasLayoutRetry = false;
 
             // If layout succeeded and we're in lyrics mode, re-apply lyrics state
             // so SetLyricsData is called with the now-correct canvas dimensions.
@@ -755,6 +807,12 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateCanvasClearColor()
     {
+        if (IsEmbeddedChromeTransparent)
+        {
+            NowPlayingCanvas.SetClearColor(Colors.Transparent);
+            return;
+        }
+
         // SwapChainPanel can't blend with XAML content, so composite the semi-transparent
         // card color onto an opaque base to approximate the card surface appearance.
         var cardColor = (_themeColors?.CardBackground as SolidColorBrush)?.Color
@@ -880,6 +938,17 @@ public sealed partial class RightPanelView : UserControl
     {
         if (_backgroundOverlayContainer == null)
             return;
+
+        if (IsEmbeddedChromeTransparent)
+        {
+            if (_backgroundTintVisual != null) _backgroundTintVisual.Opacity = 0f;
+            if (_backgroundHighlightVisual != null) _backgroundHighlightVisual.Opacity = 0f;
+            if (_backgroundScrimVisual != null) _backgroundScrimVisual.Opacity = 0f;
+            if (_backgroundNonDetailsDimVisual != null) _backgroundNonDetailsDimVisual.Opacity = 0f;
+            if (_backgroundBottomBlendVisual != null) _backgroundBottomBlendVisual.Opacity = 0f;
+            if (_backgroundTopBlendVisual != null) _backgroundTopBlendVisual.Opacity = 0f;
+            return;
+        }
 
         var showDetailsCanvasChrome = SelectedMode == RightPanelMode.Details
                                       && _activeBackgroundMode == DetailsBackgroundMode.Canvas
@@ -1444,6 +1513,9 @@ public sealed partial class RightPanelView : UserControl
         if (SelectedMode == RightPanelMode.Lyrics) EnsureLyricsTreeLoaded();
         if (SelectedMode == RightPanelMode.Details) EnsureDetailsTreeLoaded();
         if (SelectedMode == RightPanelMode.TrackDetails) EnsureTrackDetailsTreeLoaded();
+
+        if (ShouldInitializeLyricsForMode())
+            InitializeLyrics();
 
         QueueContent.Visibility = SelectedMode == RightPanelMode.Queue ? Visibility.Visible : Visibility.Collapsed;
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
@@ -2900,6 +2972,8 @@ public sealed partial class RightPanelView : UserControl
     private readonly object _canvasFrameRenderGate = new();
     private bool _canvasFrameRenderQueued;
     private bool _canvasFramePending;
+    private long _lastCanvasFrameRenderTimestamp;
+    private static readonly long CanvasFrameMinIntervalTicks = Stopwatch.Frequency / 30;
     private int _blurredAlbumArtRenderWidth;
     private int _blurredAlbumArtRenderHeight;
     private DetailsBackgroundMode _activeBackgroundMode;
@@ -3324,6 +3398,12 @@ public sealed partial class RightPanelView : UserControl
 
     private void OnCanvasVideoFrameAvailable(Windows.Media.Playback.MediaPlayer sender, object args)
     {
+        var now = Stopwatch.GetTimestamp();
+        var last = Interlocked.Read(ref _lastCanvasFrameRenderTimestamp);
+        if (last != 0 && now - last < CanvasFrameMinIntervalTicks)
+            return;
+
+        Interlocked.Exchange(ref _lastCanvasFrameRenderTimestamp, now);
         QueueCanvasFrameRender();
     }
 
@@ -3345,6 +3425,7 @@ public sealed partial class RightPanelView : UserControl
         DisposeCanvasImageSource(ref _canvasImageSource);
         _canvasFrameTarget?.Dispose();
         _canvasFrameTarget = null;
+        Interlocked.Exchange(ref _lastCanvasFrameRenderTimestamp, 0);
         // Keep _canvasDevice alive for reuse
 
         _currentCanvasUrl = null;
@@ -3489,6 +3570,8 @@ public sealed partial class RightPanelView : UserControl
             _canvasFramePending = false;
             _canvasFrameRenderQueued = false;
         }
+
+        Interlocked.Exchange(ref _lastCanvasFrameRenderTimestamp, 0);
     }
 
     private static void DisposeCanvasImageSource(CanvasImageSource? source)

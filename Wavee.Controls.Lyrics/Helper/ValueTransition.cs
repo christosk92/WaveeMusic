@@ -114,6 +114,40 @@ namespace Wavee.Controls.Lyrics.Helper
             MoveToNextSegment(firstStart: true);
         }
 
+        // Allocation-free overloads for the common 1/2/3-keyframe cases — the params[]
+        // overload above allocates a fresh Keyframe[N] per call which dominates Gen0
+        // churn in the lyrics animator (per char per frame on long-syllable highlights).
+
+        public void Start(Keyframe<T> a)
+        {
+            PrepareStart();
+            if (_configuredDelaySeconds > 0)
+                _keyframeQueue.Enqueue(new Keyframe<T>(_currentValue, _configuredDelaySeconds));
+            _keyframeQueue.Enqueue(a);
+            MoveToNextSegment(firstStart: true);
+        }
+
+        public void Start(Keyframe<T> a, Keyframe<T> b)
+        {
+            PrepareStart();
+            if (_configuredDelaySeconds > 0)
+                _keyframeQueue.Enqueue(new Keyframe<T>(_currentValue, _configuredDelaySeconds));
+            _keyframeQueue.Enqueue(a);
+            _keyframeQueue.Enqueue(b);
+            MoveToNextSegment(firstStart: true);
+        }
+
+        public void Start(Keyframe<T> a, Keyframe<T> b, Keyframe<T> c)
+        {
+            PrepareStart();
+            if (_configuredDelaySeconds > 0)
+                _keyframeQueue.Enqueue(new Keyframe<T>(_currentValue, _configuredDelaySeconds));
+            _keyframeQueue.Enqueue(a);
+            _keyframeQueue.Enqueue(b);
+            _keyframeQueue.Enqueue(c);
+            MoveToNextSegment(firstStart: true);
+        }
+
         /// <summary>
         /// 模式 B: 自动均分模式 (兼容旧写法)
         /// 指定一串目标值，系统根据 SetDuration 的总时长平均分配。
@@ -142,6 +176,20 @@ namespace Wavee.Controls.Lyrics.Helper
                 _keyframeQueue.Enqueue(new Keyframe<T>(val, autoStepDuration));
             }
 
+            MoveToNextSegment(firstStart: true);
+        }
+
+        // Allocation-free single-value overload — the `params T[]` overload above allocates
+        // a fresh T[1] per call, which is the dominant allocation in the lyrics animator
+        // (called per line per frame for opacity/scale/color transitions).
+        public void Start(T value)
+        {
+            if (value.Equals(_currentValue) && _configuredDelaySeconds <= 0) return;
+
+            PrepareStart();
+            if (_configuredDelaySeconds > 0)
+                _keyframeQueue.Enqueue(new Keyframe<T>(_currentValue, _configuredDelaySeconds));
+            _keyframeQueue.Enqueue(new Keyframe<T>(value, _totalDurationForAutoSplit));
             MoveToNextSegment(firstStart: true);
         }
 

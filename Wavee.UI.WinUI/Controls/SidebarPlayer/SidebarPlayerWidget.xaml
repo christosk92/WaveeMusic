@@ -168,6 +168,7 @@
                             x:Name="ExpandedAlbumArtImage"
                             toolkit:TransitionHelper.Id="albumArt"
                             Source="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}"
+                            FallbackSource="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
                             DecodePixelWidth="512"
                             CornerRadius="6"
                             Stretch="UniformToFill" />
@@ -177,7 +178,7 @@
                             IsHitTestVisible="False"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Visibility="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
+                            Visibility="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
                     </Grid>
                 </Grid>
 
@@ -495,6 +496,7 @@
                             Width="44"
                             Height="44"
                             Source="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
+                            FallbackSource="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}"
                             DecodePixelWidth="96"
                             CornerRadius="4"
                             Stretch="UniformToFill" />

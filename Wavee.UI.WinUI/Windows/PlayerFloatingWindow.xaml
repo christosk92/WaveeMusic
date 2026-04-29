@@ -6,12 +6,13 @@
     xmlns:winuiex="using:WinUIEx"
     xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
     xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Title="Wavee — Player"
-    MinWidth="280"
+    MinWidth="360"
     MinHeight="380"
     PersistenceId="WaveePlayerFloating">
 
@@ -41,21 +42,40 @@
                                           IndependentElementHideDuration="0:0:0.14"
                                           IsHitTestVisibleWhenAnimating="False">
                 <transitions:TransitionConfig Id="albumArt" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="trackTitle" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="artistMetadata" ScaleMode="Scale"/>
+                <transitions:TransitionConfig Id="trackTitle" ScaleMode="Custom">
+                    <transitions:TransitionConfig.CustomScalingCalculator>
+                        <waveeHelpers:TransitionTextScalingCalculator/>
+                    </transitions:TransitionConfig.CustomScalingCalculator>
+                </transitions:TransitionConfig>
+                <transitions:TransitionConfig Id="artistMetadata" ScaleMode="Custom">
+                    <transitions:TransitionConfig.CustomScalingCalculator>
+                        <waveeHelpers:TransitionTextScalingCalculator/>
+                    </transitions:TransitionConfig.CustomScalingCalculator>
+                </transitions:TransitionConfig>
             </transitions:TransitionHelper>
         </Grid.Resources>
+
+        <Border x:Name="WindowBackdrop" IsHitTestVisible="False">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop x:Name="WindowBackdropTop" Offset="0" Color="Transparent" />
+                    <GradientStop x:Name="WindowBackdropMid" Offset="0.58" Color="Transparent" />
+                    <GradientStop x:Name="WindowBackdropBottom" Offset="1" Color="Transparent" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
 
         <!-- Compact: vertical mini player. MaxWidth keeps the layout from
              blowing up when the window is large (during/after expand). -->
         <ScrollViewer
             x:Name="CompactHost"
-            MaxWidth="380"
+            MinWidth="320"
+            MaxWidth="340"
             HorizontalAlignment="Center"
             VerticalAlignment="Stretch"
-            VerticalScrollBarVisibility="Auto"
+            VerticalScrollBarVisibility="Hidden"
             HorizontalScrollBarVisibility="Disabled"
-            VerticalScrollMode="Auto"
+            VerticalScrollMode="Disabled"
             Padding="0,32,0,0">
             <sidebarplayer:SidebarPlayerWidget
                 x:Name="PlayerHost"
@@ -73,20 +93,37 @@
                 VerticalAlignment="Top"
                 Background="Transparent" />
 
-        <!-- Expand / collapse chevron, sits left of the OS caption buttons. -->
-        <Button x:Name="ExpandButton"
-                Height="28"
-                Width="36"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Margin="0,2,142,0"
-                Padding="0"
-                Background="Transparent"
-                BorderThickness="0"
-                CornerRadius="4"
-                Click="ExpandButton_Click"
-                ToolTipService.ToolTip="Expand to full player">
-            <FontIcon x:Name="ExpandGlyph" Glyph="&#xE73F;" FontSize="12" />
-        </Button>
+        <StackPanel
+            x:Name="WindowModeButtons"
+            Orientation="Horizontal"
+            Spacing="4"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Margin="0,2,142,0"
+            Canvas.ZIndex="20">
+            <Button x:Name="CompactFocusButton"
+                    Width="34"
+                    Height="28"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="4"
+                    Click="CompactFocusButton_Click"
+                    ToolTipService.ToolTip="Open focus player">
+                <FontIcon Glyph="&#xE73F;" FontSize="12" />
+            </Button>
+            <Button x:Name="ExpandedCompactButton"
+                    Width="34"
+                    Height="28"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="4"
+                    Visibility="Collapsed"
+                    Click="ExpandedCompactButton_Click"
+                    ToolTipService.ToolTip="Back to mini player">
+                <FontIcon Glyph="&#xE740;" FontSize="12" />
+            </Button>
+        </StackPanel>
     </Grid>
 </winuiex:WindowEx>

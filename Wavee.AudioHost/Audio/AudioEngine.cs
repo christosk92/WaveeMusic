@@ -301,7 +301,8 @@ public sealed class AudioEngine : IAsyncDisposable
             _httpClient,
             fileId,
             _logger,
-            _audioCacheDirectory);
+            _audioCacheDirectory,
+            playbackToken: ct);
 
         // Read normalization from head data if available
         if (cmd.NormalizationGain.HasValue)
@@ -662,8 +663,21 @@ public sealed class AudioEngine : IAsyncDisposable
             await _playbackCts.CancelAsync();
             if (_playbackTask != null)
             {
-                try { await _playbackTask; }
-                catch { /* swallow cancellation */ }
+                // Bounded wait: if the task observes cancellation it returns in
+                // milliseconds; if it doesn't (e.g. an uncancellable sync block),
+                // we abandon it after 5s so the IPC command pump stays responsive.
+                // The orphaned task will terminate when its underlying block clears.
+                var task = _playbackTask;
+                var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5)));
+                if (completed == task)
+                {
+                    try { await task; }
+                    catch { /* swallow cancellation */ }
+                }
+                else
+                {
+                    _logger?.LogWarning("[AudioEngine] Playback task did not stop within 5s — abandoning to keep IPC pump responsive");
+                }
             }
             _playbackCts.Dispose();
             _playbackCts = null;

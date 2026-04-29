@@ -11,12 +11,12 @@ namespace Wavee.Controls.Lyrics.Renderer
 
         public void LoadResources(ICanvasResourceCreator creator) { }
 
-        public void Update(RenderContext ctx)
+        public void Update(in RenderContext ctx)
         {
             IsEnabled = ctx.Settings.LyricsBackgroundSettings.IsPureColorOverlayEnabled;
         }
 
-        public void Draw(CanvasDrawingSession ds, RenderContext ctx)
+        public void Draw(CanvasDrawingSession ds, in RenderContext ctx)
         {
             if (!IsEnabled || ctx.OverlayOpacity <= 0) return;
 

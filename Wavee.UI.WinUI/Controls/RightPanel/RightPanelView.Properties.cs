@@ -1,6 +1,9 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Data.Enums;
+using Windows.UI;
+using Microsoft.UI;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
 
@@ -48,6 +51,20 @@ public sealed partial class RightPanelView
         DependencyProperty.Register(nameof(IsTabHeaderVisible), typeof(bool), typeof(RightPanelView),
             new PropertyMetadata(true, OnIsTabHeaderVisibleChanged));
 
+    /// <summary>
+    /// Hosts such as the detached fullscreen player supply their own background
+    /// and mode controls. This suppresses the panel's local chrome so lyrics and
+    /// queue render over the host surface instead of a standalone panel fill.
+    /// </summary>
+    public bool IsEmbeddedChromeTransparent
+    {
+        get => (bool)GetValue(IsEmbeddedChromeTransparentProperty);
+        set => SetValue(IsEmbeddedChromeTransparentProperty, value);
+    }
+    public static readonly DependencyProperty IsEmbeddedChromeTransparentProperty =
+        DependencyProperty.Register(nameof(IsEmbeddedChromeTransparent), typeof(bool), typeof(RightPanelView),
+            new PropertyMetadata(false, OnIsEmbeddedChromeTransparentChanged));
+
     private static void OnPanelWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is RightPanelView view)
@@ -59,6 +76,7 @@ public sealed partial class RightPanelView
         if (d is RightPanelView view)
         {
             var isOpen = (bool)e.NewValue;
+            view._isOpenCached = isOpen;
             view.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
             view.UpdateTimerState();
 
@@ -71,7 +89,7 @@ public sealed partial class RightPanelView
             {
                 view.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
                 {
-                    if (view.IsLoaded && view.IsOpen)
+                    if (view.IsLoaded && view._isOpenCached)
                         view.UpdateCanvasLayout();
                 });
             }
@@ -88,5 +106,32 @@ public sealed partial class RightPanelView
     {
         if (d is RightPanelView view)
             view.ApplyTabHeaderVisibility();
+    }
+
+    private static void OnIsEmbeddedChromeTransparentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is RightPanelView view)
+            view.ApplyEmbeddedChrome();
+    }
+
+    private void ApplyEmbeddedChrome()
+    {
+        if (RootGrid == null) return;
+
+        RootGrid.Background = IsEmbeddedChromeTransparent
+            ? new SolidColorBrush(Colors.Transparent)
+            : null;
+
+        if (PanelResizer != null)
+            PanelResizer.Visibility = IsEmbeddedChromeTransparent ? Visibility.Collapsed : Visibility.Visible;
+
+        if (BackgroundOverlayHost != null && IsEmbeddedChromeTransparent)
+            BackgroundOverlayHost.Visibility = Visibility.Collapsed;
+
+        if (DetailsCanvasImage != null && IsEmbeddedChromeTransparent)
+            DetailsCanvasImage.Visibility = Visibility.Collapsed;
+
+        UpdateCanvasClearColor();
+        UpdateBackgroundChrome();
     }
 }

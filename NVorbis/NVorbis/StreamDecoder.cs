@@ -370,11 +370,28 @@ namespace NVorbis
                 // second packet — the buffer was only sized for the first packet's window.
                 // Without this bound, ClippingCopyBuffer would index past the channel
                 // array and throw IndexOutOfRangeException, killing playback.
-                if (copyLen > 0 && _prevPacketBuf != null && _prevPacketBuf.Length > 0)
+                //
+                // Single-channel-zero clamp wasn't enough: the buffer can also be sized
+                // for fewer channels than _channels, or different channels can have
+                // different sample counts. Clamp to the smallest channel.
+                if (copyLen > 0)
                 {
-                    var maxFromBuffer = _prevPacketBuf[0].Length - _prevPacketStart;
-                    if (maxFromBuffer < copyLen)
-                        copyLen = maxFromBuffer;
+                    if (_prevPacketBuf == null || _prevPacketBuf.Length < _channels)
+                    {
+                        copyLen = 0;
+                    }
+                    else
+                    {
+                        var minAvailable = int.MaxValue;
+                        for (var c = 0; c < _channels; c++)
+                        {
+                            var ch = _prevPacketBuf[c];
+                            var avail = (ch?.Length ?? 0) - _prevPacketStart;
+                            if (avail < minAvailable) minAvailable = avail;
+                        }
+                        if (minAvailable < 0) minAvailable = 0;
+                        if (minAvailable < copyLen) copyLen = minAvailable;
+                    }
                 }
                 if (copyLen > 0)
                 {

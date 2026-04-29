@@ -276,12 +276,24 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         status.LyricsStyleSettings.LyricsCustomPlayedStrokeFontColor = Color.FromArgb(0x00, 0x00, 0x00, 0x00);
         status.LyricsStyleSettings.LyricsCustomUnplayedStrokeFontColor = Color.FromArgb(0x00, 0x00, 0x00, 0x00);
 
-        // Sidebar mode favors responsiveness over heavy visual effects.
-        status.LyricsEffectSettings.IsLyricsBlurEffectEnabled = false;
+        // Keep the BetterLyrics-style word/syllable treatment enabled. The
+        // renderer applies glow/scale/float mostly to long syllables, so normal
+        // lines stay readable while held syllables get the bright highlight.
+        status.LyricsEffectSettings.IsLyricsBlurEffectEnabled = true;
         status.LyricsEffectSettings.IsLyricsFadeOutEffectEnabled = true;
-        status.LyricsEffectSettings.IsLyricsGlowEffectEnabled = false;
-        status.LyricsEffectSettings.IsLyricsScaleEffectEnabled = false;
-        status.LyricsEffectSettings.IsLyricsFloatAnimationEnabled = false;
+        status.LyricsEffectSettings.IsLyricsGlowEffectEnabled = true;
+        status.LyricsEffectSettings.LyricsGlowEffectScope = LyricsEffectScope.LongDurationSyllable;
+        status.LyricsEffectSettings.LyricsGlowEffectLongSyllableDuration = 600;
+        status.LyricsEffectSettings.IsLyricsGlowEffectAmountAutoAdjust = true;
+        status.LyricsEffectSettings.LyricsGlowEffectAmount = 12;
+        status.LyricsEffectSettings.IsLyricsScaleEffectEnabled = true;
+        status.LyricsEffectSettings.LyricsScaleEffectLongSyllableDuration = 600;
+        status.LyricsEffectSettings.IsLyricsScaleEffectAmountAutoAdjust = true;
+        status.LyricsEffectSettings.LyricsScaleEffectAmount = 112;
+        status.LyricsEffectSettings.IsLyricsFloatAnimationEnabled = true;
+        status.LyricsEffectSettings.IsLyricsFloatAnimationAmountAutoAdjust = true;
+        status.LyricsEffectSettings.LyricsFloatAnimationAmount = 7;
+        status.LyricsEffectSettings.LyricsFloatAnimationDuration = 420;
 
         // Neutral palette (will be overridden when album art palette is extracted).
         // All fill colors are white — the opacity transitions in the animator create

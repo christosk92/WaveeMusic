@@ -5,35 +5,37 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
     xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
+    xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <!-- Apple-Music iPad-style now-playing.
+    <!-- Apple-Music iPad-style detached now-playing.
          Layers (back-to-front):
-           1) Atmospheric backdrop — tinted gradient bleeding the album-art palette
-              across the whole window so Mica isn't bare. Painted by code-behind
-              from PlayerBarViewModel.AlbumArtColor on track change.
-           2) 2-column content — ExpandedNowPlayingLayout (player) on the left,
-              RightPanelView (Lyrics / Queue) on the right; the right column
-              collapses to 0 when Mode == None and the player centers wider.
+           1) Theme-aware album/palette backdrop.
+           2) Focus player content; optional lyrics/queue column for expanded mode.
            3) Toggle buttons (lyrics, queue) overlay bottom-right. -->
     <Grid x:Name="RootGrid">
 
-        <!-- Backdrop: vertical gradient, top-saturated with album palette,
-             fading to transparent at the bottom to let Mica + caption buttons
-             read cleanly. The 4-stop layout gives a soft 'aura' feel. -->
         <Border x:Name="AtmosphereBackdrop" IsHitTestVisible="False">
             <Border.Background>
-                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                     <GradientStop x:Name="AmbientStopTop" Offset="0" Color="Transparent" />
-                    <GradientStop x:Name="AmbientStopUpperMid" Offset="0.35" Color="Transparent" />
-                    <GradientStop x:Name="AmbientStopLowerMid" Offset="0.7" Color="Transparent" />
+                    <GradientStop x:Name="AmbientStopUpperMid" Offset="0.42" Color="Transparent" />
+                    <GradientStop x:Name="AmbientStopLowerMid" Offset="0.78" Color="Transparent" />
                     <GradientStop x:Name="AmbientStopBottom" Offset="1" Color="Transparent" />
                 </LinearGradientBrush>
             </Border.Background>
         </Border>
+
+        <!-- Full-surface lyrics renderer. Lyrics are drawn into the right column
+             by DP layout, but the canvas itself owns the full player surface so it
+             blends with the detached player palette instead of becoming a panel. -->
+        <lyrics:NowPlayingCanvas
+            x:Name="FullscreenLyricsCanvas"
+            Visibility="Collapsed"
+            IsHitTestVisible="False" />
 
         <!-- 2-column content. -->
         <Grid>
@@ -42,18 +44,20 @@
                 <ColumnDefinition x:Name="RightColumnDef" Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left column — Apple-Music-style player layout. -->
+            <!-- Left column — Apple-Music-style player layout. MaxWidth caps how
+                 wide the player grows on huge windows; below that the column
+                 shrinks proportionally with the right column (both Width="*"). -->
             <sidebarplayer:ExpandedNowPlayingLayout
                 x:Name="PlayerLayout"
                 Grid.Column="0"
-                MaxWidth="640"
+                MaxWidth="620"
                 HorizontalAlignment="Stretch" />
 
             <!-- Right column — Lyrics or Queue, animated in/out. -->
             <Border
                 x:Name="RightColumnContainer"
                 Grid.Column="1"
-                Margin="0,48,32,32">
+                Margin="0,56,40,40">
                 <animations:Implicit.ShowAnimations>
                     <animations:OpacityAnimation Duration="0:0:0.30" From="0" To="1" />
                     <animations:TranslationAnimation Duration="0:0:0.30" From="56,0,0" To="0" />
@@ -63,10 +67,66 @@
                     <animations:TranslationAnimation Duration="0:0:0.18" From="0" To="56,0,0" />
                 </animations:Implicit.HideAnimations>
 
-                <rightpanel:RightPanelView
-                    x:Name="ContentHost"
-                    IsOpen="True"
-                    IsTabHeaderVisible="False" />
+                <Grid>
+                    <Border
+                        x:Name="LyricsInteractionRegion"
+                        Background="Transparent"
+                        Visibility="Collapsed"
+                        SizeChanged="LyricsInteractionRegion_SizeChanged"
+                        PointerEntered="LyricsInteractionRegion_PointerEntered"
+                        PointerExited="LyricsInteractionRegion_PointerExited"
+                        PointerMoved="LyricsInteractionRegion_PointerMoved"
+                        PointerPressed="LyricsInteractionRegion_PointerPressed"
+                        PointerReleased="LyricsInteractionRegion_PointerReleased"
+                        PointerWheelChanged="LyricsInteractionRegion_PointerWheelChanged" />
+
+                    <!-- "No lyrics" placeholder. Shown when lyrics mode is active
+                         but the current track has no lyrics. IsHitTestVisible=False
+                         so it doesn't swallow pointer events from the interaction
+                         region underneath (in case lyrics arrive late). -->
+                    <StackPanel
+                        x:Name="NoLyricsPlaceholder"
+                        Spacing="14"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed">
+                        <FontIcon Glyph="&#xED1E;"
+                                  FontSize="40"
+                                  Opacity="0.45"
+                                  Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <TextBlock Text="No lyrics available"
+                                   FontSize="15"
+                                   Opacity="0.75"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </StackPanel>
+
+                    <!-- "Loading lyrics" placeholder. Same slot, swapped while
+                         the lyrics fetch is in flight. -->
+                    <StackPanel
+                        x:Name="LoadingLyricsPlaceholder"
+                        Spacing="14"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed">
+                        <ProgressRing IsActive="True"
+                                      Width="36" Height="36"
+                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <TextBlock Text="Loading lyrics…"
+                                   FontSize="14"
+                                   Opacity="0.75"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </StackPanel>
+
+                    <rightpanel:RightPanelView
+                        x:Name="ContentHost"
+                        IsOpen="True"
+                        IsTabHeaderVisible="False"
+                        IsEmbeddedChromeTransparent="True" />
+                </Grid>
             </Border>
         </Grid>
 
@@ -81,6 +141,7 @@
             <ToggleButton x:Name="LyricsToggleButton"
                           Width="36" Height="36" Padding="0"
                           CornerRadius="18"
+                          Background="{ThemeResource ControlFillColorDefaultBrush}"
                           Click="LyricsToggleButton_Click"
                           ToolTipService.ToolTip="Lyrics">
                 <FontIcon Glyph="&#xED1E;" FontSize="14" />
@@ -88,6 +149,7 @@
             <ToggleButton x:Name="QueueToggleButton"
                           Width="36" Height="36" Padding="0"
                           CornerRadius="18"
+                          Background="{ThemeResource ControlFillColorDefaultBrush}"
                           Click="QueueToggleButton_Click"
                           ToolTipService.ToolTip="Queue">
                 <FontIcon Glyph="&#xE142;" FontSize="14" />

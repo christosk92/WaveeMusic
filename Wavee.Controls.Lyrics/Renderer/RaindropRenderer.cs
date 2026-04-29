@@ -59,7 +59,7 @@ namespace Wavee.Controls.Lyrics.Renderer
         // IBackgroundRenderer
         void IBackgroundRenderer.LoadResources(ICanvasResourceCreator creator) => LoadResources();
 
-        void IBackgroundRenderer.Update(RenderContext ctx)
+        void IBackgroundRenderer.Update(in RenderContext ctx)
         {
             var bg = ctx.Settings.LyricsBackgroundSettings;
             IsEnabled = bg.IsRaindropOverlayEnabled;
@@ -71,7 +71,7 @@ namespace Wavee.Controls.Lyrics.Renderer
             Update(ctx.Elapsed.TotalSeconds, ctx.BassEnergy, bg.RaindropOverlayBreathingIntensity);
         }
 
-        void IBackgroundRenderer.Draw(CanvasDrawingSession ds, RenderContext ctx)
+        void IBackgroundRenderer.Draw(CanvasDrawingSession ds, in RenderContext ctx)
         {
             Draw(ctx.Control, ds, ctx.Settings.LyricsBackgroundSettings.IsRaindropOverlayBrethingEffectEnabled);
         }

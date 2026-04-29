@@ -39,6 +39,11 @@ public sealed class LazyProgressiveDownloader : Stream
 
     private bool _disposed;
     private readonly CancellationTokenSource _disposeCts = new();
+    // Linked source: fires when EITHER _disposeCts OR the playback CT passed
+    // by AudioEngine fires. Used so EnsureCdnInitialized's sync wait can break
+    // out the moment the engine cancels playback, instead of waiting the full
+    // _deferredTask timeout (which is minutes long).
+    private readonly CancellationTokenSource _initWaitCts;
 
     /// <summary>
     /// Raised when buffer state changes (forwarded from ProgressiveDownloader).
@@ -68,7 +73,8 @@ public sealed class LazyProgressiveDownloader : Stream
         HttpClient httpClient,
         FileId fileId,
         ILogger? logger = null,
-        string? audioCacheDirectory = null)
+        string? audioCacheDirectory = null,
+        CancellationToken playbackToken = default)
     {
         ArgumentNullException.ThrowIfNull(headData);
         ArgumentNullException.ThrowIfNull(deferredTask);
@@ -81,6 +87,10 @@ public sealed class LazyProgressiveDownloader : Stream
         _logger = logger;
         _audioCacheDirectory = audioCacheDirectory;
 
+        _initWaitCts = playbackToken.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, playbackToken)
+            : CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+
         // Estimate initial size from head data - will update when CDN initialized
         _fileSize = headData.Length;
         _fileSizeKnown = false;
@@ -92,7 +102,7 @@ public sealed class LazyProgressiveDownloader : Stream
         // Eagerly start CDN initialization in the background so it's ready by the
         // time head data is exhausted. This is the ONLY init path — sync callers
         // just wait on this task.
-        _eagerInitTask = Task.Run(() => InitializeCdnResourcesAsync(_disposeCts.Token));
+        _eagerInitTask = Task.Run(() => InitializeCdnResourcesAsync(_initWaitCts.Token));
     }
 
     #region Stream Properties
@@ -246,10 +256,6 @@ public sealed class LazyProgressiveDownloader : Stream
     private void EnsureCdnInitialized()
     {
         if (_cdnInitialized) return;
-        // Sync wait — Stream.Read forces it. Run on the pool to escape any
-        // SynchronizationContext the caller carries; otherwise GetResult on
-        // an awaitable that posts continuations to the captured context will
-        // deadlock the calling thread.
         var t = _eagerInitTask;
         if (t == null) return;
         if (t.IsCompleted)
@@ -257,7 +263,20 @@ public sealed class LazyProgressiveDownloader : Stream
             t.GetAwaiter().GetResult();
             return;
         }
-        Task.Run(() => t).GetAwaiter().GetResult();
+        // Sync wait, but cancellation-aware: the linked CT fires when AudioEngine
+        // cancels playback OR we're disposed, so we don't have to wait for the
+        // (long) _deferredTask timeout. Without this, a stuck CDN resolution
+        // pinned the AudioHost command pump for minutes.
+        try
+        {
+            t.Wait(_initWaitCts.Token);
+        }
+        catch (AggregateException ae) when (ae.InnerExceptions.Count == 1)
+        {
+            throw ae.InnerExceptions[0];
+        }
+        // Surface any task fault that Wait swallowed via AggregateException above.
+        t.GetAwaiter().GetResult();
     }
 
     private async Task EnsureCdnInitializedAsync(CancellationToken cancellationToken)
@@ -412,6 +431,7 @@ public sealed class LazyProgressiveDownloader : Stream
         {
             _disposeCts.Cancel();
             _disposeCts.Dispose();
+            _initWaitCts.Dispose();
             _decryptStream?.Dispose();
             _cdnDownloader?.Dispose();
             _cachedFileStream?.Dispose();
@@ -429,6 +449,7 @@ public sealed class LazyProgressiveDownloader : Stream
 
         _disposeCts.Cancel();
         _disposeCts.Dispose();
+        _initWaitCts.Dispose();
 
         if (_decryptStream != null)
             await _decryptStream.DisposeAsync();

@@ -136,7 +136,11 @@ namespace Wavee.Controls.Lyrics.Core
         private Color _clearColor = Colors.Transparent;
 
         private volatile int _dirtyFlags = (int)DirtyFlags.Layout;
-        private RenderContext? _renderContext;
+        // Stored as a value-type field — no per-frame heap allocation. Rebuilt each Update
+        // and passed `in` to renderers, who consume it via in-ref (zero defensive copies
+        // because the struct is `readonly`).
+        private RenderContext _renderContext;
+        private bool _renderContextReady;
 
         private int _primaryPlayingLineIndex = -1;
         private (int Start, int End) _visibleRange;
@@ -461,7 +465,7 @@ namespace Wavee.Controls.Lyrics.Core
                 frameOverlayOpacity = lyricsBg.PureColorOverlayOpacity / 100.0;
             }
 
-            // Build per-frame context
+            // Build per-frame context — readonly struct, no heap alloc.
             _renderContext = new RenderContext
             {
                 Control = sender,
@@ -500,10 +504,11 @@ namespace Wavee.Controls.Lyrics.Core
                 IsMouseScrollingChanged = frameMouseScrollingChanged,
                 IsPlayingLineChanged = isPrimaryPlayingLineChanged,
             };
+            _renderContextReady = true;
 
             // Update all background renderers via interface
             foreach (var renderer in _backgroundRenderers)
-                renderer.Update(_renderContext);
+                renderer.Update(in _renderContext);
 
             if (!_lyricsWindowStatus.ShowLyricsCard)
             {
@@ -515,11 +520,11 @@ namespace Wavee.Controls.Lyrics.Core
 
         public void Draw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
         {
-            if (_lyricsWindowStatus == null || _renderContext == null)
+            if (_lyricsWindowStatus == null || !_renderContextReady)
             {
                 if (_drawTraceThrottle++ % 60 == 0)
                     System.Diagnostics.Debug.WriteLine(
-                        $"[LyricsEngine] Draw EARLY-EXIT status={_lyricsWindowStatus != null} ctx={_renderContext != null}");
+                        $"[LyricsEngine] Draw EARLY-EXIT status={_lyricsWindowStatus != null} ctxReady={_renderContextReady}");
                 return;
             }
 
@@ -537,16 +542,15 @@ namespace Wavee.Controls.Lyrics.Core
 
             long drawStart = Stopwatch.GetTimestamp();
 
-            var ctx = _renderContext;
             var ds = args.DrawingSession;
 
-            var lyricsStyle = ctx.Settings.LyricsStyleSettings;
-            var albumStyle = ctx.Settings.AlbumArtLayoutSettings;
-            var lyricsBg = ctx.Settings.LyricsBackgroundSettings;
+            var lyricsStyle = _renderContext.Settings.LyricsStyleSettings;
+            var albumStyle = _renderContext.Settings.AlbumArtLayoutSettings;
+            var lyricsBg = _renderContext.Settings.LyricsBackgroundSettings;
 
             var bounds = new Rect(0, 0, sender.Size.Width, sender.Size.Height);
 
-            if (ctx.Settings.IsSpoutOutputEnabled)
+            if (_renderContext.Settings.IsSpoutOutputEnabled)
             {
                 var finalTexture = _compositionRenderer.Render(
                      sender,
@@ -555,7 +559,7 @@ namespace Wavee.Controls.Lyrics.Core
                      Colors.Transparent,
                      (ds) =>
                      {
-                         DrawCoreWithEdgeFeatheringHandled(sender, ds, bounds, ctx, lyricsStyle, albumStyle, lyricsBg);
+                         DrawCoreWithEdgeFeatheringHandled(sender, ds, bounds, in _renderContext, lyricsStyle, albumStyle, lyricsBg);
                      });
 
                 ds.DrawImage(finalTexture);
@@ -564,7 +568,7 @@ namespace Wavee.Controls.Lyrics.Core
             }
             else
             {
-                DrawCoreWithEdgeFeatheringHandled(sender, ds, bounds, ctx, lyricsStyle, albumStyle, lyricsBg);
+                DrawCoreWithEdgeFeatheringHandled(sender, ds, bounds, in _renderContext, lyricsStyle, albumStyle, lyricsBg);
             }
 
             if (_lyricsWindowStatus.ShowDebugOverlay)
@@ -580,7 +584,7 @@ namespace Wavee.Controls.Lyrics.Core
         // ================================================================
 
         private void DrawCore(ICanvasAnimatedControl sender, CanvasDrawingSession ds,
-            Rect bounds, RenderContext ctx,
+            Rect bounds, in RenderContext ctx,
             LyricsStyleSettings lyricsStyle, AlbumArtAreaStyleSettings albumStyle, LyricsBackgroundSettings lyricsBg)
         {
             ds.Clear(_clearColor);
@@ -588,7 +592,7 @@ namespace Wavee.Controls.Lyrics.Core
             foreach (var renderer in _backgroundRenderers)
             {
                 if (renderer.IsEnabled)
-                    renderer.Draw(ds, ctx);
+                    renderer.Draw(ds, in ctx);
             }
 
             if (!ctx.Settings.ShowLyricsCard)
@@ -614,19 +618,19 @@ namespace Wavee.Controls.Lyrics.Core
         }
 
         private void DrawCoreWithEdgeFeatheringHandled(ICanvasAnimatedControl sender, CanvasDrawingSession ds,
-            Rect bounds, RenderContext ctx,
+            Rect bounds, in RenderContext ctx,
             LyricsStyleSettings lyricsStyle, AlbumArtAreaStyleSettings albumStyle, LyricsBackgroundSettings lyricsBg)
         {
             if (ctx.Settings.IsEdgeFeatheringEnabled && _edgeFadeMaskRenderer.Brush != null)
             {
                 using (ds.CreateLayer(_edgeFadeMaskRenderer.Brush))
                 {
-                    DrawCore(sender, ds, bounds, ctx, lyricsStyle, albumStyle, lyricsBg);
+                    DrawCore(sender, ds, bounds, in ctx, lyricsStyle, albumStyle, lyricsBg);
                 }
             }
             else
             {
-                DrawCore(sender, ds, bounds, ctx, lyricsStyle, albumStyle, lyricsBg);
+                DrawCore(sender, ds, bounds, in ctx, lyricsStyle, albumStyle, lyricsBg);
             }
         }
 

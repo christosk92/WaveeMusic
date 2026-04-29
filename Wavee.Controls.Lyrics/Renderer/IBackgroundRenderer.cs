@@ -7,7 +7,7 @@ namespace Wavee.Controls.Lyrics.Renderer
     {
         bool IsEnabled { get; }
         void LoadResources(ICanvasResourceCreator creator);
-        void Update(RenderContext ctx);
-        void Draw(CanvasDrawingSession ds, RenderContext ctx);
+        void Update(in RenderContext ctx);
+        void Draw(CanvasDrawingSession ds, in RenderContext ctx);
     }
 }

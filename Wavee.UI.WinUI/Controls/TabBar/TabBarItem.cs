@@ -10,19 +10,13 @@ namespace Wavee.UI.WinUI.Controls.TabBar;
 
 public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposable
 {
-    // 3 cached pages per tab is the snappiness floor — deliberate
-    // memory-vs-UX tradeoff. With 3, back/forward through a deep navigation
-    // stack stays instant: no page recreation, no flicker, no rebound of
-    // virtualized item containers, no palette/hero re-prefetch.
-    //
-    // Yes, this costs working set: each cached Frame retains its full visual
-    // tree + ViewModel + bound collections, so ~5 tabs × 3 pages can run into
-    // the hundreds of MB. That cost is accepted; the back/forward UX is the
-    // headline. Look for memory wins elsewhere (image cache pin balance,
-    // unbounded subscriptions, idle render loops) before touching this number.
-    // Current memory posture overrides that old tradeoff: 0 disables off-screen
-    // page visual caching and keeps only lightweight Frame history entries.
-    private const int DefaultFrameCacheSize = 0;
+    // 5 cached pages per tab — deliberate memory-vs-UX tradeoff. Back/forward
+    // through a deep navigation stack stays instant: no page recreation, no
+    // flicker, no rebound of virtualized item containers, no palette/hero
+    // re-prefetch. Setting this to 0 made nav feel sluggish; find memory wins
+    // elsewhere (image cache pin balance, unbounded subscriptions, idle render
+    // loops) before touching this number again.
+    private const int DefaultFrameCacheSize = 5;
 
     public Frame ContentFrame { get; }
 

@@ -165,7 +165,10 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
         {
             if (lines == null || lines.Count == 0) return null;
 
-            var currentLine = lines.ElementAtOrDefault(playingLineIndex);
+            // Index-based lookup instead of ElementAtOrDefault — saves an enumerator
+            // allocation per frame (this is called every Update tick).
+            if (playingLineIndex < 0 || playingLineIndex >= lines.Count) return null;
+            var currentLine = lines[playingLineIndex];
 
             if (currentLine?.PrimaryTextLayout == null) return null;
 
@@ -212,7 +215,8 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
         {
             if (lines == null || lines.Count == 0) return 0;
 
-            return lines.Last().BottomRightPosition.Y;
+            // Direct index instead of .Last() — saves enumerator allocation per access.
+            return lines[lines.Count - 1].BottomRightPosition.Y;
         }
 
         public static void CalculateLanes(IList<RenderLyricsLine>? lines, int toleranceMs = 50)

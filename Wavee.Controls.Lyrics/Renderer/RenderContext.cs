@@ -9,7 +9,9 @@ using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Renderer
 {
-    public sealed class RenderContext
+    // readonly struct passed `in` everywhere — zero-alloc per-frame. Holds a few
+    // hundred bytes; renderers consume it via in-ref so we never copy it field-by-field.
+    public readonly struct RenderContext
     {
         // Canvas
         public required ICanvasAnimatedControl Control { get; init; }

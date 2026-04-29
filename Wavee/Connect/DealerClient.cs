@@ -697,6 +697,13 @@ public sealed class DealerClient : IAsyncDisposable
             await _connection.CloseAsync();
         }
 
+        // CloseAsync flips _connection.State but NOT our outer _connectionState.
+        // ConnectAsync checks _connectionState and throws "Already connected" if
+        // it's still Connected — so reset it here. (We can't just call DisconnectAsync
+        // because that also cancels _cts, which would kill the reconnection loop.)
+        if (_connectionState.Value != Connection.ConnectionState.Disconnected)
+            _connectionState.OnNext(Connection.ConnectionState.Disconnected);
+
         // Attempt to connect
         await ConnectAsync(_session, _httpClient, _cts?.Token ?? CancellationToken.None);
     }

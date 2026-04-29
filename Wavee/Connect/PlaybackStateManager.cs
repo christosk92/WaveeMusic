@@ -904,8 +904,13 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 volume: deviceVolume,
                 audioOutputDeviceName: state.ActiveAudioDeviceName);
 
-            // Calculate how long we've been playing
-            var hasBeenPlayingForMs = _playbackStartedAt > 0 ? now - _playbackStartedAt : 0;
+            // Calculate how long we've been playing.
+            // Saturating subtraction: server-clock offset can shift between the
+            // _playbackStartedAt assignment and this `now` snapshot, briefly making
+            // now < _playbackStartedAt. ulong subtraction would underflow to ~2^64.
+            var hasBeenPlayingForMs = _playbackStartedAt > 0 && now > _playbackStartedAt
+                ? now - _playbackStartedAt
+                : 0UL;
 
             // Build PUT state request with all required fields
             var request = new PutStateRequest

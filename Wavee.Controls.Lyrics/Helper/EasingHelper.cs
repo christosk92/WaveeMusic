@@ -2,6 +2,7 @@
 
 using Wavee.Controls.Lyrics.Enums;
 using System;
+using System.Collections.Concurrent;
 using System.Numerics;
 
 namespace Wavee.Controls.Lyrics.Helper
@@ -10,30 +11,50 @@ namespace Wavee.Controls.Lyrics.Helper
     {
         #region Interpolators
 
+        // Interpolators are deterministic given (T, EasingType, EaseMode) — cache and share
+        // a single Func instance across all call sites. Without this every ValueTransition
+        // ctor allocated a fresh closure (lyrics relayout = ~500 closures per track change).
+        private static readonly ConcurrentDictionary<(Type, EasingType, EaseMode), Delegate> _interpolatorCache = new();
+
         public static Func<T, T, double, T> GetInterpolatorByEasingType<T>(EasingType? type, EaseMode easingMode = EaseMode.Out)
             where T : INumber<T>, IFloatingPointIeee754<T>
         {
-            return (start, end, progress) =>
+            var resolvedType = type ?? EasingType.Quad;
+            var key = (typeof(T), resolvedType, easingMode);
+            if (_interpolatorCache.TryGetValue(key, out var cached))
+                return (Func<T, T, double, T>)cached;
+
+            return BuildAndCacheInterpolator<T>(resolvedType, easingMode, key);
+        }
+
+        private static Func<T, T, double, T> BuildAndCacheInterpolator<T>(
+            EasingType type, EaseMode easingMode, (Type, EasingType, EaseMode) key)
+            where T : INumber<T>, IFloatingPointIeee754<T>
+        {
+            // Resolve the easeIn delegate ONCE here instead of inside the per-invocation
+            // lambda body — saves a switch per Update tick on every ValueTransition.
+            Func<T, T> easeInFunc = type switch
             {
-                Func<T, T> easeInFunc = type switch
-                {
-                    EasingType.Sine => EaseInSine,
-                    EasingType.Quad => EaseInQuad,
-                    EasingType.Cubic => EaseInCubic,
-                    EasingType.Quart => EaseInQuart,
-                    EasingType.Quint => EaseInQuint,
-                    EasingType.Expo => EaseInExpo,
-                    EasingType.Circle => EaseInCircle,
-                    EasingType.Back => EaseInBack,
-                    EasingType.Elastic => EaseInElastic,
-                    EasingType.Bounce => EaseInBounce,
-                    EasingType.SmoothStep => SmoothStep,
-                    EasingType.Linear => Linear,
-                    _ => EaseInQuad,
-                };
+                EasingType.Sine => EaseInSine,
+                EasingType.Quad => EaseInQuad,
+                EasingType.Cubic => EaseInCubic,
+                EasingType.Quart => EaseInQuart,
+                EasingType.Quint => EaseInQuint,
+                EasingType.Expo => EaseInExpo,
+                EasingType.Circle => EaseInCircle,
+                EasingType.Back => EaseInBack,
+                EasingType.Elastic => EaseInElastic,
+                EasingType.Bounce => EaseInBounce,
+                EasingType.SmoothStep => SmoothStep,
+                EasingType.Linear => Linear,
+                _ => EaseInQuad,
+            };
+            Func<T, T, double, T> built = (start, end, progress) =>
+            {
                 double t = Ease(progress, easingMode, easeInFunc);
                 return start + ((end - start) * T.CreateChecked(t));
             };
+            return (Func<T, T, double, T>)_interpolatorCache.GetOrAdd(key, built);
         }
 
         #endregion

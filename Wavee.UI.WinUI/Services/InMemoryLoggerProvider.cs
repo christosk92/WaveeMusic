@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Microsoft.UI.Dispatching;
 using Serilog.Core;
@@ -41,6 +42,9 @@ public sealed class InMemorySink : ILogEventSink
 
     private readonly ObservableCollection<LogEntry> _entries = [];
     private readonly DispatcherQueue? _dispatcherQueue;
+    private readonly object _pendingLock = new();
+    private readonly List<LogEntry> _pendingEntries = [];
+    private bool _flushQueued;
 
     public ObservableCollection<LogEntry> Entries => _entries;
 
@@ -62,18 +66,54 @@ public sealed class InMemorySink : ILogEventSink
             Exception = logEvent.Exception?.ToString()
         };
 
-        if (_dispatcherQueue != null)
-            _dispatcherQueue.TryEnqueue(() => AddEntry(entry));
-        else
+        if (_dispatcherQueue == null)
+        {
             AddEntry(entry);
+            return;
+        }
+
+        lock (_pendingLock)
+        {
+            _pendingEntries.Add(entry);
+            if (_pendingEntries.Count > MaxEntries)
+                _pendingEntries.RemoveRange(0, _pendingEntries.Count - MaxEntries);
+
+            if (_flushQueued)
+                return;
+
+            _flushQueued = true;
+        }
+
+        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, FlushPendingEntries))
+        {
+            lock (_pendingLock)
+                _flushQueued = false;
+        }
     }
 
     public void Clear()
     {
+        lock (_pendingLock)
+            _pendingEntries.Clear();
+
         if (_dispatcherQueue != null)
             _dispatcherQueue.TryEnqueue(_entries.Clear);
         else
             _entries.Clear();
+    }
+
+    private void FlushPendingEntries()
+    {
+        List<LogEntry> batch;
+        lock (_pendingLock)
+        {
+            batch = [.. _pendingEntries];
+            _pendingEntries.Clear();
+            _flushQueued = false;
+        }
+
+        foreach (var entry in batch)
+            AddEntry(entry);
     }
 
     private void AddEntry(LogEntry entry)
