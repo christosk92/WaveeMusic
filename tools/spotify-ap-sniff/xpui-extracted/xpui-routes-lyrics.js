@@ -1,2 +1,0 @@
-"use strict";(("undefined"!=typeof self?self:global).webpackChunkclient_web=("undefined"!=typeof self?self:global).webpackChunkclient_web||[]).push([["5314"],{53551(e,l,r){r.r(l),r.d(l,{default:()=>u});var t=r(86070),f=r(30758),i=r(76140),n=r(91997),s=r(94920);let u=f.memo(()=>{let e=(0,s.o)(e=>e?.item,(e,l)=>e?.uri===l?.uri);return e?(0,t.jsx)(i.A,{format:"fullscreen",item:e}):(0,t.jsx)(n.i,{version:"error"})})}}]);
-//# sourceMappingURL=xpui-routes-lyrics.js.map

@@ -1,2 +1,0 @@
-"use strict";(("undefined"!=typeof self?self:global).webpackChunkclient_web=("undefined"!=typeof self?self:global).webpackChunkclient_web||[]).push([["8751"],{87309(e,l,n){function f(){return null}n.r(l),n.d(l,{default:()=>f})}}]);
-//# sourceMappingURL=xpui-routes-kallax.js.map
