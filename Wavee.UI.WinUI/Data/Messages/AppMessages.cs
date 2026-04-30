@@ -16,6 +16,15 @@ public sealed class TrackChangedMessage(string? trackId)
     : ValueChangedMessage<string?>(trackId);
 
 /// <summary>
+/// Broadcast by <c>MusicVideoDiscoveryService</c> after Pathfinder NPV
+/// resolves whether the current audio track has a music-video variant
+/// (linked-URI pattern). Consumers gate the audio URI before applying so
+/// stale discoveries from a previous track don't flip the current state.
+/// </summary>
+public sealed class MusicVideoAvailabilityMessage(string audioUri, bool hasVideo)
+    : ValueChangedMessage<(string AudioUri, bool HasVideo)>((audioUri, hasVideo));
+
+/// <summary>
 /// Sent when playback starts or pauses.
 /// </summary>
 public sealed class PlaybackStateChangedMessage(bool isPlaying)
@@ -154,6 +163,12 @@ public sealed class LibrarySyncFailedMessage(string error)
 /// Sent when library data changes (sync complete, Dealer delta, user action).
 /// </summary>
 public sealed class LibraryDataChangedMessage;
+
+/// <summary>
+/// Sent when the user toggles whether local files appear as a Home shelf.
+/// </summary>
+public sealed class HomeLocalFilesVisibilityChangedMessage(bool isVisible)
+    : ValueChangedMessage<bool>(isVisible);
 
 /// <summary>
 /// Sent to request an immediate library sync (e.g. when the local DB appears empty).

@@ -296,6 +296,14 @@ internal sealed class AudioHostService : IAsyncDisposable
                 await SendOk(msg.Id, ct);
                 break;
             }
+            case IpcMessageTypes.PlayLocalFile:
+            {
+                var cmd = IpcPayloadHelper.Deserialize<PlayLocalFileCommand>(msg);
+                if (cmd != null)
+                    await _engine.PlayAsync(cmd, ct);
+                await SendOk(msg.Id, ct);
+                break;
+            }
             case IpcMessageTypes.DeferredResolved:
             {
                 var cmd = IpcPayloadHelper.Deserialize<DeferredResolvedCommand>(msg);

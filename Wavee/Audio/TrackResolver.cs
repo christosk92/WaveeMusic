@@ -1,9 +1,12 @@
+using System.Text;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
 using Wavee.Playback.Contracts;
+using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Storage;
 using Wavee.Protocol.Metadata;
 
@@ -19,6 +22,7 @@ public sealed class TrackResolver
     // CDN token URLs expire after ~1 hour on Spotify's side; cache them for 30 minutes
     // to avoid re-fetching on rapid replays while staying well within expiry.
     private static readonly TimeSpan CdnUrlCacheTtl = TimeSpan.FromMinutes(30);
+    private const int VideoAssociationsExtensionKindValue = 99;
 
     private readonly Session _session;
     private readonly SpClient _spClient;
@@ -170,6 +174,109 @@ public sealed class TrackResolver
     }
 
     /// <summary>
+    /// Warms the metadata path for an upcoming music video. This intentionally
+    /// avoids the audio-file prefetch path when the active engine is already video.
+    /// </summary>
+    public async Task PrefetchVideoAsync(string uri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(uri)) return;
+        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase)) return;
+
+        try
+        {
+            var manifestId = await ResolveVideoManifestIdAsync(uri, ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(manifestId)) return;
+
+            await _spClient.GetVideoManifestAsync(manifestId, ct).ConfigureAwait(false);
+            _logger?.LogInformation("Prefetched next music video: {Uri} (manifest={Manifest})", uri, manifestId);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is fine - prefetch is opportunistic.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Video prefetch failed for {Uri} (non-fatal, real resolve will retry)", uri);
+        }
+    }
+
+    public async Task<string?> ResolveVideoManifestIdAsync(string uri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var trackId = SpotifyId.FromUri(uri);
+        var track = await FetchTrackMetadataAsync(uri, trackId, ct).ConfigureAwait(false);
+        var manifestId = ExtractOriginalVideoGid(track);
+        if (!string.IsNullOrWhiteSpace(manifestId)) return manifestId;
+
+        var videoUri = await ResolveAssociatedVideoTrackUriAsync(uri, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(videoUri)) return null;
+
+        var videoTrackId = SpotifyId.FromUri(videoUri);
+        var videoTrack = await FetchTrackMetadataAsync(videoUri, videoTrackId, ct).ConfigureAwait(false);
+        return ExtractOriginalVideoGid(videoTrack);
+    }
+
+    public async Task<SpotifyVideoPlaybackTarget?> ResolveVideoPlaybackTargetAsync(
+        string audioUri,
+        string? manifestIdOverride = null,
+        string? videoUriOverride = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(audioUri)) return null;
+        if (audioUri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var audioTrackId = SpotifyId.FromUri(audioUri);
+        var audioTrack = await FetchTrackMetadataAsync(audioUri, audioTrackId, ct).ConfigureAwait(false);
+
+        var videoUri = !string.IsNullOrWhiteSpace(videoUriOverride)
+            ? videoUriOverride
+            : null;
+
+        var manifestId = !string.IsNullOrWhiteSpace(manifestIdOverride)
+            ? manifestIdOverride
+            : ExtractOriginalVideoGid(audioTrack);
+
+        if (string.IsNullOrWhiteSpace(videoUri))
+        {
+            var selfContainedManifest = ExtractOriginalVideoGid(audioTrack);
+            if (!string.IsNullOrWhiteSpace(selfContainedManifest))
+                videoUri = audioUri;
+        }
+
+        if (string.IsNullOrWhiteSpace(videoUri))
+            videoUri = await ResolveAssociatedVideoTrackUriAsync(audioUri, ct).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(videoUri))
+            return null;
+
+        Track videoTrack;
+        if (string.Equals(videoUri, audioUri, StringComparison.Ordinal))
+        {
+            videoTrack = audioTrack;
+        }
+        else
+        {
+            var videoTrackId = SpotifyId.FromUri(videoUri);
+            videoTrack = await FetchTrackMetadataAsync(videoUri, videoTrackId, ct).ConfigureAwait(false);
+        }
+
+        manifestId ??= ExtractOriginalVideoGid(videoTrack);
+        if (string.IsNullOrWhiteSpace(manifestId))
+            return null;
+
+        return new SpotifyVideoPlaybackTarget(
+            AudioTrackUri: audioUri,
+            VideoTrackUri: videoUri,
+            ManifestId: manifestId,
+            Metadata: BuildMetadataDto(videoUri, videoTrack, NormalizationData.Default),
+            DurationMs: videoTrack.Duration,
+            OriginalMetadata: BuildMetadataDto(audioUri, audioTrack, NormalizationData.Default),
+            OriginalDurationMs: audioTrack.Duration);
+    }
+
+    /// <summary>
     /// Resolves a track URI to a fully resolved track ready for AudioHost.
     /// </summary>
     public async Task<ResolvedTrack> ResolveAsync(string uri, CancellationToken ct = default)
@@ -203,6 +310,14 @@ public sealed class TrackResolver
         var fileIdHex = fileId.ToBase16();
         var audioFormat = MapToAudioFileFormat(selectedFile.Format);
 
+        // Cheap manifest_id discovery for self-contained video tracks (i.e.,
+        // tracks where Spotify has populated Track.original_video on the
+        // played URI itself — typical pattern for video-eligible single
+        // releases). Linked-URI tracks where audio and video are separate
+        // catalog entries (drunk text, pick up the phone) leave this null;
+        // discovering their manifest is a Phase-2 GraphQL/NPV follow-up.
+        var videoManifestId = ExtractOriginalVideoGid(track) ?? ExtractOriginalVideoGid(effectiveTrack);
+
         // ── Cache short-circuit ────────────────────────────────────────────────────
         // If the full encrypted audio file is already on disk, skip both the CDN
         // storage-resolve call AND the head-file fetch. We still need the audio key
@@ -229,6 +344,7 @@ public sealed class TrackResolver
                 FileSizeTask = Task.FromResult(cachedFileSize),
                 SpotifyFileId = fileIdHex,
                 LocalCacheFileId = fileIdHex,
+                VideoManifestId = videoManifestId,
             };
         }
 
@@ -280,8 +396,86 @@ public sealed class TrackResolver
             CdnUrlTask = cdnUrlTask,
             FileSizeTask = fileSizeTask,
             SpotifyFileId = fileIdHex,
+            VideoManifestId = videoManifestId,
         };
     }
+
+    private static string? ExtractOriginalVideoGid(Track? track)
+    {
+        if (track is null || track.OriginalVideo.Count == 0) return null;
+        var bytes = track.OriginalVideo[0].Gid;
+        if (bytes is null || bytes.Length == 0) return null;
+        return Convert.ToHexString(bytes.ToByteArray()).ToLowerInvariant();
+    }
+
+    private async Task<string?> ResolveAssociatedVideoTrackUriAsync(string audioUri, CancellationToken ct)
+    {
+        if (_extendedMetadataClient is null) return null;
+
+        try
+        {
+            var data = await _extendedMetadataClient
+                .GetExtensionAsync(audioUri, (ExtensionKind)VideoAssociationsExtensionKindValue, ct)
+                .ConfigureAwait(false);
+            return TryReadVideoAssociationUri(data);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "VIDEO_ASSOCIATIONS lookup failed for {Uri}", audioUri);
+            return null;
+        }
+    }
+
+    private static string? TryReadVideoAssociationUri(byte[]? data)
+    {
+        if (data is not { Length: > 0 }) return null;
+
+        try
+        {
+            var assoc = Assoc.Parser.ParseFrom(data);
+            var uri = assoc.PlainList?.EntityUri.FirstOrDefault(IsSpotifyTrackUri);
+            if (!string.IsNullOrWhiteSpace(uri)) return uri;
+        }
+        catch (InvalidProtocolBufferException)
+        {
+            // Some captures expose the plain list bytes directly.
+        }
+
+        try
+        {
+            var plainList = PlainListAssoc.Parser.ParseFrom(data);
+            var uri = plainList.EntityUri.FirstOrDefault(IsSpotifyTrackUri);
+            if (!string.IsNullOrWhiteSpace(uri)) return uri;
+        }
+        catch (InvalidProtocolBufferException)
+        {
+            // Fall back to a raw scan for forward-compatibility with unknown wrappers.
+        }
+
+        var text = Encoding.UTF8.GetString(data);
+        const string prefix = "spotify:track:";
+        var idx = text.IndexOf(prefix, StringComparison.Ordinal);
+        if (idx < 0) return null;
+
+        var end = idx + prefix.Length;
+        while (end < text.Length && IsSpotifyUriChar(text[end])) end++;
+
+        var candidate = text[idx..end];
+        return IsSpotifyTrackUri(candidate) ? candidate : null;
+    }
+
+    private static bool IsSpotifyTrackUri(string? uri)
+        => uri is { Length: 36 } && uri.StartsWith("spotify:track:", StringComparison.Ordinal);
+
+    private static bool IsSpotifyUriChar(char ch)
+        => ch is >= 'A' and <= 'Z'
+            or >= 'a' and <= 'z'
+            or >= '0' and <= '9'
+            or ':';
 
     private async Task<ResolvedTrack> ResolveTrackAsync(string uri, CancellationToken ct)
     {

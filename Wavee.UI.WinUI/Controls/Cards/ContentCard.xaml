@@ -71,7 +71,8 @@
                               VerticalAlignment="Center"/>
                     <Image x:Name="SquareImage"
                            Stretch="UniformToFill"
-                           ImageOpened="SquareImage_ImageOpened"/>
+                           ImageOpened="SquareImage_ImageOpened"
+                           ImageFailed="SquareImage_ImageFailed"/>
 
                     <!-- Play button overlay (shown on hover) -->
                     <Button x:Name="SquarePlayButton"

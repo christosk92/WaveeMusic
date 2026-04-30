@@ -49,19 +49,57 @@ public static class NavigationHelpers
     }
 
     /// <summary>
-    /// Navigate to artist - within tab by default, new tab if openInNewTab=true
+    /// Navigate to artist - within tab by default, new tab if openInNewTab=true.
+    /// Local artist URIs (<c>wavee:local:artist:</c>) route to the local detail
+    /// page when one is registered; until then they are silently ignored so the
+    /// click is a no-op rather than a Spotify-API miss.
     /// </summary>
     public static void OpenArtist(object parameter, string artistName, bool openInNewTab = false)
     {
+        if (parameter is string s && Wavee.Core.PlayableUri.IsLocal(s))
+        {
+            // TODO: route to LocalArtistPage when added.
+            return;
+        }
         Navigate(typeof(ArtistPage), parameter, artistName, CreateIconSource(typeof(ArtistPage), parameter), openInNewTab);
     }
 
     /// <summary>
-    /// Navigate to album - within tab by default, new tab if openInNewTab=true
+    /// Navigate to album - within tab by default, new tab if openInNewTab=true.
+    /// Local album URIs (<c>wavee:local:album:</c>) route to the local library
+    /// page (per-album detail page can land later).
     /// </summary>
     public static void OpenAlbum(object parameter, string albumName, bool openInNewTab = false)
     {
+        if (parameter is string s && Wavee.Core.PlayableUri.IsLocal(s))
+        {
+            OpenLocalLibrary(openInNewTab);
+            return;
+        }
         Navigate(typeof(AlbumPage), parameter, albumName, CreateIconSource(typeof(AlbumPage), parameter), openInNewTab);
+    }
+
+    /// <summary>
+    /// Navigate to the local library page — the "View all" target for the
+    /// Home page's Local Files section, and a fallback destination for
+    /// <c>wavee:local:*</c> URIs that don't yet have dedicated detail pages.
+    /// </summary>
+    public static void OpenLocalLibrary(bool openInNewTab = false)
+    {
+        Navigate(typeof(LocalLibraryPage), null, "Local files",
+            CreateIconSource(typeof(LocalLibraryPage), null), openInNewTab);
+    }
+
+    /// <summary>
+    /// Navigate to the video player page. The page hosts a
+    /// <c>MediaPlayerElement</c> bound to the app-wide
+    /// <c>ILocalMediaPlayer</c> so video frames render here while audio and
+    /// transport state continue to flow through the orchestrator.
+    /// </summary>
+    public static void OpenVideoPlayer(bool openInNewTab = false)
+    {
+        Navigate(typeof(VideoPlayerPage), null, "Now playing",
+            CreateIconSource(typeof(VideoPlayerPage), null), openInNewTab);
     }
 
     /// <summary>
@@ -293,6 +331,12 @@ public static class NavigationHelpers
 
         if (pageType == typeof(AlbumPage) || pageType == typeof(ConcertPage))
             return new SymbolIconSource { Symbol = Symbol.Audio };
+
+        if (pageType == typeof(LocalLibraryPage))
+            return new SymbolIconSource { Symbol = Symbol.Folder };
+
+        if (pageType == typeof(VideoPlayerPage))
+            return new SymbolIconSource { Symbol = Symbol.Video };
 
         if (pageType == typeof(PlaylistPage))
             return new SymbolIconSource { Symbol = Symbol.MusicInfo };

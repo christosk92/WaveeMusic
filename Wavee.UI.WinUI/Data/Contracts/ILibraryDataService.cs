@@ -174,6 +174,37 @@ public interface ILibraryDataService
     Task<PlaylistInviteLink> CreatePlaylistInviteLinkAsync(
         string playlistId, PlaylistMemberRole grantedRole, TimeSpan ttl, CancellationToken ct = default);
 
+    // ── Local-track playlist overlays ──
+    //
+    // Wavee-only rows attached to a Spotify playlist (or, in v2, a fully local
+    // playlist). These never round-trip to Spotify — they live in the
+    // playlist_overlay_items SQLite table and are merged into the rendered
+    // track list in PlaylistViewModel.
+
+    /// <summary>
+    /// Adds the given local track URIs to the playlist as Wavee-only overlay
+    /// rows. Items are appended at the end of the current overlay sequence.
+    /// </summary>
+    Task AddLocalTracksToPlaylistAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes overlay rows matching the given track URIs from the playlist.
+    /// Spotify-side rows are not affected.
+    /// </summary>
+    Task RemoveLocalOverlayTracksAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the URIs of overlay rows on this playlist in position order,
+    /// each with its absolute added-at timestamp.
+    /// </summary>
+    Task<IReadOnlyList<PlaylistOverlayRow>> GetPlaylistOverlayRowsAsync(string playlistUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the overlay-row positions for the given playlist with the
+    /// supplied ordering. Used by drag-reorder in PlaylistViewModel.
+    /// </summary>
+    Task ReorderPlaylistOverlayAsync(string playlistUri, IReadOnlyList<string> orderedTrackUris, CancellationToken ct = default);
+
     /// <summary>
     /// Event raised when playlists change (created, deleted, updated).
     /// </summary>

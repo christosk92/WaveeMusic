@@ -21,6 +21,9 @@ public sealed class PathfinderClient : IPathfinderClient
 {
     private const int MaxRetries = 3;
     private const string DefaultBaseUrl = "https://api-partner.spotify.com";
+    private const string WebPlayerUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
+    private const string XpuiDesktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.179 Spotify/1.2.88.483 Safari/537.36";
+    private const string XpuiDesktopAppVersion = "896000000";
 
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
@@ -88,9 +91,13 @@ public sealed class PathfinderClient : IPathfinderClient
         {
             httpRequest.Headers.AcceptLanguage.ParseAdd(locale);
         }
-        // Artist overview needs WebPlayer platform to get watchFeedEntrypoint data
-        var useWebPlayer = operationName is PathfinderOperations.QueryArtistOverview
-            or PathfinderOperations.QueryNpvArtist
+        var useXpuiDesktop = operationName is PathfinderOperations.QueryArtistOverview;
+
+        // Web-player-only operations need browser-ish headers. Artist overview
+        // is intentionally excluded: desktop XPUI returns the music-video
+        // mapping pages (relatedMusicVideos/unmappedMusicVideos), while the
+        // WebPlayer profile only gives us the top-track has-video hint.
+        var useWebPlayer = operationName is PathfinderOperations.QueryNpvArtist
             or PathfinderOperations.QueryTrackCreditsModal
             or PathfinderOperations.Home
             or PathfinderOperations.FeedBaselineLookup
@@ -101,8 +108,21 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.SearchConcertLocations
             or PathfinderOperations.Concert;
         httpRequest.Headers.TryAddWithoutValidation("app-platform", useWebPlayer ? "WebPlayer" : "Win32_x86_64");
+        if (useXpuiDesktop)
+        {
+            if (string.IsNullOrEmpty(locale))
+                httpRequest.Headers.AcceptLanguage.ParseAdd("en");
+            httpRequest.Headers.TryAddWithoutValidation("User-Agent", XpuiDesktopUserAgent);
+            httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", XpuiDesktopAppVersion);
+            httpRequest.Headers.TryAddWithoutValidation("origin", "https://xpui.app.spotify.com");
+            httpRequest.Headers.TryAddWithoutValidation("referer", "https://xpui.app.spotify.com/");
+            httpRequest.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not-A.Brand\";v=\"24\", \"Chromium\";v=\"146\"");
+            httpRequest.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
+            httpRequest.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
+        }
         if (useWebPlayer)
         {
+            httpRequest.Headers.TryAddWithoutValidation("User-Agent", WebPlayerUserAgent);
             httpRequest.Headers.TryAddWithoutValidation("spotify-app-version", SpotifyClientIdentity.AppVersionHeader);
             httpRequest.Headers.TryAddWithoutValidation("origin", "https://open.spotify.com");
             httpRequest.Headers.TryAddWithoutValidation("referer", "https://open.spotify.com/");

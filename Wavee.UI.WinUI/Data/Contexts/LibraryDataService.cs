@@ -53,6 +53,8 @@ public sealed class LibraryDataService : ILibraryDataService
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
 
+    private readonly string _databasePath;
+
     public LibraryDataService(
         IMetadataDatabase database,
         IPlaylistCacheService playlistCache,
@@ -60,6 +62,7 @@ public sealed class LibraryDataService : ILibraryDataService
         IMessenger messenger,
         ITrackLikeService likeService,
         ISession session,
+        Wavee.Core.DependencyInjection.WaveeCacheOptions cacheOptions,
         ExtendedMetadataStore? extendedMetadataStore = null,
         ILogger<LibraryDataService>? logger = null)
     {
@@ -71,6 +74,7 @@ public sealed class LibraryDataService : ILibraryDataService
         _session = session;
         _messenger = messenger;
         _logger = logger;
+        _databasePath = cacheOptions.DatabasePath;
 
         messenger.Register<LibraryDataChangedMessage>(this, (_, _) =>
         {
@@ -395,6 +399,129 @@ public sealed class LibraryDataService : ILibraryDataService
 
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    // ── Local-track playlist overlays ──
+
+    public Task AddLocalTracksToPlaylistAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(playlistUri) || trackUris is null || trackUris.Count == 0)
+            return Task.CompletedTask;
+
+        using var conn = OpenLocalConnection();
+        using var tx = conn.BeginTransaction();
+
+        // Append after the current max position so overlay rows preserve add-order.
+        int basePosition;
+        using (var probe = conn.CreateCommand())
+        {
+            probe.Transaction = tx;
+            probe.CommandText = "SELECT COALESCE(MAX(position), -1) FROM playlist_overlay_items WHERE playlist_uri = $u;";
+            probe.Parameters.AddWithValue("$u", playlistUri);
+            basePosition = Convert.ToInt32(probe.ExecuteScalar()) + 1;
+        }
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        for (int i = 0; i < trackUris.Count; i++)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT OR IGNORE INTO playlist_overlay_items (playlist_uri, item_uri, position, added_at, added_by)
+                VALUES ($p, $i, $pos, $at, 'wavee:local');
+                """;
+            cmd.Parameters.AddWithValue("$p", playlistUri);
+            cmd.Parameters.AddWithValue("$i", trackUris[i]);
+            cmd.Parameters.AddWithValue("$pos", basePosition + i);
+            cmd.Parameters.AddWithValue("$at", now + i); // tiny offset preserves insert order on read
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveLocalOverlayTracksAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(playlistUri) || trackUris is null || trackUris.Count == 0)
+            return Task.CompletedTask;
+
+        using var conn = OpenLocalConnection();
+        using var tx = conn.BeginTransaction();
+        foreach (var u in trackUris)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM playlist_overlay_items WHERE playlist_uri = $p AND item_uri = $i;";
+            cmd.Parameters.AddWithValue("$p", playlistUri);
+            cmd.Parameters.AddWithValue("$i", u);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<DTOs.PlaylistOverlayRow>> GetPlaylistOverlayRowsAsync(string playlistUri, CancellationToken ct = default)
+    {
+        var list = new List<DTOs.PlaylistOverlayRow>();
+        if (string.IsNullOrEmpty(playlistUri))
+            return Task.FromResult<IReadOnlyList<DTOs.PlaylistOverlayRow>>(list);
+
+        using var conn = OpenLocalConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT item_uri, position, added_at, added_by
+            FROM playlist_overlay_items
+            WHERE playlist_uri = $p
+            ORDER BY position, added_at;
+            """;
+        cmd.Parameters.AddWithValue("$p", playlistUri);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new DTOs.PlaylistOverlayRow(
+                TrackUri: r.GetString(0),
+                Position: r.GetInt32(1),
+                AddedAt: r.GetInt64(2),
+                AddedBy: r.IsDBNull(3) ? null : r.GetString(3)));
+        }
+        return Task.FromResult<IReadOnlyList<DTOs.PlaylistOverlayRow>>(list);
+    }
+
+    public Task ReorderPlaylistOverlayAsync(string playlistUri, IReadOnlyList<string> orderedTrackUris, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(playlistUri) || orderedTrackUris is null) return Task.CompletedTask;
+
+        using var conn = OpenLocalConnection();
+        using var tx = conn.BeginTransaction();
+        for (int i = 0; i < orderedTrackUris.Count; i++)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE playlist_overlay_items SET position = $pos WHERE playlist_uri = $p AND item_uri = $i;";
+            cmd.Parameters.AddWithValue("$pos", i);
+            cmd.Parameters.AddWithValue("$p", playlistUri);
+            cmd.Parameters.AddWithValue("$i", orderedTrackUris[i]);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+        return Task.CompletedTask;
+    }
+
+    private Microsoft.Data.Sqlite.SqliteConnection OpenLocalConnection()
+    {
+        var b = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = _databasePath,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+            Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared,
+        };
+        var c = new Microsoft.Data.Sqlite.SqliteConnection(b.ConnectionString);
+        c.Open();
+        return c;
+    }
 
     // Stubs for the inline edit Phase 1 work — the UI binds to these from day one
     // so the eventual HTTP/protobuf wire-up is decoupled. Today they no-op so an

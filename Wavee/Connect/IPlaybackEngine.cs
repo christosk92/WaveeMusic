@@ -137,6 +137,21 @@ public interface IPlaybackEngine
     /// No-op when there is no local audio engine.
     /// </summary>
     Task SwitchAudioOutputAsync(int deviceIndex, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Switches the currently-playing track from audio to its music-video
+    /// variant at the current playback position. No-op if the track has no
+    /// video variant or video is already active.
+    ///
+    /// <paramref name="manifestIdOverride"/> lets callers (e.g. UI layer with
+    /// lazily-resolved Pathfinder data) supply the manifest_id directly when
+    /// it's not yet on <c>_currentVideoManifestId</c> — covers linked-URI
+    /// tracks (audio URI ≠ video URI).
+    /// </summary>
+    Task SwitchToVideoAsync(
+        string? manifestIdOverride = null,
+        string? videoTrackUriOverride = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -401,6 +416,27 @@ public sealed record LocalPlaybackState
     /// the most recently seen list.
     /// </summary>
     public IReadOnlyList<AudioOutputDeviceDto>? AvailableAudioDevices { get; init; }
+
+    /// <summary>
+    /// Hex-encoded VideoFile.file_id for the current track when it has a
+    /// music-video variant. Non-null enables the "Watch Video" affordance in
+    /// the player UI; clicking it switches the engine to PlayReady/DASH.
+    /// Sourced from the resolved Track proto (Track.Video[0].FileId).
+    /// </summary>
+    public string? VideoManifestId { get; init; }
+
+    /// <summary>
+    /// Active media type for Spotify reporting and Connect metadata.
+    /// Conventional values are <c>"audio"</c> and <c>"video"</c>.
+    /// </summary>
+    public string MediaType { get; init; } = "audio";
+
+    /// <summary>
+    /// Additional metadata keys to merge into the Connect ProvidedTrack metadata
+    /// map. Used for Wavee-only display hints such as original-track metadata
+    /// while the active Spotify identity is a linked video track.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ExtraMetadata { get; init; }
 
     /// <summary>
     /// Creates an empty/stopped playback state.

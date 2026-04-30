@@ -7,10 +7,13 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d">
 
     <UserControl.Resources>
         <converters:CachingProfileTooltipConverter x:Key="CachingProfileTooltipConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
     </UserControl.Resources>
 
     <ScrollView>
@@ -111,6 +114,73 @@
                 </controls:SettingsCard.HeaderIcon>
                 <Button Content="Clear &amp; resync" Click="ClearCollectionRevisions_Click"/>
             </controls:SettingsCard>
+
+            <!-- ── Local Files ─────────────────────────────────────────────── -->
+            <TextBlock Text="Local Files" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+
+            <controls:SettingsCard Header="Show on Home"
+                                   Description="Display a Local files shelf near the top of Home when indexed files are available.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE80F;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.ShowLocalFilesOnHome, Mode=TwoWay}"
+                              OnContent=""
+                              OffContent=""/>
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Header="Watched folders"
+                                   Description="Wavee scans these folders for music and adds it to Search and your library. Indexes update in the background.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8B7;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Rescan now"
+                            Click="RescanAllLocal_Click"/>
+                    <Button Content="Add folder…"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            Click="AddLocalFolder_Click"/>
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.LocalFiles.Folders, Mode=OneWay}"
+                           Margin="0,4,0,0">
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LocalFolderRow">
+                        <controls:SettingsCard Header="{x:Bind Path}"
+                                               Description="{x:Bind StatusDisplay}">
+                            <controls:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8F1;"/>
+                            </controls:SettingsCard.HeaderIcon>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{x:Bind LastScanDisplay}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <Button Content="Remove"
+                                        Click="RemoveLocalFolder_Click"
+                                        Tag="{x:Bind}"/>
+                            </StackPanel>
+                        </controls:SettingsCard>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+
+            <controls:SettingsCard Header="Sync progress"
+                                   Description="{x:Bind ViewModel.LocalFiles.ProgressCurrentFile, Mode=OneWay}"
+                                   Visibility="{x:Bind ViewModel.LocalFiles.IsScanning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE895;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Vertical" Spacing="4" MinWidth="280">
+                    <ProgressBar Minimum="0"
+                                 Maximum="{x:Bind ViewModel.LocalFiles.ProgressTotal, Mode=OneWay}"
+                                 Value="{x:Bind ViewModel.LocalFiles.ProgressDone, Mode=OneWay}"/>
+                </StackPanel>
+            </controls:SettingsCard>
+
+            <TextBlock Text="{x:Bind ViewModel.LocalFiles.StatusMessage, Mode=OneWay}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Margin="4,4,0,0"/>
 
             <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_16" Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_17" Header="Auto-reconnect"

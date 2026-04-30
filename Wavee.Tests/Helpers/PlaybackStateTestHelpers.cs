@@ -312,4 +312,10 @@ internal sealed class MockPlaybackEngine : IPlaybackEngine
         CommandsReceived.Add($"SwitchAudioOutput:{deviceIndex}");
         return Task.CompletedTask;
     }
+
+    public Task SwitchToVideoAsync(string? manifestIdOverride = null, CancellationToken cancellationToken = default)
+    {
+        CommandsReceived.Add($"SwitchToVideo:{manifestIdOverride ?? "<no-override>"}");
+        return Task.CompletedTask;
+    }
 }

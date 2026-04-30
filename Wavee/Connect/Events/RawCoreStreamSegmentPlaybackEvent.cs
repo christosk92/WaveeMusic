@@ -15,7 +15,6 @@ namespace Wavee.Connect.Events;
 public sealed class RawCoreStreamSegmentPlaybackEvent : IPlaybackEvent
 {
     private const string EventName = "RawCoreStreamSegment";
-    private const string MediaType = "audio";
     // Wire-observed lowercase + bumped core_version per RawCoreStream parity.
     private const string PlaybackStack = "boombox";
     private const string Provider = "context";
@@ -34,6 +33,7 @@ public sealed class RawCoreStreamSegmentPlaybackEvent : IPlaybackEvent
     private readonly bool _isSeek;
     private readonly bool _isLast;
     private readonly long _sequenceId;
+    private readonly string _mediaType;
 
     public RawCoreStreamSegmentPlaybackEvent(
         string playbackIdHex,
@@ -48,7 +48,8 @@ public sealed class RawCoreStreamSegmentPlaybackEvent : IPlaybackEvent
         bool isPause,
         bool isSeek,
         bool isLast,
-        long sequenceId)
+        long sequenceId,
+        string mediaType = "audio")
     {
         _playbackIdHex = playbackIdHex;
         _trackUri = trackUri;
@@ -63,6 +64,7 @@ public sealed class RawCoreStreamSegmentPlaybackEvent : IPlaybackEvent
         _isSeek = isSeek;
         _isLast = isLast;
         _sequenceId = sequenceId;
+        _mediaType = string.IsNullOrWhiteSpace(mediaType) ? "audio" : mediaType;
     }
 
     /// <inheritdoc />
@@ -83,7 +85,7 @@ public sealed class RawCoreStreamSegmentPlaybackEvent : IPlaybackEvent
             IsSeek = _isSeek,
             IsPause = _isPause,
             SequenceId = _sequenceId,
-            MediaType = MediaType,
+            MediaType = _mediaType,
             CoreVersion = CoreVersion,
             ContentUri = _trackUri,
             IsLast = _isLast,
@@ -91,6 +93,7 @@ public sealed class RawCoreStreamSegmentPlaybackEvent : IPlaybackEvent
             PlaybackStack = PlaybackStack,
             PlayContext = _contextUri,
             IsAudioOn = true,
+            IsVideoOn = string.Equals(_mediaType, "video", StringComparison.OrdinalIgnoreCase),
         };
 
         return GaboEnvelopeFactory.BuildEnvelope(EventName, msg.ToByteArray(), ctx, sequenceId, sequenceNumber);

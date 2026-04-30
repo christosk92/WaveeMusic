@@ -287,6 +287,13 @@ public sealed class AlbumService : IAlbumService
         if (items == null || items.Count == 0)
             return [];
 
+        // Populate the music-video catalog cache as we map each track. Album
+        // pages expose videoAssociations.totalCount per track — pre-warming
+        // the cache here means the "Watch Video" button can appear instantly
+        // when the user later plays one of these tracks.
+        var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
+
         var results = new List<AlbumTrackResult>(items.Count);
         foreach (var item in items)
         {
@@ -294,6 +301,10 @@ public sealed class AlbumService : IAlbumService
             if (track == null) continue;
 
             var id = track.Uri?.Split(':').LastOrDefault() ?? item.Uid ?? $"track-{results.Count + 1}";
+            var hasVideo = (track.AssociationsV3?.VideoAssociations?.TotalCount ?? 0) > 0;
+
+            if (videoCatalog is not null && !string.IsNullOrEmpty(track.Uri))
+                videoCatalog.NoteHasVideo(track.Uri, hasVideo);
 
             results.Add(new AlbumTrackResult
             {
@@ -308,7 +319,7 @@ public sealed class AlbumService : IAlbumService
                 IsExplicit = track.ContentRating?.Label == "EXPLICIT",
                 IsPlayable = track.Playability?.Playable ?? true,
                 IsSaved = track.Saved,
-                HasVideo = (track.AssociationsV3?.VideoAssociations?.TotalCount ?? 0) > 0,
+                HasVideo = hasVideo,
                 TrackNumber = track.TrackNumber,
                 DiscNumber = track.DiscNumber
             });

@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.MiniVideoPlayer.MiniVideoPlayer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    mc:Ignorable="d"
+    Width="340"
+    Height="232"
+    MinWidth="240"
+    MinHeight="160"
+    Visibility="Collapsed"
+    PointerEntered="Root_PointerEntered"
+    PointerMoved="Root_PointerMoved"
+    PointerExited="Root_PointerExited">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <!-- Per-theme overlay brushes. Buttons sit on top of video
+                 frames, which can be any color, so we lean on the
+                 system-defined Control-On-Image brushes (WinUI's purpose-
+                 built tokens for controls on images/video). They carry
+                 sensible defaults plus we override per state below for the
+                 hover/pressed feedback the bare defaults skip.
+                 NOTE: property elements (ThemeDictionaries) MUST be the
+                 first or last child — XAML forbids splitting content with
+                 property elements. Keeping ThemeDictionaries first then
+                 the regular resources after. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="MiniOverlayRest" Color="#66000000"/>
+                    <SolidColorBrush x:Key="MiniOverlayHover" Color="#99000000"/>
+                    <SolidColorBrush x:Key="MiniOverlayPressed" Color="#B3000000"/>
+                    <SolidColorBrush x:Key="MiniOverlayForeground" Color="White"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <!-- In Light theme overlays still target dark video, so
+                         keep the backdrop dark — the foreground stays white
+                         for readability. Same shape, same feel; the system
+                         theme is honoured for the surrounding chrome (the
+                         bottom title bar uses SubtleFillColorSecondaryBrush
+                         which IS theme-aware). -->
+                    <SolidColorBrush x:Key="MiniOverlayRest" Color="#66000000"/>
+                    <SolidColorBrush x:Key="MiniOverlayHover" Color="#99000000"/>
+                    <SolidColorBrush x:Key="MiniOverlayPressed" Color="#B3000000"/>
+                    <SolidColorBrush x:Key="MiniOverlayForeground" Color="White"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="MiniOverlayRest" Color="{ThemeResource SystemColorButtonFaceColor}"/>
+                    <SolidColorBrush x:Key="MiniOverlayHover" Color="{ThemeResource SystemColorHighlightColor}"/>
+                    <SolidColorBrush x:Key="MiniOverlayPressed" Color="{ThemeResource SystemColorHighlightColor}"/>
+                    <SolidColorBrush x:Key="MiniOverlayForeground" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+            <!-- Custom-templated round overlay button. The default Button
+                 template's hover/pressed brushes are tied to system control
+                 tokens that bleed through with the wrong contrast on video;
+                 a hand-rolled template lets us bind directly to the
+                 MiniOverlay* brushes above and keep visual states tight. -->
+            <Style x:Key="OverlayCircleButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{ThemeResource MiniOverlayRest}"/>
+                <Setter Property="Foreground" Value="{ThemeResource MiniOverlayForeground}"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="UseSystemFocusVisuals" Value="True"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="RootGrid"
+                                  Background="{TemplateBinding Background}"
+                                  CornerRadius="{TemplateBinding CornerRadius}">
+                                <ContentPresenter
+                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    Padding="{TemplateBinding Padding}"/>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal"/>
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Background"
+                                                        Value="{ThemeResource MiniOverlayHover}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Background"
+                                                        Value="{ThemeResource MiniOverlayPressed}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Opacity" Value="0.5"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <!-- Card frame: Acrylic surface so the bottom chrome reads as a
+         floating panel rather than a transparent strip. CornerRadius clips
+         the children so the video bleeds to the rounded corner without a
+         straight-edge artifact at the top. -->
+    <Border CornerRadius="12"
+            Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+            BorderThickness="1"
+            BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}">
+        <Grid RowSpacing="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Video host: code-behind mounts a MediaPlayerElement here at
+                 index 0 (under the overlays) when IActiveVideoSurfaceService
+                 awards us the surface. Background is black so the rounded
+                 corners match the video letterbox. -->
+            <Grid x:Name="MiniVideoHost"
+                  Grid.Row="0"
+                  Background="Black">
+
+                <!-- Click-anywhere expand: lowest overlay, fills the whole
+                     video area. Specific buttons sit on top with their own
+                     hit-testing so they swallow the click. -->
+                <Button x:Name="ExpandClickArea"
+                        Click="ExpandClickArea_Click"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Padding="0"
+                        ToolTipService.ToolTip="Expand"/>
+
+                <!-- All hover-only overlay buttons live in this group so we
+                     can fade them as a unit on idle. The position bar (below)
+                     stays visible at all times — same affordance YouTube
+                     keeps when their controls fade. -->
+                <Grid x:Name="OverlayButtons">
+                    <!-- Top-left: open-full / expand. YouTube uses a "pop out"
+                         glyph (E740 = "FullScreen"); we go with the same so the
+                         affordance reads as "open this in a bigger surface". -->
+                    <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                            Width="28" Height="28"
+                            CornerRadius="14"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Margin="6,6,0,0"
+                            Command="{x:Bind ViewModel.ExpandCommand}"
+                            ToolTipService.ToolTip="Expand">
+                        <FontIcon Glyph="&#xE740;"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="11"
+                                  Foreground="White"/>
+                    </Button>
+
+                    <!-- Top-right: close. Stops playback (provider-agnostic
+                         IPlaybackEngine.StopAsync), which then clears
+                         ActiveSurface and the mini hides itself. -->
+                    <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                            Width="28" Height="28"
+                            CornerRadius="14"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="0,6,6,0"
+                            Command="{x:Bind ViewModel.CloseCommand}"
+                            ToolTipService.ToolTip="Close">
+                        <FontIcon Glyph="&#xE711;"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="11"
+                                  Foreground="White"/>
+                    </Button>
+
+                    <!-- Centered transport: prev / play-pause / next. Reuses
+                         the PlayerBarViewModel commands so this surface is
+                         the same control plane as the bottom PlayerBar — no
+                         duplicate state machine. -->
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                Width="36" Height="36"
+                                CornerRadius="18"
+                                Command="{x:Bind ViewModel.Player.PreviousCommand}"
+                                ToolTipService.ToolTip="Previous">
+                            <FontIcon Glyph="&#xF8AC;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="13"
+                                      Foreground="White"/>
+                        </Button>
+                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                Width="48" Height="48"
+                                CornerRadius="24"
+                                Command="{x:Bind ViewModel.Player.PlayPauseCommand}"
+                                ToolTipService.ToolTip="Play/Pause">
+                            <playback:PlaybackActionContent
+                                IconSize="18"
+                                SpinnerSize="22"
+                                IsPlaying="{x:Bind ViewModel.Player.IsPlaying, Mode=OneWay}"
+                                IsPending="{x:Bind ViewModel.Player.IsBuffering, Mode=OneWay}"
+                                ActionForeground="White"/>
+                        </Button>
+                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                Width="36" Height="36"
+                                CornerRadius="18"
+                                Command="{x:Bind ViewModel.Player.NextCommand}"
+                                ToolTipService.ToolTip="Next">
+                            <FontIcon Glyph="&#xF8AD;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="13"
+                                      Foreground="White"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Top-left and top-right resize grips. Tiny transparent
+                     zones at the absolute corners of the video frame; on
+                     PointerEntered the UserControl's cursor switches to the
+                     diagonal-resize shape. Sit above the OverlayButtons in
+                     z-order so the corner pixel always belongs to the resize
+                     zone (the corner-most ~10 px of each button is given up
+                     to keep the affordance discoverable). -->
+                <Border x:Name="ResizeGripTL"
+                        Width="12" Height="12"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Background="Transparent"
+                        PointerEntered="ResizeGripTL_PointerEntered"
+                        PointerExited="ResizeGrip_PointerExited"
+                        PointerPressed="ResizeGripTL_PointerPressed"
+                        PointerMoved="ResizeGripTL_PointerMoved"
+                        PointerReleased="ResizeGripTL_PointerReleased"
+                        PointerCaptureLost="ResizeGripTL_PointerCaptureLost"/>
+                <Border x:Name="ResizeGripTR"
+                        Width="12" Height="12"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Background="Transparent"
+                        PointerEntered="ResizeGripTR_PointerEntered"
+                        PointerExited="ResizeGrip_PointerExited"
+                        PointerPressed="ResizeGripTR_PointerPressed"
+                        PointerMoved="ResizeGripTR_PointerMoved"
+                        PointerReleased="ResizeGripTR_PointerReleased"
+                        PointerCaptureLost="ResizeGripTR_PointerCaptureLost"/>
+
+                <!-- YouTube-style hairline position strip pinned to the
+                     bottom of the video frame. Reuses the singleton
+                     PlayerBarViewModel's interpolated Position (4×/sec
+                     timer) and SliderMaximum (= max(Duration, 1)) — no
+                     second polling loop. Read-only; scrubbing belongs on
+                     the full video page. IsHitTestVisible=False so the
+                     strip never swallows clicks meant for the underlying
+                     expand button. -->
+                <ProgressBar Minimum="0"
+                             Maximum="{x:Bind ViewModel.Player.SliderMaximum, Mode=OneWay}"
+                             Value="{x:Bind ViewModel.Player.Position, Mode=OneWay}"
+                             Height="3"
+                             VerticalAlignment="Bottom"
+                             HorizontalAlignment="Stretch"
+                             IsHitTestVisible="False"
+                             Foreground="{ThemeResource SystemAccentColor}"
+                             Background="#33FFFFFF"
+                             CornerRadius="0"/>
+            </Grid>
+
+            <!-- Chrome: title bar doubles as the drag handle. Pointer events
+                 on this row drive Translation on the UserControl so the
+                 mini-player can be repositioned anywhere on the shell. The
+                 BR resize grip lives here too — alignment of the UserControl
+                 stays anchored to the shell's bottom-right, so growing the
+                 width/height extends toward the top-left, which makes the
+                 grip-at-BR feel natural. -->
+            <Grid x:Name="ChromeBar"
+                  Grid.Row="1"
+                  Padding="10,6"
+                  ColumnSpacing="8"
+                  Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                  PointerEntered="ChromeBar_PointerEntered"
+                  PointerExited="ChromeBar_PointerExited"
+                  PointerPressed="ChromeBar_PointerPressed"
+                  PointerMoved="ChromeBar_PointerMoved"
+                  PointerReleased="ChromeBar_PointerReleased"
+                  PointerCaptureLost="ChromeBar_PointerCaptureLost">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"
+                           FontSize="12"/>
+
+                <!-- Resize grip. 18×18 affordance with the chevron-corner
+                     glyph, swallows pointer events so the chrome's drag
+                     handler doesn't fire during a resize. -->
+                <Border Grid.Column="1"
+                        x:Name="ResizeGrip"
+                        Width="18" Height="18"
+                        Background="Transparent"
+                        VerticalAlignment="Center"
+                        ToolTipService.ToolTip="Resize"
+                        PointerEntered="ResizeGripBR_PointerEntered"
+                        PointerExited="ResizeGrip_PointerExited"
+                        PointerPressed="ResizeGrip_PointerPressed"
+                        PointerMoved="ResizeGrip_PointerMoved"
+                        PointerReleased="ResizeGrip_PointerReleased"
+                        PointerCaptureLost="ResizeGrip_PointerCaptureLost">
+                    <!-- Two short diagonal strokes anchored at the BR of the
+                         18×18 grip area. Universally-readable "drag from
+                         this corner" cue that doesn't collide visually with
+                         the expand glyph used elsewhere on the control. -->
+                    <Path Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                          StrokeThickness="1.3"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          Opacity="0.7"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Bottom"
+                          Margin="0,0,2,2"
+                          Data="M 0,4 L 4,0 M 0,8 L 8,0"/>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

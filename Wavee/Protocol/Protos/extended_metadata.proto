@@ -4,6 +4,7 @@ package spotify.extendedmetadata.proto;
 
 import "extension_kind.proto";
 import "entity_extension_data.proto";
+import "google/protobuf/any.proto";
 
 option optimize_for = CODE_SIZE;
 option csharp_namespace = "Wavee.Protocol.ExtendedMetadata";
@@ -21,6 +22,7 @@ message EntityRequest {
 message BatchedEntityRequestHeader {
 	optional string country = 1;
 	optional string catalogue = 2;
+	optional bytes task_id = 3;
 }
 
 message BatchedEntityRequest {
@@ -32,6 +34,7 @@ message EntityExtensionDataArrayHeader {
 	optional int32 provider_error_status = 1;
 	optional int64 cache_ttl_in_seconds = 2;
 	optional int64 offline_ttl_in_seconds = 3;
+	optional ExtensionType extension_type = 4;
 }
 
 message EntityExtensionDataArray {
@@ -46,4 +49,22 @@ message BatchedExtensionResponseHeader {
 message BatchedExtensionResponse {
 	optional spotify.extendedmetadata.proto.BatchedExtensionResponseHeader header = 1;
 	repeated spotify.extendedmetadata.proto.EntityExtensionDataArray extended_metadata = 2;
+}
+
+enum ExtensionType {
+	UNKNOWN = 0;
+	GENERIC = 1;
+	ASSOC = 2;
+}
+
+message PlainListAssoc {
+	repeated string entity_uri = 1;
+}
+
+message AssocHeader {
+}
+
+message Assoc {
+	optional spotify.extendedmetadata.proto.AssocHeader header = 1;
+	optional spotify.extendedmetadata.proto.PlainListAssoc plain_list = 2;
 }

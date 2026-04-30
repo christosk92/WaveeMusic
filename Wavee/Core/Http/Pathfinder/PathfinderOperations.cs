@@ -23,7 +23,7 @@ internal static class PathfinderOperations
     public const string FeedBaselineLookupHash = "a950fb7c4ecdcaf2aad2f3ca9ee9c3aa4b9c43c97e1d07d05148c4d355bea7fc";
 
     public const string QueryArtistOverview = "queryArtistOverview";
-    public const string QueryArtistOverviewHash = "5b9e64f43843fa3a9b6a98543600299b0a2cbbbccfdcdcef2402eb9c1017ca4c";
+    public const string QueryArtistOverviewHash = "7f86ff63e38c24973a2842b672abe44c910c1973978dc8a4a0cb648edef34527";
 
     public const string QueryArtistDiscographyAll = "queryArtistDiscographyAll";
     public const string QueryArtistDiscographyAllHash = "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599";

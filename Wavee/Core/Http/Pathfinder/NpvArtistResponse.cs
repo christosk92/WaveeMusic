@@ -298,7 +298,19 @@ public sealed class NpvAssociationsV3
 public sealed class NpvUnmappedVideoAssociations
 {
     [JsonPropertyName("items")]
-    public List<object>? Items { get; init; }
+    public List<NpvUnmappedVideoItem>? Items { get; init; }
+}
+
+public sealed class NpvUnmappedVideoItem
+{
+    [JsonPropertyName("associatedTrack")]
+    public NpvAssociatedTrackRef? AssociatedTrack { get; init; }
+}
+
+public sealed class NpvAssociatedTrackRef
+{
+    [JsonPropertyName("_uri")]
+    public string? Uri { get; init; }
 }
 
 // ── JSON Source Generation ──

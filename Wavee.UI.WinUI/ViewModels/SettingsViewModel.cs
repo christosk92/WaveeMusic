@@ -114,6 +114,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         await _updateService.CheckForUpdateAsync();
     }
 
+    public LocalFilesViewModel? LocalFiles { get; }
+
     public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, InMemorySink inMemorySink,
         IAudioPipelineControl? pipelineControl = null,
         ISession? session = null,
@@ -121,8 +123,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IMetadataDatabase? metadataDatabase = null,
         IMessenger? messenger = null,
         INotificationService? notificationService = null,
-        ILogger<SettingsViewModel>? logger = null)
+        ILogger<SettingsViewModel>? logger = null,
+        LocalFilesViewModel? localFiles = null)
     {
+        LocalFiles = localFiles;
         _settingsService = settingsService;
         _themeService = themeService;
         _inMemorySink = inMemorySink;
@@ -184,6 +188,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _normalizationEnabled = s.NormalizationEnabled;
         _autoplayEnabled = s.AutoplayEnabled;
+        _showLocalFilesOnHome = s.ShowLocalFilesOnHome;
 
         // Initialize lyrics sources from persisted prefs or defaults
         InitializeLyricsSources(s);
@@ -565,6 +570,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     // ── Verbose logging ──
+
+    [ObservableProperty]
+    private bool _showLocalFilesOnHome;
+
+    partial void OnShowLocalFilesOnHomeChanged(bool value)
+    {
+        _settingsService.Update(s => s.ShowLocalFilesOnHome = value);
+        WeakReferenceMessenger.Default.Send(new HomeLocalFilesVisibilityChangedMessage(value));
+    }
 
     /// <summary>
     /// When on, drops the Serilog minimum level to Verbose for the UI process and starts the

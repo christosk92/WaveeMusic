@@ -438,6 +438,51 @@ public sealed class PlayTrackCommand
 }
 
 /// <summary>
+/// Loudness normalization payload for local-file playback. Optional in v1
+/// (ReplayGain ingestion is a v2 feature).
+/// </summary>
+public sealed class NormalizationDataDto
+{
+    [JsonPropertyName("trackGainDb")]
+    public float? TrackGainDb { get; init; }
+
+    [JsonPropertyName("trackPeak")]
+    public float? TrackPeak { get; init; }
+
+    [JsonPropertyName("albumGainDb")]
+    public float? AlbumGainDb { get; init; }
+
+    [JsonPropertyName("albumPeak")]
+    public float? AlbumPeak { get; init; }
+}
+
+/// <summary>
+/// Play a local audio file directly from disk. AudioHost opens the path with
+/// BASS, no CDN / audio-key / Spotify metadata involved. The track URI is the
+/// stable Wavee identity (<c>wavee:local:track:{hash}</c>).
+/// </summary>
+public sealed class PlayLocalFileCommand
+{
+    [JsonPropertyName("trackUri")]
+    public required string TrackUri { get; init; }
+
+    [JsonPropertyName("filePath")]
+    public required string FilePath { get; init; }
+
+    [JsonPropertyName("durationMs")]
+    public long DurationMs { get; init; }
+
+    [JsonPropertyName("startPositionMs")]
+    public long StartPositionMs { get; init; }
+
+    [JsonPropertyName("metadata")]
+    public TrackMetadataDto? Metadata { get; init; }
+
+    [JsonPropertyName("normalization")]
+    public NormalizationDataDto? Normalization { get; init; }
+}
+
+/// <summary>
 /// Completes a deferred CDN resolution. AudioHost's LazyProgressiveDownloader
 /// uses this to seamlessly continue from CDN after head data is exhausted.
 /// </summary>
@@ -520,6 +565,7 @@ public static class IpcMessageTypes
     // UI → Audio
     public const string PlayResolved = "play_resolved";
     public const string PlayTrack = "play_track";
+    public const string PlayLocalFile = "play_local_file";
     public const string DeferredResolved = "deferred_resolved";
     public const string PrepareNext = "prepare_next";
     public const string Resume = "resume";
@@ -563,6 +609,8 @@ public static class IpcMessageTypes
 [JsonSerializable(typeof(IpcMessage))]
 [JsonSerializable(typeof(PlayResolvedTrackCommand))]
 [JsonSerializable(typeof(PlayTrackCommand))]
+[JsonSerializable(typeof(PlayLocalFileCommand))]
+[JsonSerializable(typeof(NormalizationDataDto))]
 [JsonSerializable(typeof(DeferredResolvedCommand))]
 [JsonSerializable(typeof(PrepareNextTrackCommand))]
 [JsonSerializable(typeof(TrackMetadataDto))]

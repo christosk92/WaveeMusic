@@ -464,6 +464,9 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
+        public Task<PlaybackResult> SwitchToVideoAsync(string? manifestIdOverride = null, CancellationToken ct = default)
+            => Task.FromResult(PlaybackResult.Success());
+
         public void ClearVolumeCalls()
         {
             SetVolumeCalls.Clear();
@@ -499,6 +502,8 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public string? CurrentAlbumArtLarge => null;
         public string? CurrentArtistId => null;
         public string? CurrentAlbumId => null;
+        public string? CurrentTrackManifestId => null;
+        public bool CurrentTrackHasMusicVideo => false;
         public IReadOnlyList<ArtistCredit>? CurrentArtists => null;
         public string? CurrentAlbumArtColor => null;
 
@@ -606,6 +611,12 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public void ClearBuffering()
         {
         }
+
+        public Task<bool> SwitchToVideoAsync() => Task.FromResult(false);
+
+        public bool IsAtEndOfContext => false;
+        public void NotifyEndOfContext() { }
+        public void DismissEndOfContext() { }
 
         public void SetVolume(double volume)
         {

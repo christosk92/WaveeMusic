@@ -176,6 +176,13 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         => SendCommandAsync(IpcMessageTypes.PlayTrack, cmd, ct);
 
     /// <summary>
+    /// Tells AudioHost to open and play a local audio file on disk. No CDN, no
+    /// audio key, no head data — BASS streams directly from the path.
+    /// </summary>
+    public Task PlayLocalFileAsync(PlayLocalFileCommand cmd, CancellationToken ct = default)
+        => SendCommandAsync(IpcMessageTypes.PlayLocalFile, cmd, ct);
+
+    /// <summary>
     /// Completes the deferred CDN resolution so AudioHost can continue from CDN after head data.
     /// Pass <paramref name="spotifyFileId"/> so AudioHost can persist the download to the audio cache.
     /// </summary>
@@ -259,6 +266,16 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     public Task SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct = default)
         => SendCommandAsync(IpcMessageTypes.SwitchAudioOutput,
             new SwitchAudioOutputCommand { DeviceIndex = deviceIndex }, ct);
+
+    /// <summary>
+    /// Music-video switch is owned by the orchestrator (PlayReady/DASH lives
+    /// in the UI process). The bare AudioHost proxy has no path for it.
+    /// </summary>
+    public Task SwitchToVideoAsync(
+        string? manifestIdOverride = null,
+        string? videoTrackUriOverride = null,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 
     /// <summary>
     /// Asks AudioHost to rescan the live system audio device list (Pa_Terminate +

@@ -7,6 +7,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
+using Wavee.Core.Library.Local;
 using Wavee.Core.Library.Spotify;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -36,6 +37,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
 
     private readonly IMetadataDatabase _database;
     private readonly ISpotifyLibraryService? _libraryService;
+    private readonly ILocalLikeService? _localLikeService;
     private readonly ILogger? _logger;
     private readonly CompositeDisposable _disposables = new();
     private bool _initialized;
@@ -45,10 +47,12 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     public TrackLikeService(
         IMetadataDatabase database,
         ISpotifyLibraryService? libraryService = null,
+        ILocalLikeService? localLikeService = null,
         ILogger<TrackLikeService>? logger = null)
     {
         _database = database;
         _libraryService = libraryService;
+        _localLikeService = localLikeService;
         _logger = logger;
     }
 
@@ -79,6 +83,32 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Failed to load {Type} saved items", type);
+            }
+        }
+
+        // Seed local-track likes into the same Track cache. ExtractBareId
+        // returns the URI verbatim when no Spotify prefix matches, so a
+        // wavee:local:track:* lookup hits the cache directly without extra
+        // branching in IsSaved.
+        if (_localLikeService is not null)
+        {
+            try
+            {
+                var localLiked = await _localLikeService.GetLikedTrackUrisAsync().ConfigureAwait(false);
+                foreach (var uri in localLiked)
+                    _caches[SavedItemType.Track].Add(uri);
+                // Keep the cache in sync with external mutations
+                // (e.g. heart toggled from LocalLibraryPage).
+                _disposables.Add(_localLikeService.Changes.Subscribe(change =>
+                {
+                    if (change.Liked) _caches[SavedItemType.Track].Add(change.TrackUri);
+                    else _caches[SavedItemType.Track].Remove(change.TrackUri);
+                    SaveStateChanged?.Invoke();
+                }));
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Local-like cache seed failed");
             }
         }
 
@@ -121,6 +151,21 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
 
     public void ToggleSave(SavedItemType type, string itemUri, bool currentlySaved)
     {
+        // Local-track likes never round-trip through Spotify's collection
+        // API — they're a separate state column on the local entity row.
+        // Without this branch, a wavee:local:track:* URI would get queued to
+        // SpotifyLibraryService's Outbox and rejected with "Invalid write
+        // request" on every retry. The local-like service writes
+        // entities.is_locally_liked and is the source of truth for the heart
+        // state on local cards.
+        if (type == SavedItemType.Track
+            && _localLikeService is not null
+            && LocalUri.IsTrack(itemUri))
+        {
+            ToggleLocalTrackLike(itemUri, currentlySaved);
+            return;
+        }
+
         var (prefix, _, _) = TypeMap[type];
         var bareId = ExtractBareId(itemUri, prefix);
         if (bareId == null)
@@ -290,6 +335,45 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     {
         if (string.IsNullOrEmpty(uri)) return null;
         return uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
+    }
+
+    /// <summary>
+    /// Mirrors the Spotify ToggleSave flow for a local track URI:
+    /// optimistic in-memory cache update + persist via
+    /// <see cref="ILocalLikeService"/>. Cache key is the full
+    /// <c>wavee:local:track:*</c> URI (ExtractBareId returns the URI verbatim
+    /// when no Spotify prefix matches), so <see cref="IsSaved"/> hits without
+    /// any extra branching.
+    /// </summary>
+    private void ToggleLocalTrackLike(string itemUri, bool currentlySaved)
+    {
+        if (_localLikeService is null) return;
+        var cache = _caches[SavedItemType.Track];
+
+        if (currentlySaved) cache.Remove(itemUri);
+        else cache.Add(itemUri);
+
+        _logger?.LogInformation("ToggleSave (local): uri={Uri}, wasLiked={WasLiked} → {NewLiked}",
+            itemUri, currentlySaved, !currentlySaved);
+
+        SaveStateChanged?.Invoke();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _localLikeService.SetLikedAsync(itemUri, !currentlySaved).ConfigureAwait(false);
+                SaveStateChanged?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                // Revert the optimistic update on failure.
+                _logger?.LogWarning(ex, "Local like persist failed for {Uri} — reverting", itemUri);
+                if (currentlySaved) cache.Add(itemUri);
+                else cache.Remove(itemUri);
+                SaveStateChanged?.Invoke();
+            }
+        });
     }
 
     public void Dispose()

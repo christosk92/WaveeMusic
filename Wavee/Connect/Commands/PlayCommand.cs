@@ -114,7 +114,23 @@ public sealed record PlayCommand : ConnectCommand
                             var uri = track.TryGetProperty("uri", out var u) ? u.GetString() : null;
                             var uid = track.TryGetProperty("uid", out var id) ? id.GetString() : null;
                             if (!string.IsNullOrEmpty(uri))
-                                pageTracks.Add(new PageTrack(uri!, uid ?? string.Empty));
+                            {
+                                Dictionary<string, string>? trackMeta = null;
+                                if (track.TryGetProperty("metadata", out var meta)
+                                    && meta.ValueKind == JsonValueKind.Object)
+                                {
+                                    trackMeta = new Dictionary<string, string>();
+                                    foreach (var kv in meta.EnumerateObject())
+                                    {
+                                        if (kv.Value.ValueKind == JsonValueKind.String)
+                                            trackMeta[kv.Name] = kv.Value.GetString()!;
+                                    }
+                                }
+                                pageTracks.Add(new PageTrack(uri!, uid ?? string.Empty)
+                                {
+                                    Metadata = trackMeta
+                                });
+                            }
                         }
                     }
                 }

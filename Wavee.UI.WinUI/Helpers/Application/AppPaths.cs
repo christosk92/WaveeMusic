@@ -13,5 +13,7 @@ public static class AppPaths
 
     public static string RollingLogFilePath { get; } = Path.Combine(LogsDirectory, "wavee-.log");
 
+    public static string DrmRollingLogFilePath { get; } = Path.Combine(LogsDirectory, "drm-.log");
+
     public static string CrashLogPath { get; } = Path.Combine(AppDataDirectory, "crash.log");
 }

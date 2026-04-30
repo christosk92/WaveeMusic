@@ -339,6 +339,30 @@ public static class PlaybackStateHelpers
             }
             : null;
 
+        if (track is not null && localState.ExtraMetadata is { Count: > 0 })
+        {
+            var metadata = new Dictionary<string, string>(track.Metadata);
+            foreach (var (key, value) in localState.ExtraMetadata)
+            {
+                if (string.IsNullOrWhiteSpace(key)) continue;
+                metadata[key] = value ?? string.Empty;
+            }
+            track = track with { Metadata = metadata };
+        }
+
+        var isLocalVideo = string.Equals(localState.MediaType, "video", StringComparison.OrdinalIgnoreCase);
+        if (track is not null && isLocalVideo)
+        {
+            var metadata = new Dictionary<string, string>(track.Metadata)
+            {
+                ["track_player"] = "video",
+                ["media.start_position"] = localState.PositionMs.ToString()
+            };
+            if (!string.IsNullOrWhiteSpace(localState.VideoManifestId))
+                metadata["media.manifest_id"] = localState.VideoManifestId;
+            track = track with { Metadata = metadata };
+        }
+
         // Stable IDs per librespot-java semantics:
         //   • SessionId  → one per CONTEXT (album/playlist/artist). Regenerated
         //                  only when the context URI changes. Stays stable
@@ -390,6 +414,7 @@ public static class PlaybackStateHelpers
             ActiveDeviceName = localState.ActiveDeviceName ?? prev.ActiveDeviceName,
             ActiveAudioDeviceName = localState.ActiveAudioDeviceName ?? prev.ActiveAudioDeviceName,
             AvailableAudioDevices = localState.AvailableAudioDevices ?? prev.AvailableAudioDevices,
+            VideoManifestId = localState.VideoManifestId,
             Volume = localState.Volume != 0 || prev.Volume == 0
                 ? localState.Volume
                 : prev.Volume,
@@ -621,7 +646,12 @@ public static class PlaybackStateHelpers
                 meta["image_xlarge_url"] = state.Track.ImageXLargeUrl;
 
             // Playback hints
-            meta["track_player"] = "audio";
+            var isVideoTrack = meta.TryGetValue("track_player", out var player)
+                               && string.Equals(player, "video", StringComparison.OrdinalIgnoreCase);
+            if (!meta.ContainsKey("track_player"))
+                meta["track_player"] = "audio";
+            if (isVideoTrack && !string.IsNullOrWhiteSpace(state.VideoManifestId))
+                meta["media.manifest_id"] = state.VideoManifestId!;
             meta["view_index"] = state.CurrentIndex.ToString();
             meta["iteration"] = "0";
             meta["media.start_position"] = state.PositionMs.ToString();
@@ -854,7 +884,6 @@ public static class PlaybackStateHelpers
         if (track.IsUserQueued) meta["is_queued"] = "true";
         if (track.IsAutoplay) meta["autoplay.is_autoplay"] = "true";
 
-        meta["track_player"] = "audio";
         meta["iteration"] = "0";
 
         // Merge per-track format attributes from the playlist API — item-score,
@@ -869,6 +898,9 @@ public static class PlaybackStateHelpers
                 meta[key] = value ?? string.Empty;
             }
         }
+
+        if (!meta.ContainsKey("track_player"))
+            meta["track_player"] = "audio";
 
         return pt;
     }

@@ -396,4 +396,40 @@ public interface ISpClient
     Task<FriendFeedEntry?> GetFriendPresenceAsync(
         string userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches the Spotify v9 video manifest JSON for a given manifest ID.
+    /// Endpoint: GET /manifests/v9/json/sources/{manifestId}/options/supports_drm
+    /// </summary>
+    Task<string> GetVideoManifestAsync(
+        string manifestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a Spotify video CDN resource, such as an MP4 initialization segment.
+    /// </summary>
+    Task<byte[]> GetVideoSegmentBytesAsync(
+        Uri uri,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// POSTs a PlayReady license challenge to Spotify's PlayReady license server
+    /// and returns the raw SOAP response bytes for
+    /// <c>PlayReadyLicenseAcquisitionServiceRequest.ProcessManualEnablingResponse</c>.
+    /// </summary>
+    Task<byte[]> PostPlayReadyLicenseAsync(
+        byte[] challenge,
+        string? licenseServerEndpoint = null,
+        IReadOnlyDictionary<string, string>? requestHeaders = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// POSTs a Widevine EME license challenge to Spotify's Widevine video
+    /// license endpoint and returns the raw license bytes.
+    /// </summary>
+    Task<byte[]> PostWidevineLicenseAsync(
+        byte[] challenge,
+        string? licenseServerEndpoint = null,
+        IReadOnlyDictionary<string, string>? requestHeaders = null,
+        CancellationToken cancellationToken = default);
 }

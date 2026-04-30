@@ -78,6 +78,16 @@ public sealed record ArtistOverviewResult
 
     // Gallery — landscape/portrait photos of the artist (multiple resolutions).
     public List<string> GalleryPhotos { get; init; } = new();
+
+    // Exact audio-track URI to Spotify video-track URI mappings from the
+    // artist overview payload's relatedMusicVideos/unmappedMusicVideos pages.
+    public List<ArtistMusicVideoMappingResult> MusicVideoMappings { get; init; } = new();
+}
+
+public sealed record ArtistMusicVideoMappingResult
+{
+    public required string AudioTrackUri { get; init; }
+    public required string VideoTrackUri { get; init; }
 }
 
 public sealed record ArtistSocialLinkResult

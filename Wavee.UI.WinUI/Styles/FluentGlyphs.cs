@@ -92,6 +92,8 @@ public static class FluentGlyphs
     public const string Canvas = "";
     /// <summary>ChevronRight — E76C.</summary>
     public const string ChevronRight = "";
+    /// <summary>Video — E714. Used for "Watch Video" / music-video toggle.</summary>
+    public const string Video = "";
 
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
     public const string DeviceRemote = "";

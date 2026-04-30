@@ -140,6 +140,41 @@ public sealed class AudioEngine : IAsyncDisposable
         }, CancellationToken.None);
     }
 
+    /// <summary>Play a local audio file from disk. No CDN, no audio key, no Spotify metadata.</summary>
+    public async Task PlayAsync(PlayLocalFileCommand cmd, CancellationToken ct = default)
+    {
+        await StopInternalAsync();
+
+        _logger?.LogInformation("Playing local file: {Title} ({Path})",
+            cmd.Metadata?.Title, cmd.FilePath);
+
+        _playbackCts = new CancellationTokenSource();
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_playbackCts.Token, ct);
+
+        _playbackTask = Task.Run(async () =>
+        {
+            try
+            {
+                await PlaybackLoopLocalAsync(cmd, linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger?.LogDebug("[AudioEngine] Local playback cancelled: {Title} ({Uri})",
+                    cmd.Metadata?.Title ?? "<unknown>", cmd.TrackUri);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[AudioEngine] Local playback error for {Title} ({Path})",
+                    cmd.Metadata?.Title ?? "<unknown>", cmd.FilePath);
+                _errorSubject.OnNext(new EngineError(ex.Message, ex));
+            }
+            finally
+            {
+                linkedCts.Dispose();
+            }
+        }, CancellationToken.None);
+    }
+
     public async Task PlayAsync(PlayResolvedTrackCommand cmd, CancellationToken ct = default)
     {
         // Stop any current playback
@@ -434,6 +469,166 @@ public sealed class AudioEngine : IAsyncDisposable
         }
         PublishState();
         _logger?.LogInformation("Track finished: {TrackUri}", cmd.TrackUri);
+        _trackCompletedSubject.OnNext(cmd.TrackUri);
+    }
+
+    // ── Local-file playback loop ──
+
+    private async Task PlaybackLoopLocalAsync(PlayLocalFileCommand cmd, CancellationToken ct)
+    {
+        if (!File.Exists(cmd.FilePath))
+            throw new FileNotFoundException("Local audio file no longer exists.", cmd.FilePath);
+
+        var startPositionMs = cmd.StartPositionMs;
+
+        lock (_stateLock)
+        {
+            _currentState = new EngineState
+            {
+                TrackUri = cmd.TrackUri,
+                Title = cmd.Metadata?.Title,
+                Artist = cmd.Metadata?.Artist,
+                Album = cmd.Metadata?.Album,
+                AlbumUri = cmd.Metadata?.AlbumUri,
+                ArtistUri = cmd.Metadata?.ArtistUri,
+                ImageUrl = cmd.Metadata?.ImageUrl,
+                ImageLargeUrl = cmd.Metadata?.ImageLargeUrl,
+                DurationMs = cmd.DurationMs,
+                PositionMs = startPositionMs,
+                IsPlaying = false,
+                IsPaused = false,
+                IsBuffering = true,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+        }
+        PublishState();
+
+        // BASS will own the file I/O via Bass.CreateStream(path, ...) — we hand it a
+        // LocalFilePathStream marker so BassDecoder takes the path-aware fast path
+        // and skips the in-memory copy. The FileStream inside is purely a placeholder
+        // that satisfies the Stream contract for non-BASS code paths.
+        await using var fileStream = new FileStream(
+            cmd.FilePath,
+            FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 4096, useAsync: true);
+        await using var localStream = new LocalFilePathStream(fileStream, cmd.FilePath);
+
+        var decoder = _decoderRegistry.FindDecoder(localStream, out var decodingStream);
+        if (decoder == null)
+            throw new NotSupportedException(
+                $"No decoder accepted local file {Path.GetExtension(cmd.FilePath)}: {cmd.FilePath}");
+
+        _logger?.LogDebug("Using decoder for local file: {DecoderName}", decoder.FormatName);
+
+        var audioFormat = await decoder.GetFormatAsync(decodingStream, ct);
+        _logger?.LogDebug("Local audio format: {SampleRate}Hz {Channels}ch {Bits}bit",
+            audioFormat.SampleRate, audioFormat.Channels, audioFormat.BitsPerSample);
+
+        await _audioSink.InitializeAsync(audioFormat, bufferSizeMs: 2000, ct);
+        _audioSink.SetBasePosition(startPositionMs);
+        await _processingChain.InitializeAsync(audioFormat, ct);
+
+        if (cmd.Normalization is { } norm && norm.TrackGainDb.HasValue)
+        {
+            foreach (var proc in _processingChain.Processors.OfType<NormalizationProcessor>())
+            {
+                var meta = new TrackMetadata
+                {
+                    Uri = cmd.TrackUri,
+                    ReplayGainTrackGain = norm.TrackGainDb.Value,
+                    ReplayGainTrackPeak = norm.TrackPeak ?? 1.0f
+                };
+                proc.SetTrackGain(meta);
+            }
+        }
+
+        lock (_stateLock)
+        {
+            _currentState = _currentState with
+            {
+                IsPlaying = true,
+                IsPaused = false,
+                IsBuffering = false,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+        }
+        PublishState();
+
+        lock (_seekLock) _pendingSeekMs = null;
+
+        long lastPublishMs = startPositionMs;
+
+        await foreach (var buffer in decoder.DecodeAsync(decodingStream, startPositionMs, null, ct))
+        {
+            long? seekTarget;
+            lock (_seekLock)
+            {
+                seekTarget = _pendingSeekMs;
+                _pendingSeekMs = null;
+            }
+
+            if (seekTarget.HasValue)
+            {
+                buffer.Return();
+                await _audioSink.FlushAsync();
+                _audioSink.SetBasePosition(seekTarget.Value);
+                lastPublishMs = seekTarget.Value;
+                decoder.SeekTo(seekTarget.Value);
+
+                lock (_stateLock)
+                {
+                    _currentState = _currentState with
+                    {
+                        PositionMs = seekTarget.Value,
+                        IsPlaying = true,
+                        IsPaused = false,
+                        IsBuffering = false,
+                        Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    };
+                }
+                PublishState();
+                continue;
+            }
+
+            var processed = _processingChain.Process(buffer);
+            await _audioSink.WriteAsync(processed.Data, ct);
+            processed.Return();
+            if (!ReferenceEquals(processed, buffer)) buffer.Return();
+
+            var positionMs = _audioSink.PlaybackPositionMs;
+            lock (_stateLock)
+            {
+                _currentState = _currentState with
+                {
+                    PositionMs = positionMs,
+                    IsPlaying = true,
+                    IsPaused = false,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+            }
+
+            if (positionMs - lastPublishMs >= PositionPublishIntervalMs)
+            {
+                lastPublishMs = positionMs;
+                PublishState();
+            }
+        }
+
+        await _audioSink.DrainAsync(ct);
+
+        var finalPosition = _audioSink.PlaybackPositionMs;
+        lock (_stateLock)
+        {
+            _currentState = _currentState with
+            {
+                PositionMs = finalPosition,
+                IsPlaying = false,
+                IsPaused = false,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+        }
+        PublishState();
+        _logger?.LogInformation("Local track finished: {TrackUri}", cmd.TrackUri);
         _trackCompletedSubject.OnNext(cmd.TrackUri);
     }
 

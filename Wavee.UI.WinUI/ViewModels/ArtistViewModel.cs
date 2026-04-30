@@ -502,6 +502,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 IsLoading = loading.Previous is null;
                 break;
             case EntityState<ArtistOverviewResult>.Ready ready:
+                // Music-video catalog cache pre-warm. Runs unconditionally so
+                // the cache is populated whether LoadAsync runs (fresh nav) or
+                // we go down the EnsureHeroUrls path (cache-served re-show).
+                NoteTopTracksHaveVideo(ready.Value);
+
                 if (_appliedOverviewFor != expectedArtistId || ready.Freshness == Freshness.Fresh)
                 {
                     _ = LoadAsync(ready.Value, expectedArtistId);
@@ -530,6 +535,42 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// the cached overview after a Hibernate-triggered URL null-out. Cheap —
     /// six property assignments. Pairs with <see cref="Hibernate"/>.
     /// </summary>
+    /// <summary>
+    /// Populates the music-video catalog cache with the top-tracks' has-video
+    /// flags. Called from <c>ApplyOverviewState</c> on every Ready state — both
+    /// fresh navigations (where LoadAsync runs) and cache-served re-shows
+    /// (where only EnsureHeroUrls runs). Harmless to call twice — the cache
+    /// is idempotent.
+    /// </summary>
+    private void NoteTopTracksHaveVideo(ArtistOverviewResult overview)
+    {
+        if ((overview.TopTracks is null || overview.TopTracks.Count == 0)
+            && overview.MusicVideoMappings.Count == 0)
+            return;
+
+        var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
+        if (videoCatalog is null) return;
+
+        _logger?.LogInformation("[VideoCache] ArtistViewModel pre-warm: {Count} top tracks for {Artist}",
+            overview.TopTracks?.Count ?? 0, ArtistId ?? "<unknown>");
+        if (overview.TopTracks is not null)
+        {
+            foreach (var track in overview.TopTracks)
+            {
+                if (string.IsNullOrEmpty(track.Uri)) continue;
+                videoCatalog.NoteHasVideo(track.Uri, track.HasVideo);
+            }
+        }
+
+        foreach (var mapping in overview.MusicVideoMappings)
+        {
+            videoCatalog.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
+            _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
+                mapping.AudioTrackUri, mapping.VideoTrackUri);
+        }
+    }
+
     private void EnsureHeroUrls(ArtistOverviewResult overview)
     {
         if (string.IsNullOrEmpty(ArtistImageUrl))
@@ -693,6 +734,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             // ── Top tracks (batch to avoid N+1 CollectionChanged events) ──
             var newTracks = new ObservableCollection<LazyTrackItem>();
+            // Populate the music-video catalog cache as we map top tracks.
+            // Avoids a redundant NPV roundtrip when the user clicks a track
+            // they've already seen on this artist page.
+            var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
+            _logger?.LogInformation("[VideoCache] ArtistViewModel populating cache with {Count} top tracks (cacheResolved={HasCache})",
+                overview.TopTracks.Count, videoCatalog is not null);
             int idx = 1;
             foreach (var track in overview.TopTracks)
             {
@@ -713,7 +761,22 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     HasVideo = track.HasVideo
                 };
                 newTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
+                if (videoCatalog is not null && !string.IsNullOrEmpty(track.Uri))
+                {
+                    videoCatalog.NoteHasVideo(track.Uri, track.HasVideo);
+                    _logger?.LogDebug("[VideoCache]   {Uri} → hasVideo={HasVideo}", track.Uri, track.HasVideo);
+                }
                 idx++;
+            }
+
+            if (videoCatalog is not null)
+            {
+                foreach (var mapping in overview.MusicVideoMappings)
+                {
+                    videoCatalog.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
+                    _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
+                        mapping.AudioTrackUri, mapping.VideoTrackUri);
+                }
             }
 
             // Pad + shimmer placeholders

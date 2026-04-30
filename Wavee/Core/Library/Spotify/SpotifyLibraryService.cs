@@ -772,6 +772,27 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
                         continue;
                     }
 
+                    // Fast-fail malformed URIs that could only fail at the
+                    // server. Anything that's not a Spotify URI shouldn't be
+                    // here — it was queued by mistake (e.g. a wavee:local:*
+                    // URI from before the like-routing fix that wrongly
+                    // prefixed "spotify:track:" onto a non-Spotify trackId).
+                    // Dropping immediately prevents a retry loop.
+                    if (string.IsNullOrEmpty(op.ItemUri) || !op.ItemUri.StartsWith("spotify:", StringComparison.Ordinal))
+                    {
+                        _logger?.LogWarning("Outbox op has non-Spotify URI, dropping: {Uri}", op.ItemUri);
+                        await _database.CompleteLibraryOpAsync(op.Id);
+                        failedCount++;
+                        continue;
+                    }
+                    if (op.ItemUri.IndexOf(":wavee:", StringComparison.Ordinal) > 0)
+                    {
+                        _logger?.LogWarning("Outbox op contains nested wavee URI (legacy bug), dropping: {Uri}", op.ItemUri);
+                        await _database.CompleteLibraryOpAsync(op.Id);
+                        failedCount++;
+                        continue;
+                    }
+
                     var set = GetSetForItemType(op.ItemType);
                     var item = new CollectionItem
                     {

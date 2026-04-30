@@ -31,7 +31,8 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 internal sealed partial class PlaybackStateService : ObservableObject, IPlaybackStateService, IDisposable,
     IRecipient<AuthStatusChangedMessage>,
     IRecipient<TrackMetadataEnrichedMessage>,
-    IRecipient<QueueMetadataEnrichedMessage>
+    IRecipient<QueueMetadataEnrichedMessage>,
+    IRecipient<MusicVideoAvailabilityMessage>
 {
     private readonly Session _session;
     private readonly IPlaybackService _playbackService;
@@ -40,6 +41,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
     private readonly IHomeFeedCache? _homeFeedCache;
+
+    // Lazily resolved to break the construction cycle with the discovery
+    // service (which depends on this state service for CurrentArtistId).
+    private Wavee.UI.WinUI.Services.IMusicVideoDiscoveryService? VideoDiscovery =>
+        CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoDiscoveryService>();
     private List<QueueItem> _queue = [];
     private List<QueueItem> _prevQueue = [];
     private IReadOnlyList<QueueItem>? _userQueueCache;
@@ -81,8 +88,19 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private string? _currentAlbumArtLarge;
     [ObservableProperty] private string? _currentArtistId;
     [ObservableProperty] private string? _currentAlbumId;
+    [ObservableProperty] private string? _currentTrackManifestId;
+    [ObservableProperty] private bool _currentTrackHasMusicVideo;
+    [ObservableProperty] private bool _currentTrackIsVideo;
     [ObservableProperty] private string? _currentAlbumArtColor;
     [ObservableProperty] private IReadOnlyList<ArtistCredit>? _currentArtists;
+    [ObservableProperty] private string? _currentOriginalTrackId;
+    [ObservableProperty] private string? _currentOriginalTrackTitle;
+    [ObservableProperty] private string? _currentOriginalArtistName;
+    [ObservableProperty] private string? _currentOriginalAlbumArt;
+    [ObservableProperty] private string? _currentOriginalAlbumArtLarge;
+    [ObservableProperty] private string? _currentOriginalArtistId;
+    [ObservableProperty] private string? _currentOriginalAlbumId;
+    [ObservableProperty] private double _currentOriginalDuration;
     [ObservableProperty] private double _position;
     [ObservableProperty] private double _duration;
     [ObservableProperty] private double _volume = 100.0;
@@ -150,6 +168,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _messenger.Register<AuthStatusChangedMessage>(this);
         _messenger.Register<TrackMetadataEnrichedMessage>(this);
         _messenger.Register<QueueMetadataEnrichedMessage>(this);
+        _messenger.Register<MusicVideoAvailabilityMessage>(this);
 
         // Try subscribing now in case session is already connected
         TrySubscribeToRemoteState();
@@ -190,6 +209,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         CurrentAlbumArtLarge = null;
         CurrentArtistId = null;
         CurrentAlbumId = null;
+        CurrentTrackManifestId = null;
+        CurrentTrackHasMusicVideo = false;
+        CurrentTrackIsVideo = false;
+        CurrentOriginalTrackId = null;
+        CurrentOriginalTrackTitle = null;
+        CurrentOriginalArtistName = null;
+        CurrentOriginalAlbumArt = null;
+        CurrentOriginalAlbumArtLarge = null;
+        CurrentOriginalArtistId = null;
+        CurrentOriginalAlbumId = null;
+        CurrentOriginalDuration = 0;
         CurrentAlbumArtColor = null;
         CurrentArtists = null;
         Position = 0;
@@ -568,6 +598,24 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         CurrentAlbumId = connectState.Track?.AlbumUri;
         CurrentArtists = null; // Connect state lacks per-artist data; enricher will populate
 
+        // Music-video manifest_id has two sources: the resolved Track proto
+        // (carried through LocalPlaybackState.VideoManifestId, merged into
+        // PlaybackState.VideoManifestId) and the remote-driven Connect-state
+        // metadata field. Prefer the engine-resolved value; fall back to the
+        // Connect metadata so remote-driven video tracks still light the
+        // affordance.
+        string? manifestId = connectState.VideoManifestId;
+        if (string.IsNullOrEmpty(manifestId)
+            && connectState.Track?.Metadata is { Count: > 0 } meta
+            && meta.TryGetValue("media.manifest_id", out var m))
+            manifestId = m;
+        CurrentTrackManifestId = manifestId;
+        var metadata = connectState.Track?.Metadata;
+        CurrentTrackIsVideo = metadata is { Count: > 0 } mediaMeta
+            && mediaMeta.TryGetValue("track_player", out var player)
+            && string.Equals(player, "video", StringComparison.OrdinalIgnoreCase);
+        ApplyOriginalTrackMetadata(metadata, CurrentTrackIsVideo, connectState);
+
         // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
         CurrentTrackId = trackId;
 
@@ -586,6 +634,56 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _pendingColorImageUrl = null;
             _pendingColorClear = true;
         }
+    }
+
+    private void ApplyOriginalTrackMetadata(
+        IReadOnlyDictionary<string, string>? metadata,
+        bool currentTrackIsVideo,
+        PlaybackState connectState)
+    {
+        if (!currentTrackIsVideo || metadata is null)
+        {
+            CurrentOriginalTrackId = null;
+            CurrentOriginalTrackTitle = null;
+            CurrentOriginalArtistName = null;
+            CurrentOriginalAlbumArt = null;
+            CurrentOriginalAlbumArtLarge = null;
+            CurrentOriginalArtistId = null;
+            CurrentOriginalAlbumId = null;
+            CurrentOriginalDuration = 0;
+            return;
+        }
+
+        metadata.TryGetValue("wavee.original_track_uri", out var originalUri);
+        metadata.TryGetValue("wavee.original_title", out var originalTitle);
+        metadata.TryGetValue("wavee.original_artist_name", out var originalArtist);
+        metadata.TryGetValue("wavee.original_image_url", out var originalImage);
+        metadata.TryGetValue("wavee.original_image_large_url", out var originalLargeImage);
+        metadata.TryGetValue("wavee.original_image_xlarge_url", out var originalXLargeImage);
+        metadata.TryGetValue("wavee.original_artist_uri", out var originalArtistUri);
+        metadata.TryGetValue("wavee.original_album_uri", out var originalAlbumUri);
+        metadata.TryGetValue("wavee.original_duration", out var originalDuration);
+
+        CurrentOriginalTrackId = ExtractTrackId(originalUri);
+        CurrentOriginalTrackTitle = string.IsNullOrWhiteSpace(originalTitle)
+            ? connectState.Track?.Title
+            : originalTitle;
+        CurrentOriginalArtistName = string.IsNullOrWhiteSpace(originalArtist)
+            ? connectState.Track?.Artist
+            : originalArtist;
+        CurrentOriginalAlbumArt = !string.IsNullOrWhiteSpace(originalImage)
+            ? originalImage
+            : connectState.Track?.ImageUrl;
+        CurrentOriginalAlbumArtLarge = !string.IsNullOrWhiteSpace(originalLargeImage)
+            ? originalLargeImage
+            : (!string.IsNullOrWhiteSpace(originalXLargeImage)
+                ? originalXLargeImage
+                : CurrentOriginalAlbumArt);
+        CurrentOriginalArtistId = originalArtistUri;
+        CurrentOriginalAlbumId = originalAlbumUri;
+        CurrentOriginalDuration = long.TryParse(originalDuration, out var durationMs)
+            ? durationMs
+            : 0;
     }
 
     private async Task ExtractAlbumColorAsync(string imageUrl)
@@ -664,6 +762,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         return uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
     }
 
+    private string? GetCurrentTrackUri()
+    {
+        if (string.IsNullOrEmpty(CurrentTrackId)) return null;
+        const string prefix = "spotify:track:";
+        return CurrentTrackId.StartsWith(prefix, StringComparison.Ordinal)
+            ? CurrentTrackId
+            : $"{prefix}{CurrentTrackId}";
+    }
+
     private static PlaybackContextInfo? ParseContext(string? contextUri)
     {
         if (string.IsNullOrEmpty(contextUri)) return null;
@@ -721,6 +828,31 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _userQueueCache = null;
             OnPropertyChanged(nameof(Queue));
             OnPropertyChanged(nameof(UserQueue));
+        });
+    }
+
+    // ── IRecipient<MusicVideoAvailabilityMessage> ──
+
+    public void Receive(MusicVideoAvailabilityMessage message)
+    {
+        var (audioUri, hasVideo) = message.Value;
+        _logger?.LogInformation("[VideoDiscovery] MusicVideoAvailability received: audio={Audio}, hasVideo={HasVideo}, currentTrack={Current}",
+            audioUri, hasVideo, GetCurrentTrackUri() ?? "<none>");
+
+        // Stale notifications from a previous track must not flip current
+        // state — the discovery service may complete after the user already
+        // skipped, and CurrentTrackId is the source of truth.
+        if (!string.Equals(audioUri, GetCurrentTrackUri(), StringComparison.Ordinal))
+        {
+            _logger?.LogInformation("[VideoDiscovery] dropping stale availability message");
+            return;
+        }
+
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (!string.Equals(audioUri, GetCurrentTrackUri(), StringComparison.Ordinal)) return;
+            CurrentTrackHasMusicVideo = hasVideo;
+            _logger?.LogInformation("[VideoDiscovery] CurrentTrackHasMusicVideo flipped to {Value}", hasVideo);
         });
     }
 
@@ -857,7 +989,107 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     public void DismissEndOfContext() => IsAtEndOfContext = false;
 
-    partial void OnCurrentTrackIdChanged(string? value) => _messenger.Send(new TrackChangedMessage(value));
+    public async Task<bool> SwitchToVideoAsync()
+    {
+        _logger?.LogInformation("[Cmd] SwitchToVideo: track={Track}, knownManifest={Manifest}, hasVideoHint={Hint}",
+            CurrentTrackId ?? "<none>",
+            CurrentTrackManifestId ?? "<none>",
+            CurrentTrackHasMusicVideo);
+
+        // Self-contained pattern: TrackResolver populated CurrentTrackManifestId
+        // already. Pass it through so the orchestrator doesn't need to redo
+        // the resolution.
+        if (!string.IsNullOrEmpty(CurrentTrackManifestId))
+        {
+            try
+            {
+                var audioUrix = GetCurrentTrackUri();
+                string? videoUri = null;
+                if (!string.IsNullOrEmpty(audioUrix))
+                    VideoDiscovery?.TryGetVideoUri(audioUrix, out videoUri);
+
+                var result = await _playbackService.SwitchToVideoAsync(
+                    CurrentTrackManifestId,
+                    string.IsNullOrEmpty(videoUri) ? null : videoUri,
+                    CancellationToken.None);
+                return result?.IsSuccess ?? false;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[Cmd] SwitchToVideo (self-contained) FAILED");
+                return false;
+            }
+        }
+
+        // Linked-URI pattern: lazily resolve via the discovery service.
+        var audioUri = GetCurrentTrackUri();
+        var discovery = VideoDiscovery;
+        if (string.IsNullOrEmpty(audioUri) || discovery is null)
+        {
+            _logger?.LogWarning("[Cmd] SwitchToVideo: no manifest available for {Track}", audioUri ?? "<none>");
+            return false;
+        }
+
+        try
+        {
+            var manifestId = await discovery.ResolveManifestIdAsync(audioUri, CancellationToken.None);
+            if (string.IsNullOrEmpty(manifestId))
+            {
+                _logger?.LogWarning("[Cmd] SwitchToVideo: discovery service returned no manifest for {Track}", audioUri);
+                return false;
+            }
+            discovery.TryGetVideoUri(audioUri, out var videoUri);
+            var result = await _playbackService.SwitchToVideoAsync(
+                manifestId,
+                string.IsNullOrEmpty(videoUri) ? null : videoUri,
+                CancellationToken.None);
+            return result?.IsSuccess ?? false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[Cmd] SwitchToVideo (linked-URI) FAILED for {Track}", audioUri);
+            return false;
+        }
+    }
+
+    partial void OnCurrentTrackIdChanged(string? value)
+    {
+        // Reset the music-video availability hint immediately on track change.
+        CurrentTrackHasMusicVideo = false;
+        if (string.IsNullOrEmpty(value)) return;
+        if (CurrentTrackIsVideo) return;
+        var audioUri = value.StartsWith("spotify:track:", StringComparison.Ordinal)
+            ? value
+            : $"spotify:track:{value}";
+
+        // Cheap synchronous lookup: if we've already seen this track on a
+        // GraphQL surface (artist top tracks, album page, etc.) the catalog
+        // cache already knows the answer.
+        var cache = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
+        var lookup = cache?.GetHasVideo(audioUri);
+        _logger?.LogInformation("[VideoDiscovery] cache lookup on track change: {Track} → {Result}",
+            audioUri, lookup?.ToString() ?? "<unknown>");
+
+        if (lookup.HasValue)
+        {
+            // Flip immediately when we already know. No NPV needed.
+            CurrentTrackHasMusicVideo = lookup.Value;
+            return;
+        }
+
+        // Cache says unknown → kick off background NPV discovery directly via
+        // the service. Discovery completes by sending
+        // MusicVideoAvailabilityMessage which our handler consumes.
+        var discovery = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoDiscoveryService>();
+        if (discovery is null)
+        {
+            _logger?.LogWarning("[VideoDiscovery] discovery service not registered — button will not surface for {Track}", audioUri);
+            return;
+        }
+        discovery.BeginBackgroundDiscovery(audioUri);
+    }
 
     partial void OnCurrentContextChanged(PlaybackContextInfo? value)
     {

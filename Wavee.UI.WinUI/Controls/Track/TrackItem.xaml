@@ -89,6 +89,10 @@
                             CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
                         <TextBlock Text="E" FontSize="9" FontWeight="Bold"/>
                     </Border>
+                    <FontIcon x:Name="CompactLocalBadge" Grid.Column="1" Visibility="Collapsed"
+                              Glyph="&#xE8B7;" FontSize="11" Margin="6,0,0,0"
+                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                              ToolTipService.ToolTip="On this PC"/>
                 </Grid>
                 <StackPanel Orientation="Horizontal" Spacing="0">
                     <TextBlock x:Name="CompactSubtitle"
@@ -234,6 +238,10 @@
                                 <TextBlock Text="E" FontSize="9" FontWeight="Bold"
                                            Foreground="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
                             </Border>
+                            <FontIcon x:Name="RowLocalBadge" Grid.Column="1" Visibility="Collapsed"
+                                      Glyph="&#xE8B7;" FontSize="12" Margin="6,0,0,0"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                      ToolTipService.ToolTip="On this PC"/>
                         </Grid>
                         <HyperlinkButton x:Name="RowArtistLink"
                                          Padding="0,0,0,0"

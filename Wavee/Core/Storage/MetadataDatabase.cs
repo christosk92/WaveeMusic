@@ -60,7 +60,13 @@ public sealed class MetadataDatabase : IMetadataDatabase
     // v9: Added media_overrides table
     // v11: Added playlist/rootlist cache snapshots
     // v12: Added header_image_url + format_attributes_json on spotify_playlists
-    private const int CurrentSchemaVersion = 14;
+    // v13: Added available_signals_json on spotify_playlists
+    // v14: Added cache_schema_version per playlist row
+    // v15: Local-file library — local_files, local_artwork[+_links], playlist_overlay_items;
+    //      entities.is_locally_liked; watched_folders gains include_subfolders + scan-status cols.
+    // v16: local_files.is_video flag — flips routing from AudioHost (BASS) to UI MediaPlayer
+    //      for files whose extension is in the video set (.mp4 .mov .m4v .mkv .webm).
+    private const int CurrentSchemaVersion = 16;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -137,6 +143,74 @@ public sealed class MetadataDatabase : IMetadataDatabase
             ToVersion: 14,
             Sql: """
                 ALTER TABLE spotify_playlists ADD COLUMN cache_schema_version INTEGER NOT NULL DEFAULT 0;
+                """),
+
+        // v15: First-class local file library. Adds the indexer's per-file fingerprint
+        // table, deduped artwork cache, playlist overlay rows, a local-likes column on
+        // entities, and richer scan status on watched_folders.
+        new SchemaMigration(
+            FromVersion: 14,
+            ToVersion: 15,
+            Sql: """
+                ALTER TABLE entities ADD COLUMN is_locally_liked INTEGER NOT NULL DEFAULT 0;
+
+                ALTER TABLE watched_folders ADD COLUMN include_subfolders INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE watched_folders ADD COLUMN last_scan_status TEXT;
+                ALTER TABLE watched_folders ADD COLUMN last_scan_error TEXT;
+                ALTER TABLE watched_folders ADD COLUMN last_scan_duration_ms INTEGER;
+
+                CREATE TABLE IF NOT EXISTS local_files (
+                    path                TEXT PRIMARY KEY NOT NULL,
+                    folder_id           INTEGER NOT NULL,
+                    track_uri           TEXT NOT NULL,
+                    file_size           INTEGER NOT NULL,
+                    file_mtime_ticks    INTEGER NOT NULL,
+                    content_hash        TEXT NOT NULL,
+                    last_indexed_at     INTEGER NOT NULL,
+                    last_seen_at        INTEGER NOT NULL,
+                    scan_error          TEXT,
+                    FOREIGN KEY (folder_id) REFERENCES watched_folders(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_local_files_track_uri ON local_files(track_uri);
+                CREATE INDEX IF NOT EXISTS idx_local_files_folder    ON local_files(folder_id);
+
+                CREATE TABLE IF NOT EXISTS local_artwork (
+                    image_hash    TEXT PRIMARY KEY NOT NULL,
+                    cached_path   TEXT NOT NULL,
+                    mime_type     TEXT,
+                    width         INTEGER,
+                    height        INTEGER,
+                    created_at    INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS local_artwork_links (
+                    entity_uri  TEXT NOT NULL,
+                    role        TEXT NOT NULL,
+                    image_hash  TEXT NOT NULL,
+                    PRIMARY KEY (entity_uri, role),
+                    FOREIGN KEY (image_hash) REFERENCES local_artwork(image_hash) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS playlist_overlay_items (
+                    playlist_uri    TEXT NOT NULL,
+                    item_uri        TEXT NOT NULL,
+                    position        INTEGER NOT NULL,
+                    added_at        INTEGER NOT NULL,
+                    added_by        TEXT,
+                    PRIMARY KEY (playlist_uri, item_uri, added_at)
+                );
+                CREATE INDEX IF NOT EXISTS idx_playlist_overlay_pl ON playlist_overlay_items(playlist_uri);
+                """),
+
+        // v16: local_files.is_video — drives PlaybackOrchestrator dispatch
+        // (video files take the UI-process MediaPlayer path; audio stays on
+        // AudioHost). Default 0 so existing rows stay audio; the next scan
+        // re-evaluates each file by extension.
+        new SchemaMigration(
+            FromVersion: 15,
+            ToVersion: 16,
+            Sql: """
+                ALTER TABLE local_files ADD COLUMN is_video INTEGER NOT NULL DEFAULT 0;
                 """)
     ];
 
@@ -305,6 +379,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS lyrics_cache;
             DROP TABLE IF EXISTS library_outbox;
             DROP TABLE IF EXISTS media_overrides;
+            DROP TABLE IF EXISTS local_files;
+            DROP TABLE IF EXISTS local_artwork;
+            DROP TABLE IF EXISTS local_artwork_links;
+            DROP TABLE IF EXISTS playlist_overlay_items;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -379,6 +457,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
                         -- Spotify cache TTL (NULL for local files = permanent)
                         expires_at       INTEGER,
+
+                        -- Local-file likes (Spotify likes live in spotify_library)
+                        is_locally_liked INTEGER NOT NULL DEFAULT 0,
 
                         -- Timestamps (Unix seconds UTC)
                         added_at         INTEGER,
@@ -461,12 +542,67 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 cmd.Transaction = transaction;
                 cmd.CommandText = """
                     CREATE TABLE IF NOT EXISTS watched_folders (
-                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                        path            TEXT NOT NULL UNIQUE,
-                        last_scan_at    INTEGER,
-                        file_count      INTEGER NOT NULL DEFAULT 0,
-                        enabled         INTEGER NOT NULL DEFAULT 1
+                        id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path                     TEXT NOT NULL UNIQUE,
+                        last_scan_at             INTEGER,
+                        file_count               INTEGER NOT NULL DEFAULT 0,
+                        enabled                  INTEGER NOT NULL DEFAULT 1,
+                        include_subfolders       INTEGER NOT NULL DEFAULT 1,
+                        last_scan_status         TEXT,
+                        last_scan_error          TEXT,
+                        last_scan_duration_ms    INTEGER
                     );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            // Local file library (v15) — per-file fingerprint, artwork cache, playlist overlays.
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS local_files (
+                        path                TEXT PRIMARY KEY NOT NULL,
+                        folder_id           INTEGER NOT NULL,
+                        track_uri           TEXT NOT NULL,
+                        file_size           INTEGER NOT NULL,
+                        file_mtime_ticks    INTEGER NOT NULL,
+                        content_hash        TEXT NOT NULL,
+                        last_indexed_at     INTEGER NOT NULL,
+                        last_seen_at        INTEGER NOT NULL,
+                        scan_error          TEXT,
+                        is_video            INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY (folder_id) REFERENCES watched_folders(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_files_track_uri ON local_files(track_uri);
+                    CREATE INDEX IF NOT EXISTS idx_local_files_folder    ON local_files(folder_id);
+
+                    CREATE TABLE IF NOT EXISTS local_artwork (
+                        image_hash    TEXT PRIMARY KEY NOT NULL,
+                        cached_path   TEXT NOT NULL,
+                        mime_type     TEXT,
+                        width         INTEGER,
+                        height        INTEGER,
+                        created_at    INTEGER NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS local_artwork_links (
+                        entity_uri  TEXT NOT NULL,
+                        role        TEXT NOT NULL,
+                        image_hash  TEXT NOT NULL,
+                        PRIMARY KEY (entity_uri, role),
+                        FOREIGN KEY (image_hash) REFERENCES local_artwork(image_hash) ON DELETE CASCADE
+                    );
+
+                    CREATE TABLE IF NOT EXISTS playlist_overlay_items (
+                        playlist_uri    TEXT NOT NULL,
+                        item_uri        TEXT NOT NULL,
+                        position        INTEGER NOT NULL,
+                        added_at        INTEGER NOT NULL,
+                        added_by        TEXT,
+                        PRIMARY KEY (playlist_uri, item_uri, added_at)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_playlist_overlay_pl ON playlist_overlay_items(playlist_uri);
                     """;
                 cmd.ExecuteNonQuery();
             }

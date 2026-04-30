@@ -54,6 +54,12 @@ public sealed class ArtistUnion
     [JsonPropertyName("watchFeedEntrypoint")]
     public ArtistWatchFeedEntrypoint? WatchFeedEntrypoint { get; init; }
 
+    [JsonPropertyName("relatedMusicVideos")]
+    public ArtistMusicVideosPage? RelatedMusicVideos { get; init; }
+
+    [JsonPropertyName("unmappedMusicVideos")]
+    public ArtistMusicVideosPage? UnmappedMusicVideos { get; init; }
+
     [JsonPropertyName("goods")]
     public ArtistGoods? Goods { get; init; }
 }
@@ -349,6 +355,8 @@ public sealed class ArtistTrackAssociationsInfo
     [JsonPropertyName("videoAssociations")]
     public ArtistVideoAssociationsInfo? VideoAssociations { get; init; }
 
+    [JsonPropertyName("audioAssociations")]
+    public ArtistAudioAssociations? AudioAssociations { get; init; }
 }
 public sealed class ArtistVideoAssociationsInfo
 {
@@ -371,6 +379,27 @@ public sealed class ArtistTrackAudioRef
 {
     [JsonPropertyName("_uri")]
     public string? Uri { get; init; }
+}
+
+public sealed class ArtistMusicVideosPage
+{
+    [JsonPropertyName("__typename")]
+    public string? Typename { get; init; }
+
+    [JsonPropertyName("items")]
+    public List<ArtistMusicVideoItem>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+}
+
+public sealed class ArtistMusicVideoItem
+{
+    [JsonPropertyName("_uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("data")]
+    public ArtistTrack? Data { get; init; }
 }
 
 public sealed class ArtistTrackDuration
@@ -733,6 +762,8 @@ public sealed class ArtistConcertLocation
 [JsonSerializable(typeof(ArtistWatchFeedVideo))]
 [JsonSerializable(typeof(ArtistWatchFeedThumbnail))]
 [JsonSerializable(typeof(ArtistWatchFeedThumbnailData))]
+[JsonSerializable(typeof(ArtistMusicVideosPage))]
+[JsonSerializable(typeof(ArtistMusicVideoItem))]
 [JsonSerializable(typeof(ArtistPinnedItem))]
 [JsonSerializable(typeof(ArtistPinnedItemWrapper))]
 [JsonSerializable(typeof(ArtistPinnedItemData))]

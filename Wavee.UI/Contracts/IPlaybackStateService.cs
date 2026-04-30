@@ -36,6 +36,40 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     string? CurrentAlbumId { get; }
     IReadOnlyList<ArtistCredit>? CurrentArtists { get; }
 
+    string? CurrentOriginalTrackId { get; }
+    string? CurrentOriginalTrackTitle { get; }
+    string? CurrentOriginalArtistName { get; }
+    string? CurrentOriginalAlbumArt { get; }
+    string? CurrentOriginalAlbumArtLarge { get; }
+    string? CurrentOriginalArtistId { get; }
+    string? CurrentOriginalAlbumId { get; }
+    double CurrentOriginalDuration { get; }
+
+    /// <summary>
+    /// Hex-encoded music-video manifest_id when the current track has a video
+    /// variant. Sourced from either the resolved Track proto (Wavee-initiated
+    /// playback) or Connect-state metadata (remote-driven). Drives the
+    /// "Watch Video" button visibility in the player UI for the
+    /// "self-contained" pattern (audio URI itself carries original_video).
+    /// </summary>
+    string? CurrentTrackManifestId { get; }
+
+    /// <summary>
+    /// True when the playing audio track has a music-video variant available
+    /// via Spotify's GraphQL associations (linked-URI pattern, where the audio
+    /// and video URIs are different catalog entries). Combined with
+    /// <see cref="CurrentTrackManifestId"/> in the UI to decide whether to show
+    /// the "Watch Video" affordance. Populated by
+    /// <c>MusicVideoDiscoveryService</c> via Pathfinder NPV.
+    /// </summary>
+    bool CurrentTrackHasMusicVideo { get; }
+
+    /// <summary>
+    /// True when the active now-playing item is already the Spotify video
+    /// variant rather than the audio track.
+    /// </summary>
+    bool CurrentTrackIsVideo { get; }
+
     /// <summary>
     /// Theme-appropriate hex color extracted from the current album art.
     /// Uses DarkHex in dark theme, LightHex in light theme.
@@ -169,4 +203,15 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// user-initiated rather than state-driven.
     /// </summary>
     void DismissEndOfContext();
+
+    /// <summary>
+    /// Switches the currently-playing track from audio to its music-video
+    /// variant at the live playback position. Returns <c>true</c> when an
+    /// engine switch was initiated and the caller should navigate to the
+    /// video page; <c>false</c> when no manifest could be resolved (e.g.
+    /// NPV returned no associated video, the video URI's TrackV4 has no
+    /// <c>OriginalVideo</c>, network error). Callers MUST branch on the
+    /// result rather than blindly opening the video player.
+    /// </summary>
+    Task<bool> SwitchToVideoAsync();
 }

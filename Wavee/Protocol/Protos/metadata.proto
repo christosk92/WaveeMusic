@@ -95,6 +95,12 @@ message Track {
     optional string version_title = 28;
     repeated ArtistWithRole artist_with_role = 32;
     optional string canonical_uri = 36;
+    // For "self-contained" music-video tracks, original_video[0].gid is the
+    // manifest_id consumed by gew4-spclient's /manifests/v9/json/sources/{id}
+    // DASH+PlayReady endpoint. For "linked-URI" tracks (audio URI ≠ video
+    // URI), this field is empty and discovery requires the AudioAssociations
+    // extension (kind 98) to map audio URI → video URI; that video track's
+    // original_video then carries the manifest_id.
     repeated Video original_video = 38;
 }
 

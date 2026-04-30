@@ -86,6 +86,20 @@ public interface IPlaybackService : INotifyPropertyChanged
         int deviceIndex,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Switches the currently-playing track from audio to its music-video
+    /// variant at the live playback position. Preserves queue / context / play
+    /// origin. No-op if the track has no video variant or video is already
+    /// active.
+    ///
+    /// <paramref name="manifestIdOverride"/> lets the UI inject a lazily-
+    /// resolved manifest_id for linked-URI tracks (Pathfinder NPV path).
+    /// </summary>
+    Task<PlaybackResult> SwitchToVideoAsync(
+        string? manifestIdOverride = null,
+        string? videoTrackUriOverride = null,
+        CancellationToken ct = default);
+
     // ── Observable state ──
 
     /// <summary>True while a play command is buffering/loading.</summary>

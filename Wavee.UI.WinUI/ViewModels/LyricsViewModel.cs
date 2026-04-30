@@ -154,6 +154,18 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Local files have no Spotify lyrics provider in v1. Short-circuit here so
+        // the lyrics panel renders the "no lyrics" affordance without a network fetch.
+        if (Wavee.Core.PlayableUri.IsLocalTrack(trackId))
+        {
+            _loadedTrackId = trackId;
+            _loadedTrackSucceeded = true;
+            CurrentLyrics = null;
+            HasLyrics = false;
+            IsLoading = false;
+            return;
+        }
+
         // Only skip re-fetching if we already have a successful result for this track.
         // A previous failed attempt (e.g. metadata race, transient provider error) must
         // be retryable — otherwise the VM is wedged for the rest of the track's playback.

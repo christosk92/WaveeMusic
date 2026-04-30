@@ -160,14 +160,6 @@
             </Border.Background>
 
             <Grid x:Name="PlayerBarLayoutRoot" MinHeight="56" Padding="0,0,8,0">
-                <ProgressBar
-                    IsIndeterminate="True"
-                    Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                    Height="2"
-                    Margin="0"
-                    VerticalAlignment="Top"
-                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-
                 <Grid x:Name="WideLayoutRoot" Height="56">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -348,8 +340,7 @@
                             IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                             IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
                             SeekStarted="ProgressBar_SeekStarted"
-                            SeekCommitted="ProgressBar_SeekCommitted"
-                            Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                            SeekCommitted="ProgressBar_SeekCommitted" />
                     </Grid>
 
                     <TextBlock
@@ -509,6 +500,28 @@
                                 ToolTipService.ToolTip="Friends Activity">
                                 <FontIcon Glyph="&#xE716;" FontSize="14" />
                             </ToggleButton>
+
+                            <Button
+                                Style="{StaticResource TransparentButtonStyle}"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                Command="{x:Bind ViewModel.SwitchToVideoCommand}"
+                                IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                ToolTipService.ToolTip="Watch Video">
+                                <Grid Width="16" Height="16">
+                                    <FontIcon
+                                        Glyph="&#xE714;"
+                                        FontSize="14"
+                                        Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                    <ProgressRing
+                                        Width="16"
+                                        Height="16"
+                                        IsActive="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </Grid>
+                            </Button>
                         </StackPanel>
 
                         <Button
@@ -562,6 +575,15 @@
                                             <FontIcon Glyph="&#xE716;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Watch Video"
+                                        Command="{x:Bind ViewModel.SwitchToVideoCommand}"
+                                        IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                        Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE714;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <ToggleMenuFlyoutItem
                                         Text="Shuffle"
@@ -856,6 +878,15 @@
                                             <FontIcon Glyph="&#xE716;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Watch Video"
+                                        Command="{x:Bind ViewModel.SwitchToVideoCommand}"
+                                        IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                        Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE714;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <ToggleMenuFlyoutItem
                                         Text="Shuffle"
@@ -910,8 +941,7 @@
                         IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                         IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
                         SeekStarted="ProgressBar_SeekStarted"
-                        SeekCommitted="ProgressBar_SeekCommitted"
-                        Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        SeekCommitted="ProgressBar_SeekCommitted" />
 
                     <TextBlock
                         Grid.Row="1"

@@ -257,13 +257,14 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         // Rehydrate rebuilds Sections + Chips from the cached home-feed
         // response — paired with HibernateForNavigation on OnNavigatedFrom.
         // Cheap (no network); avoids holding the parsed tree while away.
         ViewModel.ResumeAndRehydrate();
+        await ViewModel.RefreshLocalSectionAsync();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -494,6 +495,20 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed
             && sender is Button { DataContext: HomeSectionItem item })
             HomeViewModel.NavigateToItem(item, openInNewTab: true);
+    }
+
+    private void HomeSectionViewAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not string uri || string.IsNullOrEmpty(uri))
+            return;
+
+        // The local library is the only "View all" destination today. Future
+        // sections (e.g. genre browse pages) can dispatch on URI prefix here.
+        if (uri == "wavee:local:library" ||
+            uri.StartsWith("wavee:local:", StringComparison.Ordinal))
+        {
+            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenLocalLibrary();
+        }
     }
 
     private async void HomeSectionDebugButton_Click(object sender, RoutedEventArgs e)
@@ -818,19 +833,29 @@ public sealed class HomeItemTemplateSelector : DataTemplateSelector
 
     protected override DataTemplate SelectTemplateCore(object item)
     {
+        DataTemplate result;
+        string name;
         if (item is HomeSectionItem hsi)
         {
             if (hsi.IsRecentlySaved
                 && hsi.Uri != null
                 && hsi.Uri.Contains(":collection", System.StringComparison.OrdinalIgnoreCase)
                 && LikedSongsRecentTemplate != null)
-                return LikedSongsRecentTemplate;
-            if (hsi.ContentType == HomeContentType.Episode && EpisodeTemplate != null)
-                return EpisodeTemplate;
-            if (hsi.ContentType == HomeContentType.Artist)
-                return ArtistTemplate ?? DefaultTemplate!;
+            { result = LikedSongsRecentTemplate; name = "LikedSongsRecent"; }
+            else if (hsi.ContentType == HomeContentType.Episode && EpisodeTemplate != null)
+            { result = EpisodeTemplate; name = "Episode"; }
+            else if (hsi.ContentType == HomeContentType.Artist)
+            { result = ArtistTemplate ?? DefaultTemplate!; name = ArtistTemplate is not null ? "Artist" : "Default(Artist-fallback)"; }
+            else
+            { result = DefaultTemplate!; name = "Default"; }
+            System.Diagnostics.Debug.WriteLine($"[shelf-recycle] Select template={name} ct={hsi.ContentType} uri={hsi.Uri ?? "(null)"}");
         }
-        return DefaultTemplate!;
+        else
+        {
+            result = DefaultTemplate!;
+            System.Diagnostics.Debug.WriteLine($"[shelf-recycle] Select template=Default(non-hsi) item={item?.GetType().Name ?? "null"}");
+        }
+        return result;
     }
 
     protected override DataTemplate SelectTemplateCore(object item, DependencyObject container)

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
@@ -29,10 +30,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
     private const int MaxRetries = 3;
     private const long DefaultTtlSeconds = 3600; // 1 hour fallback
     private const string ExtendedMetadataContentType = "application/protobuf";
-    private const string DesktopAppPlatform = "Win32_x86_64";
-    private const string DesktopAppVersion = "128600502";
-    private const string DesktopUserAgent = "Spotify/128600502 Win32_x86_64/Windows 10 (10.0.26200; x64; AppX)";
-    private const string MetadataClientFeatureId = "collection";
+    private const int AudioAssociationsExtensionKindValue = 98;
+    private const int VideoAssociationsExtensionKindValue = 99;
+    private const string CollectionMetadataClientFeatureId = "collection";
+    private const string PlayerMetadataClientFeatureId = "player_mdata";
+    private static readonly string DesktopUserAgent = SpotifyClientIdentity.GetUserAgent();
 
     /// <summary>
     /// Creates a new ExtendedMetadataClient.
@@ -132,6 +134,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             return null;
         }
     }
+
 
     /// <summary>
     /// Gets full track metadata (TRACK_V4) including audio files.
@@ -273,13 +276,20 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         var accountType = await _session.GetAccountTypeAsync(cancellationToken);
         var catalogue = MapAccountTypeToCatalogue(accountType);
 
+        var usesPlayerMetadata = requestList
+            .SelectMany(static r => r.Extensions)
+            .Any(static extension =>
+                (int)extension == AudioAssociationsExtensionKindValue ||
+                (int)extension == VideoAssociationsExtensionKindValue);
+
         // Build request
         var request = new BatchedEntityRequest
         {
             Header = new BatchedEntityRequestHeader
             {
                 Country = countryCode,
-                Catalogue = catalogue
+                Catalogue = catalogue,
+                TaskId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(16))
             }
         };
 
@@ -301,14 +311,18 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
         httpRequest.Version = HttpVersion.Version11;
         httpRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-        await AddExtendedMetadataHeadersAsync(httpRequest, accessToken.Token, cancellationToken);
+        await AddExtendedMetadataHeadersAsync(
+            httpRequest,
+            accessToken.Token,
+            usesPlayerMetadata ? PlayerMetadataClientFeatureId : CollectionMetadataClientFeatureId,
+            cancellationToken);
 
         var protobufBytes = request.ToByteArray();
         httpRequest.Content = new ByteArrayContent(protobufBytes);
         httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(ExtendedMetadataContentType);
 
-        _logger?.LogDebug("POST extended-metadata: {Count} entities, country={Country}, catalogue={Catalogue}",
-            requestList.Count, countryCode, catalogue);
+        _logger?.LogDebug("POST extended-metadata: {Count} entities, country={Country}, catalogue={Catalogue}, feature={Feature}",
+            requestList.Count, countryCode, catalogue, usesPlayerMetadata ? PlayerMetadataClientFeatureId : CollectionMetadataClientFeatureId);
 
         // Send with retry
         var httpResponse = await SendWithRetryAsync(httpRequest, cancellationToken);
@@ -388,6 +402,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
     private async Task AddExtendedMetadataHeadersAsync(
         HttpRequestMessage request,
         string accessToken,
+        string clientFeatureId,
         CancellationToken cancellationToken)
     {
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -398,9 +413,9 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("zstd"));
         request.Headers.Connection.Add("keep-alive");
         request.Headers.TryAddWithoutValidation("Accept-Language", GetMetadataRequestLanguage());
-        request.Headers.TryAddWithoutValidation("App-Platform", DesktopAppPlatform);
-        request.Headers.TryAddWithoutValidation("Spotify-App-Version", DesktopAppVersion);
-        request.Headers.TryAddWithoutValidation("client-feature-id", MetadataClientFeatureId);
+        request.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyClientIdentity.AppVersionHeader);
+        request.Headers.TryAddWithoutValidation("client-feature-id", clientFeatureId);
         request.Headers.TryAddWithoutValidation("Origin", GetBaseUrl());
         request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
         request.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");

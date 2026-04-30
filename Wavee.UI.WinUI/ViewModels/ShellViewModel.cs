@@ -1198,6 +1198,26 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             : PlayerLocation.Bottom;
     }
 
+    /// <summary>
+    /// Open the now-playing surface: ensure the sidebar player widget is
+    /// visible (PlayerLocation = Sidebar) AND expanded (SidebarPlayerCollapsed = false).
+    /// Idempotent — a second call when already open does nothing because the
+    /// generated property setters short-circuit on equal values.
+    ///
+    /// Wired to the bottom PlayerBar's track-title click so the user always has
+    /// a discoverable path back to the now-playing surface — including videos,
+    /// where SidebarPlayerWidget renders the active video surface in
+    /// ExpandedVideoHost.
+    /// </summary>
+    [RelayCommand]
+    private void OpenNowPlaying()
+    {
+        if (PlayerLocation != PlayerLocation.Sidebar)
+            PlayerLocation = PlayerLocation.Sidebar;
+        if (SidebarPlayerCollapsed)
+            SidebarPlayerCollapsed = false;
+    }
+
     private void ToggleRightPanel(RightPanelMode mode)
     {
         if (IsRightPanelOpen && RightPanelMode == mode)
@@ -1505,6 +1525,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public void UpdateNavigationState()
     {
+        bool onVideo = false;
         if (SelectedTabItem?.ContentFrame is Frame frame)
         {
             CanGoBack = frame.CanGoBack;
@@ -1512,6 +1533,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             IsOnHomePage = frame.Content is HomePage;
             IsOnProfilePage = frame.Content is ProfilePage;
             IsOnSearchPage = frame.Content is SearchPage;
+            onVideo = frame.Content is Wavee.UI.WinUI.Views.VideoPlayerPage;
         }
         else
         {
@@ -1520,6 +1542,22 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             IsOnHomePage = false;
             IsOnProfilePage = false;
             IsOnSearchPage = false;
+        }
+
+        // Drive the mini-player's "are we currently on the full video page"
+        // input. The mini hides itself whenever the user is already on the
+        // page that hosts the video — only takes over when the user
+        // navigates away. Resolved lazily via Ioc to keep the ShellViewModel
+        // ctor unchanged.
+        try
+        {
+            var miniVm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.UI.WinUI.ViewModels.MiniVideoPlayerViewModel>();
+            miniVm?.SetOnVideoPage(onVideo);
+        }
+        catch
+        {
+            // Mini VM might not be registered yet during early startup.
         }
     }
 

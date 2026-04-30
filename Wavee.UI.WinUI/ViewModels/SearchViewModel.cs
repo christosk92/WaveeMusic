@@ -116,14 +116,18 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
+    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+
     public SearchViewModel(
         IPathfinderClient pathfinderClient,
         IPlaybackStateService playbackStateService,
-        ILogger<SearchViewModel>? logger = null)
+        ILogger<SearchViewModel>? logger = null,
+        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null)
     {
         _pathfinderClient = pathfinderClient;
         _playbackStateService = playbackStateService;
         _logger = logger;
+        _localLibrary = localLibrary;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, null)
         {
@@ -195,21 +199,36 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
         try
         {
-            var result = await Task.Run(() => _pathfinderClient.SearchAsync(
+            // Spotify search + local-library search run in parallel. Local is
+            // optional — if the service isn't registered (very early startup),
+            // fall back to Spotify-only.
+            var spotifyTask = Task.Run(() => _pathfinderClient.SearchAsync(
                 query,
                 scope,
                 limit: 30));
+            var localTask = _localLibrary is null
+                ? Task.FromResult<IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult>>(Array.Empty<Wavee.Core.Library.Local.LocalSearchResult>())
+                : _localLibrary.SearchAsync(query, limit: 12);
+            await Task.WhenAll(spotifyTask, localTask);
+            var result = spotifyTask.Result;
+            var localResults = localTask.Result;
 
             if (requestVersion != _requestVersion)
                 return;
 
+            // Merge: append local items after Spotify items, tagged with a
+            // "On this PC" SectionLabel so they also surface as a horizontal
+            // section row on the All filter. They still flow into the Tracks /
+            // Artists / Albums lists for the dedicated filters.
+            var mergedItems = MergeLocalIntoSpotifyResults(result.Items, localResults);
+
             _allItems.Clear();
-            _allItems.AddRange(result.Items);
-            DispatchResults(result.Items);
+            _allItems.AddRange(mergedItems);
+            DispatchResults(mergedItems);
             TopResult = result.TopResult;
             UpdateVisibleResults();
 
-            StoreCachedResult(cacheKey, result.Items, result.TopResult);
+            StoreCachedResult(cacheKey, mergedItems, result.TopResult);
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
             {
@@ -239,6 +258,38 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
                 UpdateEmptyState();
             }
         }
+    }
+
+    private static IReadOnlyList<SearchResultItem> MergeLocalIntoSpotifyResults(
+        IReadOnlyList<SearchResultItem> spotify,
+        IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult> local)
+    {
+        if (local.Count == 0) return spotify;
+
+        var merged = new List<SearchResultItem>(spotify.Count + local.Count);
+        merged.AddRange(spotify);
+
+        const string SectionLabel = "On this PC";
+        foreach (var l in local)
+        {
+            var type = l.Type switch
+            {
+                Wavee.Core.Library.Local.LocalSearchEntityType.Track  => SearchResultType.Track,
+                Wavee.Core.Library.Local.LocalSearchEntityType.Album  => SearchResultType.Album,
+                Wavee.Core.Library.Local.LocalSearchEntityType.Artist => SearchResultType.Artist,
+                _ => SearchResultType.Track,
+            };
+            merged.Add(new SearchResultItem
+            {
+                Type = type,
+                Uri = l.Uri,
+                Name = l.Name,
+                ImageUrl = l.ArtworkUri,
+                ArtistNames = l.Subtitle is null ? null : new List<string> { l.Subtitle },
+                SectionLabel = SectionLabel,
+            });
+        }
+        return merged;
     }
 
     private void DispatchResults(IReadOnlyList<SearchResultItem> items)

@@ -42,6 +42,9 @@ public static class SourceTypeExtensions
         if (uri.StartsWith("spotify:", StringComparison.OrdinalIgnoreCase))
             return SourceType.Spotify;
 
+        if (uri.StartsWith("wavee:local:", StringComparison.OrdinalIgnoreCase))
+            return SourceType.LocalFile;
+
         if (uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
             return SourceType.LocalFile;
 

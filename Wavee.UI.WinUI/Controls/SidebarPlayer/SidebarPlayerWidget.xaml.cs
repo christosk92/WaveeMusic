@@ -10,8 +10,10 @@ using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
 using Wavee.UI.WinUI.ViewModels;
+using Windows.Media.Playback;
 
 namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 
@@ -21,18 +23,27 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// <see cref="ShellViewModel.SidebarPlayerCollapsed"/>. Reuses the singleton
 /// <see cref="PlayerBarViewModel"/> as the only source of truth.
 /// </summary>
-public sealed partial class SidebarPlayerWidget : UserControl
+public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceConsumer
 {
     public PlayerBarViewModel ViewModel { get; }
     private readonly ShellViewModel _shellViewModel;
+    private readonly IActiveVideoSurfaceService _videoSurface;
+    private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
     private readonly ITrackLikeService? _likeService;
     private readonly IPlaybackStateService? _playbackStateService;
     private readonly ILogger<SidebarPlayerWidget>? _logger;
+    private MediaPlayerElement? _videoElement;
+    private FrameworkElement? _videoElementSurface;
+    private Stretch _videoStretch = Stretch.Uniform;
+    private bool _isLoaded;
+    private bool _ownsVideoSurface;
 
     public SidebarPlayerWidget()
     {
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
+        _videoSurface = Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>();
+        _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
         _likeService = Ioc.Default.GetService<ITrackLikeService>();
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger<SidebarPlayerWidget>();
@@ -48,6 +59,9 @@ public sealed partial class SidebarPlayerWidget : UserControl
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         _shellViewModel.PropertyChanged += OnShellPropertyChanged;
+        _videoSurface.ActiveSurfaceChanged += OnActiveVideoSurfaceChanged;
+        if (_miniVideoViewModel is not null)
+            _miniVideoViewModel.PropertyChanged += OnMiniVideoViewModelPropertyChanged;
 
         // Reactive heart updates (both layouts share the wiring)
         if (_likeService != null)
@@ -58,6 +72,7 @@ public sealed partial class SidebarPlayerWidget : UserControl
 
         // Initial paint of state-driven visuals
         ApplyCollapseState();
+        ApplyVideoStretchSelection();
         ApplyTintColor(ViewModel.AlbumArtColor);
         UpdateHeartState();
 
@@ -67,16 +82,23 @@ public sealed partial class SidebarPlayerWidget : UserControl
 
     private void OnWidgetLoaded(object sender, RoutedEventArgs e)
     {
+        _isLoaded = true;
         ViewModel.SetSurfaceVisible("widget", true);
         // Default to "not hovered" — buttons faded out until pointer enters the widget.
         ApplyHoverReveal(hovered: false, animate: false);
+        UpdateVideoSurfaceOwnership();
     }
 
     private void OnWidgetUnloaded(object sender, RoutedEventArgs e)
     {
+        _isLoaded = false;
         ViewModel.SetSurfaceVisible("widget", false);
+        ReleaseVideoSurfaceOwnership();
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _shellViewModel.PropertyChanged -= OnShellPropertyChanged;
+        _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
+        if (_miniVideoViewModel is not null)
+            _miniVideoViewModel.PropertyChanged -= OnMiniVideoViewModelPropertyChanged;
         if (_likeService != null) _likeService.SaveStateChanged -= OnSaveStateChanged;
     }
 
@@ -102,6 +124,12 @@ public sealed partial class SidebarPlayerWidget : UserControl
         if (e.PropertyName == nameof(ShellViewModel.SidebarPlayerCollapsed))
         {
             ApplyCollapseState();
+            UpdateVideoSurfaceOwnership();
+        }
+        else if (e.PropertyName is nameof(ShellViewModel.PlayerLocation)
+                 or nameof(ShellViewModel.IsSidebarPlayerVisibleInShell))
+        {
+            UpdateVideoSurfaceOwnership();
         }
     }
 
@@ -114,6 +142,47 @@ public sealed partial class SidebarPlayerWidget : UserControl
         // ChevronDown (E70D) when collapsed — clicking will expand.
         ChevronGlyph.Glyph = collapsed ? "" : "";
         ChevronTooltip.Text = collapsed ? "Expand" : "Collapse";
+    }
+
+    private void OnActiveVideoSurfaceChanged(object? sender, MediaPlayer? surface)
+        => DispatcherQueue?.TryEnqueue(UpdateVideoSurfaceOwnership);
+
+    private void OnMiniVideoViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MiniVideoPlayerViewModel.IsOnVideoPage))
+            UpdateVideoSurfaceOwnership();
+    }
+
+    private bool ShouldHostVideoSurface =>
+        _isLoaded
+        && _videoSurface.HasActiveSurface
+        && _shellViewModel.IsSidebarPlayerVisibleInShell
+        && !_shellViewModel.SidebarPlayerCollapsed
+        && _miniVideoViewModel?.IsOnVideoPage != true;
+
+    private void UpdateVideoSurfaceOwnership()
+    {
+        if (ShouldHostVideoSurface)
+        {
+            _miniVideoViewModel?.SetSuppressedBySidebarPlayer(true);
+            _videoSurface.AcquireSurface(this);
+            _ownsVideoSurface = true;
+            return;
+        }
+
+        ReleaseVideoSurfaceOwnership();
+    }
+
+    private void ReleaseVideoSurfaceOwnership()
+    {
+        if (_ownsVideoSurface)
+        {
+            _videoSurface.ReleaseSurface(this);
+            _ownsVideoSurface = false;
+        }
+
+        _miniVideoViewModel?.SetSuppressedBySidebarPlayer(false);
+        ApplyVideoSurfaceVisibility();
     }
 
     private void ChevronButton_Click(object sender, RoutedEventArgs e)
@@ -219,6 +288,105 @@ public sealed partial class SidebarPlayerWidget : UserControl
         e.Handled = true;
     }
 
+    private void VideoHost_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        try { NavigationHelpers.OpenVideoPlayer(); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Open video player from sidebar failed"); }
+        e.Handled = true;
+    }
+
+    public void AttachSurface(MediaPlayer player)
+    {
+        DetachElementSurface();
+        if (_videoElement is null)
+        {
+            _videoElement = new MediaPlayerElement
+            {
+                AreTransportControlsEnabled = false,
+                Stretch = _videoStretch,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                IsHitTestVisible = false
+            };
+            ExpandedVideoHost.Children.Add(_videoElement);
+        }
+
+        _videoElement.SetMediaPlayer(player);
+        ApplyVideoSurfaceVisibility();
+    }
+
+    public void AttachElementSurface(FrameworkElement element)
+    {
+        DetachMediaPlayerSurface();
+        if (_videoElementSurface is not null && ReferenceEquals(_videoElementSurface, element))
+            return;
+
+        _videoElementSurface = element;
+        element.HorizontalAlignment = HorizontalAlignment.Stretch;
+        element.VerticalAlignment = VerticalAlignment.Stretch;
+        element.IsHitTestVisible = false;
+        ExpandedVideoHost.Children.Add(element);
+        ApplyVideoSurfaceVisibility();
+    }
+
+    public void DetachSurface()
+    {
+        DetachMediaPlayerSurface();
+        DetachElementSurface();
+        ApplyVideoSurfaceVisibility();
+    }
+
+    private void DetachMediaPlayerSurface()
+    {
+        if (_videoElement is null) return;
+        _videoElement.SetMediaPlayer(null);
+        ExpandedVideoHost.Children.Remove(_videoElement);
+        _videoElement = null;
+    }
+
+    private void DetachElementSurface()
+    {
+        if (_videoElementSurface is null) return;
+        ExpandedVideoHost.Children.Remove(_videoElementSurface);
+        _videoElementSurface.IsHitTestVisible = true;
+        _videoElementSurface = null;
+    }
+
+    private void ApplyVideoSurfaceVisibility()
+    {
+        var hasVideo = _videoElement is not null || _videoElementSurface is not null;
+        ExpandedVideoHost.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+        ExpandedAlbumArtImage.Visibility = hasVideo ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void VideoStretchNone_Click(object sender, RoutedEventArgs e)
+        => SetVideoStretch(Stretch.None);
+
+    private void VideoStretchUniform_Click(object sender, RoutedEventArgs e)
+        => SetVideoStretch(Stretch.Uniform);
+
+    private void VideoStretchUniformToFill_Click(object sender, RoutedEventArgs e)
+        => SetVideoStretch(Stretch.UniformToFill);
+
+    private void VideoStretchFill_Click(object sender, RoutedEventArgs e)
+        => SetVideoStretch(Stretch.Fill);
+
+    private void SetVideoStretch(Stretch stretch)
+    {
+        _videoStretch = stretch;
+        if (_videoElement is not null)
+            _videoElement.Stretch = stretch;
+        ApplyVideoStretchSelection();
+    }
+
+    private void ApplyVideoStretchSelection()
+    {
+        VideoStretchNoneItem.IsChecked = _videoStretch == Stretch.None;
+        VideoStretchUniformItem.IsChecked = _videoStretch == Stretch.Uniform;
+        VideoStretchUniformToFillItem.IsChecked = _videoStretch == Stretch.UniformToFill;
+        VideoStretchFillItem.IsChecked = _videoStretch == Stretch.Fill;
+    }
+
     // Locks the Expanded album-art host to a square aspect ratio. Without this,
     // the row collapses to 0×0 the moment a track's image source is null,
     // because the host has HorizontalAlignment=Stretch but no explicit Height
@@ -308,7 +476,9 @@ public sealed partial class SidebarPlayerWidget : UserControl
         var trackId = GetCurrentTrackId();
         if (string.IsNullOrEmpty(trackId) || _likeService == null) return;
 
-        var uri = $"spotify:track:{trackId}";
+        // Only prefix bare base62 ids; full URIs pass through as-is.
+        // See PlayerBar.OnPlayerHeartClicked for the background.
+        var uri = trackId.Contains(':') ? trackId : $"spotify:track:{trackId}";
         var wasLiked = ExpandedHeartButton.IsLiked;
         _logger?.LogInformation("[SidebarPlayer] Heart clicked: trackId={TrackId}, wasLiked={WasLiked}", trackId, wasLiked);
         _likeService.ToggleSave(SavedItemType.Track, uri, wasLiked);

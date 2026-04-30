@@ -508,6 +508,7 @@ public sealed partial class TrackItem : UserControl
             CompactSubtitle.Text = track.ArtistName ?? "";
             CompactDuration.Text = track.DurationFormatted ?? "";
             CompactExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
+            CompactLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
 
             // Video indicator: "PlayCount · [icon] Music Video"
             var hasVideo = track.HasVideo;
@@ -524,6 +525,7 @@ public sealed partial class TrackItem : UserControl
             CompactSubtitle.Text = "";
             CompactDuration.Text = "";
             CompactExplicit.Visibility = Visibility.Collapsed;
+            CompactLocalBadge.Visibility = Visibility.Collapsed;
             CompactVideoSeparator.Visibility = Visibility.Collapsed;
             CompactVideoIcon.Visibility = Visibility.Collapsed;
             CompactVideoLabel.Visibility = Visibility.Collapsed;
@@ -538,6 +540,7 @@ public sealed partial class TrackItem : UserControl
         {
             RowTitle.Text = track.Title ?? "";
             RowExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
+            RowLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
             RowDuration.Text = track.DurationFormatted ?? "";
 
             RowHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
@@ -563,6 +566,7 @@ public sealed partial class TrackItem : UserControl
         {
             RowTitle.Text = "";
             RowExplicit.Visibility = Visibility.Collapsed;
+            RowLocalBadge.Visibility = Visibility.Collapsed;
             RowDuration.Text = "";
             RowArtistLink.Content = "";
             RowAlbumLink.Content = "";

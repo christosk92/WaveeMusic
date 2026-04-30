@@ -28,6 +28,7 @@ using Wavee.UI.WinUI.ViewModels;
 using System.Collections.Generic;
 using Serilog;
 using Serilog.Core;
+using Serilog.Events;
 using Serilog.Extensions.Logging;
 using Wavee.Controls.Lyrics.Services.LocalizationService;
 using Wavee.UI.Contracts;
@@ -66,6 +67,8 @@ public static class AppLifecycleHelper
     /// </summary>
     public static LoggingLevelSwitch LogLevelSwitch { get; } = new(Serilog.Events.LogEventLevel.Information);
 
+    private const string DrmLogChannel = "DRM";
+
     /// <summary>
     /// Apply a verbose-logging change at runtime. Flips the Serilog level switch and tells
     /// the audio process to do the same on its next restart (live forwarding could be added
@@ -86,6 +89,61 @@ public static class AppLifecycleHelper
     // emit a structured log line every 30 s so a leak hunt can be done from logs
     // alone (without keeping the panel visible). Enable/disable is driven by
     // SettingsViewModel.MemoryDiagnosticsEnabled.
+
+    private static bool IsMainLogEvent(LogEvent logEvent, LogEventLevel noisyOverride)
+    {
+        if (IsDrmLogEvent(logEvent))
+            return false;
+
+        if (IsNoisyFrameworkEvent(logEvent) && logEvent.Level < noisyOverride)
+            return false;
+
+        return logEvent.Level >= LogLevelSwitch.MinimumLevel;
+    }
+
+    private static bool IsDrmLogEvent(LogEvent logEvent)
+    {
+        if (TryGetStringProperty(logEvent, "LogChannel", out var channel)
+            && string.Equals(channel, DrmLogChannel, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (TryGetStringProperty(logEvent, "SourceContext", out var sourceContext)
+            && sourceContext.Contains("SpotifyVideoProvider", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return logEvent.MessageTemplate.Text.StartsWith("[DRM]", StringComparison.Ordinal);
+    }
+
+    private static bool IsNoisyFrameworkEvent(LogEvent logEvent)
+    {
+        if (!TryGetStringProperty(logEvent, "SourceContext", out var sourceContext))
+            return false;
+
+        return sourceContext == "Microsoft"
+               || sourceContext == "System"
+               || sourceContext.StartsWith("Microsoft.", StringComparison.Ordinal)
+               || sourceContext.StartsWith("System.", StringComparison.Ordinal);
+    }
+
+    private static bool TryGetStringProperty(LogEvent logEvent, string propertyName, out string value)
+    {
+        value = "";
+        if (!logEvent.Properties.TryGetValue(propertyName, out var property))
+            return false;
+
+        if (property is ScalarValue { Value: string scalarValue })
+        {
+            value = scalarValue;
+            return !string.IsNullOrWhiteSpace(value);
+        }
+
+        value = property.ToString().Trim('"');
+        return !string.IsNullOrWhiteSpace(value);
+    }
 
     private static CancellationTokenSource? _memoryDiagCts;
     private static Task? _memoryDiagTask;
@@ -178,22 +236,36 @@ public static class AppLifecycleHelper
         // a small but huge readability win for production debugging.
         const string fileOutputTemplate =
             "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
+        const string drmOutputTemplate =
+            "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
 
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.ControlledBy(LogLevelSwitch)
-            .MinimumLevel.Override("Microsoft", noisyOverride)
-            .MinimumLevel.Override("System", noisyOverride)
-            .WriteTo.Debug()
-            .WriteTo.File(
-                path: AppPaths.RollingLogFilePath,
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 14,
-                rollOnFileSizeLimit: true,
-                fileSizeLimitBytes: 10 * 1024 * 1024,
-                shared: true,
-                flushToDiskInterval: TimeSpan.FromSeconds(1),
-                outputTemplate: fileOutputTemplate)
-            .WriteTo.Sink(inMemorySink)
+            .MinimumLevel.Verbose()
+            .WriteTo.Logger(main => main
+                .Filter.ByIncludingOnly(logEvent => IsMainLogEvent(logEvent, noisyOverride))
+                .WriteTo.Debug()
+                .WriteTo.File(
+                    path: AppPaths.RollingLogFilePath,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 14,
+                    rollOnFileSizeLimit: true,
+                    fileSizeLimitBytes: 10 * 1024 * 1024,
+                    shared: true,
+                    flushToDiskInterval: TimeSpan.FromSeconds(1),
+                    outputTemplate: fileOutputTemplate)
+                .WriteTo.Sink(inMemorySink))
+            .WriteTo.Logger(drm => drm
+                .Filter.ByIncludingOnly(IsDrmLogEvent)
+                .Filter.ByIncludingOnly(logEvent => logEvent.Level >= LogEventLevel.Debug)
+                .WriteTo.File(
+                    path: AppPaths.DrmRollingLogFilePath,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 14,
+                    rollOnFileSizeLimit: true,
+                    fileSizeLimitBytes: 5 * 1024 * 1024,
+                    shared: true,
+                    flushToDiskInterval: TimeSpan.FromSeconds(1),
+                    outputTemplate: drmOutputTemplate))
             .Enrich.FromLogContext()
             .CreateLogger();
 
@@ -278,6 +350,72 @@ public static class AppLifecycleHelper
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<ILogger<PlaybackStateService>>(),
                         sp.GetService<IHomeFeedCache>()))
+                // Per-session in-memory cache for music-video metadata. Fed
+                // by GraphQL response handlers on artist / album / search
+                // surfaces; consumed by the discovery service to avoid
+                // redundant NPV roundtrips.
+                .AddSingleton<Services.IMusicVideoCatalogCache, Services.MusicVideoCatalogCache>()
+                // Music-video discovery for the linked-URI catalog pattern
+                // (audio URI ≠ video URI; e.g. drunk text). Invoked directly
+                // by PlaybackStateService.OnCurrentTrackIdChanged when the
+                // catalog cache returns no hint; runs NPV in background and
+                // publishes MusicVideoAvailabilityMessage on completion.
+                // Lazily resolves IPlaybackStateService via Ioc.Default to
+                // break the construction cycle.
+                .AddSingleton<Services.IMusicVideoDiscoveryService>(sp =>
+                    new Services.MusicVideoDiscoveryService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetRequiredService<Services.IMusicVideoCatalogCache>(),
+                        sp.GetService<ILogger<Services.MusicVideoDiscoveryService>>()))
+                // UI-process MediaPlayer used as the engine for video tracks.
+                // Must be resolved on the UI thread (its ctor captures the
+                // dispatcher); the orchestrator hands it Play/Pause/Seek calls
+                // when a wavee:local:track:* URI is flagged as IsVideo.
+                //
+                // Registered as a concrete singleton so the SAME instance is
+                // forwarded to ILocalMediaPlayer (for the orchestrator's
+                // playback routing) and IVideoSurfaceProvider (for the UI's
+                // active-surface arbitration). A future Spotify video engine
+                // is registered the same way — concrete singleton + a
+                // forwarded IVideoSurfaceProvider — and the rest of the UI
+                // keeps working without code changes.
+                .AddSingleton<Services.LocalMediaPlayer>(sp =>
+                    new Services.LocalMediaPlayer(
+                        sp.GetService<ILogger<Services.LocalMediaPlayer>>()))
+                .AddSingleton<Wavee.Audio.ILocalMediaPlayer>(sp =>
+                    sp.GetRequiredService<Services.LocalMediaPlayer>())
+                .AddSingleton<Services.IVideoSurfaceProvider>(sp =>
+                    sp.GetRequiredService<Services.LocalMediaPlayer>())
+                // Spotify music-video engine — registered as a concrete singleton
+                // then forwarded to ISpotifyVideoPlayback (for the orchestrator)
+                // and as a second IVideoSurfaceProvider (for the surface service).
+                .AddSingleton<Services.SpotifyVideoProvider>(sp =>
+                    new Services.SpotifyVideoProvider(
+                        sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetService<ILogger<Services.SpotifyVideoProvider>>()))
+                .AddSingleton<Wavee.Audio.ISpotifyVideoPlayback>(sp =>
+                    sp.GetRequiredService<Services.SpotifyVideoProvider>())
+                .AddSingleton<Services.IVideoSurfaceProvider>(sp =>
+                    sp.GetRequiredService<Services.SpotifyVideoProvider>())
+                .AddSingleton<Services.IActiveVideoSurfaceService>(sp =>
+                {
+                    var svc = new Services.ActiveVideoSurfaceService(
+                        sp.GetService<ILogger<Services.ActiveVideoSurfaceService>>());
+                    foreach (var provider in sp.GetServices<Services.IVideoSurfaceProvider>())
+                    {
+                        svc.RegisterProvider(provider);
+                    }
+                    return svc;
+                })
+                // Windows-shell video frame thumbnail provider for the local
+                // scanner. Registered as IVideoThumbnailExtractor so the
+                // scanner DI in Wavee.Core picks it up without needing a
+                // direct reference to Windows.Storage in the core project.
+                .AddSingleton<Wavee.Core.Library.Local.IVideoThumbnailExtractor>(sp =>
+                    new Services.WindowsVideoThumbnailExtractor(
+                        sp.GetService<ILogger<Services.WindowsVideoThumbnailExtractor>>()))
                 .AddSingleton<IAuthState, AuthStateService>()
                 .AddSingleton<IConnectivityService>(sp =>
                     new ConnectivityService(
@@ -433,6 +571,7 @@ public static class AppLifecycleHelper
                     new Data.Contexts.TrackLikeService(
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
+                        sp.GetService<Wavee.Core.Library.Local.ILocalLikeService>(),
                         sp.GetService<ILogger<Data.Contexts.TrackLikeService>>()))
                 .AddSingleton<Wavee.Core.Playlists.IPlaylistCacheService>(sp =>
                     new Wavee.Core.Playlists.PlaylistCacheService(
@@ -454,6 +593,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetRequiredService<ITrackLikeService>(),
                         sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>(),
                         sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
                 .AddSingleton(sp =>
@@ -539,6 +679,7 @@ public static class AppLifecycleHelper
                     new PlayerBarViewModel(
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<IConnectivityService>(),
+                        sp.GetService<INotificationService>(),
                         sp.GetService<ILoggerFactory>()))
                 .AddTransient<HomeViewModel>(sp =>
                     new HomeViewModel(
@@ -548,7 +689,8 @@ public static class AppLifecycleHelper
                         sp.GetService<RecentlyPlayedService>(),
                         sp.GetService<HomeResponseParserFactory>(),
                         sp.GetService<IAuthState>(),
-                        sp.GetService<ILogger<HomeViewModel>>()))
+                        sp.GetService<ILogger<HomeViewModel>>(),
+                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
                 .AddTransient<LibraryPageViewModel>()
@@ -565,11 +707,29 @@ public static class AppLifecycleHelper
                         sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<ProfileViewModel>>()))
                 .AddTransient<SpotifyConnectViewModel>()
+                // Video page + mini-player VMs. Singletons so the mini-player
+                // (mounted at shell level) keeps its subscriptions stable
+                // across page navigation; same for the page VM since the
+                // page can be re-navigated.
+                .AddSingleton<VideoPlayerPageViewModel>(sp =>
+                    new VideoPlayerPageViewModel(
+                        sp.GetRequiredService<Services.IActiveVideoSurfaceService>(),
+                        sp.GetService<Wavee.UI.Contracts.IPlaybackStateService>(),
+                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetService<IPathfinderClient>(),
+                        sp.GetService<IExtendedMetadataClient>(),
+                        sp.GetService<ILogger<VideoPlayerPageViewModel>>()))
+                .AddSingleton<MiniVideoPlayerViewModel>(sp =>
+                    new MiniVideoPlayerViewModel(
+                        sp.GetRequiredService<Services.IActiveVideoSurfaceService>(),
+                        sp.GetService<Wavee.UI.Contracts.IPlaybackStateService>(),
+                        sp.GetService<ILogger<MiniVideoPlayerViewModel>>()))
                 .AddTransient<SearchViewModel>(sp =>
                     new SearchViewModel(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<IPlaybackStateService>(),
-                        sp.GetService<ILogger<SearchViewModel>>()))
+                        sp.GetService<ILogger<SearchViewModel>>(),
+                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>()))
                 .AddTransient<DebugViewModel>()
                 .AddTransient<FeedbackViewModel>(sp =>
                     new FeedbackViewModel(
@@ -595,7 +755,16 @@ public static class AppLifecycleHelper
                         sp.GetService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetService<CommunityToolkit.Mvvm.Messaging.IMessenger>(),
                         sp.GetService<INotificationService>(),
-                        sp.GetService<ILogger<SettingsViewModel>>()))
+                        sp.GetService<ILogger<SettingsViewModel>>(),
+                        sp.GetService<LocalFilesViewModel>()))
+                .AddTransient<LocalFilesViewModel>(sp =>
+                    new LocalFilesViewModel(
+                        sp.GetRequiredService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetService<ILogger<LocalFilesViewModel>>()))
+                .AddTransient<LocalLibraryViewModel>(sp =>
+                    new LocalLibraryViewModel(
+                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetService<ILogger<LocalLibraryViewModel>>()))
 
                 // Drag & drop
                 .AddSingleton<DragStateService>()
@@ -843,7 +1012,10 @@ public static class AppLifecycleHelper
             var orchestrator = new Wavee.Audio.PlaybackOrchestrator(
                 proxy, trackResolver, contextResolver!, session.CommandHandler, logger,
                 events: session.Events,
-                localDeviceId: session.Config.DeviceId);
+                localDeviceId: session.Config.DeviceId,
+                localLibrary: Ioc.Default.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
+                spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>());
 
             // Honor the user's autoplay preference. Read fresh on each check so
             // a toggle in the Settings page takes effect immediately — no event
@@ -1005,7 +1177,10 @@ public static class AppLifecycleHelper
                     var newOrch = new Wavee.Audio.PlaybackOrchestrator(
                         newProxy, trackResolver, contextResolver!, session.CommandHandler, logger,
                         events: session.Events,
-                        localDeviceId: session.Config.DeviceId);
+                        localDeviceId: session.Config.DeviceId,
+                        localLibrary: Ioc.Default.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
+                        spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>());
                     if (settingsForAutoplay is not null)
                         newOrch.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
@@ -1110,6 +1285,18 @@ public static class AppLifecycleHelper
             // Resolve a fresh enricher instance from DI (transient) and keep it for this session.
             _trackMetadataEnricher?.Dispose();
             _trackMetadataEnricher = Ioc.Default.GetService<TrackMetadataEnricher>();
+
+            // Force-construct the music-video catalog cache and discovery
+            // singletons so they're alive BEFORE the first TrackChangedMessage
+            // fires. WeakReferenceMessenger only delivers to recipients that
+            // were registered when Send is called, so lazy DI construction
+            // would let the very first track change slip past the discovery
+            // service's subscription.
+            var videoCache = Ioc.Default.GetService<Services.IMusicVideoCatalogCache>();
+            var videoDiscovery = Ioc.Default.GetService<Services.IMusicVideoDiscoveryService>();
+            logger?.LogInformation("[VideoDiscovery] eager construction at sign-in: cache={CacheAlive} discovery={DiscoveryAlive}",
+                videoCache is null ? "<null>" : "alive",
+                videoDiscovery is null ? "<null>" : "alive");
         }
         catch (Exception ex)
         {

@@ -138,6 +138,13 @@ public sealed record PlaybackState
     public IReadOnlyList<AudioOutputDeviceDto> AvailableAudioDevices { get; init; } = [];
 
     /// <summary>
+    /// Hex-encoded music-video manifest_id for the current track when it has a
+    /// video variant (sourced from Track.Video[0].FileId in the resolved Track
+    /// proto). Drives the "Watch Video" affordance in the player UI.
+    /// </summary>
+    public string? VideoManifestId { get; init; }
+
+    /// <summary>
     /// Volume level from active device (0-65535 Spotify scale).
     /// </summary>
     public uint Volume { get; init; }

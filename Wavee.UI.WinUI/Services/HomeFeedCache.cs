@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -198,8 +199,21 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         {
             if (i < current.Count && current[i].Uri == fresh[i].Uri)
             {
-                // Same item — update properties if changed
-                UpdateItemInPlace(current[i], fresh[i]);
+                // Same item — update properties if changed.
+                // ContentType drift forces a Replace: a DataTemplateSelector
+                // is consulted only at element create/recycle time, never on
+                // property change, so a mutated ContentType would leave the
+                // wrong-shape card mounted forever (the home shelf bug).
+                if (current[i].ContentType != fresh[i].ContentType)
+                {
+                    Debug.WriteLine($"[shelf-recycle] ContentType drift uri={fresh[i].Uri} {current[i].ContentType}->{fresh[i].ContentType} (replace)");
+                    current.RemoveAt(i);
+                    current.Insert(i, fresh[i]);
+                }
+                else
+                {
+                    UpdateItemInPlace(current[i], fresh[i]);
+                }
             }
             else
             {
@@ -217,7 +231,16 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                 if (existingIdx >= 0)
                 {
                     current.Move(existingIdx, i);
-                    UpdateItemInPlace(current[i], fresh[i]);
+                    if (current[i].ContentType != fresh[i].ContentType)
+                    {
+                        Debug.WriteLine($"[shelf-recycle] ContentType drift (post-move) uri={fresh[i].Uri} {current[i].ContentType}->{fresh[i].ContentType} (replace)");
+                        current.RemoveAt(i);
+                        current.Insert(i, fresh[i]);
+                    }
+                    else
+                    {
+                        UpdateItemInPlace(current[i], fresh[i]);
+                    }
                 }
                 else
                 {

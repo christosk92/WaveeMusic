@@ -189,6 +189,83 @@ public sealed partial class PlaybackOrchestrator
         catch (Exception ex) { _logger?.LogDebug(ex, "Track-start batch dispatch failed"); }
     }
 
+    private void OnVideoTrackStarted(SpotifyVideoPlaybackTarget target, int positionMs)
+    {
+        if (_events == null) return;
+        if (string.IsNullOrEmpty(target.VideoTrackUri)) return;
+
+        string trackHex;
+        try
+        {
+            trackHex = SpotifyId.FromUri(target.VideoTrackUri).ToBase16();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Skipping video metrics for non-track URI {Uri}", target.VideoTrackUri);
+            ResetMetrics();
+            return;
+        }
+
+        var playbackId = Guid.NewGuid().ToString("N");
+        var origin = _currentPlayOrigin;
+        var contextUri = _queue.ContextUri ?? _currentSessionContextUri ?? string.Empty;
+        var commandId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        var trackStartedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var metrics = new PlaybackMetrics(
+            trackId: trackHex,
+            playbackId: playbackId,
+            contextUri: contextUri,
+            featureVersion: origin?.FeatureVersion ?? string.Empty,
+            referrerIdentifier: origin?.ReferrerIdentifier ?? string.Empty,
+            mediaType: "video")
+        {
+            ReasonStart = _nextStartReason,
+            SourceStart = _localDeviceId,
+            SourceEnd = _localDeviceId,
+            Player = new PlayerMetrics
+            {
+                Duration = (int)Math.Min(target.DurationMs, int.MaxValue),
+                Encoding = "video",
+                Transition = "none",
+            }
+        };
+        metrics.StartInterval(positionMs);
+
+        bool firstPlay;
+        lock (_metricsLock)
+        {
+            _currentMetrics = metrics;
+            _currentResolution = null;
+            _audioKeyStopwatch = null;
+            _currentCommandId = commandId;
+            _currentTrackStartedAt = trackStartedAt;
+            _segmentStartTimestampMs = trackStartedAt;
+            _segmentStartPositionMs = positionMs;
+            _segmentSequenceId = 0;
+            firstPlay = _firstPlayInSession;
+            _firstPlayInSession = false;
+        }
+
+        var playbackIdBytes = Convert.FromHexString(playbackId);
+        var batch = new List<IPlaybackEvent>(3)
+        {
+            AudioSessionPlaybackEvent.Open(playbackId, _currentSessionContextUri),
+            new CorePlaybackCommandCorrelationEvent(playbackIdBytes, commandId),
+            new BoomboxPlaybackSessionEvent(
+                playbackId: playbackIdBytes,
+                audioKeyMs: 0,
+                resolveMs: 0,
+                totalSetupMs: 0,
+                bufferingMs: 0,
+                durationMs: target.DurationMs,
+                firstPlay: firstPlay),
+        };
+
+        try { _events.SendEventBatch(batch); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Video track-start batch dispatch failed"); }
+    }
+
     /// <summary>
     /// Called from <see cref="OnProxyStateChanged"/> on every state push.
     /// Detects the pause edge (close interval, emit segment + Pause event)
@@ -283,7 +360,8 @@ public sealed partial class PlaybackOrchestrator
             isPause: isPause,
             isSeek: false,
             isLast: isLast,
-            sequenceId: sequenceId);
+            sequenceId: sequenceId,
+            mediaType: metrics.MediaType);
     }
 
     /// <summary>
@@ -348,7 +426,7 @@ public sealed partial class PlaybackOrchestrator
         sw?.Stop();
         toSend.EndInterval((int)Math.Min(endPositionMs, int.MaxValue));
         toSend.ReasonEnd = reasonEnd;
-        toSend.Player = BuildPlayerMetrics(res, sw);
+        toSend.Player ??= BuildPlayerMetrics(res, sw);
 
         var sender = Volatile.Read(ref _lastCommandSenderDeviceId);
         if (string.IsNullOrEmpty(sender)) sender = _localDeviceId;

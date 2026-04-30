@@ -16,6 +16,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.PlayerBar;
@@ -206,7 +207,13 @@ public sealed partial class PlayerBar : UserControl
         var trackId = GetCurrentTrackId();
         if (string.IsNullOrEmpty(trackId) || _likeService == null) return;
 
-        var uri = $"spotify:track:{trackId}";
+        // CurrentTrackId can be either a bare base62 (Spotify pattern, where
+        // ExtractTrackId stripped the "spotify:track:" prefix) or a full URI
+        // for non-Spotify sources (e.g. wavee:local:track:*). Only prefix
+        // when we got a bare id — prefixing a full URI produces malformed
+        // strings like "spotify:track:wavee:local:track:..." that the
+        // collection/v2/write endpoint rejects with "Invalid write request".
+        var uri = trackId.Contains(':') ? trackId : $"spotify:track:{trackId}";
         var isLiked = PlayerHeartButton.IsLiked;
         _logger?.LogInformation("[PlayerBar] Heart clicked: trackId={TrackId}, wasLiked={WasLiked} → {NewLiked}", trackId, isLiked, !isLiked);
         _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, isLiked);
@@ -285,8 +292,26 @@ public sealed partial class PlayerBar : UserControl
         e.Handled = true;
     }
 
-    private void TrackTitle_Click(object sender, RoutedEventArgs e) => NavigateToAlbum();
-    private void TrackTitle_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => NavigateToAlbum();
+    private void TrackTitle_Click(object sender, RoutedEventArgs e) => OpenNowPlaying();
+    private void TrackTitle_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        OpenNowPlaying();
+        e.Handled = true;
+    }
+
+    private void OpenNowPlaying()
+    {
+        // For video tracks, title click goes straight to the dedicated video page.
+        // For regular audio tracks, keep the sidebar player behaviour.
+        var surface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
+        if (surface?.HasActiveSurface == true)
+        {
+            NavigationHelpers.OpenVideoPlayer();
+            return;
+        }
+        var shell = Ioc.Default.GetService<ViewModels.ShellViewModel>();
+        shell?.OpenNowPlayingCommand.Execute(null);
+    }
 
     private void EndOfContextDismiss_Click(object sender, RoutedEventArgs e)
     {

@@ -16,7 +16,6 @@ namespace Wavee.Connect.Events;
 public sealed class RawCoreStreamPlaybackEvent : IPlaybackEvent
 {
     private const string EventName = "RawCoreStream";
-    private const string MediaType = "audio";
     // Wire-observed (032_c.txt, 064_c.txt) on Spotify desktop 1.2.88.483:
     // playback_stack is lowercase "boombox" (NOT "BOOMBOX"); core_version is a
     // huge int64 (~6e15); orchestration_stack is "context-player". Field
@@ -64,7 +63,7 @@ public sealed class RawCoreStreamPlaybackEvent : IPlaybackEvent
         var msg = new RawCoreStream
         {
             PlaybackId = HexToByteString(_metrics.PlaybackId),
-            MediaType = MediaType,
+            MediaType = string.IsNullOrWhiteSpace(_metrics.MediaType) ? "audio" : _metrics.MediaType,
             // Desktop omits feature_identifier (#6) and feature_version (#7) on
             // RawCoreStream — leave both unset so they don't appear on the wire.
             // source_start / source_end are the CONTEXT KIND on desktop

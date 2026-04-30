@@ -90,7 +90,10 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl
         var trackId = GetCurrentTrackId();
         if (string.IsNullOrEmpty(trackId) || _likeService == null) return;
 
-        var uri = $"spotify:track:{trackId}";
+        // Only prefix bare base62 ids; full URIs (wavee:local:track:*, etc.)
+        // pass through as-is. See PlayerBar.OnPlayerHeartClicked for the
+        // background — same root cause.
+        var uri = trackId.Contains(':') ? trackId : $"spotify:track:{trackId}";
         var wasLiked = HeartButton.IsLiked;
         _logger?.LogInformation("[ExpandedNowPlaying] Heart clicked: trackId={TrackId}, wasLiked={WasLiked}", trackId, wasLiked);
         _likeService.ToggleSave(SavedItemType.Track, uri, wasLiked);

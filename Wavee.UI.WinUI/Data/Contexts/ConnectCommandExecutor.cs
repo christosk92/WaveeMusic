@@ -653,4 +653,30 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
         }
     }
+
+    public async Task<PlaybackResult> SwitchToVideoAsync(
+        string? manifestIdOverride,
+        string? videoTrackUriOverride,
+        CancellationToken ct)
+    {
+        if (_localEngine == null)
+        {
+            _logger?.LogWarning("[SwitchToVideo] Local playback engine not available");
+            return PlaybackResult.Failure(PlaybackErrorKind.DeviceUnavailable, "Playback engine not available");
+        }
+
+        _logger?.LogInformation("[SwitchToVideo] Switching current track to music-video engine (manifest={Manifest}, videoUri={VideoUri})",
+            manifestIdOverride ?? "<none>",
+            videoTrackUriOverride ?? "<none>");
+        try
+        {
+            await _localEngine.SwitchToVideoAsync(manifestIdOverride, videoTrackUriOverride, ct).ConfigureAwait(false);
+            return PlaybackResult.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[SwitchToVideo] Failed to switch to video");
+            return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+        }
+    }
 }

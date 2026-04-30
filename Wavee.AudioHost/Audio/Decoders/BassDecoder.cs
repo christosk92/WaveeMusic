@@ -85,6 +85,29 @@ public sealed class BassDecoder : IAudioDecoder
     {
         EnsureBassInitialized();
 
+        // Local-file fast path: hand BASS the absolute path so it streams from disk
+        // (no in-memory copy). Bounded memory matters for multi-GB audiobooks / DJ mixes.
+        var localStream = FindLocalFilePathStream(stream);
+        if (localStream != null)
+        {
+            var localHandle = Bass.CreateStream(localStream.Path, 0L, 0L, BassFlags.Decode | BassFlags.Float);
+            if (localHandle == 0)
+            {
+                var error = Bass.LastError;
+                throw new InvalidOperationException($"BASS failed to open local file '{localStream.Path}': {error}");
+            }
+
+            try
+            {
+                var info = Bass.ChannelGetInfo(localHandle);
+                return new AudioFormat(info.Frequency, info.Channels, 16);
+            }
+            finally
+            {
+                Bass.StreamFree(localHandle);
+            }
+        }
+
         var urlStream = FindUrlAwareStream(stream);
         if (urlStream != null &&
             (urlStream.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -152,16 +175,23 @@ public sealed class BassDecoder : IAudioDecoder
         byte[]? memoryData = null;
         int syncHandle = 0;
         string? streamUrl = null; // Track URL for potential reconnection
+        UrlAwareStream? urlStream = null;
 
         // Debug: log stream type
         _logger?.LogDebug("DecodeAsync received stream type: {Type}", stream.GetType().FullName);
 
+        // Local-file fast path mirrors GetFormatAsync — open BASS on the path directly.
+        var localFileStream = FindLocalFilePathStream(stream);
+        if (localFileStream != null)
+        {
+            _logger?.LogDebug("Using BASS file streaming for: {Path}", localFileStream.Path);
+            handle = Bass.CreateStream(localFileStream.Path, 0L, 0L, BassFlags.Decode | BassFlags.Float);
+        }
         // Check if this is a URL-aware stream with HTTP URL - use native BASS URL streaming
         // Need to unwrap PrefixedStream to find the UrlAwareStream inside
-        var urlStream = FindUrlAwareStream(stream);
-        if (urlStream != null &&
-            (urlStream.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-             urlStream.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+        else if ((urlStream = FindUrlAwareStream(stream)) != null &&
+                 (urlStream.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                  urlStream.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
         {
             streamUrl = urlStream.Url; // Store for reconnection
             _logger?.LogDebug("Using BASS native URL streaming for: {Url}", streamUrl);
@@ -364,6 +394,18 @@ public sealed class BassDecoder : IAudioDecoder
     }
 
     /// <summary>
+    /// Recursively unwraps streams to find a <see cref="LocalFilePathStream"/>.
+    /// </summary>
+    private static LocalFilePathStream? FindLocalFilePathStream(Stream stream)
+    {
+        if (stream is LocalFilePathStream localStream)
+            return localStream;
+        if (stream is PrefixedStream prefixed)
+            return FindLocalFilePathStream(prefixed.InnerStream);
+        return null;
+    }
+
+    /// <summary>
     /// Extracts the StreamTitle from ICY metadata string.
     /// </summary>
     /// <param name="metadata">ICY metadata string (e.g., "StreamTitle='Artist - Song';").</param>
@@ -420,11 +462,17 @@ public sealed class BassDecoder : IAudioDecoder
             header[4] == 'f' && header[5] == 't' && header[6] == 'y' && header[7] == 'p')
             return true;
 
-        // Note: OGG is handled by VorbisDecoder, so we skip it here
-        // to avoid conflicts. If you want BASS to handle OGG too,
-        // uncomment the following:
-        // if (header[0] == 'O' && header[1] == 'g' && header[2] == 'g' && header[3] == 'S')
-        //     return true;
+        // OGG container (Vorbis or Opus). For Spotify streams this routes through
+        // VorbisDecoder (NVorbis); for local files registry order keeps Vorbis
+        // ahead of BASS so this branch only fires when a BASS plug-in is wanted
+        // (Opus needs bassopus.dll).
+        if (header[0] == 'O' && header[1] == 'g' && header[2] == 'g' && header[3] == 'S')
+            return true;
+
+        // ASF / WMA — first 16 bytes are a fixed GUID; the first four bytes
+        // 30 26 B2 75 are the discriminating prefix.
+        if (header[0] == 0x30 && header[1] == 0x26 && header[2] == 0xB2 && header[3] == 0x75)
+            return true;
 
         return false;
     }
@@ -494,6 +542,11 @@ public sealed class BassDecoder : IAudioDecoder
                     throw new InvalidOperationException($"Failed to initialize BASS: {error}");
                 }
             }
+
+            // Best-effort: load FLAC / AAC / Opus / WMA plug-ins from a
+            // bass-plugins/ folder beside the executable. Missing folder /
+            // missing DLLs are non-fatal; built-in MP3/WAV/AIFF still work.
+            BassPluginLoader.TryLoadAllOnce(null);
 
             _bassInitialized = true;
         }

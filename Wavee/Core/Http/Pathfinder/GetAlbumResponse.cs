@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Wavee.Core.Http.Pathfinder;
@@ -55,6 +57,7 @@ public sealed class GetAlbumUnion
     public bool IsPreRelease { get; init; }
 
     [JsonPropertyName("preReleaseEndDateTime")]
+    [JsonConverter(typeof(FlexibleIsoStringConverter))]
     public string? PreReleaseEndDateTime { get; init; }
 
     [JsonPropertyName("courtesyLine")]
@@ -327,3 +330,45 @@ internal partial class GetAlbumVariablesJsonContext : JsonSerializerContext { }
 [JsonSerializable(typeof(GetAlbumResponse))]
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 internal partial class GetAlbumJsonContext : JsonSerializerContext { }
+
+internal sealed class FlexibleIsoStringConverter : JsonConverter<string?>
+{
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.Null => null,
+            JsonTokenType.String => reader.GetString(),
+            JsonTokenType.StartObject => ReadObjectValue(ref reader),
+            _ => throw new JsonException($"Expected string, object, or null, got {reader.TokenType}.")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        writer.WriteStringValue(value);
+    }
+
+    private static string? ReadObjectValue(ref Utf8JsonReader reader)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        var root = document.RootElement;
+
+        return TryGetStringProperty(root, "isoString")
+            ?? TryGetStringProperty(root, "dateTime")
+            ?? TryGetStringProperty(root, "value");
+    }
+
+    private static string? TryGetStringProperty(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+    }
+}

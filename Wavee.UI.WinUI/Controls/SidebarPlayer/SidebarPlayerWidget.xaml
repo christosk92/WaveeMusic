@@ -172,6 +172,34 @@
                             DecodePixelWidth="512"
                             CornerRadius="6"
                             Stretch="UniformToFill" />
+                        <Grid
+                            x:Name="ExpandedVideoHost"
+                            Canvas.ZIndex="1"
+                            Background="Black"
+                            CornerRadius="6"
+                            Visibility="Collapsed"
+                            Tapped="VideoHost_Tapped">
+                            <Grid.ContextFlyout>
+                                <MenuFlyout>
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="VideoStretchNoneItem"
+                                        Text="None"
+                                        Click="VideoStretchNone_Click" />
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="VideoStretchUniformItem"
+                                        Text="Uniform"
+                                        Click="VideoStretchUniform_Click" />
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="VideoStretchUniformToFillItem"
+                                        Text="Uniform to fill"
+                                        Click="VideoStretchUniformToFill_Click" />
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="VideoStretchFillItem"
+                                        Text="Fill"
+                                        Click="VideoStretchFill_Click" />
+                                </MenuFlyout>
+                            </Grid.ContextFlyout>
+                        </Grid>
                         <FontIcon
                             Glyph="&#xE8D6;"
                             FontSize="32"

@@ -89,12 +89,32 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     // AudioKey being requested reactively under HTTP contention; prefetching while
     // the current track plays avoids the race entirely.
     private string? _lastPrefetchedTrackUri;
+    private bool _lastPrefetchWasVideo;
     private CancellationTokenSource? _prefetchCts;
 
     // Trigger thresholds. Librespot prefetches when "≈30 s remaining OR past 50 %".
     // We use the same shape: the earlier of the two fires.
     private const long PrefetchRemainingMsThreshold = 20_000;
     private const double PrefetchHalfwayFraction = 0.5;
+
+    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+    private readonly Wavee.Audio.ILocalMediaPlayer? _localMediaPlayer;
+    private readonly Wavee.Audio.ISpotifyVideoPlayback? _spotifyVideoPlayback;
+
+    /// <summary>True when the most recent play targeted a UI-process video engine
+    /// (local file OR Spotify music video). Drives transport-control dispatch.</summary>
+    private bool _videoEngineActive;
+
+    /// <summary>When <see cref="_videoEngineActive"/> is true, distinguishes
+    /// Spotify video (<c>true</c>) from local-file video (<c>false</c>).</summary>
+    private bool _isSpotifyVideoActive;
+
+    /// <summary>Hex-encoded manifest_id for the current Spotify track when it
+    /// has a music-video variant. Cached after track resolution so the
+    /// "Watch Video" affordance and <see cref="SwitchToVideoAsync"/> can flip
+    /// the engine without re-resolving. Cleared on track transitions.</summary>
+    private string? _currentVideoManifestId;
+    private SpotifyVideoPlaybackTarget? _currentVideoPlaybackTarget;
 
     public PlaybackOrchestrator(
         AudioPipelineProxy proxy,
@@ -103,7 +123,10 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         ConnectCommandHandler? commandHandler,
         ILogger? logger,
         EventService? events = null,
-        string? localDeviceId = null)
+        string? localDeviceId = null,
+        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null,
+        Wavee.Audio.ILocalMediaPlayer? localMediaPlayer = null,
+        Wavee.Audio.ISpotifyVideoPlayback? spotifyVideoPlayback = null)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _trackResolver = trackResolver ?? throw new ArgumentNullException(nameof(trackResolver));
@@ -111,6 +134,9 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _logger = logger;
         _events = events;
         _localDeviceId = localDeviceId ?? string.Empty;
+        _localLibrary = localLibrary;
+        _localMediaPlayer = localMediaPlayer;
+        _spotifyVideoPlayback = spotifyVideoPlayback;
         _queue = new PlaybackQueue(logger);
 
         // Forward proxy state enriched with queue info
@@ -121,6 +147,23 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         // Auto-advance on track finish
         _subs.Add(_proxy.TrackFinished.Subscribe(msg => { _ = OnTrackFinishedAsync(msg); }));
+
+        // Both video engines emit the same observable shape; pipe them through
+        // the same handlers so consumers see one unified stream regardless of
+        // which engine produced the state.
+        if (_localMediaPlayer is not null)
+        {
+            _subs.Add(_localMediaPlayer.StateChanges.Subscribe(OnProxyStateChanged));
+            _subs.Add(_localMediaPlayer.Errors.Subscribe(err => _errorSubject.OnNext(err)));
+            _subs.Add(_localMediaPlayer.TrackFinished.Subscribe(msg => { _ = OnTrackFinishedAsync(msg); }));
+        }
+
+        if (_spotifyVideoPlayback is not null)
+        {
+            _subs.Add(_spotifyVideoPlayback.StateChanges.Subscribe(OnProxyStateChanged));
+            _subs.Add(_spotifyVideoPlayback.Errors.Subscribe(err => _errorSubject.OnNext(err)));
+            _subs.Add(_spotifyVideoPlayback.TrackFinished.Subscribe(msg => { _ = OnTrackFinishedAsync(msg); }));
+        }
 
         // Lazy load more tracks when queue runs low
         _subs.Add(_queue.NeedsMoreTracks.Subscribe(unit => { _ = LoadMoreTracksAsync(); }));
@@ -223,6 +266,23 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                     }
                 });
             }
+            else if (hasRealContext && Wavee.Core.Library.Local.LocalUri.IsAny(command.ContextUri))
+            {
+                // Local URI without UI-supplied PageTracks (typical when the
+                // user clicks a card on the home shelf or a deep-link path).
+                // The Spotify context resolver doesn't know wavee:local:*
+                // URIs and would throw "Invalid context URI" — branch into
+                // the local library instead and build the queue from
+                // whatever the local kind resolves to (single track, album
+                // tracklist, or artist tracks).
+                var localTracks = await ResolveLocalContextAsync(command.ContextUri!, ct).ConfigureAwait(false);
+                _queue.Clear();
+                _queue.SetContext(command.ContextUri!, isInfinite: false, totalTracks: localTracks.Count);
+                _queue.SetTracks(localTracks);
+                var localStart = ContextResolver.FindTrackIndex(
+                    localTracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
+                _queue.SkipTo(localStart);
+            }
             else if (hasRealContext)
             {
                 // Remote transfer / deep-link: resolve the full context from Spotify.
@@ -292,6 +352,19 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
     public Task PauseAsync(CancellationToken ct = default)
     {
+        if (_videoEngineActive)
+        {
+            if (_isSpotifyVideoActive && _spotifyVideoPlayback is not null)
+            {
+                _logger?.LogInformation("Orchestrator: PauseAsync → Spotify video engine");
+                return _spotifyVideoPlayback.PauseAsync(ct);
+            }
+            if (_localMediaPlayer is not null)
+            {
+                _logger?.LogInformation("Orchestrator: PauseAsync → local video engine");
+                return _localMediaPlayer.PauseAsync(ct);
+            }
+        }
         _logger?.LogInformation("Orchestrator: PauseAsync → forwarding to proxy");
         return _proxy.PauseAsync(ct);
     }
@@ -312,29 +385,89 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return;
         }
 
+        if (_videoEngineActive)
+        {
+            if (_isSpotifyVideoActive && _spotifyVideoPlayback is not null)
+            {
+                _logger?.LogInformation("Orchestrator: ResumeAsync → Spotify video engine");
+                await _spotifyVideoPlayback.ResumeAsync(ct);
+                return;
+            }
+            if (_localMediaPlayer is not null)
+            {
+                _logger?.LogInformation("Orchestrator: ResumeAsync → local video engine");
+                await _localMediaPlayer.ResumeAsync(ct);
+                return;
+            }
+        }
+
         _logger?.LogInformation("Orchestrator: ResumeAsync → forwarding to proxy");
         await _proxy.ResumeAsync(ct);
     }
 
-    public Task StopAsync(CancellationToken ct = default)
+    public async Task StopAsync(CancellationToken ct = default)
     {
-        _logger?.LogInformation("Orchestrator: StopAsync → forwarding to proxy");
-
         // Event reporting: Stop is endplay. Captures whatever the user was doing
         // when they hit Stop, and the post-stop ReasonStart will be ClickRow.
         DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.EndPlay, _stateSubject.Value.PositionMs);
 
-        return _proxy.StopAsync(ct);
+        if (_videoEngineActive)
+        {
+            if (_isSpotifyVideoActive && _spotifyVideoPlayback is not null)
+            {
+                _logger?.LogInformation("Orchestrator: StopAsync → Spotify video engine");
+                await _spotifyVideoPlayback.StopAsync(ct);
+                _videoEngineActive = false;
+                _isSpotifyVideoActive = false;
+                _currentVideoManifestId = null;
+                _currentVideoPlaybackTarget = null;
+                return;
+            }
+            if (_localMediaPlayer is not null)
+            {
+                _logger?.LogInformation("Orchestrator: StopAsync → local video engine");
+                await _localMediaPlayer.StopAsync(ct);
+                _videoEngineActive = false;
+                return;
+            }
+        }
+
+        _logger?.LogInformation("Orchestrator: StopAsync → forwarding to proxy");
+        if (_localMediaPlayer?.IsActive == true)
+        {
+            try { await _localMediaPlayer.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping stale UI MediaPlayer during audio stop"); }
+        }
+
+        await _proxy.StopAsync(ct);
     }
 
     public Task SeekAsync(long positionMs, CancellationToken ct = default)
     {
+        if (_videoEngineActive)
+        {
+            if (_isSpotifyVideoActive && _spotifyVideoPlayback is not null)
+            {
+                _logger?.LogInformation("Orchestrator: SeekAsync({Pos}ms) → Spotify video engine", positionMs);
+                return _spotifyVideoPlayback.SeekAsync(positionMs, ct);
+            }
+            if (_localMediaPlayer is not null)
+            {
+                _logger?.LogInformation("Orchestrator: SeekAsync({Pos}ms) → local video engine", positionMs);
+                return _localMediaPlayer.SeekAsync(positionMs, ct);
+            }
+        }
         _logger?.LogInformation("Orchestrator: SeekAsync({Pos}ms) → forwarding to proxy", positionMs);
         return _proxy.SeekAsync(positionMs, ct);
     }
 
     public Task SetVolumeAsync(float volume, CancellationToken ct = default)
     {
+        // Forward volume to all engines so level is consistent across transitions.
+        if (_localMediaPlayer is not null)
+            _localMediaPlayer.SetVolume(volume);
+        if (_spotifyVideoPlayback is not null)
+            _spotifyVideoPlayback.SetVolume(volume);
         _logger?.LogDebug("Orchestrator: SetVolumeAsync({Volume:P0}) → forwarding to proxy", volume);
         return _proxy.SetVolumeAsync(volume, ct);
     }
@@ -424,10 +557,83 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return;
         }
 
+        // Local-file fast path: no Spotify resolution, no CDN/key, no head data.
+        // Hand the file path straight to AudioHost which opens it via BASS.
+        if (Wavee.Core.PlayableUri.IsLocalTrack(current.Uri))
+        {
+            await PlayLocalCurrentTrackAsync(current, positionMs, ct);
+            return;
+        }
+
+        // Spotify music-video path: track_player=video + media.manifest_id signals
+        // that Spotify wants DASH+PlayReady instead of AudioHost+BASS.
+        if (_spotifyVideoPlayback is not null
+            && current.Metadata is not null
+            && current.Metadata.TryGetValue("track_player", out var trackPlayer) && trackPlayer == "video"
+            && current.Metadata.TryGetValue("media.manifest_id", out var manifestId))
+        {
+            double startMs = current.Metadata.TryGetValue("media.start_position", out var pos)
+                             && double.TryParse(pos, out var d) ? d : positionMs;
+            var target = await _trackResolver.ResolveVideoPlaybackTargetAsync(
+                current.Uri,
+                manifestIdOverride: manifestId,
+                videoUriOverride: current.Uri,
+                ct: ct).ConfigureAwait(false);
+            if (target is not null)
+                await StartSpotifyVideoForCurrentAsync(current, target, (long)startMs, ct);
+            return;
+        }
+
+        if (ShouldPreferSpotifyVideoPlayback())
+        {
+            try
+            {
+                var videoTarget = await _trackResolver.ResolveVideoPlaybackTargetAsync(current.Uri, ct: ct);
+                if (videoTarget is not null)
+                {
+                    await StartSpotifyVideoForCurrentAsync(current, videoTarget, positionMs, ct);
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Sticky Spotify video resolution failed for {Uri}; falling back to audio", current.Uri);
+            }
+        }
+
+        // Spotify audio path. If we just handed a video to a UI engine, stop
+        // it before the AudioHost-driven Spotify track starts so we don't end
+        // up with two engines emitting state simultaneously.
+        if (_isSpotifyVideoActive && _spotifyVideoPlayback is not null)
+        {
+            try { await _spotifyVideoPlayback.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping Spotify video for audio handoff"); }
+            _videoEngineActive = false;
+            _isSpotifyVideoActive = false;
+            _currentVideoPlaybackTarget = null;
+        }
+        else if ((_videoEngineActive || _localMediaPlayer?.IsActive == true) && _localMediaPlayer is not null)
+        {
+            try { await _localMediaPlayer.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping UI MediaPlayer for Spotify handoff"); }
+            _videoEngineActive = false;
+        }
+
         _logger?.LogInformation("Resolving track (deferred): {Uri}", current.Uri);
 
         // 1. Resolve with head file (instant start) + deferred CDN/key
         var resolution = await _trackResolver.ResolveWithHeadAsync(current.Uri, ct);
+
+        // Remember the music-video manifest_id (if any). This is what
+        // SwitchToVideoAsync will hand to ISpotifyVideoPlayback when the user
+        // clicks "Watch Video", and what flows out on LocalPlaybackState so the
+        // UI can show/hide the affordance.
+        _currentVideoManifestId = resolution.VideoManifestId;
+        _currentVideoPlaybackTarget = null;
 
         // Event reporting: open a fresh playback metrics window for this track
         // and emit NewPlaybackIdEvent. Done before PlayTrackDeferredAsync so the
@@ -484,6 +690,270 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         PublishQueueState();
     }
 
+    private bool ShouldPreferSpotifyVideoPlayback()
+        => _spotifyVideoPlayback is not null && _isSpotifyVideoActive;
+
+    /// <summary>
+    /// Stops the audio path and starts the Spotify music-video engine for the
+    /// given queue track. Used by both the auto-routing path (remote-driven
+    /// dealer command carrying <c>track_player=video</c>) and the manual
+    /// "Watch Video" switch entry (<see cref="SwitchToVideoAsync"/>).
+    /// </summary>
+    private async Task StartSpotifyVideoForCurrentAsync(
+        Wavee.Audio.Queue.QueueTrack current,
+        SpotifyVideoPlaybackTarget target,
+        long positionMs,
+        CancellationToken ct)
+    {
+        if (_spotifyVideoPlayback is null) return;
+
+        if (!_isSpotifyVideoActive && _currentMetrics is not null)
+            DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.EndPlay, positionMs);
+
+        try { await _proxy.StopAsync(ct); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Stopping AudioHost for Spotify video"); }
+
+        if (_localMediaPlayer?.IsActive == true)
+            try { await _localMediaPlayer.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping local video for Spotify video"); }
+
+        _videoEngineActive = false;
+        _isSpotifyVideoActive = false;
+
+        _videoEngineActive = true;
+        _isSpotifyVideoActive = true;
+        _currentVideoManifestId = target.ManifestId;
+        _currentVideoPlaybackTarget = target;
+
+        OnVideoTrackStarted(target, (int)Math.Min(positionMs, int.MaxValue));
+
+        _logger?.LogInformation("Spotify video playback: audio={AudioUri} video={VideoUri} manifest={Manifest} pos={Pos}ms",
+            target.AudioTrackUri, target.VideoTrackUri, target.ManifestId, positionMs);
+        await _spotifyVideoPlayback.PlayAsync(
+            target.ManifestId,
+            target.VideoTrackUri,
+            target.Metadata,
+            target.DurationMs,
+            positionMs,
+            ct);
+        PublishQueueState();
+    }
+
+    /// <summary>
+    /// Manual "switch to video" entry point. Routes the current track to the
+    /// PlayReady/DASH engine at the live playback position. No-op if the track
+    /// has no music-video variant or video is already active.
+    ///
+    /// Resolution order for the manifest_id: explicit override (e.g. UI lazily
+    /// resolved it via Pathfinder for a linked-URI track) → Connect-state
+    /// metadata → cached <c>_currentVideoManifestId</c> from track resolution.
+    /// </summary>
+    public async Task SwitchToVideoAsync(
+        string? manifestIdOverride = null,
+        string? videoTrackUriOverride = null,
+        CancellationToken ct = default)
+    {
+        if (_isSpotifyVideoActive) return;
+        if (_spotifyVideoPlayback is null) return;
+        var current = _queue.Current;
+        if (current is null) return;
+
+        var target = await _trackResolver.ResolveVideoPlaybackTargetAsync(
+            current.Uri,
+            manifestIdOverride,
+            videoTrackUriOverride,
+            ct).ConfigureAwait(false);
+
+        string? manifestId = target?.ManifestId ?? manifestIdOverride;
+        if (string.IsNullOrEmpty(manifestId)
+            && current.Metadata is not null
+            && current.Metadata.TryGetValue("media.manifest_id", out var m))
+            manifestId = m;
+        manifestId ??= _currentVideoManifestId;
+        if (string.IsNullOrEmpty(manifestId)) return;
+
+        target ??= await _trackResolver.ResolveVideoPlaybackTargetAsync(
+            current.Uri,
+            manifestId,
+            videoTrackUriOverride,
+            ct).ConfigureAwait(false);
+        if (target is null) return;
+
+        // Cache the resolved id so subsequent state ticks publish it through
+        // LocalPlaybackState.VideoManifestId (e.g. for the Now Playing bar).
+        _currentVideoManifestId = manifestId;
+
+        var positionMs = _stateSubject.Value.PositionMs;
+        await StartSpotifyVideoForCurrentAsync(current, target, positionMs, ct);
+    }
+
+    /// <summary>
+    /// Resolves a <c>wavee:local:{kind}:{hash}</c> context URI into a flat
+    /// list of queue tracks. Local URIs never round-trip through Spotify's
+    /// context resolver (it doesn't recognise them and throws), so PlayAsync
+    /// branches here when the context is local and the UI didn't supply
+    /// PageTracks. Track URI → single-track queue; album → album's tracks
+    /// in tracklist order; artist → all of the artist's local tracks.
+    /// </summary>
+    private async Task<List<Wavee.Audio.Queue.QueueTrack>> ResolveLocalContextAsync(string contextUri, CancellationToken ct)
+    {
+        var result = new List<Wavee.Audio.Queue.QueueTrack>();
+        if (_localLibrary is null)
+        {
+            _logger?.LogWarning("Local context {Uri} requested but ILocalLibraryService is not registered", contextUri);
+            return result;
+        }
+
+        if (!Wavee.Core.Library.Local.LocalUri.TryParse(contextUri, out var kind, out _))
+            return result;
+
+        switch (kind)
+        {
+            case Wavee.Core.Library.Local.LocalUriKind.Track:
+            {
+                // Single-track context: just enqueue the track itself. The
+                // local play path in PlayLocalCurrentTrackAsync handles
+                // metadata lookup; we don't need to populate Title/Artist
+                // here (and the orchestrator's track-info publication later
+                // pulls from LocalLibraryService.GetTrackAsync anyway).
+                result.Add(new Wavee.Audio.Queue.QueueTrack(contextUri));
+                break;
+            }
+            case Wavee.Core.Library.Local.LocalUriKind.Album:
+            {
+                var album = await _localLibrary.GetAlbumAsync(contextUri, ct).ConfigureAwait(false);
+                if (album is null) break;
+                foreach (var t in album.Tracks)
+                {
+                    result.Add(new Wavee.Audio.Queue.QueueTrack(
+                        t.TrackUri,
+                        Title: t.Title,
+                        Artist: t.Artist ?? t.AlbumArtist,
+                        Album: t.Album,
+                        AlbumUri: t.AlbumUri,
+                        ArtistUri: t.ArtistUri,
+                        DurationMs: (int)Math.Min(int.MaxValue, t.DurationMs),
+                        ImageUrl: t.ArtworkUri));
+                }
+                break;
+            }
+            case Wavee.Core.Library.Local.LocalUriKind.Artist:
+            {
+                var artist = await _localLibrary.GetArtistAsync(contextUri, ct).ConfigureAwait(false);
+                if (artist is null) break;
+                foreach (var t in artist.AllTracks)
+                {
+                    result.Add(new Wavee.Audio.Queue.QueueTrack(
+                        t.TrackUri,
+                        Title: t.Title,
+                        Artist: t.Artist ?? t.AlbumArtist,
+                        Album: t.Album,
+                        AlbumUri: t.AlbumUri,
+                        ArtistUri: t.ArtistUri,
+                        DurationMs: (int)Math.Min(int.MaxValue, t.DurationMs),
+                        ImageUrl: t.ArtworkUri));
+                }
+                break;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Local-file playback path. Looks up the indexed file path and metadata.
+    /// Dispatches to the UI MediaPlayer for video files (so the user sees the
+    /// frames) and to AudioHost otherwise (BASS owns the audio pipeline). No
+    /// Spotify protocol involved.
+    /// </summary>
+    private async Task PlayLocalCurrentTrackAsync(Wavee.Audio.Queue.QueueTrack current, long positionMs, CancellationToken ct)
+    {
+        if (_localLibrary is null)
+        {
+            _logger?.LogError("Local track {Uri} requested but ILocalLibraryService is not registered", current.Uri);
+            return;
+        }
+
+        var row = await _localLibrary.GetTrackAsync(current.Uri, ct);
+        if (row is null)
+        {
+            _logger?.LogWarning("Local track not found in index: {Uri}", current.Uri);
+            return;
+        }
+
+        if (!File.Exists(row.FilePath))
+        {
+            _logger?.LogWarning("Local file no longer exists at indexed path: {Path}", row.FilePath);
+            return;
+        }
+
+        // No metrics / gabo for local URIs — Spotify event reporting is Spotify-only.
+
+        var metadata = new Wavee.Playback.Contracts.TrackMetadataDto
+        {
+            Title = row.Title ?? Path.GetFileNameWithoutExtension(row.FilePath),
+            Artist = row.Artist ?? row.AlbumArtist,
+            Album = row.Album,
+            AlbumUri = row.AlbumUri,
+            ArtistUri = row.ArtistUri,
+            ImageUrl = row.ArtworkUri,
+            ImageLargeUrl = row.ArtworkUri,
+            ImageSmallUrl = row.ArtworkUri,
+            ImageXLargeUrl = row.ArtworkUri,
+        };
+
+        // Local-file tracks never have a Spotify music-video variant; clear
+        // any cached manifest id from a prior remote track so the UI hides
+        // the "Watch Video" button.
+        _currentVideoManifestId = null;
+        _currentVideoPlaybackTarget = null;
+
+        if (_isSpotifyVideoActive && _spotifyVideoPlayback is not null)
+        {
+            try { await _spotifyVideoPlayback.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping Spotify video for local-file handoff"); }
+            _videoEngineActive = false;
+            _isSpotifyVideoActive = false;
+        }
+
+        if (row.IsVideo && _localMediaPlayer is not null)
+        {
+            // Video → UI MediaPlayer. Stop AudioHost so audio doesn't double up.
+            try { await _proxy.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping AudioHost for video handoff"); }
+
+            _videoEngineActive = true;
+            _isSpotifyVideoActive = false;
+            _currentVideoPlaybackTarget = null;
+            await _localMediaPlayer.PlayFileAsync(row.FilePath, current.Uri, metadata, positionMs, ct);
+            _logger?.LogInformation("Local video playback started: {Title} ({Path})", metadata.Title, row.FilePath);
+            PublishQueueState();
+            return;
+        }
+
+        // Audio → AudioHost (BASS). Stop UI MediaPlayer if it was active.
+        if ((_videoEngineActive || _localMediaPlayer?.IsActive == true) && _localMediaPlayer is not null)
+        {
+            try { await _localMediaPlayer.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping UI MediaPlayer for audio handoff"); }
+        }
+        _videoEngineActive = false;
+        _isSpotifyVideoActive = false;
+
+        var cmd = new Wavee.Playback.Contracts.PlayLocalFileCommand
+        {
+            TrackUri = current.Uri,
+            FilePath = row.FilePath,
+            DurationMs = row.DurationMs,
+            StartPositionMs = positionMs,
+            Metadata = metadata,
+            Normalization = null,
+        };
+
+        await _proxy.PlayLocalFileAsync(cmd, ct);
+        _logger?.LogInformation("Local file playback started: {Title} ({Path})", cmd.Metadata?.Title, cmd.FilePath);
+        PublishQueueState();
+    }
+
     private async Task OnTrackFinishedAsync(Playback.Contracts.TrackFinishedMessage msg)
     {
         try
@@ -500,7 +970,11 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             // already left position behind; trust the resolution duration if known).
             var endPos = string.Equals(msg.Reason, "error", StringComparison.OrdinalIgnoreCase)
                 ? _stateSubject.Value.PositionMs
-                : (_currentResolution?.DurationMs ?? _stateSubject.Value.PositionMs);
+                : (_currentResolution?.DurationMs
+                   ?? _currentMetrics?.Player?.Duration
+                   ?? (_stateSubject.Value.DurationMs > 0
+                       ? _stateSubject.Value.DurationMs
+                       : _stateSubject.Value.PositionMs));
             DispatchTrackTransition(
                 string.Equals(msg.Reason, "error", StringComparison.OrdinalIgnoreCase)
                     ? Wavee.Connect.Events.PlaybackReason.TrackError
@@ -890,6 +1364,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private void OnProxyStateChanged(LocalPlaybackState engineState)
     {
         var prev = _stateSubject.Value;
+        engineState = EnrichSpotifyVideoState(engineState);
 
         // Event reporting: track pause/resume edges as PlaybackMetrics interval
         // boundaries so TrackTransitionEvent's ms_played accurately reflects what
@@ -944,6 +1419,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             ContextFormatAttributes = _currentContextFormatAttributes,
             ContextPageCount = _currentContextPageCount,
             IsSystemInitiated = _isSystemInitiated,
+            VideoManifestId = _currentVideoManifestId,
+            MediaType = _isSpotifyVideoActive ? "video" : "audio",
         };
         _stateSubject.OnNext(enriched);
 
@@ -957,6 +1434,53 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         MaybeTriggerPrefetch(enriched);
     }
 
+    private LocalPlaybackState EnrichSpotifyVideoState(LocalPlaybackState engineState)
+    {
+        if (!_isSpotifyVideoActive || _currentVideoPlaybackTarget is not { } target)
+            return engineState;
+
+        return engineState with
+        {
+            TrackUri = !string.IsNullOrWhiteSpace(engineState.TrackUri)
+                ? engineState.TrackUri
+                : target.VideoTrackUri,
+            DurationMs = engineState.DurationMs > 0 ? engineState.DurationMs : target.DurationMs,
+            VideoManifestId = target.ManifestId,
+            MediaType = "video",
+            ExtraMetadata = BuildOriginalTrackMetadata(target)
+        };
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildOriginalTrackMetadata(SpotifyVideoPlaybackTarget target)
+    {
+        var original = target.OriginalMetadata;
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["wavee.original_track_uri"] = target.AudioTrackUri,
+            ["wavee.original_duration"] = Math.Max(0, target.OriginalDurationMs).ToString()
+        };
+
+        Add("wavee.original_title", original.Title);
+        Add("wavee.original_artist_name", original.Artist);
+        Add("wavee.original_album_title", original.Album);
+        Add("wavee.original_album_uri", original.AlbumUri);
+        Add("wavee.original_artist_uri", original.ArtistUri);
+        Add("wavee.original_image_url", original.ImageUrl);
+        Add("wavee.original_image_small_url", original.ImageSmallUrl);
+        Add("wavee.original_image_large_url", original.ImageLargeUrl);
+        Add("wavee.original_image_xlarge_url", original.ImageXLargeUrl);
+        Add("wavee.video_track_uri", target.VideoTrackUri);
+        Add("wavee.video_duration", target.DurationMs.ToString());
+
+        return metadata;
+
+        void Add(string key, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                metadata[key] = value;
+        }
+    }
+
     /// <summary>
     /// Fires an AudioKey/head/CDN prefetch for the next track once the current one
     /// is past its halfway point or within ~20 s of ending. Librespot does the same;
@@ -968,7 +1492,6 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         if (!state.IsPlaying) return;
         if (_repeatTrack) return;                             // next target = current
         if (state.DurationMs <= 0) return;                    // unknown duration, can't decide
-        if (_lastPrefetchedTrackUri != null) return;          // already queued for this track
 
         var remainingMs = state.DurationMs - state.PositionMs;
         var pastHalf = state.PositionMs >= (long)(state.DurationMs * PrefetchHalfwayFraction);
@@ -982,17 +1505,28 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         var target = nextTracks[0];
         if (string.IsNullOrEmpty(target.Uri)) return;
 
+        var prefetchVideo = ShouldPreferSpotifyVideoPlayback();
+        if (_lastPrefetchedTrackUri == target.Uri && _lastPrefetchWasVideo == prefetchVideo)
+            return;
+
         _lastPrefetchedTrackUri = target.Uri;
+        _lastPrefetchWasVideo = prefetchVideo;
         var cts = new CancellationTokenSource();
         var prev = Interlocked.Exchange(ref _prefetchCts, cts);
         try { prev?.Cancel(); prev?.Dispose(); } catch { /* best effort */ }
 
-        _logger?.LogDebug("Orchestrator: prefetching next track {Uri} (pos={Pos}ms/{Dur}ms)",
-            target.Uri, state.PositionMs, state.DurationMs);
+        _logger?.LogDebug("Orchestrator: prefetching next {Kind} {Uri} (pos={Pos}ms/{Dur}ms)",
+            prefetchVideo ? "music video" : "track", target.Uri, state.PositionMs, state.DurationMs);
 
         _ = Task.Run(async () =>
         {
-            try { await _trackResolver.PrefetchAsync(target.Uri, cts.Token).ConfigureAwait(false); }
+            try
+            {
+                if (prefetchVideo)
+                    await _trackResolver.PrefetchVideoAsync(target.Uri, cts.Token).ConfigureAwait(false);
+                else
+                    await _trackResolver.PrefetchAsync(target.Uri, cts.Token).ConfigureAwait(false);
+            }
             catch (Exception ex) { _logger?.LogDebug(ex, "Prefetch task fault (non-fatal)"); }
         }, cts.Token);
     }
@@ -1006,6 +1540,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private void ResetPrefetch()
     {
         _lastPrefetchedTrackUri = null;
+        _lastPrefetchWasVideo = false;
         var cts = Interlocked.Exchange(ref _prefetchCts, null);
         if (cts != null)
         {

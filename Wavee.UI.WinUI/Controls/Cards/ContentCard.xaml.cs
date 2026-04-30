@@ -250,6 +250,15 @@ public sealed partial class ContentCard : UserControl
         ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        // Backstop for ItemsRepeater recycle: OnUnloaded nulls the image
+        // Source for memory; the Loaded handler is supposed to re-call
+        // LoadImage on re-realization, but in some recycle paths (same item
+        // reused in the same container) the binding does not re-trigger and
+        // Loaded may fire before x:Bind has propagated the new DataContext.
+        // EffectiveViewportChanged fires whenever this element's viewport in
+        // an ancestor scroller changes — including the first measurement
+        // after re-attach — and lets us reload the cached bitmap on demand.
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -285,6 +294,7 @@ public sealed partial class ContentCard : UserControl
             var (contextUri, albumUri, playing) = _highlightService.Current;
             ApplyHighlight(contextUri, albumUri, playing);
         }
+        LoadImage(ImageUrl);
         SyncInitialPlaybackState();
     }
 
@@ -453,6 +463,19 @@ public sealed partial class ContentCard : UserControl
 
     // ── Image loading ──
 
+    private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
+    {
+        // Cheap short-circuit: 99% of fires are scroll noise on already-loaded
+        // cards. Only act when the image was nulled (by OnUnloaded) and we
+        // have a URL to reload.
+        if (string.IsNullOrEmpty(ImageUrl)) return;
+        var needsLoad = IsCircularImage
+            ? CircleImageBrush?.ImageSource == null
+            : SquareImage?.Source == null;
+        if (!needsLoad) return;
+        LoadImage(ImageUrl);
+    }
+
     private void LoadImage(string? url)
     {
         // Guard: template may not be applied yet
@@ -491,7 +514,9 @@ public sealed partial class ContentCard : UserControl
         else
         {
             SquareImage.Source = bitmap;
-            // ImageOpened on the Image control will handle fade-in
+            // Cached BitmapImage instances may already be opened, so ImageOpened
+            // will not always fire again when a virtualized card is recycled.
+            SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -574,6 +599,12 @@ public sealed partial class ContentCard : UserControl
                      duration: TimeSpan.FromMilliseconds(250),
                      layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(SquareImage);
+    }
+
+    private void SquareImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        SquareImage.Source = null;
+        SquarePlaceholderIcon.Visibility = Visibility.Visible;
     }
 
     // ── Hover handling ──

@@ -17,6 +17,7 @@
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:minivideo="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -227,6 +228,19 @@
             Grid.Row="3"
             HorizontalAlignment="Stretch"
             Visibility="{x:Bind ViewModel.PlayerLocation, Mode=OneWay, Converter={StaticResource PlayerLocationBottomConverter}}"/>
+
+        <!-- Bottom-right floating video mini-player. Lives outside the
+             navigation Frame so the MediaPlayerElement underneath doesn't
+             tear down on page navigation — that's the whole point of having
+             it: video keeps playing while the user browses other pages. The
+             control hides itself via Visibility binding to its VM, so an
+             always-mounted instance is cheap when no video is active. -->
+        <minivideo:MiniVideoPlayer
+            x:Name="MiniVideoPlayerControl"
+            Grid.Row="2"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="0,0,16,16"/>
 
     </Grid>
     </controls:ZoomContentControl>

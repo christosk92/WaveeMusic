@@ -2029,6 +2029,258 @@ public sealed class SpClient : ISpClient
             lastException);
     }
 
+    /// <inheritdoc cref="ISpClient.GetVideoManifestAsync"/>
+    public async Task<string> GetVideoManifestAsync(
+        string manifestId,
+        CancellationToken cancellationToken = default)
+    {
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/manifests/v9/json/sources/{manifestId}/options/supports_drm";
+        _logger?.LogDebug("[DRM] Video manifest GET {Url}", url);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        // Mimic the desktop client's xpui webview request shape — the
+        // /manifests endpoint is CORS-fenced and refuses requests that don't
+        // present the same Origin/Referer pair the in-app webview sends.
+        request.Headers.TryAddWithoutValidation("Origin", "https://xpui.app.spotify.com");
+        request.Headers.TryAddWithoutValidation("Referer", "https://xpui.app.spotify.com/");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var ctok = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(ctok))
+                    request.Headers.TryAddWithoutValidation("client-token", ctok);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[DRM] client-token fetch failed for video manifest - continuing without");
+            }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("[DRM] Video manifest failed status={StatusCode} reason={ReasonPhrase}",
+                (int)response.StatusCode,
+                response.ReasonPhrase);
+        }
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger?.LogDebug("[DRM] Video manifest response status={StatusCode} bytes={Bytes}",
+            (int)response.StatusCode,
+            json.Length);
+        return json;
+    }
+
+    /// <inheritdoc cref="ISpClient.GetVideoSegmentBytesAsync"/>
+    public async Task<byte[]> GetVideoSegmentBytesAsync(
+        Uri uri,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        if (!uri.IsAbsoluteUri)
+            throw new ArgumentException("Video segment URI must be absolute.", nameof(uri));
+
+        _logger?.LogDebug("[DRM] Video segment GET {Url}", SanitizeLogUri(uri));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        request.Headers.TryAddWithoutValidation("Origin", "https://xpui.app.spotify.com");
+        request.Headers.TryAddWithoutValidation("Referer", "https://xpui.app.spotify.com/");
+
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("[DRM] Video segment failed status={StatusCode} reason={ReasonPhrase} url={Url}",
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                SanitizeLogUri(uri));
+        }
+
+        response.EnsureSuccessStatusCode();
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        _logger?.LogDebug("[DRM] Video segment response status={StatusCode} bytes={Bytes} url={Url}",
+            (int)response.StatusCode,
+            bytes.Length,
+            SanitizeLogUri(uri));
+        return bytes;
+    }
+
+    /// <inheritdoc cref="ISpClient.PostPlayReadyLicenseAsync"/>
+    public async Task<byte[]> PostPlayReadyLicenseAsync(
+        byte[] challenge,
+        string? licenseServerEndpoint = null,
+        IReadOnlyDictionary<string, string>? requestHeaders = null,
+        CancellationToken cancellationToken = default)
+    {
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = BuildWebgateUrl(licenseServerEndpoint ?? "/playready-license");
+        _logger?.LogDebug("[DRM] PlayReady license POST endpoint={Endpoint} challengeBytes={Bytes} requestHeaders={HeaderCount}",
+            licenseServerEndpoint ?? "/playready-license",
+            challenge.Length,
+            requestHeaders?.Count ?? 0);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        request.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        request.Headers.TryAddWithoutValidation("Origin", "https://xpui.app.spotify.com");
+        request.Headers.TryAddWithoutValidation("Referer", "https://xpui.app.spotify.com/");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var ctok = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(ctok))
+                    request.Headers.TryAddWithoutValidation("client-token", ctok);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[DRM] client-token fetch failed for PlayReady license - continuing without");
+            }
+        }
+
+        request.Content = new ByteArrayContent(challenge);
+        if (requestHeaders is not null)
+        {
+            foreach (var header in requestHeaders)
+            {
+                if (string.IsNullOrWhiteSpace(header.Key) || string.IsNullOrWhiteSpace(header.Value))
+                    continue;
+
+                if (!request.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                    request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+        }
+
+        if (request.Content.Headers.ContentType is null)
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("[DRM] PlayReady license failed status={StatusCode} reason={ReasonPhrase}",
+                (int)response.StatusCode,
+                response.ReasonPhrase);
+        }
+
+        response.EnsureSuccessStatusCode();
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        _logger?.LogDebug("[DRM] PlayReady license response status={StatusCode} bytes={Bytes}",
+            (int)response.StatusCode,
+            responseBytes.Length);
+        return responseBytes;
+    }
+
+    /// <inheritdoc cref="ISpClient.PostWidevineLicenseAsync"/>
+    public async Task<byte[]> PostWidevineLicenseAsync(
+        byte[] challenge,
+        string? licenseServerEndpoint = null,
+        IReadOnlyDictionary<string, string>? requestHeaders = null,
+        CancellationToken cancellationToken = default)
+    {
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = BuildWebgateUrl(licenseServerEndpoint ?? "/widevine-license/v1/video/license");
+        _logger?.LogDebug("[DRM] Widevine license POST endpoint={Endpoint} challengeBytes={Bytes} requestHeaders={HeaderCount}",
+            licenseServerEndpoint ?? "/widevine-license/v1/video/license",
+            challenge.Length,
+            requestHeaders?.Count ?? 0);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        request.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        request.Headers.TryAddWithoutValidation("Origin", "https://xpui.app.spotify.com");
+        request.Headers.TryAddWithoutValidation("Referer", "https://xpui.app.spotify.com/");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var ctok = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(ctok))
+                    request.Headers.TryAddWithoutValidation("client-token", ctok);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "[DRM] client-token fetch failed for Widevine license - continuing without");
+            }
+        }
+
+        request.Content = new ByteArrayContent(challenge);
+        if (requestHeaders is not null)
+        {
+            foreach (var header in requestHeaders)
+            {
+                if (string.IsNullOrWhiteSpace(header.Key) || string.IsNullOrWhiteSpace(header.Value))
+                    continue;
+
+                if (!request.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                    request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+        }
+
+        if (request.Content.Headers.ContentType is null)
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("[DRM] Widevine license failed status={StatusCode} reason={ReasonPhrase}",
+                (int)response.StatusCode,
+                response.ReasonPhrase);
+        }
+
+        response.EnsureSuccessStatusCode();
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        _logger?.LogDebug("[DRM] Widevine license response status={StatusCode} bytes={Bytes}",
+            (int)response.StatusCode,
+            responseBytes.Length);
+        return responseBytes;
+    }
+
+    private string BuildWebgateUrl(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            return $"{_baseUrl}/playready-license";
+
+        if (endpoint.StartsWith("https://@webgate", StringComparison.OrdinalIgnoreCase))
+            return _baseUrl + endpoint["https://@webgate".Length..];
+
+        if (endpoint.StartsWith("@webgate", StringComparison.OrdinalIgnoreCase))
+            return _baseUrl + endpoint["@webgate".Length..];
+
+        if (Uri.TryCreate(endpoint, UriKind.Absolute, out var absolute))
+            return absolute.ToString();
+
+        return endpoint[0] == '/'
+            ? _baseUrl + endpoint
+            : $"{_baseUrl}/{endpoint}";
+    }
+
+    private static string SanitizeLogUri(Uri uri)
+    {
+        var text = uri.ToString();
+        var queryIndex = text.IndexOf('?');
+        return queryIndex >= 0 ? text[..queryIndex] : text;
+    }
+
     private static string? GetHeaderValue(HttpResponseMessage response, string headerName)
     {
         if (response.Headers.TryGetValues(headerName, out var values))

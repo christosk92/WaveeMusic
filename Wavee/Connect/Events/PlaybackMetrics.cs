@@ -39,6 +39,11 @@ public sealed class PlaybackMetrics
     public string ReferrerIdentifier { get; }
 
     /// <summary>
+    /// Active media type for stream reporting ("audio" or "video").
+    /// </summary>
+    public string MediaType { get; }
+
+    /// <summary>
     /// Timestamp when playback started (Unix ms).
     /// </summary>
     public long Timestamp { get; }
@@ -76,13 +81,15 @@ public sealed class PlaybackMetrics
         string playbackId,
         string contextUri,
         string featureVersion = "",
-        string referrerIdentifier = "")
+        string referrerIdentifier = "",
+        string mediaType = "audio")
     {
         TrackId = trackId;
         PlaybackId = playbackId;
         ContextUri = contextUri;
         FeatureVersion = featureVersion;
         ReferrerIdentifier = referrerIdentifier;
+        MediaType = string.IsNullOrWhiteSpace(mediaType) ? "audio" : mediaType;
         Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 

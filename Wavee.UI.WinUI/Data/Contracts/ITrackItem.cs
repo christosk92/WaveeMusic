@@ -90,6 +90,15 @@ public interface ITrackItem : INotifyPropertyChanged
     bool IsLiked { get; set; }
 
     /// <summary>
+    /// True when the track is a Wavee-indexed local file (URI starts with
+    /// <c>wavee:local:track:</c>). Drives the "On this PC" badge in TrackItem
+    /// and the local-likes routing on HeartButton. Defaults to a URI check so
+    /// implementers don't need to set a separate field.
+    /// </summary>
+    bool IsLocal => !string.IsNullOrEmpty(Uri) &&
+                    Uri.StartsWith("wavee:local:track:", StringComparison.Ordinal);
+
+    /// <summary>
     /// Optional "added on" relative/absolute display string. Present on
     /// <c>PlaylistTrackDto</c> and <c>LikedSongDto</c>; empty for album-track-style DTOs.
     /// Exposed through the interface so <c>TrackDataGrid</c>'s Date Added column can

@@ -15,6 +15,16 @@ public class WaveeCacheOptions
         "metadata.db");
 
     /// <summary>
+    /// Root directory for the local-file artwork cache. Backs the
+    /// <c>wavee-artwork://{hash}</c> URI scheme. Default:
+    /// <c>%LOCALAPPDATA%/Wavee/local-artwork</c>.
+    /// </summary>
+    public string LocalArtworkDirectory { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Wavee",
+        "local-artwork");
+
+    /// <summary>
     /// Preferred 2-character Spotify locale for localized metadata cache rows.
     /// Null or empty keeps the shared default-locale cache.
     /// </summary>

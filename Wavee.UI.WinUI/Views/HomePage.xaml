@@ -17,7 +17,7 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>
@@ -247,14 +247,35 @@
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                 VerticalAlignment="Center"
-                                Margin="0,0,8,0"
-                                Visibility="{Binding ElementName=GenericSectionShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                                Margin="0,0,8,0">
+                        <!-- View all is a navigation entry into the section's
+                             full destination (e.g. Local files → Local Library).
+                             Visibility is gated by HasViewAll only — the page
+                             chevrons next to it keep their own HasOverflow gate
+                             since "page left/right" is meaningless when nothing
+                             overflows. Previously View all was wrapped in a
+                             HasOverflow-gated StackPanel and silently hidden
+                             on small shelves. -->
+                        <Button Content="View all"
+                                Tag="{x:Bind ViewAllUri}"
+                                Click="HomeSectionViewAll_Click"
+                                Visibility="{x:Bind HasViewAll, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                VerticalAlignment="Center"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Padding="8,2"
+                                FontSize="12"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <Button Style="{StaticResource ShelfChevronButtonStyle}"
-                                Command="{Binding ElementName=GenericSectionShelf, Path=PageLeftCommand}">
+                                Command="{Binding ElementName=GenericSectionShelf, Path=PageLeftCommand}"
+                                Visibility="{Binding ElementName=GenericSectionShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
                             <FontIcon Glyph="&#xE76B;" FontSize="12"/>
                         </Button>
                         <Button Style="{StaticResource ShelfChevronButtonStyle}"
-                                Command="{Binding ElementName=GenericSectionShelf, Path=PageRightCommand}">
+                                Command="{Binding ElementName=GenericSectionShelf, Path=PageRightCommand}"
+                                Visibility="{Binding ElementName=GenericSectionShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
                             <FontIcon Glyph="&#xE76C;" FontSize="12"/>
                         </Button>
                     </StackPanel>
@@ -274,7 +295,7 @@
                 <Grid Margin="0,0,-32,0">
                     <shelf:ShelfScroller
                         x:Name="GenericSectionShelf"
-                        ItemsSource="{x:Bind Items}"
+                        ItemsSource="{x:Bind Items, Mode=OneWay}"
                         ItemTemplateSelector="{StaticResource HomeItemSelector}"
                         MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
                     <!-- Always-on right-edge fade — softens the page-edge cutoff
@@ -841,6 +862,15 @@
                 </Grid>
             </Grid>
             </Grid>
+            <!-- Outer virtualizing ItemsRepeater so 21 sections × ~5 cards
+                 don't all realize on first paint (tested: non-virtualizing
+                 was very heavy). The cross-section recycle bug that this
+                 outer normally triggers (inner ItemsRepeater silently
+                 retains realized children at indices < min(oldCount,
+                 newCount) when the ItemsSource binding fires with a new
+                 collection) is handled inside ShelfScroller.OnItemsSourceChanged
+                 by physically replacing the inner ItemsRepeater instance —
+                 a fresh instance has no realized state to retain. -->
             <ItemsRepeater
                 x:Name="SectionsRepeater"
                 ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}">

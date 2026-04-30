@@ -70,6 +70,7 @@ public sealed class AppSettings
     /// user hits end-of-context and sees a "Reached the end" notification.
     /// </summary>
     public bool AutoplayEnabled { get; set; } = true;
+    public bool ShowLocalFilesOnHome { get; set; } = true;
 
     // ── Cache (applied on next launch) ──
 

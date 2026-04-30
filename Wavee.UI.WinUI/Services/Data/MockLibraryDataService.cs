@@ -288,6 +288,18 @@ public sealed class MockLibraryDataService : ILibraryDataService
     public Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default)
         => Task.FromResult<AlbumPalette?>(null);
 
+    public Task AddLocalTracksToPlaylistAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task RemoveLocalOverlayTracksAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task<IReadOnlyList<Wavee.UI.WinUI.Data.DTOs.PlaylistOverlayRow>> GetPlaylistOverlayRowsAsync(string playlistUri, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<Wavee.UI.WinUI.Data.DTOs.PlaylistOverlayRow>>(Array.Empty<Wavee.UI.WinUI.Data.DTOs.PlaylistOverlayRow>());
+
+    public Task ReorderPlaylistOverlayAsync(string playlistUri, IReadOnlyList<string> orderedTrackUris, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         if (_mockPlaylistTracks.TryGetValue(playlistId, out var tracks))

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -13,6 +15,7 @@ using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
@@ -28,11 +31,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
     private readonly Services.HomeResponseParserFactory _parserFactory;
     private readonly IAuthState? _authState;
+    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _baselineEnrichmentCts;
     private int _baselineEnrichmentVersion;
+    private IDisposable? _localProgressSub;
     private bool _isDisposed;
+    private const string LocalSectionUri = "wavee:local:home";
+    private const int LocalSectionMaxItems = 20;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -133,7 +140,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         Services.RecentlyPlayedService? recentlyPlayedService = null,
         Services.HomeResponseParserFactory? parserFactory = null,
         IAuthState? authState = null,
-        ILogger<HomeViewModel>? logger = null)
+        ILogger<HomeViewModel>? logger = null,
+        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null)
     {
         _session = session;
         _settingsService = settingsService;
@@ -141,8 +149,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         _recentlyPlayedService = recentlyPlayedService;
         _parserFactory = parserFactory ?? new Services.HomeResponseParserFactory();
         _authState = authState;
+        _localLibrary = localLibrary;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        // Subscribe to scan-progress so the Local Files shelf refreshes as
+        // the indexer materialises content during a scan, and once when the
+        // scan completes (CurrentPath == null tick).
+        if (_localLibrary is not null)
+            _localProgressSub = _localLibrary.SyncProgress.Subscribe(OnLocalSyncProgress);
 
         if (_recentlyPlayedService != null)
             _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
@@ -152,6 +167,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         // updates the avatar and name without a navigation away-and-back.
         if (_authState is not null)
             _authState.PropertyChanged += OnAuthStatePropertyChanged;
+
+        WeakReferenceMessenger.Default.Register<HomeLocalFilesVisibilityChangedMessage>(this, (r, m) =>
+        {
+            var vm = (HomeViewModel)r;
+            if (m.Value)
+                _ = vm.RefreshLocalSectionAsync();
+            else
+                vm._dispatcherQueue.TryEnqueue(vm.RemoveLocalSection);
+        });
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Home, null)
         {
@@ -186,13 +210,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 {
                     Greeting = snapshot.Greeting ?? Greeting;
                     var ordered = ApplyPreferences(snapshot.Sections);
+                    var localSection = ExtractLocalSection();
                     if (Sections.Count == 0)
                         await PopulateSectionsChunkedAsync(ordered);
                     else
                         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
+                    RestoreLocalSection(localSection);
                     ApplyChips(snapshot.Chips);
                     BeginBaselineEnrichment();
                     DispatchRecentsToService(ordered);
+                    await RefreshLocalSectionAsync();
                     return;
                 }
             }
@@ -204,14 +231,17 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 Greeting = snapshot.Greeting ?? Greeting;
                 var ordered = ApplyPreferences(snapshot.Sections);
 
+                var localSection = ExtractLocalSection();
                 if (Sections.Count == 0)
                     await PopulateSectionsChunkedAsync(ordered);
                 else
                     Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
+                RestoreLocalSection(localSection);
 
                 ApplyChips(snapshot.Chips);
                 BeginBaselineEnrichment();
                 DispatchRecentsToService(ordered);
+                await RefreshLocalSectionAsync();
 
                 // Start background refresh
                 _homeFeedCache.StartBackgroundRefresh(_session);
@@ -223,10 +253,13 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 var result = await Task.Run(() => _parserFactory.Parse(response));
                 Greeting = result.Greeting ?? Greeting;
                 var ordered = ApplyPreferences(result.Sections);
+                var localSection = ExtractLocalSection();
                 await PopulateSectionsChunkedAsync(ordered);
+                RestoreLocalSection(localSection);
                 ApplyChips(result.Chips);
                 BeginBaselineEnrichment();
                 DispatchRecentsToService(ordered);
+                await RefreshLocalSectionAsync();
             }
 
             if (string.IsNullOrEmpty(Greeting))
@@ -277,7 +310,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         SuspendBackgroundRefresh();
         CancelBaselineEnrichment();
+        // Pin the local-files shelf across hibernation. It is small (capped
+        // by LocalSectionMaxItems) and is sourced separately from the
+        // Spotify feed, so the Extract→ApplyDiff→Restore pattern that
+        // ResumeAndRehydrate relies on only works if it can find the
+        // section in Sections on entry.
+        var localSection = ExtractLocalSection();
         Sections.Clear();
+        if (localSection != null)
+            Sections.Add(localSection);
         DisplayedChips.Clear();
 
         // Phase 7.4 — release hero/featured state so the bound Image controls
@@ -307,10 +348,211 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         CancelBaselineEnrichment();
         var ordered = ApplyPreferences(snapshot.Sections);
+        var localSection = ExtractLocalSection();
         Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
+        RestoreLocalSection(localSection);
         ApplyChips(snapshot.Chips);
         BeginBaselineEnrichment();
         DispatchRecentsToService(ordered);
+        _ = RefreshLocalSectionAsync();
+    }
+
+    // ── Local files Home section ────────────────────────────────────────
+    //
+    // Materialise a "Local files" shelf at the bottom of Home whenever the
+    // indexer has at least one local album. The section is generated from
+    // ILocalLibraryService.GetAllTracksAsync grouped by album_uri; cards
+    // route to LocalLibraryPage on click and the section header carries a
+    // ViewAllUri that the page-level click handler maps to the same target.
+    // Refreshes on every scan-progress event so adding/removing folders
+    // updates the shelf without needing a Home reload.
+
+    public async Task RefreshLocalSectionAsync()
+    {
+        if (_isDisposed || _localLibrary is null) return;
+        if (_settingsService?.Settings.ShowLocalFilesOnHome == false)
+        {
+            RemoveLocalSectionOnDispatcher();
+            return;
+        }
+
+        IReadOnlyList<Wavee.Core.Library.Local.LocalTrackRow> rows;
+        try
+        {
+            rows = await _localLibrary.GetAllTracksAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Local section refresh: GetAllTracksAsync failed");
+            return;
+        }
+
+        if (rows.Count == 0)
+        {
+            // GetAllTracksAsync can transiently observe zero rows mid-scan
+            // or during a DB write. Don't flicker the existing shelf out;
+            // ShowLocalFilesOnHome=false is the authoritative remove signal
+            // and is already handled above.
+            return;
+        }
+
+        // Split rows into "has real album metadata" (group as albums) and
+        // "no metadata, scanner used Unknown fallback" (show per-file as
+        // individual track cards). The scanner stores the literal strings
+        // "Unknown Album" / "Unknown Artist" when tags are blank, and
+        // LocalNormalize.AlbumUri hashes those fallback strings into a
+        // single deterministic URI — so without this split, every untagged
+        // file (videos, .mp3s with no ID3, etc.) collapses into one fake
+        // "Unknown Album" card. Treating them as per-file track cards lets
+        // the shelf surface them with their filename-derived Title instead.
+        bool IsSyntheticAlbum(Wavee.Core.Library.Local.LocalTrackRow r) =>
+            r.Album == "Unknown Album"
+            && (r.AlbumArtist is null or "Unknown Artist")
+            && (r.Artist is null or "Unknown Artist");
+
+        var realAlbums = rows
+            .Where(r => r.AlbumUri != null && !IsSyntheticAlbum(r))
+            .GroupBy(r => r.AlbumUri!)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new HomeSectionItem
+                {
+                    Uri = g.Key,
+                    Title = first.Album ?? first.Title ?? "Untitled",
+                    Subtitle = first.AlbumArtist ?? first.Artist,
+                    ImageUrl = g.FirstOrDefault(t => t.ArtworkUri != null)?.ArtworkUri,
+                    ContentType = HomeContentType.Album,
+                };
+            });
+
+        var orphanFiles = rows
+            .Where(r => r.AlbumUri == null || IsSyntheticAlbum(r))
+            .Select(r => new HomeSectionItem
+            {
+                Uri = r.TrackUri,
+                Title = r.Title ?? Path.GetFileNameWithoutExtension(r.FilePath) ?? "Untitled",
+                // Don't show "Unknown Artist" — leave the subtitle blank so
+                // an untagged file reads as a single line (filename) rather
+                // than filename+placeholder.
+                Subtitle = (r.AlbumArtist == "Unknown Artist" ? null : r.AlbumArtist)
+                           ?? (r.Artist == "Unknown Artist" ? null : r.Artist),
+                ImageUrl = r.ArtworkUri,
+                ContentType = HomeContentType.Album,
+            });
+
+        var albums = realAlbums
+            .Concat(orphanFiles)
+            .Take(LocalSectionMaxItems)
+            .ToList();
+
+        void ApplyLocalSection()
+        {
+            if (_isDisposed) return;
+            UpsertLocalSection(albums);
+        }
+
+        if (_dispatcherQueue.HasThreadAccess)
+            ApplyLocalSection();
+        else
+            _dispatcherQueue.TryEnqueue(ApplyLocalSection);
+    }
+
+    private void UpsertLocalSection(List<HomeSectionItem> items)
+    {
+        var existing = Sections.FirstOrDefault(s => s.SectionUri == LocalSectionUri);
+        if (existing != null)
+        {
+            existing.Items.Clear();
+            foreach (var item in items) existing.Items.Add(item);
+            MoveLocalSectionToPreferredPosition(existing);
+            return;
+        }
+
+        var section = new HomeSection
+        {
+            Title = "Local files",
+            Subtitle = "On this PC",
+            SectionType = HomeSectionType.Generic,
+            SectionUri = LocalSectionUri,
+            ViewAllUri = "wavee:local:library",
+        };
+        foreach (var item in items) section.Items.Add(item);
+        section.ApplyTheme(_isDarkTheme);
+        Sections.Insert(GetLocalSectionInsertIndex(), section);
+    }
+
+    private int GetLocalSectionInsertIndex()
+    {
+        if (Sections.Count == 0) return 0;
+
+        var index = 1;
+        if (Sections.Count > 1
+            && Sections[0].SectionType == HomeSectionType.Shorts
+            && Sections[1].SectionType == HomeSectionType.RecentlyPlayed)
+        {
+            index = 2;
+        }
+
+        return Math.Min(index, Sections.Count);
+    }
+
+    private void MoveLocalSectionToPreferredPosition(HomeSection section)
+    {
+        var currentIndex = Sections.IndexOf(section);
+        if (currentIndex < 0) return;
+
+        Sections.RemoveAt(currentIndex);
+        Sections.Insert(GetLocalSectionInsertIndex(), section);
+    }
+
+    private HomeSection? ExtractLocalSection()
+    {
+        for (int i = Sections.Count - 1; i >= 0; i--)
+        {
+            if (Sections[i].SectionUri == LocalSectionUri)
+            {
+                var section = Sections[i];
+                Sections.RemoveAt(i);
+                return section;
+            }
+        }
+
+        return null;
+    }
+
+    private void RestoreLocalSection(HomeSection? section)
+    {
+        if (section is null) return;
+        if (_settingsService?.Settings.ShowLocalFilesOnHome == false) return;
+        if (Sections.Any(s => s.SectionUri == LocalSectionUri)) return;
+
+        section.ApplyTheme(_isDarkTheme);
+        Sections.Insert(GetLocalSectionInsertIndex(), section);
+    }
+
+    private void RemoveLocalSection()
+    {
+        _ = ExtractLocalSection();
+    }
+
+    private void RemoveLocalSectionOnDispatcher()
+    {
+        if (_dispatcherQueue.HasThreadAccess)
+            RemoveLocalSection();
+        else
+            _dispatcherQueue.TryEnqueue(RemoveLocalSection);
+    }
+
+    private void OnLocalSyncProgress(Wavee.Core.Library.Local.LocalSyncProgress p)
+    {
+        // Refresh on the final tick (CurrentPath == null) AND periodically while
+        // a scan is in flight so the user sees the shelf grow as files come in.
+        // Throttle: only refresh on every Nth tick to keep SQLite reads low.
+        if (p.CurrentPath is null || p.ProcessedFiles % 50 == 0)
+        {
+            _ = RefreshLocalSectionAsync();
+        }
     }
 
     /// <summary>
@@ -1121,15 +1363,18 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             Greeting = snapshot.Greeting ?? Greeting;
             var ordered = ApplyPreferences(snapshot.Sections);
 
+            var localSection = ExtractLocalSection();
             if (Sections.Count == 0)
                 Sections = new ObservableCollection<HomeSection>(ordered);
             else
                 Services.HomeFeedCache.ApplyDiff(Sections, ordered,
                     g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
+            RestoreLocalSection(localSection);
 
             System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] After diff: {Sections.Count} sections displayed");
             BeginBaselineEnrichment();
             DispatchRecentsToService(ordered);
+            await RefreshLocalSectionAsync();
 
             if (string.IsNullOrEmpty(Greeting))
                 UpdateGreeting();
@@ -1317,6 +1562,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             _recentlyPlayedService.ItemsChanged -= OnRecentlyPlayedItemsChanged;
         if (_authState is not null)
             _authState.PropertyChanged -= OnAuthStatePropertyChanged;
+        WeakReferenceMessenger.Default.Unregister<HomeLocalFilesVisibilityChangedMessage>(this);
+
+        _localProgressSub?.Dispose();
 
         CancelBaselineEnrichment();
     }
@@ -1525,6 +1773,15 @@ public sealed partial class HomeSection : ObservableObject
     public string SectionUri { get; set; } = "";
     public ObservableCollection<HomeSectionItem> Items { get; set; } = [];
     public string? RawSpotifyJson { get; set; }
+
+    /// <summary>
+    /// When non-null, a "View all" button is rendered in the section header
+    /// and tapping it navigates to this URI. Used by the Wavee local-files
+    /// section to surface a destination listing all indexed local content;
+    /// Spotify-side sections leave this null.
+    /// </summary>
+    public string? ViewAllUri { get; set; }
+    public bool HasViewAll => !string.IsNullOrEmpty(ViewAllUri);
 
 #if DEBUG
     public bool IsDebugVisible => true;

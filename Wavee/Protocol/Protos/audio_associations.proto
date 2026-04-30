@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package spotify.bumblebee.audio_associations.v1;
+
+option csharp_namespace = "Wavee.Protocol.AudioAssociations";
+
+message AudioAssociations {
+  repeated AudioAssociation association = 1;
+}
+
+message AudioAssociation {
+  // Related track URI. When queried for an audio track, this is the
+  // music-video track URI whose TrackV4 carries original_video[0].gid.
+  string associated_uri = 1;
+}

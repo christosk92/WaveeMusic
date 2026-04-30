@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -28,6 +29,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
     private readonly IPlaybackStateService _playbackStateService;
     private readonly IConnectivityService? _connectivityService;
+    private readonly INotificationService? _notificationService;
     private readonly ILogger? _logger;
     private bool _disposed;
     private DispatcherTimer? _positionTimer;
@@ -202,10 +204,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     public PlayerBarViewModel(IPlaybackStateService playbackStateService,
                               IConnectivityService? connectivityService = null,
+                              INotificationService? notificationService = null,
                               ILoggerFactory? loggerFactory = null)
     {
         _playbackStateService = playbackStateService;
         _connectivityService = connectivityService;
+        _notificationService = notificationService;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
         _navigateToArtistCommand = new RelayCommand<string?>(NavigateToArtist);
@@ -339,6 +343,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.CurrentAlbumId):
                 CurrentAlbumId = _playbackStateService.CurrentAlbumId;
                 break;
+            case nameof(IPlaybackStateService.CurrentTrackManifestId):
+            case nameof(IPlaybackStateService.CurrentTrackHasMusicVideo):
+            case nameof(IPlaybackStateService.CurrentTrackIsVideo):
+                OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
+                break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
                 AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
                 break;
@@ -383,6 +392,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var newRemote = _playbackStateService.IsPlayingRemotely;
                 _logger?.LogDebug("[PlayerBar] IsPlayingRemotely → {Value}, device={Device}", newRemote, _playbackStateService.ActiveDeviceName ?? "<none>");
                 IsPlayingRemotely = newRemote;
+                OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
                 break;
             case nameof(IPlaybackStateService.ActiveDeviceName):
                 ActiveDeviceName = _playbackStateService.ActiveDeviceName;
@@ -639,6 +649,57 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private void ToggleDetailsPanel()
     {
         WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.Details));
+    }
+
+    /// <summary>
+    /// True when the current track has a music-video variant — drives the
+    /// "Watch Video" button visibility. True when EITHER the manifest_id is
+    /// already known (self-contained tracks where Track.original_video is on
+    /// the audio URI itself) OR
+    /// <see cref="IPlaybackStateService.CurrentTrackHasMusicVideo"/> says the
+    /// linked-URI discovery service surfaced an associated video. Visible
+    /// regardless of which device is currently playing — Spotify's behaviour
+    /// is to transfer playback to the device that initiated the video on
+    /// click, so a remote audio session switching to local video on click is
+    /// expected and matches the desktop client.
+    /// </summary>
+    public bool IsCurrentTrackVideoCapable =>
+        !_playbackStateService.IsPlayingRemotely
+        && !_playbackStateService.CurrentTrackIsVideo
+        && (!string.IsNullOrEmpty(_playbackStateService.CurrentTrackManifestId)
+            || _playbackStateService.CurrentTrackHasMusicVideo);
+
+    [ObservableProperty]
+    private bool _isResolvingVideo;
+
+    partial void OnIsResolvingVideoChanged(bool value) => SwitchToVideoCommand.NotifyCanExecuteChanged();
+
+    private bool CanSwitchToVideo() => !IsResolvingVideo;
+
+    [RelayCommand(CanExecute = nameof(CanSwitchToVideo))]
+    private async Task SwitchToVideoAsync()
+    {
+        IsResolvingVideo = true;
+        try
+        {
+            NavigationHelpers.OpenVideoPlayer();
+            var switched = await _playbackStateService.SwitchToVideoAsync();
+            if (switched)
+            {
+                return;
+            }
+
+            _notificationService?.Show(new NotificationInfo
+            {
+                Message = "Music video isn't available for this track",
+                Severity = NotificationSeverity.Informational,
+                AutoDismissAfter = TimeSpan.FromSeconds(4)
+            });
+        }
+        finally
+        {
+            IsResolvingVideo = false;
+        }
     }
 
     /// <summary>

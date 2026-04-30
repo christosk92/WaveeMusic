@@ -69,9 +69,14 @@ public sealed class SectionStackLayout : VirtualizingLayout
 
     // Parallel lists indexed by item position. NaN in _heights means "not yet
     // measured" so we can distinguish a legitimately 0-height section from an
-    // unknown one.
+    // unknown one. _identities tracks WHICH section's height is cached at each
+    // slot so an ApplyDiff Move (count unchanged, but the data identity at
+    // index i now points to a different section) re-measures only the affected
+    // slot — without it, a 200 px artist row's cached height would persist at
+    // the slot of a 400 px baseline section that just moved away.
     private readonly List<double> _heights = new();
     private readonly List<double> _offsets = new();
+    private readonly List<WeakReference<object>?> _identities = new();
     private int _lastItemCount = -1;
     private double _lastAvailableWidth = double.NaN;
 
@@ -84,6 +89,7 @@ public sealed class SectionStackLayout : VirtualizingLayout
             {
                 _heights.Clear();
                 _offsets.Clear();
+                _identities.Clear();
                 _lastItemCount = 0;
                 _lastAvailableWidth = availableSize.Width;
                 return new Size(0, 0);
@@ -100,6 +106,7 @@ public sealed class SectionStackLayout : VirtualizingLayout
             {
                 _heights.Clear();
                 _offsets.Clear();
+                _identities.Clear();
                 _lastItemCount = count;
                 _lastAvailableWidth = width;
             }
@@ -107,6 +114,7 @@ public sealed class SectionStackLayout : VirtualizingLayout
             // Grow cache to current count. NaN = never measured.
             while (_heights.Count < count) _heights.Add(double.NaN);
             while (_offsets.Count < count) _offsets.Add(0);
+            while (_identities.Count < count) _identities.Add(null);
 
             var realization = context.RealizationRect;
             var realizeTop = realization.Top - RealizationBufferPx;
@@ -117,6 +125,33 @@ public sealed class SectionStackLayout : VirtualizingLayout
             for (int i = 0; i < count; i++)
             {
                 _offsets[i] = y;
+
+                // Identity check: if the data item at slot i differs from the
+                // one we last measured here (an ApplyDiff Move shuffled the
+                // sections without changing the count), invalidate the cached
+                // height for this slot so it re-measures fresh. context.GetItemAt
+                // can throw mid-mutation — fall through to the existing path
+                // and let the outer try/catch handle it.
+                try
+                {
+                    var currentItem = context.GetItemAt(i);
+                    if (currentItem is not null)
+                    {
+                        var prev = _identities[i];
+                        object? prevItem = null;
+                        prev?.TryGetTarget(out prevItem);
+                        if (prev is not null && !ReferenceEquals(prevItem, currentItem))
+                            _heights[i] = double.NaN;
+                        if (prev is null || !ReferenceEquals(prevItem, currentItem))
+                            _identities[i] = new WeakReference<object>(currentItem);
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    // Mid-mutation read — fall through, NaN-on-mismatch will
+                    // come on the next pass when the collection is stable.
+                }
+
                 var cached = _heights[i];
                 var height = double.IsNaN(cached) ? EstimatedItemHeight : cached;
 
@@ -156,6 +191,7 @@ public sealed class SectionStackLayout : VirtualizingLayout
             // run fresh with reset cache.
             _heights.Clear();
             _offsets.Clear();
+            _identities.Clear();
             _lastItemCount = -1;
             _lastAvailableWidth = double.NaN;
             return new Size(availableSize.Width, 0);

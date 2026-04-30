@@ -37,4 +37,11 @@ public sealed class TrackResolution
     /// AudioHost reads from local disk instead of downloading from CDN.
     /// </summary>
     public string? LocalCacheFileId { get; init; }
+
+    /// <summary>
+    /// Hex-encoded VideoFile.file_id from Track.Video[0]. Non-null when the
+    /// track has a music-video variant. Feeds the /manifests/v9 endpoint
+    /// when the user manually switches to video playback.
+    /// </summary>
+    public string? VideoManifestId { get; init; }
 }

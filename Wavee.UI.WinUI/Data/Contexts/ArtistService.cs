@@ -10,6 +10,7 @@ using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -82,6 +83,15 @@ public sealed class ArtistService : IArtistService
             }
         }
 
+        var musicVideoMappings = MapMusicVideoMappings(artist);
+        _logger?.LogInformation(
+            "[VideoCache] Artist overview video pages for {Artist}: related={RelatedCount} unmapped={UnmappedCount} mappings={MappingCount}",
+            artistUri,
+            artist.RelatedMusicVideos?.Items?.Count ?? -1,
+            artist.UnmappedMusicVideos?.Items?.Count ?? -1,
+            musicVideoMappings.Count);
+        PrewarmMusicVideoCatalog(musicVideoMappings);
+
         return new ArtistOverviewResult
         {
             Name = artist.Profile?.Name,
@@ -144,8 +154,22 @@ public sealed class ArtistService : IArtistService
                 .Select(g => g.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url)
                 .Where(u => !string.IsNullOrWhiteSpace(u))
                 .Select(u => u!)
-                .ToList()
+                .ToList(),
+
+            MusicVideoMappings = musicVideoMappings
         };
+    }
+
+    private void PrewarmMusicVideoCatalog(IReadOnlyList<ArtistMusicVideoMappingResult> mappings)
+    {
+        if (mappings.Count == 0) return;
+
+        var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<IMusicVideoCatalogCache>();
+        if (videoCatalog is null) return;
+
+        foreach (var mapping in mappings)
+            videoCatalog.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
     }
 
     private async Task<List<ArtistConcertResult>> MapConcertsAsync(ArtistConcerts? concerts, CancellationToken ct)
@@ -304,6 +328,72 @@ public sealed class ArtistService : IArtistService
         }
         return results;
     }
+
+    private static List<ArtistMusicVideoMappingResult> MapMusicVideoMappings(ArtistUnion artist)
+    {
+        var results = new List<ArtistMusicVideoMappingResult>();
+        var topTrackUriByName = (artist.Discography?.TopTracks?.Items ?? new())
+            .Select(item => item.Track)
+            .Where(track => track is not null
+                            && !string.IsNullOrWhiteSpace(track.Name)
+                            && !string.IsNullOrWhiteSpace(track.Uri))
+            .GroupBy(track => NormalizeTrackTitle(track!.Name), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First()!.Uri!, StringComparer.OrdinalIgnoreCase);
+
+        AddMappings(artist.RelatedMusicVideos, results, topTrackUriByName);
+        AddMappings(artist.UnmappedMusicVideos, results, topTrackUriByName);
+        return results
+            .GroupBy(m => m.AudioTrackUri, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    private static void AddMappings(
+        ArtistMusicVideosPage? page,
+        List<ArtistMusicVideoMappingResult> results,
+        IReadOnlyDictionary<string, string> topTrackUriByName)
+    {
+        if (page?.Items is not { Count: > 0 }) return;
+
+        foreach (var item in page.Items)
+        {
+            var videoUri = item.Uri ?? item.Data?.Uri;
+            if (string.IsNullOrWhiteSpace(videoUri))
+                continue;
+
+            var audioUris = item.Data?.AssociationsV3?.AudioAssociations?.Items?
+                .Select(association => association.TrackAudio?.Uri)
+                .Where(uri => !string.IsNullOrWhiteSpace(uri))
+                .Select(uri => uri!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (audioUris is null or { Count: 0 })
+            {
+                var title = NormalizeTrackTitle(item.Data?.Name);
+                if (!string.IsNullOrWhiteSpace(title)
+                    && topTrackUriByName.TryGetValue(title, out var matchedAudioUri))
+                {
+                    audioUris = new List<string> { matchedAudioUri };
+                }
+            }
+
+            if (audioUris is null or { Count: 0 })
+                continue;
+
+            foreach (var audioUri in audioUris)
+            {
+                results.Add(new ArtistMusicVideoMappingResult
+                {
+                    AudioTrackUri = audioUri,
+                    VideoTrackUri = videoUri
+                });
+            }
+        }
+    }
+
+    private static string NormalizeTrackTitle(string? title)
+        => string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
 
     public async Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(
         string artistUri, CancellationToken ct = default)
