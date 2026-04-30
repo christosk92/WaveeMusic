@@ -36,11 +36,15 @@
 
 	<ItemGroup>
 		<PackageReference Include="CHTCHSConv" Version="1.0.0" />
-		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="SharpZipLib" Version="1.4.2" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<None Include="Resources\icon.png" Pack="true" PackagePath="" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\NVorbis\NVorbis\NVorbis.csproj" />
 	</ItemGroup>
 </Project>
