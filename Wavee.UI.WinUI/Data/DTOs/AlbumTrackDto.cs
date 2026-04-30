@@ -25,6 +25,7 @@ public sealed record AlbumTrackDto : ITrackItem
     /// film-strip glyph next to the title in the album track grid.
     /// </summary>
     public bool HasCanvas { get; init; }
+    public bool HasVideo => HasCanvas;
     public int TrackNumber { get; init; }
     public int DiscNumber { get; init; }
     public bool IsPlayable { get; init; } = true;

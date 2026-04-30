@@ -24,8 +24,6 @@
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
-        <converters:PlayerLocationToVisibilityConverter x:Key="PlayerLocationBottomConverter" TargetLocation="Bottom" />
-        <converters:PlayerLocationToVisibilityConverter x:Key="PlayerLocationSidebarConverter" TargetLocation="Sidebar" />
     </Page.Resources>
 
     <!-- F12 debug shortcut removed — use Settings > Diagnostics instead -->
@@ -222,12 +220,12 @@
             </sidebar:SidebarView.Footer>
         </sidebar:SidebarView>
 
-        <!-- Player bar (docked at bottom) — collapsed when player is hosted in the sidebar instead. -->
+        <!-- Player bar (docked at bottom). Detached state also suppresses this slot. -->
         <playerbar:PlayerBar
             x:Name="PlayerBarControl"
             Grid.Row="3"
             HorizontalAlignment="Stretch"
-            Visibility="{x:Bind ViewModel.PlayerLocation, Mode=OneWay, Converter={StaticResource PlayerLocationBottomConverter}}"/>
+            Visibility="{x:Bind ViewModel.IsBottomPlayerVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
         <!-- Bottom-right floating video mini-player. Lives outside the
              navigation Frame so the MediaPlayerElement underneath doesn't

@@ -214,4 +214,11 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// result rather than blindly opening the video player.
     /// </summary>
     Task<bool> SwitchToVideoAsync();
+
+    /// <summary>
+    /// Switches the current Spotify music-video playback back to the audio
+    /// engine at the live playback position. Returns <c>true</c> when the
+    /// engine switch was initiated.
+    /// </summary>
+    Task<bool> SwitchToAudioAsync();
 }

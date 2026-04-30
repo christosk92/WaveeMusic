@@ -37,6 +37,7 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
     private Stretch _videoStretch = Stretch.Uniform;
     private bool _isLoaded;
     private bool _ownsVideoSurface;
+    private bool _isFloatingVideoSurfaceEnabled;
 
     public SidebarPlayerWidget()
     {
@@ -135,7 +136,7 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
 
     private void ApplyCollapseState()
     {
-        var collapsed = _shellViewModel.SidebarPlayerCollapsed;
+        var collapsed = _shellViewModel.SidebarPlayerCollapsed && !_isFloatingVideoSurfaceEnabled;
         ExpandedRoot.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         CollapsedRoot.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
         // Glyph: ChevronUp (E70E) when expanded — clicking will collapse.
@@ -145,7 +146,11 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
     }
 
     private void OnActiveVideoSurfaceChanged(object? sender, MediaPlayer? surface)
-        => DispatcherQueue?.TryEnqueue(UpdateVideoSurfaceOwnership);
+        => DispatcherQueue?.TryEnqueue(() =>
+        {
+            ApplyCollapseState();
+            UpdateVideoSurfaceOwnership();
+        });
 
     private void OnMiniVideoViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -156,9 +161,19 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
     private bool ShouldHostVideoSurface =>
         _isLoaded
         && _videoSurface.HasActiveSurface
-        && _shellViewModel.IsSidebarPlayerVisibleInShell
-        && !_shellViewModel.SidebarPlayerCollapsed
+        && ((_shellViewModel.IsSidebarPlayerVisibleInShell && !_shellViewModel.SidebarPlayerCollapsed)
+            || _isFloatingVideoSurfaceEnabled)
         && _miniVideoViewModel?.IsOnVideoPage != true;
+
+    public void SetFloatingVideoSurfaceEnabled(bool enabled)
+    {
+        if (_isFloatingVideoSurfaceEnabled == enabled)
+            return;
+
+        _isFloatingVideoSurfaceEnabled = enabled;
+        ApplyCollapseState();
+        UpdateVideoSurfaceOwnership();
+    }
 
     private void UpdateVideoSurfaceOwnership()
     {
@@ -175,13 +190,15 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
 
     private void ReleaseVideoSurfaceOwnership()
     {
+        var hadOwnership = _ownsVideoSurface;
         if (_ownsVideoSurface)
         {
             _videoSurface.ReleaseSurface(this);
             _ownsVideoSurface = false;
         }
 
-        _miniVideoViewModel?.SetSuppressedBySidebarPlayer(false);
+        if (hadOwnership)
+            _miniVideoViewModel?.SetSuppressedBySidebarPlayer(false);
         ApplyVideoSurfaceVisibility();
     }
 
@@ -196,10 +213,15 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         // big-art view is owned by the bar and only the bar can toggle it off.
         ViewModel.IsAlbumArtExpanded = false;
         _shellViewModel.PlayerLocation = PlayerLocation.Bottom;
+
+        var docking = Ioc.Default.GetService<IPanelDockingService>();
+        if (docking?.IsPlayerDetached == true)
+            docking.Dock(DetachablePanel.Player);
     }
 
     private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
     {
+        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = false);
         Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
     }
 

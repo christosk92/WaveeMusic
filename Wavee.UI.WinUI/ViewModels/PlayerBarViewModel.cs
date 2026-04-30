@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services.Docking;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -30,6 +31,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private readonly IPlaybackStateService _playbackStateService;
     private readonly IConnectivityService? _connectivityService;
     private readonly INotificationService? _notificationService;
+    private readonly IPanelDockingService? _dockingService;
     private readonly ILogger? _logger;
     private bool _disposed;
     private DispatcherTimer? _positionTimer;
@@ -162,15 +164,10 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private double _position;
 
     /// <summary>
-    /// Authoritative position used by the Composition-driven progress bar. This
-    /// fires ONLY on real position events (IPC tick from AudioHost, user seek,
-    /// track change). The 1 Hz interpolation timer does NOT touch this — that
-    /// timer drives the textual position display via <see cref="Position"/>,
-    /// while the bar's GPU animation interpolates the fill width directly on
-    /// the composition thread between authoritative anchors.
-    ///
-    /// Bind only the CompositionProgressBar to this property; bind the
-    /// position TextBlock to <see cref="PositionText"/> as before.
+    /// Shared coarse playback clock for Composition-driven progress bars.
+    /// Service position events, seeks, track changes, and the 1 Hz UI
+    /// interpolation timer all update this so newly-loaded player surfaces
+    /// initialize from the same position shown by <see cref="PositionText"/>.
     /// </summary>
     [ObservableProperty]
     private double _anchorPositionMs;
@@ -205,11 +202,13 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     public PlayerBarViewModel(IPlaybackStateService playbackStateService,
                               IConnectivityService? connectivityService = null,
                               INotificationService? notificationService = null,
+                              IPanelDockingService? dockingService = null,
                               ILoggerFactory? loggerFactory = null)
     {
         _playbackStateService = playbackStateService;
         _connectivityService = connectivityService;
         _notificationService = notificationService;
+        _dockingService = dockingService;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
         _navigateToArtistCommand = new RelayCommand<string?>(NavigateToArtist);
@@ -226,13 +225,10 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         if (_connectivityService != null)
             _connectivityService.PropertyChanged += OnConnectivityPropertyChanged;
 
-        // Display-only position interpolation timer. Audio sink pushes ~2 real
-        // updates/sec; this fills in the gaps so the slider value moves smoothly
-        // between updates. 1000 ms matches Spotify desktop / Apple Music — the
-        // slider's built-in transition animation interpolates pixel position
-        // between ticks, so the slower cadence is not perceptible. Going from
-        // 250 → 1000 ms cuts ~3 % sustained CPU across every page (player bar
-        // is global). See Phase 6.1 in the memory/CPU plan.
+        // Shared position interpolation timer. Audio sink pushes ~2 real
+        // updates/sec; this fills in the gaps so the time label and every
+        // progress surface stay on the same coarse playback clock. 1000 ms
+        // matches desktop players while keeping the global player chrome cheap.
         _positionTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(1000)
@@ -281,9 +277,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _isPlaying = _playbackStateService.IsPlaying;
         _isShuffle = _playbackStateService.IsShuffle;
         _repeatMode = _playbackStateService.RepeatMode;
-        _position = _playbackStateService.Position;
-        _anchorPositionMs = _playbackStateService.Position;
         _duration = _playbackStateService.Duration;
+        _position = ClampPlaybackPosition(_playbackStateService.Position);
+        _anchorPositionMs = _position;
+        _lastServicePosition = _position;
+        _lastServicePositionUpdate = DateTime.UtcNow;
         _volume = _playbackStateService.Volume;
         _isVolumeRestricted = _playbackStateService.IsVolumeRestricted;
         _isAtEndOfContext = _playbackStateService.IsAtEndOfContext;
@@ -347,6 +345,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.CurrentTrackHasMusicVideo):
             case nameof(IPlaybackStateService.CurrentTrackIsVideo):
                 OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
+                OnPropertyChanged(nameof(IsCurrentTrackAudioCapable));
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
                 AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
@@ -354,16 +353,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.Position):
                 if (!IsSeeking)
                 {
-                    Position = _playbackStateService.Position;
-                    // Anchor the GPU progress bar to this authoritative value —
-                    // distinct from Position (which the interpolation timer
-                    // overwrites 1× per second). Anchor only fires here, on
-                    // SetTrack/ClearTrack, on UpdatePosition, and on initial
-                    // SyncFromService — keeping the Composition animation
-                    // restart rate to ≤0.2 Hz instead of 1 Hz.
-                    AnchorPositionMs = _playbackStateService.Position;
-                    _lastServicePosition = Position;
-                    _lastServicePositionUpdate = DateTime.UtcNow;
+                    ApplyPlaybackPosition(_playbackStateService.Position, updateProgressBar: true, resetInterpolationClock: true);
                 }
                 else
                 {
@@ -393,6 +383,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 _logger?.LogDebug("[PlayerBar] IsPlayingRemotely → {Value}, device={Device}", newRemote, _playbackStateService.ActiveDeviceName ?? "<none>");
                 IsPlayingRemotely = newRemote;
                 OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
+                OnPropertyChanged(nameof(IsCurrentTrackAudioCapable));
                 break;
             case nameof(IPlaybackStateService.ActiveDeviceName):
                 ActiveDeviceName = _playbackStateService.ActiveDeviceName;
@@ -410,17 +401,46 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (!IsSeeking && IsPlaying)
         {
-            // Interpolate position from the last known service update.
-            // The service pushes real position updates every ~500ms from the audio sink.
-            // Between updates, we interpolate based on elapsed wall-clock time for smooth UI.
-            var elapsed = (DateTime.UtcNow - _lastServicePositionUpdate).TotalMilliseconds;
-            var interpolated = _lastServicePosition + elapsed;
-            if (Duration > 0 && interpolated > Duration)
-            {
-                interpolated = Duration;
-            }
+            var interpolated = GetInterpolatedPlaybackPosition();
             Position = interpolated;
+            AnchorPositionMs = interpolated;
         }
+    }
+
+    private double GetInterpolatedPlaybackPosition()
+    {
+        var elapsed = Math.Max(0, (DateTime.UtcNow - _lastServicePositionUpdate).TotalMilliseconds);
+        return ClampPlaybackPosition(_lastServicePosition + elapsed);
+    }
+
+    private void ApplyPlaybackPosition(double positionMs, bool updateProgressBar, bool resetInterpolationClock)
+    {
+        var clamped = ClampPlaybackPosition(positionMs);
+        Position = clamped;
+
+        if (updateProgressBar)
+            AnchorPositionMs = clamped;
+
+        if (resetInterpolationClock)
+            ResetInterpolationClock(clamped);
+    }
+
+    private void ResetInterpolationClock(double positionMs)
+    {
+        _lastServicePosition = ClampPlaybackPosition(positionMs);
+        _lastServicePositionUpdate = DateTime.UtcNow;
+    }
+
+    private double ClampPlaybackPosition(double positionMs)
+    {
+        if (double.IsNaN(positionMs) || double.IsInfinity(positionMs))
+            return 0;
+
+        var clamped = Math.Max(0, positionMs);
+        if (Duration > 0)
+            clamped = Math.Min(clamped, Duration);
+
+        return clamped;
     }
 
     private int _lastFormattedPositionSec = -1;
@@ -428,7 +448,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     partial void OnPositionChanged(double value)
     {
-        // Position fires 4×/sec from the timer plus ~2×/sec from the service. Skip
+        // Position fires 1×/sec from the timer plus service updates. Skip
         // the string format and Text-binding update unless the displayed second
         // actually changed.
         var sec = (int)(value / 1000d);
@@ -446,10 +466,21 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             DurationText = FormatTime(value);
         }
         OnPropertyChanged(nameof(SliderMaximum));
+
+        if (value > 0 && Position > value)
+            ApplyPlaybackPosition(value, updateProgressBar: true, resetInterpolationClock: true);
     }
 
     partial void OnIsPlayingChanged(bool value)
     {
+        if (!IsSeeking)
+        {
+            var currentPosition = ClampPlaybackPosition(Position);
+            Position = currentPosition;
+            AnchorPositionMs = currentPosition;
+            ResetInterpolationClock(currentPosition);
+        }
+
         UpdatePositionTimerState();
     }
 
@@ -561,6 +592,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         // Skip back 10 seconds
         var newPos = Math.Max(0, Position - 10000);
         _logger?.LogInformation("[PlayerBar] SkipBackward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
+        ApplyPlaybackPosition(newPos, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(newPos);
     }
 
@@ -570,6 +602,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         // Skip forward 30 seconds
         var newPos = Math.Min(Duration, Position + 30000);
         _logger?.LogInformation("[PlayerBar] SkipForward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
+        ApplyPlaybackPosition(newPos, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(newPos);
     }
 
@@ -669,12 +702,22 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         && (!string.IsNullOrEmpty(_playbackStateService.CurrentTrackManifestId)
             || _playbackStateService.CurrentTrackHasMusicVideo);
 
+    public bool IsCurrentTrackAudioCapable =>
+        !_playbackStateService.IsPlayingRemotely
+        && _playbackStateService.CurrentTrackIsVideo;
+
     [ObservableProperty]
     private bool _isResolvingVideo;
 
     partial void OnIsResolvingVideoChanged(bool value) => SwitchToVideoCommand.NotifyCanExecuteChanged();
 
+    [ObservableProperty]
+    private bool _isSwitchingToAudio;
+
+    partial void OnIsSwitchingToAudioChanged(bool value) => SwitchToAudioCommand.NotifyCanExecuteChanged();
+
     private bool CanSwitchToVideo() => !IsResolvingVideo;
+    private bool CanSwitchToAudio() => !IsSwitchingToAudio;
 
     [RelayCommand(CanExecute = nameof(CanSwitchToVideo))]
     private async Task SwitchToVideoAsync()
@@ -682,10 +725,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         IsResolvingVideo = true;
         try
         {
-            NavigationHelpers.OpenVideoPlayer();
+            var routeToPlayerPopout = _dockingService?.IsPlayerDetached == true;
             var switched = await _playbackStateService.SwitchToVideoAsync();
             if (switched)
             {
+                if (!routeToPlayerPopout)
+                    NavigationHelpers.OpenVideoPlayer();
                 return;
             }
 
@@ -699,6 +744,28 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         finally
         {
             IsResolvingVideo = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSwitchToAudio))]
+    private async Task SwitchToAudioAsync()
+    {
+        IsSwitchingToAudio = true;
+        try
+        {
+            var switched = await _playbackStateService.SwitchToAudioAsync();
+            if (switched) return;
+
+            _notificationService?.Show(new NotificationInfo
+            {
+                Message = "Can't switch this video back to audio",
+                Severity = NotificationSeverity.Informational,
+                AutoDismissAfter = TimeSpan.FromSeconds(4)
+            });
+        }
+        finally
+        {
+            IsSwitchingToAudio = false;
         }
     }
 
@@ -717,11 +784,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         _logger?.LogInformation("[PlayerBar] Seek committed: {Pos}ms / {Dur}ms", (long)Position, (long)Duration);
         IsSeeking = false;
-        // Re-anchor the Composition bar to the new position immediately so the
-        // GPU animation restarts from the seek target instead of waiting for the
-        // AudioHost echo (which can take a beat).
-        AnchorPositionMs = Position;
-        _playbackStateService.Seek(Position);
+        var seekPosition = ClampPlaybackPosition(Position);
+        ApplyPlaybackPosition(seekPosition, updateProgressBar: true, resetInterpolationClock: true);
+        _playbackStateService.Seek(seekPosition);
     }
 
     /// <summary>
@@ -731,7 +796,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// </summary>
     public void CommitSeekFromBar(double positionMs)
     {
-        Position = Math.Clamp(positionMs, 0, Duration);
+        Position = ClampPlaybackPosition(positionMs);
         EndSeeking();
     }
 
@@ -744,8 +809,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         ArtistName = artist;
         AlbumArt = albumArt;
         Duration = durationMs;
-        Position = 0;
-        AnchorPositionMs = 0;
+        ApplyPlaybackPosition(0, updateProgressBar: true, resetInterpolationClock: true);
         HasTrack = !string.IsNullOrEmpty(title);
     }
 
@@ -758,8 +822,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         ArtistName = null;
         AlbumArt = null;
         Duration = 0;
-        Position = 0;
-        AnchorPositionMs = 0;
+        ApplyPlaybackPosition(0, updateProgressBar: true, resetInterpolationClock: true);
         HasTrack = false;
         IsPlaying = false;
     }
@@ -771,8 +834,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (!IsSeeking)
         {
-            Position = positionMs;
-            AnchorPositionMs = positionMs;
+            ApplyPlaybackPosition(positionMs, updateProgressBar: true, resetInterpolationClock: true);
         }
     }
 

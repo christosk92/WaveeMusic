@@ -17,13 +17,15 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class SearchPage : Page, ITabSleepParticipant, IDisposable
+public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
 {
     public SearchViewModel ViewModel { get; }
 
     private readonly ILogger? _logger;
     private SearchPageSleepState? _pendingSleepState;
     private bool _sleepFilterRestoreRequested;
+    private bool _trimmedForNavigationCache;
+    private bool _viewModelEventsAttached;
     private bool _isDisposed;
 
     public SearchPage()
@@ -32,22 +34,48 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, IDisposable
         _logger = Ioc.Default.GetService<ILogger<SearchPage>>();
         InitializeComponent();
 
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        AttachViewModelEvents();
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        AttachViewModelEvents();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        DetachViewModelEvents();
     }
+    
 
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
 
+        Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
+        DetachViewModelEvents();
+    }
+
+    private void AttachViewModelEvents()
+    {
+        if (_viewModelEventsAttached)
+            return;
+
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _viewModelEventsAttached = true;
+    }
+
+    private void DetachViewModelEvents()
+    {
+        if (!_viewModelEventsAttached)
+            return;
+
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _viewModelEventsAttached = false;
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -77,11 +105,22 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, IDisposable
 
         if (e.Parameter is string query && !string.IsNullOrWhiteSpace(query))
         {
+            _trimmedForNavigationCache = false;
             _ = ViewModel.LoadAsync(query);
+        }
+        else
+        {
+            RestoreFromNavigationCache();
         }
 
         UpdateFilterSelection();
         TryApplyPendingSleepState();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        TrimForNavigationCache();
     }
 
     private void FilterChip_Click(object sender, RoutedEventArgs e)
@@ -145,6 +184,25 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, IDisposable
         _pendingSleepState = state as SearchPageSleepState;
         _sleepFilterRestoreRequested = false;
         TryApplyPendingSleepState();
+    }
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
+        ViewModel.Hibernate();
+        TopResultCard.ColorHex = null;
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = false;
+        _ = ViewModel.ResumeFromHibernateAsync();
     }
 
     private void TryApplyPendingSleepState()

@@ -1,16 +1,12 @@
 using System;
-using System.Collections.Concurrent;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
-using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
-using Wavee.Protocol.ExtendedMetadata;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 
@@ -37,27 +33,22 @@ namespace Wavee.UI.WinUI.Services;
 internal sealed class MusicVideoDiscoveryService
     : IMusicVideoDiscoveryService, IDisposable
 {
-    private const int VideoAssociationsExtensionKindValue = 99;
-
     private readonly IPathfinderClient _pathfinder;
-    private readonly IExtendedMetadataClient _extendedMetadata;
     private readonly IMessenger _messenger;
-    private readonly IMusicVideoCatalogCache _cache;
+    private readonly IMusicVideoMetadataService _metadata;
     private readonly ILogger<MusicVideoDiscoveryService>? _logger;
 
     private CancellationTokenSource? _activeDiscoveryCts;
 
     public MusicVideoDiscoveryService(
         IPathfinderClient pathfinder,
-        IExtendedMetadataClient extendedMetadata,
         IMessenger messenger,
-        IMusicVideoCatalogCache cache,
+        IMusicVideoMetadataService metadata,
         ILogger<MusicVideoDiscoveryService>? logger = null)
     {
         _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
-        _extendedMetadata = extendedMetadata ?? throw new ArgumentNullException(nameof(extendedMetadata));
         _messenger = messenger ?? throw new ArgumentNullException(nameof(messenger));
-        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _logger = logger;
     }
 
@@ -83,12 +74,12 @@ internal sealed class MusicVideoDiscoveryService
         }
 
         // Already cached? Caller should've checked, but guard regardless.
-        var cached = _cache.GetHasVideo(audioTrackUri);
+        var cached = _metadata.GetKnownAvailability(audioTrackUri);
         if (cached.HasValue)
         {
             _logger?.LogInformation("[VideoDiscovery] {Track}: cache hit hasVideo={HasVideo} — no NPV needed", audioTrackUri, cached.Value);
             Publish(audioTrackUri, cached.Value);
-            if (!cached.Value || _cache.TryGetVideoUri(audioTrackUri, out _))
+            if (!cached.Value || _metadata.TryGetVideoUri(audioTrackUri, out _))
                 return;
 
             _logger?.LogInformation("[VideoDiscovery] {Track}: positive hint without video URI; prefetching NPV mapping", audioTrackUri);
@@ -109,10 +100,9 @@ internal sealed class MusicVideoDiscoveryService
         {
             await Task.Yield();
 
-            var metadataVideoUri = await TryResolveVideoUriViaExtendedMetadataAsync(audioUri, ct).ConfigureAwait(false);
+            var metadataVideoUri = await _metadata.TryResolveVideoUriViaExtendedMetadataAsync(audioUri, ct).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(metadataVideoUri))
             {
-                _cache.NoteVideoUri(audioUri, metadataVideoUri);
                 _logger?.LogInformation("[VideoDiscovery] extended metadata {Audio} → {Video}", audioUri, metadataVideoUri);
                 Publish(audioUri, true);
                 return;
@@ -132,13 +122,13 @@ internal sealed class MusicVideoDiscoveryService
             var videoUri = FindMatchingVideoUri(npv, audioUri);
             if (string.IsNullOrEmpty(videoUri))
             {
-                _cache.NoteHasVideo(audioUri, false);
+                _metadata.NoteHasVideo(audioUri, false);
                 _logger?.LogInformation("[VideoDiscovery] {Track}: no music video", audioUri);
                 Publish(audioUri, false);
                 return;
             }
 
-            _cache.NoteVideoUri(audioUri, videoUri);
+            _metadata.NoteVideoUri(audioUri, videoUri);
             _logger?.LogInformation("[VideoDiscovery] {Audio} → {Video}", audioUri, videoUri);
             Publish(audioUri, true);
         }
@@ -152,75 +142,42 @@ internal sealed class MusicVideoDiscoveryService
     // ── IMusicVideoDiscoveryService ──
 
     public bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri)
-        => _cache.TryGetVideoUri(audioTrackUri, out videoTrackUri);
+        => _metadata.TryGetVideoUri(audioTrackUri, out videoTrackUri);
 
     public async Task<string?> ResolveManifestIdAsync(string audioTrackUri, CancellationToken cancellationToken = default)
     {
-        // Fast path: manifest_id already cached.
-        if (_cache.TryGetManifestId(audioTrackUri, out var cached))
-        {
-            _logger?.LogInformation("[VideoDiscovery] {Track}: cache hit manifestId={Manifest}", audioTrackUri, cached);
-            return cached;
-        }
-
-        // Need the video URI. Use cache if available, otherwise use the exact
-        // VIDEO_ASSOCIATIONS extension before falling back to NPV.
-        if (!_cache.TryGetVideoUri(audioTrackUri, out var videoUri))
-        {
-            videoUri = await TryResolveVideoUriViaExtendedMetadataAsync(audioTrackUri, cancellationToken).ConfigureAwait(false)
-                ?? string.Empty;
-
-            if (!string.IsNullOrEmpty(videoUri))
-            {
-                _cache.NoteVideoUri(audioTrackUri, videoUri);
-            }
-            else
-            {
-                var artistUri = PlaybackState?.CurrentArtistId;
-                if (string.IsNullOrEmpty(artistUri))
-                {
-                    _logger?.LogWarning("[VideoDiscovery] click-time NPV: no artist URI for {Track}", audioTrackUri);
-                    return null;
-                }
-
-                try
-                {
-                    var npv = await _pathfinder.GetNpvArtistAsync(artistUri, audioTrackUri, ct: cancellationToken).ConfigureAwait(false);
-                    CacheAllNpvVideoMappings(npv);
-                    videoUri = FindMatchingVideoUri(npv, audioTrackUri) ?? string.Empty;
-                    if (!string.IsNullOrEmpty(videoUri))
-                        _cache.NoteVideoUri(audioTrackUri, videoUri);
-                    else
-                        _cache.NoteHasVideo(audioTrackUri, false);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "[VideoDiscovery] click-time NPV failed for {Track}", audioTrackUri);
-                    return null;
-                }
-
-                if (string.IsNullOrEmpty(videoUri)) return null;
-            }
-        }
-
-        // Fetch the video URI's TrackV4 to extract the manifest_id.
         try
         {
-            var videoTrack = await _extendedMetadata.GetTrackAudioFilesAsync(videoUri, cancellationToken).ConfigureAwait(false);
-            if (videoTrack is null || videoTrack.OriginalVideo.Count == 0) return null;
-            var bytes = videoTrack.OriginalVideo[0].Gid;
-            if (bytes is null || bytes.Length == 0) return null;
+            var manifestId = await _metadata.ResolveManifestIdAsync(audioTrackUri, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(manifestId))
+            {
+                _logger?.LogInformation("[VideoDiscovery] resolved manifest {Manifest} for {Track}",
+                    manifestId, audioTrackUri);
+                return manifestId;
+            }
 
-            var manifestId = Convert.ToHexString(bytes.ToByteArray()).ToLowerInvariant();
-            _cache.NoteManifestId(audioTrackUri, manifestId);
+            var artistUri = PlaybackState?.CurrentArtistId;
+            if (string.IsNullOrEmpty(artistUri))
+            {
+                _logger?.LogWarning("[VideoDiscovery] click-time NPV: no artist URI for {Track}", audioTrackUri);
+                return null;
+            }
 
-            _logger?.LogInformation("[VideoDiscovery] resolved manifest {Manifest} for {Track}",
-                manifestId, audioTrackUri);
-            return manifestId;
+            var npv = await _pathfinder.GetNpvArtistAsync(artistUri, audioTrackUri, ct: cancellationToken).ConfigureAwait(false);
+            CacheAllNpvVideoMappings(npv);
+            var videoUri = FindMatchingVideoUri(npv, audioTrackUri);
+            if (string.IsNullOrEmpty(videoUri))
+            {
+                _metadata.NoteHasVideo(audioTrackUri, false);
+                return null;
+            }
+
+            _metadata.NoteVideoUri(audioTrackUri, videoUri);
+            return await _metadata.ResolveManifestIdAsync(audioTrackUri, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "[VideoDiscovery] manifest fetch failed for {Track}", audioTrackUri);
+            _logger?.LogWarning(ex, "[VideoDiscovery] manifest/NPV resolution failed for {Track}", audioTrackUri);
             return null;
         }
     }
@@ -231,81 +188,6 @@ internal sealed class MusicVideoDiscoveryService
     {
         _messenger.Send(new MusicVideoAvailabilityMessage(audioUri, hasVideo));
     }
-
-    private async Task<string?> TryResolveVideoUriViaExtendedMetadataAsync(string audioUri, CancellationToken ct)
-    {
-        try
-        {
-            var data = await _extendedMetadata
-                .GetExtensionAsync(audioUri, (ExtensionKind)VideoAssociationsExtensionKindValue, ct)
-                .ConfigureAwait(false);
-
-            var videoUri = TryReadVideoAssociationUri(data);
-            if (string.IsNullOrWhiteSpace(videoUri))
-            {
-                _logger?.LogDebug("[VideoDiscovery] {Track}: VIDEO_ASSOCIATIONS returned no video URI", audioUri);
-                return null;
-            }
-
-            return videoUri;
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "[VideoDiscovery] VIDEO_ASSOCIATIONS failed for {Track} (non-fatal)", audioUri);
-            return null;
-        }
-    }
-
-    private static string? TryReadVideoAssociationUri(byte[]? data)
-    {
-        if (data is null || data.Length == 0) return null;
-
-        try
-        {
-            var assoc = Assoc.Parser.ParseFrom(data);
-            var uri = assoc.PlainList?.EntityUri.FirstOrDefault(IsSpotifyTrackUri);
-            if (!string.IsNullOrWhiteSpace(uri)) return uri;
-        }
-        catch (InvalidProtocolBufferException)
-        {
-        }
-
-        try
-        {
-            var plainList = PlainListAssoc.Parser.ParseFrom(data);
-            var uri = plainList.EntityUri.FirstOrDefault(IsSpotifyTrackUri);
-            if (!string.IsNullOrWhiteSpace(uri)) return uri;
-        }
-        catch (InvalidProtocolBufferException)
-        {
-        }
-
-        var text = Encoding.UTF8.GetString(data);
-        var markerIndex = text.IndexOf("spotify:track:", StringComparison.Ordinal);
-        if (markerIndex < 0) return null;
-
-        var endIndex = markerIndex;
-        while (endIndex < text.Length)
-        {
-            var ch = text[endIndex];
-            if (!IsSpotifyUriChar(ch)) break;
-            endIndex++;
-        }
-
-        var candidate = text[markerIndex..endIndex];
-        return IsSpotifyTrackUri(candidate) ? candidate : null;
-    }
-
-    private static bool IsSpotifyTrackUri(string? uri)
-        => !string.IsNullOrWhiteSpace(uri)
-           && uri.StartsWith("spotify:track:", StringComparison.Ordinal);
-
-    private static bool IsSpotifyUriChar(char ch)
-        => (ch >= 'a' && ch <= 'z')
-           || (ch >= 'A' && ch <= 'Z')
-           || (ch >= '0' && ch <= '9')
-           || ch == ':';
 
     private void CacheAllNpvVideoMappings(NpvArtistResponse? npv)
     {
@@ -327,7 +209,7 @@ internal sealed class MusicVideoDiscoveryService
 
             foreach (var audioUri in audioUris)
             {
-                _cache.NoteVideoUri(audioUri, videoUri);
+                _metadata.NoteVideoUri(audioUri, videoUri);
                 _logger?.LogDebug("[VideoDiscovery] NPV prewarm {Audio} -> {Video}", audioUri, videoUri);
             }
         }

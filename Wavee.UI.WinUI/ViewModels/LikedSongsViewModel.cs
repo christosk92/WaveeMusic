@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -17,6 +18,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Extensions;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -35,6 +37,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackDescriptorFetcher _descriptorFetcher;
     private readonly ISession _session;
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
@@ -117,12 +120,14 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         IPlaybackStateService playbackStateService,
         ITrackDescriptorFetcher descriptorFetcher,
         ISession session,
+        IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<LikedSongsViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _descriptorFetcher = descriptorFetcher;
         _session = session;
+        _musicVideoMetadata = musicVideoMetadata;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -339,6 +344,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             // we show the shimmer; on subsequent opens the tags are already present so we
             // run the fetcher silently to refresh any stale entries.
             TryTriggerDescriptorFetch();
+            TryTriggerVideoAvailabilityFetch();
         }
         catch (Exception ex)
         {
@@ -376,6 +382,42 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             {
                 _logger?.LogWarning(ex, "Descriptor enrichment failed");
                 _dispatcherQueue.TryEnqueue(() => IsTagsLoading = false);
+            }
+        });
+    }
+
+    private void TryTriggerVideoAvailabilityFetch()
+    {
+        if (_musicVideoMetadata is null || _allSongs.Count == 0) return;
+
+        var songsByUri = _allSongs
+            .Where(song => !string.IsNullOrWhiteSpace(song.Uri))
+            .GroupBy(song => song.Uri, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        if (songsByUri.Count == 0) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var availability = await _musicVideoMetadata
+                    .EnsureAvailabilityAsync(songsByUri.Keys, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                _dispatcherQueue.TryEnqueue(() =>
+                {
+                    if (_disposed) return;
+                    foreach (var entry in availability)
+                    {
+                        if (!songsByUri.TryGetValue(entry.Key, out var songs)) continue;
+                        foreach (var song in songs)
+                            song.HasVideo = entry.Value;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Music-video availability enrichment failed");
             }
         });
     }

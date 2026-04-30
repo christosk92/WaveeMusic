@@ -16,7 +16,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
-using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Services.Docking;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.PlayerBar;
@@ -292,25 +292,11 @@ public sealed partial class PlayerBar : UserControl
         e.Handled = true;
     }
 
-    private void TrackTitle_Click(object sender, RoutedEventArgs e) => OpenNowPlaying();
+    private void TrackTitle_Click(object sender, RoutedEventArgs e) => NavigateToAlbum();
     private void TrackTitle_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        OpenNowPlaying();
+        NavigateToAlbum();
         e.Handled = true;
-    }
-
-    private void OpenNowPlaying()
-    {
-        // For video tracks, title click goes straight to the dedicated video page.
-        // For regular audio tracks, keep the sidebar player behaviour.
-        var surface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
-        if (surface?.HasActiveSurface == true)
-        {
-            NavigationHelpers.OpenVideoPlayer();
-            return;
-        }
-        var shell = Ioc.Default.GetService<ViewModels.ShellViewModel>();
-        shell?.OpenNowPlayingCommand.Execute(null);
     }
 
     private void EndOfContextDismiss_Click(object sender, RoutedEventArgs e)
@@ -403,6 +389,14 @@ public sealed partial class PlayerBar : UserControl
         ViewModel.IsAlbumArtExpanded = false;
         shell.PlayerLocation = Data.Enums.PlayerLocation.Sidebar;
         _logger?.LogInformation("[PlayerBar] Player moved to sidebar via overflow menu");
+    }
+
+    private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.IsAlbumArtExpanded = false;
+        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = false);
+        Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
+        _logger?.LogInformation("[PlayerBar] Player popped out via bottom bar");
     }
 
     // Old Slider PointerPressed/Released/CaptureLost handlers were removed when

@@ -15,8 +15,6 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
     // hover chrome) take noticeable time to re-instantiate on recycle. A buffer of
     // ~2 rows is enough to cover typical scroll velocity without the user seeing
     // cards pop in.
-    private const int RealizationBufferRows = 2;
-
     public static readonly DependencyProperty MinItemWidthProperty =
         DependencyProperty.Register(nameof(MinItemWidth), typeof(double), typeof(SafeUniformGridLayout),
             new PropertyMetadata(230.0, OnPropertyChanged));
@@ -64,6 +62,10 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
         DependencyProperty.Register(nameof(RealizeAllItems), typeof(bool), typeof(SafeUniformGridLayout),
             new PropertyMetadata(false, OnPropertyChanged));
 
+    public static readonly DependencyProperty RealizationBufferRowsProperty =
+        DependencyProperty.Register(nameof(RealizationBufferRows), typeof(int), typeof(SafeUniformGridLayout),
+            new PropertyMetadata(2, OnPropertyChanged));
+
     public double MinItemWidth
     {
         get => (double)GetValue(MinItemWidthProperty);
@@ -104,6 +106,12 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
     {
         get => (bool)GetValue(RealizeAllItemsProperty);
         set => SetValue(RealizeAllItemsProperty, value);
+    }
+
+    public int RealizationBufferRows
+    {
+        get => (int)GetValue(RealizationBufferRowsProperty);
+        set => SetValue(RealizationBufferRowsProperty, value);
     }
 
     private int _columnCount = 1;
@@ -163,7 +171,12 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
             var rows = Math.Max(1, (int)Math.Ceiling(count / (double)_columnCount));
             var (firstRow, lastRow) = RealizeAllItems
                 ? (0, rows - 1)
-                : GetRealizedRowRange(context.RealizationRect, rows, _itemHeight, rowSpacing);
+                : GetRealizedRowRange(
+                    context.RealizationRect,
+                    rows,
+                    _itemHeight,
+                    rowSpacing,
+                    Math.Max(0, RealizationBufferRows));
 
             _firstRealizedIndex = Math.Min(count - 1, firstRow * _columnCount);
             _lastRealizedIndex = Math.Min(count - 1, ((lastRow + 1) * _columnCount) - 1);
@@ -262,7 +275,8 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
         Rect realizationRect,
         int rowCount,
         double itemHeight,
-        double rowSpacing)
+        double rowSpacing,
+        int bufferRows)
     {
         if (rowCount <= 0)
             return (0, 0);
@@ -270,15 +284,15 @@ public sealed class SafeUniformGridLayout : VirtualizingLayout
         var rowPitch = Math.Max(1, itemHeight + rowSpacing);
         if (realizationRect.Height <= 0 || double.IsNaN(realizationRect.Height))
         {
-            var defaultLastRow = Math.Min(rowCount - 1, RealizationBufferRows);
+            var defaultLastRow = Math.Min(rowCount - 1, bufferRows);
             return (0, defaultLastRow);
         }
 
         var firstVisibleRow = (int)Math.Floor(Math.Max(0, realizationRect.Y) / rowPitch);
         var lastVisibleRow = (int)Math.Floor(Math.Max(0, realizationRect.Bottom) / rowPitch);
 
-        var firstRow = Math.Max(0, firstVisibleRow - RealizationBufferRows);
-        var lastRow = Math.Min(rowCount - 1, lastVisibleRow + RealizationBufferRows);
+        var firstRow = Math.Max(0, firstVisibleRow - bufferRows);
+        var lastRow = Math.Min(rowCount - 1, lastVisibleRow + bufferRows);
         return (firstRow, lastRow);
     }
 }

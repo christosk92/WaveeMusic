@@ -26,4 +26,5 @@ internal interface IPlaybackCommandExecutor
     Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct);
     Task<PlaybackResult> SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct);
     Task<PlaybackResult> SwitchToVideoAsync(string? manifestIdOverride, string? videoTrackUriOverride, CancellationToken ct);
+    Task<PlaybackResult> SwitchToAudioAsync(CancellationToken ct);
 }

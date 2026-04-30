@@ -17,6 +17,8 @@
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
 
@@ -230,6 +232,27 @@
                                             Orientation="Horizontal"
                                             Spacing="2"
                                             VerticalAlignment="Center">
+                                    <Button Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="8"
+                                            Foreground="White"
+                                            Command="{x:Bind ViewModel.Player.SwitchToAudioCommand}"
+                                            IsEnabled="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                            Visibility="{x:Bind ViewModel.Player.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                            ToolTipService.ToolTip="Listen as audio">
+                                        <Grid Width="16" Height="16">
+                                            <FontIcon Glyph="&#xE8D6;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="14"
+                                                      Foreground="White"
+                                                      Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                            <ProgressRing Width="16"
+                                                          Height="16"
+                                                          Foreground="White"
+                                                          IsActive="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay}"
+                                                          Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        </Grid>
+                                    </Button>
                                     <Button x:Name="TheatreModeButton"
                                             Background="Transparent"
                                             BorderThickness="0"
@@ -345,6 +368,23 @@
                             <FontIcon Glyph="&#xE8A7;"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="14"/>
+                        </Button>
+
+                        <Button Style="{StaticResource ActionIconButtonStyle}"
+                                Command="{x:Bind ViewModel.Player.SwitchToAudioCommand}"
+                                IsEnabled="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                Visibility="{x:Bind ViewModel.Player.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                ToolTipService.ToolTip="Listen as audio">
+                            <Grid Width="16" Height="16">
+                                <FontIcon Glyph="&#xE8D6;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="14"
+                                          Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                <ProgressRing Width="16"
+                                              Height="16"
+                                              IsActive="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay}"
+                                              Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </Grid>
                         </Button>
                     </StackPanel>
                 </Grid>

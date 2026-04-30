@@ -39,6 +39,8 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
             .ConfigureAwait(false);
 
         var result = await Task.Run(() => _parserFactory.Parse(response), ct).ConfigureAwait(false);
+        PreserveDisplayDataFromPreviousSnapshot(result.Sections, GetCached()?.Sections);
+        RemoveUnrenderableItems(result.Sections);
 
         // Only use chips from unfaceted (default) responses
         List<HomeChipViewModel>? chips = string.IsNullOrEmpty(CurrentFacet) ? result.Chips : null;
@@ -204,7 +206,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                 // is consulted only at element create/recycle time, never on
                 // property change, so a mutated ContentType would leave the
                 // wrong-shape card mounted forever (the home shelf bug).
-                if (current[i].ContentType != fresh[i].ContentType)
+                if (ShouldReplaceForContentType(current[i], fresh[i]))
                 {
                     Debug.WriteLine($"[shelf-recycle] ContentType drift uri={fresh[i].Uri} {current[i].ContentType}->{fresh[i].ContentType} (replace)");
                     current.RemoveAt(i);
@@ -231,7 +233,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                 if (existingIdx >= 0)
                 {
                     current.Move(existingIdx, i);
-                    if (current[i].ContentType != fresh[i].ContentType)
+                    if (ShouldReplaceForContentType(current[i], fresh[i]))
                     {
                         Debug.WriteLine($"[shelf-recycle] ContentType drift (post-move) uri={fresh[i].Uri} {current[i].ContentType}->{fresh[i].ContentType} (replace)");
                         current.RemoveAt(i);
@@ -256,20 +258,159 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 
     private static void UpdateItemInPlace(HomeSectionItem target, HomeSectionItem source)
     {
-        if (target.Title != source.Title) target.Title = source.Title;
-        if (target.Subtitle != source.Subtitle) target.Subtitle = source.Subtitle;
-        if (target.ImageUrl != source.ImageUrl) target.ImageUrl = source.ImageUrl;
-        if (target.ColorHex != source.ColorHex) target.ColorHex = source.ColorHex;
-        if (target.ContentType != source.ContentType) target.ContentType = source.ContentType;
-        if (target.PlaceholderGlyph != source.PlaceholderGlyph) target.PlaceholderGlyph = source.PlaceholderGlyph;
+        SetStringPreservingExisting(target.Title, source.Title, v => target.Title = v);
+        SetStringPreservingExisting(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
+        SetStringPreservingExisting(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
+        SetStringPreservingExisting(target.ColorHex, source.ColorHex, v => target.ColorHex = v);
+        if (target.ContentType != source.ContentType
+            && (source.ContentType != HomeContentType.Unknown || target.ContentType == HomeContentType.Unknown))
+            target.ContentType = source.ContentType;
+        SetStringPreservingExisting(target.PlaceholderGlyph, source.PlaceholderGlyph, v => target.PlaceholderGlyph = v);
         if (target.IsBaselineLoading != source.IsBaselineLoading) target.IsBaselineLoading = source.IsBaselineLoading;
         if (target.HasBaselinePreview != source.HasBaselinePreview) target.HasBaselinePreview = source.HasBaselinePreview;
-        if (target.HeroImageUrl != source.HeroImageUrl) target.HeroImageUrl = source.HeroImageUrl;
-        if (target.HeroColorHex != source.HeroColorHex) target.HeroColorHex = source.HeroColorHex;
-        if (target.CanvasUrl != source.CanvasUrl) target.CanvasUrl = source.CanvasUrl;
-        if (target.CanvasThumbnailUrl != source.CanvasThumbnailUrl) target.CanvasThumbnailUrl = source.CanvasThumbnailUrl;
-        if (target.AudioPreviewUrl != source.AudioPreviewUrl) target.AudioPreviewUrl = source.AudioPreviewUrl;
-        if (target.BaselineGroupTitle != source.BaselineGroupTitle) target.BaselineGroupTitle = source.BaselineGroupTitle;
+        SetStringPreservingExisting(target.HeroImageUrl, source.HeroImageUrl, v => target.HeroImageUrl = v);
+        SetStringPreservingExisting(target.HeroColorHex, source.HeroColorHex, v => target.HeroColorHex = v);
+        SetStringPreservingExisting(target.CanvasUrl, source.CanvasUrl, v => target.CanvasUrl = v);
+        SetStringPreservingExisting(target.CanvasThumbnailUrl, source.CanvasThumbnailUrl, v => target.CanvasThumbnailUrl = v);
+        SetStringPreservingExisting(target.AudioPreviewUrl, source.AudioPreviewUrl, v => target.AudioPreviewUrl = v);
+        SetStringPreservingExisting(target.BaselineGroupTitle, source.BaselineGroupTitle, v => target.BaselineGroupTitle = v);
         if (!ReferenceEquals(target.PreviewTracks, source.PreviewTracks)) target.PreviewTracks = source.PreviewTracks;
+        if (target.RecentlyAddedCount != source.RecentlyAddedCount) target.RecentlyAddedCount = source.RecentlyAddedCount;
+        if (target.IsRecentlySaved != source.IsRecentlySaved) target.IsRecentlySaved = source.IsRecentlySaved;
+        if (!ReferenceEquals(target.RecentlyAddedThumbnailUris, source.RecentlyAddedThumbnailUris)) target.RecentlyAddedThumbnailUris = source.RecentlyAddedThumbnailUris;
+        SetStringPreservingExisting(target.RecentlyAddedThumbnail1Url, source.RecentlyAddedThumbnail1Url, v => target.RecentlyAddedThumbnail1Url = v);
+        SetStringPreservingExisting(target.RecentlyAddedThumbnail2Url, source.RecentlyAddedThumbnail2Url, v => target.RecentlyAddedThumbnail2Url = v);
+        SetStringPreservingExisting(target.RecentlyAddedThumbnail3Url, source.RecentlyAddedThumbnail3Url, v => target.RecentlyAddedThumbnail3Url = v);
+        if (target.DurationMs != source.DurationMs) target.DurationMs = source.DurationMs;
+        if (target.PlayedPositionMs != source.PlayedPositionMs) target.PlayedPositionMs = source.PlayedPositionMs;
+        if (target.PlayedState != source.PlayedState) target.PlayedState = source.PlayedState;
+        SetStringPreservingExisting(target.PublisherName, source.PublisherName, v => target.PublisherName = v);
+        if (target.IsVideoPodcast != source.IsVideoPodcast) target.IsVideoPodcast = source.IsVideoPodcast;
+        SetStringPreservingExisting(target.ReleaseDateIso, source.ReleaseDateIso, v => target.ReleaseDateIso = v);
+    }
+
+    private static bool ShouldReplaceForContentType(HomeSectionItem current, HomeSectionItem fresh)
+    {
+        if (current.ContentType == fresh.ContentType)
+            return false;
+
+        // Sparse Home responses can temporarily lose the entity trait that
+        // identifies playlists/albums/artists. Do not replace a known-template
+        // card with an Unknown card for the same URI; preserve the existing
+        // template until a complete response arrives.
+        if (fresh.ContentType == HomeContentType.Unknown && current.ContentType != HomeContentType.Unknown)
+            return false;
+
+        return true;
+    }
+
+    private static void PreserveDisplayDataFromPreviousSnapshot(
+        List<HomeSection> freshSections,
+        List<HomeSection>? previousSections)
+    {
+        if (previousSections is not { Count: > 0 }) return;
+
+        var previousByUri = new Dictionary<string, HomeSectionItem>(StringComparer.Ordinal);
+        foreach (var item in previousSections.SelectMany(section => section.Items))
+        {
+            if (!string.IsNullOrWhiteSpace(item.Uri) && !previousByUri.ContainsKey(item.Uri))
+                previousByUri.Add(item.Uri, item);
+        }
+
+        if (previousByUri.Count == 0) return;
+
+        foreach (var item in freshSections.SelectMany(section => section.Items))
+        {
+            if (string.IsNullOrWhiteSpace(item.Uri) || !previousByUri.TryGetValue(item.Uri, out var previous))
+                continue;
+
+            FillMissingDisplayData(item, previous);
+        }
+    }
+
+    private static void FillMissingDisplayData(HomeSectionItem target, HomeSectionItem source)
+    {
+        if (target.ContentType == HomeContentType.Unknown && source.ContentType != HomeContentType.Unknown)
+            target.ContentType = source.ContentType;
+
+        SetMissingString(target.Title, source.Title, v => target.Title = v);
+        SetMissingString(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
+        SetMissingString(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
+        SetMissingString(target.ColorHex, source.ColorHex, v => target.ColorHex = v);
+        SetMissingString(target.PlaceholderGlyph, source.PlaceholderGlyph, v => target.PlaceholderGlyph = v);
+        SetMissingString(target.HeroImageUrl, source.HeroImageUrl, v => target.HeroImageUrl = v);
+        SetMissingString(target.HeroColorHex, source.HeroColorHex, v => target.HeroColorHex = v);
+        SetMissingString(target.CanvasUrl, source.CanvasUrl, v => target.CanvasUrl = v);
+        SetMissingString(target.CanvasThumbnailUrl, source.CanvasThumbnailUrl, v => target.CanvasThumbnailUrl = v);
+        SetMissingString(target.AudioPreviewUrl, source.AudioPreviewUrl, v => target.AudioPreviewUrl = v);
+        SetMissingString(target.BaselineGroupTitle, source.BaselineGroupTitle, v => target.BaselineGroupTitle = v);
+        SetMissingString(target.PublisherName, source.PublisherName, v => target.PublisherName = v);
+        SetMissingString(target.ReleaseDateIso, source.ReleaseDateIso, v => target.ReleaseDateIso = v);
+
+        if (!target.HasBaselinePreview && source.HasBaselinePreview)
+            target.HasBaselinePreview = true;
+        if (target.PreviewTracks.Count == 0 && source.PreviewTracks.Count > 0)
+            target.PreviewTracks = source.PreviewTracks;
+        if (target.RecentlyAddedCount is null && source.RecentlyAddedCount is not null)
+            target.RecentlyAddedCount = source.RecentlyAddedCount;
+        if (!target.IsRecentlySaved && source.IsRecentlySaved)
+            target.IsRecentlySaved = true;
+        if (target.RecentlyAddedThumbnailUris.Count == 0 && source.RecentlyAddedThumbnailUris.Count > 0)
+            target.RecentlyAddedThumbnailUris = source.RecentlyAddedThumbnailUris;
+        SetMissingString(target.RecentlyAddedThumbnail1Url, source.RecentlyAddedThumbnail1Url, v => target.RecentlyAddedThumbnail1Url = v);
+        SetMissingString(target.RecentlyAddedThumbnail2Url, source.RecentlyAddedThumbnail2Url, v => target.RecentlyAddedThumbnail2Url = v);
+        SetMissingString(target.RecentlyAddedThumbnail3Url, source.RecentlyAddedThumbnail3Url, v => target.RecentlyAddedThumbnail3Url = v);
+        if (target.DurationMs is null && source.DurationMs is not null)
+            target.DurationMs = source.DurationMs;
+        if (target.PlayedPositionMs is null && source.PlayedPositionMs is not null)
+            target.PlayedPositionMs = source.PlayedPositionMs;
+        if (target.PlayedState is null && source.PlayedState is not null)
+            target.PlayedState = source.PlayedState;
+        if (!target.IsVideoPodcast && source.IsVideoPodcast)
+            target.IsVideoPodcast = true;
+    }
+
+    private static void RemoveUnrenderableItems(List<HomeSection> sections)
+    {
+        for (var sectionIndex = sections.Count - 1; sectionIndex >= 0; sectionIndex--)
+        {
+            var items = sections[sectionIndex].Items;
+            for (var itemIndex = items.Count - 1; itemIndex >= 0; itemIndex--)
+            {
+                if (IsUnrenderable(items[itemIndex]))
+                    items.RemoveAt(itemIndex);
+            }
+
+            if (items.Count == 0)
+                sections.RemoveAt(sectionIndex);
+        }
+    }
+
+    private static bool IsUnrenderable(HomeSectionItem item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.ImageUrl))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(item.Uri)
+            && item.Uri.Contains(":collection", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return item.ContentType is not HomeContentType.Episode
+               || string.IsNullOrWhiteSpace(item.PublisherName);
+    }
+
+    private static void SetStringPreservingExisting(string? current, string? next, Action<string?> set)
+    {
+        if (string.IsNullOrWhiteSpace(next) && !string.IsNullOrWhiteSpace(current))
+            return;
+
+        if (current != next)
+            set(next);
+    }
+
+    private static void SetMissingString(string? current, string? fallback, Action<string?> set)
+    {
+        if (string.IsNullOrWhiteSpace(current) && !string.IsNullOrWhiteSpace(fallback))
+            set(fallback);
     }
 }

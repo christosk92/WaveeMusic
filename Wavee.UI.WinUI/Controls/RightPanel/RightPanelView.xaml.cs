@@ -77,6 +77,7 @@ public sealed partial class RightPanelView : UserControl
     private DispatcherQueueTimer? _scrollResetTimer;
     private double _lastCanvasPositionMs = -1;
     private bool _lyricsInitialized;
+    private bool _lyricsConsumerActive;
     private bool _pendingCanvasLayoutRetry;
     private LyricsData? _appliedLyricsData;
     private SongInfo? _appliedSongInfo;
@@ -178,7 +179,7 @@ public sealed partial class RightPanelView : UserControl
             _themeColorsSubscribed = true;
         }
 
-        if (ShouldInitializeLyricsForMode())
+        if (ShouldKeepLyricsVmActive())
             InitializeLyrics();
         // RegisterDetailsWheelHandler is deferred: the DetailsContent subtree is
         // x:Load="False" and doesn't exist until the Details tab is first opened.
@@ -203,6 +204,7 @@ public sealed partial class RightPanelView : UserControl
         // Loaded — without this re-apply, the panel can render the previous mode's
         // content (e.g. Queue list visible while the Lyrics tab is selected).
         UpdateContentVisibility();
+        UpdateLyricsConsumerActivity();
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
@@ -224,6 +226,7 @@ public sealed partial class RightPanelView : UserControl
         ActualThemeChanged -= OnActualThemeChanged;
         SizeChanged -= OnPanelSizeChanged;
         UnregisterDetailsWheelHandler();
+        UpdateLyricsConsumerActivity(active: false);
         TeardownLyrics();
 
         if (_detailsVm != null && _detailsSubscribed)
@@ -326,12 +329,38 @@ public sealed partial class RightPanelView : UserControl
     private bool ShouldInitializeLyricsForMode()
         => SelectedMode is RightPanelMode.Lyrics or RightPanelMode.Details;
 
+    private bool ShouldKeepLyricsVmActive()
+        => IsLoaded && _isOpenCached && ShouldInitializeLyricsForMode();
+
+    private void UpdateLyricsConsumerActivity()
+        => UpdateLyricsConsumerActivity(ShouldKeepLyricsVmActive());
+
+    private void UpdateLyricsConsumerActivity(bool active)
+    {
+        if (_lyricsConsumerActive == active)
+            return;
+
+        _lyricsConsumerActive = active;
+        _lyricsVm?.SetConsumerActive(this, active);
+    }
+
     private void TeardownLyrics()
     {
         if (!_lyricsInitialized) return;
 
-        _positionTimer?.Stop();
-        _scrollResetTimer?.Stop();
+        if (_positionTimer != null)
+        {
+            _positionTimer.Stop();
+            _positionTimer.Tick -= OnPositionTimerTick;
+            _positionTimer = null;
+        }
+
+        if (_scrollResetTimer != null)
+        {
+            _scrollResetTimer.Stop();
+            _scrollResetTimer.Tick -= OnScrollResetTimerTick;
+            _scrollResetTimer = null;
+        }
 
         if (_lyricsVm != null)
         {
@@ -341,6 +370,10 @@ public sealed partial class RightPanelView : UserControl
 
         NowPlayingCanvas.SeekRequested -= OnSeekRequested;
         NowPlayingCanvas.SetIsPlaying(false);
+        NowPlayingCanvas.SetRenderingActive(false);
+        if (!_lyricsCanvasDataCleared)
+            NowPlayingCanvas.SetLyricsData(null);
+        NowPlayingCanvas.Visibility = Visibility.Collapsed;
         _appliedLyricsData = null;
         _appliedSongInfo = null;
         _lyricsCanvasDataCleared = true;
@@ -680,8 +713,13 @@ public sealed partial class RightPanelView : UserControl
     {
         var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         timer.IsRepeating = false;
-        timer.Tick += (_, _) => ResumeSync();
+        timer.Tick += OnScrollResetTimerTick;
         return timer;
+    }
+
+    private void OnScrollResetTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        ResumeSync();
     }
 
     private void LyricsSyncButton_Click(object sender, RoutedEventArgs e)
@@ -1509,13 +1547,19 @@ public sealed partial class RightPanelView : UserControl
     {
         if (QueueContent == null || !IsLoaded) return;
 
-        // Materialize the deferred (x:Load="False") subtrees on first selection.
-        if (SelectedMode == RightPanelMode.Lyrics) EnsureLyricsTreeLoaded();
-        if (SelectedMode == RightPanelMode.Details) EnsureDetailsTreeLoaded();
-        if (SelectedMode == RightPanelMode.TrackDetails) EnsureTrackDetailsTreeLoaded();
+        var keepLyricsActive = ShouldKeepLyricsVmActive();
 
-        if (ShouldInitializeLyricsForMode())
+        // Materialize the deferred (x:Load="False") subtrees on first visible selection.
+        if (keepLyricsActive && SelectedMode == RightPanelMode.Lyrics) EnsureLyricsTreeLoaded();
+        if (keepLyricsActive && SelectedMode == RightPanelMode.Details) EnsureDetailsTreeLoaded();
+        if (_isOpenCached && SelectedMode == RightPanelMode.TrackDetails) EnsureTrackDetailsTreeLoaded();
+
+        UpdateLyricsConsumerActivity(keepLyricsActive);
+
+        if (keepLyricsActive)
             InitializeLyrics();
+        else
+            TeardownLyrics();
 
         QueueContent.Visibility = SelectedMode == RightPanelMode.Queue ? Visibility.Visible : Visibility.Collapsed;
         FriendsContent.Visibility = SelectedMode == RightPanelMode.FriendsActivity ? Visibility.Visible : Visibility.Collapsed;
@@ -1533,7 +1577,7 @@ public sealed partial class RightPanelView : UserControl
         if (TrackDetailsTabItem != null)
             TrackDetailsTabItem.Visibility = SelectedMode == RightPanelMode.TrackDetails ? Visibility.Visible : Visibility.Collapsed;
 
-        if (SelectedMode == RightPanelMode.TrackDetails)
+        if (_isOpenCached && SelectedMode == RightPanelMode.TrackDetails)
             RefreshTrackDetailsContent();
 
         UpdatePanelBackgroundState();
@@ -1564,7 +1608,7 @@ public sealed partial class RightPanelView : UserControl
         UpdateTabHeaderVisualState();
 
         // When switching to lyrics tab, ensure we have the latest state
-        if (SelectedMode == RightPanelMode.Lyrics && _lyricsInitialized)
+        if (keepLyricsActive && SelectedMode == RightPanelMode.Lyrics && _lyricsInitialized)
         {
             _ = _lyricsVm?.LoadLyricsAsync();
             UpdateCanvasLayout();
@@ -1578,7 +1622,7 @@ public sealed partial class RightPanelView : UserControl
         }
 
         // When switching to details tab, load details if needed
-        if (SelectedMode == RightPanelMode.Details && _detailsVm != null)
+        if (_isOpenCached && SelectedMode == RightPanelMode.Details && _detailsVm != null)
         {
             _ = LoadAndBindDetailsAsync();
         }

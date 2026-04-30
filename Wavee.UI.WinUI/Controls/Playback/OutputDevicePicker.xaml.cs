@@ -80,7 +80,6 @@ public sealed partial class OutputDevicePicker : UserControl
             case nameof(IPlaybackStateService.AvailableConnectDevices):
             case nameof(IPlaybackStateService.IsPlaying):
             case nameof(IPlaybackStateService.IsAudioEngineAvailable):
-            case nameof(IPlaybackStateService.CurrentTrackId):
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     UpdateTrigger();

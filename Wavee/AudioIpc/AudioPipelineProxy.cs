@@ -130,12 +130,22 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
     /// <summary>
     /// Sends configuration to the audio process and waits for the Ready message.
     /// </summary>
-    public async Task<bool> ConfigureAsync(string deviceId, bool normalizationEnabled = true,
-        int initialVolumePercent = 0, string? audioCacheDirectory = null, CancellationToken ct = default)
+    public async Task<bool> ConfigureAsync(
+        string deviceId,
+        bool normalizationEnabled = true,
+        int initialVolumePercent = 0,
+        string? audioCacheDirectory = null,
+        int parentProcessId = 0,
+        string? sessionId = null,
+        string? launchToken = null,
+        CancellationToken ct = default)
     {
         var config = new AudioHostConfig
         {
             DeviceId = deviceId,
+            ParentProcessId = parentProcessId,
+            SessionId = sessionId,
+            LaunchToken = launchToken,
             NormalizationEnabled = normalizationEnabled,
             InitialVolumePercent = initialVolumePercent,
             AudioCacheDirectory = audioCacheDirectory,
@@ -275,6 +285,9 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         string? manifestIdOverride = null,
         string? videoTrackUriOverride = null,
         CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SwitchToAudioAsync(CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
     /// <summary>

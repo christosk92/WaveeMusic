@@ -363,6 +363,7 @@
                             MinItemHeight="325"
                             MinColumnSpacing="12"
                             MinRowSpacing="16"
+                            RealizationBufferRows="1"
                             RealizeAllItems="False"
                             ItemAspectRatio="0.6764705882352941"/>
                     </ItemsRepeater.Layout>
@@ -888,6 +889,7 @@
              pin state changes. ZIndex=5 keeps it above the scrolled content
              but below any page-wide overlays / dialogs. -->
         <Grid x:Name="ShyHeaderHost"
+              x:Load="False"
               Canvas.ZIndex="5"
               VerticalAlignment="Top"
               HorizontalAlignment="Stretch"

@@ -93,6 +93,11 @@ public sealed class ImageCacheService
                     node.Value = new KeyValuePair<CacheKey, CacheEntry>(
                         key,
                         new CacheEntry(image, Environment.TickCount64));
+                    if (!ReferenceEquals(_lruList.First, node))
+                    {
+                        _lruList.Remove(node);
+                        _lruList.AddFirst(node);
+                    }
                     return image;
                 }
                 finally { _rwLock.ExitWriteLock(); }
@@ -131,24 +136,10 @@ public sealed class ImageCacheService
             var newNode = _lruList.AddFirst(new KeyValuePair<CacheKey, CacheEntry>(key, entry));
             _cache[key] = newNode;
 
-            // Evict oldest unpinned entry if over capacity. Pinned entries (held by
+            // Evict oldest unpinned entries if over capacity. Pinned entries (held by
             // visible Image controls) are skipped so we don't force WinUI to re-decode
             // a BitmapImage that's still on screen.
-            if (_cache.Count > _maxSize)
-            {
-                var candidate = _lruList.Last;
-                while (candidate != null)
-                {
-                    var prev = candidate.Previous;
-                    if (!_pinCounts.ContainsKey(candidate.Value.Key))
-                    {
-                        _cache.Remove(candidate.Value.Key);
-                        _lruList.Remove(candidate);
-                        break;
-                    }
-                    candidate = prev;
-                }
-            }
+            TrimToCapacityNoLock();
 
             return bitmap;
         }
@@ -190,8 +181,35 @@ public sealed class ImageCacheService
                 if (count <= 1) _pinCounts.Remove(key);
                 else _pinCounts[key] = count - 1;
             }
+
+            TrimToCapacityNoLock();
         }
         finally { _rwLock.ExitWriteLock(); }
+    }
+
+    private void TrimToCapacityNoLock()
+    {
+        while (_cache.Count > _maxSize)
+        {
+            var candidate = _lruList.Last;
+            var removed = false;
+
+            while (candidate != null)
+            {
+                var prev = candidate.Previous;
+                if (!_pinCounts.ContainsKey(candidate.Value.Key))
+                {
+                    _cache.Remove(candidate.Value.Key);
+                    _lruList.Remove(candidate);
+                    removed = true;
+                    break;
+                }
+                candidate = prev;
+            }
+
+            if (!removed)
+                break;
+        }
     }
 
     /// <summary>

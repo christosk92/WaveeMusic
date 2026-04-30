@@ -100,6 +100,12 @@ public interface IPlaybackService : INotifyPropertyChanged
         string? videoTrackUriOverride = null,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Switches the currently-playing music-video variant back to audio at the
+    /// live playback position.
+    /// </summary>
+    Task<PlaybackResult> SwitchToAudioAsync(CancellationToken ct = default);
+
     // ── Observable state ──
 
     /// <summary>True while a play command is buffering/loading.</summary>

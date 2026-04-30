@@ -5,12 +5,16 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.Foundation;
+using Windows.Media.Playback;
 using Windows.UI;
 using Microsoft.UI;
 
@@ -32,9 +36,11 @@ public sealed partial class ExpandedPlayerView : UserControl
 {
     private readonly PlayerBarViewModel _viewModel;
     private readonly LyricsViewModel? _lyricsVm;
+    private readonly IActiveVideoSurfaceService _videoSurface;
     private DispatcherQueueTimer? _lyricsScrollResetTimer;
     private DispatcherQueueTimer? _lyricsRenderPulseTimer;
     private bool _lyricsCanvasInitialized;
+    private bool _lyricsConsumerActive;
     private bool _pendingLyricsLayoutRetry;
     private LyricsData? _appliedLyricsData;
     private SongInfo? _appliedSongInfo;
@@ -50,11 +56,15 @@ public sealed partial class ExpandedPlayerView : UserControl
     private Color _surfaceTintTo = Colors.Transparent;
     private const int SurfaceTintFadeDurationMs = 700;
     private const int AmbientFadeDurationMs = 700;
+    private bool _isVideoSurfaceEnabled;
+    private bool _isVideoFocusActive;
+    private bool _isVideoTheaterMode;
 
     public ExpandedPlayerView()
     {
         _viewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
+        _videoSurface = Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>();
 
         InitializeComponent();
 
@@ -63,6 +73,8 @@ public sealed partial class ExpandedPlayerView : UserControl
         SizeChanged += OnSizeChanged;
         ActualThemeChanged += OnActualThemeChanged;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _videoSurface.ActiveSurfaceChanged += OnActiveVideoSurfaceChanged;
+        PlayerLayout.TheaterModeChanged += OnPlayerLayoutTheaterModeChanged;
     }
 
     /// <summary>Right-column content state. Default: <see cref="ExpandedPlayerContentMode.Lyrics"/>.</summary>
@@ -85,8 +97,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        ContentHost.MaxWidth = double.PositiveInfinity;
-        InitializeLyricsCanvas();
+        UpdateVideoFocusLayout();
         ApplyMode();
         SyncContentHostWidth();
         ApplyAmbientTint(_viewModel.AlbumArtColor);
@@ -94,9 +105,63 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ReleaseHeavyResources();
+        _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ActualThemeChanged -= OnActualThemeChanged;
+    }
+
+    internal void ReleaseHeavyResources()
+    {
+        PlayerLayout.SetVideoSurfaceEnabled(false);
+        PlayerLayout.SetVideoPresentationMode(false);
+        PlayerLayout.SetTheaterMode(false);
+        _isVideoSurfaceEnabled = false;
+        _isVideoFocusActive = false;
+        _isVideoTheaterMode = false;
+        UpdateLyricsConsumerActivity(active: false);
         TeardownLyricsCanvas();
+
+        if (_lyricsScrollResetTimer != null)
+        {
+            _lyricsScrollResetTimer.Stop();
+            _lyricsScrollResetTimer.Tick -= OnLyricsScrollResetTimerTick;
+            _lyricsScrollResetTimer = null;
+        }
+
+        if (_lyricsRenderPulseTimer != null)
+        {
+            _lyricsRenderPulseTimer.Stop();
+            _lyricsRenderPulseTimer.Tick -= OnLyricsRenderPulseTimerTick;
+            _lyricsRenderPulseTimer = null;
+        }
+
+        if (_surfaceTintTimer != null)
+        {
+            _surfaceTintTimer.Stop();
+            _surfaceTintTimer.Tick -= OnSurfaceTintTick;
+            _surfaceTintTimer = null;
+        }
+
+        if (_ambientTintTimer != null)
+        {
+            _ambientTintTimer.Stop();
+            _ambientTintTimer.Tick -= OnAmbientTintTick;
+            _ambientTintTimer = null;
+        }
+
+        if (ContentHost != null)
+        {
+            ContentHost.IsOpen = false;
+            ContentHost.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    internal void SetVideoSurfaceEnabled(bool enabled)
+    {
+        _isVideoSurfaceEnabled = enabled;
+        PlayerLayout.SetVideoSurfaceEnabled(enabled);
+        UpdateVideoFocusLayout();
     }
 
     // Below this window width the 2-column split stops being readable —
@@ -142,6 +207,29 @@ public sealed partial class ExpandedPlayerView : UserControl
         }
     }
 
+    private void OnActiveVideoSurfaceChanged(object? sender, MediaPlayer? surface)
+        => DispatcherQueue?.TryEnqueue(UpdateVideoFocusLayout);
+
+    private void OnPlayerLayoutTheaterModeChanged(object? sender, bool enabled)
+    {
+        _isVideoTheaterMode = enabled;
+        ApplyMode();
+    }
+
+    private void UpdateVideoFocusLayout()
+    {
+        var active = IsLoaded && _isVideoSurfaceEnabled && _videoSurface.HasActiveSurface;
+        if (_isVideoFocusActive == active)
+        {
+            PlayerLayout.SetVideoPresentationMode(active);
+            return;
+        }
+
+        _isVideoFocusActive = active;
+        PlayerLayout.SetVideoPresentationMode(active);
+        ApplyMode();
+    }
+
     private bool IsLyricsModeActive =>
         Mode == ExpandedPlayerContentMode.Lyrics
         && Visibility == Visibility.Visible
@@ -157,6 +245,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     private void SyncContentHostWidth()
     {
         if (Mode == ExpandedPlayerContentMode.None) return;
+        if (ContentHost == null) return;
         var w = RightColumnContainer.ActualWidth;
         if (w <= 0) return;
         if (Math.Abs(ContentHost.PanelWidth - w) > 0.5)
@@ -166,10 +255,11 @@ public sealed partial class ExpandedPlayerView : UserControl
     private void ApplyMode()
     {
         var mode = Mode;
-        var rightVisible = mode != ExpandedPlayerContentMode.None;
-        var lyricsVisible = mode == ExpandedPlayerContentMode.Lyrics;
-        var queueVisible = mode == ExpandedPlayerContentMode.Queue;
-        var focusVisible = mode == ExpandedPlayerContentMode.None;
+        var videoFocusVisible = _isVideoFocusActive;
+        var rightVisible = !videoFocusVisible && mode != ExpandedPlayerContentMode.None;
+        var lyricsVisible = !videoFocusVisible && mode == ExpandedPlayerContentMode.Lyrics;
+        var queueVisible = !videoFocusVisible && mode == ExpandedPlayerContentMode.Queue;
+        var focusVisible = videoFocusVisible || mode == ExpandedPlayerContentMode.None;
 
         LeftColumnDef.Width = new GridLength(1, GridUnitType.Star);
         RightColumnDef.Width = rightVisible
@@ -177,20 +267,51 @@ public sealed partial class ExpandedPlayerView : UserControl
             : new GridLength(0);
         RightColumnContainer.Visibility = rightVisible ? Visibility.Visible : Visibility.Collapsed;
         LyricsInteractionRegion.Visibility = lyricsVisible ? Visibility.Visible : Visibility.Collapsed;
-        FullscreenLyricsCanvas.Visibility = Visibility.Visible;
-        ContentHost.Visibility = queueVisible ? Visibility.Visible : Visibility.Collapsed;
+        UpdateLyricsConsumerActivity(lyricsVisible);
+
+        if (lyricsVisible)
+        {
+            InitializeLyricsCanvas();
+            if (FullscreenLyricsCanvas != null)
+                FullscreenLyricsCanvas.Visibility = Visibility.Visible;
+        }
+        else if (_lyricsCanvasInitialized)
+        {
+            HideLyricsLayer();
+            TeardownLyricsCanvas();
+        }
+
+        if (queueVisible)
+        {
+            EnsureContentHostRealized();
+            if (ContentHost != null)
+                ContentHost.Visibility = Visibility.Visible;
+        }
+        else if (ContentHost != null)
+        {
+            ContentHost.Visibility = Visibility.Collapsed;
+        }
 
         // Focus mode spans both grid columns so the layout centers across the
         // whole window — without ColumnSpan, the * column allocation leaves
         // dead space on the right even when RightColumnDef is 0-width because
         // PlayerLayout's MaxWidth constrains it within column 0 only.
         Grid.SetColumnSpan(PlayerLayout, focusVisible ? 2 : 1);
-        PlayerLayout.MaxWidth = focusVisible ? 640 : 620;
+        PlayerLayout.MaxWidth = videoFocusVisible
+            ? (_isVideoTheaterMode ? 1500 : 1080)
+            : focusVisible ? 640 : 620;
         PlayerLayout.HorizontalAlignment = HorizontalAlignment.Center;
+        AnimateTransform(
+            PlayerLayoutTransform,
+            videoFocusVisible && !_isVideoTheaterMode ? 1.01 : 1.0,
+            videoFocusVisible && !_isVideoTheaterMode ? -8 : 0,
+            340);
+        ModeToggleHost.Visibility = videoFocusVisible ? Visibility.Collapsed : Visibility.Visible;
 
         if (queueVisible)
         {
-            ContentHost.SelectedMode = RightPanelMode.Queue;
+            if (ContentHost != null)
+                ContentHost.SelectedMode = RightPanelMode.Queue;
             SyncContentHostWidth();
         }
         else if (!lyricsVisible)
@@ -205,6 +326,49 @@ public sealed partial class ExpandedPlayerView : UserControl
 
         LyricsToggleButton.IsChecked = mode == ExpandedPlayerContentMode.Lyrics;
         QueueToggleButton.IsChecked = mode == ExpandedPlayerContentMode.Queue;
+    }
+
+    private static void AnimateTransform(CompositeTransform transform, double scale, double translateY, int durationMs)
+    {
+        var duration = TimeSpan.FromMilliseconds(durationMs);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var storyboard = new Storyboard();
+
+        AddAnimation(storyboard, transform, nameof(CompositeTransform.ScaleX), scale, duration, easing);
+        AddAnimation(storyboard, transform, nameof(CompositeTransform.ScaleY), scale, duration, easing);
+        AddAnimation(storyboard, transform, nameof(CompositeTransform.TranslateY), translateY, duration, easing);
+        storyboard.Begin();
+    }
+
+    private static void AddAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string property,
+        double to,
+        Duration duration,
+        EasingFunctionBase easing)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = duration,
+            EasingFunction = easing,
+            EnableDependentAnimation = true
+        };
+
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        storyboard.Children.Add(animation);
+    }
+
+    private void UpdateLyricsConsumerActivity(bool active)
+    {
+        active = active && IsLoaded;
+        if (_lyricsConsumerActive == active)
+            return;
+
+        _lyricsConsumerActive = active;
+        _lyricsVm?.SetConsumerActive(this, active);
     }
 
     /// <summary>
@@ -254,9 +418,32 @@ public sealed partial class ExpandedPlayerView : UserControl
     // Light mode uses a softer, blended tint so foreground text stays
     // readable; dark mode keeps a saturated upper band for atmosphere.
 
+    private bool EnsureLyricsCanvasRealized()
+    {
+        if (FullscreenLyricsCanvas != null)
+            return true;
+
+        _ = FindName(nameof(FullscreenLyricsCanvas));
+        return FullscreenLyricsCanvas != null;
+    }
+
+    private bool EnsureContentHostRealized()
+    {
+        if (ContentHost != null)
+            return true;
+
+        _ = FindName(nameof(ContentHost));
+        if (ContentHost == null)
+            return false;
+
+        ContentHost.MaxWidth = double.PositiveInfinity;
+        return true;
+    }
+
     private void InitializeLyricsCanvas()
     {
         if (_lyricsCanvasInitialized || _lyricsVm == null) return;
+        if (!EnsureLyricsCanvasRealized()) return;
 
         _lyricsCanvasInitialized = true;
 
@@ -287,9 +474,15 @@ public sealed partial class ExpandedPlayerView : UserControl
             _lyricsVm.PlaybackState.PropertyChanged -= OnLyricsPlaybackStateChanged;
         }
 
-        FullscreenLyricsCanvas.SeekRequested -= OnLyricsSeekRequested;
-        FullscreenLyricsCanvas.SetIsPlaying(false);
-        FullscreenLyricsCanvas.SetRenderingActive(false);
+        if (FullscreenLyricsCanvas != null)
+        {
+            FullscreenLyricsCanvas.SeekRequested -= OnLyricsSeekRequested;
+            FullscreenLyricsCanvas.SetIsPlaying(false);
+            FullscreenLyricsCanvas.SetRenderingActive(false);
+            if (!_lyricsCanvasDataCleared)
+                FullscreenLyricsCanvas.SetLyricsData(null);
+            FullscreenLyricsCanvas.Visibility = Visibility.Collapsed;
+        }
         _appliedLyricsData = null;
         _appliedSongInfo = null;
         _lyricsCanvasDataCleared = true;
@@ -299,6 +492,9 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnLyricsVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null && e.PropertyName != nameof(LyricsViewModel.IsLoading))
+            return;
+
         switch (e.PropertyName)
         {
             case nameof(LyricsViewModel.CurrentLyrics):
@@ -333,7 +529,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void ApplyCurrentLyricsState()
     {
-        if (!_lyricsCanvasInitialized || _lyricsVm == null) return;
+        if (!_lyricsCanvasInitialized || _lyricsVm == null || FullscreenLyricsCanvas == null) return;
 
         var showCanvas = IsLyricsModeActive;
         FullscreenLyricsCanvas.Visibility = Visibility.Visible;
@@ -371,7 +567,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void UpdateLyricsRenderState()
     {
-        if (!_lyricsCanvasInitialized || _lyricsVm == null)
+        if (!_lyricsCanvasInitialized || _lyricsVm == null || FullscreenLyricsCanvas == null)
             return;
 
         var canRender = IsLyricsModeActive;
@@ -386,7 +582,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void SyncLyricsCanvasPosition()
     {
-        if (!_lyricsCanvasInitialized || _lyricsVm == null || !IsLyricsModeActive)
+        if (!_lyricsCanvasInitialized || _lyricsVm == null || FullscreenLyricsCanvas == null || !IsLyricsModeActive)
             return;
 
         FullscreenLyricsCanvas.SetPosition(_lyricsVm.GetInterpolatedPosition());
@@ -394,7 +590,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnLyricsSeekRequested(object? sender, TimeSpan position)
     {
-        if (_lyricsCanvasInitialized && IsLyricsModeActive)
+        if (_lyricsCanvasInitialized && FullscreenLyricsCanvas != null && IsLyricsModeActive)
             FullscreenLyricsCanvas.SetPosition(position);
 
         _lyricsVm?.PlaybackState.Seek(position.TotalMilliseconds);
@@ -402,7 +598,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void ApplyLyricsPaletteForTheme()
     {
-        if (_lyricsVm == null) return;
+        if (_lyricsVm == null || FullscreenLyricsCanvas == null) return;
 
         var isDark = ActualTheme != ElementTheme.Light;
         var foreground = isDark ? Colors.White : Colors.Black;
@@ -422,7 +618,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void UpdateLyricsCanvasLayout()
     {
-        if (!_lyricsCanvasInitialized) return;
+        if (!_lyricsCanvasInitialized || FullscreenLyricsCanvas == null) return;
 
         var rootW = RootGrid.ActualWidth;
         var rootH = RootGrid.ActualHeight;
@@ -461,36 +657,41 @@ public sealed partial class ExpandedPlayerView : UserControl
                 return;
 
             UpdateLyricsCanvasLayout();
-            if (FullscreenLyricsCanvas.LyricsWidth > 0)
+            if (FullscreenLyricsCanvas != null && FullscreenLyricsCanvas.LyricsWidth > 0)
                 ApplyCurrentLyricsState();
         });
     }
 
     private void LyricsInteractionRegion_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMouseInLyricsArea = true;
         UpdateLyricsRenderState();
     }
 
     private void LyricsInteractionRegion_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMouseInLyricsArea = false;
         UpdateLyricsRenderState();
     }
 
     private void LyricsInteractionRegion_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.MousePosition = e.GetCurrentPoint(LyricsInteractionRegion).Position;
     }
 
     private void LyricsInteractionRegion_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMousePressing = true;
         UpdateLyricsRenderState();
     }
 
     private void LyricsInteractionRegion_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMousePressing = false;
         FullscreenLyricsCanvas.FireSeekIfHovering();
         UpdateLyricsRenderState();
@@ -498,6 +699,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void LyricsInteractionRegion_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMouseScrolling = true;
         UpdateLyricsRenderState();
 
@@ -525,12 +727,18 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         timer.IsRepeating = false;
-        timer.Tick += (_, _) => ResumeLyricsSync();
+        timer.Tick += OnLyricsScrollResetTimerTick;
         return timer;
+    }
+
+    private void OnLyricsScrollResetTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        ResumeLyricsSync();
     }
 
     private void ResumeLyricsSync()
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.MouseScrollOffset = 0;
         FullscreenLyricsCanvas.IsMouseScrolling = false;
         UpdateLyricsRenderState();
@@ -538,6 +746,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void HideLyricsLayer()
     {
+        if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.LyricsOpacity = 0;
         FullscreenLyricsCanvas.LyricsStartX = 0;
         FullscreenLyricsCanvas.LyricsStartY = 0;
@@ -564,7 +773,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void ApplyCanvasSurfaceTint(string? hexColor)
     {
-        if (!_lyricsCanvasInitialized) return;
+        if (!_lyricsCanvasInitialized || FullscreenLyricsCanvas == null) return;
 
         var target = BuildSurfaceColor(hexColor);
         if (_lyricsCanvasClearColor.Equals(target))
@@ -594,7 +803,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnSurfaceTintTick(DispatcherQueueTimer sender, object args)
     {
-        if (!_lyricsCanvasInitialized)
+        if (!_lyricsCanvasInitialized || FullscreenLyricsCanvas == null)
         {
             sender.Stop();
             return;
@@ -629,7 +838,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void PulseLyricsCanvasRender()
     {
-        if (!_lyricsCanvasInitialized || DispatcherQueue == null)
+        if (!_lyricsCanvasInitialized || FullscreenLyricsCanvas == null || DispatcherQueue == null)
             return;
 
         FullscreenLyricsCanvas.SetRenderingActive(true);

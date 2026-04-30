@@ -788,6 +788,90 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     }
 
     /// <summary>
+    /// Manual "switch to audio" entry point. Stops the Spotify video surface
+    /// and hands the same queue item back to the AudioHost path at the live
+    /// playback position.
+    /// </summary>
+    public async Task SwitchToAudioAsync(CancellationToken ct = default)
+    {
+        if (!_isSpotifyVideoActive) return;
+
+        var state = _stateSubject.Value;
+        var positionMs = state.PositionMs;
+        var wasPlaying = state.IsPlaying;
+        var current = _queue.Current;
+        if (current is null) return;
+
+        var audioTrack = BuildAudioQueueTrackForCurrentVideo(current);
+        if (!string.Equals(audioTrack.Uri, current.Uri, StringComparison.Ordinal))
+            _queue.ReplaceCurrent(audioTrack);
+
+        if (_spotifyVideoPlayback is not null)
+        {
+            try { await _spotifyVideoPlayback.StopAsync(ct); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping Spotify video for audio switch"); }
+        }
+
+        _videoEngineActive = false;
+        _isSpotifyVideoActive = false;
+        _currentVideoPlaybackTarget = null;
+
+        _logger?.LogInformation("Switching Spotify video back to audio at {Position}ms: {Uri}",
+            positionMs, audioTrack.Uri);
+        await PlayCurrentTrackAsync(positionMs, ct);
+
+        if (!wasPlaying)
+            await _proxy.PauseAsync(ct);
+    }
+
+    private QueueTrack BuildAudioQueueTrackForCurrentVideo(QueueTrack current)
+    {
+        var target = _currentVideoPlaybackTarget;
+        if (target is null || string.IsNullOrWhiteSpace(target.AudioTrackUri))
+            return StripVideoMetadata(current);
+
+        var original = target.OriginalMetadata;
+        return StripVideoMetadata(current) with
+        {
+            Uri = target.AudioTrackUri,
+            Title = string.IsNullOrWhiteSpace(original.Title) ? current.Title : original.Title,
+            Artist = string.IsNullOrWhiteSpace(original.Artist) ? current.Artist : original.Artist,
+            Album = string.IsNullOrWhiteSpace(original.Album) ? current.Album : original.Album,
+            AlbumUri = string.IsNullOrWhiteSpace(original.AlbumUri) ? current.AlbumUri : original.AlbumUri,
+            ArtistUri = string.IsNullOrWhiteSpace(original.ArtistUri) ? current.ArtistUri : original.ArtistUri,
+            DurationMs = target.OriginalDurationMs > 0
+                ? (int)Math.Min(int.MaxValue, target.OriginalDurationMs)
+                : current.DurationMs,
+            ImageUrl = string.IsNullOrWhiteSpace(original.ImageUrl) ? current.ImageUrl : original.ImageUrl
+        };
+    }
+
+    private static QueueTrack StripVideoMetadata(QueueTrack track)
+    {
+        if (track.Metadata is not { Count: > 0 }) return track;
+
+        var metadata = new Dictionary<string, string>(track.Metadata.Count, StringComparer.Ordinal);
+        foreach (var entry in track.Metadata)
+        {
+            if (entry.Key is "track_player"
+                or "media.manifest_id"
+                or "media.start_position"
+                or "wavee.video_track_uri"
+                or "wavee.video_duration")
+            {
+                continue;
+            }
+
+            metadata[entry.Key] = entry.Value;
+        }
+
+        return track with
+        {
+            Metadata = metadata.Count == 0 ? null : metadata
+        };
+    }
+
+    /// <summary>
     /// Resolves a <c>wavee:local:{kind}:{hash}</c> context URI into a flat
     /// list of queue tracks. Local URIs never round-trip through Spotify's
     /// context resolver (it doesn't recognise them and throws), so PlayAsync

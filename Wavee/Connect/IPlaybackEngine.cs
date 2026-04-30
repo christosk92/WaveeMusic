@@ -152,6 +152,13 @@ public interface IPlaybackEngine
         string? manifestIdOverride = null,
         string? videoTrackUriOverride = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Switches the currently-playing Spotify music-video variant back to the
+    /// audio track at the current playback position. No-op if audio is already
+    /// active or the current video source is not switchable.
+    /// </summary>
+    Task SwitchToAudioAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -13,17 +13,13 @@ namespace Wavee.UI.WinUI.Controls.Playback;
 
 /// <summary>
 /// Composition-driven horizontal progress bar — replaces a bound Slider in the
-/// playback chrome. The fill animates entirely on the composition thread via a
-/// single linear ScalarKeyFrameAnimation on Visual.Scale.X, which the GPU
-/// interpolates between authoritative anchors. There is **no** per-tick
-/// UI-thread or binding work between play/pause/seek/track-change events, so
-/// the playback baseline CPU drops to near-zero while a track is playing.
+/// playback chrome. The fill animates on the composition thread via a single
+/// linear ScalarKeyFrameAnimation on Visual.Scale.X, while the view model
+/// updates the anchor position on service events, seeks, track changes, and a
+/// coarse 1 Hz interpolation tick. That keeps newly-loaded player surfaces in
+/// sync with the displayed time without returning to per-frame UI work.
 ///
-/// Bind <see cref="PositionMs"/> to <c>PlayerBarViewModel.AnchorPositionMs</c>
-/// (which fires only on real authoritative changes) — NOT to <c>Position</c>,
-/// which is updated 1× per second by the interpolation timer for the textual
-/// time display. Anchoring to the interpolated value would restart the GPU
-/// animation every tick, defeating the optimization.
+/// Bind <see cref="PositionMs"/> to <c>PlayerBarViewModel.AnchorPositionMs</c>.
 /// </summary>
 public sealed class CompositionProgressBar : UserControl
 {

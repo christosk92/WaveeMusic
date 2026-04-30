@@ -250,9 +250,14 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             return MapLikedSongs(entityUri, entityData, formatAttributes);
 
         var contentType = ResolveContentType(entityData);
-        var title = entityData.IdentityTrait?.Name;
-        var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage);
+        var typedEntityPayload = GetTypedEntityPayload(entityData.TypedEntity);
+        var title = FirstNonWhiteSpace(
+            entityData.IdentityTrait?.Name,
+            ExtractTitleFromTypedEntityPayload(typedEntityPayload));
+        var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage)
+                       ?? ExtractImageUrlFromJson(typedEntityPayload);
         var subtitle = BuildSubtitle(entityData, contentType, formatAttributes);
+        var colorHex = ExtractColorFromJson(typedEntityPayload);
 
         var item = new HomeSectionItem
         {
@@ -260,7 +265,8 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             Title = title,
             Subtitle = subtitle,
             ImageUrl = imageUrl,
-            ContentType = contentType
+            ContentType = contentType,
+            ColorHex = colorHex
         };
 
         // Episode-specific surface — only populated if the entity actually
@@ -589,6 +595,204 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     }
 
     // ── Subtitle building ──
+
+    private static JsonElement? GetTypedEntityPayload(HomeTypedEntity? typedEntity)
+    {
+        if (typedEntity?.ExtensionData == null)
+            return null;
+
+        if (typedEntity.ExtensionData.TryGetValue("data", out var data)
+            && data.ValueKind == JsonValueKind.Object)
+            return data;
+
+        return null;
+    }
+
+    private static string? ExtractTitleFromTypedEntityPayload(JsonElement? payload)
+    {
+        if (payload is not { ValueKind: JsonValueKind.Object } data)
+            return null;
+
+        return TryGetString(data, "name")
+               ?? TryGetNestedString(data, "profile", "name")
+               ?? TryGetNestedString(data, "title", "transformedLabel");
+    }
+
+    private static string? ExtractImageUrlFromJson(JsonElement? payload)
+    {
+        if (payload is not { ValueKind: JsonValueKind.Object } data)
+            return null;
+
+        if (data.TryGetProperty("visualIdentityTrait", out var visualIdentityTrait)
+            && visualIdentityTrait.ValueKind == JsonValueKind.Object
+            && visualIdentityTrait.TryGetProperty("squareCoverImage", out var squareCover))
+        {
+            var url = ExtractSquareCoverImageUrl(squareCover);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        if (data.TryGetProperty("images", out var images)
+            && images.ValueKind == JsonValueKind.Object
+            && images.TryGetProperty("items", out var items)
+            && items.ValueKind == JsonValueKind.Array
+            && items.GetArrayLength() > 0)
+        {
+            var url = ExtractLargestSourceUrl(items[0]);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        if (data.TryGetProperty("coverArt", out var coverArt))
+        {
+            var url = ExtractLargestSourceUrl(coverArt);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        if (data.TryGetProperty("visuals", out var visuals)
+            && visuals.ValueKind == JsonValueKind.Object
+            && visuals.TryGetProperty("avatarImage", out var avatar))
+        {
+            var url = ExtractLargestSourceUrl(avatar);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        return null;
+    }
+
+    private static string? ExtractSquareCoverImageUrl(JsonElement squareCover)
+    {
+        if (squareCover.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (squareCover.TryGetProperty("originalInstances", out var instances)
+            && instances.ValueKind == JsonValueKind.Array
+            && instances.GetArrayLength() > 0)
+        {
+            JsonElement? selected = null;
+            foreach (var instance in instances.EnumerateArray())
+            {
+                if (instance.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                selected ??= instance;
+                if (instance.TryGetProperty("size", out var size)
+                    && size.ValueKind == JsonValueKind.String
+                    && size.GetString() is "IMAGE_SIZE_DEFAULT" or "IMAGE_SIZE_LARGE")
+                {
+                    selected = instance;
+                    break;
+                }
+            }
+
+            if (selected is { ValueKind: JsonValueKind.Object } match
+                && TryGetNestedString(match, "flatFile", "cdnUrl") is { Length: > 0 } cdnUrl)
+                return cdnUrl;
+        }
+
+        if (squareCover.TryGetProperty("image", out var image)
+            && image.ValueKind == JsonValueKind.Object
+            && image.TryGetProperty("data", out var imageData))
+        {
+            var url = ExtractLargestSourceUrl(imageData);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        return null;
+    }
+
+    private static string? ExtractLargestSourceUrl(JsonElement container)
+    {
+        if (container.ValueKind != JsonValueKind.Object
+            || !container.TryGetProperty("sources", out var sources)
+            || sources.ValueKind != JsonValueKind.Array
+            || sources.GetArrayLength() == 0)
+            return null;
+
+        string? bestUrl = null;
+        var bestWidth = -1;
+        foreach (var source in sources.EnumerateArray())
+        {
+            if (source.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var width = 0;
+            if (source.TryGetProperty("width", out var widthElement)
+                && widthElement.ValueKind == JsonValueKind.Number)
+            {
+                width = widthElement.GetInt32();
+            }
+            else if (source.TryGetProperty("maxWidth", out var maxWidthElement)
+                     && maxWidthElement.ValueKind == JsonValueKind.Number)
+            {
+                width = maxWidthElement.GetInt32();
+            }
+
+            if (width <= bestWidth && bestUrl != null)
+                continue;
+
+            bestWidth = width;
+            bestUrl = TryGetString(source, "url");
+        }
+
+        return bestUrl;
+    }
+
+    private static string? ExtractColorFromJson(JsonElement? payload)
+    {
+        if (payload is not { ValueKind: JsonValueKind.Object } data)
+            return null;
+
+        if (data.TryGetProperty("images", out var images)
+            && images.ValueKind == JsonValueKind.Object
+            && images.TryGetProperty("items", out var items)
+            && items.ValueKind == JsonValueKind.Array
+            && items.GetArrayLength() > 0
+            && TryGetNestedString(items[0], "extractedColors", "colorDark", "hex") is { Length: > 0 } imageHex)
+            return imageHex;
+
+        if (TryGetNestedString(data, "coverArt", "extractedColors", "colorDark", "hex") is { Length: > 0 } coverHex)
+            return coverHex;
+
+        return null;
+    }
+
+    private static string? TryGetString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(propertyName, out var value)
+            || value.ValueKind != JsonValueKind.String)
+            return null;
+
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private static string? TryGetNestedString(JsonElement element, params string[] path)
+    {
+        var current = element;
+        foreach (var segment in path)
+        {
+            if (current.ValueKind != JsonValueKind.Object
+                || !current.TryGetProperty(segment, out current))
+                return null;
+        }
+
+        if (current.ValueKind != JsonValueKind.String)
+            return null;
+
+        var text = current.GetString();
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private static string? FirstNonWhiteSpace(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
 
     private static string? BuildSubtitle(HomeEntityData entityData, HomeContentType contentType,
         List<HomeFormatListAttribute>? formatAttributes)

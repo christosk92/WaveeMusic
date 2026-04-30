@@ -19,7 +19,9 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
     private readonly IPanelDockingService _docking;
     private readonly ShellViewModel _shell;
     private bool _isDocking;
+    private bool _disposed;
     private bool _suppressShellSync;
+    private long _selectedModeCallbackToken = -1;
 
     public RightPanelFloatingWindow()
     {
@@ -33,8 +35,7 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
 
         TitleBarHelper.ApplyTransparentButtonBackground(AppWindow);
         TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootGrid.ActualTheme);
-        RootGrid.ActualThemeChanged += (s, _) =>
-            TitleBarHelper.ApplyCaptionButtonColors(AppWindow, s.ActualTheme);
+        RootGrid.ActualThemeChanged += OnRootThemeChanged;
 
         // RightPanelView ships with IsOpen=false / Width=300 and hard-sets its
         // own Width from PanelWidth — so we have to drive those explicitly for
@@ -45,11 +46,12 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
         SyncPanelWidth();
 
         RootGrid.SizeChanged += OnRootSizeChanged;
-        PanelHost.RegisterPropertyChangedCallback(
+        _selectedModeCallbackToken = PanelHost.RegisterPropertyChangedCallback(
             Controls.RightPanel.RightPanelView.SelectedModeProperty,
             OnPanelSelectedModeChanged);
         _shell.PropertyChanged += OnShellPropertyChanged;
 
+        Closed += OnClosed;
         AppWindow.Closing += OnAppWindowClosing;
         AppWindow.Changed += OnAppWindowChanged;
     }
@@ -61,15 +63,47 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
     internal void RequestClose()
     {
         _isDocking = true;
-        AppWindow.Closing -= OnAppWindowClosing;
-        AppWindow.Changed -= OnAppWindowChanged;
+        DisposeWindowResources();
+        Close();
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        DisposeWindowResources();
+    }
+
+    private void DisposeWindowResources()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        PanelHost.IsOpen = false;
+
+        if (_selectedModeCallbackToken >= 0)
+        {
+            PanelHost.UnregisterPropertyChangedCallback(
+                Controls.RightPanel.RightPanelView.SelectedModeProperty,
+                _selectedModeCallbackToken);
+            _selectedModeCallbackToken = -1;
+        }
+
+        RootGrid.ActualThemeChanged -= OnRootThemeChanged;
         RootGrid.SizeChanged -= OnRootSizeChanged;
         _shell.PropertyChanged -= OnShellPropertyChanged;
-        Close();
+        AppWindow.Closing -= OnAppWindowClosing;
+        AppWindow.Changed -= OnAppWindowChanged;
+        Closed -= OnClosed;
+    }
+
+    private void OnRootThemeChanged(FrameworkElement sender, object args)
+    {
+        if (_disposed) return;
+        TitleBarHelper.ApplyCaptionButtonColors(AppWindow, sender.ActualTheme);
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        if (_disposed) return;
         if (_isDocking) return;
         args.Cancel = true;
         _docking.HandleFloatingClose(DetachablePanel.RightPanel);
@@ -77,15 +111,21 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (_isDocking) return;
+        if (_disposed || _isDocking) return;
         if (args.DidPositionChange || args.DidSizeChange)
             _docking.NotifyFloatingGeometryChanged(DetachablePanel.RightPanel);
     }
 
-    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e) => SyncPanelWidth();
+    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_disposed) return;
+        SyncPanelWidth();
+    }
 
     private void SyncPanelWidth()
     {
+        if (_disposed) return;
+
         // Drive RightPanelView.PanelWidth from the window's content width so the
         // panel stretches with the window (PanelWidth's setter hard-sets Width).
         var w = RootGrid.ActualWidth;
@@ -96,6 +136,7 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
 
     private void OnPanelSelectedModeChanged(DependencyObject sender, DependencyProperty dp)
     {
+        if (_disposed) return;
         if (_suppressShellSync) return;
         if (_shell.RightPanelMode == PanelHost.SelectedMode) return;
         _suppressShellSync = true;
@@ -105,6 +146,7 @@ public sealed partial class RightPanelFloatingWindow : WindowEx
 
     private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_disposed) return;
         if (e.PropertyName != nameof(ShellViewModel.RightPanelMode)) return;
         if (_suppressShellSync) return;
         if (PanelHost.SelectedMode == _shell.RightPanelMode) return;

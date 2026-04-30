@@ -61,6 +61,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         if (string.IsNullOrEmpty(trackUri)) return;
 
         _enrichmentCts?.Cancel();
+        _enrichmentCts?.Dispose();
         _enrichmentCts = new CancellationTokenSource();
         var ct = _enrichmentCts.Token;
 
@@ -365,6 +366,8 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
     public void Dispose()
     {
         _enrichmentCts?.Cancel();
+        _enrichmentCts?.Dispose();
+        _enrichmentCts = null;
         _messenger.UnregisterAll(this);
     }
 }

@@ -79,6 +79,16 @@ public sealed partial class RightPanelView
             view._isOpenCached = isOpen;
             view.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
             view.UpdateTimerState();
+            if (isOpen)
+            {
+                view.UpdateContentVisibility();
+            }
+            else
+            {
+                view.UpdateLyricsConsumerActivity(active: false);
+                view.TeardownLyrics();
+                view.CancelBackgroundTintRefresh();
+            }
 
             // When the panel opens, kick a deferred UpdateCanvasLayout so the
             // lyrics canvas picks up the now-real RootGrid dimensions. We pair

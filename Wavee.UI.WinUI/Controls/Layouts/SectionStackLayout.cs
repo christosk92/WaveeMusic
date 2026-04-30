@@ -49,7 +49,7 @@ public sealed class SectionStackLayout : VirtualizingLayout
     /// effect on vertical scroll. Cost is memory for a few extra realized sections —
     /// acceptable for a page that never has more than ~30 sections total.
     /// </summary>
-    private const double RealizationBufferPx = 1200.0;
+    private const double RealizationBufferPx = 800.0;
 
     public static readonly DependencyProperty SpacingProperty =
         DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(SectionStackLayout),
@@ -159,9 +159,11 @@ public sealed class SectionStackLayout : VirtualizingLayout
                 var itemBottom = y + height;
                 var inRealization = itemBottom >= realizeTop && itemTop <= realizeBottom;
 
-                // Measure when the item sits in the realization rect OR we've never
-                // measured it (so the estimate can be replaced with a real value).
-                if (inRealization || double.IsNaN(cached))
+                // Only realize sections near the viewport. Unknown offscreen
+                // sections keep EstimatedItemHeight until the user approaches
+                // them; otherwise the first layout pass instantiates every
+                // section just to warm the height cache.
+                if (inRealization)
                 {
                     var child = context.GetOrCreateElementAt(i);
                     child.Measure(measureSize);

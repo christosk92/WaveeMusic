@@ -459,6 +459,28 @@ public sealed class PlaybackQueue : IDisposable
     }
 
     /// <summary>
+    /// Replaces the current context track in-place without changing queue
+    /// position. Used when a Spotify video queue entry is converted back to
+    /// its associated audio track.
+    /// </summary>
+    public bool ReplaceCurrent(QueueTrack track)
+    {
+        lock (_lock)
+        {
+            var actualIndex = GetActualIndex(_currentIndex);
+            if (actualIndex < 0 || actualIndex >= _contextTracks.Count)
+                return false;
+
+            _contextTracks[actualIndex] = StampContextUri(track);
+            _logger?.LogDebug("Current track replaced in queue: index={Index}, uri={Uri}",
+                _currentIndex, track.Uri);
+        }
+
+        NotifyStateChanged();
+        return true;
+    }
+
+    /// <summary>
     /// Finds the logical index of a track by its URI in the context tracks.
     /// </summary>
     /// <param name="uri">Track URI to find (e.g., "spotify:track:xxx").</param>

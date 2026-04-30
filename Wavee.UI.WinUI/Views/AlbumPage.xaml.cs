@@ -20,7 +20,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumPage : Page, ITabBarItemContent, IDisposable
+public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
@@ -29,6 +29,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, IDisposable
     private bool _crossfadeScheduled;
     private bool _isNavigatingAway;
     private bool _isDisposed;
+    private bool _trimmedForNavigationCache;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -243,7 +244,30 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, IDisposable
         // while this cached page sits invisible in the Frame cache. Activate's
         // _appliedDetailFor reset (cleared in Hibernate) makes the next subscribe
         // re-apply the warm AlbumStore value.
+        TrimForNavigationCache();
+    }
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
         ViewModel.Hibernate();
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = false;
+        if (string.IsNullOrEmpty(ViewModel.AlbumId))
+            return;
+
+        ResetCrossfadeForNewLoad();
+        ViewModel.Activate(ViewModel.AlbumId);
+        DispatcherQueue.TryEnqueue(TryShowContentNow);
     }
 
     // Same-tab navigation between two albums reuses this Page instance and never
@@ -264,6 +288,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, IDisposable
 
     private async void LoadNewContent(object? parameter)
     {
+        _trimmedForNavigationCache = false;
         _logger?.LogDebug(
             "[xfade][album:{Id}] load.enter showing={Showing} scheduled={Scheduled} navAway={NavAway}",
             XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);

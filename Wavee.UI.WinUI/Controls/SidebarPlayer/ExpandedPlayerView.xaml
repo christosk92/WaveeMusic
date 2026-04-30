@@ -34,6 +34,7 @@
              blends with the detached player palette instead of becoming a panel. -->
         <lyrics:NowPlayingCanvas
             x:Name="FullscreenLyricsCanvas"
+            x:Load="False"
             Visibility="Collapsed"
             IsHitTestVisible="False" />
 
@@ -51,7 +52,15 @@
                 x:Name="PlayerLayout"
                 Grid.Column="0"
                 MaxWidth="620"
-                HorizontalAlignment="Stretch" />
+                HorizontalAlignment="Stretch"
+                RenderTransformOrigin="0.5,0.5">
+                <sidebarplayer:ExpandedNowPlayingLayout.RenderTransform>
+                    <CompositeTransform x:Name="PlayerLayoutTransform" />
+                </sidebarplayer:ExpandedNowPlayingLayout.RenderTransform>
+                <animations:Implicit.Animations>
+                    <animations:TranslationAnimation Duration="0:0:0.34" />
+                </animations:Implicit.Animations>
+            </sidebarplayer:ExpandedNowPlayingLayout>
 
             <!-- Right column — Lyrics or Queue, animated in/out. -->
             <Border
@@ -123,6 +132,7 @@
 
                     <rightpanel:RightPanelView
                         x:Name="ContentHost"
+                        x:Load="False"
                         IsOpen="True"
                         IsTabHeaderVisible="False"
                         IsEmbeddedChromeTransparent="True" />
@@ -132,12 +142,21 @@
 
         <!-- Mode toggles — bottom-right. ToggleButton's IsChecked mirrors Mode. -->
         <StackPanel
+            x:Name="ModeToggleHost"
             Orientation="Horizontal"
             Spacing="6"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             Margin="0,0,32,28"
             Canvas.ZIndex="10">
+            <animations:Implicit.ShowAnimations>
+                <animations:OpacityAnimation Duration="0:0:0.22" From="0" To="1" />
+                <animations:TranslationAnimation Duration="0:0:0.22" From="0,10,0" To="0" />
+            </animations:Implicit.ShowAnimations>
+            <animations:Implicit.HideAnimations>
+                <animations:OpacityAnimation Duration="0:0:0.16" From="1" To="0" />
+                <animations:TranslationAnimation Duration="0:0:0.16" From="0" To="0,10,0" />
+            </animations:Implicit.HideAnimations>
             <ToggleButton x:Name="LyricsToggleButton"
                           Width="36" Height="36" Padding="0"
                           CornerRadius="18"

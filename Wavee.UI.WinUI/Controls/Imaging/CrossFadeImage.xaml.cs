@@ -114,6 +114,8 @@ public sealed partial class CrossFadeImage : UserControl
     private int _pinnedDecode;
     private RoutedEventHandler? _pendingOpenedHandler;
     private Image? _pendingOpenedTarget;
+    private DispatcherTimer? _fadeCleanupTimer;
+    private Image? _fadeCleanupLayer;
     private ImageCacheService? _cache;
     private IColorService? _colorService;
 
@@ -199,6 +201,7 @@ public sealed partial class CrossFadeImage : UserControl
 
         // Tear down any pending cold-load handler from the previous swap.
         DetachPendingOpenedHandler();
+        StopFadeCleanupTimer(clearPendingLayer: false);
 
         // Pin/unpin model: at any moment we hold at most one pin. Each new
         // source unpins the previous URL (regardless of whether its fade
@@ -314,24 +317,46 @@ public sealed partial class CrossFadeImage : UserControl
         _activeIsA = !_activeIsA;
 
         // Clear the now-hidden layer's Source after the fade settles so it
-        // can drop its decoded bitmap reference. If a fresh source comes in
-        // and re-promotes this layer to active before the timer fires, the
-        // Opacity check below will skip the clear.
-        var fadedLayer = activeLayer;
-        var timer = new Microsoft.UI.Xaml.DispatcherTimer
+        // can drop its decoded bitmap reference. Keep one owned timer instead
+        // of creating a new closure per artwork change; rapid skips otherwise
+        // keep several delayed cleanup closures alive at once.
+        ScheduleFadeCleanup(activeLayer);
+    }
+
+    private void ScheduleFadeCleanup(Image fadedLayer)
+    {
+        StopFadeCleanupTimer(clearPendingLayer: false);
+
+        _fadeCleanupLayer = fadedLayer;
+        _fadeCleanupTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(FadeDurationMs + 40)
         };
-        timer.Tick += (_, _) =>
+        _fadeCleanupTimer.Tick += OnFadeCleanupTimerTick;
+        _fadeCleanupTimer.Start();
+    }
+
+    private void OnFadeCleanupTimerTick(object? sender, object e)
+    {
+        StopFadeCleanupTimer(clearPendingLayer: true);
+    }
+
+    private void StopFadeCleanupTimer(bool clearPendingLayer)
+    {
+        if (_fadeCleanupTimer != null)
         {
-            timer.Stop();
-            if (fadedLayer.Opacity == 0)
-            {
-                fadedLayer.Source = null;
-                ResetLayerScale(fadedLayer);
-            }
-        };
-        timer.Start();
+            _fadeCleanupTimer.Stop();
+            _fadeCleanupTimer.Tick -= OnFadeCleanupTimerTick;
+            _fadeCleanupTimer = null;
+        }
+
+        if (clearPendingLayer && _fadeCleanupLayer != null && _fadeCleanupLayer.Opacity == 0)
+        {
+            _fadeCleanupLayer.Source = null;
+            ResetLayerScale(_fadeCleanupLayer);
+        }
+
+        _fadeCleanupLayer = null;
     }
 
     private void FadeOutActive()
@@ -481,6 +506,7 @@ public sealed partial class CrossFadeImage : UserControl
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         DetachPendingOpenedHandler();
+        StopFadeCleanupTimer(clearPendingLayer: false);
         UnpinPrevious();
         LayerA.Source = null;
         LayerB.Source = null;

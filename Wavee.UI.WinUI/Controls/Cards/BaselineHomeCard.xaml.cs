@@ -223,6 +223,8 @@ public sealed partial class BaselineHomeCard : UserControl
         UpdatePreviewButtonVisualState();
 
         var hasMultiplePreviewTracks = item.PreviewTracks.Count > 1;
+        if (_isPointerOver && hasMultiplePreviewTracks)
+            EnsurePreviewNavigationButtonsRealized();
         if (PreviousPreviewTrackButton != null)
             PreviousPreviewTrackButton.Visibility = _isPointerOver && hasMultiplePreviewTracks ? Visibility.Visible : Visibility.Collapsed;
         if (NextPreviewTrackButton != null)
@@ -497,6 +499,8 @@ public sealed partial class BaselineHomeCard : UserControl
         UpdatePreviewVisualState(hasPreviewAudio);
 
         var hasMultiplePreviewTracks = (Item?.PreviewTracks.Count ?? 0) > 1;
+        if (hasMultiplePreviewTracks)
+            EnsurePreviewNavigationButtonsRealized();
         if (PreviousPreviewTrackButton != null)
             PreviousPreviewTrackButton.Visibility = hasMultiplePreviewTracks ? Visibility.Visible : Visibility.Collapsed;
         if (NextPreviewTrackButton != null)
@@ -784,6 +788,7 @@ public sealed partial class BaselineHomeCard : UserControl
             var previewVersion = ++_canvasPreviewVersion;
             TraceCard($"StartCanvasPreviewAsync begin previewVersion={previewVersion}");
 
+            EnsureCanvasPreviewHostRealized();
             var isCanvasHostReady = await EnsureCanvasPreviewHostReadyAsync();
             if (CanvasPreviewHost == null || !isCanvasHostReady)
             {
@@ -988,6 +993,9 @@ public sealed partial class BaselineHomeCard : UserControl
     private void UpdatePreviewVisualState(bool hasPreviewAudio)
     {
         var showPreviewVisualization = _isPointerOver && hasPreviewAudio && (_hasPreviewVisualization || _isPreviewAudioPending);
+        if (showPreviewVisualization)
+            EnsurePreviewVisualizerRealized();
+
         if (PreviewOverlayRoot != null)
             PreviewOverlayRoot.Visibility = showPreviewVisualization ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1575,6 +1583,22 @@ public sealed partial class BaselineHomeCard : UserControl
         _ = FindName(nameof(HoverChrome));
     }
 
+    private void EnsureCanvasPreviewHostRealized()
+    {
+        if (CanvasPreviewHost != null)
+            return;
+
+        _ = FindName(nameof(CanvasPreviewHost));
+    }
+
+    private void EnsurePreviewNavigationButtonsRealized()
+    {
+        if (PreviousPreviewTrackButton == null)
+            _ = FindName(nameof(PreviousPreviewTrackButton));
+        if (NextPreviewTrackButton == null)
+            _ = FindName(nameof(NextPreviewTrackButton));
+    }
+
     private void EnsureShimmerRealized()
     {
         if (ShimmerOverlay != null)
@@ -1587,6 +1611,8 @@ public sealed partial class BaselineHomeCard : UserControl
     {
         if (PreviewVisualizer != null)
             return;
+
+        _ = FindName(nameof(PreviewOverlayRoot));
     }
 
     private async Task ChangePreviewTrackAsync(int delta)

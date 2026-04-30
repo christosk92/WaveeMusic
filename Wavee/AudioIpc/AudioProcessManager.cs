@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Wavee.Playback.Contracts;
@@ -46,6 +47,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     /// </summary>
     public int ProcessId => _process?.Id ?? 0;
     private string _pipeName = "";
+    private AudioHostLaunchContext? _launchContext;
     private bool _disposed;
     private int _restartCount;
     private int _restartInProgress; // 0 = idle, 1 = restarting (guards against double-trigger)
@@ -79,6 +81,13 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private const int HeartbeatIntervalMs = 5000;
     private const int HeartbeatTimeoutMs = 10000;
     private long _lastPongTimestamp;
+
+    private sealed record AudioHostLaunchContext(
+        int ParentProcessId,
+        string SessionId,
+        string LaunchToken,
+        string PipeName,
+        long StartedAtUnixMs);
 
     // ── Events for UI layer ──
 
@@ -246,7 +255,17 @@ public sealed class AudioProcessManager : IAsyncDisposable
         SetState(AudioProcessState.Connecting, "Starting audio engine...");
 
         _pipeName = $"WaveeAudio_{Environment.ProcessId}_{Guid.NewGuid():N}";
-        _logger?.LogInformation("Launching audio host: {Path} --pipe {Pipe}", _audioHostPath, _pipeName);
+        _launchContext = new AudioHostLaunchContext(
+            Environment.ProcessId,
+            Guid.NewGuid().ToString("N"),
+            CreateLaunchToken(),
+            _pipeName,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        _logger?.LogInformation(
+            "Launching audio host: {Path} --pipe {Pipe} session={SessionId}",
+            _audioHostPath,
+            _pipeName,
+            _launchContext.SessionId);
 
         if (!File.Exists(_audioHostPath))
         {
@@ -260,9 +279,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         var psi = new ProcessStartInfo
         {
             FileName = _audioHostPath,
-            Arguments = UseVerboseLogging
-                ? $"--pipe {_pipeName} --verbose"
-                : $"--pipe {_pipeName}",
+            Arguments = BuildAudioHostArguments(_launchContext, UseVerboseLogging),
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -324,6 +341,9 @@ public sealed class AudioProcessManager : IAsyncDisposable
         var success = await _proxy.ConfigureAsync(_deviceId!, normalizationEnabled: true,
             initialVolumePercent: _initialVolumePercent,
             audioCacheDirectory: _audioCacheDirectory,
+            parentProcessId: _launchContext.ParentProcessId,
+            sessionId: _launchContext.SessionId,
+            launchToken: _launchContext.LaunchToken,
             ct: ct);
         if (!success)
         {
@@ -347,6 +367,29 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
     // ── Health monitoring ──
 
+    private static string CreateLaunchToken()
+        => Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+
+    private static string BuildAudioHostArguments(AudioHostLaunchContext context, bool verbose)
+    {
+        var args = new List<string>
+        {
+            "--pipe", context.PipeName,
+            "--parent-pid", context.ParentProcessId.ToString(),
+            "--session-id", context.SessionId,
+            "--launch-token", context.LaunchToken,
+        };
+        if (verbose)
+            args.Add("--verbose");
+
+        return string.Join(" ", args.Select(QuoteArg));
+    }
+
+    private static string QuoteArg(string value)
+        => value.Contains(' ') || value.Contains('"')
+            ? "\"" + value.Replace("\"", "\\\"") + "\""
+            : value;
+
     private void HeartbeatTick(object? state)
     {
         if (_disposed || _proxy == null || !_proxy.IsConnected) return;
@@ -356,6 +399,8 @@ public sealed class AudioProcessManager : IAsyncDisposable
         if (elapsed.TotalMilliseconds > HeartbeatTimeoutMs)
         {
             _logger?.LogWarning("Audio host heartbeat timeout ({ElapsedMs:F0}ms since last pong)", elapsed.TotalMilliseconds);
+            _ = TryRestartAsync();
+            return;
         }
 
         // Always send ping — even if timed out, to allow recovery
@@ -595,6 +640,8 @@ public sealed class AudioProcessManager : IAsyncDisposable
         }
         _process?.Dispose();
         _process = null;
+        _jobHandle?.Dispose();
+        _jobHandle = null;
     }
 
     public async Task StopAsync()
@@ -639,7 +686,13 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
         try
         {
-            var job = CreateJobObjectW(IntPtr.Zero, null);
+            _jobHandle?.Dispose();
+            _jobHandle = null;
+
+            var jobName = _launchContext is { } ctx
+                ? $"Wavee.AudioHost.{ctx.ParentProcessId}.{ctx.SessionId}"
+                : $"Wavee.AudioHost.{Environment.ProcessId}";
+            var job = CreateJobObjectW(IntPtr.Zero, jobName);
             if (job == IntPtr.Zero) return;
 
             // Configure: kill child when job (parent) closes
@@ -661,7 +714,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
             AssignProcessToJobObject(job, process.Handle);
             _jobHandle = new JobSafeHandle(job);
-            _logger?.LogDebug("Child process assigned to Job Object (grouped in Task Manager)");
+            _logger?.LogDebug("Child process assigned to Job Object {JobName}", jobName);
         }
         catch (Exception ex)
         {

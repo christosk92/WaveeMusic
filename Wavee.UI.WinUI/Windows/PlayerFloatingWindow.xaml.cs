@@ -40,8 +40,10 @@ public sealed partial class PlayerFloatingWindow : WindowEx
     private readonly PlayerBarViewModel _viewModel;
     private TransitionHelper? _expandTransition;
     private bool _isDocking;
+    private bool _disposed;
     private bool _suppressGeometryTracking;
     private bool _transitionInFlight;
+    private long _expandedModeCallbackToken = -1;
     private DispatcherQueueTimer? _backdropTintTimer;
     private DateTime _backdropTintStartUtc;
     private readonly Color[] _backdropTintFrom = new Color[3];
@@ -64,14 +66,11 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
         TitleBarHelper.ApplyTransparentButtonBackground(AppWindow);
         TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootGrid.ActualTheme);
-        RootGrid.ActualThemeChanged += (s, _) =>
-        {
-            TitleBarHelper.ApplyCaptionButtonColors(AppWindow, s.ActualTheme);
-            ApplyWindowTint(_viewModel.AlbumArtColor);
-        };
+        RootGrid.ActualThemeChanged += OnRootThemeChanged;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         ApplyWindowTint(_viewModel.AlbumArtColor);
 
+        Closed += OnClosed;
         AppWindow.Closing += OnAppWindowClosing;
         AppWindow.Changed += OnAppWindowChanged;
 
@@ -93,11 +92,12 @@ public sealed partial class PlayerFloatingWindow : WindowEx
             ExpandedHost.Mode = mode;
         }
 
-        ExpandedHost.RegisterPropertyChangedCallback(
+        _expandedModeCallbackToken = ExpandedHost.RegisterPropertyChangedCallback(
             ExpandedPlayerView.ModeProperty,
             OnExpandedModeChanged);
 
         UpdateModeButtons();
+        UpdateVideoSurfaceOwners();
     }
 
     /// <summary>
@@ -107,20 +107,64 @@ public sealed partial class PlayerFloatingWindow : WindowEx
     internal void RequestClose()
     {
         _isDocking = true;
-        _backdropTintTimer?.Stop();
+        DisposeWindowResources();
+        Close();
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        DisposeWindowResources();
+    }
+
+    private void DisposeWindowResources()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_backdropTintTimer != null)
+        {
+            _backdropTintTimer.Stop();
+            _backdropTintTimer.Tick -= OnBackdropTintTick;
+            _backdropTintTimer = null;
+        }
+
+        PlayerHost.SetFloatingVideoSurfaceEnabled(false);
+        ExpandedHost.SetVideoSurfaceEnabled(false);
+        ExpandedHost.ReleaseHeavyResources();
+
+        if (_expandedModeCallbackToken >= 0)
+        {
+            ExpandedHost.UnregisterPropertyChangedCallback(
+                ExpandedPlayerView.ModeProperty,
+                _expandedModeCallbackToken);
+            _expandedModeCallbackToken = -1;
+        }
+
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        RootGrid.ActualThemeChanged -= OnRootThemeChanged;
         AppWindow.Closing -= OnAppWindowClosing;
         AppWindow.Changed -= OnAppWindowChanged;
-        Close();
+        Closed -= OnClosed;
+        _expandTransition = null;
+    }
+
+    private void OnRootThemeChanged(FrameworkElement sender, object args)
+    {
+        if (_disposed) return;
+        TitleBarHelper.ApplyCaptionButtonColors(AppWindow, sender.ActualTheme);
+        ApplyWindowTint(_viewModel.AlbumArtColor);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_disposed) return;
         if (e.PropertyName == nameof(PlayerBarViewModel.AlbumArtColor))
             ApplyWindowTint(_viewModel.AlbumArtColor);
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        if (_disposed) return;
         if (_isDocking) return;
         args.Cancel = true;
         _docking.HandleFloatingClose(DetachablePanel.Player);
@@ -128,6 +172,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void ApplyWindowTint(string? hexColor)
     {
+        if (_disposed) return;
         if (WindowBackdropTop == null) return;
 
         var (top, mid, bottom) = ComputeBackdropColors(hexColor);
@@ -179,6 +224,8 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void AnimateBackdrop(Color top, Color mid, Color bottom)
     {
+        if (_disposed) return;
+
         // Snapshot the live colors so an interrupted fade picks up from the
         // intermediate hue currently on screen rather than snapping back to
         // the previous endpoint.
@@ -200,6 +247,12 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void OnBackdropTintTick(DispatcherQueueTimer sender, object args)
     {
+        if (_disposed)
+        {
+            sender.Stop();
+            return;
+        }
+
         var elapsed = (DateTime.UtcNow - _backdropTintStartUtc).TotalMilliseconds;
         var progress = Math.Clamp(elapsed / BackdropFadeDurationMs, 0.0, 1.0);
         var t = EaseInOut(progress);
@@ -232,7 +285,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (_isDocking || _suppressGeometryTracking) return;
+        if (_disposed || _isDocking || _suppressGeometryTracking) return;
         if (!args.DidPositionChange && !args.DidSizeChange) return;
 
         var pos = AppWindow.Position;
@@ -258,12 +311,14 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void OnExpandedModeChanged(DependencyObject sender, DependencyProperty dp)
     {
+        if (_disposed) return;
         var modeName = ExpandedHost.Mode.ToString();
         _shellSession.UpdateLayout(s => s.PlayerWindowExpandedMode = modeName);
     }
 
     private async void CompactFocusButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_disposed) return;
         if (_transitionInFlight || IsExpanded) return;
         _transitionInFlight = true;
         try
@@ -277,6 +332,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
             ExpandedHost.Visibility = Visibility.Visible;
             IsExpanded = true;
             UpdateModeButtons();
+            UpdateVideoSurfaceOwners();
         }
         finally
         {
@@ -286,6 +342,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private async void ExpandedCompactButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_disposed) return;
         if (_transitionInFlight || !IsExpanded) return;
         _transitionInFlight = true;
         try
@@ -299,6 +356,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
             ExpandedHost.Visibility = Visibility.Collapsed;
             IsExpanded = false;
             UpdateModeButtons();
+            UpdateVideoSurfaceOwners();
         }
         finally
         {
@@ -395,6 +453,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         {
             _suppressGeometryTracking = false;
             UpdateModeButtons();
+            UpdateVideoSurfaceOwners();
         }
     }
 
@@ -410,5 +469,21 @@ public sealed partial class PlayerFloatingWindow : WindowEx
     {
         CompactFocusButton.Visibility = IsExpanded ? Visibility.Collapsed : Visibility.Visible;
         ExpandedCompactButton.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateVideoSurfaceOwners()
+    {
+        if (_disposed) return;
+
+        if (IsExpanded)
+        {
+            PlayerHost.SetFloatingVideoSurfaceEnabled(false);
+            ExpandedHost.SetVideoSurfaceEnabled(true);
+        }
+        else
+        {
+            ExpandedHost.SetVideoSurfaceEnabled(false);
+            PlayerHost.SetFloatingVideoSurfaceEnabled(true);
+        }
     }
 }

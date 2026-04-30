@@ -47,6 +47,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private Wavee.UI.WinUI.Services.IMusicVideoDiscoveryService? VideoDiscovery =>
         CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
             .GetService<Wavee.UI.WinUI.Services.IMusicVideoDiscoveryService>();
+    private Wavee.UI.WinUI.Services.IMusicVideoMetadataService? VideoMetadata =>
+        CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoMetadataService>();
     private List<QueueItem> _queue = [];
     private List<QueueItem> _prevQueue = [];
     private IReadOnlyList<QueueItem>? _userQueueCache;
@@ -696,6 +699,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
         // Cancel any previous color extraction
         _colorCts?.Cancel();
+        _colorCts?.Dispose();
         _colorCts = new CancellationTokenSource();
         var ct = _colorCts.Token;
 
@@ -703,6 +707,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             var color = await _colorService.GetColorAsync(imageUrl, ct);
             if (ct.IsCancellationRequested) return;
+            if (!string.Equals(_lastColorImageUrl, imageUrl, StringComparison.Ordinal)) return;
 
             // Pick theme-appropriate color:
             // DarkHex = dark color (good for light theme backgrounds)
@@ -713,6 +718,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
             _dispatcherQueue.TryEnqueue(() =>
             {
+                if (ct.IsCancellationRequested
+                    || !string.Equals(_lastColorImageUrl, imageUrl, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
                 // Both themes use the light/vibrant color for acrylic tinting.
                 // Dark theme: light color tints well against dark backdrop.
                 // Light theme: light color gives a subtle wash; dark color looks muddy.
@@ -1006,7 +1017,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 var audioUrix = GetCurrentTrackUri();
                 string? videoUri = null;
                 if (!string.IsNullOrEmpty(audioUrix))
-                    VideoDiscovery?.TryGetVideoUri(audioUrix, out videoUri);
+                    VideoMetadata?.TryGetVideoUri(audioUrix, out videoUri);
 
                 var result = await _playbackService.SwitchToVideoAsync(
                     CurrentTrackManifestId,
@@ -1052,6 +1063,27 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         }
     }
 
+    public async Task<bool> SwitchToAudioAsync()
+    {
+        _logger?.LogInformation("[Cmd] SwitchToAudio: track={Track}, isVideo={IsVideo}",
+            CurrentTrackId ?? "<none>",
+            CurrentTrackIsVideo);
+
+        if (!CurrentTrackIsVideo)
+            return false;
+
+        try
+        {
+            var result = await _playbackService.SwitchToAudioAsync(CancellationToken.None);
+            return result?.IsSuccess ?? false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[Cmd] SwitchToAudio FAILED");
+            return false;
+        }
+    }
+
     partial void OnCurrentTrackIdChanged(string? value)
     {
         // Reset the music-video availability hint immediately on track change.
@@ -1065,9 +1097,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         // Cheap synchronous lookup: if we've already seen this track on a
         // GraphQL surface (artist top tracks, album page, etc.) the catalog
         // cache already knows the answer.
-        var cache = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
-        var lookup = cache?.GetHasVideo(audioUri);
+        var lookup = VideoMetadata?.GetKnownAvailability(audioUri);
         _logger?.LogInformation("[VideoDiscovery] cache lookup on track change: {Track} → {Result}",
             audioUri, lookup?.ToString() ?? "<unknown>");
 
@@ -1380,6 +1410,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _seekConfirmationCts?.Cancel();
         _seekConfirmationCts?.Dispose();
         _seekConfirmationCts = null;
+        _colorCts?.Cancel();
+        _colorCts?.Dispose();
+        _colorCts = null;
         _messenger.UnregisterAll(this);
     }
 }

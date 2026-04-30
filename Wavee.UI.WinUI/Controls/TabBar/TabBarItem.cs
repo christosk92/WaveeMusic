@@ -217,6 +217,24 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void MarkActivated() => LastActivatedAtUtc = DateTimeOffset.UtcNow;
 
+    public void TrimActiveContentForNavigationCache()
+    {
+        if (IsSleeping)
+            return;
+
+        if (ContentFrame.Content is INavigationCacheMemoryParticipant participant)
+            participant.TrimForNavigationCache();
+    }
+
+    public void RestoreActiveContentFromNavigationCache()
+    {
+        if (IsSleeping)
+            return;
+
+        if (ContentFrame.Content is INavigationCacheMemoryParticipant participant)
+            participant.RestoreFromNavigationCache();
+    }
+
     public bool Sleep()
     {
         if (IsSleeping || ContentFrame.Content is null)
@@ -294,6 +312,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ContentFrame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
     {
+        TrimActiveContentForNavigationCache();
         _contentPendingDisposal = ContentFrame.Content as IDisposable;
     }
 
@@ -313,6 +332,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
         // Forward navigation event for external subscribers
         Navigated?.Invoke(this, e);
+
+        RestoreActiveContentFromNavigationCache();
 
         // Unsubscribe from previous page's ContentChanged to prevent leak
         if (_previousContent != null)

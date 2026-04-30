@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,12 +12,10 @@ using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.Controls.Lyrics.Models.Settings;
 using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Microsoft.UI;
 using Windows.UI;
 using Wavee.UI.Contracts;
-using ColorHelper = Wavee.Controls.Lyrics.Helper.ColorHelper;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -39,6 +35,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     private bool _loadedTrackSucceeded;
     private CancellationTokenSource? _fetchCts;
     private bool _disposed;
+    private readonly HashSet<object> _activeConsumers = new(ReferenceEqualityComparer.Instance);
 
     [ObservableProperty]
     private LyricsData? _currentLyrics;
@@ -61,6 +58,8 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     public LyricsWindowStatus WindowStatus { get; }
 
     public IPlaybackStateService PlaybackState => _playbackState;
+
+    private bool HasActiveConsumers => _activeConsumers.Count > 0;
 
     /// <summary>
     /// Tracks last known service position + wall-clock time for interpolation.
@@ -88,7 +87,10 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         switch (e.PropertyName)
         {
             case nameof(IPlaybackStateService.CurrentTrackId):
-                _ = DeferredLoadLyricsAsync();
+                if (HasActiveConsumers)
+                    _ = DeferredLoadLyricsAsync();
+                else
+                    ReleaseInactiveLyricsState();
                 break;
             case nameof(IPlaybackStateService.CurrentTrackTitle):
             case nameof(IPlaybackStateService.CurrentArtistName):
@@ -97,7 +99,8 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 // (most commonly because the title was null at call time), retry now that
                 // metadata is present. _loadedTrackSucceeded gates this so successful
                 // loads aren't re-fetched on every metadata tweak.
-                if (_loadedTrackId == _playbackState.CurrentTrackId
+                if (HasActiveConsumers
+                    && _loadedTrackId == _playbackState.CurrentTrackId
                     && !_loadedTrackSucceeded
                     && !string.IsNullOrEmpty(_playbackState.CurrentTrackTitle))
                 {
@@ -105,11 +108,30 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                     _ = DeferredLoadLyricsAsync();
                 }
                 break;
+            case nameof(IPlaybackStateService.CurrentAlbumArtColor):
+                if (HasActiveConsumers)
+                    ApplyPaletteFromPlaybackColor();
+                break;
             case nameof(IPlaybackStateService.Position):
                 LastServicePosition = _playbackState.Position;
                 LastPositionTimestamp = DateTime.UtcNow;
                 break;
         }
+    }
+
+    public void SetConsumerActive(object consumer, bool active)
+    {
+        if (_disposed || consumer is null) return;
+
+        if (active)
+        {
+            if (_activeConsumers.Add(consumer) && _activeConsumers.Count == 1)
+                _ = DeferredLoadLyricsAsync();
+            return;
+        }
+
+        if (_activeConsumers.Remove(consumer) && _activeConsumers.Count == 0)
+            ReleaseInactiveLyricsState();
     }
 
     /// <summary>
@@ -138,6 +160,12 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 
     public async Task LoadLyricsAsync()
     {
+        if (!HasActiveConsumers)
+        {
+            ReleaseInactiveLyricsState();
+            return;
+        }
+
         var trackId = _playbackState.CurrentTrackId;
 
         _logger?.LogDebug(
@@ -146,11 +174,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
 
         if (string.IsNullOrEmpty(trackId))
         {
-            _loadedTrackId = null;
-            _loadedTrackSucceeded = false;
-            CurrentLyrics = null;
-            HasLyrics = false;
-            IsLoading = false;
+            ReleaseInactiveLyricsState();
             return;
         }
 
@@ -193,6 +217,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 ct);
 
             if (ct.IsCancellationRequested) return;
+            if (!HasActiveConsumers) return;
 
             CurrentLyrics = lyrics;
             HasLyrics = lyrics != null;
@@ -207,18 +232,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 DurationMs = _playbackState.Duration,
             };
 
-            // Extract palette from album art (convert spotify:image: URI to HTTPS)
-            var artUrl = SpotifyImageHelper.ToHttpsUrl(
-                _playbackState.CurrentAlbumArtLarge ?? _playbackState.CurrentAlbumArt);
-            if (!string.IsNullOrEmpty(artUrl))
-            {
-                var palette = await BuildPaletteFromAlbumArtAsync(artUrl);
-                if (!ct.IsCancellationRequested && palette is { } p)
-                {
-                    WindowStatus.WindowPalette = p;
-                    CurrentPalette = p;
-                }
-            }
+            ApplyPaletteFromPlaybackColor();
 
             _logger?.LogDebug(
                 "LoadLyricsAsync EXIT title=\"{Title}\" hasLyrics={HasLyrics} lineCount={LineCount} cancelled={Cancelled}",
@@ -247,7 +261,24 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     public void InvalidateTrack()
     {
         _loadedTrackId = null;
-        _ = LoadLyricsAsync();
+        if (HasActiveConsumers)
+            _ = LoadLyricsAsync();
+    }
+
+    private void ReleaseInactiveLyricsState()
+    {
+        _fetchCts?.Cancel();
+        _fetchCts?.Dispose();
+        _fetchCts = null;
+
+        _loadedTrackId = null;
+        _loadedTrackSucceeded = false;
+        CurrentLyrics = null;
+        HasLyrics = false;
+        IsLoading = false;
+        CurrentPalette = null;
+        LastDiagnostics = null;
+        CurrentSongInfo = new SongInfo { Title = "", Artist = "", Album = "" };
     }
 
     private static LyricsWindowStatus CreateSidebarWindowStatus()
@@ -329,41 +360,27 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         return status;
     }
 
-    private async Task<NowPlayingPalette?> BuildPaletteFromAlbumArtAsync(string artUrl)
+    private void ApplyPaletteFromPlaybackColor()
     {
-        try
-        {
-            var bytes = await ImageHelper.GetImageByteArrayFromUrlAsync(artUrl);
-            if (bytes is null || bytes.Length == 0) return null;
+        var palette = BuildPaletteFromHex(_playbackState.CurrentAlbumArtColor);
+        if (palette == null) return;
 
-            var decoder = await ImageHelper.GetBitmapDecoderAsync(bytes.AsBuffer());
-
-            var darkAccents = (await ImageHelper.GetAccentColorsAsync(
-                decoder, count: 4, PaletteGeneratorType.Auto, isDark: true))
-                .Palette.Select(ColorHelper.FromVector3).ToList();
-
-            var lightAccents = (await ImageHelper.GetAccentColorsAsync(
-                decoder, count: 4, PaletteGeneratorType.Auto, isDark: false))
-                .Palette.Select(ColorHelper.FromVector3).ToList();
-
-            return BuildPalette(darkAccents, lightAccents);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to extract palette from album art");
-            return null;
-        }
+        WindowStatus.WindowPalette = palette.Value;
+        CurrentPalette = palette;
     }
 
-    private NowPlayingPalette BuildPalette(List<Color> darkAccents, List<Color> lightAccents)
+    private NowPlayingPalette? BuildPaletteFromHex(string? hexColor)
     {
+        if (!TryParseHexColor(hexColor, out var accent))
+            return null;
+
         var fallback = WindowStatus.WindowPalette;
 
-        var accent1 = PickAccent(darkAccents, 0, fallback.AccentColor1);
-        var accent2 = PickAccent(darkAccents, 1, fallback.AccentColor2);
-        var accent3 = PickAccent(darkAccents, 2, fallback.AccentColor3);
-        var accent4 = PickAccent(darkAccents, 3, fallback.AccentColor4);
-        var lightAccent1 = PickAccent(lightAccents, 0, accent1);
+        var accent1 = accent;
+        var accent2 = accent.WithBrightness(0.62);
+        var accent3 = accent.WithBrightness(0.42);
+        var accent4 = accent.WithBrightness(0.26);
+        var lightAccent1 = accent.WithBrightness(0.86);
 
         var underlay = accent1.WithBrightness(0.18);
         if (underlay.A == 0) underlay = fallback.UnderlayColor;
@@ -385,20 +402,37 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         };
     }
 
-    private static Color PickAccent(IReadOnlyList<Color> accents, int index, Color fallback)
+    private static bool TryParseHexColor(string? hexColor, out Color color)
     {
-        if (index >= 0 && index < accents.Count)
+        color = default;
+        if (string.IsNullOrWhiteSpace(hexColor))
+            return false;
+
+        var hex = hexColor.Trim().TrimStart('#');
+        if (hex.Length == 8)
+            hex = hex[2..];
+        if (hex.Length != 6)
+            return false;
+
+        try
         {
-            var candidate = accents[index];
-            if (candidate.A > 0) return candidate;
+            var r = Convert.ToByte(hex[..2], 16);
+            var g = Convert.ToByte(hex[2..4], 16);
+            var b = Convert.ToByte(hex[4..6], 16);
+            color = Color.FromArgb(0xFF, r, g, b);
+            return true;
         }
-        return fallback;
+        catch
+        {
+            return false;
+        }
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _activeConsumers.Clear();
         _playbackState.PropertyChanged -= OnPlaybackStateChanged;
         _fetchCts?.Cancel();
         _fetchCts?.Dispose();

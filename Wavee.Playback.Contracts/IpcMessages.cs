@@ -526,6 +526,12 @@ public sealed class AudioHostReady
 
     [JsonPropertyName("pipeName")]
     public required string PipeName { get; init; }
+
+    [JsonPropertyName("parentProcessId")]
+    public int ParentProcessId { get; init; }
+
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; init; }
 }
 
 /// <summary>
@@ -535,6 +541,15 @@ public sealed class AudioHostConfig
 {
     [JsonPropertyName("deviceId")]
     public required string DeviceId { get; init; }
+
+    [JsonPropertyName("parentProcessId")]
+    public int ParentProcessId { get; init; }
+
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; init; }
+
+    [JsonPropertyName("launchToken")]
+    public string? LaunchToken { get; init; }
 
     [JsonPropertyName("normalizationEnabled")]
     public bool NormalizationEnabled { get; init; }

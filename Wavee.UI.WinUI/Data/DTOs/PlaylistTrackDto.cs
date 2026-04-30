@@ -68,6 +68,18 @@ public sealed record PlaylistTrackDto : ITrackItem
     public bool IsLoaded => true;
     public bool IsLiked { get; set; }
 
+    private bool _hasVideo;
+    public bool HasVideo
+    {
+        get => _hasVideo;
+        set
+        {
+            if (_hasVideo == value) return;
+            _hasVideo = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(HasVideo)));
+        }
+    }
+
     /// <summary>
     /// Stable per-track uid derived from the playlist's binary <c>itemId</c>
     /// (lower-case hex). Sent as <c>track.uid</c> in published PlayerState so

@@ -142,9 +142,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(IPanelDockingService.IsRightPanelDetached))
+        {
             OnPropertyChanged(nameof(IsRightPanelVisibleInShell));
+        }
         else if (e.PropertyName == nameof(IPanelDockingService.IsPlayerDetached))
+        {
+            if (!Docking.IsPlayerDetached
+                && PlayerLocation == PlayerLocation.Sidebar
+                && SidebarDisplayMode != SidebarDisplayMode.Expanded)
+            {
+                PlayerLocation = PlayerLocation.Bottom;
+            }
+
             OnPropertyChanged(nameof(IsSidebarPlayerVisibleInShell));
+            OnPropertyChanged(nameof(IsBottomPlayerVisibleInShell));
+        }
     }
 
     /// <summary>
@@ -160,6 +172,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool IsSidebarPlayerVisibleInShell =>
         PlayerLocation == PlayerLocation.Sidebar && !Docking.IsPlayerDetached;
+
+    /// <summary>
+    /// Bottom player is visible only when it is the selected shell location and
+    /// the player has not been torn off into its own window. Detached state
+    /// wins over sidebar mode changes so the shell never shows two player
+    /// surfaces at once.
+    /// </summary>
+    public bool IsBottomPlayerVisibleInShell =>
+        PlayerLocation == PlayerLocation.Bottom && !Docking.IsPlayerDetached;
 
     [ObservableProperty]
     private bool _sidebarPlayerCollapsed;
@@ -1105,6 +1126,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Unsubscribe from previous tab
         if (oldValue != null)
         {
+            oldValue.TrimActiveContentForNavigationCache();
             oldValue.Navigated -= TabItem_Navigated;
         }
 
@@ -1112,6 +1134,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (newValue != null)
         {
             newValue.Navigated += TabItem_Navigated;
+            newValue.RestoreActiveContentFromNavigationCache();
         }
 
         UpdateNavigationState();
@@ -1138,7 +1161,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // rail) or Minimal (slide-in) modes — there's no width for it. If the
         // user collapses the sidebar while the player is docked there, auto-
         // demote it back to the bottom bar so the player stays visible.
-        if (value != SidebarDisplayMode.Expanded && PlayerLocation == PlayerLocation.Sidebar)
+        if (value != SidebarDisplayMode.Expanded
+            && PlayerLocation == PlayerLocation.Sidebar
+            && !Docking.IsPlayerDetached)
         {
             PlayerLocation = PlayerLocation.Bottom;
         }
@@ -1183,6 +1208,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(IsSidebarPlayerVisibleInShell));
+        OnPropertyChanged(nameof(IsBottomPlayerVisibleInShell));
     }
 
     partial void OnSidebarPlayerCollapsedChanged(bool value)

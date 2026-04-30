@@ -1507,6 +1507,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 // associated row-rematerialization on every warm-hit revisit.
                 if (isWarmHit && TracksAreEquivalent(_allTracks, tracks))
                 {
+                    ApplyVideoAvailabilityToCurrentTracks(tracks);
                     _tracksLoadedFor = playlistId;
                     IsLoadingTracks = false;
                     ClearPendingSignalChip();
@@ -1618,6 +1619,23 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 return false;
         }
         return true;
+    }
+
+    private void ApplyVideoAvailabilityToCurrentTracks(IReadOnlyList<PlaylistTrackDto> fetched)
+    {
+        if (_allTracks.Count == 0 || fetched.Count == 0) return;
+
+        var availabilityByUri = fetched
+            .Where(track => !string.IsNullOrWhiteSpace(track.Uri))
+            .GroupBy(track => track.Uri, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().HasVideo, StringComparer.Ordinal);
+        if (availabilityByUri.Count == 0) return;
+
+        foreach (var track in _allTracks)
+        {
+            if (availabilityByUri.TryGetValue(track.Uri, out var hasVideo))
+                track.HasVideo = hasVideo;
+        }
     }
 
     private async Task LoadRootlistAsync()

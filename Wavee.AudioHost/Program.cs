@@ -1,18 +1,33 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Wavee.AudioHost;
 using Wavee.AudioHost.NativeDeps;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 // Parse arguments: --pipe <name> [--verbose]
 var pipeName = "WaveeAudio";
 var verbose = false;
+var standaloneDev = false;
+int parentPid = 0;
+string? sessionId = null;
+string? launchToken = null;
 
 for (int i = 0; i < args.Length; i++)
 {
     if (args[i] == "--pipe" && i + 1 < args.Length)
         pipeName = args[++i];
+    else if (args[i] == "--parent-pid" && i + 1 < args.Length && int.TryParse(args[++i], out var pid))
+        parentPid = pid;
+    else if (args[i] == "--session-id" && i + 1 < args.Length)
+        sessionId = args[++i];
+    else if (args[i] == "--launch-token" && i + 1 < args.Length)
+        launchToken = args[++i];
     else if (args[i] == "--verbose")
         verbose = true;
+    else if (args[i] == "--standalone-dev")
+        standaloneDev = true;
 }
 
 // Configure Serilog for the audio process
@@ -43,6 +58,18 @@ var loggerFactory = LoggerFactory.Create(builder =>
     builder.AddSerilog(Log.Logger, dispose: false));
 var logger = loggerFactory.CreateLogger<AudioHostService>();
 
+SetWaveeAppUserModelId();
+
+if (!standaloneDev
+    && (parentPid <= 0 || string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(launchToken)))
+{
+    logger.LogCritical(
+        "AudioHost refused standalone startup. Required args: --parent-pid, --session-id, --launch-token. Use --standalone-dev for manual diagnostics.");
+    Environment.ExitCode = 4;
+    Log.CloseAndFlush();
+    return;
+}
+
 logger.LogInformation("Wavee AudioHost starting — PID={Pid}, pipe={Pipe}",
     Environment.ProcessId, pipeName);
 
@@ -55,6 +82,8 @@ Console.CancelKeyPress += (_, e) =>
     e.Cancel = true;
     cts.Cancel();
 };
+
+using var parentMonitorRegistration = StartParentMonitor(parentPid, standaloneDev, logger, cts);
 
 try
 {
@@ -97,7 +126,13 @@ try
         }
     }
 
-    await using var host = new AudioHostService(pipeName, logger);
+    await using var host = new AudioHostService(
+        pipeName,
+        logger,
+        expectedParentProcessId: parentPid,
+        expectedSessionId: sessionId,
+        expectedLaunchToken: launchToken,
+        standaloneDevMode: standaloneDev);
     await host.RunAsync(cts.Token);
 }
 catch (OperationCanceledException)
@@ -113,3 +148,52 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+static IDisposable? StartParentMonitor(
+    int parentPid,
+    bool standaloneDev,
+    ILogger logger,
+    CancellationTokenSource shutdownCts)
+{
+    if (standaloneDev || parentPid <= 0) return null;
+
+    try
+    {
+        var parent = Process.GetProcessById(parentPid);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await parent.WaitForExitAsync(shutdownCts.Token);
+                if (!shutdownCts.IsCancellationRequested)
+                {
+                    logger.LogWarning("Parent process {ParentPid} exited; shutting down AudioHost", parentPid);
+                    shutdownCts.Cancel();
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Parent process monitor failed; shutting down AudioHost");
+                shutdownCts.Cancel();
+            }
+        });
+        return parent;
+    }
+    catch (Exception ex)
+    {
+        logger.LogCritical(ex, "Parent process {ParentPid} is not available; refusing AudioHost startup", parentPid);
+        shutdownCts.Cancel();
+        return null;
+    }
+}
+
+static void SetWaveeAppUserModelId()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    try { _ = SetCurrentProcessExplicitAppUserModelID("WaveeMusic"); }
+    catch { /* best effort only */ }
+}
+
+[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+static extern int SetCurrentProcessExplicitAppUserModelID(string appId);

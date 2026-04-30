@@ -291,8 +291,8 @@ public sealed class AlbumService : IAlbumService
         // pages expose videoAssociations.totalCount per track — pre-warming
         // the cache here means the "Watch Video" button can appear instantly
         // when the user later plays one of these tracks.
-        var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
+        var videoMetadata = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoMetadataService>();
 
         var results = new List<AlbumTrackResult>(items.Count);
         foreach (var item in items)
@@ -303,8 +303,8 @@ public sealed class AlbumService : IAlbumService
             var id = track.Uri?.Split(':').LastOrDefault() ?? item.Uid ?? $"track-{results.Count + 1}";
             var hasVideo = (track.AssociationsV3?.VideoAssociations?.TotalCount ?? 0) > 0;
 
-            if (videoCatalog is not null && !string.IsNullOrEmpty(track.Uri))
-                videoCatalog.NoteHasVideo(track.Uri, hasVideo);
+            if (videoMetadata is not null && !string.IsNullOrEmpty(track.Uri))
+                videoMetadata.NoteHasVideo(track.Uri, hasVideo);
 
             results.Add(new AlbumTrackResult
             {

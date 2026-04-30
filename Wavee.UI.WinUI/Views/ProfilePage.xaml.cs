@@ -19,7 +19,7 @@ using Windows.System;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
+public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
 {
     private static ImageCacheService? _imageCache;
     private readonly ProfileCache? _cache;
@@ -34,6 +34,9 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
     private bool _identityCardRevealed;
     private bool _pageBleedRevealed;
     private bool _isDisposed;
+    private bool _viewSubscriptionsAttached;
+    private bool _dataSubscriptionsAttached;
+    private bool _trimmedForNavigationCache;
 
     public ProfileViewModel ViewModel { get; }
 
@@ -56,11 +59,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
         ElementCompositionPreview.GetElementVisual(IdentityCardWrap).Opacity = 0;
         ElementCompositionPreview.GetElementVisual(PageBleedHost).Opacity = 0;
 
-        ViewModel.ContentChanged += ViewModel_ContentChanged;
-        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-
-        if (_cache != null)
-            _cache.DataRefreshed += OnCacheDataRefreshed;
+        AttachDataSubscriptions();
 
         Loaded += ProfilePage_Loaded;
         Unloaded += ProfilePage_Unloaded;
@@ -70,12 +69,23 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
 
     private void ProfilePage_Loaded(object sender, RoutedEventArgs e)
     {
+        AttachDataSubscriptions();
+        AttachViewSubscriptions();
+    }
+
+    private void AttachViewSubscriptions()
+    {
+        if (_viewSubscriptionsAttached)
+            return;
+
+        _isNavigatingAway = false;
         EnsureShyHeaderTransition();
         ViewModel.IsDarkTheme = ActualTheme == ElementTheme.Dark;
         ActualThemeChanged += ProfilePage_ActualThemeChanged;
         UpdateIdentityCardBackground();
         PageScrollView.ViewChanged += PageScrollView_ViewChanged;
         IdentityCardWrap.SizeChanged += IdentityCardWrap_SizeChanged;
+        _viewSubscriptionsAttached = true;
     }
 
     private void ProfilePage_ActualThemeChanged(FrameworkElement sender, object args)
@@ -86,22 +96,55 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
 
     private void ProfilePage_Unloaded(object sender, RoutedEventArgs e)
     {
-        CleanupSubscriptions();
+        DetachViewSubscriptions();
     }
 
     private void CleanupSubscriptions()
     {
+        DetachViewSubscriptions();
+        DetachDataSubscriptions();
+    }
+
+    private void DetachViewSubscriptions()
+    {
         _isNavigatingAway = true;
+        if (!_viewSubscriptionsAttached)
+            return;
+
         if (PageScrollView != null)
             PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
         if (IdentityCardWrap != null)
             IdentityCardWrap.SizeChanged -= IdentityCardWrap_SizeChanged;
         ActualThemeChanged -= ProfilePage_ActualThemeChanged;
+        _viewSubscriptionsAttached = false;
+    }
+
+    private void AttachDataSubscriptions()
+    {
+        if (_dataSubscriptionsAttached)
+            return;
+
+        ViewModel.ContentChanged += ViewModel_ContentChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        if (_cache != null)
+            _cache.DataRefreshed += OnCacheDataRefreshed;
+
+        _dataSubscriptionsAttached = true;
+    }
+
+    private void DetachDataSubscriptions()
+    {
+        if (!_dataSubscriptionsAttached)
+            return;
+
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
 
         if (_cache != null)
             _cache.DataRefreshed -= OnCacheDataRefreshed;
+
+        _dataSubscriptionsAttached = false;
     }
 
     public void Dispose()
@@ -119,8 +162,46 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, IDisposable
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _isNavigatingAway = false;
+        _trimmedForNavigationCache = false;
+        AttachDataSubscriptions();
         var parameter = e.Parameter as ContentNavigationParameter;
         ViewModel.Initialize(parameter);
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        TrimForNavigationCache();
+    }
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
+        _isNavigatingAway = true;
+        DetachDataSubscriptions();
+        ViewModel.Hibernate();
+
+        if (ProfileAvatar != null)
+            ProfileAvatar.ProfilePicture = null;
+        if (PageBleedHost != null)
+            PageBleedHost.Opacity = 0;
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = false;
+        _isNavigatingAway = false;
+        AttachDataSubscriptions();
+        ViewModel.ResumeFromHibernate();
+        UpdateProfileAvatar(ViewModel.ProfileImageUrl);
+        UpdateIdentityCardBackground();
     }
 
     // ── ViewModel events ──

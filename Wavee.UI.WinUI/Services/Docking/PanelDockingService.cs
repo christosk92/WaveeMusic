@@ -20,6 +20,10 @@ namespace Wavee.UI.WinUI.Services.Docking;
 /// </summary>
 internal sealed partial class PanelDockingService : ObservableObject, IPanelDockingService
 {
+    private static readonly SizeInt32 CompactPlayerWindowDefaultSize = new(360, 540);
+    private const int CompactPlayerWindowMaxWidth = 460;
+    private const int CompactPlayerWindowMaxHeight = 680;
+
     private readonly IShellSessionService _shellSession;
     private readonly DispatcherQueue? _uiDispatcher;
     private readonly ILogger<PanelDockingService>? _logger;
@@ -150,6 +154,8 @@ internal sealed partial class PanelDockingService : ObservableObject, IPanelDock
                         : (layout.PlayerWindowX, layout.PlayerWindowY,
                            layout.PlayerWindowWidth, layout.PlayerWindowHeight);
                     var size = new SizeInt32((int)w, (int)h);
+                    if (!layout.PlayerWindowExpanded)
+                        size = NormalizeCompactPlayerSize(size);
                     var spawn = ClampToVisibleMonitor(new PointInt32((int)x, (int)y), size);
                     _playerWindow = CreatePlayerWindow(spawn, size);
                     IsPlayerDetached = true;
@@ -209,13 +215,28 @@ internal sealed partial class PanelDockingService : ObservableObject, IPanelDock
         }
         else
         {
-            preferredSize = new SizeInt32(
+            preferredSize = NormalizeCompactPlayerSize(new SizeInt32(
                 (int)layout.PlayerWindowWidth,
-                (int)layout.PlayerWindowHeight);
+                (int)layout.PlayerWindowHeight));
         }
         var window = new PlayerFloatingWindow();
         ApplyInitialPlacement(window, spawnAt, preferredSize);
         return window;
+    }
+
+    private static SizeInt32 NormalizeCompactPlayerSize(SizeInt32 size)
+    {
+        if (size.Width <= 0
+            || size.Height <= 0
+            || size.Width > CompactPlayerWindowMaxWidth
+            || size.Height > CompactPlayerWindowMaxHeight)
+        {
+            return CompactPlayerWindowDefaultSize;
+        }
+
+        return new SizeInt32(
+            Math.Max(size.Width, CompactPlayerWindowDefaultSize.Width),
+            Math.Max(size.Height, 380));
     }
 
     private RightPanelFloatingWindow CreateRightPanelWindow(PointInt32? spawnAt, SizeInt32? size = null)

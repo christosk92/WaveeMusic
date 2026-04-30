@@ -17,6 +17,7 @@ using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
@@ -27,7 +28,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PlaylistPage : Page, IDisposable
+public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipant, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly ISettingsService _settings;
@@ -43,6 +44,7 @@ public sealed partial class PlaylistPage : Page, IDisposable
     private bool _crossfadeScheduled;
     private bool _isNavigatingAway;
     private bool _isDisposed;
+    private bool _trimmedForNavigationCache;
 
     // Composition resources for the left-anchored hero backdrop. Surface is
     // (re)loaded whenever HeaderImageUrl changes. Null when no header image.
@@ -312,6 +314,7 @@ public sealed partial class PlaylistPage : Page, IDisposable
 
     private async void LoadParameter(object? parameter)
     {
+        _trimmedForNavigationCache = false;
         _logger?.LogInformation(
             "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
             parameter?.GetType().FullName ?? "<null>", parameter);
@@ -403,7 +406,27 @@ public sealed partial class PlaylistPage : Page, IDisposable
         // cached page sits invisible in the Frame cache. Activate's isNewPlaylist
         // branch (gated on _tracksLoadedFor, which Hibernate reset) re-seeds the
         // shimmer placeholders before the warm PlaylistStore value lands.
+        TrimForNavigationCache();
+    }
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
         ViewModel.Hibernate();
+        ReleaseHeaderBackgroundSurface();
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = false;
+        if (!string.IsNullOrEmpty(ViewModel.PlaylistId))
+            LoadParameter(ViewModel.PlaylistId);
     }
 
     private void RestorePlaylistPanelWidth(string playlistId)
@@ -528,6 +551,18 @@ public sealed partial class PlaylistPage : Page, IDisposable
         // here — see HeaderBackgroundHost_Loaded's comment block above. The cached
         // page instance comes back next nav and we want the dedup to skip the
         // re-decode. Memory cost: ~500 KB per cached PlaylistPage tab. Acceptable.
+    }
+
+    private void ReleaseHeaderBackgroundSurface()
+    {
+        _heroImageSurface?.Dispose();
+        _heroImageSurface = null;
+        _appliedHeroUrl = null;
+
+        if (_heroSurfaceBrush != null)
+            _heroSurfaceBrush.Surface = null;
+
+        SetHeroScrimVisible(false);
     }
 
     private void ApplyHeaderBackground()

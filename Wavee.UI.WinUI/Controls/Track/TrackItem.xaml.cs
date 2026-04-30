@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -402,6 +403,7 @@ public sealed partial class TrackItem : UserControl
     // on a genuinely broken URL. Reset when the URL changes.
     private string? _retriedCompactUrl;
     private string? _retriedRowUrl;
+    private ITrackItem? _observedTrack;
 
     // Guards against stale color-hint applies after a virtualized row is recycled.
     // Incremented on every ResolveImageColorHint invocation; an awaiting continuation
@@ -482,6 +484,7 @@ public sealed partial class TrackItem : UserControl
     private static void OnTrackChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
+        item.ObserveTrack(item.IsLoaded ? e.NewValue as ITrackItem : null);
         item.ResetHoverVisualState();
         item.StopPendingBeam();
         item.BindTrackData();
@@ -510,11 +513,7 @@ public sealed partial class TrackItem : UserControl
             CompactExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
             CompactLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
 
-            // Video indicator: "PlayCount · [icon] Music Video"
-            var hasVideo = track.HasVideo;
-            CompactVideoSeparator.Visibility = hasVideo && !string.IsNullOrEmpty(track.ArtistName) ? Visibility.Visible : Visibility.Collapsed;
-            CompactVideoIcon.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
-            CompactVideoLabel.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+            UpdateVideoBadgeVisibility();
             CompactHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
             CompactHeartButton.Visibility = Visibility.Visible;
             ApplyCompactAlbumArt(track.ImageUrl);
@@ -526,9 +525,8 @@ public sealed partial class TrackItem : UserControl
             CompactDuration.Text = "";
             CompactExplicit.Visibility = Visibility.Collapsed;
             CompactLocalBadge.Visibility = Visibility.Collapsed;
+            CompactVideoBadge.Visibility = Visibility.Collapsed;
             CompactVideoSeparator.Visibility = Visibility.Collapsed;
-            CompactVideoIcon.Visibility = Visibility.Collapsed;
-            CompactVideoLabel.Visibility = Visibility.Collapsed;
             CompactHeartButton.Visibility = Visibility.Collapsed;
             ApplyCompactAlbumArt(null);
         }
@@ -539,6 +537,7 @@ public sealed partial class TrackItem : UserControl
         if (track != null)
         {
             RowTitle.Text = track.Title ?? "";
+            UpdateVideoBadgeVisibility();
             RowExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
             RowLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
             RowDuration.Text = track.DurationFormatted ?? "";
@@ -565,6 +564,8 @@ public sealed partial class TrackItem : UserControl
         else
         {
             RowTitle.Text = "";
+            RowVideoBadge.Visibility = Visibility.Collapsed;
+            RowVideoSeparator.Visibility = Visibility.Collapsed;
             RowExplicit.Visibility = Visibility.Collapsed;
             RowLocalBadge.Visibility = Visibility.Collapsed;
             RowDuration.Text = "";
@@ -1158,9 +1159,11 @@ public sealed partial class TrackItem : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ObserveTrack(Track);
         RebindAlbumArtIfNeeded();
         RefreshPlaybackState();
         UpdateOverlayState();
+        UpdateVideoBadgeVisibility();
         RefreshLikedState();
 
         // Subscribe to global state changes for reactive updates
@@ -1469,6 +1472,7 @@ public sealed partial class TrackItem : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ObserveTrack(null);
         ResetHoverVisualState();
         CompactNowPlayingEqualizer.IsActive = false;
         RowNowPlayingEqualizer.IsActive = false;
@@ -1488,6 +1492,47 @@ public sealed partial class TrackItem : UserControl
             _cachedImageCache?.Unpin(_pinnedRowUrl, 48);
             _pinnedRowUrl = null;
         }
+    }
+
+    private void ObserveTrack(ITrackItem? track)
+    {
+        if (ReferenceEquals(_observedTrack, track)) return;
+
+        if (_observedTrack != null)
+            _observedTrack.PropertyChanged -= OnTrackItemPropertyChanged;
+
+        _observedTrack = track;
+
+        if (_observedTrack != null)
+            _observedTrack.PropertyChanged += OnTrackItemPropertyChanged;
+    }
+
+    private void OnTrackItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!ReferenceEquals(sender, _observedTrack)) return;
+        if (!string.IsNullOrEmpty(e.PropertyName) && e.PropertyName != nameof(ITrackItem.HasVideo)) return;
+
+        if (DispatcherQueue?.HasThreadAccess == true)
+        {
+            UpdateVideoBadgeVisibility();
+            return;
+        }
+
+        DispatcherQueue?.TryEnqueue(UpdateVideoBadgeVisibility);
+    }
+
+    private void UpdateVideoBadgeVisibility()
+    {
+        var track = Track;
+        var hasVideo = track?.HasVideo == true;
+        var hasArtist = !string.IsNullOrWhiteSpace(track?.ArtistName);
+        var badgeVisibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+        var separatorVisibility = hasVideo && hasArtist ? Visibility.Visible : Visibility.Collapsed;
+
+        CompactVideoBadge.Visibility = badgeVisibility;
+        RowVideoBadge.Visibility = badgeVisibility;
+        CompactVideoSeparator.Visibility = separatorVisibility;
+        RowVideoSeparator.Visibility = separatorVisibility;
     }
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)

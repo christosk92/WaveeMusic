@@ -86,7 +86,9 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         OnPropertyChanged(nameof(IsExplicit));
         OnPropertyChanged(nameof(DurationFormatted));
         OnPropertyChanged(nameof(IsLiked));
+        OnPropertyChanged(nameof(HasVideo));
         OnPropertyChanged(nameof(AddedAtFormatted));
+        OnPropertyChanged(nameof(PlayCountFormatted));
     }
 
     // ITrackItem — delegate to Data when loaded, safe defaults when not
@@ -101,6 +103,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public bool IsExplicit => Data?.IsExplicit ?? false;
     public string DurationFormatted => Data?.DurationFormatted ?? "";
     public int OriginalIndex => Index;
+    public bool HasVideo => Data?.HasVideo ?? false;
     public bool IsLiked
     {
         get => Data?.IsLiked ?? false;

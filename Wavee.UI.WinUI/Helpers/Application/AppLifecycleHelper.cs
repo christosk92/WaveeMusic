@@ -25,6 +25,7 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Data;
 using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.Services.Docking;
 using System.Collections.Generic;
 using Serilog;
 using Serilog.Core;
@@ -355,6 +356,13 @@ public static class AppLifecycleHelper
                 // surfaces; consumed by the discovery service to avoid
                 // redundant NPV roundtrips.
                 .AddSingleton<Services.IMusicVideoCatalogCache, Services.MusicVideoCatalogCache>()
+                .AddSingleton<Services.IMusicVideoMetadataService>(sp =>
+                    new Services.MusicVideoMetadataService(
+                        sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
+                        sp.GetRequiredService<Services.IMusicVideoCatalogCache>(),
+                        sp.GetService<ILogger<Services.MusicVideoMetadataService>>()))
                 // Music-video discovery for the linked-URI catalog pattern
                 // (audio URI ≠ video URI; e.g. drunk text). Invoked directly
                 // by PlaybackStateService.OnCurrentTrackIdChanged when the
@@ -365,9 +373,8 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.IMusicVideoDiscoveryService>(sp =>
                     new Services.MusicVideoDiscoveryService(
                         sp.GetRequiredService<ISession>().Pathfinder,
-                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetRequiredService<IMessenger>(),
-                        sp.GetRequiredService<Services.IMusicVideoCatalogCache>(),
+                        sp.GetRequiredService<Services.IMusicVideoMetadataService>(),
                         sp.GetService<ILogger<Services.MusicVideoDiscoveryService>>()))
                 // UI-process MediaPlayer used as the engine for video tracks.
                 // Must be resolved on the UI thread (its ctor captures the
@@ -595,6 +602,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>(),
                         sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>(),
                         sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
+                        sp.GetRequiredService<Services.IMusicVideoMetadataService>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.PlaylistStore(
@@ -680,6 +688,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<IConnectivityService>(),
                         sp.GetService<INotificationService>(),
+                        sp.GetService<IPanelDockingService>(),
                         sp.GetService<ILoggerFactory>()))
                 .AddTransient<HomeViewModel>(sp =>
                     new HomeViewModel(
@@ -1286,16 +1295,16 @@ public static class AppLifecycleHelper
             _trackMetadataEnricher?.Dispose();
             _trackMetadataEnricher = Ioc.Default.GetService<TrackMetadataEnricher>();
 
-            // Force-construct the music-video catalog cache and discovery
+            // Force-construct the music-video metadata and discovery
             // singletons so they're alive BEFORE the first TrackChangedMessage
             // fires. WeakReferenceMessenger only delivers to recipients that
             // were registered when Send is called, so lazy DI construction
             // would let the very first track change slip past the discovery
             // service's subscription.
-            var videoCache = Ioc.Default.GetService<Services.IMusicVideoCatalogCache>();
+            var videoMetadata = Ioc.Default.GetService<Services.IMusicVideoMetadataService>();
             var videoDiscovery = Ioc.Default.GetService<Services.IMusicVideoDiscoveryService>();
-            logger?.LogInformation("[VideoDiscovery] eager construction at sign-in: cache={CacheAlive} discovery={DiscoveryAlive}",
-                videoCache is null ? "<null>" : "alive",
+            logger?.LogInformation("[VideoDiscovery] eager construction at sign-in: metadata={MetadataAlive} discovery={DiscoveryAlive}",
+                videoMetadata is null ? "<null>" : "alive",
                 videoDiscovery is null ? "<null>" : "alive");
         }
         catch (Exception ex)

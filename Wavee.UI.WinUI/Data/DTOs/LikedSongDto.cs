@@ -26,6 +26,18 @@ public sealed record LikedSongDto : ITrackItem
     public bool IsLiked { get; set; } = true; // Always true — it's in the liked songs list
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
 
+    private bool _hasVideo;
+    public bool HasVideo
+    {
+        get => _hasVideo;
+        set
+        {
+            if (_hasVideo == value) return;
+            _hasVideo = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(HasVideo)));
+        }
+    }
+
     /// <summary>
     /// Duration formatted as m:ss or h:mm:ss
     /// </summary>

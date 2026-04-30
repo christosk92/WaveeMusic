@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
@@ -284,7 +285,8 @@ public sealed partial class LikedSongsRecentCard : UserControl
             {
                 try
                 {
-                    var surface = LoadedImageSurface.StartLoadFromUri(new Uri(url));
+                    var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url) ?? url;
+                    var surface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), new Size(ThumbSize, ThumbSize));
                     _surfaces.Add(surface);
                     var spriteRef = sprite;
                     surface.LoadCompleted += (sender, args) =>

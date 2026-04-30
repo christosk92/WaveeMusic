@@ -5,7 +5,10 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
@@ -21,12 +24,15 @@ public sealed partial class EpisodeCard : UserControl
 {
     private const double HoverCoverScale = 1.03;
     private const double HoverCoverDurationMs = 200;
+    private const int CoverDecodeSize = 200;
 
+    private readonly ImageCacheService? _imageCache;
     private bool _isHovered;
     private HomeSectionItem? _boundItem;
 
     public EpisodeCard()
     {
+        _imageCache = Ioc.Default.GetService<ImageCacheService>();
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
@@ -39,6 +45,8 @@ public sealed partial class EpisodeCard : UserControl
             _boundItem.PropertyChanged -= OnItemPropertyChanged;
             _boundItem = null;
         }
+
+        CoverImage.Source = null;
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
@@ -46,6 +54,7 @@ public sealed partial class EpisodeCard : UserControl
         if (_boundItem != null)
             _boundItem.PropertyChanged -= OnItemPropertyChanged;
 
+        CoverImage.Source = null;
         _boundItem = args.NewValue as HomeSectionItem;
 
         if (_boundItem != null)
@@ -73,11 +82,17 @@ public sealed partial class EpisodeCard : UserControl
 
         // Cover image — bind via Source so we don't have to manage placeholder
         // visibility manually; CoverImage_ImageOpened hides the glyph.
-        if (!string.IsNullOrEmpty(item?.ImageUrl))
+        var imageUrl = SpotifyImageHelper.ToHttpsUrl(item?.ImageUrl) ?? item?.ImageUrl;
+        if (!string.IsNullOrEmpty(imageUrl))
         {
             try
             {
-                CoverImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(item.ImageUrl));
+                CoverImage.Source = _imageCache?.GetOrCreate(imageUrl, CoverDecodeSize)
+                    ?? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imageUrl))
+                    {
+                        DecodePixelWidth = CoverDecodeSize,
+                        DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical
+                    };
             }
             catch
             {

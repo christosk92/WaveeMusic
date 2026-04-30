@@ -34,7 +34,7 @@ using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ArtistPage : Page, ITabBarItemContent, IDisposable
+public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
 {
     private const int ShimmerCollapseDelayMs = 250;
     private const int ResizeDebounceDelayMs = 150;
@@ -71,6 +71,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, IDisposable
     private bool _heroRevealed;
     private bool _crossfadeScheduled;
     private bool _isDisposed;
+    private bool _trimmedForNavigationCache;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -932,19 +933,49 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, IDisposable
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Hibernate releases the store subscription and heavy bound collections
-        // before the page leaves the frame. Revisit speed comes from warm data
-        // caches, not retaining the full artist visual tree.
-        ViewModel.Hibernate();
+        TrimForNavigationCache();
+    }
 
-        // Release the hero's LoadedImageSurface before navigation can retain
-        // composition resources longer than the current frame.
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
+        _isNavigatingAway = true;
+        CancelResizeDebounce();
+        CollapseExpandedAlbum();
+        TeardownWatchFeed();
+        try { _shyHeaderTransition?.Stop(); } catch { }
+
+        // Hibernate releases the store subscription and heavy bound collections
+        // before the page is hidden. Revisit speed comes from warm data caches.
+        ViewModel.Hibernate();
         HeroGrid?.ReleaseSurface();
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = false;
+        _isNavigatingAway = false;
+        ResetShyHeaderState();
+        HeroGrid?.RestoreSurface();
+
+        if (!string.IsNullOrEmpty(ViewModel.ArtistId))
+        {
+            ViewModel.Initialize(ViewModel.ArtistId);
+            SetupWatchFeedVideo();
+            TryShowContentNow();
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
         ResetShyHeaderState();
 
@@ -979,6 +1010,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, IDisposable
 
     private void LoadNewContent(object? parameter)
     {
+        _trimmedForNavigationCache = false;
         // Reset visual state for fresh load
         PageScrollView.ScrollTo(0, 0);
         ResetShyHeaderState();

@@ -679,4 +679,25 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
         }
     }
+
+    public async Task<PlaybackResult> SwitchToAudioAsync(CancellationToken ct)
+    {
+        if (_localEngine == null)
+        {
+            _logger?.LogWarning("[SwitchToAudio] Local playback engine not available");
+            return PlaybackResult.Failure(PlaybackErrorKind.DeviceUnavailable, "Playback engine not available");
+        }
+
+        _logger?.LogInformation("[SwitchToAudio] Switching current music video back to audio");
+        try
+        {
+            await _localEngine.SwitchToAudioAsync(ct).ConfigureAwait(false);
+            return PlaybackResult.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[SwitchToAudio] Failed to switch to audio");
+            return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+        }
+    }
 }

@@ -164,12 +164,12 @@ public sealed class ArtistService : IArtistService
     {
         if (mappings.Count == 0) return;
 
-        var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<IMusicVideoCatalogCache>();
-        if (videoCatalog is null) return;
+        var videoMetadata = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<IMusicVideoMetadataService>();
+        if (videoMetadata is null) return;
 
         foreach (var mapping in mappings)
-            videoCatalog.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
+            videoMetadata.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
     }
 
     private async Task<List<ArtistConcertResult>> MapConcertsAsync(ArtistConcerts? concerts, CancellationToken ct)

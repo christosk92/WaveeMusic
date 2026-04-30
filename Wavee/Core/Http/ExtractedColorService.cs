@@ -292,7 +292,7 @@ public sealed class ExtractedColorService : IColorService, IAsyncDisposable
     private async Task FlushBatchAsync(List<string> batch, CancellationToken ct)
     {
         var toFetch = batch
-            .Where(url => !_hot.ContainsKey(url))
+            .Where(url => !_hot.ContainsKey(url) && HasPending(url))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
@@ -359,6 +359,14 @@ public sealed class ExtractedColorService : IColorService, IAsyncDisposable
 
         foreach (var tcs in awaiters)
             tcs.TrySetResult(color);
+    }
+
+    private bool HasPending(string url)
+    {
+        lock (_pendingLock)
+        {
+            return _pending.ContainsKey(url);
+        }
     }
 
     private void FailAllPending()

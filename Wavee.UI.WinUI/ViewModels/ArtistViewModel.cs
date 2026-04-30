@@ -548,9 +548,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             && overview.MusicVideoMappings.Count == 0)
             return;
 
-        var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
-        if (videoCatalog is null) return;
+        var videoMetadata = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.UI.WinUI.Services.IMusicVideoMetadataService>();
+        if (videoMetadata is null) return;
 
         _logger?.LogInformation("[VideoCache] ArtistViewModel pre-warm: {Count} top tracks for {Artist}",
             overview.TopTracks?.Count ?? 0, ArtistId ?? "<unknown>");
@@ -559,13 +559,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             foreach (var track in overview.TopTracks)
             {
                 if (string.IsNullOrEmpty(track.Uri)) continue;
-                videoCatalog.NoteHasVideo(track.Uri, track.HasVideo);
+                videoMetadata.NoteHasVideo(track.Uri, track.HasVideo);
             }
         }
 
         foreach (var mapping in overview.MusicVideoMappings)
         {
-            videoCatalog.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
+            videoMetadata.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
             _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
                 mapping.AudioTrackUri, mapping.VideoTrackUri);
         }
@@ -737,10 +737,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             // Populate the music-video catalog cache as we map top tracks.
             // Avoids a redundant NPV roundtrip when the user clicks a track
             // they've already seen on this artist page.
-            var videoCatalog = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-                .GetService<Wavee.UI.WinUI.Services.IMusicVideoCatalogCache>();
+            var videoMetadata = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.UI.WinUI.Services.IMusicVideoMetadataService>();
             _logger?.LogInformation("[VideoCache] ArtistViewModel populating cache with {Count} top tracks (cacheResolved={HasCache})",
-                overview.TopTracks.Count, videoCatalog is not null);
+                overview.TopTracks.Count, videoMetadata is not null);
             int idx = 1;
             foreach (var track in overview.TopTracks)
             {
@@ -761,19 +761,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     HasVideo = track.HasVideo
                 };
                 newTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
-                if (videoCatalog is not null && !string.IsNullOrEmpty(track.Uri))
+                if (videoMetadata is not null && !string.IsNullOrEmpty(track.Uri))
                 {
-                    videoCatalog.NoteHasVideo(track.Uri, track.HasVideo);
+                    videoMetadata.NoteHasVideo(track.Uri, track.HasVideo);
                     _logger?.LogDebug("[VideoCache]   {Uri} → hasVideo={HasVideo}", track.Uri, track.HasVideo);
                 }
                 idx++;
             }
 
-            if (videoCatalog is not null)
+            if (videoMetadata is not null)
             {
                 foreach (var mapping in overview.MusicVideoMappings)
                 {
-                    videoCatalog.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
+                    videoMetadata.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
                     _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
                         mapping.AudioTrackUri, mapping.VideoTrackUri);
                 }

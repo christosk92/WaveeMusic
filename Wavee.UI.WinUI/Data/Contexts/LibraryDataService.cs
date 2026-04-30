@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -37,6 +38,7 @@ public sealed class LibraryDataService : ILibraryDataService
     private readonly ITrackLikeService _likeService;
     private readonly ISession _session;
     private readonly IMessenger _messenger;
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ILogger? _logger;
     private IReadOnlyList<LikedSongsFilterDto> _cachedLikedSongFilters = Array.Empty<LikedSongsFilterDto>();
     private string? _likedSongFiltersEtag;
@@ -64,6 +66,7 @@ public sealed class LibraryDataService : ILibraryDataService
         ISession session,
         Wavee.Core.DependencyInjection.WaveeCacheOptions cacheOptions,
         ExtendedMetadataStore? extendedMetadataStore = null,
+        IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<LibraryDataService>? logger = null)
     {
         _database = database;
@@ -73,6 +76,7 @@ public sealed class LibraryDataService : ILibraryDataService
         _likeService = likeService;
         _session = session;
         _messenger = messenger;
+        _musicVideoMetadata = musicVideoMetadata;
         _logger = logger;
         _databasePath = cacheOptions.DatabasePath;
 
@@ -254,6 +258,10 @@ public sealed class LibraryDataService : ILibraryDataService
             .GetExtensionsBulkAsync(trackUris, ExtensionKind.TrackDescriptor, ct)
             .ConfigureAwait(false);
 
+        var cachedVideoAvailability = _musicVideoMetadata is null
+            ? new Dictionary<string, bool>(StringComparer.Ordinal)
+            : await _musicVideoMetadata.GetCachedAvailabilityAsync(trackUris, ct).ConfigureAwait(false);
+
         return entities.Select((e, idx) => new LikedSongDto
         {
             Id = ExtractBareId(e.Uri, "spotify:track:"),
@@ -271,7 +279,8 @@ public sealed class LibraryDataService : ILibraryDataService
             IsLiked = true,
             Tags = ExtractDescriptorTags(
                 descriptorBytes.TryGetValue(e.Uri, out var bytes) ? bytes : null,
-                e.Genre)
+                e.Genre),
+            HasVideo = cachedVideoAvailability.TryGetValue(e.Uri, out var hasVideo) && hasVideo
         }).ToList();
     }
 
@@ -364,6 +373,12 @@ public sealed class LibraryDataService : ILibraryDataService
             }
         }
 
+        var videoAvailability = _musicVideoMetadata is null
+            ? new Dictionary<string, bool>(StringComparer.Ordinal)
+            : await _musicVideoMetadata
+                .EnsureAvailabilityAsync(trackItems.Select(static item => item.Uri), ct)
+                .ConfigureAwait(false);
+
         var tracks = new List<PlaylistTrackDto>(trackItems.Length);
         foreach (var item in trackItems)
         {
@@ -390,7 +405,8 @@ public sealed class LibraryDataService : ILibraryDataService
                 // Spotify's on-wire uid: lower-case hex of the 8-byte itemId. Matches
                 // the format web/mobile clients publish for skip-to-uid round-trip.
                 Uid = item.ItemId is { Length: > 0 } id ? Convert.ToHexString(id).ToLowerInvariant() : null,
-                FormatAttributes = item.FormatAttributes.Count > 0 ? item.FormatAttributes : null
+                FormatAttributes = item.FormatAttributes.Count > 0 ? item.FormatAttributes : null,
+                HasVideo = videoAvailability.TryGetValue(item.Uri, out var hasVideo) && hasVideo
             });
         }
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,10 @@ internal sealed class AudioHostService : IAsyncDisposable
 {
     private readonly string _pipeName;
     private readonly ILogger _logger;
+    private readonly int _expectedParentProcessId;
+    private readonly string? _expectedSessionId;
+    private readonly string? _expectedLaunchToken;
+    private readonly bool _standaloneDevMode;
     private readonly CancellationTokenSource _cts = new();
 
     private AudioEngine? _engine;
@@ -32,6 +37,9 @@ internal sealed class AudioHostService : IAsyncDisposable
     private EngineState? _lastSentState;
     private BassDecoder? _bassDecoder;
     private PreviewAnalysisService? _previewAnalysisService;
+    private Timer? _pipeIdleWatchdogTimer;
+    private long _lastPipeMessageTimestamp;
+    private const int PipeIdleTimeoutMs = 30_000;
 
     // Cached audio device state — re-sent in snapshot only when it changes, avoiding
     // IPC spam on every position tick.
@@ -49,10 +57,20 @@ internal sealed class AudioHostService : IAsyncDisposable
     // instance is fine without extra locking.
     private PlayPlayKeyEmulator? _playPlayEmu;
 
-    public AudioHostService(string pipeName, ILogger logger)
+    public AudioHostService(
+        string pipeName,
+        ILogger logger,
+        int expectedParentProcessId = 0,
+        string? expectedSessionId = null,
+        string? expectedLaunchToken = null,
+        bool standaloneDevMode = false)
     {
         _pipeName = pipeName;
         _logger = logger;
+        _expectedParentProcessId = expectedParentProcessId;
+        _expectedSessionId = expectedSessionId;
+        _expectedLaunchToken = expectedLaunchToken;
+        _standaloneDevMode = standaloneDevMode;
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -85,6 +103,7 @@ internal sealed class AudioHostService : IAsyncDisposable
         }
 
         var config = IpcPayloadHelper.Deserialize<AudioHostConfig>(configMsg);
+        ValidateLaunchConfig(config);
         _logger.LogInformation("Configured — device={DeviceId}", config?.DeviceId);
 
         // Create audio engine
@@ -95,7 +114,9 @@ internal sealed class AudioHostService : IAsyncDisposable
             IpcPayloadHelper.SerializeToUtf8(new AudioHostReady
             {
                 DeviceId = config?.DeviceId ?? "",
-                PipeName = _pipeName
+                PipeName = _pipeName,
+                ParentProcessId = _expectedParentProcessId,
+                SessionId = _expectedSessionId
             }), ct: token);
 
         // Subscribe to engine state and errors
@@ -103,6 +124,9 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         // Process commands
         _logger.LogInformation("AudioHost ready — processing commands");
+        _lastPipeMessageTimestamp = Stopwatch.GetTimestamp();
+        _pipeIdleWatchdogTimer?.Dispose();
+        _pipeIdleWatchdogTimer = new Timer(CheckPipeIdleTimeout, null, PipeIdleTimeoutMs, PipeIdleTimeoutMs);
         await ProcessCommandsAsync(token);
     }
 
@@ -146,6 +170,48 @@ internal sealed class AudioHostService : IAsyncDisposable
         }
 
         _logger.LogInformation("AudioEngine created");
+    }
+
+    private void ValidateLaunchConfig(AudioHostConfig? config)
+    {
+        if (_standaloneDevMode)
+        {
+            _logger.LogWarning("AudioHost running in explicit standalone dev mode");
+            return;
+        }
+
+        if (config is null)
+            throw new InvalidOperationException("Missing AudioHost configuration");
+        if (_expectedParentProcessId <= 0)
+            throw new InvalidOperationException("Missing expected parent PID");
+        if (config.ParentProcessId != _expectedParentProcessId)
+            throw new InvalidOperationException("Parent PID mismatch");
+        if (!string.Equals(config.SessionId, _expectedSessionId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Launch session mismatch");
+        if (string.IsNullOrWhiteSpace(_expectedLaunchToken)
+            || !string.Equals(config.LaunchToken, _expectedLaunchToken, StringComparison.Ordinal))
+            throw new InvalidOperationException("Launch token mismatch");
+
+        try
+        {
+            using var parent = Process.GetProcessById(_expectedParentProcessId);
+            if (parent.HasExited)
+                throw new InvalidOperationException("Parent process has exited");
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException("Parent process is not running", ex);
+        }
+    }
+
+    private void CheckPipeIdleTimeout(object? state)
+    {
+        if (_cts.IsCancellationRequested || _transport is null) return;
+        var elapsed = Stopwatch.GetElapsedTime(_lastPipeMessageTimestamp);
+        if (elapsed.TotalMilliseconds <= PipeIdleTimeoutMs) return;
+
+        _logger.LogWarning("No parent IPC heartbeat for {ElapsedMs:F0}ms; shutting down AudioHost", elapsed.TotalMilliseconds);
+        _cts.Cancel();
     }
 
     private AudioDecoderRegistry CreateDecoderRegistry()
@@ -252,6 +318,7 @@ internal sealed class AudioHostService : IAsyncDisposable
                 _logger.LogInformation("Pipe closed by UI process");
                 break;
             }
+            _lastPipeMessageTimestamp = Stopwatch.GetTimestamp();
 
             try
             {
@@ -697,6 +764,8 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         _stateSubscription?.Dispose();
         _errorSubscription?.Dispose();
+        _pipeIdleWatchdogTimer?.Dispose();
+        _pipeIdleWatchdogTimer = null;
 
         // Stop the Windows device watcher before tearing down the engine so
         // no stray PerformDeviceRefresh runs after Pa_Terminate.

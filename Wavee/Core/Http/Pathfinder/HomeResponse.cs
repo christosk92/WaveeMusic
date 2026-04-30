@@ -190,6 +190,9 @@ public sealed class HomeTypedEntity
 {
     [JsonPropertyName("__typename")]
     public string? TypeName { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class HomeIdentityTrait

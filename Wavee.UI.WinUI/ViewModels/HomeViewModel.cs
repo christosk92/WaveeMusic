@@ -315,11 +315,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         // Spotify feed, so the Extract→ApplyDiff→Restore pattern that
         // ResumeAndRehydrate relies on only works if it can find the
         // section in Sections on entry.
-        var localSection = ExtractLocalSection();
-        Sections.Clear();
-        if (localSection != null)
-            Sections.Add(localSection);
-        DisplayedChips.Clear();
 
         // Phase 7.4 — release hero/featured state so the bound Image controls
         // drop their textures and the cached page's residual footprint shrinks.
@@ -327,7 +322,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         // FeaturedItem and the hero brushes from the cached snapshot, so this
         // is a pure transient release. HasFeaturedItem flips false → x:Load
         // unloads the FeaturedItem button subtree.
-        FeaturedItem = null;
         HeroBackdropBrush = null;
         HeroAccentLineBrush = null;
         PageBleedBrush = null;
@@ -342,6 +336,20 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         ResumeBackgroundRefresh();
         if (_homeFeedCache?.GetCached() is { } snapshot)
             ApplyBackgroundRefresh(snapshot);
+    }
+
+    public void ResumeFromNavigationCache()
+    {
+        ResumeBackgroundRefresh();
+
+        if (Sections.Count == 0)
+        {
+            ResumeAndRehydrate();
+            return;
+        }
+
+        ApplyTheme(_isDarkTheme);
+        BeginBaselineEnrichment();
     }
 
     public void ApplyBackgroundRefresh(Services.HomeFeedSnapshot snapshot)

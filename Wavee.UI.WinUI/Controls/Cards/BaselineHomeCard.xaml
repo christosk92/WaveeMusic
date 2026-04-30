@@ -58,6 +58,7 @@
 
                 <Grid
                     x:Name="CanvasPreviewHost"
+                    x:Load="False"
                     IsHitTestVisible="False"
                     Opacity="0"
                     Visibility="Collapsed"/>
@@ -87,6 +88,7 @@
 
             <Grid
                 x:Name="PreviewOverlayRoot"
+                x:Load="False"
                 Margin="0"
                 HorizontalAlignment="Stretch"
                 Height="78"
@@ -187,6 +189,7 @@
                 <Grid Grid.Row="2">
                     <Border
                         x:Name="PlayingIndicator"
+                        x:Load="False"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Bottom"
                         Padding="6,3"
@@ -200,6 +203,7 @@
 
                     <Button
                         x:Name="ContextPlayButton"
+                        x:Load="False"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Bottom"
                         Width="42"
@@ -219,6 +223,7 @@
 
             <Grid
                 x:Name="HoverChrome"
+                x:Load="False"
                 Margin="14"
                 Opacity="0"
                 Visibility="Collapsed"
@@ -257,6 +262,7 @@
 
             <Button
                 x:Name="PreviousPreviewTrackButton"
+                x:Load="False"
                 Width="34"
                 Height="34"
                 Margin="10,0,0,18"
@@ -277,6 +283,7 @@
 
             <Button
                 x:Name="NextPreviewTrackButton"
+                x:Load="False"
                 Width="34"
                 Height="34"
                 Margin="0,0,10,18"

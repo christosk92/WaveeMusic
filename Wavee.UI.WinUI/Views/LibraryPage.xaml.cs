@@ -11,7 +11,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepParticipant, IDisposable
+public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
 {
     private const int MaxDeferredShowTabAttempts = 3;
 
@@ -30,6 +30,8 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     private TabItemParameter? _tabItemParameter;
     private bool _disposed;
     private LibraryPageSleepState? _pendingSleepState;
+    private bool _trimmedForNavigationCache;
+    private string? _trimmedSelectedTabKey;
 
     public LibraryPage()
     {
@@ -88,6 +90,13 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             return;
         }
 
+        if (_trimmedForNavigationCache && e.Parameter is not string)
+        {
+            RestoreFromNavigationCache();
+            TryApplyPendingSleepState();
+            return;
+        }
+
         // Determine which item to select based on parameter
         SegmentedItem itemToSelect = AlbumsItem; // default
 
@@ -102,8 +111,16 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         }
 
         SetSelectedItemSilently(itemToSelect);
+        _trimmedForNavigationCache = false;
+        _trimmedSelectedTabKey = null;
         ShowTab(itemToSelect);
         TryApplyPendingSleepState();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        TrimForNavigationCache();
     }
 
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -267,6 +284,29 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     public void RestoreSleepState(object? state)
     {
         _pendingSleepState = state as LibraryPageSleepState;
+        TryApplyPendingSleepState();
+    }
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
+        _trimmedSelectedTabKey = GetSelectedTabKey();
+        if (ContentHost != null)
+            ContentHost.Content = null;
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        var tabKey = _trimmedSelectedTabKey ?? GetSelectedTabKey();
+        _trimmedForNavigationCache = false;
+        _trimmedSelectedTabKey = null;
+        SelectTab(tabKey);
         TryApplyPendingSleepState();
     }
 

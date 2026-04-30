@@ -34,7 +34,10 @@
          horizontal volume slider, AirPlay/device picker pinned bottom-left.
          Reuses HeartButton / OutputDevicePicker / CompositionProgressBar /
          PlaybackActionContent — no parallel widgets. -->
-    <Grid Padding="40,28,40,24" RowSpacing="14">
+    <Grid
+        x:Name="LayoutRoot"
+        Padding="40,28,40,24"
+        RowSpacing="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" MinHeight="220"/>
             <RowDefinition Height="Auto" />
@@ -47,11 +50,20 @@
         <!-- Album art — square, capped at min(row height, column width).
              AspectRatioGrid trick: use a Viewbox with Stretch=Uniform so the
              square content scales down to fit the smaller of the two axes. -->
-        <Viewbox Grid.Row="0"
+        <Viewbox
+                 x:Name="MediaViewbox"
+                 Grid.Row="0"
                  Stretch="Uniform"
                  HorizontalAlignment="Center"
                  VerticalAlignment="Center">
-            <Grid Width="540" Height="540">
+            <Grid
+                x:Name="MediaFrame"
+                Width="540"
+                Height="540"
+                RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <CompositeTransform x:Name="MediaFrameTransform" />
+                </Grid.RenderTransform>
                 <toolkit:Effects.Shadow>
                     <media:AttachedCardShadow
                         BlurRadius="56"
@@ -69,9 +81,15 @@
                         toolkit:TransitionHelper.Id="albumArt"
                         Source="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}"
                         FallbackSource="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
-                        DecodePixelWidth="768"
+                        DecodePixelWidth="512"
                         Stretch="UniformToFill"
                         CornerRadius="14" />
+                    <Border
+                        x:Name="VideoHost"
+                        Canvas.ZIndex="1"
+                        Background="Black"
+                        CornerRadius="14"
+                        Visibility="Collapsed" />
                     <FontIcon Glyph="&#xE8D6;"
                               FontSize="56"
                               IsHitTestVisible="False"
@@ -83,7 +101,10 @@
         </Viewbox>
 
         <!-- Title row — large title + artist on the left, heart + ⋯ at right -->
-        <Grid Grid.Row="1" ColumnSpacing="16">
+        <Grid
+            x:Name="TitleRow"
+            Grid.Row="1"
+            ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -116,11 +137,56 @@
                         Spacing="6"
                         VerticalAlignment="Center">
                 <controls:HeartButton x:Name="HeartButton" Width="32" Height="32" />
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    Command="{x:Bind ViewModel.SwitchToVideoCommand}"
+                    IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                    Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Watch Video">
+                    <Grid Width="16" Height="16">
+                        <FontIcon
+                            Glyph="&#xE714;"
+                            FontSize="14"
+                            Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <ProgressRing
+                            Width="16"
+                            Height="16"
+                            IsActive="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </Grid>
+                </Button>
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    Command="{x:Bind ViewModel.SwitchToAudioCommand}"
+                    IsEnabled="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                    Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Listen as audio">
+                    <Grid Width="16" Height="16">
+                        <FontIcon
+                            Glyph="&#xE8D6;"
+                            FontSize="14"
+                            Visibility="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <ProgressRing
+                            Width="16"
+                            Height="16"
+                            IsActive="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </Grid>
+                </Button>
             </StackPanel>
         </Grid>
 
         <!-- Progress: time | slider | time -->
-        <Grid Grid.Row="2" ColumnSpacing="12">
+        <Grid
+            x:Name="ProgressRow"
+            Grid.Row="2"
+            ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -148,7 +214,9 @@
         </Grid>
 
         <!-- Transport — apple-style: shuffle | prev | PLAY (large) | next | repeat -->
-        <StackPanel Grid.Row="3"
+        <StackPanel
+                    x:Name="MusicTransportRow"
+                    Grid.Row="3"
                     Orientation="Horizontal"
                     HorizontalAlignment="Center"
                     Spacing="12">
@@ -192,8 +260,119 @@
             </ToggleButton>
         </StackPanel>
 
+        <Grid
+            x:Name="VideoControlBar"
+            Grid.Row="3"
+            Visibility="Collapsed"
+            ColumnSpacing="12"
+            MinHeight="44">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Column="0"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalAlignment="Center">
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="40"
+                    Height="40"
+                    Padding="0"
+                    Command="{x:Bind ViewModel.PlayPauseCommand}"
+                    ToolTipService.ToolTip="Play/Pause">
+                    <playback:PlaybackActionContent
+                        IconSize="22"
+                        SpinnerSize="24"
+                        IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                        IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                        ActionForeground="{ThemeResource TextFillColorPrimaryBrush}" />
+                </Button>
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Command="{x:Bind ViewModel.NextCommand}"
+                    ToolTipService.ToolTip="Next">
+                    <FontIcon Glyph="&#xF8AD;" FontSize="17" />
+                </Button>
+                <FontIcon
+                    Glyph="&#xE995;"
+                    FontSize="14"
+                    Opacity="0.72"
+                    VerticalAlignment="Center" />
+                <Slider
+                    Width="116"
+                    Minimum="0"
+                    Maximum="100"
+                    Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
+                    IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                    IsThumbToolTipEnabled="False"
+                    VerticalAlignment="Center" />
+                <TextBlock
+                    Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
+                    FontSize="12"
+                    Opacity="0.76"
+                    VerticalAlignment="Center" />
+                <TextBlock
+                    Text="/"
+                    FontSize="12"
+                    Opacity="0.48"
+                    VerticalAlignment="Center" />
+                <TextBlock
+                    Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
+                    FontSize="12"
+                    Opacity="0.76"
+                    VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Column="1"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalAlignment="Center">
+                <ToggleButton
+                    x:Name="VideoTheaterModeButton"
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Click="VideoTheaterModeButton_Click"
+                    ToolTipService.ToolTip="Theater mode">
+                    <FontIcon Glyph="&#xE740;" FontSize="15" />
+                </ToggleButton>
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                    ToolTipService.ToolTip="Shuffle">
+                    <FontIcon Glyph="&#xE8B1;" FontSize="15" />
+                </ToggleButton>
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                    Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                    ToolTipService.ToolTip="Repeat">
+                    <FontIcon
+                        Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                        FontSize="15" />
+                </ToggleButton>
+            </StackPanel>
+        </Grid>
+
         <!-- Volume — horizontal slider with low/high glyphs -->
-        <Grid Grid.Row="4"
+        <Grid
+              x:Name="VolumeRow"
+              Grid.Row="4"
               ColumnSpacing="10"
               MaxWidth="420"
               HorizontalAlignment="Stretch"
@@ -224,6 +403,7 @@
 
         <!-- AirPlay / device picker bottom-left -->
         <playback:OutputDevicePicker
+            x:Name="DevicePicker"
             Grid.Row="5"
             HorizontalAlignment="Left" />
     </Grid>

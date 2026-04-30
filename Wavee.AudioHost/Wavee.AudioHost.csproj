@@ -6,6 +6,9 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <AssemblyTitle>Wavee Audio Runtime</AssemblyTitle>
+        <Product>Wavee</Product>
+        <Description>Wavee Audio Runtime</Description>
 
         <!-- Publish as self-contained for process isolation -->
         <SelfContained>false</SelfContained>

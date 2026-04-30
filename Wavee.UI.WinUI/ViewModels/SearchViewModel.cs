@@ -45,6 +45,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private readonly ILogger? _logger;
     private readonly List<SearchResultItem> _allItems = [];
     private int _requestVersion;
+    private bool _isHibernated;
 
     // Process-wide result cache (TTL 5 min). Survives SearchViewModel disposal so
     // tab-sleep wake (which re-instantiates the page + VM and re-fires LoadAsync via
@@ -160,6 +161,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         if (string.IsNullOrWhiteSpace(query))
             return;
 
+        _isHibernated = false;
         var requestVersion = ++_requestVersion;
         var scope = GetSearchScope();
         var cacheKey = BuildCacheKey(query, scope);
@@ -258,6 +260,35 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
                 UpdateEmptyState();
             }
         }
+    }
+
+    public void Hibernate()
+    {
+        if (_isHibernated)
+            return;
+
+        _isHibernated = true;
+        _requestVersion++;
+        IsLoading = false;
+        HasError = false;
+        ErrorMessage = null;
+        ShowEmptyState = false;
+
+        _allItems.Clear();
+        DispatchResults([]);
+        TopResult = null;
+        UpdateVisibleResults();
+    }
+
+    public Task ResumeFromHibernateAsync()
+    {
+        if (!_isHibernated)
+            return Task.CompletedTask;
+
+        _isHibernated = false;
+        return string.IsNullOrWhiteSpace(Query)
+            ? Task.CompletedTask
+            : LoadAsync(Query);
     }
 
     private static IReadOnlyList<SearchResultItem> MergeLocalIntoSpotifyResults(

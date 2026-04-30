@@ -24,12 +24,14 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepParticipant, IDisposable
+public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly HomeFeedCache? _cache;
     private bool _isShimmerContentReleased;
     private bool _isDisposed;
+    private bool _trimmedForNavigationCache;
+    private bool _sectionsDetachedForNavigationCache;
     private HomePageSleepState? _pendingSleepState;
 
     // Shy header — pinned compact card morphs in via TransitionHelper once the
@@ -154,7 +156,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             HeroSpacer.MinHeight = _heroMeasuredHeightPx;
         }
 
-        EnsureShyHeaderTransition();
         ResetShyHeaderState();
         UpdatePageBleedOpacity();
 
@@ -260,10 +261,16 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        if (_trimmedForNavigationCache)
+        {
+            RestoreFromNavigationCache();
+            return;
+        }
+
         // Rehydrate rebuilds Sections + Chips from the cached home-feed
         // response — paired with HibernateForNavigation on OnNavigatedFrom.
         // Cheap (no network); avoids holding the parsed tree while away.
-        ViewModel.ResumeAndRehydrate();
+        ViewModel.ResumeFromNavigationCache();
         await ViewModel.RefreshLocalSectionAsync();
     }
 
@@ -275,7 +282,30 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         // near-zero while the user is on another page. The raw feed stays
         // cached (SQLite), so re-entry via OnNavigatedTo rebuilds without a
         // network round-trip.
+        TrimForNavigationCache();
+    }
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = true;
+        _pendingSleepState = new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
         ViewModel.HibernateForNavigation();
+        ResetShyHeaderState();
+        DetachSectionsRepeater();
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache)
+            return;
+
+        _trimmedForNavigationCache = false;
+        AttachSectionsRepeater();
+        ViewModel.ResumeFromNavigationCache();
+        TryApplyPendingSleepState();
     }
 
     public void Dispose()
@@ -310,6 +340,24 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             HeroOverlayPanel.SizeChanged -= HeroOverlayPanel_SizeChanged;
     }
 
+    private void DetachSectionsRepeater()
+    {
+        if (_sectionsDetachedForNavigationCache || SectionsRepeater == null)
+            return;
+
+        SectionsRepeater.ItemsSource = null;
+        _sectionsDetachedForNavigationCache = true;
+    }
+
+    private void AttachSectionsRepeater()
+    {
+        if (!_sectionsDetachedForNavigationCache || SectionsRepeater == null)
+            return;
+
+        SectionsRepeater.ItemsSource = ViewModel.Sections;
+        _sectionsDetachedForNavigationCache = false;
+    }
+
     // ── Shy header ──────────────────────────────────────────────────────────
     // Mirrors ArtistPage.xaml.cs structure: single helper instance, single
     // pin-state bool, async coalescing loop for ViewChanged events. Threshold
@@ -320,6 +368,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private void EnsureShyHeaderTransition()
     {
         if (_shyHeaderTransition != null)
+            return;
+
+        if (ShyHeaderCard == null)
             return;
 
         if (Resources.TryGetValue("HomeShyHeaderTransition", out var resource)
@@ -338,6 +389,19 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _shyHeaderRecheckPending = false;
         _heroMeasuredHeightPx = 0;
         _shyHeaderTransition?.Reset(toInitialState: true);
+    }
+
+    private bool EnsureShyHeaderRealized()
+    {
+        if (ShyHeaderHost != null && ShyHeaderCard != null)
+        {
+            EnsureShyHeaderTransition();
+            return _shyHeaderTransition != null;
+        }
+
+        _ = FindName(nameof(ShyHeaderHost));
+        EnsureShyHeaderTransition();
+        return ShyHeaderHost != null && ShyHeaderCard != null && _shyHeaderTransition != null;
     }
 
     private void HeroOverlayPanel_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -378,11 +442,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
     private async Task EvaluateShyHeaderAsync()
     {
-        if (_shyHeaderTransition == null
-            || HeroOverlayPanel == null
-            || ShyHeaderCard == null
-            || ShyHeaderHost == null
-            || ContentContainer == null)
+        if (HeroOverlayPanel == null || ContentContainer == null)
             return;
 
         if (_isShyHeaderTransitionRunning)
@@ -395,7 +455,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
         while (true)
         {
-            if (_isDisposed || !HeroOverlayPanel.IsLoaded || !ShyHeaderHost.IsLoaded)
+            if (_isDisposed || !HeroOverlayPanel.IsLoaded)
                 return;
 
             // Use the cached max-ever-measured hero height — see field comment
@@ -411,6 +471,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             bool shouldPin = ContentContainer.VerticalOffset >= activeThreshold;
 
             if (shouldPin == _isShyHeaderPinned)
+                return;
+
+            if (!EnsureShyHeaderRealized() || _shyHeaderTransition == null)
                 return;
 
             _isShyHeaderTransitionRunning = true;
