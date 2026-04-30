@@ -70,6 +70,19 @@ public sealed class AppSettings
     /// user hits end-of-context and sees a "Reached the end" notification.
     /// </summary>
     public bool AutoplayEnabled { get; set; } = true;
+
+    /// <summary>
+    /// When true, popping the player out into a second window does not hide
+    /// the currently selected docked player surface (bottom bar or sidebar).
+    /// </summary>
+    public bool ShowDockedPlayerWithFloatingPlayer { get; set; }
+
+    /// <summary>
+    /// When true, returning focus to the main window while a video is playing
+    /// can ask whether to show that video in the in-window mini player.
+    /// </summary>
+    public bool AskToShowVideoMiniPlayerOnFocus { get; set; } = true;
+
     public bool ShowLocalFilesOnHome { get; set; } = true;
 
     // ── Cache (applied on next launch) ──

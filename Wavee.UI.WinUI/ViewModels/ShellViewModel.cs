@@ -47,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly IPlaybackStateService _playbackStateService;
     private readonly AppModel _appModel;
     private readonly IShellSessionService _shellSession;
+    private readonly ISettingsService? _settingsService;
     private IPanelDockingService? _docking;
     private readonly ILogger? _logger;
     private readonly IDispatcherService? _dispatcher;
@@ -154,9 +155,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 PlayerLocation = PlayerLocation.Bottom;
             }
 
-            OnPropertyChanged(nameof(IsSidebarPlayerVisibleInShell));
-            OnPropertyChanged(nameof(IsBottomPlayerVisibleInShell));
+            RaisePlayerSurfaceVisibilityChanged();
         }
+    }
+
+    private void RaisePlayerSurfaceVisibilityChanged()
+    {
+        OnPropertyChanged(nameof(IsSidebarPlayerVisibleInShell));
+        OnPropertyChanged(nameof(IsBottomPlayerVisibleInShell));
     }
 
     /// <summary>
@@ -166,21 +172,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool IsRightPanelVisibleInShell =>
         IsRightPanelOpen && !Docking.IsRightPanelDetached;
 
+    private bool ShouldHideDockedPlayerForFloatingWindow =>
+        Docking.IsPlayerDetached && _settingsService?.Settings.ShowDockedPlayerWithFloatingPlayer != true;
+
     /// <summary>
-    /// Sidebar player widget is visible in the shell only when the player is
-    /// hosted in the sidebar AND not torn off into its own window.
+    /// Sidebar player widget is visible in the shell when the player is hosted
+    /// in the sidebar. By default the popped-out player suppresses the docked
+    /// slot, but Settings can opt back into showing both control surfaces.
     /// </summary>
     public bool IsSidebarPlayerVisibleInShell =>
-        PlayerLocation == PlayerLocation.Sidebar && !Docking.IsPlayerDetached;
+        PlayerLocation == PlayerLocation.Sidebar && !ShouldHideDockedPlayerForFloatingWindow;
 
     /// <summary>
     /// Bottom player is visible only when it is the selected shell location and
-    /// the player has not been torn off into its own window. Detached state
-    /// wins over sidebar mode changes so the shell never shows two player
-    /// surfaces at once.
+    /// the popped-out player is not suppressing docked controls.
     /// </summary>
     public bool IsBottomPlayerVisibleInShell =>
-        PlayerLocation == PlayerLocation.Bottom && !Docking.IsPlayerDetached;
+        PlayerLocation == PlayerLocation.Bottom && !ShouldHideDockedPlayerForFloatingWindow;
 
     [ObservableProperty]
     private bool _sidebarPlayerCollapsed;
@@ -238,6 +246,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IPlaybackStateService playbackStateService,
         AppModel appModel,
         IShellSessionService shellSession,
+        ISettingsService? settingsService = null,
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null,
         PlaylistMosaicService? mosaicService = null)
@@ -250,6 +259,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _playbackStateService = playbackStateService;
         _appModel = appModel;
         _shellSession = shellSession;
+        _settingsService = settingsService;
         _dispatcher = dispatcher;
         _logger = logger;
         _mosaicService = mosaicService;
@@ -269,6 +279,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         WeakReferenceMessenger.Default.Register<ToggleRightPanelMessage>(this, (r, m) =>
         {
             ((ShellViewModel)r).ToggleRightPanel(m.Value);
+        });
+
+        WeakReferenceMessenger.Default.Register<DockedPlayerWithFloatingPlayerVisibilityChangedMessage>(this, (r, _) =>
+        {
+            ((ShellViewModel)r).RaisePlayerSurfaceVisibilityChanged();
         });
 
         // Subscribe to notification service changes to forward to XAML bindings
@@ -1163,7 +1178,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // demote it back to the bottom bar so the player stays visible.
         if (value != SidebarDisplayMode.Expanded
             && PlayerLocation == PlayerLocation.Sidebar
-            && !Docking.IsPlayerDetached)
+            && (!Docking.IsPlayerDetached
+                || _settingsService?.Settings.ShowDockedPlayerWithFloatingPlayer == true))
         {
             PlayerLocation = PlayerLocation.Bottom;
         }

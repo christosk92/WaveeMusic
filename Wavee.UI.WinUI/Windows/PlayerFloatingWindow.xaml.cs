@@ -1,12 +1,13 @@
 using System;
 using System.ComponentModel;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using CommunityToolkit.WinUI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.ViewModels;
 using Wavee.UI.WinUI.Controls.SidebarPlayer;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -14,44 +15,46 @@ using Wavee.UI.WinUI.Helpers.Application;
 using Wavee.UI.WinUI.Services.Docking;
 using Windows.Graphics;
 using Windows.UI;
+using WinRT.Interop;
 using WinUIEx;
+using VirtualKey = Windows.System.VirtualKey;
 
 namespace Wavee.UI.WinUI.Floating;
 
 /// <summary>
-/// Floating top-level window that hosts the <see cref="Controls.SidebarPlayer.SidebarPlayerWidget"/>
-/// in two layouts: a vertical mini card (compact) and an Apple-Music-style 2-column
-/// "now playing" layout (expanded). The expand chevron in the title bar swaps
-/// between them via a <see cref="TransitionHelper"/> that morphs the album art,
-/// title, and artist text while independently fading transport / progress / volume.
+/// Floating top-level window that hosts the expanded now-playing layout. The
+/// title-bar mode button toggles real AppWindow fullscreen; compact mode stays
+/// out of the popout window.
 ///
 /// X always re-docks to the main shell (per design); the docking service
 /// intercepts <c>AppWindow.Closing</c> and tears the window down through
 /// <see cref="RequestClose"/>.
 ///
-/// Geometry is persisted per-mode (<c>PlayerWindowX/Y/W/H</c> for compact,
-/// <c>PlayerWindowExpandedX/Y/W/H</c> for expanded) so each toggle restores the
-/// last-known size for that mode.
+/// Normal-window geometry is persisted in <c>PlayerWindowExpandedX/Y/W/H</c>.
 /// </summary>
 public sealed partial class PlayerFloatingWindow : WindowEx
 {
     private readonly IPanelDockingService _docking;
     private readonly IShellSessionService _shellSession;
     private readonly PlayerBarViewModel _viewModel;
-    private TransitionHelper? _expandTransition;
+    private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
     private bool _isDocking;
     private bool _disposed;
     private bool _suppressGeometryTracking;
-    private bool _transitionInFlight;
+    private bool _isFullScreen;
+    private PointInt32? _normalWindowPositionBeforeFullScreen;
+    private SizeInt32? _normalWindowSizeBeforeFullScreen;
     private long _expandedModeCallbackToken = -1;
     private DispatcherQueueTimer? _backdropTintTimer;
     private DateTime _backdropTintStartUtc;
     private readonly Color[] _backdropTintFrom = new Color[3];
     private readonly Color[] _backdropTintTo = new Color[3];
     private const int BackdropFadeDurationMs = 700;
-
-    /// <summary>True when the window is showing the 2-column expanded layout.</summary>
-    public bool IsExpanded { get; private set; }
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private static readonly IntPtr HwndNoTopMost = new(-2);
 
     public PlayerFloatingWindow()
     {
@@ -60,6 +63,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         _docking = Ioc.Default.GetRequiredService<IPanelDockingService>();
         _shellSession = Ioc.Default.GetRequiredService<IShellSessionService>();
         _viewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
+        _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(DragRegion);
@@ -74,30 +78,54 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         AppWindow.Closing += OnAppWindowClosing;
         AppWindow.Changed += OnAppWindowChanged;
 
-        _expandTransition = (TransitionHelper)RootGrid.Resources["PlayerExpandTransition"];
-        _expandTransition.Source = CompactHost;
-        _expandTransition.Target = ExpandedHost;
+        RegisterKeyboardAccelerators();
 
-        // Restore persisted state. PanelDockingService has already sized the
-        // window using the right geometry slot — we just sync the visible host.
+        // Player windows always open in expanded focus mode.
         var layout = _shellSession.GetLayoutSnapshot();
-        if (layout.PlayerWindowExpanded)
+        _shellSession.UpdateLayout(s => s.PlayerWindowExpanded = true);
+        var mode = ExpandedPlayerContentMode.Lyrics;
+        if (Enum.TryParse<ExpandedPlayerContentMode>(layout.PlayerWindowExpandedMode, out var parsedMode)
+            && parsedMode != ExpandedPlayerContentMode.None)
         {
-            CompactHost.Visibility = Visibility.Collapsed;
-            ExpandedHost.Visibility = Visibility.Visible;
-            IsExpanded = true;
+            mode = parsedMode;
         }
-        if (Enum.TryParse<ExpandedPlayerContentMode>(layout.PlayerWindowExpandedMode, out var mode))
-        {
-            ExpandedHost.Mode = mode;
-        }
+        ExpandedHost.Mode = mode;
+        _shellSession.UpdateLayout(s => s.PlayerWindowExpandedMode = mode.ToString());
+        AlwaysOnTopButton.IsChecked = layout.PlayerWindowAlwaysOnTop;
+        ApplyAlwaysOnTop(layout.PlayerWindowAlwaysOnTop);
+        UpdateAlwaysOnTopVisual(layout.PlayerWindowAlwaysOnTop);
 
         _expandedModeCallbackToken = ExpandedHost.RegisterPropertyChangedCallback(
             ExpandedPlayerView.ModeProperty,
             OnExpandedModeChanged);
+        ExpandedHost.FitVideoWindowRequested += OnExpandedFitVideoWindowRequested;
 
-        UpdateModeButtons();
-        UpdateVideoSurfaceOwners();
+        UpdateFullScreenButton();
+        _miniVideoViewModel?.SetSuppressedByFloatingPlayer(true);
+        ExpandedHost.SetVideoSurfaceEnabled(true);
+    }
+
+    private void RegisterKeyboardAccelerators()
+    {
+        var fullScreenAccelerator = new KeyboardAccelerator { Key = VirtualKey.F12 };
+        fullScreenAccelerator.Invoked += (_, args) =>
+        {
+            ToggleFullScreen();
+            args.Handled = true;
+        };
+
+        var exitFullScreenAccelerator = new KeyboardAccelerator { Key = VirtualKey.Escape };
+        exitFullScreenAccelerator.Invoked += (_, args) =>
+        {
+            if (!_isFullScreen)
+                return;
+
+            ExitFullScreen();
+            args.Handled = true;
+        };
+
+        RootGrid.KeyboardAccelerators.Add(fullScreenAccelerator);
+        RootGrid.KeyboardAccelerators.Add(exitFullScreenAccelerator);
     }
 
     /// <summary>
@@ -128,9 +156,9 @@ public sealed partial class PlayerFloatingWindow : WindowEx
             _backdropTintTimer = null;
         }
 
-        PlayerHost.SetFloatingVideoSurfaceEnabled(false);
         ExpandedHost.SetVideoSurfaceEnabled(false);
         ExpandedHost.ReleaseHeavyResources();
+        _miniVideoViewModel?.SetSuppressedByFloatingPlayer(false);
 
         if (_expandedModeCallbackToken >= 0)
         {
@@ -141,11 +169,11 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         }
 
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ExpandedHost.FitVideoWindowRequested -= OnExpandedFitVideoWindowRequested;
         RootGrid.ActualThemeChanged -= OnRootThemeChanged;
         AppWindow.Closing -= OnAppWindowClosing;
         AppWindow.Changed -= OnAppWindowChanged;
         Closed -= OnClosed;
-        _expandTransition = null;
     }
 
     private void OnRootThemeChanged(FrameworkElement sender, object args)
@@ -153,6 +181,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         if (_disposed) return;
         TitleBarHelper.ApplyCaptionButtonColors(AppWindow, sender.ActualTheme);
         ApplyWindowTint(_viewModel.AlbumArtColor);
+        UpdateAlwaysOnTopVisual(AlwaysOnTopButton.IsChecked == true);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -285,27 +314,24 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidPresenterChange)
+        {
+            _isFullScreen = sender.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+            UpdateFullScreenButton();
+        }
+
         if (_disposed || _isDocking || _suppressGeometryTracking) return;
+        if (_isFullScreen) return;
         if (!args.DidPositionChange && !args.DidSizeChange) return;
 
         var pos = AppWindow.Position;
         var size = AppWindow.Size;
         _shellSession.UpdateLayout(s =>
         {
-            if (IsExpanded)
-            {
-                s.PlayerWindowExpandedX = pos.X;
-                s.PlayerWindowExpandedY = pos.Y;
-                s.PlayerWindowExpandedWidth = size.Width;
-                s.PlayerWindowExpandedHeight = size.Height;
-            }
-            else
-            {
-                s.PlayerWindowX = pos.X;
-                s.PlayerWindowY = pos.Y;
-                s.PlayerWindowWidth = size.Width;
-                s.PlayerWindowHeight = size.Height;
-            }
+            s.PlayerWindowExpandedX = pos.X;
+            s.PlayerWindowExpandedY = pos.Y;
+            s.PlayerWindowExpandedWidth = size.Width;
+            s.PlayerWindowExpandedHeight = size.Height;
         });
     }
 
@@ -316,147 +342,171 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         _shellSession.UpdateLayout(s => s.PlayerWindowExpandedMode = modeName);
     }
 
-    private async void CompactFocusButton_Click(object sender, RoutedEventArgs e)
+    private void AlwaysOnTopButton_Checked(object sender, RoutedEventArgs e)
+        => SetAlwaysOnTop(true);
+
+    private void AlwaysOnTopButton_Unchecked(object sender, RoutedEventArgs e)
+        => SetAlwaysOnTop(false);
+
+    private void SetAlwaysOnTop(bool enabled)
     {
         if (_disposed) return;
-        if (_transitionInFlight || IsExpanded) return;
-        _transitionInFlight = true;
-        try
-        {
-            ExpandedHost.Mode = ExpandedPlayerContentMode.None;
-            await ToggleExpandedAsync().ConfigureAwait(true);
-        }
-        catch
-        {
-            CompactHost.Visibility = Visibility.Collapsed;
-            ExpandedHost.Visibility = Visibility.Visible;
-            IsExpanded = true;
-            UpdateModeButtons();
-            UpdateVideoSurfaceOwners();
-        }
-        finally
-        {
-            _transitionInFlight = false;
-        }
+        ApplyAlwaysOnTop(enabled);
+        UpdateAlwaysOnTopVisual(enabled);
+        ToolTipService.SetToolTip(
+            AlwaysOnTopButton,
+            enabled ? "Disable always on top" : "Always on top");
+        _shellSession.UpdateLayout(s => s.PlayerWindowAlwaysOnTop = enabled);
     }
 
-    private async void ExpandedCompactButton_Click(object sender, RoutedEventArgs e)
+    private void ApplyAlwaysOnTop(bool enabled)
     {
-        if (_disposed) return;
-        if (_transitionInFlight || !IsExpanded) return;
-        _transitionInFlight = true;
-        try
+        var hwnd = WindowNative.GetWindowHandle(this);
+        if (hwnd == IntPtr.Zero)
+            return;
+
+        _ = SetWindowPos(
+            hwnd,
+            enabled ? HwndTopMost : HwndNoTopMost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
+    private void UpdateAlwaysOnTopVisual(bool enabled)
+    {
+        var brush = enabled
+            ? TryGetBrushResource("AccentTextFillColorPrimaryBrush")
+              ?? TryGetBrushResource("SystemControlHighlightAccentBrush")
+            : TryGetBrushResource("TextFillColorPrimaryBrush");
+
+        if (brush == null)
+            return;
+
+        AlwaysOnTopButton.Foreground = brush;
+        AlwaysOnTopGlyph.Foreground = brush;
+    }
+
+    private static Brush? TryGetBrushResource(string key)
+    {
+        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush)
+            return brush;
+
+        return null;
+    }
+
+    private void OnExpandedFitVideoWindowRequested(object? sender, EventArgs e)
+    {
+        if (_disposed || _isFullScreen)
+            return;
+
+        var currentSize = AppWindow.Size;
+        var preferred = ExpandedHost.GetPreferredVideoWindowSize(currentSize.Width);
+        var targetWidth = Math.Max(1, (int)Math.Round(preferred.Width));
+        var targetHeight = Math.Max(1, (int)Math.Round(preferred.Height));
+
+        var displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
+        var workArea = displayArea.WorkArea;
+        targetWidth = Math.Min(targetWidth, Math.Max(1, workArea.Width - 48));
+        targetHeight = Math.Min(targetHeight, Math.Max(1, workArea.Height - 48));
+
+        var position = AppWindow.Position;
+        var targetX = position.X + (currentSize.Width - targetWidth) / 2.0;
+        var targetY = position.Y + (currentSize.Height - targetHeight) / 2.0;
+
+        targetX = Math.Clamp(targetX, workArea.X, Math.Max(workArea.X, workArea.X + workArea.Width - targetWidth));
+        targetY = Math.Clamp(targetY, workArea.Y, Math.Max(workArea.Y, workArea.Y + workArea.Height - targetHeight));
+
+        ResizeAndMove(new SizeInt32(targetWidth, targetHeight), targetX, targetY);
+    }
+
+    private void FullScreenButton_Click(object sender, RoutedEventArgs e)
+        => ToggleFullScreen();
+
+    private void ToggleFullScreen()
+    {
+        if (_disposed)
+            return;
+
+        if (_isFullScreen)
+            ExitFullScreen();
+        else
+            EnterFullScreen();
+    }
+
+    private void EnterFullScreen()
+    {
+        if (_disposed || _isFullScreen)
+            return;
+
+        _normalWindowPositionBeforeFullScreen = AppWindow.Position;
+        _normalWindowSizeBeforeFullScreen = AppWindow.Size;
+        PersistNormalWindowGeometry(
+            _normalWindowPositionBeforeFullScreen.Value,
+            _normalWindowSizeBeforeFullScreen.Value);
+
+        _suppressGeometryTracking = true;
+        _isFullScreen = true;
+        AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        UpdateFullScreenButton();
+        ReleaseGeometrySuppressionLater();
+    }
+
+    private void ExitFullScreen()
+    {
+        if (_disposed || !_isFullScreen)
+            return;
+
+        var position = _normalWindowPositionBeforeFullScreen ?? AppWindow.Position;
+        var size = _normalWindowSizeBeforeFullScreen ?? AppWindow.Size;
+
+        _suppressGeometryTracking = true;
+        _isFullScreen = false;
+        AppWindow.SetPresenter(AppWindowPresenterKind.Default);
+        ResizeAndMove(size, position.X, position.Y);
+        PersistNormalWindowGeometry(position, size);
+        UpdateFullScreenButton();
+        if (AlwaysOnTopButton.IsChecked == true)
+            ApplyAlwaysOnTop(true);
+        ReleaseGeometrySuppressionLater();
+    }
+
+    private void ReleaseGeometrySuppressionLater()
+    {
+        DispatcherQueue.TryEnqueue(() =>
         {
-            ExpandedHost.Mode = ExpandedPlayerContentMode.None;
-            await ToggleExpandedAsync().ConfigureAwait(true);
-        }
-        catch
+            if (!_disposed)
+                _suppressGeometryTracking = false;
+        });
+    }
+
+    private void PersistNormalWindowGeometry(PointInt32 position, SizeInt32 size)
+    {
+        _shellSession.UpdateLayout(s =>
         {
-            CompactHost.Visibility = Visibility.Visible;
-            ExpandedHost.Visibility = Visibility.Collapsed;
-            IsExpanded = false;
-            UpdateModeButtons();
-            UpdateVideoSurfaceOwners();
-        }
-        finally
-        {
-            _transitionInFlight = false;
-        }
+            s.PlayerWindowExpandedX = position.X;
+            s.PlayerWindowExpandedY = position.Y;
+            s.PlayerWindowExpandedWidth = size.Width;
+            s.PlayerWindowExpandedHeight = size.Height;
+        });
+    }
+
+    private void UpdateFullScreenButton()
+    {
+        if (FullScreenGlyph is null)
+            return;
+
+        FullScreenGlyph.Glyph = _isFullScreen ? "\uE73F" : "\uE740";
+        ToolTipService.SetToolTip(
+            FullScreenButton,
+            _isFullScreen ? "Exit full screen (Esc)" : "Enter full screen (F12)");
     }
 
     /// <summary>
-    /// Animate the expand/collapse swap. On expand we resize the window first
-    /// so <see cref="TransitionHelper"/> measures Source (compact, capped via
-    /// <c>MaxWidth</c>) and Target (expanded, full window) at their real
-    /// destination sizes — the morph then runs with the correct bounds. On
-    /// collapse the order is reversed: animate first while the window is still
-    /// large, then snap-resize down.
+    /// Applies a normal-window size and position.
     /// </summary>
-    private async Task ToggleExpandedAsync()
-    {
-        var newValue = !IsExpanded;
-        _suppressGeometryTracking = true;
-        try
-        {
-            // Persist outgoing-mode geometry before we resize (otherwise the
-            // resize itself fires AppWindow.Changed and overwrites the slot).
-            var pos = AppWindow.Position;
-            var size = AppWindow.Size;
-            _shellSession.UpdateLayout(s =>
-            {
-                if (IsExpanded)
-                {
-                    s.PlayerWindowExpandedX = pos.X;
-                    s.PlayerWindowExpandedY = pos.Y;
-                    s.PlayerWindowExpandedWidth = size.Width;
-                    s.PlayerWindowExpandedHeight = size.Height;
-                }
-                else
-                {
-                    s.PlayerWindowX = pos.X;
-                    s.PlayerWindowY = pos.Y;
-                    s.PlayerWindowWidth = size.Width;
-                    s.PlayerWindowHeight = size.Height;
-                }
-                s.PlayerWindowExpanded = newValue;
-            });
-
-            var layout = _shellSession.GetLayoutSnapshot();
-
-            if (newValue)
-            {
-                // Expanding: resize first so the Target measures at its real bounds.
-                ExpandedHost.Mode = ExpandedPlayerContentMode.None;
-                ResizeAndMove(
-                    new SizeInt32((int)layout.PlayerWindowExpandedWidth, (int)layout.PlayerWindowExpandedHeight),
-                    layout.PlayerWindowExpandedX,
-                    layout.PlayerWindowExpandedY);
-
-                IsExpanded = true;
-
-                // Let layout settle before measuring matched-Id bounds.
-                await Task.Yield();
-                RootGrid.UpdateLayout();
-
-                if (_expandTransition != null)
-                {
-                    await _expandTransition.StartAsync();
-                }
-                else
-                {
-                    CompactHost.Visibility = Visibility.Collapsed;
-                    ExpandedHost.Visibility = Visibility.Visible;
-                }
-            }
-            else
-            {
-                // Collapsing: animate first (window still large), then resize.
-                if (_expandTransition != null)
-                {
-                    await _expandTransition.ReverseAsync();
-                }
-                else
-                {
-                    CompactHost.Visibility = Visibility.Visible;
-                    ExpandedHost.Visibility = Visibility.Collapsed;
-                }
-
-                IsExpanded = false;
-
-                ResizeAndMove(
-                    new SizeInt32((int)layout.PlayerWindowWidth, (int)layout.PlayerWindowHeight),
-                    layout.PlayerWindowX,
-                    layout.PlayerWindowY);
-            }
-        }
-        finally
-        {
-            _suppressGeometryTracking = false;
-            UpdateModeButtons();
-            UpdateVideoSurfaceOwners();
-        }
-    }
-
     private void ResizeAndMove(SizeInt32 size, double x, double y)
     {
         if (size.Width <= 0 || size.Height <= 0) return;
@@ -465,25 +515,13 @@ public sealed partial class PlayerFloatingWindow : WindowEx
             AppWindow.Move(new PointInt32((int)x, (int)y));
     }
 
-    private void UpdateModeButtons()
-    {
-        CompactFocusButton.Visibility = IsExpanded ? Visibility.Collapsed : Visibility.Visible;
-        ExpandedCompactButton.Visibility = IsExpanded ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void UpdateVideoSurfaceOwners()
-    {
-        if (_disposed) return;
-
-        if (IsExpanded)
-        {
-            PlayerHost.SetFloatingVideoSurfaceEnabled(false);
-            ExpandedHost.SetVideoSurfaceEnabled(true);
-        }
-        else
-        {
-            ExpandedHost.SetVideoSurfaceEnabled(false);
-            PlayerHost.SetFloatingVideoSurfaceEnabled(true);
-        }
-    }
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
 }

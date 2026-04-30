@@ -90,6 +90,25 @@
                     </TextBlock>
                 </StackPanel>
             </tdg:TrackDataGrid.ToolbarLeftContent>
+            <tdg:TrackDataGrid.FilterBarContent>
+                <ToggleButton
+                    MinHeight="32"
+                    Padding="10,4"
+                    CornerRadius="16"
+                    IsChecked="{x:Bind ViewModel.ShowOnlyVideoTracks, Mode=TwoWay}"
+                    Visibility="{x:Bind ViewModel.HasVideoTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Show only tracks with music videos">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <FontIcon
+                            FontFamily="{StaticResource SymbolThemeFontFamily}"
+                            FontSize="13"
+                            Glyph="&#xE714;" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.VideoTrackFilterLabel, Mode=OneWay}" />
+                    </StackPanel>
+                </ToggleButton>
+            </tdg:TrackDataGrid.FilterBarContent>
         </tdg:TrackDataGrid>
 
         <!-- Legacy TrackListView kept hidden — DateAddedFormatter hookup in the

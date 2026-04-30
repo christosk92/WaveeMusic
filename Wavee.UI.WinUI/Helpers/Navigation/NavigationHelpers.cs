@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -240,6 +241,8 @@ public static class NavigationHelpers
             NavigateInCurrentTab(pageType, parameter, header, icon);
         }
 
+        FocusMainWindow();
+
         // Update navigation state after frame has navigated (deferred to next UI tick)
         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
         {
@@ -263,6 +266,22 @@ public static class NavigationHelpers
                 }
             }
         });
+    }
+
+    private static void FocusMainWindow()
+    {
+        try
+        {
+            var window = global::Wavee.UI.WinUI.MainWindow.Instance;
+            if (window.AppWindow?.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
+                presenter.Restore();
+
+            window.Activate();
+        }
+        catch
+        {
+            // Navigation should still succeed if window activation is unavailable.
+        }
     }
 
     private static void NavigateInCurrentTab(Type pageType, object? parameter, string header, IconSource icon)

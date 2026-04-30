@@ -61,6 +61,7 @@ public sealed partial class TrackDataGrid : UserControl
         SetValue(ColumnsProperty, defaults);
         Root.Tag = defaults;
         SubscribeColumns(defaults);
+        SyncAddedByColumnVisibility();
         RebuildHeader();
         RebuildSortFlyout();
     }
@@ -612,6 +613,20 @@ public sealed partial class TrackDataGrid : UserControl
         set => SetValue(ToolbarLeftContentProperty, value);
     }
 
+    public static readonly DependencyProperty FilterBarContentProperty =
+        DependencyProperty.Register(nameof(FilterBarContent), typeof(object), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Optional page-specific controls rendered inside the expanded filter row,
+    /// beside the text filter box.
+    /// </summary>
+    public object? FilterBarContent
+    {
+        get => GetValue(FilterBarContentProperty);
+        set => SetValue(FilterBarContentProperty, value);
+    }
+
     // ------------------------------------------------------------- change handlers
 
     private static void OnColumnsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -620,11 +635,23 @@ public sealed partial class TrackDataGrid : UserControl
         if (e.OldValue is TrackDataGridColumns old)
             grid.UnsubscribeColumns(old);
         if (e.NewValue is TrackDataGridColumns fresh)
+        {
             grid.SubscribeColumns(fresh);
+            grid.SyncAddedByColumnVisibility();
+        }
         grid.Root.Tag = e.NewValue;
         grid.RebuildHeader();
         grid.RebuildSortFlyout();
         grid.ReprojectRows();
+    }
+
+    private void SyncAddedByColumnVisibility()
+    {
+        var addedByCol = Columns?.FirstOrDefault(c => c.Key == "AddedBy");
+        if (addedByCol is null || addedByCol.IsVisible == AddedByVisible)
+            return;
+
+        addedByCol.IsVisible = AddedByVisible;
     }
 
     private static void OnPageKeyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

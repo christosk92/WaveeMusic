@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Dispatching;
@@ -31,11 +32,14 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     private const double VideoMinHeight = 240.0;
 
     private readonly IActiveVideoSurfaceService _surface;
+    private readonly IPlaybackStateService? _playbackState;
     public VideoPlayerPageViewModel ViewModel { get; }
 
     private MediaPlayerElement? _element;
     private FrameworkElement? _elementSurface;
     private bool _isStartingVideoOnLoad;
+    private string? _videoTakeoverVisibleTrackId;
+    private string? _videoTakeoverSuppressedTrackId;
 
     // Theatre mode — YouTube-style "in-app fullscreen": hides the right
     // "Up next" column and the source-row + metadata card so the video and
@@ -53,6 +57,7 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     {
         InitializeComponent();
         _surface = Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>();
+        _playbackState = Ioc.Default.GetService<IPlaybackStateService>();
         ViewModel = Ioc.Default.GetRequiredService<VideoPlayerPageViewModel>();
 
         _hideTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
@@ -72,7 +77,11 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         // previously (e.g. the mini-player) and binds us. AttachSurface fires
         // synchronously if a provider is already active.
         _surface.ActiveSurfaceChanged += OnActiveSurfaceChanged;
-        _surface.AcquireSurface(this);
+        _surface.SurfaceOwnershipChanged += OnSurfaceOwnershipChanged;
+        if (_playbackState is not null)
+            _playbackState.PropertyChanged += OnPlaybackStateChanged;
+        if (_surface.CurrentOwner is null || _surface.IsOwnedBy(this))
+            _surface.AcquireSurface(this);
         ApplyViewModelTheme();
         ApplyResponsiveLayout(ActualWidth);
         UpdateVideoLoadingOverlay();
@@ -94,7 +103,19 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         // Release ownership so the mini-player (or whoever's next) can claim
         // the surface. The service handles the DetachSurface call.
         _surface.ActiveSurfaceChanged -= OnActiveSurfaceChanged;
+        _surface.SurfaceOwnershipChanged -= OnSurfaceOwnershipChanged;
+        if (_playbackState is not null)
+            _playbackState.PropertyChanged -= OnPlaybackStateChanged;
         _surface.ReleaseSurface(this);
+    }
+
+    private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
+            or nameof(IPlaybackStateService.CurrentTrackIsVideo))
+        {
+            DispatcherQueue.TryEnqueue(UpdateVideoLoadingOverlay);
+        }
     }
 
     private void OnActiveSurfaceChanged(object? sender, MediaPlayer? surface)
@@ -108,6 +129,23 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         UpdateVideoLoadingOverlay();
         if (_surface.HasActiveSurface) return;
         CloseIfNoActiveVideo();
+    }
+
+    private void OnSurfaceOwnershipChanged(object? sender, EventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => OnSurfaceOwnershipChanged(sender, e));
+            return;
+        }
+
+        if (_surface.CurrentOwner is null && _surface.HasActiveSurface && Frame?.Content == this)
+        {
+            _surface.AcquireSurface(this);
+            return;
+        }
+
+        UpdateVideoLoadingOverlay();
     }
 
     private void CloseIfNoActiveVideo()
@@ -205,10 +243,97 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     private void UpdateVideoLoadingOverlay()
     {
         if (VideoLoadingOverlay is null) return;
-        VideoLoadingOverlay.Visibility = _isStartingVideoOnLoad
-            || (_surface.HasActiveSurface && !_surface.HasActiveFirstFrame)
+        UpdateVideoTakeoverSeenState();
+        var takeoverConflict = IsVideoTakeoverConflictActive();
+        var showTakeoverOverlay = takeoverConflict && !IsVideoTakeoverSuppressedForCurrentTrack();
+        if (showTakeoverOverlay)
+            _videoTakeoverVisibleTrackId = GetVideoTakeoverTrackId();
+        var isWaitingForFirstFrame = _isStartingVideoOnLoad
+            || (_surface.HasActiveSurface && !_surface.HasActiveFirstFrame);
+        var isBuffering = _surface.HasActiveSurface
+            && _surface.HasActiveFirstFrame
+            && _surface.IsActiveSurfaceBuffering;
+
+        VideoTakeoverOverlay.Visibility = showTakeoverOverlay
             ? Visibility.Visible
             : Visibility.Collapsed;
+        ControlsOverlay.Visibility = takeoverConflict
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        VideoLoadingText.Text = isBuffering ? "Buffering..." : "Loading video...";
+        VideoLoadingOverlay.Visibility = !takeoverConflict
+            && (isWaitingForFirstFrame || isBuffering)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private bool HasAttachedVideoSurface => _element is not null || _elementSurface is not null;
+
+    private bool IsVideoTakeoverConflictActive()
+    {
+        if (!_surface.HasActiveSurface || _isStartingVideoOnLoad)
+            return false;
+
+        return !_surface.IsOwnedBy(this) || !HasAttachedVideoSurface;
+    }
+
+    private void VideoTakeoverButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_surface.HasActiveSurface)
+            return;
+
+        SuppressVideoTakeoverForCurrentTrack();
+        _surface.AcquireSurface(this);
+        UpdateVideoLoadingOverlay();
+    }
+
+    private void VideoTakeoverDismissButton_Click(object sender, RoutedEventArgs e)
+    {
+        SuppressVideoTakeoverForCurrentTrack();
+        UpdateVideoLoadingOverlay();
+    }
+
+    private string? GetVideoTakeoverTrackId()
+        => _playbackState?.CurrentTrackId;
+
+    private bool IsVideoTakeoverSuppressedForCurrentTrack()
+    {
+        var trackId = GetVideoTakeoverTrackId();
+        return !string.IsNullOrEmpty(trackId)
+               && string.Equals(_videoTakeoverSuppressedTrackId, trackId, StringComparison.Ordinal);
+    }
+
+    private void SuppressVideoTakeoverForCurrentTrack()
+    {
+        var trackId = GetVideoTakeoverTrackId();
+        if (string.IsNullOrEmpty(trackId))
+            return;
+
+        _videoTakeoverSuppressedTrackId = trackId;
+        if (string.Equals(_videoTakeoverVisibleTrackId, trackId, StringComparison.Ordinal))
+            _videoTakeoverVisibleTrackId = null;
+    }
+
+    private void UpdateVideoTakeoverSeenState()
+    {
+        if (IsVideoTakeoverConflictActive())
+        {
+            var currentTrackId = GetVideoTakeoverTrackId();
+            if (!string.IsNullOrEmpty(_videoTakeoverVisibleTrackId)
+                && !string.Equals(_videoTakeoverVisibleTrackId, currentTrackId, StringComparison.Ordinal))
+            {
+                _videoTakeoverSuppressedTrackId = _videoTakeoverVisibleTrackId;
+                _videoTakeoverVisibleTrackId = null;
+            }
+
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_videoTakeoverVisibleTrackId))
+            return;
+
+        _videoTakeoverSuppressedTrackId = _videoTakeoverVisibleTrackId;
+        _videoTakeoverVisibleTrackId = null;
     }
 
     private async Task EnsureVideoPlaybackOnLoadAsync()
@@ -265,6 +390,9 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     {
         _isStartingVideoOnLoad = false;
         UpdateVideoLoadingOverlay();
+
+        if (switched && ViewModel.Player is { } player)
+            player.PreferVideoPlaybackInSession = true;
 
         if (!switched && !_surface.HasActiveSurface)
             CloseIfNoActiveVideo();
@@ -349,6 +477,12 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         appWindow.SetPresenter(enteringFullScreen
             ? AppWindowPresenterKind.FullScreen
             : AppWindowPresenterKind.Default);
+    }
+
+    private void VideoQualityButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement target)
+            Wavee.UI.WinUI.Helpers.Playback.SpotifyVideoQualityFlyout.ShowAt(target);
     }
 
     // Theatre mode: hide the right "Up next" column so the video fills the

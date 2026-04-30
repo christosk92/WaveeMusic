@@ -171,6 +171,25 @@ public sealed class HomeLocalFilesVisibilityChangedMessage(bool isVisible)
     : ValueChangedMessage<bool>(isVisible);
 
 /// <summary>
+/// Sent when the user changes whether the docked player remains visible while
+/// the player is popped out into a second window.
+/// </summary>
+public sealed class DockedPlayerWithFloatingPlayerVisibilityChangedMessage(bool isVisible)
+    : ValueChangedMessage<bool>(isVisible);
+
+/// <summary>
+/// Sent when the main app window is reactivated after being deactivated.
+/// </summary>
+public sealed class MainWindowFocusReturnedMessage;
+
+/// <summary>
+/// Sent while the shell-owned mini-video teaching prompt is open so other
+/// video prompts do not stack over it.
+/// </summary>
+public sealed class VideoMiniPlayerPromptStateChangedMessage(bool isOpen)
+    : ValueChangedMessage<bool>(isOpen);
+
+/// <summary>
 /// Sent to request an immediate library sync (e.g. when the local DB appears empty).
 /// LibrarySyncOrchestrator handles this; no-ops if a sync is already in progress.
 /// </summary>

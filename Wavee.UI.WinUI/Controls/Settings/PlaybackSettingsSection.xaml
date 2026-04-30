@@ -54,6 +54,16 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
 
+            <TextBlock Text="Player" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <controls:SettingsCard Header="Keep docked player visible"
+                                   Description="Show the bottom or sidebar player while the player is popped out">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8A7;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.ShowDockedPlayerWithFloatingPlayer, Mode=TwoWay}"
+                              OnContent="" OffContent=""/>
+            </controls:SettingsCard>
+
             <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_11" Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_12" Header="Streaming quality"
                                    Description="Higher quality uses more bandwidth and storage">

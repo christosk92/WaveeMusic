@@ -1,21 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Wavee.Audio;
 using Wavee.Connect;
 using Wavee.Core.Http;
 using Wavee.Core.Video;
 using Wavee.Playback.Contracts;
+using Wavee.UI.WinUI.Services.SpotifyVideo;
 using Windows.Foundation;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -35,12 +36,11 @@ namespace Wavee.UI.WinUI.Services;
 /// it to the video player page or mini-player.
 /// </summary>
 public sealed class SpotifyVideoProvider
-    : ISpotifyVideoPlayback, IVideoSurfaceProvider, IDisposable
+    : ISpotifyVideoPlayback, IVideoSurfaceProvider, ISpotifyVideoPlaybackDetails, IDisposable
 {
     private const uint MsprContentEnablingActionRequired = 0x8004B895;
     private const string PlayReadyProtectionSystemId = "{F4637010-03C3-42CD-B932-B48ADF3A6A54}";
     private const string PlayReadyContainerGuid = "{9A04F079-9840-4286-AB92-E65BE0885F95}";
-    private const string WebEmePlayerUrl = "https://wavee-player.example/spotify-video-player.html";
 
     private readonly ISpClient _spClient;
     private readonly ILogger? _logger;
@@ -55,23 +55,24 @@ public sealed class SpotifyVideoProvider
     private const int PositionPublishIntervalMs = 1000;
 
     private MediaPlayer? _player;
-    private WebView2? _webView;
+    private SpotifyWebEmePlayer? _webEmePlayer;
+    private SpotifyWebEmeVideoManifest? _currentWebEmeManifest;
     private AdaptiveMediaSource? _ams;
     private InMemoryRandomAccessStream? _mpdStream;
     private SpotifyVideoManifest? _currentManifest;
-    private SpotifyWebEmeVideoConfig? _currentWebEmeConfig;
-    private string? _currentWidevineLicenseEndpoint;
     private string? _currentSanitizedMpd;
     private string? _currentTrackUri;
     private TrackMetadataDto? _currentMetadata;
     private long _currentDurationMs;
-    private double _currentWebEmeStartPositionMs;
     private long _webPositionMs;
     private bool _webIsPlaying;
     private bool _webIsBuffering;
     private bool _surfaceIsLoading;
     private bool _surfaceHasFirstFrame;
     private bool _disposed;
+    private IReadOnlyList<SpotifyVideoQualityOption> _availableQualities = Array.Empty<SpotifyVideoQualityOption>();
+    private SpotifyVideoQualityOption? _currentQuality;
+    private SpotifyVideoPlaybackMetadata? _playbackMetadata;
 
     // Held as a field so it isn't GC'd while the player is alive.
     private MediaProtectionManager? _mpm;
@@ -98,14 +99,26 @@ public sealed class SpotifyVideoProvider
     public IObservable<TrackFinishedMessage> TrackFinished => _trackFinishedSubject.AsObservable();
     public IObservable<PlaybackError> Errors => _errorSubject.AsObservable();
 
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     // ── IVideoSurfaceProvider ──────────────────────────────────────────────
 
     MediaPlayer? IVideoSurfaceProvider.Surface => _currentTrackUri is null ? null : _player;
-    FrameworkElement? IVideoSurfaceProvider.ElementSurface => _currentTrackUri is null ? null : _webView;
+    FrameworkElement? IVideoSurfaceProvider.ElementSurface => _currentTrackUri is null ? null : _webEmePlayer?.Surface;
     bool IVideoSurfaceProvider.IsSurfaceLoading => _currentTrackUri is not null && _surfaceIsLoading;
     bool IVideoSurfaceProvider.HasFirstFrame => _currentTrackUri is not null && _surfaceHasFirstFrame;
+    bool IVideoSurfaceProvider.IsSurfaceBuffering => _currentTrackUri is not null
+        && _surfaceHasFirstFrame
+        && (_player is null
+            ? _webEmePlayer?.IsBuffering == true || _webIsBuffering
+            : _player.PlaybackSession.PlaybackState == MediaPlaybackState.Buffering);
     string IVideoSurfaceProvider.Kind => "spotify-music-video";
     public IObservable<VideoSurfaceChange> SurfaceChanges => _surfaceChangesSubject.AsObservable();
+
+    public IReadOnlyList<SpotifyVideoQualityOption> AvailableQualities => _availableQualities;
+    public SpotifyVideoQualityOption? CurrentQuality => _currentQuality;
+    public SpotifyVideoPlaybackMetadata? PlaybackMetadata => _playbackMetadata;
+    public bool CanSelectQuality => _webEmePlayer is not null && _availableQualities.Count > 1;
 
     public async Task PlayAsync(
         string manifestId,
@@ -221,7 +234,7 @@ public sealed class SpotifyVideoProvider
     public Task PauseAsync(CancellationToken ct = default)
     {
         if (_disposed) return Task.CompletedTask;
-        if (_webView is not null) return ExecuteWebScriptAsync("window.__waveePlayer?.pause();");
+        if (_webEmePlayer is not null) return _webEmePlayer.PauseAsync();
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() => _player?.Pause());
     }
@@ -229,7 +242,7 @@ public sealed class SpotifyVideoProvider
     public Task ResumeAsync(CancellationToken ct = default)
     {
         if (_disposed) return Task.CompletedTask;
-        if (_webView is not null) return ExecuteWebScriptAsync("window.__waveePlayer?.play();");
+        if (_webEmePlayer is not null) return _webEmePlayer.PlayAsync();
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() => _player?.Play());
     }
@@ -237,8 +250,8 @@ public sealed class SpotifyVideoProvider
     public Task SeekAsync(long positionMs, CancellationToken ct = default)
     {
         if (_disposed) return Task.CompletedTask;
-        if (_webView is not null)
-            return ExecuteWebScriptAsync($"window.__waveePlayer?.seek({Math.Max(0, positionMs).ToString(System.Globalization.CultureInfo.InvariantCulture)});");
+        if (_webEmePlayer is not null)
+            return _webEmePlayer.SeekAsync(positionMs);
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() =>
         {
@@ -264,13 +277,19 @@ public sealed class SpotifyVideoProvider
     {
         if (_disposed) return;
         var clamped = Math.Clamp(volume, 0f, 1f);
-        if (_webView is not null)
+        if (_webEmePlayer is not null)
         {
-            _ = ExecuteWebScriptAsync($"window.__waveePlayer?.setVolume({clamped.ToString(System.Globalization.CultureInfo.InvariantCulture)});");
+            _ = _webEmePlayer.SetVolumeAsync(clamped);
             return;
         }
         if (_player is null) return;
         _ = RunOnUiAsync(() => { if (_player is not null) _player.Volume = clamped; });
+    }
+
+    public Task SelectQualityAsync(int videoProfileId, CancellationToken cancellationToken = default)
+    {
+        if (_disposed) return Task.CompletedTask;
+        return RunOnUiAsync(() => SelectQualityOnUiAsync(videoProfileId, cancellationToken));
     }
 
     // ── MediaPlayer event plumbing ──────────────────────────────────────
@@ -296,7 +315,12 @@ public sealed class SpotifyVideoProvider
     }
 
     private void OnPlaybackStateChanged(MediaPlaybackSession sender, object args)
-        => _ = RunOnUiAsync(() => PublishStateFromSession());
+        => _ = RunOnUiAsync(() =>
+        {
+            PublishStateFromSession();
+            if (_player is not null)
+                _surfaceChangesSubject.OnNext(new VideoSurfaceChange(_player, "spotify-music-video"));
+        });
 
     private void OnDurationChanged(MediaPlaybackSession sender, object args)
     {
@@ -471,29 +495,28 @@ public sealed class SpotifyVideoProvider
         double startPositionMs,
         CancellationToken cancellationToken)
     {
-        SpotifyWebEmeVideoConfig config;
+        SpotifyWebEmeVideoManifest config;
         try
         {
-            config = SpotifyWebEmeVideoConfig.FromJson(manifestJson);
+            config = SpotifyWebEmeVideoManifest.FromJson(manifestJson);
         }
         catch (Exception ex)
         {
             _logger?.LogError(
                 ex,
                 "SpotifyVideoProvider: WebView2 EME manifest parse failed. diagnostics={Diagnostics}",
-                SpotifyWebEmeVideoConfig.DescribeManifestForLog(manifestJson));
+                SpotifyWebEmeVideoManifest.DescribeManifestForLog(manifestJson));
             throw;
         }
 
         _currentDurationMs = durationMs > 0 ? durationMs : config.DurationMs;
-        _currentWebEmeConfig = config;
-        _currentWebEmeStartPositionMs = startPositionMs;
-        _currentWidevineLicenseEndpoint = config.LicenseServerEndpoint;
+        _currentWebEmeManifest = config;
         _webPositionMs = Math.Max(0, (long)startPositionMs);
         _webIsPlaying = false;
         _webIsBuffering = true;
         _surfaceIsLoading = true;
         _surfaceHasFirstFrame = false;
+        UpdatePlaybackDetails(config);
 
         _logger?.LogInformation(
             "SpotifyVideoProvider: WebView2 EME manifest parsed video={VideoProfile} audio={AudioProfile} durationMs={DurationMs} segmentLength={SegmentLength}s segments={SegmentCount} license={LicenseEndpoint}",
@@ -504,158 +527,211 @@ public sealed class SpotifyVideoProvider
             config.SegmentTimes.Count,
             config.LicenseServerEndpoint ?? "<none>");
 
-        WebView2? createdWebView = null;
-        await RunOnUiAsync(async () =>
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+        var webPlayer = CreateWebEmePlayer();
+        AttachWebEmePlayer(webPlayer);
+        _webEmePlayer = webPlayer;
+        OnPropertyChanged(nameof(CanSelectQuality));
 
-            var webView = new WebView2
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Stretch,
-                DefaultBackgroundColor = Windows.UI.Color.FromArgb(255, 0, 0, 0),
-            };
+        await webPlayer.StartAsync(config, startPositionMs, cancellationToken);
 
-            _webView = webView;
-            createdWebView = webView;
-            _positionTimer.Start();
-            _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
-            _logger?.LogDebug("SpotifyVideoProvider: WebView2 EME surface published xamlRoot={HasXamlRoot}", webView.XamlRoot is not null);
-
-            for (var attempt = 0; attempt < 40 && webView.XamlRoot is null; attempt++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Delay(25, cancellationToken);
-            }
-
-            _logger?.LogDebug("SpotifyVideoProvider: WebView2 EME initializing xamlRoot={HasXamlRoot}", webView.XamlRoot is not null);
-            await webView.EnsureCoreWebView2Async();
-            webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
-            webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-            webView.CoreWebView2.WebResourceRequested += OnWebEmeWebResourceRequested;
-            webView.CoreWebView2.AddWebResourceRequestedFilter(
-                WebEmePlayerUrl,
-                Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext.Document);
-            _logger?.LogInformation(
-                "SpotifyVideoProvider: WebView2 EME Core ready browserVersion={BrowserVersion}",
-                webView.CoreWebView2.Environment.BrowserVersionString);
-
-            webView.CoreWebView2.Navigate(WebEmePlayerUrl);
-            _logger?.LogDebug("SpotifyVideoProvider: WebView2 EME document navigated url={Url}", WebEmePlayerUrl);
-        });
-
-        if (!ReferenceEquals(_webView, createdWebView))
+        if (!ReferenceEquals(_webEmePlayer, webPlayer))
             _logger?.LogDebug("SpotifyVideoProvider: WebView2 EME startup completed after provider state changed");
     }
 
-    private void OnWebEmeWebResourceRequested(
-        Microsoft.Web.WebView2.Core.CoreWebView2 sender,
-        Microsoft.Web.WebView2.Core.CoreWebView2WebResourceRequestedEventArgs args)
+    private async Task SelectQualityOnUiAsync(int videoProfileId, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var manifest = _currentWebEmeManifest;
+        var oldPlayer = _webEmePlayer;
+        if (manifest is null || oldPlayer is null)
+            return;
+
+        var selectedTrack = manifest.VideoTracks.FirstOrDefault(track => track.ProfileId == videoProfileId);
+        if (selectedTrack is null || selectedTrack.ProfileId == manifest.Video.ProfileId)
+            return;
+
+        var restartPositionMs = oldPlayer.PositionMs > 0 ? oldPlayer.PositionMs : _webPositionMs;
+        var wasPlaying = oldPlayer.IsPlaying || _webIsPlaying;
+        var updatedManifest = manifest with
+        {
+            VideoProfileId = selectedTrack.ProfileId,
+            Video = selectedTrack
+        };
+
+        _logger?.LogInformation(
+            "SpotifyVideoProvider: switching WebView2 EME quality {OldProfile}->{NewProfile} at {PositionMs}ms",
+            manifest.Video.ProfileId,
+            selectedTrack.ProfileId,
+            restartPositionMs);
+
+        await oldPlayer.PauseAsync();
+        DetachWebEmePlayer(oldPlayer);
+
+        _currentWebEmeManifest = updatedManifest;
+        _webPositionMs = Math.Max(0, restartPositionMs);
+        _webIsPlaying = false;
+        _webIsBuffering = true;
+        _surfaceIsLoading = true;
+        _surfaceHasFirstFrame = false;
+        UpdatePlaybackDetails(updatedManifest);
+        PublishStateFromSession();
+        _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
+
+        var newPlayer = CreateWebEmePlayer();
+        AttachWebEmePlayer(newPlayer);
+        _webEmePlayer = newPlayer;
+        OnPropertyChanged(nameof(CanSelectQuality));
+        await newPlayer.StartAsync(updatedManifest, restartPositionMs, cancellationToken, wasPlaying);
+
         try
         {
-            if (!string.Equals(args.Request.Uri, WebEmePlayerUrl, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            var html = BuildWebEmePlayerHtml(_currentWebEmeConfig
-                ?? throw new InvalidOperationException("WebView2 EME config was not available for document request."),
-                _currentWebEmeStartPositionMs);
-            args.Response = sender.Environment.CreateWebResourceResponse(
-                CreateWebResourceStream(System.Text.Encoding.UTF8.GetBytes(html)),
-                200,
-                "OK",
-                "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store");
+            oldPlayer.Dispose();
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "SpotifyVideoProvider: WebView2 EME document response failed");
-            args.Response = sender.Environment.CreateWebResourceResponse(
-                CreateWebResourceStream(System.Text.Encoding.UTF8.GetBytes("<!doctype html><title>Wavee video failed</title>")),
-                500,
-                "Internal Server Error",
-                "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store");
+            _logger?.LogDebug(ex, "SpotifyVideoProvider: old WebView2 player cleanup failed during quality switch");
         }
     }
 
-    private static InMemoryRandomAccessStream CreateWebResourceStream(byte[] bytes)
+    private SpotifyWebEmePlayer CreateWebEmePlayer()
     {
-        var stream = new InMemoryRandomAccessStream();
-        stream.WriteAsync(bytes.AsBuffer()).AsTask().GetAwaiter().GetResult();
-        stream.Seek(0);
-        return stream;
+        return new SpotifyWebEmePlayer(
+            _dispatcher,
+            new SpotifyWebEmePlayerDocumentRenderer(),
+            (challenge, endpoint, ct) => _spClient.PostWidevineLicenseAsync(challenge, endpoint, null, ct),
+            _logger);
     }
 
-    private async void OnWebMessageReceived(Microsoft.Web.WebView2.Core.CoreWebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs args)
+    private void AttachWebEmePlayer(SpotifyWebEmePlayer webPlayer)
     {
-        try
+        webPlayer.SurfaceCreated += OnWebEmeSurfaceCreated;
+        webPlayer.StateChanged += OnWebEmeStateChanged;
+        webPlayer.FirstFrame += OnWebEmeFirstFrame;
+        webPlayer.Ended += OnWebEmeEnded;
+        webPlayer.Error += OnWebEmeError;
+        webPlayer.Log += OnWebEmeLog;
+        webPlayer.AutoplayBlocked += OnWebEmeAutoplayBlocked;
+    }
+
+    private void DetachWebEmePlayer(SpotifyWebEmePlayer webPlayer)
+    {
+        webPlayer.SurfaceCreated -= OnWebEmeSurfaceCreated;
+        webPlayer.StateChanged -= OnWebEmeStateChanged;
+        webPlayer.FirstFrame -= OnWebEmeFirstFrame;
+        webPlayer.Ended -= OnWebEmeEnded;
+        webPlayer.Error -= OnWebEmeError;
+        webPlayer.Log -= OnWebEmeLog;
+        webPlayer.AutoplayBlocked -= OnWebEmeAutoplayBlocked;
+    }
+
+    private void OnWebEmeSurfaceCreated(object? sender, EventArgs e)
+    {
+        _positionTimer.Start();
+        _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
+        if (sender is SpotifyWebEmePlayer webPlayer)
         {
-            using var doc = JsonDocument.Parse(args.WebMessageAsJson);
-            var root = doc.RootElement;
-            var type = root.TryGetProperty("type", out var typeProperty)
-                ? typeProperty.GetString()
-                : null;
-
-            switch (type)
-            {
-                case "log":
-                    _logger?.LogDebug("SpotifyVideoProvider WebView2: {Message}",
-                        root.TryGetProperty("message", out var message) ? message.GetString() : "");
-                    break;
-
-                case "state":
-                    UpdateWebState(root);
-                    break;
-
-                case "first-frame":
-                    MarkFirstFrame(root.TryGetProperty("reason", out var reason) ? reason.GetString() : "unknown");
-                    break;
-
-                case "ended":
-                    _logger?.LogInformation("SpotifyVideoProvider: WebView2 video ended");
-                    OnWebEnded();
-                    break;
-
-                case "error":
-                    var error = root.TryGetProperty("message", out var errorMessage)
-                        ? errorMessage.GetString()
-                        : "WebView2 EME playback failed";
-                    _logger?.LogError("SpotifyVideoProvider: WebView2 error {Error}", error);
-                    OnWebError(error ?? "WebView2 EME playback failed");
-                    break;
-
-                case "autoplay-blocked":
-                    _logger?.LogWarning("SpotifyVideoProvider: WebView2 autoplay blocked {Message}",
-                        root.TryGetProperty("message", out var autoplayMessage) ? autoplayMessage.GetString() : "");
-                    break;
-
-                case "license-request":
-                    await HandleWidevineLicenseRequestAsync(root);
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "SpotifyVideoProvider: WebView2 message handling failed");
+            _logger?.LogDebug(
+                "SpotifyVideoProvider: WebView2 EME surface published xamlRoot={HasXamlRoot}",
+                webPlayer.Surface?.XamlRoot is not null);
         }
     }
 
-    private void UpdateWebState(JsonElement root)
+    private void OnWebEmeStateChanged(object? sender, SpotifyWebEmePlayerState state)
     {
-        if (root.TryGetProperty("positionMs", out var position) && position.TryGetInt64(out var positionMs))
-            _webPositionMs = positionMs;
-        if (root.TryGetProperty("durationMs", out var duration) && duration.TryGetInt64(out var durationMs) && durationMs > 0)
-            _currentDurationMs = durationMs;
-        if (root.TryGetProperty("isPlaying", out var playing))
-            _webIsPlaying = playing.GetBoolean();
-        if (root.TryGetProperty("isBuffering", out var buffering))
-            _webIsBuffering = buffering.GetBoolean();
+        var wasBuffering = _webIsBuffering;
+        var hadFirstFrame = _surfaceHasFirstFrame;
+
+        _webPositionMs = state.PositionMs;
+        if (state.DurationMs > 0)
+            _currentDurationMs = state.DurationMs;
+        _webIsPlaying = state.IsPlaying;
+        _webIsBuffering = state.IsBuffering;
 
         if (!_surfaceHasFirstFrame && _webIsPlaying)
+        {
             MarkFirstFrame("state-playing");
+            return;
+        }
 
         PublishStateFromSession();
+        if (hadFirstFrame && wasBuffering != _webIsBuffering)
+            _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
     }
+
+    private void OnWebEmeFirstFrame(object? sender, string reason)
+        => MarkFirstFrame(reason);
+
+    private void OnWebEmeEnded(object? sender, EventArgs e)
+    {
+        _logger?.LogInformation("SpotifyVideoProvider: WebView2 video ended");
+        OnWebEnded();
+    }
+
+    private void OnWebEmeError(object? sender, string message)
+    {
+        _logger?.LogError("SpotifyVideoProvider: WebView2 error {Error}", message);
+        OnWebError(message);
+    }
+
+    private void OnWebEmeLog(object? sender, string message)
+        => _logger?.LogDebug("SpotifyVideoProvider WebView2: {Message}", message);
+
+    private void OnWebEmeAutoplayBlocked(object? sender, string message)
+        => _logger?.LogWarning("SpotifyVideoProvider: WebView2 autoplay blocked {Message}", message);
+
+    private void UpdatePlaybackDetails(SpotifyWebEmeVideoManifest? manifest)
+    {
+        if (manifest is null)
+        {
+            _availableQualities = Array.Empty<SpotifyVideoQualityOption>();
+            _currentQuality = null;
+            _playbackMetadata = null;
+            NotifyPlaybackDetailsChanged();
+            return;
+        }
+
+        var qualities = manifest.VideoTracks
+            .Select(ToQualityOption)
+            .ToArray();
+
+        _availableQualities = qualities;
+        _currentQuality = qualities.FirstOrDefault(q => q.ProfileId == manifest.Video.ProfileId)
+                          ?? ToQualityOption(manifest.Video);
+        _playbackMetadata = new SpotifyVideoPlaybackMetadata(
+            DrmSystem: "Widevine",
+            Container: "DASH WebM",
+            VideoCodec: manifest.Video.Codec,
+            AudioCodec: manifest.Audio.Codec,
+            LicenseServerEndpoint: manifest.LicenseServerEndpoint,
+            SegmentLengthSeconds: manifest.SegmentLength,
+            SegmentCount: manifest.SegmentTimes.Count,
+            DurationMs: manifest.DurationMs);
+
+        NotifyPlaybackDetailsChanged();
+    }
+
+    private static SpotifyVideoQualityOption ToQualityOption(SpotifyWebEmeTrackConfig track)
+    {
+        return new SpotifyVideoQualityOption(
+            track.ProfileId,
+            track.Label,
+            track.Width,
+            track.Height,
+            track.Bandwidth,
+            track.Codec);
+    }
+
+    private void NotifyPlaybackDetailsChanged()
+    {
+        OnPropertyChanged(nameof(AvailableQualities));
+        OnPropertyChanged(nameof(CurrentQuality));
+        OnPropertyChanged(nameof(PlaybackMetadata));
+        OnPropertyChanged(nameof(CanSelectQuality));
+    }
+
+    private void OnPropertyChanged(string propertyName)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private void MarkFirstFrame(string? reason)
     {
@@ -668,59 +744,6 @@ public sealed class SpotifyVideoProvider
         _logger?.LogInformation("SpotifyVideoProvider: WebView2 first frame reason={Reason}", reason ?? "<unknown>");
         PublishStateFromSession();
         _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
-    }
-
-    private async Task HandleWidevineLicenseRequestAsync(JsonElement root)
-    {
-        var requestId = root.GetProperty("requestId").GetString() ?? "";
-        var challengeBase64 = root.GetProperty("body").GetString() ?? "";
-        var challenge = Convert.FromBase64String(challengeBase64);
-        _logger?.LogDebug("SpotifyVideoProvider: Widevine challenge from WebView2 requestId={RequestId} bytes={Bytes}",
-            requestId,
-            challenge.Length);
-
-        try
-        {
-            var license = await _spClient.PostWidevineLicenseAsync(
-                challenge,
-                _currentWidevineLicenseEndpoint);
-
-            PostWebMessage(new
-            {
-                type = "license-response",
-                requestId,
-                body = Convert.ToBase64String(license)
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "SpotifyVideoProvider: Widevine license request failed requestId={RequestId}", requestId);
-            PostWebMessage(new
-            {
-                type = "license-error",
-                requestId,
-                message = ex.Message
-            });
-        }
-    }
-
-    private void PostWebMessage(object payload)
-    {
-        var webView = _webView;
-        if (webView?.CoreWebView2 is null)
-            return;
-
-        var json = JsonSerializer.Serialize(payload);
-        _ = RunOnUiAsync(() => webView.CoreWebView2.PostWebMessageAsJson(json));
-    }
-
-    private Task ExecuteWebScriptAsync(string script)
-    {
-        var webView = _webView;
-        if (webView?.CoreWebView2 is null)
-            return Task.CompletedTask;
-
-        return RunOnUiAsync(() => _ = webView.CoreWebView2.ExecuteScriptAsync(script));
     }
 
     private void OnWebEnded()
@@ -936,387 +959,6 @@ public sealed class SpotifyVideoProvider
         => index + prefix.Length <= value.Length
            && string.Compare(value, index, prefix, 0, prefix.Length, StringComparison.Ordinal) == 0;
 
-    private static string BuildWebEmePlayerHtml(SpotifyWebEmeVideoConfig config, double startPositionMs)
-    {
-        var configJson = JsonSerializer.Serialize(
-            config,
-            new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            });
-        var startSeconds = (Math.Max(0, startPositionMs) / 1000d)
-            .ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-        return $$"""
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline'; media-src blob: https:; connect-src https:;">
-  <style>
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-    video { width: 100%; height: 100%; background: #000; object-fit: contain; }
-  </style>
-</head>
-<body>
-  <video id="video" autoplay playsinline muted></video>
-  <script>
-    const config = {{configJson}};
-    const startSeconds = {{startSeconds}};
-    const video = document.getElementById('video');
-    const pendingLicenses = new Map();
-    let mediaSource;
-    let sourceOpen = false;
-    let fatal = false;
-    let unmuteScheduled = false;
-
-    function host(type, payload = {}) {
-      chrome.webview.postMessage({ type, ...payload });
-    }
-
-    function log(message) {
-      host('log', { message: String(message) });
-    }
-
-    function fail(error) {
-      if (fatal) return;
-      fatal = true;
-      const message = error && error.stack ? error.stack : String(error);
-      host('error', { message });
-    }
-
-    function bytesToBase64(bytes) {
-      let binary = '';
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-      }
-      return btoa(binary);
-    }
-
-    function base64ToBytes(text) {
-      const binary = atob(text);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return bytes;
-    }
-
-    chrome.webview.addEventListener('message', async event => {
-      const msg = event.data || {};
-      if (msg.type === 'license-response') {
-        const pending = pendingLicenses.get(msg.requestId);
-        if (!pending) return;
-        pendingLicenses.delete(msg.requestId);
-        pending.resolve(base64ToBytes(msg.body));
-      } else if (msg.type === 'license-error') {
-        const pending = pendingLicenses.get(msg.requestId);
-        if (!pending) return;
-        pendingLicenses.delete(msg.requestId);
-        pending.reject(new Error(msg.message || 'License request failed'));
-      }
-    });
-
-    async function requestLicense(message) {
-      const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const body = bytesToBase64(new Uint8Array(message));
-      const promise = new Promise((resolve, reject) => pendingLicenses.set(requestId, { resolve, reject }));
-      host('license-request', { requestId, body });
-      return promise;
-    }
-
-    async function configureEme() {
-      if (!navigator.requestMediaKeySystemAccess) {
-        throw new Error('EME is not available in this WebView2 runtime');
-      }
-
-      const keySystem = 'com.widevine.alpha';
-      const mediaConfig = [{
-        initDataTypes: ['webm', 'cenc'],
-        audioCapabilities: [{ contentType: config.audio.contentType }],
-        videoCapabilities: [{ contentType: config.video.contentType }],
-        distinctiveIdentifier: 'optional',
-        persistentState: 'optional',
-        sessionTypes: ['temporary']
-      }];
-
-      log(`requestMediaKeySystemAccess ${keySystem}`);
-      const access = await navigator.requestMediaKeySystemAccess(keySystem, mediaConfig);
-      const mediaKeys = await access.createMediaKeys();
-      await video.setMediaKeys(mediaKeys);
-
-      video.addEventListener('encrypted', async e => {
-        try {
-          log(`encrypted initDataType=${e.initDataType} bytes=${e.initData ? e.initData.byteLength : 0}`);
-          const session = mediaKeys.createSession();
-          session.addEventListener('message', async ev => {
-            try {
-              log(`license message bytes=${ev.message.byteLength}`);
-              const license = await requestLicense(ev.message);
-              log(`license response bytes=${license.byteLength}`);
-              await session.update(license);
-              log('license update complete');
-            } catch (err) {
-              fail(err);
-            }
-          });
-          await session.generateRequest(e.initDataType, e.initData);
-        } catch (err) {
-          fail(err);
-        }
-      });
-    }
-
-    async function fetchBytes(url) {
-      const response = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
-      if (!response.ok) throw new Error(`fetch ${response.status} ${url}`);
-      return new Uint8Array(await response.arrayBuffer());
-    }
-
-    function appendBuffer(sourceBuffer, bytes) {
-      return new Promise((resolve, reject) => {
-        const onError = () => {
-          cleanup();
-          reject(new Error('SourceBuffer append error'));
-        };
-        const onUpdateEnd = () => {
-          cleanup();
-          resolve();
-        };
-        const cleanup = () => {
-          sourceBuffer.removeEventListener('error', onError);
-          sourceBuffer.removeEventListener('updateend', onUpdateEnd);
-        };
-        sourceBuffer.addEventListener('error', onError, { once: true });
-        sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true });
-        sourceBuffer.appendBuffer(bytes);
-      });
-    }
-
-    function removeBuffer(sourceBuffer, start, end) {
-      return new Promise((resolve, reject) => {
-        if (end <= start || sourceBuffer.updating) {
-          resolve();
-          return;
-        }
-        const onError = () => {
-          cleanup();
-          reject(new Error('SourceBuffer remove error'));
-        };
-        const onUpdateEnd = () => {
-          cleanup();
-          resolve();
-        };
-        const cleanup = () => {
-          sourceBuffer.removeEventListener('error', onError);
-          sourceBuffer.removeEventListener('updateend', onUpdateEnd);
-        };
-        sourceBuffer.addEventListener('error', onError, { once: true });
-        sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true });
-        sourceBuffer.remove(start, end);
-      });
-    }
-
-    function sleep(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function bufferedEnd(sourceBuffer) {
-      const ranges = sourceBuffer.buffered;
-      if (!ranges || ranges.length === 0) return 0;
-      const t = video.currentTime || startSeconds || 0;
-      for (let i = 0; i < ranges.length; i++) {
-        if (ranges.start(i) <= t && ranges.end(i) >= t) return ranges.end(i);
-      }
-      return ranges.end(ranges.length - 1);
-    }
-
-    async function pruneBehind(sourceBuffer, label) {
-      const ranges = sourceBuffer.buffered;
-      if (!ranges || ranges.length === 0) return;
-      const removeEnd = Math.max(0, (video.currentTime || 0) - 25);
-      if (removeEnd <= 0) return;
-
-      for (let i = 0; i < ranges.length; i++) {
-        const start = ranges.start(i);
-        const end = Math.min(ranges.end(i), removeEnd);
-        if (end > start + 1) {
-          log(`${label} prune ${start.toFixed(1)}-${end.toFixed(1)}`);
-          await removeBuffer(sourceBuffer, start, end);
-          return;
-        }
-      }
-    }
-
-    async function appendBufferWithQuotaRetry(sourceBuffer, bytes, label) {
-      try {
-        await appendBuffer(sourceBuffer, bytes);
-      } catch (err) {
-        if (!(err && err.name === 'QuotaExceededError') && !String(err).includes('QuotaExceededError')) throw err;
-        log(`${label} quota reached; pruning and retrying`);
-        await pruneBehind(sourceBuffer, label);
-        await sleep(100);
-        await appendBuffer(sourceBuffer, bytes);
-      }
-    }
-
-    async function appendTrackRange(sourceBuffer, initUrl, segmentUrls, label, startIndex, endIndex, includeInit) {
-      if (includeInit) {
-        log(`${label} init fetch`);
-        await appendBuffer(sourceBuffer, await fetchBytes(initUrl));
-      }
-
-      for (let i = startIndex; i < endIndex; i++) {
-        if (fatal) return;
-        await appendBuffer(sourceBuffer, await fetchBytes(segmentUrls[i]));
-        if (i === startIndex || i % 8 === 0) log(`${label} appended ${i + 1}/${segmentUrls.length}`);
-      }
-    }
-
-    async function appendTrackWindow(sourceBuffer, segmentUrls, label, startIndex) {
-      const maxAheadSeconds = 35;
-      let i = startIndex;
-      while (!fatal && i < segmentUrls.length) {
-        const ahead = bufferedEnd(sourceBuffer) - (video.currentTime || 0);
-        if (ahead > maxAheadSeconds) {
-          await pruneBehind(sourceBuffer, label);
-          await sleep(350);
-          continue;
-        }
-
-        await pruneBehind(sourceBuffer, label);
-        await appendBufferWithQuotaRetry(sourceBuffer, await fetchBytes(segmentUrls[i]), label);
-        if (i === startIndex || i % 8 === 0) log(`${label} appended ${i + 1}/${segmentUrls.length}`);
-        i++;
-      }
-      log(`${label} append loop complete`);
-    }
-
-    let firstFrameSent = false;
-    function postFirstFrame(reason) {
-      if (firstFrameSent) return;
-      firstFrameSent = true;
-      log(`first frame ${reason}`);
-      host('first-frame', { reason });
-      postState(false);
-    }
-
-    function armFirstFrameSignal() {
-      if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-        video.requestVideoFrameCallback(() => postFirstFrame('requestVideoFrameCallback'));
-      }
-    }
-
-    function postState(isBuffering = false) {
-      host('state', {
-        positionMs: Math.round(video.currentTime * 1000),
-        durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : config.durationMs,
-        isPlaying: !video.paused && !video.ended,
-        isBuffering
-      });
-    }
-
-    function scheduleUnmute() {
-      if (unmuteScheduled || !video.muted) return;
-      unmuteScheduled = true;
-      setTimeout(() => {
-        video.muted = false;
-        video.defaultMuted = false;
-        log('unmuted after autoplay start');
-        postState(false);
-      }, 250);
-    }
-
-    async function playVideo(source) {
-      try {
-        await video.play();
-        scheduleUnmute();
-        postState(false);
-        return true;
-      } catch (err) {
-        if (err && err.name === 'NotAllowedError') {
-          log(`play blocked on ${source}; retrying muted`);
-          video.defaultMuted = true;
-          video.muted = true;
-          try {
-            await video.play();
-            scheduleUnmute();
-            postState(false);
-            return true;
-          } catch (mutedErr) {
-            host('autoplay-blocked', { message: mutedErr && mutedErr.message ? mutedErr.message : String(mutedErr) });
-            postState(false);
-            return false;
-          }
-        }
-        throw err;
-      }
-    }
-
-    async function startMse() {
-      mediaSource = new MediaSource();
-      video.src = URL.createObjectURL(mediaSource);
-      await new Promise(resolve => mediaSource.addEventListener('sourceopen', resolve, { once: true }));
-      sourceOpen = true;
-      log(`MediaSource open video=${config.video.contentType} audio=${config.audio.contentType}`);
-      mediaSource.duration = Math.max(1, config.durationMs / 1000);
-
-      const videoBuffer = mediaSource.addSourceBuffer(config.video.contentType);
-      const audioBuffer = mediaSource.addSourceBuffer(config.audio.contentType);
-      videoBuffer.mode = 'segments';
-      audioBuffer.mode = 'segments';
-
-      const startIndex = Math.max(0, Math.min(config.segmentTimes.length - 1, Math.floor(startSeconds / config.segmentLength)));
-      const startupEnd = Math.min(config.segmentTimes.length, startIndex + 4);
-      log(`startup append range ${startIndex + 1}-${startupEnd}/${config.segmentTimes.length}`);
-      await Promise.all([
-        appendTrackRange(videoBuffer, config.video.initUrl, config.video.segmentUrls, 'video', startIndex, startupEnd, true),
-        appendTrackRange(audioBuffer, config.audio.initUrl, config.audio.segmentUrls, 'audio', startIndex, startupEnd, true)
-      ]);
-
-      if (startSeconds > 0) video.currentTime = startSeconds;
-      armFirstFrameSignal();
-      await playVideo('startup');
-
-      Promise.all([
-        appendTrackWindow(videoBuffer, config.video.segmentUrls, 'video', startupEnd),
-        appendTrackWindow(audioBuffer, config.audio.segmentUrls, 'audio', startupEnd)
-      ]).then(() => {
-        log('background append complete');
-        if (mediaSource.readyState === 'open') mediaSource.endOfStream();
-      }).catch(fail);
-    }
-
-    video.addEventListener('timeupdate', () => postState(false));
-    video.addEventListener('durationchange', () => postState(false));
-    video.addEventListener('loadeddata', () => postFirstFrame('loadeddata'));
-    video.addEventListener('canplay', () => postFirstFrame('canplay'));
-    video.addEventListener('playing', () => { postFirstFrame('playing'); postState(false); });
-    video.addEventListener('pause', () => postState(false));
-    video.addEventListener('waiting', () => postState(true));
-    video.addEventListener('ended', () => host('ended'));
-    video.addEventListener('error', () => fail(video.error ? `media error code=${video.error.code} message=${video.error.message}` : 'media error'));
-
-    window.__waveePlayer = {
-      play: () => playVideo('host-play').catch(fail),
-      pause: () => video.pause(),
-      seek: ms => { video.currentTime = Math.max(0, ms / 1000); postState(false); },
-      setVolume: value => { video.volume = Math.max(0, Math.min(1, value)); }
-    };
-
-    (async () => {
-      try {
-        await configureEme();
-        await startMse();
-      } catch (err) {
-        fail(err);
-      }
-    })();
-  </script>
-</body>
-</html>
-""";
-    }
-
     private MediaProtectionManager BuildProtectionManager(byte[]? proBytes)
     {
         var mpm = new MediaProtectionManager();
@@ -1454,28 +1096,27 @@ public sealed class SpotifyVideoProvider
     {
         _positionTimer.Stop();
         var player = _player;
-        var webView = _webView;
+        var webEmePlayer = _webEmePlayer;
         var ams = _ams;
         var mpm = _mpm;
         var mpdStream = _mpdStream;
         _player = null;
-        _webView = null;
+        _webEmePlayer = null;
+        _currentWebEmeManifest = null;
         _ams = null;
         _mpm = null;
         _mpdStream = null;
         _currentManifest = null;
-        _currentWebEmeConfig = null;
-        _currentWidevineLicenseEndpoint = null;
         _currentSanitizedMpd = null;
         _currentTrackUri = null;
         _currentMetadata = null;
         _currentDurationMs = 0;
-        _currentWebEmeStartPositionMs = 0;
         _webPositionMs = 0;
         _webIsPlaying = false;
         _webIsBuffering = false;
         _surfaceIsLoading = false;
         _surfaceHasFirstFrame = false;
+        UpdatePlaybackDetails(null);
 
         if (player is not null)
         {
@@ -1495,17 +1136,12 @@ public sealed class SpotifyVideoProvider
             }
         }
 
-        if (webView is not null)
+        if (webEmePlayer is not null)
         {
             try
             {
-                if (webView.CoreWebView2 is not null)
-                {
-                    webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
-                    webView.CoreWebView2.WebResourceRequested -= OnWebEmeWebResourceRequested;
-                    _ = webView.CoreWebView2.ExecuteScriptAsync("try { window.__waveePlayer?.pause(); } catch (_) {}");
-                }
-                webView.Close();
+                DetachWebEmePlayer(webEmePlayer);
+                webEmePlayer.Dispose();
             }
             catch (Exception ex)
             {
@@ -1620,337 +1256,3 @@ public sealed class SpotifyVideoProvider
         _errorSubject.OnCompleted();
     }
 }
-
-internal sealed record SpotifyWebEmeVideoConfig(
-    int VideoProfileId,
-    int AudioProfileId,
-    long DurationMs,
-    int SegmentLength,
-    string? LicenseServerEndpoint,
-    IReadOnlyList<int> SegmentTimes,
-    SpotifyWebEmeTrackConfig Video,
-    SpotifyWebEmeTrackConfig Audio)
-{
-    public static SpotifyWebEmeVideoConfig FromJson(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        var content = root;
-        var templateHost = root;
-
-        if (root.TryGetProperty("contents", out var contents)
-            && contents.ValueKind == JsonValueKind.Array
-            && contents.GetArrayLength() > 0)
-        {
-            content = contents[0];
-        }
-
-        if (root.TryGetProperty("sources", out var sources)
-            && sources.ValueKind == JsonValueKind.Array
-            && sources.GetArrayLength() > 0)
-        {
-            content = sources[0];
-            templateHost = content;
-        }
-
-        var segmentLength = GetInt32(content, "segment_length") ?? 4;
-        var durationMs = GetDurationMs(root, content);
-        if (durationMs <= 0)
-            throw new InvalidOperationException("Spotify video manifest did not include a valid duration.");
-
-        var initTemplate = GetString(templateHost, "initialization_template")
-            ?? throw new InvalidOperationException("Spotify video manifest did not include initialization_template.");
-        var segmentTemplate = GetString(templateHost, "segment_template")
-            ?? throw new InvalidOperationException("Spotify video manifest did not include segment_template.");
-        var baseUrl = "";
-        if (templateHost.TryGetProperty("base_urls", out var baseUrls)
-            && baseUrls.ValueKind == JsonValueKind.Array
-            && baseUrls.GetArrayLength() > 0)
-        {
-            baseUrl = baseUrls[0].GetString() ?? "";
-        }
-
-        int? widevineEncryptionIndex = null;
-        string? licenseEndpoint = null;
-        var encryptionHost = content.TryGetProperty("encryption_infos", out _) ? content : root;
-        if (encryptionHost.TryGetProperty("encryption_infos", out var encryptionInfos)
-            && encryptionInfos.ValueKind == JsonValueKind.Array)
-        {
-            var index = 0;
-            foreach (var encryptionInfo in encryptionInfos.EnumerateArray())
-            {
-                if (string.Equals(GetString(encryptionInfo, "key_system"), "widevine", StringComparison.OrdinalIgnoreCase))
-                {
-                    widevineEncryptionIndex = index;
-                    licenseEndpoint = GetString(encryptionInfo, "license_server_endpoint");
-                    break;
-                }
-                index++;
-            }
-        }
-
-        WebProfile? selectedVideo = null;
-        WebProfile? selectedAudio = null;
-        if (content.TryGetProperty("profiles", out var profiles)
-            && profiles.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var profile in profiles.EnumerateArray())
-            {
-                if (!string.Equals(GetString(profile, "file_type"), "webm", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (!ProfileMatchesEncryptionIndex(profile, widevineEncryptionIndex))
-                    continue;
-
-                var id = GetInt32(profile, "id") ?? 0;
-                if (id <= 0)
-                    continue;
-
-                var videoCodec = GetString(profile, "video_codec");
-                if (!string.IsNullOrWhiteSpace(videoCodec))
-                {
-                    var width = GetInt32(profile, "video_width") ?? GetInt32(profile, "width") ?? 0;
-                    var height = GetInt32(profile, "video_height") ?? GetInt32(profile, "height") ?? 0;
-                    var bandwidth = GetInt32(profile, "max_bitrate") ?? GetInt32(profile, "bandwidth_estimate") ?? 0;
-                    var candidate = new WebProfile(id, videoCodec, width, height, bandwidth);
-                    if (selectedVideo is null
-                        || candidate.Height > selectedVideo.Height
-                        || (candidate.Height == selectedVideo.Height && candidate.Bandwidth > selectedVideo.Bandwidth))
-                    {
-                        selectedVideo = candidate;
-                    }
-                    continue;
-                }
-
-                var audioCodec = GetString(profile, "audio_codec");
-                if (!string.IsNullOrWhiteSpace(audioCodec))
-                {
-                    var bandwidth = GetInt32(profile, "max_bitrate") ?? GetInt32(profile, "bandwidth_estimate") ?? 0;
-                    var candidate = new WebProfile(id, audioCodec, 0, 0, bandwidth);
-                    if (selectedAudio is null || candidate.Bandwidth > selectedAudio.Bandwidth)
-                        selectedAudio = candidate;
-                }
-            }
-        }
-
-        if (selectedVideo is null)
-            throw new InvalidOperationException("Spotify video manifest did not include a Widevine WebM video profile.");
-        if (selectedAudio is null)
-            throw new InvalidOperationException("Spotify video manifest did not include a Widevine WebM audio profile.");
-
-        var totalSegments = (int)Math.Ceiling(durationMs / 1000d / segmentLength);
-        var segmentTimes = new List<int>(totalSegments);
-        for (var i = 0; i < totalSegments; i++)
-            segmentTimes.Add(i * segmentLength);
-
-        var video = BuildTrack(baseUrl, initTemplate, segmentTemplate, selectedVideo, segmentTimes, isVideo: true);
-        var audio = BuildTrack(baseUrl, initTemplate, segmentTemplate, selectedAudio, segmentTimes, isVideo: false);
-        return new SpotifyWebEmeVideoConfig(
-            selectedVideo.Id,
-            selectedAudio.Id,
-            durationMs,
-            segmentLength,
-            licenseEndpoint,
-            segmentTimes,
-            video,
-            audio);
-    }
-
-    public static string DescribeManifestForLog(string json)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            var content = root;
-
-            if (root.TryGetProperty("contents", out var contents)
-                && contents.ValueKind == JsonValueKind.Array
-                && contents.GetArrayLength() > 0)
-            {
-                content = contents[0];
-            }
-
-            if (root.TryGetProperty("sources", out var sources)
-                && sources.ValueKind == JsonValueKind.Array
-                && sources.GetArrayLength() > 0)
-            {
-                content = sources[0];
-            }
-
-            var sb = new System.Text.StringBuilder();
-            sb.Append("durationMs=").Append(GetDurationMs(root, content));
-            sb.Append("; segmentLength=").Append(GetInt32(content, "segment_length") ?? 0);
-            sb.Append("; encryption=[");
-            AppendEncryptionInfo(sb, content, root);
-            sb.Append("]; profiles=[");
-            AppendProfileInfo(sb, content);
-            sb.Append(']');
-            return sb.ToString();
-        }
-        catch (Exception ex)
-        {
-            return $"manifest diagnostics unavailable: {ex.Message}; bytes={json.Length}";
-        }
-    }
-
-    private static SpotifyWebEmeTrackConfig BuildTrack(
-        string baseUrl,
-        string initTemplate,
-        string segmentTemplate,
-        WebProfile profile,
-        IReadOnlyList<int> segmentTimes,
-        bool isVideo)
-    {
-        var initUrl = baseUrl + initTemplate
-            .Replace("{{profile_id}}", profile.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
-            .Replace("{{file_type}}", "webm");
-
-        var segmentUrls = new List<string>(segmentTimes.Count);
-        foreach (var time in segmentTimes)
-        {
-            segmentUrls.Add(baseUrl + segmentTemplate
-                .Replace("{{profile_id}}", profile.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                .Replace("{{segment_timestamp}}", time.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                .Replace("{{file_type}}", "webm"));
-        }
-
-        var contentType = isVideo
-            ? $"video/webm; codecs=\"{NormalizeWebCodec(profile.Codec)}\""
-            : $"audio/webm; codecs=\"{NormalizeWebCodec(profile.Codec)}\"";
-
-        return new SpotifyWebEmeTrackConfig(contentType, initUrl, segmentUrls);
-    }
-
-    private static string NormalizeWebCodec(string codec)
-        => codec.Equals("vp9", StringComparison.OrdinalIgnoreCase) ? "vp9" : codec;
-
-    private static long GetDurationMs(JsonElement root, JsonElement content)
-    {
-        if (content.TryGetProperty("duration", out var duration) && duration.TryGetInt64(out var durationMs))
-            return durationMs;
-
-        var startMs = GetInt64(content, "start_time_millis") ?? GetInt64(root, "start_time_millis") ?? 0;
-        var endMs = GetInt64(content, "end_time_millis") ?? GetInt64(root, "end_time_millis") ?? 0;
-        return endMs > startMs ? endMs - startMs : 0;
-    }
-
-    private static bool ProfileMatchesEncryptionIndex(JsonElement profile, int? encryptionIndex)
-    {
-        if (encryptionIndex is null) return true;
-        if (!profile.TryGetProperty("encryption_indices", out var indices)
-            || indices.ValueKind != JsonValueKind.Array)
-        {
-            return !profile.TryGetProperty("encryption_index", out var index)
-                   || !index.TryGetInt32(out var value)
-                   || value == encryptionIndex.Value;
-        }
-
-        foreach (var index in indices.EnumerateArray())
-        {
-            if (index.TryGetInt32(out var value) && value == encryptionIndex.Value)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static string? GetString(JsonElement element, string propertyName)
-        => element.TryGetProperty(propertyName, out var property) ? property.GetString() : null;
-
-    private static int? GetInt32(JsonElement element, string propertyName)
-        => element.TryGetProperty(propertyName, out var property) && property.TryGetInt32(out var value)
-            ? value
-            : null;
-
-    private static long? GetInt64(JsonElement element, string propertyName)
-        => element.TryGetProperty(propertyName, out var property) && property.TryGetInt64(out var value)
-            ? value
-            : null;
-
-    private static void AppendEncryptionInfo(System.Text.StringBuilder sb, JsonElement content, JsonElement root)
-    {
-        var encryptionHost = content.TryGetProperty("encryption_infos", out _) ? content : root;
-        if (!encryptionHost.TryGetProperty("encryption_infos", out var encryptionInfos)
-            || encryptionInfos.ValueKind != JsonValueKind.Array)
-        {
-            sb.Append("<none>");
-            return;
-        }
-
-        var index = 0;
-        var wrote = false;
-        foreach (var encryptionInfo in encryptionInfos.EnumerateArray())
-        {
-            if (wrote) sb.Append(", ");
-            wrote = true;
-            sb.Append(index)
-              .Append(':')
-              .Append(GetString(encryptionInfo, "key_system") ?? "<unknown>")
-              .Append(":license=")
-              .Append(string.IsNullOrWhiteSpace(GetString(encryptionInfo, "license_server_endpoint")) ? "<none>" : "<set>");
-            index++;
-        }
-
-        if (!wrote) sb.Append("<empty>");
-    }
-
-    private static void AppendProfileInfo(System.Text.StringBuilder sb, JsonElement content)
-    {
-        if (!content.TryGetProperty("profiles", out var profiles)
-            || profiles.ValueKind != JsonValueKind.Array)
-        {
-            sb.Append("<none>");
-            return;
-        }
-
-        var wrote = false;
-        foreach (var profile in profiles.EnumerateArray())
-        {
-            if (wrote) sb.Append(", ");
-            wrote = true;
-            sb.Append(GetInt32(profile, "id") ?? 0)
-              .Append(':')
-              .Append(GetString(profile, "file_type") ?? "<type>")
-              .Append(':')
-              .Append(GetString(profile, "video_codec") ?? GetString(profile, "audio_codec") ?? "<codec>")
-              .Append(':')
-              .Append(GetInt32(profile, "video_width") ?? GetInt32(profile, "width") ?? 0)
-              .Append('x')
-              .Append(GetInt32(profile, "video_height") ?? GetInt32(profile, "height") ?? 0)
-              .Append(":enc=");
-
-            if (profile.TryGetProperty("encryption_index", out var encryptionIndex)
-                && encryptionIndex.TryGetInt32(out var index))
-            {
-                sb.Append(index);
-            }
-            else if (profile.TryGetProperty("encryption_indices", out var encryptionIndices)
-                     && encryptionIndices.ValueKind == JsonValueKind.Array)
-            {
-                sb.Append('[');
-                var wroteIndex = false;
-                foreach (var item in encryptionIndices.EnumerateArray())
-                {
-                    if (!item.TryGetInt32(out var value)) continue;
-                    if (wroteIndex) sb.Append(',');
-                    wroteIndex = true;
-                    sb.Append(value);
-                }
-                sb.Append(']');
-            }
-            else
-            {
-                sb.Append("<none>");
-            }
-        }
-
-        if (!wrote) sb.Append("<empty>");
-    }
-
-    private sealed record WebProfile(int Id, string Codec, int Width, int Height, int Bandwidth);
-}
-
-internal sealed record SpotifyWebEmeTrackConfig(
-    string ContentType,
-    string InitUrl,
-    IReadOnlyList<string> SegmentUrls);

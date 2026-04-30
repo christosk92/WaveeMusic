@@ -153,6 +153,8 @@ public partial class App : Application
                     if (string.IsNullOrEmpty(uri)) { lastNavigatedUri = null; return; }
                     if (uri == lastNavigatedUri) return;
                     lastNavigatedUri = uri;
+                    if (VideoAutoNavigationSuppressor.TryConsume(uri))
+                        return;
 
                     var dispatcher = MainWindow.Instance?.DispatcherQueue;
                     dispatcher?.TryEnqueue(() =>

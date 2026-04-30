@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
@@ -10,6 +11,7 @@ using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
 using Wavee.UI.WinUI.ViewModels;
@@ -29,8 +31,10 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
     private readonly ShellViewModel _shellViewModel;
     private readonly IActiveVideoSurfaceService _videoSurface;
     private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
+    private readonly IPanelDockingService? _docking;
     private readonly ITrackLikeService? _likeService;
     private readonly IPlaybackStateService? _playbackStateService;
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ILogger<SidebarPlayerWidget>? _logger;
     private MediaPlayerElement? _videoElement;
     private FrameworkElement? _videoElementSurface;
@@ -38,6 +42,8 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
     private bool _isLoaded;
     private bool _ownsVideoSurface;
     private bool _isFloatingVideoSurfaceEnabled;
+    private bool _eventsSubscribed;
+    private int _heartStateVersion;
 
     public SidebarPlayerWidget()
     {
@@ -45,8 +51,10 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         _shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
         _videoSurface = Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>();
         _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
+        _docking = Ioc.Default.GetService<IPanelDockingService>();
         _likeService = Ioc.Default.GetService<ITrackLikeService>();
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+        _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
         _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger<SidebarPlayerWidget>();
 
         InitializeComponent();
@@ -57,16 +65,6 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         Loaded += OnWidgetLoaded;
         Unloaded += OnWidgetUnloaded;
         SizeChanged += OnWidgetSizeChanged;
-
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        _shellViewModel.PropertyChanged += OnShellPropertyChanged;
-        _videoSurface.ActiveSurfaceChanged += OnActiveVideoSurfaceChanged;
-        if (_miniVideoViewModel is not null)
-            _miniVideoViewModel.PropertyChanged += OnMiniVideoViewModelPropertyChanged;
-
-        // Reactive heart updates (both layouts share the wiring)
-        if (_likeService != null)
-            _likeService.SaveStateChanged += OnSaveStateChanged;
 
         ExpandedHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
         CollapsedHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
@@ -84,10 +82,14 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
     private void OnWidgetLoaded(object sender, RoutedEventArgs e)
     {
         _isLoaded = true;
+        SubscribeEvents();
         ViewModel.SetSurfaceVisible("widget", true);
         // Default to "not hovered" — buttons faded out until pointer enters the widget.
         ApplyHoverReveal(hovered: false, animate: false);
+        ApplyCollapseState();
+        ApplyTintColor(ViewModel.AlbumArtColor);
         UpdateVideoSurfaceOwnership();
+        UpdateHeartState();
     }
 
     private void OnWidgetUnloaded(object sender, RoutedEventArgs e)
@@ -95,12 +97,47 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         _isLoaded = false;
         ViewModel.SetSurfaceVisible("widget", false);
         ReleaseVideoSurfaceOwnership();
+        UnsubscribeEvents();
+    }
+
+    private void SubscribeEvents()
+    {
+        if (_eventsSubscribed)
+            return;
+
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _shellViewModel.PropertyChanged += OnShellPropertyChanged;
+        _videoSurface.ActiveSurfaceChanged += OnActiveVideoSurfaceChanged;
+        _videoSurface.SurfaceOwnershipChanged += OnVideoSurfaceOwnershipChanged;
+        if (_docking is not null)
+            _docking.PropertyChanged += OnDockingPropertyChanged;
+        if (_miniVideoViewModel is not null)
+            _miniVideoViewModel.PropertyChanged += OnMiniVideoViewModelPropertyChanged;
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
+        if (_playbackStateService != null)
+            _playbackStateService.PropertyChanged += OnPlaybackSaveTargetChanged;
+
+        _eventsSubscribed = true;
+    }
+
+    private void UnsubscribeEvents()
+    {
+        if (!_eventsSubscribed)
+            return;
+
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _shellViewModel.PropertyChanged -= OnShellPropertyChanged;
         _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
+        _videoSurface.SurfaceOwnershipChanged -= OnVideoSurfaceOwnershipChanged;
+        if (_docking is not null)
+            _docking.PropertyChanged -= OnDockingPropertyChanged;
         if (_miniVideoViewModel is not null)
             _miniVideoViewModel.PropertyChanged -= OnMiniVideoViewModelPropertyChanged;
         if (_likeService != null) _likeService.SaveStateChanged -= OnSaveStateChanged;
+        if (_playbackStateService != null) _playbackStateService.PropertyChanged -= OnPlaybackSaveTargetChanged;
+
+        _eventsSubscribed = false;
     }
 
     private void OnWidgetSizeChanged(object sender, SizeChangedEventArgs e)
@@ -150,7 +187,17 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         {
             ApplyCollapseState();
             UpdateVideoSurfaceOwnership();
+            ApplyVideoSurfaceVisibility();
         });
+
+    private void OnVideoSurfaceOwnershipChanged(object? sender, EventArgs e)
+        => DispatcherQueue?.TryEnqueue(UpdateVideoSurfaceOwnership);
+
+    private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IPanelDockingService.IsPlayerDetached))
+            UpdateVideoSurfaceOwnership();
+    }
 
     private void OnMiniVideoViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -163,6 +210,7 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         && _videoSurface.HasActiveSurface
         && ((_shellViewModel.IsSidebarPlayerVisibleInShell && !_shellViewModel.SidebarPlayerCollapsed)
             || _isFloatingVideoSurfaceEnabled)
+        && (_isFloatingVideoSurfaceEnabled || _docking?.IsPlayerDetached != true)
         && _miniVideoViewModel?.IsOnVideoPage != true;
 
     public void SetFloatingVideoSurfaceEnabled(bool enabled)
@@ -177,7 +225,8 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
 
     private void UpdateVideoSurfaceOwnership()
     {
-        if (ShouldHostVideoSurface)
+        if (ShouldHostVideoSurface
+            && (_videoSurface.CurrentOwner is null || _videoSurface.IsOwnedBy(this)))
         {
             _miniVideoViewModel?.SetSuppressedBySidebarPlayer(true);
             _videoSurface.AcquireSurface(this);
@@ -215,13 +264,15 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         _shellViewModel.PlayerLocation = PlayerLocation.Bottom;
 
         var docking = Ioc.Default.GetService<IPanelDockingService>();
-        if (docking?.IsPlayerDetached == true)
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        if (docking?.IsPlayerDetached == true
+            && settings?.Settings.ShowDockedPlayerWithFloatingPlayer != true)
             docking.Dock(DetachablePanel.Player);
     }
 
     private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
     {
-        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = false);
+        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = true);
         Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
     }
 
@@ -330,7 +381,7 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
                 VerticalAlignment = VerticalAlignment.Stretch,
                 IsHitTestVisible = false
             };
-            ExpandedVideoHost.Children.Add(_videoElement);
+            ExpandedVideoHost.Children.Insert(0, _videoElement);
         }
 
         _videoElement.SetMediaPlayer(player);
@@ -347,7 +398,7 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         element.HorizontalAlignment = HorizontalAlignment.Stretch;
         element.VerticalAlignment = VerticalAlignment.Stretch;
         element.IsHitTestVisible = false;
-        ExpandedVideoHost.Children.Add(element);
+        ExpandedVideoHost.Children.Insert(0, element);
         ApplyVideoSurfaceVisibility();
     }
 
@@ -379,6 +430,17 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
         var hasVideo = _videoElement is not null || _videoElementSurface is not null;
         ExpandedVideoHost.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
         ExpandedAlbumArtImage.Visibility = hasVideo ? Visibility.Collapsed : Visibility.Visible;
+        var showLoading = hasVideo
+            && _videoSurface.HasActiveSurface
+            && !_videoSurface.HasActiveFirstFrame;
+        var showBuffering = hasVideo
+            && _videoSurface.HasActiveSurface
+            && _videoSurface.HasActiveFirstFrame
+            && _videoSurface.IsActiveSurfaceBuffering;
+        ExpandedVideoStatusText.Text = showBuffering ? "Buffering" : "Loading";
+        ExpandedVideoStatusOverlay.Visibility = showLoading || showBuffering
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void VideoStretchNone_Click(object sender, RoutedEventArgs e)
@@ -477,36 +539,70 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
 
     // ── Heart wiring (mirrors PlayerBar pattern) ────────────────────────
 
-    private string? GetCurrentTrackId() => _playbackStateService?.CurrentTrackId;
+    private string? GetCurrentTrackId() => PlaybackSaveTargetResolver.GetTrackId(_playbackStateService);
 
     private void OnSaveStateChanged()
     {
         DispatcherQueue?.TryEnqueue(UpdateHeartState);
     }
 
+    private void OnPlaybackSaveTargetChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
+            or nameof(IPlaybackStateService.CurrentTrackIsVideo)
+            or nameof(IPlaybackStateService.CurrentOriginalTrackId))
+        {
+            DispatcherQueue?.TryEnqueue(UpdateHeartState);
+        }
+    }
+
     private void UpdateHeartState()
     {
-        var trackId = GetCurrentTrackId();
-        var isLiked = !string.IsNullOrEmpty(trackId)
-            && _likeService?.IsSaved(SavedItemType.Track, trackId) == true;
-        ExpandedHeartButton.IsLiked = isLiked;
-        CollapsedHeartButton.IsLiked = isLiked;
+        var version = ++_heartStateVersion;
+        var uri = PlaybackSaveTargetResolver.GetTrackUri(_playbackStateService);
+        if (!string.IsNullOrEmpty(uri))
+        {
+            SetHeartState(_likeService?.IsSaved(SavedItemType.Track, uri) == true);
+            return;
+        }
+
+        SetHeartState(false);
+        _ = UpdateHeartStateAsync(version);
     }
 
     private void OnHeartClicked()
-    {
-        var trackId = GetCurrentTrackId();
-        if (string.IsNullOrEmpty(trackId) || _likeService == null) return;
+        => _ = OnHeartClickedAsync();
 
-        // Only prefix bare base62 ids; full URIs pass through as-is.
-        // See PlayerBar.OnPlayerHeartClicked for the background.
-        var uri = trackId.Contains(':') ? trackId : $"spotify:track:{trackId}";
-        var wasLiked = ExpandedHeartButton.IsLiked;
-        _logger?.LogInformation("[SidebarPlayer] Heart clicked: trackId={TrackId}, wasLiked={WasLiked}", trackId, wasLiked);
+    private async Task UpdateHeartStateAsync(int version)
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
+            .ConfigureAwait(true);
+
+        if (version != _heartStateVersion)
+            return;
+
+        SetHeartState(!string.IsNullOrEmpty(uri)
+            && _likeService?.IsSaved(SavedItemType.Track, uri) == true);
+    }
+
+    private async Task OnHeartClickedAsync()
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
+            .ConfigureAwait(true);
+        if (string.IsNullOrEmpty(uri) || _likeService == null) return;
+
+        var wasLiked = _likeService.IsSaved(SavedItemType.Track, uri);
+        _logger?.LogInformation("[SidebarPlayer] Heart clicked: uri={Uri}, wasLiked={WasLiked}", uri, wasLiked);
         _likeService.ToggleSave(SavedItemType.Track, uri, wasLiked);
-        var newLiked = !wasLiked;
-        ExpandedHeartButton.IsLiked = newLiked;
-        CollapsedHeartButton.IsLiked = newLiked;
+        SetHeartState(!wasLiked);
+    }
+
+    private void SetHeartState(bool isLiked)
+    {
+        ExpandedHeartButton.IsLiked = isLiked;
+        CollapsedHeartButton.IsLiked = isLiked;
     }
 
     // ── Palette tint (mirrors PlayerBar.ApplyTintColor) ─────────────────

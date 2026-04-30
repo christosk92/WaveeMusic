@@ -51,6 +51,9 @@ public interface IVideoSurfaceProvider
     /// <summary>True after the active surface has rendered or opened its first video frame.</summary>
     bool HasFirstFrame => Surface is not null || ElementSurface is not null;
 
+    /// <summary>True after startup when the active video surface is waiting for more decoded media.</summary>
+    bool IsSurfaceBuffering => false;
+
     /// <summary>
     /// Discriminator used by the UI for source-conditional UI bits (e.g.
     /// "Open folder" for local, "Open in Spotify" for Spotify). Free-form

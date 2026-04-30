@@ -123,6 +123,9 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
     public bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri)
         => _catalogCache.TryGetVideoUri(audioTrackUri, out videoTrackUri);
 
+    public bool TryGetAudioUri(string videoTrackUri, out string audioTrackUri)
+        => _catalogCache.TryGetAudioUri(videoTrackUri, out audioTrackUri);
+
     public async Task<string?> TryResolveVideoUriViaExtendedMetadataAsync(
         string audioTrackUri,
         CancellationToken cancellationToken = default)
@@ -142,6 +145,28 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
 
         _catalogCache.NoteVideoUri(audioTrackUri, videoUri);
         return videoUri;
+    }
+
+    public async Task<string?> TryResolveAudioUriViaExtendedMetadataAsync(
+        string videoTrackUri,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(videoTrackUri)) return null;
+        if (!videoTrackUri.StartsWith("spotify:track:", StringComparison.Ordinal)) return null;
+        if (_catalogCache.TryGetAudioUri(videoTrackUri, out var cachedAudioUri)) return cachedAudioUri;
+
+        var data = await _extendedMetadataStore
+            .GetOnceAsync(videoTrackUri, ExtensionKind.AudioAssociations, cancellationToken)
+            .ConfigureAwait(false);
+
+        var audioUri = MusicVideoAssociationParser.TryReadAudioAssociationUri(data);
+        if (string.IsNullOrWhiteSpace(audioUri))
+        {
+            return null;
+        }
+
+        _catalogCache.NoteVideoUri(audioUri, videoTrackUri);
+        return audioUri;
     }
 
     public async Task<string?> ResolveManifestIdAsync(

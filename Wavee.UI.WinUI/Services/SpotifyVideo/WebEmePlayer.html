@@ -1,0 +1,410 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline'; media-src blob: https:; connect-src https:;">
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    video { width: 100%; height: 100%; background: #000; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <script>
+    const config = __WAVEE_PLAYER_CONFIG__;
+    const startSeconds = __WAVEE_START_SECONDS__;
+    const autoPlay = __WAVEE_AUTO_PLAY__;
+    const video = document.getElementById('video');
+    if (!autoPlay) video.autoplay = false;
+    const pendingLicenses = new Map();
+    let mediaSource;
+    let sourceOpen = false;
+    let fatal = false;
+    let unmuteScheduled = false;
+
+    function host(type, payload = {}) {
+      chrome.webview.postMessage({ type, ...payload });
+    }
+
+    function log(message) {
+      host('log', { message: String(message) });
+    }
+
+    function fail(error) {
+      if (fatal) return;
+      fatal = true;
+      const message = error && error.stack ? error.stack : String(error);
+      host('error', { message });
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    }
+
+    function base64ToBytes(text) {
+      const binary = atob(text);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    chrome.webview.addEventListener('message', async event => {
+      const msg = event.data || {};
+      if (msg.type === 'license-response') {
+        const pending = pendingLicenses.get(msg.requestId);
+        if (!pending) return;
+        pendingLicenses.delete(msg.requestId);
+        pending.resolve(base64ToBytes(msg.body));
+      } else if (msg.type === 'license-error') {
+        const pending = pendingLicenses.get(msg.requestId);
+        if (!pending) return;
+        pendingLicenses.delete(msg.requestId);
+        pending.reject(new Error(msg.message || 'License request failed'));
+      }
+    });
+
+    async function requestLicense(message) {
+      const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const body = bytesToBase64(new Uint8Array(message));
+      const promise = new Promise((resolve, reject) => pendingLicenses.set(requestId, { resolve, reject }));
+      host('license-request', { requestId, body });
+      return promise;
+    }
+
+    async function configureEme() {
+      if (!navigator.requestMediaKeySystemAccess) {
+        throw new Error('EME is not available in this WebView2 runtime');
+      }
+
+      const keySystem = 'com.widevine.alpha';
+      const mediaConfig = [{
+        initDataTypes: ['webm', 'cenc'],
+        audioCapabilities: [{ contentType: config.audio.contentType }],
+        videoCapabilities: [{ contentType: config.video.contentType }],
+        distinctiveIdentifier: 'optional',
+        persistentState: 'optional',
+        sessionTypes: ['temporary']
+      }];
+
+      log(`requestMediaKeySystemAccess ${keySystem}`);
+      const access = await navigator.requestMediaKeySystemAccess(keySystem, mediaConfig);
+      const mediaKeys = await access.createMediaKeys();
+      await video.setMediaKeys(mediaKeys);
+
+      video.addEventListener('encrypted', async e => {
+        try {
+          log(`encrypted initDataType=${e.initDataType} bytes=${e.initData ? e.initData.byteLength : 0}`);
+          const session = mediaKeys.createSession();
+          session.addEventListener('message', async ev => {
+            try {
+              log(`license message bytes=${ev.message.byteLength}`);
+              const license = await requestLicense(ev.message);
+              log(`license response bytes=${license.byteLength}`);
+              await session.update(license);
+              log('license update complete');
+            } catch (err) {
+              fail(err);
+            }
+          });
+          await session.generateRequest(e.initDataType, e.initData);
+        } catch (err) {
+          fail(err);
+        }
+      });
+    }
+
+    async function fetchBytes(url) {
+      const response = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
+      if (!response.ok) throw new Error(`fetch ${response.status} ${url}`);
+      return new Uint8Array(await response.arrayBuffer());
+    }
+
+    function appendBuffer(sourceBuffer, bytes) {
+      return new Promise((resolve, reject) => {
+        const onError = () => {
+          cleanup();
+          reject(new Error('SourceBuffer append error'));
+        };
+        const onUpdateEnd = () => {
+          cleanup();
+          resolve();
+        };
+        const cleanup = () => {
+          sourceBuffer.removeEventListener('error', onError);
+          sourceBuffer.removeEventListener('updateend', onUpdateEnd);
+        };
+        sourceBuffer.addEventListener('error', onError, { once: true });
+        sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true });
+        sourceBuffer.appendBuffer(bytes);
+      });
+    }
+
+    function removeBuffer(sourceBuffer, start, end) {
+      return new Promise((resolve, reject) => {
+        if (end <= start || sourceBuffer.updating) {
+          resolve();
+          return;
+        }
+        const onError = () => {
+          cleanup();
+          reject(new Error('SourceBuffer remove error'));
+        };
+        const onUpdateEnd = () => {
+          cleanup();
+          resolve();
+        };
+        const cleanup = () => {
+          sourceBuffer.removeEventListener('error', onError);
+          sourceBuffer.removeEventListener('updateend', onUpdateEnd);
+        };
+        sourceBuffer.addEventListener('error', onError, { once: true });
+        sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true });
+        sourceBuffer.remove(start, end);
+      });
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function bufferedEnd(sourceBuffer) {
+      const ranges = sourceBuffer.buffered;
+      if (!ranges || ranges.length === 0) return 0;
+      const t = video.currentTime || startSeconds || 0;
+      for (let i = 0; i < ranges.length; i++) {
+        if (ranges.start(i) <= t && ranges.end(i) >= t) return ranges.end(i);
+      }
+      return ranges.end(ranges.length - 1);
+    }
+
+    async function pruneBehind(sourceBuffer, label) {
+      const ranges = sourceBuffer.buffered;
+      if (!ranges || ranges.length === 0) return;
+      const removeEnd = Math.max(0, (video.currentTime || 0) - 25);
+      if (removeEnd <= 0) return;
+
+      for (let i = 0; i < ranges.length; i++) {
+        const start = ranges.start(i);
+        const end = Math.min(ranges.end(i), removeEnd);
+        if (end > start + 1) {
+          log(`${label} prune ${start.toFixed(1)}-${end.toFixed(1)}`);
+          await removeBuffer(sourceBuffer, start, end);
+          return;
+        }
+      }
+    }
+
+    async function appendBufferWithQuotaRetry(sourceBuffer, bytes, label) {
+      try {
+        await appendBuffer(sourceBuffer, bytes);
+      } catch (err) {
+        if (!(err && err.name === 'QuotaExceededError') && !String(err).includes('QuotaExceededError')) throw err;
+        log(`${label} quota reached; pruning and retrying`);
+        await pruneBehind(sourceBuffer, label);
+        await sleep(100);
+        await appendBuffer(sourceBuffer, bytes);
+      }
+    }
+
+    async function appendTrackRange(sourceBuffer, initUrl, segmentUrls, label, startIndex, endIndex, includeInit) {
+      if (includeInit) {
+        log(`${label} init fetch`);
+        await appendBuffer(sourceBuffer, await fetchBytes(initUrl));
+      }
+
+      for (let i = startIndex; i < endIndex; i++) {
+        if (fatal) return;
+        await appendBuffer(sourceBuffer, await fetchBytes(segmentUrls[i]));
+        if (i === startIndex || i % 8 === 0) log(`${label} appended ${i + 1}/${segmentUrls.length}`);
+      }
+    }
+
+    async function appendTrackWindow(sourceBuffer, segmentUrls, label, startIndex) {
+      const maxAheadSeconds = 35;
+      let i = startIndex;
+      while (!fatal && i < segmentUrls.length) {
+        const ahead = bufferedEnd(sourceBuffer) - (video.currentTime || 0);
+        if (ahead > maxAheadSeconds) {
+          await pruneBehind(sourceBuffer, label);
+          await sleep(350);
+          continue;
+        }
+
+        await pruneBehind(sourceBuffer, label);
+        await appendBufferWithQuotaRetry(sourceBuffer, await fetchBytes(segmentUrls[i]), label);
+        if (i === startIndex || i % 8 === 0) log(`${label} appended ${i + 1}/${segmentUrls.length}`);
+        i++;
+      }
+      log(`${label} append loop complete`);
+    }
+
+    let firstFrameSent = false;
+    let lastPlaybackPosition = 0;
+    let lastPlaybackProgressAt = performance.now();
+    let lastPostedBuffering = false;
+
+    function notePlaybackProgress() {
+      const position = video.currentTime || 0;
+      if (Math.abs(position - lastPlaybackPosition) <= 0.05) return false;
+      lastPlaybackPosition = position;
+      lastPlaybackProgressAt = performance.now();
+      return true;
+    }
+
+    function postFirstFrame(reason) {
+      if (firstFrameSent) return;
+      firstFrameSent = true;
+      log(`first frame ${reason}`);
+      host('first-frame', { reason });
+      postState(false);
+    }
+
+    function armFirstFrameSignal() {
+      if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+        video.requestVideoFrameCallback(() => postFirstFrame('requestVideoFrameCallback'));
+      }
+    }
+
+    function postState(isBuffering = false) {
+      notePlaybackProgress();
+      lastPostedBuffering = isBuffering;
+      host('state', {
+        positionMs: Math.round(video.currentTime * 1000),
+        durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : config.durationMs,
+        isPlaying: !video.paused && !video.ended,
+        isBuffering
+      });
+    }
+
+    function scheduleUnmute() {
+      if (unmuteScheduled || !video.muted) return;
+      unmuteScheduled = true;
+      setTimeout(() => {
+        video.muted = false;
+        video.defaultMuted = false;
+        log('unmuted after autoplay start');
+        postState(false);
+      }, 250);
+    }
+
+    async function playVideo(source) {
+      try {
+        await video.play();
+        scheduleUnmute();
+        postState(false);
+        return true;
+      } catch (err) {
+        if (err && err.name === 'NotAllowedError') {
+          log(`play blocked on ${source}; retrying muted`);
+          video.defaultMuted = true;
+          video.muted = true;
+          try {
+            await video.play();
+            scheduleUnmute();
+            postState(false);
+            return true;
+          } catch (mutedErr) {
+            host('autoplay-blocked', { message: mutedErr && mutedErr.message ? mutedErr.message : String(mutedErr) });
+            postState(false);
+            return false;
+          }
+        }
+        throw err;
+      }
+    }
+
+    async function startMse() {
+      mediaSource = new MediaSource();
+      video.src = URL.createObjectURL(mediaSource);
+      await new Promise(resolve => mediaSource.addEventListener('sourceopen', resolve, { once: true }));
+      sourceOpen = true;
+      log(`MediaSource open video=${config.video.contentType} audio=${config.audio.contentType}`);
+      mediaSource.duration = Math.max(1, config.durationMs / 1000);
+
+      const videoBuffer = mediaSource.addSourceBuffer(config.video.contentType);
+      const audioBuffer = mediaSource.addSourceBuffer(config.audio.contentType);
+      videoBuffer.mode = 'segments';
+      audioBuffer.mode = 'segments';
+
+      const startIndex = Math.max(0, Math.min(config.segmentTimes.length - 1, Math.floor(startSeconds / config.segmentLength)));
+      const startupEnd = Math.min(config.segmentTimes.length, startIndex + 4);
+      log(`startup append range ${startIndex + 1}-${startupEnd}/${config.segmentTimes.length}`);
+      await Promise.all([
+        appendTrackRange(videoBuffer, config.video.initUrl, config.video.segmentUrls, 'video', startIndex, startupEnd, true),
+        appendTrackRange(audioBuffer, config.audio.initUrl, config.audio.segmentUrls, 'audio', startIndex, startupEnd, true)
+      ]);
+
+      if (startSeconds > 0) video.currentTime = startSeconds;
+      armFirstFrameSignal();
+      if (autoPlay) {
+        await playVideo('startup');
+      } else {
+        postState(false);
+      }
+
+      Promise.all([
+        appendTrackWindow(videoBuffer, config.video.segmentUrls, 'video', startupEnd),
+        appendTrackWindow(audioBuffer, config.audio.segmentUrls, 'audio', startupEnd)
+      ]).then(() => {
+        log('background append complete');
+        if (mediaSource.readyState === 'open') mediaSource.endOfStream();
+      }).catch(fail);
+    }
+
+    video.addEventListener('timeupdate', () => postState(false));
+    video.addEventListener('durationchange', () => postState(false));
+    video.addEventListener('loadeddata', () => postFirstFrame('loadeddata'));
+    video.addEventListener('canplay', () => postFirstFrame('canplay'));
+    video.addEventListener('playing', () => { postFirstFrame('playing'); postState(false); });
+    video.addEventListener('canplaythrough', () => postState(false));
+    video.addEventListener('pause', () => postState(false));
+    video.addEventListener('waiting', () => postState(true));
+    video.addEventListener('stalled', () => postState(true));
+    video.addEventListener('seeking', () => postState(true));
+    video.addEventListener('seeked', () => postState(false));
+    video.addEventListener('ended', () => host('ended'));
+    video.addEventListener('error', () => fail(video.error ? `media error code=${video.error.code} message=${video.error.message}` : 'media error'));
+
+    setInterval(() => {
+      if (fatal) return;
+
+      const madeProgress = notePlaybackProgress();
+      const isPlaying = !video.paused && !video.ended;
+      if (!isPlaying || madeProgress) {
+        if (lastPostedBuffering) postState(false);
+        return;
+      }
+
+      const duration = Number.isFinite(video.duration) ? video.duration : config.durationMs / 1000;
+      const nearEnd = Number.isFinite(duration) && duration - (video.currentTime || 0) < 0.5;
+      const buffering = !video.seeking
+        && !nearEnd
+        && (video.readyState < 3 || performance.now() - lastPlaybackProgressAt > 1800);
+
+      if (buffering !== lastPostedBuffering)
+        postState(buffering);
+    }, 500);
+
+    window.__waveePlayer = {
+      play: () => playVideo('host-play').catch(fail),
+      pause: () => video.pause(),
+      seek: ms => { video.currentTime = Math.max(0, ms / 1000); postState(false); },
+      setVolume: value => { video.volume = Math.max(0, Math.min(1, value)); }
+    };
+
+    (async () => {
+      try {
+        await configureEme();
+        await startMse();
+      } catch (err) {
+        fail(err);
+      }
+    })();
+  </script>
+</body>
+</html>

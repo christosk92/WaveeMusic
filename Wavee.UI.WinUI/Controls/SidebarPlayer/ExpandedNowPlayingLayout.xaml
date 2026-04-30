@@ -26,6 +26,28 @@
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
+            <SolidColorBrush x:Key="VideoOverlayControlFill" Color="#66000000" />
+            <SolidColorBrush x:Key="VideoOverlayControlForeground" Color="White" />
+
+            <Style x:Key="VideoOverlayButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{StaticResource VideoOverlayControlFill}" />
+                <Setter Property="Foreground" Value="{StaticResource VideoOverlayControlForeground}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="VideoOverlayToggleButtonStyle" TargetType="ToggleButton">
+                <Setter Property="Background" Value="{StaticResource VideoOverlayControlFill}" />
+                <Setter Property="Foreground" Value="{StaticResource VideoOverlayControlForeground}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -47,20 +69,23 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Album art — square, capped at min(row height, column width).
-             AspectRatioGrid trick: use a Viewbox with Stretch=Uniform so the
-             square content scales down to fit the smaller of the two axes. -->
-        <Viewbox
-                 x:Name="MediaViewbox"
+        <!-- Media stage: square artwork for audio, edge-to-edge 16:9 frame for video. -->
+        <Grid
+                 x:Name="MediaStage"
                  Grid.Row="0"
-                 Stretch="Uniform"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center">
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Stretch"
+                 SizeChanged="MediaStage_SizeChanged">
             <Grid
                 x:Name="MediaFrame"
                 Width="540"
                 Height="540"
-                RenderTransformOrigin="0.5,0.5">
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                RenderTransformOrigin="0.5,0.5"
+                PointerEntered="MediaFrame_PointerEntered"
+                PointerMoved="MediaFrame_PointerMoved"
+                PointerExited="MediaFrame_PointerExited">
                 <Grid.RenderTransform>
                     <CompositeTransform x:Name="MediaFrameTransform" />
                 </Grid.RenderTransform>
@@ -73,9 +98,10 @@
                         CornerRadius="14"
                         InnerContentClipMode="CompositionMaskBrush" />
                 </toolkit:Effects.Shadow>
-                <Grid x:Name="AlbumArtHost"
-                      CornerRadius="14"
-                      Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Border x:Name="AlbumArtHost"
+                        CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <Grid>
                     <imaging:CrossFadeImage
                         x:Name="AlbumArtImage"
                         toolkit:TransitionHelper.Id="albumArt"
@@ -90,6 +116,332 @@
                         Background="Black"
                         CornerRadius="14"
                         Visibility="Collapsed" />
+                    <Grid
+                        x:Name="VideoStatusOverlay"
+                        Canvas.ZIndex="4"
+                        Background="#66000000"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False">
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8">
+                            <ProgressRing
+                                Width="34"
+                                Height="34"
+                                IsActive="True"
+                                Foreground="White" />
+                            <TextBlock
+                                x:Name="VideoStatusText"
+                                Text="Buffering"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="White" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid
+                        x:Name="VideoTakeoverOverlay"
+                        Canvas.ZIndex="2"
+                        Background="Black"
+                        Visibility="Collapsed">
+                        <Button
+                            Style="{StaticResource VideoOverlayButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="12"
+                            Click="VideoTakeoverDismissButton_Click"
+                            ToolTipService.ToolTip="Dismiss">
+                            <FontIcon Glyph="&#xE711;" FontSize="11" />
+                        </Button>
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="14"
+                            MaxWidth="360">
+                            <FontIcon
+                                Glyph="&#xE8A7;"
+                                FontSize="34"
+                                Opacity="0.7"
+                                Foreground="White" />
+                            <TextBlock
+                                Text="Playing in another window"
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                Foreground="White"
+                                TextAlignment="Center"
+                                HorizontalAlignment="Center" />
+                            <TextBlock
+                                Text="Only one video surface can render at a time."
+                                FontSize="13"
+                                Opacity="0.74"
+                                Foreground="White"
+                                TextAlignment="Center"
+                                TextWrapping="Wrap" />
+                            <Button
+                                Padding="16,8"
+                                CornerRadius="18"
+                                Click="VideoTakeoverButton_Click"
+                                ToolTipService.ToolTip="Move video playback to this player">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="13" />
+                                    <TextBlock Text="Play here instead" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <Grid
+                        x:Name="VideoOverlay"
+                        Canvas.ZIndex="3"
+                        Background="Transparent"
+                        Opacity="1"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False">
+                        <Grid x:Name="VideoOverlayChrome">
+                            <Rectangle IsHitTestVisible="False">
+                                <Rectangle.Fill>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Offset="0" Color="#9A000000" />
+                                        <GradientStop Offset="0.42" Color="#16000000" />
+                                        <GradientStop Offset="1" Color="#CC000000" />
+                                    </LinearGradientBrush>
+                                </Rectangle.Fill>
+                            </Rectangle>
+
+                            <Grid Margin="20,16,20,18">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                        <HyperlinkButton
+                                            Padding="0"
+                                            MinWidth="0"
+                                            MinHeight="0"
+                                            Foreground="White"
+                                            Click="TrackTitle_Click"
+                                            ToolTipService.ToolTip="Open album">
+                                            <TextBlock
+                                                Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                                                FontSize="18"
+                                                FontWeight="SemiBold"
+                                                Foreground="White"
+                                                MaxLines="1"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </HyperlinkButton>
+                                        <ctk:MetadataControl
+                                            Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
+                                            Separator=", ">
+                                            <ctk:MetadataControl.TextBlockStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontSize" Value="13" />
+                                                    <Setter Property="Opacity" Value="0.78" />
+                                                    <Setter Property="Foreground" Value="White" />
+                                                    <Setter Property="MaxLines" Value="1" />
+                                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                </Style>
+                                            </ctk:MetadataControl.TextBlockStyle>
+                                        </ctk:MetadataControl>
+                                    </StackPanel>
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        VerticalAlignment="Center">
+                                        <controls:HeartButton x:Name="OverlayHeartButton" Width="36" Height="36" />
+                                        <Button
+                                            Style="{StaticResource VideoOverlayButtonStyle}"
+                                            Width="36"
+                                            Height="36"
+                                            Click="VideoQualityButton_Click"
+                                            ToolTipService.ToolTip="Quality and stream details">
+                                            <FontIcon
+                                                Glyph="&#xE713;"
+                                                FontSize="14"
+                                                Foreground="White" />
+                                        </Button>
+                                        <Button
+                                            Style="{StaticResource VideoOverlayButtonStyle}"
+                                            Width="36"
+                                            Height="36"
+                                            Command="{x:Bind ViewModel.SwitchToAudioCommand}"
+                                            IsEnabled="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                            Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                            ToolTipService.ToolTip="Listen as audio">
+                                            <Grid Width="16" Height="16">
+                                                <FontIcon
+                                                    Glyph="&#xE8D6;"
+                                                    FontSize="14"
+                                                    Foreground="White"
+                                                    Visibility="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                                <ProgressRing
+                                                    Width="16"
+                                                    Height="16"
+                                                    IsActive="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay}"
+                                                    Visibility="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            </Grid>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel
+                                    Grid.Row="1"
+                                    Orientation="Horizontal"
+                                    Spacing="14"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                    <Button
+                                        Style="{StaticResource VideoOverlayButtonStyle}"
+                                        Width="46"
+                                        Height="46"
+                                        CornerRadius="23"
+                                        Command="{x:Bind ViewModel.PreviousCommand}"
+                                        ToolTipService.ToolTip="Previous">
+                                        <FontIcon Glyph="&#xF8AC;" FontSize="17" Foreground="White" />
+                                    </Button>
+                                    <Button
+                                        Style="{StaticResource VideoOverlayButtonStyle}"
+                                        Width="62"
+                                        Height="62"
+                                        CornerRadius="31"
+                                        Command="{x:Bind ViewModel.PlayPauseCommand}"
+                                        ToolTipService.ToolTip="Play/Pause">
+                                        <playback:PlaybackActionContent
+                                            IconSize="24"
+                                            SpinnerSize="28"
+                                            IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                                            IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                                            ActionForeground="White" />
+                                    </Button>
+                                    <Button
+                                        Style="{StaticResource VideoOverlayButtonStyle}"
+                                        Width="46"
+                                        Height="46"
+                                        CornerRadius="23"
+                                        Command="{x:Bind ViewModel.NextCommand}"
+                                        ToolTipService.ToolTip="Next">
+                                        <FontIcon Glyph="&#xF8AD;" FontSize="17" Foreground="White" />
+                                    </Button>
+                                </StackPanel>
+
+                                <Grid Grid.Row="2" RowSpacing="8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
+                                            FontSize="12"
+                                            Foreground="White"
+                                            Opacity="0.82"
+                                            VerticalAlignment="Center" />
+                                        <playback:CompositionProgressBar
+                                            x:Name="OverlayProgressSlider"
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            PositionMs="{x:Bind ViewModel.AnchorPositionMs, Mode=OneWay}"
+                                            DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
+                                            IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
+                                            IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                                            SeekStarted="ProgressBar_SeekStarted"
+                                            SeekCommitted="ProgressBar_SeekCommitted" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
+                                            FontSize="12"
+                                            Foreground="White"
+                                            Opacity="0.82"
+                                            VerticalAlignment="Center" />
+                                    </Grid>
+
+                                    <Grid Grid.Row="1">
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="8"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center">
+                                            <ToggleButton
+                                                Style="{StaticResource VideoOverlayToggleButtonStyle}"
+                                                Width="36"
+                                                Height="36"
+                                                IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                                                Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                                                ToolTipService.ToolTip="Shuffle">
+                                                <FontIcon Glyph="&#xE8B1;" FontSize="15" Foreground="White" />
+                                            </ToggleButton>
+                                            <ToggleButton
+                                                Style="{StaticResource VideoOverlayToggleButtonStyle}"
+                                                Width="36"
+                                                Height="36"
+                                                IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                                                Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                                                ToolTipService.ToolTip="Repeat">
+                                                <FontIcon
+                                                    Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                                    FontSize="15"
+                                                    Foreground="White" />
+                                            </ToggleButton>
+                                        </StackPanel>
+
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="8"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center">
+                                            <Button
+                                                Style="{StaticResource VideoOverlayButtonStyle}"
+                                                Width="36"
+                                                Height="36"
+                                                Click="VideoQualityButton_Click"
+                                                ToolTipService.ToolTip="Quality and stream details">
+                                                <FontIcon Glyph="&#xE713;" FontSize="15" Foreground="White" />
+                                            </Button>
+                                            <Button
+                                                Style="{StaticResource VideoOverlayButtonStyle}"
+                                                Width="36"
+                                                Height="36"
+                                                Click="VideoQueueButton_Click"
+                                                ToolTipService.ToolTip="Queue">
+                                                <FontIcon Glyph="&#xE142;" FontSize="15" Foreground="White" />
+                                            </Button>
+                                            <Button
+                                                Style="{StaticResource VideoOverlayButtonStyle}"
+                                                Width="36"
+                                                Height="36"
+                                                Click="FitVideoWindowButton_Click"
+                                                ToolTipService.ToolTip="Fit window to video">
+                                                <FontIcon Glyph="&#xE9A6;" FontSize="15" Foreground="White" />
+                                            </Button>
+                                            <ToggleButton
+                                                x:Name="VideoOverlayTheaterModeButton"
+                                                Style="{StaticResource VideoOverlayToggleButtonStyle}"
+                                                Width="36"
+                                                Height="36"
+                                                Click="VideoTheaterModeButton_Click"
+                                                ToolTipService.ToolTip="Exit theater mode">
+                                                <FontIcon Glyph="&#xE740;" FontSize="15" Foreground="White" />
+                                            </ToggleButton>
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Grid>
                     <FontIcon Glyph="&#xE8D6;"
                               FontSize="56"
                               IsHitTestVisible="False"
@@ -97,8 +449,9 @@
                               VerticalAlignment="Center"
                               Visibility="{x:Bind ViewModel.AlbumArt, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}" />
                 </Grid>
+                </Border>
             </Grid>
-        </Viewbox>
+        </Grid>
 
         <!-- Title row — large title + artist on the left, heart + ⋯ at right -->
         <Grid
@@ -110,13 +463,21 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                <TextBlock x:Name="TrackTitleText"
-                           toolkit:TransitionHelper.Id="trackTitle"
-                           Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
-                           FontSize="22"
-                           FontWeight="SemiBold"
-                           MaxLines="1"
-                           TextTrimming="CharacterEllipsis" />
+                <HyperlinkButton
+                    Padding="0"
+                    MinWidth="0"
+                    MinHeight="0"
+                    Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
+                    Click="TrackTitle_Click"
+                    ToolTipService.ToolTip="Open album">
+                    <TextBlock x:Name="TrackTitleText"
+                               toolkit:TransitionHelper.Id="trackTitle"
+                               Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               MaxLines="1"
+                               TextTrimming="CharacterEllipsis" />
+                </HyperlinkButton>
                 <ctk:MetadataControl x:Name="ArtistMetadata"
                                      toolkit:TransitionHelper.Id="artistMetadata"
                                      Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
@@ -299,6 +660,28 @@
                     ToolTipService.ToolTip="Next">
                     <FontIcon Glyph="&#xF8AD;" FontSize="17" />
                 </Button>
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                    ToolTipService.ToolTip="Shuffle">
+                    <FontIcon Glyph="&#xE8B1;" FontSize="15" />
+                </ToggleButton>
+                <ToggleButton
+                    Style="{StaticResource SubtleToggleButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                    Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                    ToolTipService.ToolTip="Repeat">
+                    <FontIcon
+                        Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                        FontSize="15" />
+                </ToggleButton>
                 <FontIcon
                     Glyph="&#xE995;"
                     FontSize="14"
@@ -334,6 +717,34 @@
                 Orientation="Horizontal"
                 Spacing="6"
                 VerticalAlignment="Center">
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Click="VideoQualityButton_Click"
+                    ToolTipService.ToolTip="Quality and stream details">
+                    <FontIcon Glyph="&#xE713;" FontSize="15" />
+                </Button>
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Click="VideoQueueButton_Click"
+                    ToolTipService.ToolTip="Queue">
+                    <FontIcon Glyph="&#xE142;" FontSize="15" />
+                </Button>
+                <Button
+                    x:Name="FitVideoWindowButton"
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Click="FitVideoWindowButton_Click"
+                    ToolTipService.ToolTip="Fit window to video">
+                    <FontIcon Glyph="&#xE9A6;" FontSize="15" />
+                </Button>
                 <ToggleButton
                     x:Name="VideoTheaterModeButton"
                     Style="{StaticResource SubtleToggleButtonStyle}"
@@ -343,28 +754,6 @@
                     Click="VideoTheaterModeButton_Click"
                     ToolTipService.ToolTip="Theater mode">
                     <FontIcon Glyph="&#xE740;" FontSize="15" />
-                </ToggleButton>
-                <ToggleButton
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="36"
-                    Height="36"
-                    Padding="0"
-                    IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
-                    Command="{x:Bind ViewModel.ToggleShuffleCommand}"
-                    ToolTipService.ToolTip="Shuffle">
-                    <FontIcon Glyph="&#xE8B1;" FontSize="15" />
-                </ToggleButton>
-                <ToggleButton
-                    Style="{StaticResource SubtleToggleButtonStyle}"
-                    Width="36"
-                    Height="36"
-                    Padding="0"
-                    IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
-                    Command="{x:Bind ViewModel.ToggleRepeatCommand}"
-                    ToolTipService.ToolTip="Repeat">
-                    <FontIcon
-                        Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
-                        FontSize="15" />
                 </ToggleButton>
             </StackPanel>
         </Grid>

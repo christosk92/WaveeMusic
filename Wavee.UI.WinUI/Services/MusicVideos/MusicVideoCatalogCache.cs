@@ -14,6 +14,7 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
     private sealed record Entry(bool? HasVideo, string? VideoUri, string? ManifestId);
 
     private readonly ConcurrentDictionary<string, Entry> _entries = new(System.StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _audioUrisByVideoUri = new(System.StringComparer.Ordinal);
 
     public bool? GetHasVideo(string audioTrackUri)
     {
@@ -37,6 +38,7 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
             audioTrackUri,
             _ => new Entry(true, videoTrackUri, null),
             (_, prev) => prev with { HasVideo = true, VideoUri = videoTrackUri });
+        _audioUrisByVideoUri[videoTrackUri] = audioTrackUri;
     }
 
     public bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri)
@@ -49,6 +51,19 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
             return true;
         }
         videoTrackUri = string.Empty;
+        return false;
+    }
+
+    public bool TryGetAudioUri(string videoTrackUri, out string audioTrackUri)
+    {
+        if (!string.IsNullOrEmpty(videoTrackUri)
+            && _audioUrisByVideoUri.TryGetValue(videoTrackUri, out audioTrackUri)
+            && !string.IsNullOrEmpty(audioTrackUri))
+        {
+            return true;
+        }
+
+        audioTrackUri = string.Empty;
         return false;
     }
 

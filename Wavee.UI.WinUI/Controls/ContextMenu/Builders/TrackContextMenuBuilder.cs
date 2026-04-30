@@ -6,9 +6,12 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
 
@@ -237,9 +240,31 @@ public static class TrackContextMenuBuilder
 
     private static void ToggleLikeDefault(ITrackItem track)
     {
+        if (track is NowPlayingTrackAdapter)
+        {
+            _ = ToggleCurrentPlaybackLikeAsync();
+            return;
+        }
+
         var svc = Ioc.Default.GetService<ITrackLikeService>();
         if (svc is null || string.IsNullOrEmpty(track.Uri)) return;
         svc.ToggleSave(SavedItemType.Track, track.Uri, track.IsLiked);
+    }
+
+    private static async Task ToggleCurrentPlaybackLikeAsync()
+    {
+        var playback = Ioc.Default.GetService<IPlaybackStateService>();
+        var svc = Ioc.Default.GetService<ITrackLikeService>();
+        var musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
+        if (playback is null || svc is null) return;
+
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(playback, musicVideoMetadata)
+            .ConfigureAwait(true);
+        if (string.IsNullOrEmpty(uri)) return;
+
+        var isSaved = svc.IsSaved(SavedItemType.Track, uri);
+        svc.ToggleSave(SavedItemType.Track, uri, isSaved);
     }
 
     private static async Task<IReadOnlyList<ContextMenuItemModel>> LoadUserPlaylistsAsync(ITrackItem track)

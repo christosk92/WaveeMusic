@@ -146,6 +146,18 @@
             </Button>
         </Grid>
 
+        <TeachingTip
+            x:Name="VideoPopoutTeachingTip"
+            Title="Video is playing in the popout player"
+            Subtitle="Playback was routed to the detached player window."
+            Target="{x:Bind PlayerBarLayoutRoot}"
+            PreferredPlacement="TopRight"
+            IsLightDismissEnabled="True"
+            ActionButtonContent="Focus player"
+            CloseButtonContent="Dismiss"
+            ActionButtonClick="VideoPopoutTeachingTip_ActionButtonClick"
+            Closed="VideoPopoutTeachingTip_Closed" />
+
     <Border
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
         <toolkit:Effects.Shadow>
@@ -700,6 +712,22 @@
                                             <FontIcon Glyph="&#xE8D6;" FontSize="14" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Show mini player"
+                                        Click="ShowMiniVideoPlayer_Click"
+                                        Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Auto play videos this session"
+                                        IsChecked="{x:Bind ViewModel.PreferVideoPlaybackInSession, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleVideoPlaybackPreferenceCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE714;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <ToggleMenuFlyoutItem
                                         Text="Shuffle"
@@ -1044,6 +1072,22 @@
                                             <FontIcon Glyph="&#xE8D6;" FontSize="14" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Show mini player"
+                                        Click="ShowMiniVideoPlayer_Click"
+                                        Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <ToggleMenuFlyoutItem
+                                        Text="Auto play videos this session"
+                                        IsChecked="{x:Bind ViewModel.PreferVideoPlaybackInSession, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleVideoPlaybackPreferenceCommand}">
+                                        <ToggleMenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE714;" FontSize="14" />
+                                        </ToggleMenuFlyoutItem.Icon>
+                                    </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <ToggleMenuFlyoutItem
                                         Text="Shuffle"

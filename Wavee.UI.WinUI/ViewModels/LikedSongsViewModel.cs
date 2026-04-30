@@ -53,6 +53,9 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private string _searchQuery = "";
 
     [ObservableProperty]
+    private bool _showOnlyVideoTracks;
+
+    [ObservableProperty]
     private LikedSongsSortColumn _currentSortColumn = LikedSongsSortColumn.AddedAt;
 
     [ObservableProperty]
@@ -115,6 +118,10 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
+    public int VideoTrackCount => _allSongs.Count(static song => song.HasVideo);
+    public bool HasVideoTracks => VideoTrackCount > 0;
+    public string VideoTrackFilterLabel => VideoTrackCount == 1 ? "1 video" : $"{VideoTrackCount} videos";
+
     public LikedSongsViewModel(
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
@@ -166,6 +173,11 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         _searchDebounceTimer.Start();
     }
 
+    partial void OnShowOnlyVideoTracksChanged(bool value)
+    {
+        ApplyFilterAndSort();
+    }
+
     partial void OnCurrentSortColumnChanged(LikedSongsSortColumn value)
     {
         OnPropertyChanged(nameof(IsSortingByTitle));
@@ -208,16 +220,14 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
         if (!string.IsNullOrEmpty(query))
         {
-            filtered = _allSongs.Where(s =>
+            filtered = filtered.Where(s =>
                 s.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 s.ArtistName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 s.AlbumName.Contains(query, StringComparison.OrdinalIgnoreCase));
-
-            if (selectedChip?.Filter is { } searchFilter)
-            {
-                filtered = filtered.Where(song => MatchesFilter(song, searchFilter));
-            }
         }
+
+        if (ShowOnlyVideoTracks)
+            filtered = filtered.Where(static song => song.HasVideo);
 
         var sorted = (CurrentSortColumn, IsSortDescending) switch
         {
@@ -240,6 +250,16 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         TotalSongs = _allSongs.Count;
         var totalSeconds = _allSongs.Sum(s => s.Duration.TotalSeconds);
         TotalDuration = FormatDuration(totalSeconds);
+    }
+
+    private void NotifyVideoFilterProperties()
+    {
+        OnPropertyChanged(nameof(VideoTrackCount));
+        OnPropertyChanged(nameof(HasVideoTracks));
+        OnPropertyChanged(nameof(VideoTrackFilterLabel));
+
+        if (!HasVideoTracks && ShowOnlyVideoTracks)
+            ShowOnlyVideoTracks = false;
     }
 
     private static string FormatDuration(double totalSeconds)
@@ -323,6 +343,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
             var songs = await songsTask;
             _allSongs = songs.Select((s, i) => s with { OriginalIndex = i + 1 }).ToList();
+            NotifyVideoFilterProperties();
 
             // If local DB is empty and we haven't already triggered a sync this session,
             // request one now. DataChanged will fire when sync completes → LoadAsync re-runs.
@@ -407,12 +428,23 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
                 _dispatcherQueue.TryEnqueue(() =>
                 {
                     if (_disposed) return;
+                    var changed = false;
                     foreach (var entry in availability)
                     {
                         if (!songsByUri.TryGetValue(entry.Key, out var songs)) continue;
                         foreach (var song in songs)
+                        {
+                            if (song.HasVideo == entry.Value) continue;
                             song.HasVideo = entry.Value;
+                            changed = true;
+                        }
                     }
+
+                    if (!changed) return;
+
+                    NotifyVideoFilterProperties();
+                    if (ShowOnlyVideoTracks)
+                        ApplyFilterAndSort();
                 });
             }
             catch (Exception ex)

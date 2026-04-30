@@ -7,6 +7,8 @@
     xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -17,7 +19,6 @@
            2) Focus player content; optional lyrics/queue column for expanded mode.
            3) Toggle buttons (lyrics, queue) overlay bottom-right. -->
     <Grid x:Name="RootGrid">
-
         <Border x:Name="AtmosphereBackdrop" IsHitTestVisible="False">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -135,9 +136,79 @@
                         x:Load="False"
                         IsOpen="True"
                         IsTabHeaderVisible="False"
-                        IsEmbeddedChromeTransparent="True" />
+                        IsEmbeddedChromeTransparent="True"
+                        EmbeddedHostTintColor="{x:Bind ViewModel.AlbumArtColor, Mode=OneWay}" />
                 </Grid>
             </Border>
+        </Grid>
+
+        <Grid
+            x:Name="CompactNowPlayingHeader"
+            Visibility="Collapsed"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Stretch"
+            Margin="44,42,44,0"
+            ColumnSpacing="16"
+            Canvas.ZIndex="8">
+            <animations:Implicit.ShowAnimations>
+                <animations:OpacityAnimation Duration="0:0:0.18" From="0" To="1" />
+                <animations:TranslationAnimation Duration="0:0:0.18" From="0,-8,0" To="0" />
+            </animations:Implicit.ShowAnimations>
+            <animations:Implicit.HideAnimations>
+                <animations:OpacityAnimation Duration="0:0:0.12" From="1" To="0" />
+            </animations:Implicit.HideAnimations>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border
+                x:Name="CompactHeaderAlbumArtHost"
+                Width="78"
+                Height="78"
+                CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <imaging:CrossFadeImage
+                    x:Name="CompactHeaderAlbumArtImage"
+                    Source="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}"
+                    FallbackSource="{x:Bind ViewModel.AlbumArt, Mode=OneWay}"
+                    DecodePixelWidth="224"
+                    CornerRadius="8"
+                    Stretch="UniformToFill" />
+            </Border>
+
+            <StackPanel
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Spacing="2">
+                <HyperlinkButton
+                    Padding="0"
+                    MinHeight="0"
+                    MinWidth="0"
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                    Click="CompactTrackTitle_Click"
+                    ToolTipService.ToolTip="Open album">
+                    <TextBlock
+                        Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                        FontSize="21"
+                        FontWeight="SemiBold"
+                        MaxLines="1"
+                        TextTrimming="CharacterEllipsis" />
+                </HyperlinkButton>
+                <ctk:MetadataControl
+                    Items="{x:Bind ViewModel.ArtistMetadataItems, Mode=OneWay}"
+                    Separator=", ">
+                    <ctk:MetadataControl.TextBlockStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="FontSize" Value="15" />
+                            <Setter Property="Opacity" Value="0.74" />
+                            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <Setter Property="MaxLines" Value="1" />
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                        </Style>
+                    </ctk:MetadataControl.TextBlockStyle>
+                </ctk:MetadataControl>
+            </StackPanel>
         </Grid>
 
         <!-- Mode toggles — bottom-right. ToggleButton's IsChecked mirrors Mode. -->

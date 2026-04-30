@@ -11,6 +11,7 @@ using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.Foundation;
@@ -59,6 +60,11 @@ public sealed partial class ExpandedPlayerView : UserControl
     private bool _isVideoSurfaceEnabled;
     private bool _isVideoFocusActive;
     private bool _isVideoTheaterMode;
+    private bool _autoFitRequestedForVideoFocus;
+    private bool _compactNowPlayingVisible;
+    private double _compactHeaderTop = 42;
+    private double _compactHeaderSide = 44;
+    private double _compactHeaderArtSize = 78;
 
     public ExpandedPlayerView()
     {
@@ -75,7 +81,16 @@ public sealed partial class ExpandedPlayerView : UserControl
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _videoSurface.ActiveSurfaceChanged += OnActiveVideoSurfaceChanged;
         PlayerLayout.TheaterModeChanged += OnPlayerLayoutTheaterModeChanged;
+        PlayerLayout.FitVideoWindowRequested += OnPlayerLayoutFitVideoWindowRequested;
+        PlayerLayout.QueueRequested += OnPlayerLayoutQueueRequested;
     }
+
+    public PlayerBarViewModel ViewModel => _viewModel;
+
+    public event EventHandler? FitVideoWindowRequested;
+
+    internal Size GetPreferredVideoWindowSize(double currentWindowWidth)
+        => PlayerLayout.GetPreferredVideoWindowSize(currentWindowWidth);
 
     /// <summary>Right-column content state. Default: <see cref="ExpandedPlayerContentMode.Lyrics"/>.</summary>
     public ExpandedPlayerContentMode Mode
@@ -101,6 +116,7 @@ public sealed partial class ExpandedPlayerView : UserControl
         ApplyMode();
         SyncContentHostWidth();
         ApplyAmbientTint(_viewModel.AlbumArtColor);
+        QueuePostMeasureLayoutPass();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -119,6 +135,7 @@ public sealed partial class ExpandedPlayerView : UserControl
         _isVideoSurfaceEnabled = false;
         _isVideoFocusActive = false;
         _isVideoTheaterMode = false;
+        _autoFitRequestedForVideoFocus = false;
         UpdateLyricsConsumerActivity(active: false);
         TeardownLyricsCanvas();
 
@@ -187,8 +204,10 @@ public sealed partial class ExpandedPlayerView : UserControl
             Mode = _lastUserMode;
         }
 
+        ApplyMode();
         SyncContentHostWidth();
         UpdateLyricsCanvasLayout();
+        UpdateCompactHeaderLayout();
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
@@ -207,6 +226,20 @@ public sealed partial class ExpandedPlayerView : UserControl
         }
     }
 
+    private void CompactTrackTitle_Click(object sender, RoutedEventArgs e)
+    {
+        var albumId = _viewModel.CurrentAlbumId;
+        if (string.IsNullOrEmpty(albumId)) return;
+
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = albumId,
+            Title = _viewModel.TrackTitle ?? "Album",
+            ImageUrl = _viewModel.AlbumArt
+        };
+        NavigationHelpers.OpenAlbum(param, param.Title);
+    }
+
     private void OnActiveVideoSurfaceChanged(object? sender, MediaPlayer? surface)
         => DispatcherQueue?.TryEnqueue(UpdateVideoFocusLayout);
 
@@ -216,18 +249,66 @@ public sealed partial class ExpandedPlayerView : UserControl
         ApplyMode();
     }
 
+    private void OnPlayerLayoutFitVideoWindowRequested(object? sender, EventArgs e)
+        => FitVideoWindowRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnPlayerLayoutQueueRequested(object? sender, EventArgs e)
+        => OpenQueueMode();
+
+    private void OpenQueueMode()
+    {
+        if (_isVideoTheaterMode)
+        {
+            _isVideoTheaterMode = false;
+            PlayerLayout.SetTheaterMode(false);
+        }
+
+        Mode = ExpandedPlayerContentMode.Queue;
+        _lastUserMode = ExpandedPlayerContentMode.Queue;
+        ApplyMode();
+    }
+
     private void UpdateVideoFocusLayout()
     {
         var active = IsLoaded && _isVideoSurfaceEnabled && _videoSurface.HasActiveSurface;
         if (_isVideoFocusActive == active)
         {
             PlayerLayout.SetVideoPresentationMode(active);
+            if (active)
+                QueueFitVideoWindowForVideo();
             return;
         }
 
         _isVideoFocusActive = active;
         PlayerLayout.SetVideoPresentationMode(active);
         ApplyMode();
+
+        if (active)
+            QueueFitVideoWindowForVideo();
+        else
+            _autoFitRequestedForVideoFocus = false;
+    }
+
+    private void QueueFitVideoWindowForVideo()
+    {
+        if (_autoFitRequestedForVideoFocus)
+            return;
+
+        var dispatcher = DispatcherQueue ?? Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (dispatcher is null)
+            return;
+
+        _autoFitRequestedForVideoFocus = true;
+        dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (!IsLoaded || !_isVideoFocusActive)
+            {
+                _autoFitRequestedForVideoFocus = false;
+                return;
+            }
+
+            FitVideoWindowRequested?.Invoke(this, EventArgs.Empty);
+        });
     }
 
     private bool IsLyricsModeActive =>
@@ -256,15 +337,38 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         var mode = Mode;
         var videoFocusVisible = _isVideoFocusActive;
-        var rightVisible = !videoFocusVisible && mode != ExpandedPlayerContentMode.None;
+        var videoQueueVisible = videoFocusVisible && !_isVideoTheaterMode && mode == ExpandedPlayerContentMode.Queue;
+        var rightVisible = videoQueueVisible || (!videoFocusVisible && mode != ExpandedPlayerContentMode.None);
         var lyricsVisible = !videoFocusVisible && mode == ExpandedPlayerContentMode.Lyrics;
-        var queueVisible = !videoFocusVisible && mode == ExpandedPlayerContentMode.Queue;
-        var focusVisible = videoFocusVisible || mode == ExpandedPlayerContentMode.None;
+        var queueVisible = rightVisible && mode == ExpandedPlayerContentMode.Queue;
+        var focusVisible = !rightVisible && (videoFocusVisible || mode == ExpandedPlayerContentMode.None);
+        var compactRightLayout = false;
+        var twoColumnLayout = rightVisible && !compactRightLayout;
 
-        LeftColumnDef.Width = new GridLength(1, GridUnitType.Star);
-        RightColumnDef.Width = rightVisible
-            ? new GridLength(1, GridUnitType.Star)
-            : new GridLength(0);
+        UpdateCompactHeaderLayout();
+
+        if (videoQueueVisible && twoColumnLayout)
+        {
+            LeftColumnDef.Width = new GridLength(1, GridUnitType.Star);
+            RightColumnDef.Width = new GridLength(GetVideoQueuePanelWidth());
+        }
+        else
+        {
+            LeftColumnDef.Width = compactRightLayout
+                ? new GridLength(0)
+                : new GridLength(twoColumnLayout ? 0.95 : 1, GridUnitType.Star);
+            RightColumnDef.Width = rightVisible || focusVisible
+                ? new GridLength(twoColumnLayout ? 1.05 : 1, GridUnitType.Star)
+                : new GridLength(0);
+        }
+
+        Grid.SetColumn(RightColumnContainer, compactRightLayout ? 0 : 1);
+        Grid.SetColumnSpan(RightColumnContainer, compactRightLayout ? 2 : 1);
+        RightColumnContainer.Margin = videoQueueVisible
+            ? new Thickness(0, 56, 40, 0)
+            : compactRightLayout
+            ? new Thickness(_compactHeaderSide, queueVisible ? GetCompactPanelTopMargin() : 112, _compactHeaderSide, 104)
+            : new Thickness(0, 56, 40, 40);
         RightColumnContainer.Visibility = rightVisible ? Visibility.Visible : Visibility.Collapsed;
         LyricsInteractionRegion.Visibility = lyricsVisible ? Visibility.Visible : Visibility.Collapsed;
         UpdateLyricsConsumerActivity(lyricsVisible);
@@ -296,17 +400,29 @@ public sealed partial class ExpandedPlayerView : UserControl
         // whole window — without ColumnSpan, the * column allocation leaves
         // dead space on the right even when RightColumnDef is 0-width because
         // PlayerLayout's MaxWidth constrains it within column 0 only.
-        Grid.SetColumnSpan(PlayerLayout, focusVisible ? 2 : 1);
+        Grid.SetColumnSpan(PlayerLayout, focusVisible || compactRightLayout ? 2 : 1);
         PlayerLayout.MaxWidth = videoFocusVisible
-            ? (_isVideoTheaterMode ? 1500 : 1080)
-            : focusVisible ? 640 : 620;
-        PlayerLayout.HorizontalAlignment = HorizontalAlignment.Center;
+            ? double.PositiveInfinity
+            : focusVisible ? GetFocusPlayerMaxWidth() : GetTwoColumnPlayerMaxWidth();
+        PlayerLayout.HorizontalAlignment = videoFocusVisible
+            ? HorizontalAlignment.Stretch
+            : HorizontalAlignment.Center;
         AnimateTransform(
             PlayerLayoutTransform,
             videoFocusVisible && !_isVideoTheaterMode ? 1.01 : 1.0,
             videoFocusVisible && !_isVideoTheaterMode ? -8 : 0,
             340);
-        ModeToggleHost.Visibility = videoFocusVisible ? Visibility.Collapsed : Visibility.Visible;
+        SetCompactNowPlayingVisible(compactRightLayout);
+
+        ModeToggleHost.HorizontalAlignment = compactRightLayout ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        ModeToggleHost.VerticalAlignment = compactRightLayout ? VerticalAlignment.Top : VerticalAlignment.Bottom;
+        ModeToggleHost.Margin = compactRightLayout
+            ? new Thickness(_compactHeaderSide, GetCompactToggleTopMargin(), 0, 0)
+            : new Thickness(0, 0, 32, 28);
+        LyricsToggleButton.Visibility = videoFocusVisible ? Visibility.Collapsed : Visibility.Visible;
+        ModeToggleHost.Visibility = videoFocusVisible && _isVideoTheaterMode
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         if (queueVisible)
         {
@@ -326,6 +442,86 @@ public sealed partial class ExpandedPlayerView : UserControl
 
         LyricsToggleButton.IsChecked = mode == ExpandedPlayerContentMode.Lyrics;
         QueueToggleButton.IsChecked = mode == ExpandedPlayerContentMode.Queue;
+    }
+
+    private void UpdateCompactHeaderLayout()
+    {
+        var width = RootGrid.ActualWidth;
+        if (width <= 0)
+            width = 900;
+
+        _compactHeaderSide = width >= 1280 ? 64 : width >= 960 ? 52 : 44;
+        _compactHeaderTop = width >= 1280 ? 48 : 42;
+        _compactHeaderArtSize = width >= 1440 ? 118 : width >= 1100 ? 104 : 86;
+
+        CompactNowPlayingHeader.Margin = new Thickness(_compactHeaderSide, _compactHeaderTop, _compactHeaderSide, 0);
+        CompactNowPlayingHeader.ColumnSpacing = width >= 1100 ? 18 : 14;
+        CompactHeaderAlbumArtHost.Width = _compactHeaderArtSize;
+        CompactHeaderAlbumArtHost.Height = _compactHeaderArtSize;
+        CompactHeaderAlbumArtImage.DecodePixelWidth = (int)Math.Round(_compactHeaderArtSize * 2.25);
+    }
+
+    private double GetCompactToggleTopMargin()
+        => _compactHeaderTop + _compactHeaderArtSize + 18;
+
+    private double GetCompactPanelTopMargin()
+        => GetCompactToggleTopMargin() + 52;
+
+    private void QueuePostMeasureLayoutPass()
+    {
+        var dispatcher = DispatcherQueue ?? Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (dispatcher is null)
+            return;
+
+        dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (!IsLoaded)
+                return;
+
+            ApplyMode();
+            SyncContentHostWidth();
+            UpdateLyricsCanvasLayout();
+        });
+    }
+
+    private double GetVideoQueuePanelWidth()
+    {
+        var width = RootGrid.ActualWidth;
+        if (width >= 1500)
+            return 430;
+        if (width >= 1180)
+            return 390;
+        return 340;
+    }
+
+    private double GetFocusPlayerMaxWidth()
+    {
+        var width = RootGrid.ActualWidth;
+        if (width >= 1600)
+            return 780;
+        if (width >= 1280)
+            return 720;
+        return 640;
+    }
+
+    private double GetTwoColumnPlayerMaxWidth()
+    {
+        var width = RootGrid.ActualWidth;
+        if (width >= 1600)
+            return 760;
+        if (width >= 1280)
+            return 700;
+        return 620;
+    }
+
+    private void SetCompactNowPlayingVisible(bool showCompact)
+    {
+        if (_compactNowPlayingVisible == showCompact)
+            return;
+
+        _compactNowPlayingVisible = showCompact;
+        PlayerLayout.Visibility = showCompact ? Visibility.Collapsed : Visibility.Visible;
+        CompactNowPlayingHeader.Visibility = showCompact ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static void AnimateTransform(CompositeTransform transform, double scale, double translateY, int durationMs)
@@ -405,6 +601,9 @@ public sealed partial class ExpandedPlayerView : UserControl
     }
 
     private void QueueToggleButton_Click(object sender, RoutedEventArgs e)
+        => ToggleQueueMode();
+
+    private void ToggleQueueMode()
     {
         Mode = Mode == ExpandedPlayerContentMode.Queue
             ? ExpandedPlayerContentMode.None

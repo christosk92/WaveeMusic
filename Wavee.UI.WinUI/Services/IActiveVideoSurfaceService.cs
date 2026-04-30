@@ -43,6 +43,12 @@ public interface IActiveVideoSurfaceService
     /// <summary>True after the active surface has rendered or opened its first video frame.</summary>
     bool HasActiveFirstFrame { get; }
 
+    /// <summary>True after first frame when the active surface is buffering and may appear frozen.</summary>
+    bool IsActiveSurfaceBuffering { get; }
+
+    /// <summary>The UI surface currently bound to the active provider, if any.</summary>
+    IMediaSurfaceConsumer? CurrentOwner { get; }
+
     /// <summary>The active provider's <see cref="IVideoSurfaceProvider.Kind"/>, or null.</summary>
     string? ActiveKind { get; }
 
@@ -53,6 +59,11 @@ public interface IActiveVideoSurfaceService
     /// the page and the mini-player to react to source changes.
     /// </summary>
     event EventHandler<MediaPlayer?>? ActiveSurfaceChanged;
+
+    /// <summary>
+    /// Fires whenever ownership of the active surface moves between UI hosts.
+    /// </summary>
+    event EventHandler? SurfaceOwnershipChanged;
 
     /// <summary>
     /// Register a video provider. Idempotent. Implementations call this
@@ -75,4 +86,7 @@ public interface IActiveVideoSurfaceService
     /// Calling on a non-owner is a no-op.
     /// </summary>
     void ReleaseSurface(IMediaSurfaceConsumer consumer);
+
+    /// <summary>Returns true when <paramref name="consumer"/> owns the active surface.</summary>
+    bool IsOwnedBy(IMediaSurfaceConsumer consumer);
 }

@@ -290,6 +290,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private string _searchQuery = "";
 
     [ObservableProperty]
+    private bool _showOnlyVideoTracks;
+
+    [ObservableProperty]
     private PlaylistSortColumn _currentSortColumn = PlaylistSortColumn.Custom;
 
     [ObservableProperty]
@@ -410,6 +413,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
+    public int VideoTrackCount => _allTracks.Count(static track => track.HasVideo);
+    public bool HasVideoTracks => VideoTrackCount > 0;
+    public string VideoTrackFilterLabel => VideoTrackCount == 1 ? "1 video" : $"{VideoTrackCount} videos";
+
     public bool CanRemove => CanEditItems && HasSelection;
 
     /// <summary>
@@ -458,6 +465,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     {
         _searchDebounceTimer.Stop();
         _searchDebounceTimer.Start();
+    }
+
+    partial void OnShowOnlyVideoTracksChanged(bool value)
+    {
+        ApplyFilterAndSort();
     }
 
     partial void OnCurrentSortColumnChanged(PlaylistSortColumn value)
@@ -541,11 +553,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         if (!string.IsNullOrEmpty(query))
         {
-            filtered = _allTracks.Where(t =>
+            filtered = filtered.Where(t =>
                 t.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 t.ArtistName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 t.AlbumName.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
+
+        if (ShowOnlyVideoTracks)
+            filtered = filtered.Where(static t => t.HasVideo);
 
         var sorted = (CurrentSortColumn, IsSortDescending) switch
         {
@@ -570,6 +585,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         TotalTracks = _allTracks.Count;
         var totalSeconds = _allTracks.Sum(t => t.Duration.TotalSeconds);
         TotalDuration = FormatDuration(totalSeconds);
+    }
+
+    private void NotifyVideoFilterProperties()
+    {
+        OnPropertyChanged(nameof(VideoTrackCount));
+        OnPropertyChanged(nameof(HasVideoTracks));
+        OnPropertyChanged(nameof(VideoTrackFilterLabel));
+
+        if (!HasVideoTracks && ShowOnlyVideoTracks)
+            ShowOnlyVideoTracks = false;
     }
 
     private static string FormatDuration(double totalSeconds)
@@ -665,7 +690,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // between Activate and LoadTracksAsync — those would latch into
             // already-materializing ListView containers).
             _allTracks = new List<PlaylistTrackDto>();
+            OnPropertyChanged(nameof(ShouldShowAddedByColumn));
             _tracksLoadedFor = null;
+            ShowOnlyVideoTracks = false;
+            NotifyVideoFilterProperties();
             _albumPalette = null;
             PaletteBackdropBrush = null;
             PaletteHeroGradientBrush = null;
@@ -766,6 +794,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         FilteredTracks.Clear();
         _allTracks = new List<PlaylistTrackDto>();
+        OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+        ShowOnlyVideoTracks = false;
+        NotifyVideoFilterProperties();
         Collaborators.Clear();
         HasCollaborators = false;
         _suppressSessionSignal = true;
@@ -1520,6 +1551,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
                 _allTracks = tracks.Select((t, i) => t with { OriginalIndex = i + 1 }).ToList();
                 HasAnyAddedAt = _allTracks.Any(t => t.AddedAt.HasValue);
+                NotifyVideoFilterProperties();
                 UpdateAggregates();
                 ApplyFilterAndSort();
                 _tracksLoadedFor = playlistId;
@@ -1631,11 +1663,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             .ToDictionary(group => group.Key, group => group.First().HasVideo, StringComparer.Ordinal);
         if (availabilityByUri.Count == 0) return;
 
+        var changed = false;
         foreach (var track in _allTracks)
         {
-            if (availabilityByUri.TryGetValue(track.Uri, out var hasVideo))
+            if (availabilityByUri.TryGetValue(track.Uri, out var hasVideo) && track.HasVideo != hasVideo)
+            {
                 track.HasVideo = hasVideo;
+                changed = true;
+            }
         }
+
+        if (!changed) return;
+
+        NotifyVideoFilterProperties();
+        if (ShowOnlyVideoTracks)
+            ApplyFilterAndSort();
     }
 
     private async Task LoadRootlistAsync()

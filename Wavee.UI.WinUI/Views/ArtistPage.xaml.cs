@@ -564,18 +564,30 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _watchFeedElement.Width = 120;
         _watchFeedElement.Height = 120;
 
-        // Apply Composition clip directly on the WatchFeedGrid visual
-        // (must be on the immediate container — swap chains ignore parent clips)
-        var gridVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(WatchFeedGrid);
-        var compositor = gridVisual.Compositor;
-        var ellipse = compositor.CreateEllipseGeometry();
-        ellipse.Center = new System.Numerics.Vector2(60, 60);
-        ellipse.Radius = new System.Numerics.Vector2(60, 60);
-        gridVisual.Clip = compositor.CreateGeometricClip(ellipse);
+        // Clip the avatar host and media element; swap chains can ignore ancestor clips.
+        ApplyWatchFeedCircleClip();
 
         // Crossfade: wait for video to start rendering, then fade in over the static image
         _watchFeedMediaPlayer.VideoFrameAvailable += OnFirstVideoFrame;
         _watchFeedMediaPlayer.IsVideoFrameServerEnabled = true;
+    }
+
+    private void ApplyWatchFeedCircleClip()
+    {
+        ApplyCompositionCircleClip(ArtistImageContainer);
+        ApplyCompositionCircleClip(WatchFeedGrid);
+        if (_watchFeedElement != null)
+            ApplyCompositionCircleClip(_watchFeedElement);
+    }
+
+    private static void ApplyCompositionCircleClip(UIElement element)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+        var ellipse = compositor.CreateEllipseGeometry();
+        ellipse.Center = new Vector2(60, 60);
+        ellipse.Radius = new Vector2(60, 60);
+        visual.Clip = compositor.CreateGeometricClip(ellipse);
     }
 
     private void OnFirstVideoFrame(Windows.Media.Playback.MediaPlayer sender, object args)

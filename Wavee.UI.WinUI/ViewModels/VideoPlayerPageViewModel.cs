@@ -18,6 +18,8 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Library.Local;
 using Wavee.Protocol.Metadata;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Windows.Media.Playback;
 using Windows.UI;
@@ -39,9 +41,13 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
     private readonly ILocalLibraryService? _localLibrary;
     private readonly IPathfinderClient? _pathfinder;
     private readonly IExtendedMetadataClient? _metadata;
+    private readonly ITrackLikeService? _likeService;
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
+    private readonly ISpotifyVideoPlaybackDetails? _videoPlaybackDetails;
     private readonly DispatcherQueue _dispatcher;
     private readonly ILogger? _logger;
     private int _spotifyDetailsVersion;
+    private int _saveStateVersion;
     private bool _disposed;
 
     // Strings here drive source-conditional UI:
@@ -68,10 +74,15 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
     [ObservableProperty] private string? _spotifyArtistTopCitiesLine;
     [ObservableProperty] private string? _spotifyArtistBioLine;
     [ObservableProperty] private string? _spotifyRelatedVideosLine;
+    [ObservableProperty] private bool _isSpotifyPlaybackDetailsVisible;
+    [ObservableProperty] private string? _spotifyVideoQualityLine;
+    [ObservableProperty] private string? _spotifyVideoDrmLine;
+    [ObservableProperty] private string? _spotifyVideoDashLine;
     [ObservableProperty] private Brush? _paletteBackdropBrush;
     [ObservableProperty] private Brush? _paletteHeroGradientBrush;
     [ObservableProperty] private Brush? _paletteAccentPillBrush;
     [ObservableProperty] private Brush? _paletteAccentPillForegroundBrush;
+    [ObservableProperty] private bool _isSaved;
 
     public ObservableCollection<UpNextItem> UpNext { get; } = new();
 
@@ -112,6 +123,9 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
         _localLibrary = localLibrary;
         _pathfinder = pathfinder;
         _metadata = metadata;
+        _likeService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ITrackLikeService>();
+        _musicVideoMetadata = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<IMusicVideoMetadataService>();
+        _videoPlaybackDetails = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ISpotifyVideoPlaybackDetails>();
         _logger = logger;
         _dispatcher = DispatcherQueue.GetForCurrentThread()
                       ?? throw new InvalidOperationException(
@@ -133,9 +147,14 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
 
         if (_state is not null)
             _state.PropertyChanged += OnPlaybackStateChanged;
+        if (_likeService is not null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
+        if (_videoPlaybackDetails is not null)
+            _videoPlaybackDetails.PropertyChanged += OnVideoPlaybackDetailsChanged;
 
         // Initial population.
         Refresh();
+        RefreshVideoPlaybackDetails();
     }
 
     private void OnActiveSurfaceChanged(object? sender, MediaPlayer? surface)
@@ -161,6 +180,7 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
             or nameof(IPlaybackStateService.CurrentTrackId)
             or nameof(IPlaybackStateService.Duration)
             or nameof(IPlaybackStateService.CurrentAlbumArtColor)
+            or nameof(IPlaybackStateService.CurrentTrackIsVideo)
             or nameof(IPlaybackStateService.CurrentOriginalTrackId)
             or nameof(IPlaybackStateService.CurrentOriginalTrackTitle)
             or nameof(IPlaybackStateService.CurrentOriginalArtistName)
@@ -171,6 +191,20 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
             if (!_dispatcher.HasThreadAccess) _dispatcher.TryEnqueue(Refresh);
             else Refresh();
         }
+    }
+
+    private void OnSaveStateChanged()
+    {
+        if (_disposed) return;
+        if (!_dispatcher.HasThreadAccess) _dispatcher.TryEnqueue(UpdateSavedState);
+        else UpdateSavedState();
+    }
+
+    private void OnVideoPlaybackDetailsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_disposed) return;
+        if (!_dispatcher.HasThreadAccess) _dispatcher.TryEnqueue(RefreshVideoPlaybackDetails);
+        else RefreshVideoPlaybackDetails();
     }
 
     private void Refresh()
@@ -199,6 +233,8 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
                 UpNext.Clear();
                 break;
         }
+
+        UpdateSavedState();
     }
 
     private void BuildLocalDisplay()
@@ -360,6 +396,41 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
         SpotifyRelatedVideosLine = null;
     }
 
+    private void RefreshVideoPlaybackDetails()
+    {
+        var metadata = _videoPlaybackDetails?.PlaybackMetadata;
+        var quality = _videoPlaybackDetails?.CurrentQuality;
+        if (metadata is null && quality is null)
+        {
+            IsSpotifyPlaybackDetailsVisible = false;
+            SpotifyVideoQualityLine = null;
+            SpotifyVideoDrmLine = null;
+            SpotifyVideoDashLine = null;
+            return;
+        }
+
+        SpotifyVideoQualityLine = quality is null
+            ? null
+            : $"Current quality: {quality.Label} ({quality.Codec})";
+
+        SpotifyVideoDrmLine = metadata is null
+            ? null
+            : string.Join(" - ", new[]
+            {
+                metadata.DrmSystem,
+                metadata.Container,
+                string.IsNullOrWhiteSpace(metadata.LicenseServerEndpoint)
+                    ? "license endpoint unavailable"
+                    : "license endpoint provided"
+            }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        SpotifyVideoDashLine = metadata is null
+            ? null
+            : $"{metadata.SegmentCount:N0} segments - {metadata.SegmentLengthSeconds}s chunks - {FormatDuration(metadata.DurationMs)}";
+
+        IsSpotifyPlaybackDetailsVisible = true;
+    }
+
     public void ApplyTheme(bool isDark) => ApplyPalette(isDark);
 
     private void ApplyPalette(bool isDark)
@@ -457,10 +528,45 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
     }
 
     private void ToggleLike()
+        => _ = ToggleLikeAsync();
+
+    private async Task ToggleLikeAsync()
     {
-        // Wire to LocalLikeService / Spotify like via existing services.
-        // Stubbed for the initial drop; HeartButton reuse will hook into
-        // IUserLikeService when the row knows enough.
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_state, _musicVideoMetadata)
+            .ConfigureAwait(true);
+        if (string.IsNullOrEmpty(uri) || _likeService is null) return;
+
+        var wasSaved = _likeService.IsSaved(SavedItemType.Track, uri);
+        _likeService.ToggleSave(SavedItemType.Track, uri, wasSaved);
+        IsSaved = !wasSaved;
+    }
+
+    private void UpdateSavedState()
+    {
+        var version = ++_saveStateVersion;
+        var uri = PlaybackSaveTargetResolver.GetTrackUri(_state);
+        if (!string.IsNullOrEmpty(uri))
+        {
+            IsSaved = _likeService?.IsSaved(SavedItemType.Track, uri) == true;
+            return;
+        }
+
+        IsSaved = false;
+        _ = UpdateSavedStateAsync(version);
+    }
+
+    private async Task UpdateSavedStateAsync(int version)
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_state, _musicVideoMetadata)
+            .ConfigureAwait(true);
+
+        if (version != _saveStateVersion)
+            return;
+
+        IsSaved = !string.IsNullOrEmpty(uri)
+            && _likeService?.IsSaved(SavedItemType.Track, uri) == true;
     }
 
     private static string FormatDuration(long ms)
@@ -688,6 +794,8 @@ public sealed partial class VideoPlayerPageViewModel : ObservableObject, IDispos
         _disposed = true;
         _surface.ActiveSurfaceChanged -= OnActiveSurfaceChanged;
         if (_state is not null) _state.PropertyChanged -= OnPlaybackStateChanged;
+        if (_likeService is not null) _likeService.SaveStateChanged -= OnSaveStateChanged;
+        if (_videoPlaybackDetails is not null) _videoPlaybackDetails.PropertyChanged -= OnVideoPlaybackDetailsChanged;
     }
 }
 

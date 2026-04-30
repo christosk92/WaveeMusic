@@ -6,7 +6,6 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
-    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
@@ -21,6 +20,7 @@
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
+        <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter"/>
 
         <ui:AttachedCardShadow x:Key="VideoCardShadow"
                                BlurRadius="30"
@@ -98,19 +98,88 @@
                     </winUi:Effects.Shadow>
                     <Grid PointerMoved="VideoFrame_PointerMoved"
                           PointerExited="VideoFrame_PointerExited">
-                        <Grid x:Name="VideoHost" MinHeight="240"/>
+                        <Grid x:Name="VideoHost"
+                              MinHeight="240"
+                              Canvas.ZIndex="0"/>
 
                         <Grid x:Name="VideoLoadingOverlay"
-                              Background="Black"
+                              Canvas.ZIndex="4"
+                              Background="#99000000"
                               IsHitTestVisible="False"
                               Visibility="Collapsed">
                             <Grid.OpacityTransition>
                                 <ScalarTransition Duration="0:0:0.18"/>
                             </Grid.OpacityTransition>
-                            <controls:Shimmer
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"
-                                CornerRadius="12"/>
+                            <StackPanel
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="10">
+                                <ProgressRing
+                                    Width="34"
+                                    Height="34"
+                                    IsActive="True"
+                                    Foreground="White"/>
+                                <TextBlock
+                                    x:Name="VideoLoadingText"
+                                    Text="Loading video..."
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    Foreground="White"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid x:Name="VideoTakeoverOverlay"
+                              Canvas.ZIndex="2"
+                              Background="Black"
+                              Visibility="Collapsed">
+                            <Button
+                                Width="34"
+                                Height="34"
+                                Padding="0"
+                                CornerRadius="17"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="14"
+                                Click="VideoTakeoverDismissButton_Click"
+                                ToolTipService.ToolTip="Dismiss">
+                                <FontIcon Glyph="&#xE711;" FontSize="12"/>
+                            </Button>
+                            <StackPanel
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="14"
+                                MaxWidth="360">
+                                <FontIcon
+                                    Glyph="&#xE8A7;"
+                                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                    FontSize="36"
+                                    Opacity="0.7"
+                                    Foreground="White"/>
+                                <TextBlock
+                                    Text="Playing in another window"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Foreground="White"
+                                    TextAlignment="Center"
+                                    HorizontalAlignment="Center"/>
+                                <TextBlock
+                                    Text="Only one video surface can render at a time."
+                                    FontSize="13"
+                                    Opacity="0.74"
+                                    Foreground="White"
+                                    TextAlignment="Center"
+                                    TextWrapping="Wrap"/>
+                                <Button
+                                    Padding="16,8"
+                                    CornerRadius="18"
+                                    Click="VideoTakeoverButton_Click"
+                                    ToolTipService.ToolTip="Move video playback to this page">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE768;" FontSize="13"/>
+                                        <TextBlock Text="Play here instead"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
                         </Grid>
 
                         <!-- Transport overlay. Visibility is driven by code-
@@ -120,6 +189,7 @@
                              video frame so the controls are legible without
                              obscuring content above. -->
                         <Grid x:Name="ControlsOverlay"
+                              Canvas.ZIndex="3"
                               VerticalAlignment="Bottom"
                               Padding="14,12,14,10"
                               RowSpacing="2"
@@ -232,6 +302,19 @@
                                             Orientation="Horizontal"
                                             Spacing="2"
                                             VerticalAlignment="Center">
+                                    <Button x:Name="VideoQualityButton"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="8"
+                                            Foreground="White"
+                                            Click="VideoQualityButton_Click"
+                                            Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                            ToolTipService.ToolTip="Quality and stream details">
+                                        <FontIcon Glyph="&#xE713;"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="14"
+                                                  Foreground="White"/>
+                                    </Button>
                                     <Button Background="Transparent"
                                             BorderThickness="0"
                                             Padding="8"
@@ -347,7 +430,7 @@
                         <Button Style="{StaticResource ActionIconButtonStyle}"
                                 Command="{x:Bind ViewModel.ToggleLikeCommand}"
                                 ToolTipService.ToolTip="Save to your library">
-                            <FontIcon Glyph="&#xEB51;"
+                            <FontIcon Glyph="{x:Bind ViewModel.IsSaved, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="14"/>
                         </Button>
@@ -366,6 +449,15 @@
                                 Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 ToolTipService.ToolTip="Open in Spotify">
                             <FontIcon Glyph="&#xE8A7;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="14"/>
+                        </Button>
+
+                        <Button Style="{StaticResource ActionIconButtonStyle}"
+                                Click="VideoQualityButton_Click"
+                                Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                ToolTipService.ToolTip="Quality and stream details">
+                            <FontIcon Glyph="&#xE713;"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="14"/>
                         </Button>
@@ -539,6 +631,21 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="WrapWholeWords"
                                        Visibility="{x:Bind ViewModel.SpotifyVideoCreditsLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                            <StackPanel Spacing="3"
+                                        Visibility="{x:Bind ViewModel.IsSpotifyPlaybackDetailsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoQualityLine, Mode=OneWay}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Visibility="{x:Bind ViewModel.SpotifyVideoQualityLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoDrmLine, Mode=OneWay}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           Visibility="{x:Bind ViewModel.SpotifyVideoDrmLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoDashLine, Mode=OneWay}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           Visibility="{x:Bind ViewModel.SpotifyVideoDashLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </Border>

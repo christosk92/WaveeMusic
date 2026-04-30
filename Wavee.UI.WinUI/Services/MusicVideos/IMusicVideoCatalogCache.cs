@@ -36,7 +36,9 @@ public interface IMusicVideoCatalogCache
 
     /// <summary>
     /// Records the audio→video URI mapping for a track that has a music
-    /// video. Implies <c>HasVideo = true</c>.
+    /// video. Implies <c>HasVideo = true</c> and records the reverse
+    /// video→audio mapping for save/like state resolution while video
+    /// playback is active.
     /// </summary>
     void NoteVideoUri(string audioTrackUri, string videoTrackUri);
 
@@ -44,6 +46,12 @@ public interface IMusicVideoCatalogCache
     /// Looks up the cached video URI for an audio URI. False when unknown.
     /// </summary>
     bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri);
+
+    /// <summary>
+    /// Looks up the cached underlying audio URI for a video URI. False when
+    /// unknown.
+    /// </summary>
+    bool TryGetAudioUri(string videoTrackUri, out string audioTrackUri);
 
     /// <summary>
     /// Records the resolved hex manifest_id (from

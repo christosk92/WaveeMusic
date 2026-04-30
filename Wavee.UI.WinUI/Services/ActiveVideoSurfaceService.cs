@@ -19,6 +19,7 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
     private FrameworkElement? _activeElementSurface;
     private bool _activeSurfaceIsLoading;
     private bool _activeSurfaceHasFirstFrame;
+    private bool _activeSurfaceIsBuffering;
 
     public ActiveVideoSurfaceService(ILogger<ActiveVideoSurfaceService>? logger = null)
     {
@@ -35,9 +36,12 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
     public bool HasActiveSurface => _activeSurface is not null || _activeElementSurface is not null;
     public bool IsActiveSurfaceLoading => _activeSurfaceIsLoading;
     public bool HasActiveFirstFrame => _activeSurfaceHasFirstFrame;
+    public bool IsActiveSurfaceBuffering => _activeSurfaceIsBuffering;
+    public IMediaSurfaceConsumer? CurrentOwner => _currentOwner;
     public string? ActiveKind => ActiveProvider?.Kind;
 
     public event EventHandler<MediaPlayer?>? ActiveSurfaceChanged;
+    public event EventHandler? SurfaceOwnershipChanged;
 
     public void RegisterProvider(IVideoSurfaceProvider provider)
     {
@@ -57,7 +61,8 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         // Detach the previous owner first so the MediaPlayer never has two
         // bound MediaPlayerElements at the same instant — that's what makes
         // handoff glitch-free.
-        if (!ReferenceEquals(_currentOwner, consumer) && _currentOwner is not null)
+        var ownerChanged = !ReferenceEquals(_currentOwner, consumer);
+        if (ownerChanged && _currentOwner is not null)
         {
             try { _currentOwner.DetachSurface(); }
             catch (Exception ex) { _logger?.LogDebug(ex, "DetachSurface threw on previous owner"); }
@@ -68,6 +73,8 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         {
             try { consumer.AttachSurface(surface); }
             catch (Exception ex) { _logger?.LogDebug(ex, "AttachSurface threw"); }
+            if (ownerChanged)
+                SurfaceOwnershipChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -77,6 +84,9 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
             try { consumer.AttachElementSurface(elementSurface); }
             catch (Exception ex) { _logger?.LogDebug(ex, "AttachElementSurface threw"); }
         }
+
+        if (ownerChanged)
+            SurfaceOwnershipChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void ReleaseSurface(IMediaSurfaceConsumer consumer)
@@ -85,7 +95,11 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         try { consumer.DetachSurface(); }
         catch (Exception ex) { _logger?.LogDebug(ex, "DetachSurface threw on release"); }
         _currentOwner = null;
+        SurfaceOwnershipChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    public bool IsOwnedBy(IMediaSurfaceConsumer consumer)
+        => ReferenceEquals(_currentOwner, consumer);
 
     private void OnProviderSurfaceChanged(IVideoSurfaceProvider provider)
     {
@@ -111,6 +125,7 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         var oldElementSurface = _activeElementSurface;
         var oldIsLoading = _activeSurfaceIsLoading;
         var oldHasFirstFrame = _activeSurfaceHasFirstFrame;
+        var oldIsBuffering = _activeSurfaceIsBuffering;
         ActiveProvider = newActive;
         var newSurface = newActive?.Surface;
         var newElementSurface = newActive?.ElementSurface;
@@ -118,10 +133,12 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         _activeElementSurface = newElementSurface;
         _activeSurfaceIsLoading = newActive?.IsSurfaceLoading == true;
         _activeSurfaceHasFirstFrame = newActive?.HasFirstFrame == true;
+        _activeSurfaceIsBuffering = newActive?.IsSurfaceBuffering == true;
         var surfaceChanged = !ReferenceEquals(oldSurface, newSurface)
             || !ReferenceEquals(oldElementSurface, newElementSurface);
         var readinessChanged = oldIsLoading != _activeSurfaceIsLoading
-            || oldHasFirstFrame != _activeSurfaceHasFirstFrame;
+            || oldHasFirstFrame != _activeSurfaceHasFirstFrame
+            || oldIsBuffering != _activeSurfaceIsBuffering;
 
         if (!surfaceChanged && !readinessChanged) return;
 

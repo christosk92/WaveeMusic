@@ -37,6 +37,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private DispatcherTimer? _positionTimer;
     private DateTime _lastServicePositionUpdate = DateTime.UtcNow;
     private double _lastServicePosition;
+    private bool _autoVideoSwitchInFlight;
+    private string? _lastAutoVideoSwitchTrackId;
 
     // Track info (synced from IPlaybackStateService)
     [ObservableProperty]
@@ -312,6 +314,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var hasTrack = !string.IsNullOrEmpty(newTrackId);
                 _logger?.LogDebug("[PlayerBar] CurrentTrackId → {TrackId} (hasTrack={HasTrack})", newTrackId ?? "<none>", hasTrack);
                 HasTrack = hasTrack;
+                TryAutoSwitchToVideo("track-changed");
                 break;
             case nameof(IPlaybackStateService.CurrentTrackTitle):
                 TrackTitle = _playbackStateService.CurrentTrackTitle;
@@ -342,10 +345,14 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 CurrentAlbumId = _playbackStateService.CurrentAlbumId;
                 break;
             case nameof(IPlaybackStateService.CurrentTrackManifestId):
+                OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
+                OnPropertyChanged(nameof(IsCurrentTrackAudioCapable));
+                break;
             case nameof(IPlaybackStateService.CurrentTrackHasMusicVideo):
             case nameof(IPlaybackStateService.CurrentTrackIsVideo):
                 OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
                 OnPropertyChanged(nameof(IsCurrentTrackAudioCapable));
+                TryAutoSwitchToVideo(e.PropertyName);
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
                 AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
@@ -707,6 +714,27 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         && _playbackStateService.CurrentTrackIsVideo;
 
     [ObservableProperty]
+    private bool _preferVideoPlaybackInSession;
+
+    partial void OnPreferVideoPlaybackInSessionChanged(bool value)
+    {
+        if (!value)
+        {
+            _lastAutoVideoSwitchTrackId = null;
+            return;
+        }
+
+        if (value)
+            TryAutoSwitchToVideo("preference-enabled");
+    }
+
+    [RelayCommand]
+    private void ToggleVideoPlaybackPreference()
+    {
+        PreferVideoPlaybackInSession = !PreferVideoPlaybackInSession;
+    }
+
+    [ObservableProperty]
     private bool _isResolvingVideo;
 
     partial void OnIsResolvingVideoChanged(bool value) => SwitchToVideoCommand.NotifyCanExecuteChanged();
@@ -719,6 +747,51 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private bool CanSwitchToVideo() => !IsResolvingVideo;
     private bool CanSwitchToAudio() => !IsSwitchingToAudio;
 
+    private void TryAutoSwitchToVideo(string? reason)
+    {
+        if (!PreferVideoPlaybackInSession)
+            return;
+        if (_autoVideoSwitchInFlight || IsResolvingVideo || IsSwitchingToAudio)
+            return;
+        if (!IsCurrentTrackVideoCapable)
+            return;
+
+        var trackId = _playbackStateService.CurrentTrackId;
+        if (string.IsNullOrEmpty(trackId))
+            return;
+        if (string.Equals(_lastAutoVideoSwitchTrackId, trackId, StringComparison.Ordinal))
+            return;
+
+        _lastAutoVideoSwitchTrackId = trackId;
+        _ = AutoSwitchToVideoAsync(trackId, reason);
+    }
+
+    private async Task AutoSwitchToVideoAsync(string trackId, string? reason)
+    {
+        _autoVideoSwitchInFlight = true;
+        try
+        {
+            if (!string.Equals(_playbackStateService.CurrentTrackId, trackId, StringComparison.Ordinal))
+                return;
+
+            _logger?.LogInformation("[AutoVideo] Switching to video for {Track} ({Reason})",
+                trackId,
+                reason ?? "unknown");
+
+            var switched = await _playbackStateService.SwitchToVideoAsync();
+            if (!switched)
+                _logger?.LogInformation("[AutoVideo] Switch failed for {Track}", trackId);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[AutoVideo] Switch threw for {Track}", trackId);
+        }
+        finally
+        {
+            _autoVideoSwitchInFlight = false;
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanSwitchToVideo))]
     private async Task SwitchToVideoAsync()
     {
@@ -729,6 +802,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             var switched = await _playbackStateService.SwitchToVideoAsync();
             if (switched)
             {
+                PreferVideoPlaybackInSession = true;
                 if (!routeToPlayerPopout)
                     NavigationHelpers.OpenVideoPlayer();
                 return;
@@ -754,7 +828,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         try
         {
             var switched = await _playbackStateService.SwitchToAudioAsync();
-            if (switched) return;
+            if (switched)
+            {
+                PreferVideoPlaybackInSession = false;
+                return;
+            }
 
             _notificationService?.Show(new NotificationInfo
             {

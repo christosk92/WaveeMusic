@@ -95,6 +95,9 @@ public sealed partial class RightPanelView : UserControl
     // ── Tab content bottom fade (shared across all right-panel tabs) ──
     private readonly List<CompositionObject> _tabFadeCompositionObjects = [];
     private Compositor? _tabFadeCompositor;
+    private ContainerVisual? _tabFadeContainer;
+    private CompositionEffectBrush? _tabBlurBrush;
+    private SpriteVisual? _tabBlurVisual;
     private SpriteVisual? _tabFadeVisual;
     private CompositionLinearGradientBrush? _tabFadeBrush;
     private CompositionColorGradientStop? _tabFadeStop0;
@@ -1188,6 +1191,26 @@ public sealed partial class RightPanelView : UserControl
         var hostVisual = ElementCompositionPreview.GetElementVisual(TabContentFadeHost);
         _tabFadeCompositor = hostVisual.Compositor;
 
+        _tabFadeContainer = TrackTabFade(_tabFadeCompositor.CreateContainerVisual());
+        _tabFadeContainer.RelativeSizeAdjustment = Vector2.One;
+
+        var backdropBrush = TrackTabFade(_tabFadeCompositor.CreateBackdropBrush());
+        using var blurEffect = new GaussianBlurEffect
+        {
+            Name = "TabContentBackdropBlur",
+            Source = new CompositionEffectSourceParameter("Backdrop"),
+            BlurAmount = 14f,
+            BorderMode = EffectBorderMode.Hard
+        };
+        var blurFactory = TrackTabFade(_tabFadeCompositor.CreateEffectFactory(blurEffect));
+        _tabBlurBrush = TrackTabFade(blurFactory.CreateBrush());
+        _tabBlurBrush.SetSourceParameter("Backdrop", backdropBrush);
+
+        _tabBlurVisual = TrackTabFade(_tabFadeCompositor.CreateSpriteVisual());
+        _tabBlurVisual.Brush = _tabBlurBrush;
+        _tabBlurVisual.RelativeSizeAdjustment = Vector2.One;
+        _tabFadeContainer.Children.InsertAtBottom(_tabBlurVisual);
+
         _tabFadeBrush = TrackTabFade(_tabFadeCompositor.CreateLinearGradientBrush());
         _tabFadeBrush.StartPoint = new Vector2(0.5f, 0f);
         _tabFadeBrush.EndPoint   = new Vector2(0.5f, 1f);
@@ -1205,8 +1228,9 @@ public sealed partial class RightPanelView : UserControl
         _tabFadeVisual = TrackTabFade(_tabFadeCompositor.CreateSpriteVisual());
         _tabFadeVisual.Brush = _tabFadeBrush;
         _tabFadeVisual.RelativeSizeAdjustment = Vector2.One;
+        _tabFadeContainer.Children.InsertAtTop(_tabFadeVisual);
 
-        ElementCompositionPreview.SetElementChildVisual(TabContentFadeHost, _tabFadeVisual);
+        ElementCompositionPreview.SetElementChildVisual(TabContentFadeHost, _tabFadeContainer);
 
         UpdateTabContentFadeColor();
     }
@@ -1218,17 +1242,31 @@ public sealed partial class RightPanelView : UserControl
             return;
 
         var target = ResolveTabFadeTargetColor();
+        if (_tabBlurVisual != null)
+            _tabBlurVisual.Opacity = IsEmbeddedChromeTransparent ? 0.28f : 0f;
 
         // Carry the target RGB on every stop so the gradient interpolation stays
         // in the correct hue rather than fading through neutral gray.
-        _tabFadeStop0.Color = Color.FromArgb(  0, target.R, target.G, target.B);
-        _tabFadeStop1.Color = Color.FromArgb( 40, target.R, target.G, target.B);
+        if (IsEmbeddedChromeTransparent)
+        {
+            _tabFadeStop0.Color = Color.FromArgb(0, target.R, target.G, target.B);
+            _tabFadeStop1.Color = Color.FromArgb(18, target.R, target.G, target.B);
+            _tabFadeStop2.Color = Color.FromArgb(92, target.R, target.G, target.B);
+            _tabFadeStop3.Color = Color.FromArgb(185, target.R, target.G, target.B);
+            return;
+        }
+
+        _tabFadeStop0.Color = Color.FromArgb(0, target.R, target.G, target.B);
+        _tabFadeStop1.Color = Color.FromArgb(40, target.R, target.G, target.B);
         _tabFadeStop2.Color = Color.FromArgb(190, target.R, target.G, target.B);
         _tabFadeStop3.Color = Color.FromArgb(255, target.R, target.G, target.B);
     }
 
     private Windows.UI.Color ResolveTabFadeTargetColor()
     {
+        if (IsEmbeddedChromeTransparent)
+            return ResolveEmbeddedTabFadeTargetColor();
+
         // Mirror UpdateCanvasClearColor() so the fade's terminal colour matches the
         // panel's effective background in both themes.
         var cardColor = (_themeColors?.CardBackground as SolidColorBrush)?.Color;
@@ -1258,6 +1296,33 @@ public sealed partial class RightPanelView : UserControl
         return baseColor;
     }
 
+    private Windows.UI.Color ResolveEmbeddedTabFadeTargetColor()
+    {
+        if (TryParseHexColor(EmbeddedHostTintColor, out var hostTint))
+        {
+            if (ActualTheme == ElementTheme.Dark)
+            {
+                return Color.FromArgb(
+                    255,
+                    (byte)(hostTint.R * 0.30f),
+                    (byte)(hostTint.G * 0.30f),
+                    (byte)(hostTint.B * 0.30f));
+            }
+
+            const float blend = 0.72f;
+            return Color.FromArgb(
+                255,
+                (byte)(hostTint.R * (1 - blend) + 255 * blend),
+                (byte)(hostTint.G * (1 - blend) + 255 * blend),
+                (byte)(hostTint.B * (1 - blend) + 255 * blend));
+        }
+
+        var tintColor = GetBackgroundTintColor();
+        return ActualTheme == ElementTheme.Light
+            ? BlendColors(Color.FromArgb(255, 244, 246, 248), tintColor, 0.28f)
+            : Darken(tintColor, 0.64f);
+    }
+
     private void TeardownTabContentFadeComposition()
     {
         if (TabContentFadeHost != null)
@@ -1268,6 +1333,9 @@ public sealed partial class RightPanelView : UserControl
         _tabFadeCompositionObjects.Clear();
 
         _tabFadeCompositor = null;
+        _tabFadeContainer = null;
+        _tabBlurBrush = null;
+        _tabBlurVisual = null;
         _tabFadeBrush = null;
         _tabFadeStop0 = null;
         _tabFadeStop1 = null;
@@ -1312,6 +1380,7 @@ public sealed partial class RightPanelView : UserControl
             && _backgroundTintExtractedColor != null)
         {
             UpdateBackgroundChrome();
+            UpdateTabContentFadeColor();
             UpdateTabHeaderVisualState();
             return;
         }
@@ -1320,6 +1389,7 @@ public sealed partial class RightPanelView : UserControl
         _backgroundTintImageUrl = imageUrl;
         _backgroundTintExtractedColor = null;
         UpdateBackgroundChrome();
+        UpdateTabContentFadeColor();
         UpdateTabHeaderVisualState();
 
         if (_colorService == null)
@@ -1347,6 +1417,7 @@ public sealed partial class RightPanelView : UserControl
 
                 _backgroundTintExtractedColor = extracted;
                 UpdateBackgroundChrome();
+                UpdateTabContentFadeColor();
                 UpdateTabHeaderVisualState();
             });
         }
@@ -1372,6 +1443,7 @@ public sealed partial class RightPanelView : UserControl
         _backgroundTintImageUrl = null;
         _backgroundTintExtractedColor = null;
         UpdateBackgroundChrome();
+        UpdateTabContentFadeColor();
         UpdateTabHeaderVisualState();
     }
 

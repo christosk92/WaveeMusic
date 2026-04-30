@@ -18,8 +18,14 @@ public interface IMusicVideoMetadataService
 
     bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri);
 
+    bool TryGetAudioUri(string videoTrackUri, out string audioTrackUri);
+
     Task<string?> TryResolveVideoUriViaExtendedMetadataAsync(
         string audioTrackUri,
+        CancellationToken cancellationToken = default);
+
+    Task<string?> TryResolveAudioUriViaExtendedMetadataAsync(
+        string videoTrackUri,
         CancellationToken cancellationToken = default);
 
     Task<string?> ResolveManifestIdAsync(

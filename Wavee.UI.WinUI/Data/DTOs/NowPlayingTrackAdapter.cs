@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Helpers.Playback;
 
 namespace Wavee.UI.WinUI.Data.DTOs;
 
@@ -39,7 +41,17 @@ public sealed class NowPlayingTrackAdapter : ITrackItem
     public int OriginalIndex => 0;
     public bool IsLoaded => !string.IsNullOrEmpty(_ps.CurrentTrackId);
 
-    public bool IsLiked { get; set; }
+    public bool IsLiked
+    {
+        get
+        {
+            var uri = PlaybackSaveTargetResolver.GetTrackUri(_ps);
+            var likeService = Ioc.Default.GetService<ITrackLikeService>();
+            return !string.IsNullOrEmpty(uri)
+                && likeService?.IsSaved(SavedItemType.Track, uri) == true;
+        }
+        set { }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }

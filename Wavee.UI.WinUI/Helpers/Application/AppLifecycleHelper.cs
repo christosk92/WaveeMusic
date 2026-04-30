@@ -404,6 +404,8 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<Services.SpotifyVideoProvider>>()))
                 .AddSingleton<Wavee.Audio.ISpotifyVideoPlayback>(sp =>
                     sp.GetRequiredService<Services.SpotifyVideoProvider>())
+                .AddSingleton<Services.ISpotifyVideoPlaybackDetails>(sp =>
+                    sp.GetRequiredService<Services.SpotifyVideoProvider>())
                 .AddSingleton<Services.IVideoSurfaceProvider>(sp =>
                     sp.GetRequiredService<Services.SpotifyVideoProvider>())
                 .AddSingleton<Services.IActiveVideoSurfaceService>(sp =>

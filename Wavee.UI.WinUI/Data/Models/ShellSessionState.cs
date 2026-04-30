@@ -38,8 +38,9 @@ public sealed class ShellLayoutState
     // Expanded "now playing" mode for the floating player (Apple-Music-style
     // 2-column layout). Geometry is tracked separately so toggling expand
     // restores each mode's last-known size.
-    public bool PlayerWindowExpanded { get; set; }
+    public bool PlayerWindowExpanded { get; set; } = true;
     public string PlayerWindowExpandedMode { get; set; } = "Lyrics"; // "None" | "Lyrics" | "Queue"
+    public bool PlayerWindowAlwaysOnTop { get; set; }
     public double PlayerWindowExpandedX { get; set; }
     public double PlayerWindowExpandedY { get; set; }
     public double PlayerWindowExpandedWidth { get; set; } = 1100;

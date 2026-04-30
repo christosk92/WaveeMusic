@@ -65,6 +65,20 @@ public sealed partial class RightPanelView
         DependencyProperty.Register(nameof(IsEmbeddedChromeTransparent), typeof(bool), typeof(RightPanelView),
             new PropertyMetadata(false, OnIsEmbeddedChromeTransparentChanged));
 
+    /// <summary>
+    /// Optional host-provided tint used when the panel is embedded over another
+    /// surface. It lets shared fades blend into the host palette instead of the
+    /// standalone right-panel background.
+    /// </summary>
+    public string? EmbeddedHostTintColor
+    {
+        get => (string?)GetValue(EmbeddedHostTintColorProperty);
+        set => SetValue(EmbeddedHostTintColorProperty, value);
+    }
+    public static readonly DependencyProperty EmbeddedHostTintColorProperty =
+        DependencyProperty.Register(nameof(EmbeddedHostTintColor), typeof(string), typeof(RightPanelView),
+            new PropertyMetadata(null, OnEmbeddedHostTintColorChanged));
+
     private static void OnPanelWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is RightPanelView view)
@@ -124,6 +138,12 @@ public sealed partial class RightPanelView
             view.ApplyEmbeddedChrome();
     }
 
+    private static void OnEmbeddedHostTintColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is RightPanelView view)
+            view.UpdateTabContentFadeColor();
+    }
+
     private void ApplyEmbeddedChrome()
     {
         if (RootGrid == null) return;
@@ -141,7 +161,11 @@ public sealed partial class RightPanelView
         if (DetailsCanvasImage != null && IsEmbeddedChromeTransparent)
             DetailsCanvasImage.Visibility = Visibility.Collapsed;
 
+        if (TabContentFadeHost != null)
+            TabContentFadeHost.Height = IsEmbeddedChromeTransparent ? 160 : 140;
+
         UpdateCanvasClearColor();
+        UpdateTabContentFadeColor();
         UpdateBackgroundChrome();
     }
 }

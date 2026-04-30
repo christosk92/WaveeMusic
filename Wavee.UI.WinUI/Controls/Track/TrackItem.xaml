@@ -32,6 +32,26 @@
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
+        <Style x:Key="ExplicitContentBadgeStyle" TargetType="Border">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="MinWidth" Value="13"/>
+            <Setter Property="Height" Value="13"/>
+            <Setter Property="Padding" Value="2,0"/>
+            <Setter Property="Opacity" Value="0.72"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ExplicitContentBadgeTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -105,11 +125,6 @@
                                 Orientation="Horizontal"
                                 Spacing="5"
                                 VerticalAlignment="Center">
-                        <Border x:Name="CompactExplicit" Visibility="Collapsed"
-                                Background="{ThemeResource TextFillColorTertiaryBrush}"
-                                CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
-                            <TextBlock Text="E" FontSize="9" FontWeight="Bold"/>
-                        </Border>
                         <FontIcon x:Name="CompactLocalBadge" Visibility="Collapsed"
                                   Glyph="&#xE8B7;" FontSize="11"
                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
@@ -119,6 +134,12 @@
                 <StackPanel Orientation="Horizontal"
                             Spacing="4"
                             VerticalAlignment="Center">
+                    <Border x:Name="CompactExplicit"
+                            Style="{StaticResource ExplicitContentBadgeStyle}"
+                            Visibility="Collapsed"
+                            ToolTipService.ToolTip="Explicit">
+                        <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
+                    </Border>
                     <Border x:Name="CompactVideoBadge"
                             Style="{StaticResource VideoAvailabilityBadgeStyle}"
                             Visibility="Collapsed"
@@ -260,12 +281,6 @@
                                         Orientation="Horizontal"
                                         Spacing="5"
                                         VerticalAlignment="Center">
-                                <Border x:Name="RowExplicit" Visibility="Collapsed"
-                                        Background="{ThemeResource TextFillColorSecondaryBrush}"
-                                        CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
-                                    <TextBlock Text="E" FontSize="9" FontWeight="Bold"
-                                               Foreground="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
-                                </Border>
                                 <FontIcon x:Name="RowLocalBadge" Visibility="Collapsed"
                                           Glyph="&#xE8B7;" FontSize="12"
                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
@@ -276,6 +291,12 @@
                                     Spacing="4"
                                     Margin="0,-2,0,0"
                                     VerticalAlignment="Center">
+                            <Border x:Name="RowExplicit"
+                                    Style="{StaticResource ExplicitContentBadgeStyle}"
+                                    Visibility="Collapsed"
+                                    ToolTipService.ToolTip="Explicit">
+                                <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
+                            </Border>
                             <Border x:Name="RowVideoBadge"
                                     Style="{StaticResource VideoAvailabilityBadgeStyle}"
                                     Visibility="Collapsed"

@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -14,8 +16,11 @@ using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -31,7 +36,14 @@ public sealed partial class PlayerBar : UserControl
 
     private readonly Data.Contracts.ITrackLikeService? _likeService;
     private readonly IPlaybackStateService? _playbackStateService;
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
+    private readonly IPanelDockingService? _dockingService;
     private string? _currentLayoutState;
+    private int _heartStateVersion;
+    private bool _eventsSubscribed;
+    private bool _videoMiniPlayerPromptOpen;
+    private bool _suppressVideoPopoutTeachingTipClosedHandling;
+    private static bool s_videoPopoutTeachingTipDismissed;
 
     private readonly ILogger<PlayerBar>? _logger;
 
@@ -46,32 +58,18 @@ public sealed partial class PlayerBar : UserControl
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+        _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
+        _dockingService = Ioc.Default.GetService<IPanelDockingService>();
         _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger<PlayerBar>();
         InitializeComponent();
 
         _logger?.LogDebug("[PlayerBar] Constructed — track={Track}, playing={Playing}", ViewModel.TrackTitle ?? "<none>", ViewModel.IsPlaying);
 
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        Unloaded += (_, _) => ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         SizeChanged += OnPlayerBarSizeChanged;
         Loaded += OnPlayerBarLoaded;
-
-        // Drive the position-interpolation timer's visibility gate (Phase 6.2).
-        // While the bar is detached from the visual tree (right panel covering,
-        // tab in transition, etc.) the slider isn't being rendered so spending
-        // CPU updating its bound Position is wasted.
-        Loaded += (_, _) => ViewModel.SetSurfaceVisible("bar", true);
-        Unloaded += (_, _) => ViewModel.SetSurfaceVisible("bar", false);
+        Unloaded += OnPlayerBarUnloaded;
 
         PlayerHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnPlayerHeartClicked);
-
-        // Subscribe to save state changes for reactive heart updates
-        if (_likeService != null)
-            _likeService.SaveStateChanged += OnSaveStateChanged;
-        Unloaded += (_, _) =>
-        {
-            if (_likeService != null) _likeService.SaveStateChanged -= OnSaveStateChanged;
-        };
 
         // Apply initial color if available
         ApplyTintColor(ViewModel.AlbumArtColor);
@@ -85,7 +83,10 @@ public sealed partial class PlayerBar : UserControl
 
     private void OnPlayerBarLoaded(object sender, RoutedEventArgs e)
     {
+        SubscribeEvents();
+        ViewModel.SetSurfaceVisible("bar", true);
         UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : ActualWidth);
+        UpdateVideoPopoutTeachingTip();
 
         AlbumArtHost?.ChangeCursor(HandCursor);
         NarrowAlbumArtHost?.ChangeCursor(HandCursor);
@@ -93,9 +94,52 @@ public sealed partial class PlayerBar : UserControl
         // SeekStarted / SeekCommitted events — wired in XAML, dispatched below.
     }
 
-    // CompositionProgressBar drag started — pause the GPU animation source on
-    // the VM so position/anchor updates from the audio host don't overwrite
-    // what the user is dragging.
+    private void OnPlayerBarUnloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.SetSurfaceVisible("bar", false);
+        UnsubscribeEvents();
+    }
+
+    private void SubscribeEvents()
+    {
+        if (_eventsSubscribed)
+            return;
+
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
+        if (_playbackStateService != null)
+            _playbackStateService.PropertyChanged += OnPlaybackSaveTargetChanged;
+        if (_dockingService != null)
+            _dockingService.PropertyChanged += OnDockingPropertyChanged;
+        WeakReferenceMessenger.Default.Register<VideoMiniPlayerPromptStateChangedMessage>(this, static (r, m) =>
+        {
+            if (r is PlayerBar playerBar)
+                playerBar.DispatcherQueue?.TryEnqueue(() => playerBar.OnVideoMiniPlayerPromptStateChanged(m.Value));
+        });
+
+        _eventsSubscribed = true;
+    }
+
+    private void UnsubscribeEvents()
+    {
+        if (!_eventsSubscribed)
+            return;
+
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+        if (_playbackStateService != null)
+            _playbackStateService.PropertyChanged -= OnPlaybackSaveTargetChanged;
+        if (_dockingService != null)
+            _dockingService.PropertyChanged -= OnDockingPropertyChanged;
+        WeakReferenceMessenger.Default.Unregister<VideoMiniPlayerPromptStateChangedMessage>(this);
+
+        _eventsSubscribed = false;
+    }
+
+    // CompositionProgressBar drag started: pause the GPU animation source on
+    // the VM so audio-host position updates do not overwrite the user's drag.
     private void ProgressBar_SeekStarted(object sender, System.EventArgs e)
         => ViewModel.StartSeeking();
 
@@ -172,6 +216,67 @@ public sealed partial class PlayerBar : UserControl
         DispatcherQueue?.TryEnqueue(UpdatePlayerHeartState);
     }
 
+    private void OnPlaybackSaveTargetChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
+            or nameof(IPlaybackStateService.CurrentTrackIsVideo)
+            or nameof(IPlaybackStateService.CurrentOriginalTrackId))
+        {
+            DispatcherQueue?.TryEnqueue(UpdatePlayerHeartState);
+        }
+
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
+            or nameof(IPlaybackStateService.CurrentTrackIsVideo))
+        {
+            DispatcherQueue?.TryEnqueue(UpdateVideoPopoutTeachingTip);
+        }
+    }
+
+    private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IPanelDockingService.IsPlayerDetached))
+            DispatcherQueue?.TryEnqueue(UpdateVideoPopoutTeachingTip);
+    }
+
+    private void OnVideoMiniPlayerPromptStateChanged(bool isOpen)
+    {
+        _videoMiniPlayerPromptOpen = isOpen;
+        if (isOpen)
+            s_videoPopoutTeachingTipDismissed = true;
+        UpdateVideoPopoutTeachingTip();
+    }
+
+    private void UpdateVideoPopoutTeachingTip()
+    {
+        if (FindName("VideoPopoutTeachingTip") is not TeachingTip tip)
+            return;
+
+        if (s_videoPopoutTeachingTipDismissed || _videoMiniPlayerPromptOpen)
+        {
+            CloseVideoPopoutTeachingTipProgrammatically(tip);
+            return;
+        }
+
+        var show = _dockingService?.IsPlayerDetached == true
+                   && _playbackStateService?.CurrentTrackIsVideo == true;
+        if (show)
+            tip.IsOpen = true;
+        else
+            CloseVideoPopoutTeachingTipProgrammatically(tip);
+    }
+
+    private void CloseVideoPopoutTeachingTipProgrammatically(TeachingTip tip)
+    {
+        if (!tip.IsOpen)
+        {
+            _suppressVideoPopoutTeachingTipClosedHandling = false;
+            return;
+        }
+
+        _suppressVideoPopoutTeachingTipClosedHandling = true;
+        tip.IsOpen = false;
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(PlayerBarViewModel.AlbumArtColor))
@@ -192,30 +297,48 @@ public sealed partial class PlayerBar : UserControl
 
     private string? GetCurrentTrackId()
     {
-        return _playbackStateService?.CurrentTrackId;
+        return PlaybackSaveTargetResolver.GetTrackId(_playbackStateService);
     }
 
     private void UpdatePlayerHeartState()
     {
-        var trackId = GetCurrentTrackId();
-        PlayerHeartButton.IsLiked = !string.IsNullOrEmpty(trackId)
-            && _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, trackId) == true;
+        var version = ++_heartStateVersion;
+        var uri = PlaybackSaveTargetResolver.GetTrackUri(_playbackStateService);
+        if (!string.IsNullOrEmpty(uri))
+        {
+            PlayerHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, uri) == true;
+            return;
+        }
+
+        PlayerHeartButton.IsLiked = false;
+        _ = UpdatePlayerHeartStateAsync(version);
     }
 
     private void OnPlayerHeartClicked()
-    {
-        var trackId = GetCurrentTrackId();
-        if (string.IsNullOrEmpty(trackId) || _likeService == null) return;
+        => _ = OnPlayerHeartClickedAsync();
 
-        // CurrentTrackId can be either a bare base62 (Spotify pattern, where
-        // ExtractTrackId stripped the "spotify:track:" prefix) or a full URI
-        // for non-Spotify sources (e.g. wavee:local:track:*). Only prefix
-        // when we got a bare id — prefixing a full URI produces malformed
-        // strings like "spotify:track:wavee:local:track:..." that the
-        // collection/v2/write endpoint rejects with "Invalid write request".
-        var uri = trackId.Contains(':') ? trackId : $"spotify:track:{trackId}";
-        var isLiked = PlayerHeartButton.IsLiked;
-        _logger?.LogInformation("[PlayerBar] Heart clicked: trackId={TrackId}, wasLiked={WasLiked} → {NewLiked}", trackId, isLiked, !isLiked);
+    private async Task UpdatePlayerHeartStateAsync(int version)
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
+            .ConfigureAwait(true);
+
+        if (version != _heartStateVersion)
+            return;
+
+        PlayerHeartButton.IsLiked = !string.IsNullOrEmpty(uri)
+            && _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, uri) == true;
+    }
+
+    private async Task OnPlayerHeartClickedAsync()
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
+            .ConfigureAwait(true);
+        if (string.IsNullOrEmpty(uri) || _likeService == null) return;
+
+        var isLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+        _logger?.LogInformation("[PlayerBar] Heart clicked: uri={Uri}, wasLiked={WasLiked} → {NewLiked}", uri, isLiked, !isLiked);
         _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, isLiked);
         PlayerHeartButton.IsLiked = !isLiked;
     }
@@ -364,7 +487,8 @@ public sealed partial class PlayerBar : UserControl
             return;
         }
 
-        var currentTrackId = GetCurrentTrackId();
+        var currentTrackId = GetCurrentTrackId()
+            ?? (_playbackStateService?.CurrentTrackIsVideo == true ? _playbackStateService.CurrentTrackId : null);
         var likeItem = flyout.Items.OfType<MenuFlyoutItem>().FirstOrDefault(static item => Equals(item.Tag, "like"));
         if (likeItem != null)
         {
@@ -394,9 +518,36 @@ public sealed partial class PlayerBar : UserControl
     private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.IsAlbumArtExpanded = false;
-        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = false);
+        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = true);
         Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
         _logger?.LogInformation("[PlayerBar] Player popped out via bottom bar");
+    }
+
+    private void ShowMiniVideoPlayer_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.IsAlbumArtExpanded = false;
+        Ioc.Default.GetService<MiniVideoPlayerViewModel>()?.Show();
+        _logger?.LogInformation("[PlayerBar] Mini video player restored via bottom bar");
+    }
+
+    private void VideoPopoutTeachingTip_ActionButtonClick(TeachingTip sender, object args)
+    {
+        s_videoPopoutTeachingTipDismissed = true;
+        ViewModel.IsAlbumArtExpanded = false;
+        CloseVideoPopoutTeachingTipProgrammatically(sender);
+        (_dockingService ?? Ioc.Default.GetService<IPanelDockingService>())?.Detach(DetachablePanel.Player);
+    }
+
+    private void VideoPopoutTeachingTip_Closed(TeachingTip sender, TeachingTipClosedEventArgs args)
+    {
+        if (_suppressVideoPopoutTeachingTipClosedHandling)
+        {
+            _suppressVideoPopoutTeachingTipClosedHandling = false;
+            return;
+        }
+
+        if (args.Reason is TeachingTipCloseReason.LightDismiss or TeachingTipCloseReason.CloseButton)
+            s_videoPopoutTeachingTipDismissed = true;
     }
 
     // Old Slider PointerPressed/Released/CaptureLost handlers were removed when

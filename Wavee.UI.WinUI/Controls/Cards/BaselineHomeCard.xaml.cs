@@ -1223,6 +1223,7 @@ public sealed partial class BaselineHomeCard : UserControl
 
                 StopPreviewAudio();
 
+                SuppressLocalHomeVideoAutoNavigation(item.Uri);
                 SetPlaybackPending(true);
                 playbackState?.NotifyBuffering(null);
                 var result = await Task.Run(async () => await playback.PlayContextAsync(item.Uri));
@@ -1239,6 +1240,14 @@ public sealed partial class BaselineHomeCard : UserControl
             playbackState?.ClearBuffering();
             Debug.WriteLine($"[BaselineHomeCard] Context play failed: {ex.Message}");
         }
+    }
+
+    private static void SuppressLocalHomeVideoAutoNavigation(string uri)
+    {
+        if (!uri.StartsWith("wavee:local:", StringComparison.Ordinal))
+            return;
+
+        VideoAutoNavigationSuppressor.SuppressNextLocalVideoNavigation(uri);
     }
 
     private Task SchedulePreviewAudioAsync()

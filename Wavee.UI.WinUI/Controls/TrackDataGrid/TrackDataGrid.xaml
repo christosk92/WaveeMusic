@@ -233,10 +233,22 @@
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1"
             Visibility="Collapsed">
-            <TextBox
-                x:Name="FilterBox"
-                PlaceholderText="Filter tracks"
-                TextChanged="FilterBox_TextChanged" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox
+                    x:Name="FilterBox"
+                    PlaceholderText="Filter tracks"
+                    TextChanged="FilterBox_TextChanged" />
+
+                <ContentPresenter
+                    Grid.Column="1"
+                    Content="{x:Bind FilterBarContent, Mode=OneWay}"
+                    VerticalAlignment="Center" />
+            </Grid>
         </Border>
 
         <!--  Header + list. The ListView uses its OWN internal ScrollViewer

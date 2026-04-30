@@ -81,6 +81,7 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         // Visibility tracks ViewModel.IsVisible (composite of "video active"
         // + "not on the video page"). When we become visible we acquire the
         // surface; when we hide we release it.
+        _surface.ActiveSurfaceChanged += OnActiveVideoSurfaceStateChanged;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -110,14 +111,27 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             // state as a fade-out after hover.
             RestartHideTimer();
         }
+        UpdateVideoStatusOverlay();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _surface.ReleaseSurface(this);
+        _surface.ActiveSurfaceChanged -= OnActiveVideoSurfaceStateChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
+    }
+
+    private void OnActiveVideoSurfaceStateChanged(object? sender, MediaPlayer? surface)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => OnActiveVideoSurfaceStateChanged(sender, surface));
+            return;
+        }
+
+        UpdateVideoStatusOverlay();
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -137,6 +151,7 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             _surface.ReleaseSurface(this);
             Visibility = Visibility.Collapsed;
         }
+        UpdateVideoStatusOverlay();
     }
 
     private void ExpandClickArea_Click(object sender, RoutedEventArgs e)
@@ -161,6 +176,7 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             MiniVideoHost.Children.Insert(0, _element);
         }
         _element.SetMediaPlayer(player);
+        UpdateVideoStatusOverlay();
     }
 
     public void AttachElementSurface(FrameworkElement element)
@@ -174,12 +190,34 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         element.VerticalAlignment = VerticalAlignment.Stretch;
         element.IsHitTestVisible = false;
         MiniVideoHost.Children.Insert(0, element);
+        UpdateVideoStatusOverlay();
     }
 
     public void DetachSurface()
     {
         DetachMediaPlayerSurface();
         DetachElementSurface();
+        UpdateVideoStatusOverlay();
+    }
+
+    private void UpdateVideoStatusOverlay()
+    {
+        if (MiniVideoStatusOverlay is null) return;
+        var hasAttachedVideo = _element is not null || _elementSurface is not null;
+        var showLoading = ViewModel.IsVisible
+            && hasAttachedVideo
+            && _surface.HasActiveSurface
+            && !_surface.HasActiveFirstFrame;
+        var showBuffering = ViewModel.IsVisible
+            && hasAttachedVideo
+            && _surface.HasActiveSurface
+            && _surface.HasActiveFirstFrame
+            && _surface.IsActiveSurfaceBuffering;
+
+        MiniVideoStatusText.Text = showBuffering ? "Buffering" : "Loading";
+        MiniVideoStatusOverlay.Visibility = showLoading || showBuffering
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void DetachMediaPlayerSurface()

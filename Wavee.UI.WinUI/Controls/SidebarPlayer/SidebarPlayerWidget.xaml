@@ -71,7 +71,7 @@
          via WidgetTintColor / WidgetTintColorTransparent (animations on color changes). -->
     <Border
         x:Name="WidgetRoot"
-        Padding="12,10,12,6"
+        Padding="8,8,8,4"
         BorderThickness="0"
         PointerEntered="WidgetRoot_PointerEntered"
         PointerExited="WidgetRoot_PointerExited"
@@ -124,7 +124,7 @@
             </Button>
 
             <!-- ============ EXPANDED LAYOUT ============ -->
-            <Grid x:Name="ExpandedRoot" RowSpacing="8">
+            <Grid x:Name="ExpandedRoot" RowSpacing="6">
                 <animations:Implicit.ShowAnimations>
                     <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1" />
                 </animations:Implicit.ShowAnimations>
@@ -199,6 +199,29 @@
                                         Click="VideoStretchFill_Click" />
                                 </MenuFlyout>
                             </Grid.ContextFlyout>
+                            <Grid
+                                x:Name="ExpandedVideoStatusOverlay"
+                                Canvas.ZIndex="1"
+                                Background="#66000000"
+                                Visibility="Collapsed"
+                                IsHitTestVisible="False">
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="6">
+                                    <ProgressRing
+                                        Width="26"
+                                        Height="26"
+                                        IsActive="True"
+                                        Foreground="White" />
+                                    <TextBlock
+                                        x:Name="ExpandedVideoStatusText"
+                                        Text="Buffering"
+                                        FontSize="11"
+                                        FontWeight="SemiBold"
+                                        Foreground="White" />
+                                </StackPanel>
+                            </Grid>
                         </Grid>
                         <FontIcon
                             Glyph="&#xE8D6;"

@@ -1530,7 +1530,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         IsPlayable = vm.IsPlayable,
                         HasVideo = vm.HasVideo,
                     };
-                    TopTracks[i] = LazyTrackItem.Loaded(patched.Id, vm.Index, patched);
+                    entry.Populate(patched);
                     anyPatched = true;
                 }
 

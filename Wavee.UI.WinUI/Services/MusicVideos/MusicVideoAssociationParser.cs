@@ -12,6 +12,28 @@ internal static class MusicVideoAssociationParser
         => TryReadVideoAssociationUri(data) is not null;
 
     public static string? TryReadVideoAssociationUri(byte[]? data)
+        => TryReadPlainListAssociationUri(data);
+
+    public static string? TryReadAudioAssociationUri(byte[]? data)
+    {
+        if (data is null || data.Length == 0) return null;
+
+        try
+        {
+            var assoc = Wavee.Protocol.AudioAssociations.AudioAssociations.Parser.ParseFrom(data);
+            var uri = assoc.Association
+                .Select(item => item.AssociatedUri)
+                .FirstOrDefault(IsSpotifyTrackUri);
+            if (!string.IsNullOrWhiteSpace(uri)) return uri;
+        }
+        catch (InvalidProtocolBufferException)
+        {
+        }
+
+        return TryReadPlainListAssociationUri(data);
+    }
+
+    private static string? TryReadPlainListAssociationUri(byte[]? data)
     {
         if (data is null || data.Length == 0) return null;
 

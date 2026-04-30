@@ -38,6 +38,9 @@
 		<Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
 		<Content Include="Assets\StoreLogo.png" />
 		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
+		<Content Include="Services\SpotifyVideo\WebEmePlayer.html">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -66,7 +69,7 @@
 		<PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.3.260402-preview2" />
 		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
 		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
-		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1-RTM" />
+		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
 		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
 		<PackageReference Include="FluentIcons.WinUI" Version="2.1.325" />
 		<PackageReference Include="FontAwesome6.Svg.WinUI" Version="2.5.1" />
@@ -80,15 +83,15 @@
 		<PackageReference Include="WinUIEx" Version="2.9.0" />
 		<!-- MVVM and DI -->
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
-		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.7" />
 		<!-- UI Extensions -->
 		<PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
 		<PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
 		<!-- Reactive Extensions (System.Reactive used by Connect/Core layer) -->
-		<PackageReference Include="ReactiveUI" Version="23.2.1" />
-		<PackageReference Include="ReactiveUI.WinUI" Version="23.2.1" />
+		<PackageReference Include="ReactiveUI" Version="23.2.19" />
+		<PackageReference Include="ReactiveUI.WinUI" Version="23.2.19" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -10,6 +11,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Views;
@@ -34,6 +36,7 @@ public sealed partial class MainWindow : WindowEx
     private ILogger? _memoryReleaseLogger;
     private bool _allowWindowClose;
     private bool _closeConfirmationInFlight;
+    private bool _wasDeactivatedForVideoPrompt;
 
     private MainWindow()
     {
@@ -43,6 +46,7 @@ public sealed partial class MainWindow : WindowEx
 
         Closed += OnClosed;
         Activated += OnActivatedForMemoryRelease;
+        Activated += OnActivatedForVideoPrompt;
         VisibilityChanged += OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed += OnAppWindowChangedForMemoryRelease;
         AppWindow.Closing += OnAppWindowClosing;
@@ -67,6 +71,7 @@ public sealed partial class MainWindow : WindowEx
     private async void OnClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs args)
     {
         Activated -= OnActivatedForMemoryRelease;
+        Activated -= OnActivatedForVideoPrompt;
         VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
         AppWindow.Closing -= OnAppWindowClosing;
@@ -199,6 +204,21 @@ public sealed partial class MainWindow : WindowEx
             CancelPendingRelease();
             _alreadyReleasedSinceLastFocus = false;
         }
+    }
+
+    private void OnActivatedForVideoPrompt(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            _wasDeactivatedForVideoPrompt = true;
+            return;
+        }
+
+        if (!_wasDeactivatedForVideoPrompt)
+            return;
+
+        _wasDeactivatedForVideoPrompt = false;
+        WeakReferenceMessenger.Default.Send(new MainWindowFocusReturnedMessage());
     }
 
     private void OnVisibilityChangedForMemoryRelease(object sender, WindowVisibilityChangedEventArgs args)

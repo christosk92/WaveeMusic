@@ -240,6 +240,35 @@
             VerticalAlignment="Bottom"
             Margin="0,0,16,16"/>
 
+        <Border
+            x:Name="VideoMiniPlayerPromptAnchor"
+            Grid.Row="2"
+            Width="1"
+            Height="1"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="0,0,186,140"
+            Opacity="0"
+            IsHitTestVisible="False"/>
+
+        <TeachingTip
+            x:Name="ShowVideoHereTeachingTip"
+            Grid.Row="2"
+            Title="Show video here?"
+            Subtitle="A video is playing. Show the mini player in this window?"
+            Target="{x:Bind VideoMiniPlayerPromptAnchor}"
+            PreferredPlacement="TopRight"
+            IsLightDismissEnabled="True"
+            ActionButtonContent="Yes"
+            CloseButtonContent="No"
+            ActionButtonClick="ShowVideoHereTeachingTip_ActionButtonClick"
+            CloseButtonClick="ShowVideoHereTeachingTip_CloseButtonClick"
+            Closed="ShowVideoHereTeachingTip_Closed">
+            <CheckBox
+                x:Name="DoNotAskShowVideoHereCheckBox"
+                Content="Don't ask me again"/>
+        </TeachingTip>
+
     </Grid>
     </controls:ZoomContentControl>
 </Page>

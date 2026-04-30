@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.Foundation;
@@ -35,6 +36,9 @@ public sealed partial class ShellPage : Page
     private readonly IAuthState? _authState;
     private readonly ISettingsService? _settingsService;
     private readonly IConnectivityService? _connectivity;
+    private readonly IPlaybackStateService? _playbackState;
+    private readonly IActiveVideoSurfaceService? _videoSurface;
+    private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
 
     private const double ZoomStep = 0.1;
     private const double ZoomMin = 0.5;
@@ -44,6 +48,8 @@ public sealed partial class ShellPage : Page
     private InputNonClientPointerSource? _nonClientSource;
     private DragStateService? _dragStateService;
     private long _sidebarOpenPaneLengthCallbackToken = -1;
+    private bool _suppressVideoPromptClosedHandling;
+    private string? _lastDeclinedVideoPromptTrackId;
 
     private Services.UiHealthMonitor? _uiHealthMonitor;
     private Controls.Diagnostics.UiHealthOverlay? _uiHealthOverlay;
@@ -56,6 +62,9 @@ public sealed partial class ShellPage : Page
         _authState = Ioc.Default.GetService<IAuthState>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
         _connectivity = Ioc.Default.GetService<IConnectivityService>();
+        _playbackState = Ioc.Default.GetService<IPlaybackStateService>();
+        _videoSurface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
+        _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
         InitializeComponent();
 
         // Apply saved zoom level
@@ -120,6 +129,11 @@ public sealed partial class ShellPage : Page
         {
             DispatcherQueue.TryEnqueue(UpdateUserButton);
         });
+        WeakReferenceMessenger.Default.Register<MainWindowFocusReturnedMessage>(this, (r, m) =>
+        {
+            if (r is ShellPage shell)
+                shell.DispatcherQueue.TryEnqueue(shell.TryShowVideoMiniPlayerPrompt);
+        });
         UpdateUserButton();
     }
 
@@ -167,6 +181,95 @@ public sealed partial class ShellPage : Page
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<Data.Messages.ConnectivityChangedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<MainWindowFocusReturnedMessage>(this);
+        WeakReferenceMessenger.Default.Send(new VideoMiniPlayerPromptStateChangedMessage(false));
+    }
+
+    private void TryShowVideoMiniPlayerPrompt()
+    {
+        if (_settingsService?.Settings.AskToShowVideoMiniPlayerOnFocus == false)
+            return;
+        if (_playbackState?.CurrentTrackIsVideo != true)
+            return;
+        if (_videoSurface?.HasActiveSurface != true)
+            return;
+        if (_miniVideoViewModel is null)
+            return;
+        if (_miniVideoViewModel.IsOnVideoPage || _miniVideoViewModel.IsVisible)
+            return;
+        if (ViewModel.IsSidebarPlayerVisibleInShell && !ViewModel.SidebarPlayerCollapsed)
+            return;
+
+        var currentTrackId = _playbackState.CurrentTrackId;
+        if (!string.IsNullOrEmpty(currentTrackId)
+            && string.Equals(_lastDeclinedVideoPromptTrackId, currentTrackId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (ShowVideoHereTeachingTip.IsOpen)
+            return;
+
+        _suppressVideoPromptClosedHandling = false;
+        DoNotAskShowVideoHereCheckBox.IsChecked = false;
+        ShowVideoHereTeachingTip.IsOpen = true;
+        WeakReferenceMessenger.Default.Send(new VideoMiniPlayerPromptStateChangedMessage(true));
+    }
+
+    private void ShowVideoHereTeachingTip_ActionButtonClick(TeachingTip sender, object args)
+    {
+        PersistVideoPromptOptOutIfChecked();
+        _miniVideoViewModel?.ShowByUserRequest();
+        CloseVideoPromptProgrammatically(sender);
+    }
+
+    private void ShowVideoHereTeachingTip_CloseButtonClick(TeachingTip sender, object args)
+    {
+        RememberVideoPromptDeclinedForCurrentTrack();
+        PersistVideoPromptOptOutIfChecked();
+        CloseVideoPromptProgrammatically(sender);
+    }
+
+    private void ShowVideoHereTeachingTip_Closed(TeachingTip sender, TeachingTipClosedEventArgs args)
+    {
+        WeakReferenceMessenger.Default.Send(new VideoMiniPlayerPromptStateChangedMessage(false));
+
+        if (_suppressVideoPromptClosedHandling)
+        {
+            _suppressVideoPromptClosedHandling = false;
+            return;
+        }
+
+        if (args.Reason is TeachingTipCloseReason.LightDismiss or TeachingTipCloseReason.CloseButton)
+        {
+            RememberVideoPromptDeclinedForCurrentTrack();
+            PersistVideoPromptOptOutIfChecked();
+        }
+    }
+
+    private void CloseVideoPromptProgrammatically(TeachingTip tip)
+    {
+        if (!tip.IsOpen)
+        {
+            _suppressVideoPromptClosedHandling = false;
+            return;
+        }
+
+        _suppressVideoPromptClosedHandling = true;
+        tip.IsOpen = false;
+    }
+
+    private void RememberVideoPromptDeclinedForCurrentTrack()
+    {
+        var currentTrackId = _playbackState?.CurrentTrackId;
+        if (!string.IsNullOrEmpty(currentTrackId))
+            _lastDeclinedVideoPromptTrackId = currentTrackId;
+    }
+
+    private void PersistVideoPromptOptOutIfChecked()
+    {
+        if (DoNotAskShowVideoHereCheckBox.IsChecked == true)
+            _settingsService?.Update(s => s.AskToShowVideoMiniPlayerOnFocus = false);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -696,15 +799,30 @@ public sealed partial class ShellPage : Page
     {
         var playback = Ioc.Default.GetService<IPlaybackStateService>();
         var like = Ioc.Default.GetService<ITrackLikeService>();
+        var musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
         if (playback is null || like is null) return false;
+        if (PlaybackSaveTargetResolver.GetTrackUri(playback) is null
+            && (!playback.CurrentTrackIsVideo || string.IsNullOrEmpty(playback.CurrentTrackId)))
+        {
+            return false;
+        }
 
-        var id = playback.CurrentTrackId;
-        if (string.IsNullOrEmpty(id)) return false;
+        _ = ToggleLikeCurrentTrackAsync(playback, like, musicVideoMetadata);
+        return true;
+    }
 
-        var uri = "spotify:track:" + id;
+    private static async Task ToggleLikeCurrentTrackAsync(
+        IPlaybackStateService playback,
+        ITrackLikeService like,
+        IMusicVideoMetadataService? musicVideoMetadata)
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(playback, musicVideoMetadata)
+            .ConfigureAwait(true);
+        if (string.IsNullOrEmpty(uri)) return;
+
         var isSaved = like.IsSaved(SavedItemType.Track, uri);
         like.ToggleSave(SavedItemType.Track, uri, isSaved);
-        return true;
     }
 
     private static bool ToggleShuffle()

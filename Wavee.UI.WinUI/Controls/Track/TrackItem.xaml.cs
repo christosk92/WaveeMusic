@@ -19,6 +19,7 @@ using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Track;
@@ -387,6 +388,7 @@ public sealed partial class TrackItem : UserControl
     private readonly Data.Contracts.ITrackLikeService? _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
     private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
     private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
     private readonly Wavee.UI.Services.ITrackColorHintService? _colorHintService = Ioc.Default.GetService<Wavee.UI.Services.ITrackColorHintService>();
     private static ISettingsService? _cachedSettingsService;
     private static ImageCacheService? _cachedImageCache;
@@ -514,7 +516,7 @@ public sealed partial class TrackItem : UserControl
             CompactLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
 
             UpdateVideoBadgeVisibility();
-            CompactHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
+            CompactHeartButton.IsLiked = GetTrackLikedState(track);
             CompactHeartButton.Visibility = Visibility.Visible;
             ApplyCompactAlbumArt(track.ImageUrl);
         }
@@ -542,7 +544,7 @@ public sealed partial class TrackItem : UserControl
             RowLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
             RowDuration.Text = track.DurationFormatted ?? "";
 
-            RowHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, track.Id) ?? track.IsLiked;
+            RowHeartButton.IsLiked = GetTrackLikedState(track);
             RowHeartButton.Visibility = Visibility.Visible;
             var artistName = track.ArtistName ?? "";
             RowArtistLink.Content = artistName;
@@ -583,6 +585,7 @@ public sealed partial class TrackItem : UserControl
         if (imageUrl == _boundCompactImageUrl && CompactAlbumArt.Source != null)
         {
             CompactAlbumArt.Visibility = Visibility.Visible;
+            CompactAlbumArt.Opacity = 1;
             return;
         }
 
@@ -607,6 +610,7 @@ public sealed partial class TrackItem : UserControl
 
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
         CompactAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        CompactAlbumArt.Opacity = 1;
         _cachedImageCache?.Pin(httpsUrl, 48);
         _pinnedCompactUrl = httpsUrl;
     }
@@ -616,6 +620,7 @@ public sealed partial class TrackItem : UserControl
         if (imageUrl == _boundRowImageUrl && RowAlbumArt.Source != null)
         {
             RowAlbumArt.Visibility = Visibility.Visible;
+            RowAlbumArt.Opacity = 1;
             RowArtPlaceholder.Visibility = Visibility.Visible;
             return;
         }
@@ -644,6 +649,7 @@ public sealed partial class TrackItem : UserControl
         RowArtPlaceholder.Visibility = Visibility.Visible;
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
         RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        RowAlbumArt.Opacity = 1;
         _cachedImageCache?.Pin(httpsUrl, 48);
         _pinnedRowUrl = httpsUrl;
         RowAlbumArt.Visibility = Visibility.Visible;
@@ -1217,10 +1223,39 @@ public sealed partial class TrackItem : UserControl
         var track = Track;
         if (track == null || _likeService == null) return;
 
-        var isLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, track.Id);
+        var isLiked = GetTrackLikedState(track);
         CompactHeartButton.IsLiked = isLiked;
         RowHeartButton.IsLiked = isLiked;
         track.IsLiked = isLiked;
+    }
+
+    private bool GetTrackLikedState(ITrackItem track)
+    {
+        if (_likeService is null)
+            return track.IsLiked;
+
+        var uri = GetImmediateSaveTargetUri(track);
+        if (!string.IsNullOrEmpty(uri))
+            return _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+
+        if (IsCurrentPlaybackVideoTrack(track))
+            _ = RefreshCurrentVideoLikedStateAsync(track);
+
+        return false;
+    }
+
+    private async Task RefreshCurrentVideoLikedStateAsync(ITrackItem expectedTrack)
+    {
+        var uri = await PlaybackSaveTargetResolver
+            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
+            .ConfigureAwait(true);
+        if (Track != expectedTrack || string.IsNullOrEmpty(uri) || _likeService is null)
+            return;
+
+        var isLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+        CompactHeartButton.IsLiked = isLiked;
+        RowHeartButton.IsLiked = isLiked;
+        expectedTrack.IsLiked = isLiked;
     }
 
     /// <summary>
@@ -1447,6 +1482,9 @@ public sealed partial class TrackItem : UserControl
     }
 
     private void OnHeartClicked()
+        => _ = OnHeartClickedAsync();
+
+    private async Task OnHeartClickedAsync()
     {
         var track = Track;
         if (track == null)
@@ -1460,14 +1498,48 @@ public sealed partial class TrackItem : UserControl
             return;
         }
 
-        var uri = track.Uri;
-        if (string.IsNullOrEmpty(uri)) uri = $"spotify:track:{track.Id}";
+        var uri = IsCurrentPlaybackVideoTrack(track)
+            ? await PlaybackSaveTargetResolver
+                .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
+                .ConfigureAwait(true)
+            : GetImmediateSaveTargetUri(track);
+        if (string.IsNullOrEmpty(uri))
+            return;
 
-        _logger?.LogInformation("HeartButton: ToggleSave uri={Uri}, currentlyLiked={IsLiked}", uri, track.IsLiked);
+        var wasLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+        _logger?.LogInformation("HeartButton: ToggleSave uri={Uri}, currentlyLiked={IsLiked}", uri, wasLiked);
 
-        // Just tell the service — it updates the cache, fires SaveStateChanged,
+        // Just tell the service - it updates the cache, fires SaveStateChanged,
         // and ALL hearts across the app react via OnSaveStateChanged.
-        _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, track.IsLiked);
+        _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, wasLiked);
+    }
+
+    private string? GetImmediateSaveTargetUri(ITrackItem track)
+    {
+        if (IsCurrentPlaybackVideoTrack(track))
+            return PlaybackSaveTargetResolver.GetTrackUri(_playbackStateService);
+
+        if (!string.IsNullOrEmpty(track.Uri))
+            return track.Uri;
+
+        return string.IsNullOrEmpty(track.Id) ? null : $"spotify:track:{track.Id}";
+    }
+
+    private bool IsCurrentPlaybackVideoTrack(ITrackItem track)
+    {
+        if (_playbackStateService?.CurrentTrackIsVideo != true)
+            return false;
+
+        var currentTrackId = _playbackStateService.CurrentTrackId;
+        if (string.IsNullOrEmpty(currentTrackId))
+            return false;
+
+        var currentTrackUri = currentTrackId.Contains(':', StringComparison.Ordinal)
+            ? currentTrackId
+            : $"spotify:track:{currentTrackId}";
+
+        return string.Equals(track.Id, currentTrackId, StringComparison.Ordinal)
+               || string.Equals(track.Uri, currentTrackUri, StringComparison.Ordinal);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)

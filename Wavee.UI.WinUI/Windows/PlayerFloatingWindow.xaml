@@ -5,9 +5,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:winuiex="using:WinUIEx"
     xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
-    xmlns:transitions="using:CommunityToolkit.WinUI"
-    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
-    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -20,40 +17,9 @@
         <MicaBackdrop Kind="BaseAlt" />
     </winuiex:WindowEx.SystemBackdrop>
 
-    <!-- Compact (vertical card) and Expanded (Apple-Music 2-column) views are
-         siblings in RootGrid. The TransitionHelper resource morphs matched-Id
-         elements between them on expand/collapse — Source = CompactHost,
-         Target = ExpandedHost (wired in code-behind). Same pattern as
-         ArtistPage.xaml's hero → shy-header transition.
-         CompactHost is capped (MaxWidth) so resizing the window doesn't blow
-         up the small layout — it just sits centered while ExpandedHost grows
-         around it during the morph. -->
+    <!-- Floating player window; the mode button toggles real fullscreen.
+         compact mode is not mounted in this top-level window. -->
     <Grid x:Name="RootGrid">
-
-        <Grid.Resources>
-            <transitions:TransitionHelper x:Key="PlayerExpandTransition"
-                                          Duration="0:0:0.36"
-                                          ReverseDuration="0:0:0.30"
-                                          DefaultEasingMode="EaseInOut"
-                                          SourceToggleMethod="ByVisibility"
-                                          TargetToggleMethod="ByVisibility"
-                                          IndependentElementShowDuration="0:0:0.20"
-                                          IndependentElementShowDelay="0:0:0.12"
-                                          IndependentElementHideDuration="0:0:0.14"
-                                          IsHitTestVisibleWhenAnimating="False">
-                <transitions:TransitionConfig Id="albumArt" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="trackTitle" ScaleMode="Custom">
-                    <transitions:TransitionConfig.CustomScalingCalculator>
-                        <waveeHelpers:TransitionTextScalingCalculator/>
-                    </transitions:TransitionConfig.CustomScalingCalculator>
-                </transitions:TransitionConfig>
-                <transitions:TransitionConfig Id="artistMetadata" ScaleMode="Custom">
-                    <transitions:TransitionConfig.CustomScalingCalculator>
-                        <waveeHelpers:TransitionTextScalingCalculator/>
-                    </transitions:TransitionConfig.CustomScalingCalculator>
-                </transitions:TransitionConfig>
-            </transitions:TransitionHelper>
-        </Grid.Resources>
 
         <Border x:Name="WindowBackdrop" IsHitTestVisible="False">
             <Border.Background>
@@ -65,27 +31,8 @@
             </Border.Background>
         </Border>
 
-        <!-- Compact: vertical mini player. MaxWidth keeps the layout from
-             blowing up when the window is large (during/after expand). -->
-        <ScrollViewer
-            x:Name="CompactHost"
-            MinWidth="320"
-            MaxWidth="340"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Stretch"
-            VerticalScrollBarVisibility="Hidden"
-            HorizontalScrollBarVisibility="Disabled"
-            VerticalScrollMode="Disabled"
-            Padding="0,32,0,0">
-            <sidebarplayer:SidebarPlayerWidget
-                x:Name="PlayerHost"
-                VerticalAlignment="Top" />
-        </ScrollViewer>
-
-        <!-- Expanded: 2-column now-playing layout. Hidden until first expand. -->
         <sidebarplayer:ExpandedPlayerView
-            x:Name="ExpandedHost"
-            Visibility="Collapsed" />
+            x:Name="ExpandedHost" />
 
         <!-- Title-bar drag region overlay (transparent). -->
         <Border x:Name="DragRegion"
@@ -101,28 +48,47 @@
             VerticalAlignment="Top"
             Margin="0,2,142,0"
             Canvas.ZIndex="20">
-            <Button x:Name="CompactFocusButton"
+            <ToggleButton x:Name="AlwaysOnTopButton"
+                          Width="34"
+                          Height="28"
+                          Padding="0"
+                          Background="Transparent"
+                          Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                          BorderThickness="0"
+                          CornerRadius="4"
+                          Checked="AlwaysOnTopButton_Checked"
+                          Unchecked="AlwaysOnTopButton_Unchecked"
+                          ToolTipService.ToolTip="Always on top">
+                <ToggleButton.Resources>
+                    <SolidColorBrush x:Key="ToggleButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="Transparent" />
+                    <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedDisabled" Color="Transparent" />
+                </ToggleButton.Resources>
+                <FontIcon x:Name="AlwaysOnTopGlyph" Glyph="&#xE718;" FontSize="12" />
+            </ToggleButton>
+            <Button x:Name="FullScreenButton"
                     Width="34"
                     Height="28"
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
                     CornerRadius="4"
-                    Click="CompactFocusButton_Click"
-                    ToolTipService.ToolTip="Open focus player">
-                <FontIcon Glyph="&#xE73F;" FontSize="12" />
-            </Button>
-            <Button x:Name="ExpandedCompactButton"
-                    Width="34"
-                    Height="28"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    CornerRadius="4"
-                    Visibility="Collapsed"
-                    Click="ExpandedCompactButton_Click"
-                    ToolTipService.ToolTip="Back to mini player">
-                <FontIcon Glyph="&#xE740;" FontSize="12" />
+                    Click="FullScreenButton_Click"
+                    ToolTipService.ToolTip="Enter full screen (F12)">
+                <FontIcon x:Name="FullScreenGlyph" Glyph="&#xE740;" FontSize="12" />
             </Button>
         </StackPanel>
     </Grid>

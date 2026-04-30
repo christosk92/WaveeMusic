@@ -30,9 +30,14 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
     [ObservableProperty] private bool _isVideoActive;
     [ObservableProperty] private bool _isOnVideoPage;
     [ObservableProperty] private bool _isSuppressedBySidebarPlayer;
+    [ObservableProperty] private bool _isSuppressedByFloatingPlayer;
     [ObservableProperty] private bool _isDismissedByUser;
 
-    public bool IsVisible => IsVideoActive && !IsOnVideoPage && !IsSuppressedBySidebarPlayer && !IsDismissedByUser;
+    public bool IsVisible => IsVideoActive
+                             && !IsOnVideoPage
+                             && !IsSuppressedBySidebarPlayer
+                             && !IsSuppressedByFloatingPlayer
+                             && !IsDismissedByUser;
 
     /// <summary>
     /// Re-uses the singleton <see cref="PlayerBarViewModel"/> for transport
@@ -136,6 +141,27 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
         OnPropertyChanged(nameof(IsVisible));
     }
 
+    public void SetSuppressedByFloatingPlayer(bool value)
+    {
+        if (IsSuppressedByFloatingPlayer == value) return;
+        IsSuppressedByFloatingPlayer = value;
+        OnPropertyChanged(nameof(IsVisible));
+    }
+
+    public void ShowByUserRequest()
+    {
+        if (!_dispatcher.HasThreadAccess)
+        {
+            _dispatcher.TryEnqueue(ShowByUserRequest);
+            return;
+        }
+
+        IsDismissedByUser = false;
+        IsSuppressedBySidebarPlayer = false;
+        IsVideoActive = _surface.HasActiveSurface;
+        OnPropertyChanged(nameof(IsVisible));
+    }
+
     private void Expand()
     {
         IsDismissedByUser = false;
@@ -154,6 +180,11 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
         // UI-only dismiss; playback keeps running.
         IsDismissedByUser = true;
         OnPropertyChanged(nameof(IsVisible));
+    }
+
+    public void Show()
+    {
+        ShowByUserRequest();
     }
 
     public void Dispose()

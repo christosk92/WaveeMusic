@@ -232,6 +232,29 @@
                     </StackPanel>
                 </Grid>
 
+                <Grid x:Name="MiniVideoStatusOverlay"
+                      Canvas.ZIndex="2"
+                      Background="#66000000"
+                      Visibility="Collapsed"
+                      IsHitTestVisible="False">
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="6">
+                        <ProgressRing
+                            Width="26"
+                            Height="26"
+                            IsActive="True"
+                            Foreground="White"/>
+                        <TextBlock
+                            x:Name="MiniVideoStatusText"
+                            Text="Buffering"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="White"/>
+                    </StackPanel>
+                </Grid>
+
                 <!-- Top-left and top-right resize grips. Tiny transparent
                      zones at the absolute corners of the video frame; on
                      PointerEntered the UserControl's cursor switches to the

@@ -188,6 +188,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _normalizationEnabled = s.NormalizationEnabled;
         _autoplayEnabled = s.AutoplayEnabled;
+        _showDockedPlayerWithFloatingPlayer = s.ShowDockedPlayerWithFloatingPlayer;
         _showLocalFilesOnHome = s.ShowLocalFilesOnHome;
 
         // Initialize lyrics sources from persisted prefs or defaults
@@ -570,6 +571,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     // ── Verbose logging ──
+
+    [ObservableProperty]
+    private bool _showDockedPlayerWithFloatingPlayer;
+
+    partial void OnShowDockedPlayerWithFloatingPlayerChanged(bool value)
+    {
+        _settingsService.Update(s => s.ShowDockedPlayerWithFloatingPlayer = value);
+        WeakReferenceMessenger.Default.Send(new DockedPlayerWithFloatingPlayerVisibilityChangedMessage(value));
+    }
 
     [ObservableProperty]
     private bool _showLocalFilesOnHome;
