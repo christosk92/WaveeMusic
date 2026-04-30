@@ -44,12 +44,11 @@ public sealed class SectionStackLayout : VirtualizingLayout
 
     /// <summary>
     /// Extra pixels on top and bottom of <see cref="VirtualizingLayoutContext.RealizationRect"/>
-    /// in which we still keep items realized. Home sections (baseline cards, shelves)
-    /// are expensive to re-instantiate; generous buffer avoids the "flash in / flash out"
-    /// effect on vertical scroll. Cost is memory for a few extra realized sections —
-    /// acceptable for a page that never has more than ~30 sections total.
+    /// in which we still keep items realized. Keep this below a full viewport so
+    /// wheel scrolling has runway without retaining several off-screen shelves
+    /// and their decoded images.
     /// </summary>
-    private const double RealizationBufferPx = 800.0;
+    private const double RealizationBufferPx = 480.0;
 
     public static readonly DependencyProperty SpacingProperty =
         DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(SectionStackLayout),

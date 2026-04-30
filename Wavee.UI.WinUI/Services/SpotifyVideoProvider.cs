@@ -67,9 +67,13 @@ public sealed class SpotifyVideoProvider
     private long _webPositionMs;
     private bool _webIsPlaying;
     private bool _webIsBuffering;
+    private bool _webDesiredPlaying;
     private bool _surfaceIsLoading;
     private bool _surfaceHasFirstFrame;
     private bool _disposed;
+    private DateTimeOffset _lastWebRecoveryAt = DateTimeOffset.MinValue;
+    private int _webRecoveryAttempts;
+    private string? _webRecoveryTrackUri;
     private IReadOnlyList<SpotifyVideoQualityOption> _availableQualities = Array.Empty<SpotifyVideoQualityOption>();
     private SpotifyVideoQualityOption? _currentQuality;
     private SpotifyVideoPlaybackMetadata? _playbackMetadata;
@@ -135,6 +139,10 @@ public sealed class SpotifyVideoProvider
         _currentTrackUri = trackUri;
         _currentMetadata = metadata;
         _currentDurationMs = Math.Max(0, durationMs);
+        _webDesiredPlaying = true;
+        _webRecoveryTrackUri = trackUri;
+        _webRecoveryAttempts = 0;
+        _lastWebRecoveryAt = DateTimeOffset.MinValue;
 
         _logger?.LogInformation("SpotifyVideoProvider: play {Uri} manifest={Manifest}", trackUri, manifestId);
 
@@ -234,6 +242,7 @@ public sealed class SpotifyVideoProvider
     public Task PauseAsync(CancellationToken ct = default)
     {
         if (_disposed) return Task.CompletedTask;
+        _webDesiredPlaying = false;
         if (_webEmePlayer is not null) return _webEmePlayer.PauseAsync();
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() => _player?.Pause());
@@ -242,6 +251,7 @@ public sealed class SpotifyVideoProvider
     public Task ResumeAsync(CancellationToken ct = default)
     {
         if (_disposed) return Task.CompletedTask;
+        _webDesiredPlaying = true;
         if (_webEmePlayer is not null) return _webEmePlayer.PlayAsync();
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() => _player?.Play());
@@ -407,6 +417,8 @@ public sealed class SpotifyVideoProvider
         {
             var webDurationMs = _currentDurationMs;
             var webPlaying = !forceFinished && (forcePlaying || _webIsPlaying);
+            var webBuffering = !forceFinished
+                && (_webIsBuffering || (_webDesiredPlaying && !webPlaying));
             var webState = new LocalPlaybackState
             {
                 TrackUri = _currentTrackUri,
@@ -422,8 +434,8 @@ public sealed class SpotifyVideoProvider
                 DurationMs = webDurationMs,
                 PositionMs = _webPositionMs,
                 IsPlaying = webPlaying,
-                IsPaused = !forceFinished && !webPlaying && !_webIsBuffering,
-                IsBuffering = !forceFinished && _webIsBuffering,
+                IsPaused = !forceFinished && !webPlaying && !webBuffering,
+                IsBuffering = webBuffering,
                 CanSeek = true,
                 Volume = 65535,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -514,6 +526,7 @@ public sealed class SpotifyVideoProvider
         _webPositionMs = Math.Max(0, (long)startPositionMs);
         _webIsPlaying = false;
         _webIsBuffering = true;
+        _webDesiredPlaying = true;
         _surfaceIsLoading = true;
         _surfaceHasFirstFrame = false;
         UpdatePlaybackDetails(config);
@@ -552,7 +565,7 @@ public sealed class SpotifyVideoProvider
             return;
 
         var restartPositionMs = oldPlayer.PositionMs > 0 ? oldPlayer.PositionMs : _webPositionMs;
-        var wasPlaying = oldPlayer.IsPlaying || _webIsPlaying;
+        var wasPlaying = _webDesiredPlaying || oldPlayer.IsPlaying || _webIsPlaying;
         var updatedManifest = manifest with
         {
             VideoProfileId = selectedTrack.ProfileId,
@@ -572,6 +585,7 @@ public sealed class SpotifyVideoProvider
         _webPositionMs = Math.Max(0, restartPositionMs);
         _webIsPlaying = false;
         _webIsBuffering = true;
+        _webDesiredPlaying = wasPlaying;
         _surfaceIsLoading = true;
         _surfaceHasFirstFrame = false;
         UpdatePlaybackDetails(updatedManifest);
@@ -612,6 +626,7 @@ public sealed class SpotifyVideoProvider
         webPlayer.Error += OnWebEmeError;
         webPlayer.Log += OnWebEmeLog;
         webPlayer.AutoplayBlocked += OnWebEmeAutoplayBlocked;
+        webPlayer.RecoveryRequested += OnWebEmeRecoveryRequested;
     }
 
     private void DetachWebEmePlayer(SpotifyWebEmePlayer webPlayer)
@@ -623,6 +638,7 @@ public sealed class SpotifyVideoProvider
         webPlayer.Error -= OnWebEmeError;
         webPlayer.Log -= OnWebEmeLog;
         webPlayer.AutoplayBlocked -= OnWebEmeAutoplayBlocked;
+        webPlayer.RecoveryRequested -= OnWebEmeRecoveryRequested;
     }
 
     private void OnWebEmeSurfaceCreated(object? sender, EventArgs e)
@@ -647,6 +663,8 @@ public sealed class SpotifyVideoProvider
             _currentDurationMs = state.DurationMs;
         _webIsPlaying = state.IsPlaying;
         _webIsBuffering = state.IsBuffering;
+        if (_webIsPlaying)
+            _webDesiredPlaying = true;
 
         if (!_surfaceHasFirstFrame && _webIsPlaying)
         {
@@ -679,6 +697,88 @@ public sealed class SpotifyVideoProvider
 
     private void OnWebEmeAutoplayBlocked(object? sender, string message)
         => _logger?.LogWarning("SpotifyVideoProvider: WebView2 autoplay blocked {Message}", message);
+
+    private void OnWebEmeRecoveryRequested(object? sender, SpotifyWebEmePlayerRecoveryRequest request)
+    {
+        if (!ReferenceEquals(sender, _webEmePlayer))
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (!string.Equals(_webRecoveryTrackUri, _currentTrackUri, StringComparison.Ordinal))
+        {
+            _webRecoveryTrackUri = _currentTrackUri;
+            _webRecoveryAttempts = 0;
+            _lastWebRecoveryAt = DateTimeOffset.MinValue;
+        }
+
+        if (now - _lastWebRecoveryAt < TimeSpan.FromSeconds(7))
+            return;
+
+        if (_webRecoveryAttempts >= 2)
+        {
+            _logger?.LogWarning(
+                "SpotifyVideoProvider: WebView2 recovery suppressed after {Attempts} attempts for {Uri}",
+                _webRecoveryAttempts,
+                _currentTrackUri ?? "<none>");
+            return;
+        }
+
+        _lastWebRecoveryAt = now;
+        _webRecoveryAttempts++;
+        _logger?.LogWarning(
+            "SpotifyVideoProvider: WebView2 requested stall recovery attempt={Attempt} reason={Reason} pos={PositionMs}ms",
+            _webRecoveryAttempts,
+            request.Reason,
+            request.PositionMs);
+
+        _ = RunOnUiAsync(() => RestartWebEmePlayerOnUiAsync(request.PositionMs, request.Reason));
+    }
+
+    private async Task RestartWebEmePlayerOnUiAsync(long positionMs, string reason)
+    {
+        var manifest = _currentWebEmeManifest;
+        var oldPlayer = _webEmePlayer;
+        if (manifest is null || oldPlayer is null || _currentTrackUri is null)
+            return;
+
+        var maxPositionMs = Math.Max(0, (_currentDurationMs > 0 ? _currentDurationMs : manifest.DurationMs) - 500);
+        var restartPositionMs = Math.Clamp(positionMs, 0, maxPositionMs);
+
+        _logger?.LogInformation(
+            "SpotifyVideoProvider: restarting WebView2 EME player after stall reason={Reason} pos={PositionMs}ms",
+            reason,
+            restartPositionMs);
+
+        try { await oldPlayer.PauseAsync(); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "SpotifyVideoProvider: pause before WebView2 recovery restart failed"); }
+
+        DetachWebEmePlayer(oldPlayer);
+
+        _webPositionMs = restartPositionMs;
+        _webIsPlaying = false;
+        _webIsBuffering = true;
+        _webDesiredPlaying = true;
+        _surfaceIsLoading = true;
+        _surfaceHasFirstFrame = false;
+        PublishStateFromSession();
+        _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
+
+        var newPlayer = CreateWebEmePlayer();
+        AttachWebEmePlayer(newPlayer);
+        _webEmePlayer = newPlayer;
+        OnPropertyChanged(nameof(CanSelectQuality));
+
+        await newPlayer.StartAsync(manifest, restartPositionMs, CancellationToken.None, autoPlay: true);
+
+        try
+        {
+            oldPlayer.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "SpotifyVideoProvider: old WebView2 player cleanup failed after stall recovery");
+        }
+    }
 
     private void UpdatePlaybackDetails(SpotifyWebEmeVideoManifest? manifest)
     {
@@ -1114,6 +1214,10 @@ public sealed class SpotifyVideoProvider
         _webPositionMs = 0;
         _webIsPlaying = false;
         _webIsBuffering = false;
+        _webDesiredPlaying = false;
+        _webRecoveryTrackUri = null;
+        _webRecoveryAttempts = 0;
+        _lastWebRecoveryAt = DateTimeOffset.MinValue;
         _surfaceIsLoading = false;
         _surfaceHasFirstFrame = false;
         UpdatePlaybackDetails(null);

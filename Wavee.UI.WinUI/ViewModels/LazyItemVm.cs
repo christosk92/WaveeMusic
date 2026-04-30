@@ -59,7 +59,13 @@ public partial class LazyItemVm<T> : ObservableObject where T : class
 /// </summary>
 public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 {
-    public required string Id { get; init; }
+    private string _id = "";
+
+    public required string Id
+    {
+        get => Data?.Id ?? _id;
+        init => _id = value;
+    }
 
     [ObservableProperty] private int _index;
     [ObservableProperty] private bool _isLoaded;
@@ -75,6 +81,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     // Notify all delegated properties when Data changes so OneWay bindings refresh
     partial void OnDataChanged(ITrackItem? value)
     {
+        OnPropertyChanged(nameof(Id));
         OnPropertyChanged(nameof(Uri));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(ArtistName));
@@ -85,6 +92,8 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         OnPropertyChanged(nameof(Duration));
         OnPropertyChanged(nameof(IsExplicit));
         OnPropertyChanged(nameof(DurationFormatted));
+        OnPropertyChanged(nameof(OriginalIndex));
+        OnPropertyChanged(nameof(ITrackItem.IsLocal));
         OnPropertyChanged(nameof(IsLiked));
         OnPropertyChanged(nameof(HasVideo));
         OnPropertyChanged(nameof(AddedAtFormatted));
@@ -102,7 +111,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public TimeSpan Duration => Data?.Duration ?? TimeSpan.Zero;
     public bool IsExplicit => Data?.IsExplicit ?? false;
     public string DurationFormatted => Data?.DurationFormatted ?? "";
-    public int OriginalIndex => Index;
+    public int OriginalIndex => Data?.OriginalIndex > 0 ? Data.OriginalIndex : Index;
     public bool HasVideo => Data?.HasVideo ?? false;
     public bool IsLiked
     {

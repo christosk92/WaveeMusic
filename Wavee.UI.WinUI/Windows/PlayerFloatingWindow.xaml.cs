@@ -102,6 +102,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
 
         UpdateFullScreenButton();
         _miniVideoViewModel?.SetSuppressedByFloatingPlayer(true);
+        ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(true);
         ExpandedHost.SetVideoSurfaceEnabled(true);
     }
 
@@ -157,6 +158,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
         }
 
         ExpandedHost.SetVideoSurfaceEnabled(false);
+        ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage(false);
         ExpandedHost.ReleaseHeavyResources();
         _miniVideoViewModel?.SetSuppressedByFloatingPlayer(false);
 

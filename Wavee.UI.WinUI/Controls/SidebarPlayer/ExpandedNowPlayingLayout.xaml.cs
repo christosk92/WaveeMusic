@@ -49,6 +49,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
     private MediaPlayerElement? _videoElement;
     private FrameworkElement? _videoElementSurface;
     private bool _isVideoSurfaceEnabled;
+    private bool _canTakeVideoSurfaceFromVideoPage;
     private bool _isVideoPresentationMode;
     private bool _isTheaterMode;
     private bool _ownsVideoSurface;
@@ -187,6 +188,15 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         UpdateVideoSurfaceOwnership();
     }
 
+    public void SetCanTakeVideoSurfaceFromVideoPage(bool enabled)
+    {
+        if (_canTakeVideoSurfaceFromVideoPage == enabled)
+            return;
+
+        _canTakeVideoSurfaceFromVideoPage = enabled;
+        UpdateVideoSurfaceOwnership();
+    }
+
     public void SetVideoPresentationMode(bool enabled)
     {
         if (_isVideoPresentationMode == enabled)
@@ -246,11 +256,11 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         IsLoaded
         && _isVideoSurfaceEnabled
         && _videoSurface.HasActiveSurface
-        && _miniVideoViewModel?.IsOnVideoPage != true;
+        && (_canTakeVideoSurfaceFromVideoPage || _miniVideoViewModel?.IsOnVideoPage != true);
 
     private bool CanAutoAcquireVideoSurface =>
         ShouldHostVideoSurface
-        && (_videoSurface.CurrentOwner is null || _videoSurface.IsOwnedBy(this));
+        && (_canTakeVideoSurfaceFromVideoPage || _videoSurface.CurrentOwner is null || _videoSurface.IsOwnedBy(this));
 
     private bool IsVideoTakeoverConflictActive =>
         IsLoaded

@@ -459,6 +459,7 @@ public sealed partial class TrackItem : UserControl
         var item = (TrackItem)d;
         item.ApplyMode();
         item.ResetHoverVisualState();
+        item.SyncLoadingStateFromTrack();
         item.BindTrackData();
         item.UpdateOverlayState();
     }
@@ -489,6 +490,7 @@ public sealed partial class TrackItem : UserControl
         item.ObserveTrack(item.IsLoaded ? e.NewValue as ITrackItem : null);
         item.ResetHoverVisualState();
         item.StopPendingBeam();
+        item.SyncLoadingStateFromTrack();
         item.BindTrackData();
         item.ResolveImageColorHint();
         item.RefreshPlaybackState();
@@ -1011,23 +1013,34 @@ public sealed partial class TrackItem : UserControl
     private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
-        var loading = (bool)e.NewValue;
+        item.ApplyLoadingVisualState((bool)e.NewValue);
+        item.UpdatePendingBeam();
+    }
 
-        if (item.Mode == TrackItemDisplayMode.Compact)
+    private void SyncLoadingStateFromTrack()
+    {
+        var loading = Track is { IsLoaded: false };
+        if (IsLoading != loading)
+            IsLoading = loading;
+        else
+            ApplyLoadingVisualState(loading);
+    }
+
+    private void ApplyLoadingVisualState(bool loading)
+    {
+        if (Mode == TrackItemDisplayMode.Compact)
         {
-            item.CompactAlbumArt.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            item.CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-            item.CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            item.CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-            item.CompactDuration.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            CompactAlbumArt.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            CompactDuration.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
         }
         else
         {
-            item.RowContentGrid.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            item.RowShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+            RowContentGrid.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            RowShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
         }
-
-        item.UpdatePendingBeam();
     }
 
     #endregion
@@ -1325,14 +1338,14 @@ public sealed partial class TrackItem : UserControl
             }
 
             CompactNowPlaying.Visibility = Visibility.Collapsed;
-            CompactNowPlayingEqualizer.IsActive = false;
+            SetCompactEqualizer(false, false);
             CompactBufferingRing.IsActive = true;
             CompactBufferingRing.Visibility = Visibility.Visible;
         }
         else if (_isHovered)
         {
             CompactNowPlaying.Visibility = Visibility.Collapsed;
-            CompactNowPlayingEqualizer.IsActive = false;
+            SetCompactEqualizer(false, false);
             CompactBufferingRing.IsActive = false;
             CompactBufferingRing.Visibility = Visibility.Collapsed;
             if (CompactPlayContent != null)
@@ -1364,7 +1377,7 @@ public sealed partial class TrackItem : UserControl
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Visible;
                 CompactNowPlaying.Opacity = 1.0;
-                CompactNowPlayingEqualizer.IsActive = true;
+                SetCompactEqualizer(true, true);
             }
             else if (_isThisTrackPaused)
             {
@@ -1372,11 +1385,11 @@ public sealed partial class TrackItem : UserControl
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Visible;
                 CompactNowPlaying.Opacity = 0.7;
-                CompactNowPlayingEqualizer.IsActive = false;
+                SetCompactEqualizer(true, false);
             }
             else
             {
-                CompactNowPlayingEqualizer.IsActive = false;
+                SetCompactEqualizer(false, false);
                 CompactBufferingRing.IsActive = false;
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Collapsed;
@@ -1390,16 +1403,14 @@ public sealed partial class TrackItem : UserControl
         {
             RowIndexText.Visibility = Visibility.Collapsed;
             RowPlayButton.Visibility = Visibility.Collapsed;
-            RowNowPlayingEqualizer.IsActive = false;
-            RowNowPlayingEqualizer.Visibility = Visibility.Collapsed;
+            SetRowEqualizer(false, false);
             RowBufferingRing.IsActive = true;
             RowBufferingRing.Visibility = Visibility.Visible;
         }
         else if (_isHovered)
         {
             RowIndexText.Visibility = Visibility.Collapsed;
-            RowNowPlayingEqualizer.IsActive = false;
-            RowNowPlayingEqualizer.Visibility = Visibility.Collapsed;
+            SetRowEqualizer(false, false);
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
             RowPlayButton.Visibility = Visibility.Visible;
@@ -1412,8 +1423,7 @@ public sealed partial class TrackItem : UserControl
             RowPlayButton.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
-            RowNowPlayingEqualizer.Visibility = Visibility.Visible;
-            RowNowPlayingEqualizer.IsActive = true;
+            SetRowEqualizer(true, true);
         }
         else if (_isThisTrackPaused)
         {
@@ -1421,18 +1431,36 @@ public sealed partial class TrackItem : UserControl
             RowPlayButton.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
-            RowNowPlayingEqualizer.Visibility = Visibility.Visible;
-            RowNowPlayingEqualizer.IsActive = false;
+            SetRowEqualizer(true, false);
         }
         else
         {
             RowIndexText.Visibility = Visibility.Visible;
-            RowNowPlayingEqualizer.IsActive = false;
-            RowNowPlayingEqualizer.Visibility = Visibility.Collapsed;
+            SetRowEqualizer(false, false);
             RowPlayButton.Visibility = Visibility.Collapsed;
             RowBufferingRing.IsActive = false;
             RowBufferingRing.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void SetCompactEqualizer(bool visible, bool active)
+    {
+        if (visible && CompactNowPlayingEqualizer == null)
+            FindName("CompactNowPlayingEqualizer");
+        if (CompactNowPlayingEqualizer == null) return;
+
+        CompactNowPlayingEqualizer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        CompactNowPlayingEqualizer.IsActive = visible && active;
+    }
+
+    private void SetRowEqualizer(bool visible, bool active)
+    {
+        if (visible && RowNowPlayingEqualizer == null)
+            FindName("RowNowPlayingEqualizer");
+        if (RowNowPlayingEqualizer == null) return;
+
+        RowNowPlayingEqualizer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        RowNowPlayingEqualizer.IsActive = visible && active;
     }
 
     private void UpdatePendingBeam()
@@ -1546,8 +1574,8 @@ public sealed partial class TrackItem : UserControl
     {
         ObserveTrack(null);
         ResetHoverVisualState();
-        CompactNowPlayingEqualizer.IsActive = false;
-        RowNowPlayingEqualizer.IsActive = false;
+        SetCompactEqualizer(false, false);
+        SetRowEqualizer(false, false);
         StopPendingBeam();
         TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChanged;
         if (_likeService != null)
@@ -1582,16 +1610,54 @@ public sealed partial class TrackItem : UserControl
     private void OnTrackItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (!ReferenceEquals(sender, _observedTrack)) return;
-        if (!string.IsNullOrEmpty(e.PropertyName) && e.PropertyName != nameof(ITrackItem.HasVideo)) return;
 
         if (DispatcherQueue?.HasThreadAccess == true)
         {
-            UpdateVideoBadgeVisibility();
+            ApplyObservedTrackChange(e.PropertyName);
             return;
         }
 
-        DispatcherQueue?.TryEnqueue(UpdateVideoBadgeVisibility);
+        var propertyName = e.PropertyName;
+        DispatcherQueue?.TryEnqueue(() => ApplyObservedTrackChange(propertyName));
     }
+
+    private void ApplyObservedTrackChange(string? propertyName)
+    {
+        if (string.IsNullOrEmpty(propertyName) || IsTrackContentProperty(propertyName))
+        {
+            SyncLoadingStateFromTrack();
+            BindTrackData();
+            ResolveImageColorHint();
+            RefreshPlaybackState();
+            UpdateOverlayState();
+            return;
+        }
+
+        if (propertyName == nameof(ITrackItem.HasVideo))
+            UpdateVideoBadgeVisibility();
+    }
+
+    private static bool IsTrackContentProperty(string propertyName) => propertyName switch
+    {
+        nameof(ITrackItem.Id) => true,
+        nameof(ITrackItem.Uri) => true,
+        nameof(ITrackItem.Title) => true,
+        nameof(ITrackItem.ArtistName) => true,
+        nameof(ITrackItem.ArtistId) => true,
+        nameof(ITrackItem.AlbumName) => true,
+        nameof(ITrackItem.AlbumId) => true,
+        nameof(ITrackItem.ImageUrl) => true,
+        nameof(ITrackItem.Duration) => true,
+        nameof(ITrackItem.DurationFormatted) => true,
+        nameof(ITrackItem.OriginalIndex) => true,
+        nameof(ITrackItem.IsLoaded) => true,
+        nameof(ITrackItem.IsExplicit) => true,
+        nameof(ITrackItem.IsLiked) => true,
+        nameof(ITrackItem.IsLocal) => true,
+        nameof(ITrackItem.HasVideo) => true,
+        "Data" => true,
+        _ => false,
+    };
 
     private void UpdateVideoBadgeVisibility()
     {

@@ -56,6 +56,7 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
     public event EventHandler<string>? Error;
     public event EventHandler<string>? Log;
     public event EventHandler<string>? AutoplayBlocked;
+    public event EventHandler<SpotifyWebEmePlayerRecoveryRequest>? RecoveryRequested;
 
     public async Task StartAsync(
         SpotifyWebEmeVideoManifest config,
@@ -199,6 +200,19 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
                     AutoplayBlocked?.Invoke(this, root.TryGetProperty("message", out var autoplayMessage)
                         ? autoplayMessage.GetString() ?? ""
                         : "");
+                    break;
+
+                case "recover-restart":
+                    RecoveryRequested?.Invoke(
+                        this,
+                        new SpotifyWebEmePlayerRecoveryRequest(
+                            root.TryGetProperty("positionMs", out var recoveryPosition)
+                                && recoveryPosition.TryGetInt64(out var positionMs)
+                                ? Math.Max(0, positionMs)
+                                : PositionMs,
+                            root.TryGetProperty("reason", out var recoveryReason)
+                                ? recoveryReason.GetString() ?? "stall"
+                                : "stall"));
                     break;
 
                 case "license-request":
@@ -381,3 +395,7 @@ internal sealed record SpotifyWebEmePlayerState(
     long DurationMs,
     bool IsPlaying,
     bool IsBuffering);
+
+internal sealed record SpotifyWebEmePlayerRecoveryRequest(
+    long PositionMs,
+    string Reason);

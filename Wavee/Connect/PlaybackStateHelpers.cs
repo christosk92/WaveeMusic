@@ -19,8 +19,11 @@ namespace Wavee.Connect;
 /// </remarks>
 public static class PlaybackStateHelpers
 {
-    // Position change threshold (100ms matches librespot for seek detection)
-    private const long PositionChangeThresholdMs = 100;
+    // Position change threshold for seek detection. MediaPlayer / sink clocks can
+    // drift by a few hundred ms during normal playback ticks, so keep this aligned
+    // with AudioHostService's discontinuity detector instead of treating jitter as
+    // a publish-worthy seek.
+    private const long PositionChangeThresholdMs = 2000;
 
     /// <summary>
     /// Tries to parse a dealer message as a ClusterUpdate protobuf.

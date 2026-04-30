@@ -150,7 +150,12 @@ public sealed partial class TrackDataGrid : UserControl
     /// </summary>
     private void RowsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        if (args.InRecycleQueue || args.ItemContainer is not ListViewItem container) return;
+        if (args.ItemContainer is not ListViewItem container) return;
+        if (args.InRecycleQueue)
+        {
+            ClearLazyRowSubscription(container);
+            return;
+        }
         if (container.ContentTemplateRoot is not Track.TrackItem item) return;
 
         args.Handled = true;
@@ -164,6 +169,8 @@ public sealed partial class TrackDataGrid : UserControl
                 item.RowDensity = _preferredDensity;
                 item.PlayCommand = PlayCommand;
                 item.SetAlternatingBorder(args.ItemIndex % 2 != 0);
+                item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
+                SyncLazyRowSubscription(container, item, args.Item);
                 WireContainerToggleHandlers(container);
                 args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
                 break;
@@ -191,22 +198,68 @@ public sealed partial class TrackDataGrid : UserControl
 
             case 3:
                 // Final trim: formatted strings are consumer-provided; do them last.
-                if (DateAddedFormatter != null && args.Item != null)
-                    item.DateAddedText = DateAddedFormatter(args.Item);
-                if (PlayCountFormatter != null && args.Item != null)
-                    item.PlayCountText = PlayCountFormatter(args.Item);
-                if (AddedByFormatter != null && args.Item != null)
-                {
-                    var info = AddedByFormatter(args.Item);
-                    item.AddedByText = info.Text;
-                    item.AddedByAvatarUrl = info.AvatarUrl;
-                }
-                else
-                {
-                    item.AddedByText = string.Empty;
-                    item.AddedByAvatarUrl = null;
-                }
+                ApplyFormattedCells(item, args.Item);
                 break;
+        }
+    }
+
+    private void SyncLazyRowSubscription(ListViewItem container, Track.TrackItem row, object? sourceItem)
+    {
+        ClearLazyRowSubscription(container);
+
+        if (sourceItem is not LazyTrackItem lazy)
+            return;
+
+        PropertyChangedEventHandler handler = (_, e) =>
+        {
+            if (e.PropertyName is not (nameof(LazyTrackItem.IsLoaded)
+                or nameof(LazyTrackItem.Data)
+                or nameof(ITrackItem.AddedAtFormatted)
+                or nameof(ITrackItem.PlayCountFormatted)))
+            {
+                return;
+            }
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!ReferenceEquals(container.Content, lazy)) return;
+                if (container.ContentTemplateRoot is not Track.TrackItem currentRow) return;
+
+                currentRow.IsLoading = !lazy.IsLoaded;
+                if (lazy.IsLoaded)
+                    ApplyFormattedCells(currentRow, lazy);
+            });
+        };
+
+        lazy.PropertyChanged += handler;
+        container.Tag = (Action)(() => lazy.PropertyChanged -= handler);
+    }
+
+    private static void ClearLazyRowSubscription(ListViewItem container)
+    {
+        if (container.Tag is not Action cleanup) return;
+        cleanup();
+        container.Tag = null;
+    }
+
+    private void ApplyFormattedCells(Track.TrackItem item, object? row)
+    {
+        if (row is null) return;
+
+        if (DateAddedFormatter != null)
+            item.DateAddedText = DateAddedFormatter(row);
+        if (PlayCountFormatter != null)
+            item.PlayCountText = PlayCountFormatter(row);
+        if (AddedByFormatter != null)
+        {
+            var info = AddedByFormatter(row);
+            item.AddedByText = info.Text;
+            item.AddedByAvatarUrl = info.AvatarUrl;
+        }
+        else
+        {
+            item.AddedByText = string.Empty;
+            item.AddedByAvatarUrl = null;
         }
     }
 

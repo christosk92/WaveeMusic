@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -208,7 +207,6 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                 // wrong-shape card mounted forever (the home shelf bug).
                 if (ShouldReplaceForContentType(current[i], fresh[i]))
                 {
-                    Debug.WriteLine($"[shelf-recycle] ContentType drift uri={fresh[i].Uri} {current[i].ContentType}->{fresh[i].ContentType} (replace)");
                     current.RemoveAt(i);
                     current.Insert(i, fresh[i]);
                 }
@@ -235,7 +233,6 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
                     current.Move(existingIdx, i);
                     if (ShouldReplaceForContentType(current[i], fresh[i]))
                     {
-                        Debug.WriteLine($"[shelf-recycle] ContentType drift (post-move) uri={fresh[i].Uri} {current[i].ContentType}->{fresh[i].ContentType} (replace)");
                         current.RemoveAt(i);
                         current.Insert(i, fresh[i]);
                     }

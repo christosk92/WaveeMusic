@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using CommunityToolkit.WinUI.Animations;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -32,6 +33,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
     private bool _sectionsDetachedForNavigationCache;
+    private bool _isNavigatedAway;
+    private DispatcherQueueTimer? _navigationTrimTimer;
     private HomePageSleepState? _pendingSleepState;
 
     // Shy header — pinned compact card morphs in via TransitionHelper once the
@@ -45,6 +48,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private const double ShyHeaderHeroResidualPx = 20;
     private const double ShyHeaderHysteresisPx = 16;
     private const double ShyHeaderHeroFallbackPx = 140;
+    private const int NavigationCacheTrimDelaySeconds = 45;
     private CommunityToolkit.WinUI.TransitionHelper? _shyHeaderTransition;
     private bool _isShyHeaderPinned;
     private bool _isShyHeaderTransitionRunning;
@@ -261,6 +265,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _isNavigatedAway = false;
+        CancelNavigationCacheTrim();
+
         if (_trimmedForNavigationCache)
         {
             RestoreFromNavigationCache();
@@ -277,11 +284,45 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Pause the 5-minute refresh timer AND drop the parsed section tree
-        // + baseline enrichment so the Home page's memory footprint goes to
-        // near-zero while the user is on another page. The raw feed stays
-        // cached (SQLite), so re-entry via OnNavigatedTo rebuilds without a
-        // network round-trip.
+        _isNavigatedAway = true;
+
+        // Stop background feed work immediately, but delay tearing down the
+        // visual tree. Quick page hops can then reuse the navigation-cached
+        // Home surface instead of re-instantiating every visible shelf.
+        ViewModel.SuspendBackgroundRefresh();
+        ScheduleNavigationCacheTrim();
+    }
+
+    private void ScheduleNavigationCacheTrim()
+    {
+        if (_isDisposed || _trimmedForNavigationCache)
+            return;
+
+        var timer = _navigationTrimTimer;
+        if (timer is null)
+        {
+            timer = DispatcherQueue.CreateTimer();
+            timer.IsRepeating = false;
+            timer.Tick += NavigationTrimTimer_Tick;
+            _navigationTrimTimer = timer;
+        }
+
+        timer.Stop();
+        timer.Interval = TimeSpan.FromSeconds(NavigationCacheTrimDelaySeconds);
+        timer.Start();
+    }
+
+    private void CancelNavigationCacheTrim()
+    {
+        _navigationTrimTimer?.Stop();
+    }
+
+    private void NavigationTrimTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_isDisposed || !_isNavigatedAway || _trimmedForNavigationCache)
+            return;
+
         TrimForNavigationCache();
     }
 
@@ -312,6 +353,13 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        if (_navigationTrimTimer is not null)
+        {
+            _navigationTrimTimer.Stop();
+            _navigationTrimTimer.Tick -= NavigationTrimTimer_Tick;
+            _navigationTrimTimer = null;
+        }
 
         Loaded -= HomePage_Loaded;
         Unloaded -= HomePage_Unloaded;
@@ -835,7 +883,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private void Chip_Click(object sender, RoutedEventArgs e)
     {
         var chip = (sender as FrameworkElement)?.Tag as HomeChipViewModel;
-        System.Diagnostics.Debug.WriteLine($"[Chip_Click] sender={sender?.GetType().Name}, chip={chip?.Label ?? "null"}");
         if (chip != null)
             _ = ViewModel.SelectChipCommand.ExecuteAsync(chip);
     }
@@ -896,29 +943,22 @@ public sealed class HomeItemTemplateSelector : DataTemplateSelector
 
     protected override DataTemplate SelectTemplateCore(object item)
     {
-        DataTemplate result;
-        string name;
         if (item is HomeSectionItem hsi)
         {
             if (hsi.IsRecentlySaved
                 && hsi.Uri != null
                 && hsi.Uri.Contains(":collection", System.StringComparison.OrdinalIgnoreCase)
                 && LikedSongsRecentTemplate != null)
-            { result = LikedSongsRecentTemplate; name = "LikedSongsRecent"; }
+                return LikedSongsRecentTemplate;
             else if (hsi.ContentType == HomeContentType.Episode && EpisodeTemplate != null)
-            { result = EpisodeTemplate; name = "Episode"; }
+                return EpisodeTemplate;
             else if (hsi.ContentType == HomeContentType.Artist)
-            { result = ArtistTemplate ?? DefaultTemplate!; name = ArtistTemplate is not null ? "Artist" : "Default(Artist-fallback)"; }
+                return ArtistTemplate ?? DefaultTemplate!;
             else
-            { result = DefaultTemplate!; name = "Default"; }
-            System.Diagnostics.Debug.WriteLine($"[shelf-recycle] Select template={name} ct={hsi.ContentType} uri={hsi.Uri ?? "(null)"}");
+                return DefaultTemplate!;
         }
-        else
-        {
-            result = DefaultTemplate!;
-            System.Diagnostics.Debug.WriteLine($"[shelf-recycle] Select template=Default(non-hsi) item={item?.GetType().Name ?? "null"}");
-        }
-        return result;
+
+        return DefaultTemplate!;
     }
 
     protected override DataTemplate SelectTemplateCore(object item, DependencyObject container)

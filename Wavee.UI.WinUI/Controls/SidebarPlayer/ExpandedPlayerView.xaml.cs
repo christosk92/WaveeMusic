@@ -130,6 +130,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     internal void ReleaseHeavyResources()
     {
         PlayerLayout.SetVideoSurfaceEnabled(false);
+        PlayerLayout.SetCanTakeVideoSurfaceFromVideoPage(false);
         PlayerLayout.SetVideoPresentationMode(false);
         PlayerLayout.SetTheaterMode(false);
         _isVideoSurfaceEnabled = false;
@@ -178,6 +179,12 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         _isVideoSurfaceEnabled = enabled;
         PlayerLayout.SetVideoSurfaceEnabled(enabled);
+        UpdateVideoFocusLayout();
+    }
+
+    internal void SetCanTakeVideoSurfaceFromVideoPage(bool enabled)
+    {
+        PlayerLayout.SetCanTakeVideoSurfaceFromVideoPage(enabled);
         UpdateVideoFocusLayout();
     }
 

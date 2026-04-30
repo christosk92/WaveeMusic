@@ -87,6 +87,7 @@
                 <Border x:Name="CompactNowPlaying" CornerRadius="4"
                         Background="#D9000000" Visibility="Collapsed">
                     <cards:LottieEqualizer x:Name="CompactNowPlayingEqualizer"
+                                           x:Load="False"
                                            IconSize="24"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -220,6 +221,7 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                         <cards:LottieEqualizer x:Name="RowNowPlayingEqualizer"
+                                               x:Load="False"
                                                IconSize="20"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"

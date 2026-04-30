@@ -9,10 +9,10 @@
   </style>
 </head>
 <body>
-  <video id="video" autoplay playsinline muted></video>
+  <video id="video" autoplay playsinline></video>
   <script>
     const config = __WAVEE_PLAYER_CONFIG__;
-    const startSeconds = __WAVEE_START_SECONDS__;
+    const startSeconds = clampPlaybackSeconds(__WAVEE_START_SECONDS__);
     const autoPlay = __WAVEE_AUTO_PLAY__;
     const video = document.getElementById('video');
     if (!autoPlay) video.autoplay = false;
@@ -20,7 +20,14 @@
     let mediaSource;
     let sourceOpen = false;
     let fatal = false;
+    let desiredPlaying = autoPlay;
     let unmuteScheduled = false;
+    let stallRecoveryInFlight = false;
+    let lastSoftRecoveryAt = 0;
+    let lastHardRecoveryAt = 0;
+    let lastBufferedLogAt = 0;
+    const fetchTimeoutMs = 12000;
+    const fetchRetryCount = 3;
 
     function host(type, payload = {}) {
       chrome.webview.postMessage({ type, ...payload });
@@ -35,6 +42,14 @@
       fatal = true;
       const message = error && error.stack ? error.stack : String(error);
       host('error', { message });
+    }
+
+    function clampPlaybackSeconds(value) {
+      const seconds = Number(value);
+      if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+      const duration = Number(config && config.durationMs) > 0 ? config.durationMs / 1000 : 0;
+      if (duration <= 0) return seconds;
+      return Math.max(0, Math.min(seconds, Math.max(0, duration - 0.5)));
     }
 
     function bytesToBase64(bytes) {
@@ -107,6 +122,7 @@
               log(`license response bytes=${license.byteLength}`);
               await session.update(license);
               log('license update complete');
+              if (autoPlay) recoverPlayback('license-update').catch(fail);
             } catch (err) {
               fail(err);
             }
@@ -119,9 +135,30 @@
     }
 
     async function fetchBytes(url) {
-      const response = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
-      if (!response.ok) throw new Error(`fetch ${response.status} ${url}`);
-      return new Uint8Array(await response.arrayBuffer());
+      let lastError;
+      for (let attempt = 1; attempt <= fetchRetryCount; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+        try {
+          const response = await fetch(url, {
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-store',
+            signal: controller.signal
+          });
+          if (!response.ok) throw new Error(`fetch ${response.status} ${url}`);
+          return new Uint8Array(await response.arrayBuffer());
+        } catch (err) {
+          lastError = err;
+          const name = err && err.name ? err.name : 'error';
+          log(`fetch retry ${attempt}/${fetchRetryCount} failed (${name}) ${sanitizeUrl(url)}`);
+          if (attempt < fetchRetryCount) await sleep(250 * attempt);
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      throw lastError || new Error(`fetch failed ${url}`);
     }
 
     function appendBuffer(sourceBuffer, bytes) {
@@ -180,6 +217,26 @@
         if (ranges.start(i) <= t && ranges.end(i) >= t) return ranges.end(i);
       }
       return ranges.end(ranges.length - 1);
+    }
+
+    function videoBufferedAhead() {
+      const ranges = video.buffered;
+      if (!ranges || ranges.length === 0) return 0;
+
+      const t = video.currentTime || 0;
+      for (let i = 0; i < ranges.length; i++) {
+        if (ranges.start(i) <= t && ranges.end(i) >= t) {
+          return Math.max(0, ranges.end(i) - t);
+        }
+      }
+
+      return 0;
+    }
+
+    function sanitizeUrl(url) {
+      const text = String(url);
+      const queryIndex = text.indexOf('?');
+      return queryIndex >= 0 ? text.slice(0, queryIndex) : text;
     }
 
     async function pruneBehind(sourceBuffer, label) {
@@ -272,30 +329,39 @@
 
     function postState(isBuffering = false) {
       notePlaybackProgress();
-      lastPostedBuffering = isBuffering;
+      const effectiveBuffering = !!isBuffering
+        || (desiredPlaying && !video.ended && video.paused);
+      lastPostedBuffering = effectiveBuffering;
       host('state', {
         positionMs: Math.round(video.currentTime * 1000),
         durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : config.durationMs,
         isPlaying: !video.paused && !video.ended,
-        isBuffering
+        isBuffering: effectiveBuffering
       });
     }
 
-    function scheduleUnmute() {
+    function scheduleUnmute(reason) {
       if (unmuteScheduled || !video.muted) return;
       unmuteScheduled = true;
       setTimeout(() => {
+        unmuteScheduled = false;
+        if (!desiredPlaying || video.ended || !video.muted) return;
         video.muted = false;
         video.defaultMuted = false;
-        log('unmuted after autoplay start');
-        postState(false);
+        log(`unmuted after ${reason}`);
+        if (video.paused) playVideo(`unmute-${reason}`).catch(fail);
+        else postState(false);
       }, 250);
     }
 
     async function playVideo(source) {
+      desiredPlaying = true;
       try {
+        if (video.muted) {
+          video.muted = false;
+          video.defaultMuted = false;
+        }
         await video.play();
-        scheduleUnmute();
         postState(false);
         return true;
       } catch (err) {
@@ -305,7 +371,7 @@
           video.muted = true;
           try {
             await video.play();
-            scheduleUnmute();
+            scheduleUnmute(source);
             postState(false);
             return true;
           } catch (mutedErr) {
@@ -316,6 +382,69 @@
         }
         throw err;
       }
+    }
+
+    async function recoverPlayback(reason) {
+      if (fatal || stallRecoveryInFlight || !desiredPlaying) return;
+
+      const now = performance.now();
+      if (now - lastSoftRecoveryAt < 1400) return;
+      lastSoftRecoveryAt = now;
+      stallRecoveryInFlight = true;
+
+      try {
+        const ahead = videoBufferedAhead();
+        if (now - lastBufferedLogAt > 2000) {
+          lastBufferedLogAt = now;
+          log(`recover ${reason}: readyState=${video.readyState} paused=${video.paused} ahead=${ahead.toFixed(2)}s pos=${(video.currentTime || 0).toFixed(2)}s`);
+        }
+
+        if (video.paused && !video.ended) {
+          await playVideo(`recover-paused-${reason}`);
+          if (!video.paused) {
+            postState(video.readyState < 3);
+            return;
+          }
+        }
+
+        if (ahead > 0.25 && !video.ended) {
+          if (video.paused) {
+            await playVideo(`recover-${reason}`);
+          } else {
+            const duration = Number.isFinite(video.duration) ? video.duration : config.durationMs / 1000;
+            const current = video.currentTime || 0;
+            const target = Math.min(Math.max(0, duration - 0.25), current + 0.035);
+            if (target > current && target < duration) {
+              video.currentTime = target;
+            }
+            await playVideo(`recover-${reason}`);
+          }
+
+          postState(false);
+          return;
+        }
+
+        if (now - lastHardRecoveryAt > 8000) {
+          lastHardRecoveryAt = now;
+          host('recover-restart', {
+            reason,
+            positionMs: Math.round((video.currentTime || startSeconds || 0) * 1000)
+          });
+        }
+      } finally {
+        stallRecoveryInFlight = false;
+      }
+    }
+
+    function scheduleStallRecovery(reason) {
+      setTimeout(() => {
+        if (fatal || video.ended) return;
+        const madeProgress = notePlaybackProgress();
+        const stillWaiting = !madeProgress
+          && desiredPlaying
+          && (video.paused || video.readyState < 3 || performance.now() - lastPlaybackProgressAt > 1600);
+        if (stillWaiting) recoverPlayback(reason).catch(fail);
+      }, 1200);
     }
 
     async function startMse() {
@@ -343,6 +472,7 @@
       armFirstFrameSignal();
       if (autoPlay) {
         await playVideo('startup');
+        recoverPlayback('startup').catch(fail);
       } else {
         postState(false);
       }
@@ -363,8 +493,8 @@
     video.addEventListener('playing', () => { postFirstFrame('playing'); postState(false); });
     video.addEventListener('canplaythrough', () => postState(false));
     video.addEventListener('pause', () => postState(false));
-    video.addEventListener('waiting', () => postState(true));
-    video.addEventListener('stalled', () => postState(true));
+    video.addEventListener('waiting', () => { postState(true); scheduleStallRecovery('waiting'); });
+    video.addEventListener('stalled', () => { postState(true); scheduleStallRecovery('stalled'); });
     video.addEventListener('seeking', () => postState(true));
     video.addEventListener('seeked', () => postState(false));
     video.addEventListener('ended', () => host('ended'));
@@ -385,6 +515,8 @@
       const buffering = !video.seeking
         && !nearEnd
         && (video.readyState < 3 || performance.now() - lastPlaybackProgressAt > 1800);
+
+      if (buffering) recoverPlayback('watchdog').catch(fail);
 
       if (buffering !== lastPostedBuffering)
         postState(buffering);

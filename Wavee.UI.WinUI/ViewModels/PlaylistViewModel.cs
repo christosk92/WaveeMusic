@@ -547,6 +547,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     }
 
     private void ApplyFilterAndSort()
+        => FilteredTracks.ReplaceWith(BuildFilteredAndSortedTracks().Cast<ITrackItem>());
+
+    private IReadOnlyList<PlaylistTrackDto> BuildFilteredAndSortedTracks()
     {
         var query = SearchQuery?.Trim();
         IEnumerable<PlaylistTrackDto> filtered = _allTracks;
@@ -577,7 +580,36 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _ => filtered.OrderBy(t => t.OriginalIndex)
         };
 
-        FilteredTracks.ReplaceWith(sorted.Cast<ITrackItem>());
+        return sorted.ToList();
+    }
+
+    private void ApplyFilterAndSortIntoExistingLoadingRows()
+    {
+        var rows = BuildFilteredAndSortedTracks().Cast<ITrackItem>().ToList();
+        if (!FilteredTracks.Any(static row => !row.IsLoaded))
+        {
+            FilteredTracks.ReplaceWith(rows);
+            return;
+        }
+
+        var i = 0;
+        for (; i < rows.Count && i < FilteredTracks.Count; i++)
+        {
+            if (FilteredTracks[i] is LazyTrackItem { IsLoaded: false } lazy)
+            {
+                lazy.Populate(rows[i]);
+            }
+            else if (!ReferenceEquals(FilteredTracks[i], rows[i]))
+            {
+                FilteredTracks[i] = rows[i];
+            }
+        }
+
+        while (FilteredTracks.Count > rows.Count)
+            FilteredTracks.RemoveAt(FilteredTracks.Count - 1);
+
+        for (; i < rows.Count; i++)
+            FilteredTracks.Add(rows[i]);
     }
 
     private void UpdateAggregates()
@@ -1553,7 +1585,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 HasAnyAddedAt = _allTracks.Any(t => t.AddedAt.HasValue);
                 NotifyVideoFilterProperties();
                 UpdateAggregates();
-                ApplyFilterAndSort();
+                ApplyFilterAndSortIntoExistingLoadingRows();
                 _tracksLoadedFor = playlistId;
                 IsLoadingTracks = false;
                 ClearPendingSignalChip();

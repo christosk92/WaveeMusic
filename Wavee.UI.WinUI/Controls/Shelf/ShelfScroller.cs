@@ -1,12 +1,9 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Shelf;
 
@@ -29,6 +26,9 @@ public sealed class ShelfScroller : Control
     private ScrollView? _scroll;
     private ItemsRepeater? _repeater;
     private bool _pagingStatePostPending;
+    private bool _hasItemsSourceIdentity;
+    private bool _pendingIdentityRecycleReset;
+    private bool _identityRecycleResetPosted;
 
     public ShelfScroller()
     {
@@ -46,6 +46,15 @@ public sealed class ShelfScroller : Control
     {
         get => GetValue(ItemsSourceProperty);
         set => SetValue(ItemsSourceProperty, value);
+    }
+
+    public static readonly DependencyProperty ItemsSourceIdentityProperty =
+        DependencyProperty.Register(nameof(ItemsSourceIdentity), typeof(object), typeof(ShelfScroller),
+            new PropertyMetadata(null, OnItemsSourceIdentityChanged));
+    public object? ItemsSourceIdentity
+    {
+        get => GetValue(ItemsSourceIdentityProperty);
+        set => SetValue(ItemsSourceIdentityProperty, value);
     }
 
     public static readonly DependencyProperty ItemTemplateProperty =
@@ -153,8 +162,6 @@ public sealed class ShelfScroller : Control
         if (_repeater is not null)
         {
             _repeater.SizeChanged -= OnScrollSizeChanged;
-            _repeater.ElementPrepared -= OnRepeaterElementPrepared;
-            _repeater.ElementClearing -= OnRepeaterElementClearing;
         }
 
         _scroll = GetTemplateChild(PartScroll) as ScrollView;
@@ -163,12 +170,9 @@ public sealed class ShelfScroller : Control
         if (_repeater is not null)
         {
             _repeater.SizeChanged += OnScrollSizeChanged;
-            _repeater.ElementPrepared += OnRepeaterElementPrepared;
-            _repeater.ElementClearing += OnRepeaterElementClearing;
             _repeater.ItemTemplate = (object?)ItemTemplateSelector ?? ItemTemplate;
             _repeater.ItemsSource = ItemsSource;
             SyncLayoutProperties();
-            Debug.WriteLine($"[shelf-recycle] OnApplyTemplate scroller={RuntimeHelpers.GetHashCode(this):X8} repeater={RuntimeHelpers.GetHashCode(_repeater):X8} src={RuntimeHelpers.GetHashCode(ItemsSource):X8} count={CountOf(ItemsSource)}");
         }
         if (_scroll is not null)
         {
@@ -195,17 +199,15 @@ public sealed class ShelfScroller : Control
         // reassignment retains realized children at indices < min(oldCount,
         // newCount) and silently rebinds them — leaving x:Bind compiled
         // bindings inside those retained cards still pointing at A's items.
-        // We confirmed via [shelf-recycle] Prepared/Clearing instrumentation
-        // that no Clearing fires for those retained children and Prepared
-        // only fires for indices >= oldCount. Every public-API workaround
-        // (null-then-set, UpdateLayout pump, ItemTemplate reassign, wrapper
-        // selector to bust the recycle pool) failed to force teardown.
+        // Earlier instrumentation confirmed no Clearing fires for those
+        // retained children and Prepared only fires for indices >= oldCount.
+        // Every public-API workaround (null-then-set, UpdateLayout pump,
+        // ItemTemplate reassign, wrapper selector to bust the recycle pool)
+        // failed to force teardown.
         //
-        // The only fix that actually works is to physically replace the
-        // ItemsRepeater instance — a fresh instance has no realized state
-        // to retain. We pay one ItemsRepeater allocation + one Layout
-        // allocation per outer recycle, which is cheap relative to the
-        // 5–10 cards each shelf would otherwise mis-render.
+        // Cross-section reuse still needs a fresh ItemsRepeater, but callers
+        // that pass ItemsSourceIdentity let us avoid that cost for ordinary
+        // same-section source updates.
         if (e.OldValue is null)
         {
             // First assignment (the one OnApplyTemplate makes after the
@@ -215,7 +217,73 @@ public sealed class ShelfScroller : Control
             return;
         }
 
-        s.RebuildRepeater(e.NewValue);
+        if (s.ItemsSourceIdentity is null)
+        {
+            s.RebuildRepeater(e.NewValue);
+            return;
+        }
+
+        if (s._pendingIdentityRecycleReset)
+        {
+            s._pendingIdentityRecycleReset = false;
+            s.RebuildRepeater(e.NewValue);
+            return;
+        }
+
+        if (s._repeater is not null)
+            s._repeater.ItemsSource = e.NewValue;
+    }
+
+    private static void OnItemsSourceIdentityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not ShelfScroller s || Equals(e.OldValue, e.NewValue))
+            return;
+
+        if (!s._hasItemsSourceIdentity)
+        {
+            s._hasItemsSourceIdentity = true;
+            return;
+        }
+
+        // x:Bind can update ItemsSource and ItemsSourceIdentity in either
+        // order when an outer section container is recycled. Mark the recycle
+        // here and post a reset so the final ItemsSource wins.
+        s._pendingIdentityRecycleReset = true;
+        s.ScheduleIdentityRecycleReset();
+    }
+
+    private void ScheduleIdentityRecycleReset()
+    {
+        if (_identityRecycleResetPosted)
+            return;
+
+        var queue = DispatcherQueue;
+        if (queue is null)
+        {
+            ApplyPendingIdentityRecycleReset();
+            return;
+        }
+
+        _identityRecycleResetPosted = true;
+        if (!queue.TryEnqueue(DispatcherQueuePriority.Normal, () =>
+        {
+            _identityRecycleResetPosted = false;
+            ApplyPendingIdentityRecycleReset();
+        }))
+        {
+            _identityRecycleResetPosted = false;
+            ApplyPendingIdentityRecycleReset();
+        }
+    }
+
+    private void ApplyPendingIdentityRecycleReset()
+    {
+        if (!_pendingIdentityRecycleReset)
+            return;
+
+        _pendingIdentityRecycleReset = false;
+        if (_scroll is not null && _repeater is not null)
+            RebuildRepeater(ItemsSource);
     }
 
     private void RebuildRepeater(object? newItemsSource)
@@ -225,8 +293,6 @@ public sealed class ShelfScroller : Control
         if (_repeater is not null)
         {
             _repeater.SizeChanged -= OnScrollSizeChanged;
-            _repeater.ElementPrepared -= OnRepeaterElementPrepared;
-            _repeater.ElementClearing -= OnRepeaterElementClearing;
             // Drop the old repeater's ItemsSource so it releases its
             // collection-changed subscription before being detached.
             _repeater.ItemsSource = null;
@@ -241,35 +307,8 @@ public sealed class ShelfScroller : Control
         _scroll.Content = fresh;
         _repeater = fresh;
         _repeater.SizeChanged += OnScrollSizeChanged;
-        _repeater.ElementPrepared += OnRepeaterElementPrepared;
-        _repeater.ElementClearing += OnRepeaterElementClearing;
         SyncLayoutProperties();
         _repeater.ItemsSource = newItemsSource;
-        Debug.WriteLine($"[shelf-recycle] Rebuilt repeater scroller={RuntimeHelpers.GetHashCode(this):X8} fresh={RuntimeHelpers.GetHashCode(_repeater):X8} src={RuntimeHelpers.GetHashCode(newItemsSource):X8}/{CountOf(newItemsSource)}");
-    }
-
-    private void OnRepeaterElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
-    {
-        var uri = (args.Element as FrameworkElement)?.DataContext is HomeSectionItem hsi ? hsi.Uri ?? "(null-uri)" : "(non-hsi)";
-        Debug.WriteLine($"[shelf-recycle] Prepared scroller={RuntimeHelpers.GetHashCode(this):X8} repeater={RuntimeHelpers.GetHashCode(sender):X8} index={args.Index} uri={uri}");
-    }
-
-    private void OnRepeaterElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
-    {
-        var uri = (args.Element as FrameworkElement)?.DataContext is HomeSectionItem hsi ? hsi.Uri ?? "(null-uri)" : "(non-hsi)";
-        Debug.WriteLine($"[shelf-recycle] Clearing scroller={RuntimeHelpers.GetHashCode(this):X8} repeater={RuntimeHelpers.GetHashCode(sender):X8} uri={uri}");
-    }
-
-    private static int CountOf(object? src)
-    {
-        if (src is System.Collections.ICollection c) return c.Count;
-        if (src is System.Collections.IEnumerable e)
-        {
-            var n = 0;
-            foreach (var _ in e) n++;
-            return n;
-        }
-        return -1;
     }
 
     private static void OnItemTemplateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

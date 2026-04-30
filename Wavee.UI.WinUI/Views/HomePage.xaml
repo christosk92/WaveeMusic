@@ -295,6 +295,7 @@
                 <Grid Margin="0,0,-32,0">
                     <shelf:ShelfScroller
                         x:Name="GenericSectionShelf"
+                        ItemsSourceIdentity="{x:Bind SectionUri, Mode=OneWay}"
                         ItemsSource="{x:Bind Items, Mode=OneWay}"
                         ItemTemplateSelector="{StaticResource HomeItemSelector}"
                         MinItemWidth="160" MaxItemWidth="200" Spacing="12"/>
