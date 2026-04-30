@@ -72,6 +72,10 @@ public sealed class SpotifyVideoProvider
     private bool _surfaceHasFirstFrame;
     private bool _disposed;
     private DateTimeOffset _lastWebRecoveryAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _pendingWebSeekUntil = DateTimeOffset.MinValue;
+    private long? _pendingWebSeekPositionMs;
+    private DateTimeOffset _webRawBufferingSince = DateTimeOffset.MinValue;
+    private long _webRawBufferingStartPositionMs;
     private int _webRecoveryAttempts;
     private string? _webRecoveryTrackUri;
     private IReadOnlyList<SpotifyVideoQualityOption> _availableQualities = Array.Empty<SpotifyVideoQualityOption>();
@@ -114,7 +118,7 @@ public sealed class SpotifyVideoProvider
     bool IVideoSurfaceProvider.IsSurfaceBuffering => _currentTrackUri is not null
         && _surfaceHasFirstFrame
         && (_player is null
-            ? _webEmePlayer?.IsBuffering == true || _webIsBuffering
+            ? _webIsBuffering
             : _player.PlaybackSession.PlaybackState == MediaPlaybackState.Buffering);
     string IVideoSurfaceProvider.Kind => "spotify-music-video";
     public IObservable<VideoSurfaceChange> SurfaceChanges => _surfaceChangesSubject.AsObservable();
@@ -243,6 +247,7 @@ public sealed class SpotifyVideoProvider
     {
         if (_disposed) return Task.CompletedTask;
         _webDesiredPlaying = false;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
         if (_webEmePlayer is not null) return _webEmePlayer.PauseAsync();
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() => _player?.Pause());
@@ -252,6 +257,7 @@ public sealed class SpotifyVideoProvider
     {
         if (_disposed) return Task.CompletedTask;
         _webDesiredPlaying = true;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
         if (_webEmePlayer is not null) return _webEmePlayer.PlayAsync();
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() => _player?.Play());
@@ -261,7 +267,17 @@ public sealed class SpotifyVideoProvider
     {
         if (_disposed) return Task.CompletedTask;
         if (_webEmePlayer is not null)
-            return _webEmePlayer.SeekAsync(positionMs);
+        {
+            var clampedPositionMs = ClampWebPosition(positionMs);
+        _pendingWebSeekPositionMs = clampedPositionMs;
+        _pendingWebSeekUntil = DateTimeOffset.UtcNow.AddSeconds(8);
+        _webPositionMs = clampedPositionMs;
+        _webIsBuffering = _webDesiredPlaying;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        _webRawBufferingStartPositionMs = clampedPositionMs;
+        PublishStateFromSession();
+            return _webEmePlayer.SeekAsync(clampedPositionMs);
+        }
         if (_player is null) return Task.CompletedTask;
         return RunOnUiAsync(() =>
         {
@@ -275,6 +291,18 @@ public sealed class SpotifyVideoProvider
                 _logger?.LogDebug(ex, "SpotifyVideoProvider seek failed");
             }
         });
+    }
+
+    private long ClampWebPosition(long positionMs)
+    {
+        var durationMs = _currentDurationMs > 0
+            ? _currentDurationMs
+            : _currentWebEmeManifest?.DurationMs ?? 0;
+
+        if (durationMs <= 0)
+            return Math.Max(0, positionMs);
+
+        return Math.Clamp(positionMs, 0, Math.Max(0, durationMs - 500));
     }
 
     public Task StopAsync(CancellationToken ct = default)
@@ -416,9 +444,10 @@ public sealed class SpotifyVideoProvider
         if (_player is null)
         {
             var webDurationMs = _currentDurationMs;
-            var webPlaying = !forceFinished && (forcePlaying || _webIsPlaying);
             var webBuffering = !forceFinished
-                && (_webIsBuffering || (_webDesiredPlaying && !webPlaying));
+                && (_webIsBuffering || (_surfaceIsLoading && !_surfaceHasFirstFrame));
+            var webPlaying = !forceFinished
+                && (forcePlaying || _webIsPlaying || (_webDesiredPlaying && !webBuffering));
             var webState = new LocalPlaybackState
             {
                 TrackUri = _currentTrackUri,
@@ -527,6 +556,10 @@ public sealed class SpotifyVideoProvider
         _webIsPlaying = false;
         _webIsBuffering = true;
         _webDesiredPlaying = true;
+        _pendingWebSeekPositionMs = null;
+        _pendingWebSeekUntil = DateTimeOffset.MinValue;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        _webRawBufferingStartPositionMs = _webPositionMs;
         _surfaceIsLoading = true;
         _surfaceHasFirstFrame = false;
         UpdatePlaybackDetails(config);
@@ -586,6 +619,8 @@ public sealed class SpotifyVideoProvider
         _webIsPlaying = false;
         _webIsBuffering = true;
         _webDesiredPlaying = wasPlaying;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        _webRawBufferingStartPositionMs = _webPositionMs;
         _surfaceIsLoading = true;
         _surfaceHasFirstFrame = false;
         UpdatePlaybackDetails(updatedManifest);
@@ -657,14 +692,41 @@ public sealed class SpotifyVideoProvider
     {
         var wasBuffering = _webIsBuffering;
         var hadFirstFrame = _surfaceHasFirstFrame;
+        var effectivePositionMs = state.PositionMs;
+        var pendingSeekActive = false;
 
-        _webPositionMs = state.PositionMs;
+        if (_pendingWebSeekPositionMs is { } pendingPositionMs)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var seekExpired = now > _pendingWebSeekUntil;
+            var seekLanded = Math.Abs(state.PositionMs - pendingPositionMs) <= 1500;
+
+            if (seekExpired || seekLanded)
+            {
+                _pendingWebSeekPositionMs = null;
+                _pendingWebSeekUntil = DateTimeOffset.MinValue;
+            }
+            else
+            {
+                pendingSeekActive = true;
+                effectivePositionMs = pendingPositionMs;
+            }
+        }
+
+        _webPositionMs = effectivePositionMs;
         if (state.DurationMs > 0)
             _currentDurationMs = state.DurationMs;
         _webIsPlaying = state.IsPlaying;
-        _webIsBuffering = state.IsBuffering;
+        _webIsBuffering = ShouldPublishWebBuffering(state, effectivePositionMs, pendingSeekActive);
         if (_webIsPlaying)
+        {
             _webDesiredPlaying = true;
+            if (!_webIsBuffering)
+            {
+                _webRecoveryAttempts = 0;
+                _lastWebRecoveryAt = DateTimeOffset.MinValue;
+            }
+        }
 
         if (!_surfaceHasFirstFrame && _webIsPlaying)
         {
@@ -675,6 +737,45 @@ public sealed class SpotifyVideoProvider
         PublishStateFromSession();
         if (hadFirstFrame && wasBuffering != _webIsBuffering)
             _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
+    }
+
+    private bool ShouldPublishWebBuffering(
+        SpotifyWebEmePlayerState state,
+        long effectivePositionMs,
+        bool pendingSeekActive)
+    {
+        if (pendingSeekActive || (_surfaceIsLoading && !_surfaceHasFirstFrame))
+        {
+            _webRawBufferingSince = DateTimeOffset.MinValue;
+            _webRawBufferingStartPositionMs = effectivePositionMs;
+            return true;
+        }
+
+        var rawBuffering = state.IsBuffering || (_webDesiredPlaying && !state.IsPlaying);
+        if (!rawBuffering)
+        {
+            _webRawBufferingSince = DateTimeOffset.MinValue;
+            _webRawBufferingStartPositionMs = effectivePositionMs;
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (_webRawBufferingSince == DateTimeOffset.MinValue)
+        {
+            _webRawBufferingSince = now;
+            _webRawBufferingStartPositionMs = effectivePositionMs;
+        }
+
+        var elapsed = now - _webRawBufferingSince;
+        var progressed = Math.Abs(effectivePositionMs - _webRawBufferingStartPositionMs) >= 350;
+
+        // WebView2 frequently emits short waiting/buffering pulses while MSE is
+        // still advancing. Treat those as surface-level churn, not playback
+        // status, otherwise Spotify Connect gets a critical status PUT storm.
+        if (state.IsPlaying && (progressed || elapsed < TimeSpan.FromMilliseconds(900)))
+            return false;
+
+        return elapsed >= TimeSpan.FromMilliseconds(900);
     }
 
     private void OnWebEmeFirstFrame(object? sender, string reason)
@@ -696,7 +797,18 @@ public sealed class SpotifyVideoProvider
         => _logger?.LogDebug("SpotifyVideoProvider WebView2: {Message}", message);
 
     private void OnWebEmeAutoplayBlocked(object? sender, string message)
-        => _logger?.LogWarning("SpotifyVideoProvider: WebView2 autoplay blocked {Message}", message);
+    {
+        if (!ReferenceEquals(sender, _webEmePlayer))
+            return;
+
+        _logger?.LogWarning("SpotifyVideoProvider: WebView2 autoplay blocked {Message}", message);
+        _webDesiredPlaying = false;
+        _webIsPlaying = false;
+        _webIsBuffering = false;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        PublishStateFromSession();
+        _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
+    }
 
     private void OnWebEmeRecoveryRequested(object? sender, SpotifyWebEmePlayerRecoveryRequest request)
     {
@@ -716,6 +828,20 @@ public sealed class SpotifyVideoProvider
 
         if (_webRecoveryAttempts >= 2)
         {
+            var lowerQuality = GetNextLowerWebEmeQuality();
+            if (lowerQuality is not null)
+            {
+                _webRecoveryAttempts = 0;
+                _lastWebRecoveryAt = now;
+                _logger?.LogWarning(
+                    "SpotifyVideoProvider: WebView2 recovery downshifting quality to {Quality} profile={ProfileId} after repeated stalls for {Uri}",
+                    lowerQuality.Label,
+                    lowerQuality.ProfileId,
+                    _currentTrackUri ?? "<none>");
+                _ = RunOnUiAsync(() => SelectQualityOnUiAsync(lowerQuality.ProfileId, CancellationToken.None));
+                return;
+            }
+
             _logger?.LogWarning(
                 "SpotifyVideoProvider: WebView2 recovery suppressed after {Attempts} attempts for {Uri}",
                 _webRecoveryAttempts,
@@ -732,6 +858,39 @@ public sealed class SpotifyVideoProvider
             request.PositionMs);
 
         _ = RunOnUiAsync(() => RestartWebEmePlayerOnUiAsync(request.PositionMs, request.Reason));
+    }
+
+    private SpotifyWebEmeTrackConfig? GetNextLowerWebEmeQuality()
+    {
+        var manifest = _currentWebEmeManifest;
+        if (manifest is null || manifest.VideoTracks.Count <= 1)
+            return null;
+
+        var currentIndex = -1;
+        for (var i = 0; i < manifest.VideoTracks.Count; i++)
+        {
+            if (manifest.VideoTracks[i].ProfileId == manifest.Video.ProfileId)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        if (currentIndex < 0)
+        {
+            return manifest.VideoTracks
+                .Select((track, index) => new { track, index })
+                .Where(item =>
+                    item.track.Height < manifest.Video.Height
+                    || (item.track.Height == manifest.Video.Height && item.track.Bandwidth < manifest.Video.Bandwidth))
+                .Select(item => item.track)
+                .FirstOrDefault();
+        }
+
+        var lowerIndex = currentIndex + 1;
+        return lowerIndex >= 0 && lowerIndex < manifest.VideoTracks.Count
+            ? manifest.VideoTracks[lowerIndex]
+            : null;
     }
 
     private async Task RestartWebEmePlayerOnUiAsync(long positionMs, string reason)
@@ -758,6 +917,8 @@ public sealed class SpotifyVideoProvider
         _webIsPlaying = false;
         _webIsBuffering = true;
         _webDesiredPlaying = true;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        _webRawBufferingStartPositionMs = restartPositionMs;
         _surfaceIsLoading = true;
         _surfaceHasFirstFrame = false;
         PublishStateFromSession();
@@ -835,12 +996,15 @@ public sealed class SpotifyVideoProvider
 
     private void MarkFirstFrame(string? reason)
     {
-        if (_surfaceHasFirstFrame)
+        var changed = !_surfaceHasFirstFrame || _surfaceIsLoading || _webIsBuffering;
+        if (!changed)
             return;
 
         _surfaceHasFirstFrame = true;
         _surfaceIsLoading = false;
         _webIsBuffering = false;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        _webRawBufferingStartPositionMs = _webPositionMs;
         _logger?.LogInformation("SpotifyVideoProvider: WebView2 first frame reason={Reason}", reason ?? "<unknown>");
         PublishStateFromSession();
         _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "spotify-music-video"));
@@ -1218,6 +1382,10 @@ public sealed class SpotifyVideoProvider
         _webRecoveryTrackUri = null;
         _webRecoveryAttempts = 0;
         _lastWebRecoveryAt = DateTimeOffset.MinValue;
+        _pendingWebSeekPositionMs = null;
+        _pendingWebSeekUntil = DateTimeOffset.MinValue;
+        _webRawBufferingSince = DateTimeOffset.MinValue;
+        _webRawBufferingStartPositionMs = 0;
         _surfaceIsLoading = false;
         _surfaceHasFirstFrame = false;
         UpdatePlaybackDetails(null);

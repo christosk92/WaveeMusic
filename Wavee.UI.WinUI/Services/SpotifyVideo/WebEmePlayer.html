@@ -16,6 +16,9 @@
     const autoPlay = __WAVEE_AUTO_PLAY__;
     const video = document.getElementById('video');
     if (!autoPlay) video.autoplay = false;
+    video.defaultMuted = false;
+    video.muted = false;
+    video.volume = 1;
     const pendingLicenses = new Map();
     let mediaSource;
     let sourceOpen = false;
@@ -26,6 +29,12 @@
     let lastSoftRecoveryAt = 0;
     let lastHardRecoveryAt = 0;
     let lastBufferedLogAt = 0;
+    let lastAudioStateLogAt = 0;
+    let hostVolumeSet = false;
+    let videoBufferRef = null;
+    let audioBufferRef = null;
+    let appendGeneration = 0;
+    let pendingSeekSeconds = null;
     const fetchTimeoutMs = 12000;
     const fetchRetryCount = 3;
 
@@ -122,7 +131,7 @@
               log(`license response bytes=${license.byteLength}`);
               await session.update(license);
               log('license update complete');
-              if (autoPlay) recoverPlayback('license-update').catch(fail);
+              if (desiredPlaying) recoverPlayback('license-update').catch(fail);
             } catch (err) {
               fail(err);
             }
@@ -209,6 +218,75 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function waitForUpdateEnd(sourceBuffer) {
+      return new Promise((resolve, reject) => {
+        if (!sourceBuffer || !sourceBuffer.updating) {
+          resolve();
+          return;
+        }
+
+        const onError = () => {
+          cleanup();
+          reject(new Error('SourceBuffer update error'));
+        };
+        const onUpdateEnd = () => {
+          cleanup();
+          resolve();
+        };
+        const cleanup = () => {
+          sourceBuffer.removeEventListener('error', onError);
+          sourceBuffer.removeEventListener('updateend', onUpdateEnd);
+        };
+        sourceBuffer.addEventListener('error', onError, { once: true });
+        sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true });
+      });
+    }
+
+    async function waitForIdle(sourceBuffer) {
+      while (sourceBuffer && sourceBuffer.updating) {
+        await waitForUpdateEnd(sourceBuffer);
+      }
+    }
+
+    async function clearBufferedRanges(sourceBuffer, label) {
+      if (!sourceBuffer) return;
+      await waitForIdle(sourceBuffer);
+
+      try {
+        sourceBuffer.abort();
+      } catch (_) {
+        // abort() is only valid for some SourceBuffer states.
+      }
+
+      await waitForIdle(sourceBuffer);
+      for (let i = sourceBuffer.buffered.length - 1; i >= 0; i--) {
+        const start = sourceBuffer.buffered.start(i);
+        const end = sourceBuffer.buffered.end(i);
+        if (end <= start) continue;
+        log(`${label} clear ${start.toFixed(1)}-${end.toFixed(1)}`);
+        await removeBuffer(sourceBuffer, start, end);
+        await waitForIdle(sourceBuffer);
+      }
+    }
+
+    function segmentIndexForSeconds(seconds) {
+      const segmentLength = Number(config.segmentLength) > 0 ? Number(config.segmentLength) : 4;
+      return Math.max(0, Math.min(config.segmentTimes.length - 1, Math.floor(seconds / segmentLength)));
+    }
+
+    function isTimeBuffered(seconds, margin = 0.2) {
+      const ranges = video.buffered;
+      if (!ranges || ranges.length === 0) return false;
+
+      for (let i = 0; i < ranges.length; i++) {
+        if (seconds >= ranges.start(i) - margin && seconds <= ranges.end(i) - 0.05) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
     function bufferedEnd(sourceBuffer) {
       const ranges = sourceBuffer.buffered;
       if (!ranges || ranges.length === 0) return 0;
@@ -231,6 +309,48 @@
       }
 
       return 0;
+    }
+
+    function sourceBufferedAhead(sourceBuffer) {
+      if (!sourceBuffer) return 0;
+      const ranges = sourceBuffer.buffered;
+      if (!ranges || ranges.length === 0) return 0;
+
+      const t = video.currentTime || 0;
+      for (let i = 0; i < ranges.length; i++) {
+        if (ranges.start(i) <= t && ranges.end(i) >= t) {
+          return Math.max(0, ranges.end(i) - t);
+        }
+      }
+
+      return 0;
+    }
+
+    function forceAudible(reason) {
+      const wasMuted = video.muted || video.defaultMuted;
+      if (video.defaultMuted) video.defaultMuted = false;
+      if (video.muted) video.muted = false;
+      if (!hostVolumeSet && (!Number.isFinite(video.volume) || video.volume <= 0)) {
+        video.volume = 1;
+      }
+
+      if (wasMuted || video.volume <= 0) {
+        log(`audio force ${reason}: muted=${video.muted} volume=${Number(video.volume).toFixed(2)} hostVolumeSet=${hostVolumeSet}`);
+      }
+    }
+
+    function reportAudioState(reason, force = false) {
+      const now = performance.now();
+      if (!force && now - lastAudioStateLogAt < 2500) return;
+      lastAudioStateLogAt = now;
+
+      const audioAhead = sourceBufferedAhead(audioBufferRef);
+      const videoAhead = sourceBufferedAhead(videoBufferRef);
+      const audioTrackCount = video.audioTracks ? video.audioTracks.length : -1;
+      const audible = !video.muted && video.volume > 0;
+      if (force || !audible || audioAhead < 0.25) {
+        log(`audio ${reason}: audible=${audible} muted=${video.muted} volume=${Number(video.volume).toFixed(2)} audioAhead=${audioAhead.toFixed(2)}s videoAhead=${videoAhead.toFixed(2)}s audioTracks=${audioTrackCount} readyState=${video.readyState}`);
+      }
     }
 
     function sanitizeUrl(url) {
@@ -268,23 +388,29 @@
       }
     }
 
-    async function appendTrackRange(sourceBuffer, initUrl, segmentUrls, label, startIndex, endIndex, includeInit) {
+    async function appendTrackRange(sourceBuffer, initUrl, segmentUrls, label, startIndex, endIndex, includeInit, generation = appendGeneration) {
+      if (fatal || generation !== appendGeneration) return;
+
       if (includeInit) {
         log(`${label} init fetch`);
-        await appendBuffer(sourceBuffer, await fetchBytes(initUrl));
+        const initBytes = await fetchBytes(initUrl);
+        if (fatal || generation !== appendGeneration) return;
+        await appendBufferWithQuotaRetry(sourceBuffer, initBytes, label);
       }
 
       for (let i = startIndex; i < endIndex; i++) {
-        if (fatal) return;
-        await appendBuffer(sourceBuffer, await fetchBytes(segmentUrls[i]));
+        if (fatal || generation !== appendGeneration) return;
+        const bytes = await fetchBytes(segmentUrls[i]);
+        if (fatal || generation !== appendGeneration) return;
+        await appendBufferWithQuotaRetry(sourceBuffer, bytes, label);
         if (i === startIndex || i % 8 === 0) log(`${label} appended ${i + 1}/${segmentUrls.length}`);
       }
     }
 
-    async function appendTrackWindow(sourceBuffer, segmentUrls, label, startIndex) {
+    async function appendTrackWindow(sourceBuffer, segmentUrls, label, startIndex, generation = appendGeneration) {
       const maxAheadSeconds = 35;
       let i = startIndex;
-      while (!fatal && i < segmentUrls.length) {
+      while (!fatal && generation === appendGeneration && i < segmentUrls.length) {
         const ahead = bufferedEnd(sourceBuffer) - (video.currentTime || 0);
         if (ahead > maxAheadSeconds) {
           await pruneBehind(sourceBuffer, label);
@@ -293,11 +419,27 @@
         }
 
         await pruneBehind(sourceBuffer, label);
-        await appendBufferWithQuotaRetry(sourceBuffer, await fetchBytes(segmentUrls[i]), label);
+        const bytes = await fetchBytes(segmentUrls[i]);
+        if (fatal || generation !== appendGeneration) return;
+        await appendBufferWithQuotaRetry(sourceBuffer, bytes, label);
         if (i === startIndex || i % 8 === 0) log(`${label} appended ${i + 1}/${segmentUrls.length}`);
         i++;
       }
-      log(`${label} append loop complete`);
+      if (generation === appendGeneration) log(`${label} append loop complete`);
+    }
+
+    function startBackgroundAppend(startIndex, generation) {
+      Promise.all([
+        appendTrackWindow(videoBufferRef, config.video.segmentUrls, 'video', startIndex, generation),
+        appendTrackWindow(audioBufferRef, config.audio.segmentUrls, 'audio', startIndex, generation)
+      ]).then(() => {
+        if (fatal || generation !== appendGeneration) return;
+        log('background append complete');
+        if (mediaSource.readyState === 'open') mediaSource.endOfStream();
+      }).catch(err => {
+        if (generation === appendGeneration) fail(err);
+        else log(`background append cancelled generation=${generation}`);
+      });
     }
 
     let firstFrameSent = false;
@@ -331,9 +473,11 @@
       notePlaybackProgress();
       const effectiveBuffering = !!isBuffering
         || (desiredPlaying && !video.ended && video.paused);
+      const currentSeconds = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+      const positionSeconds = pendingSeekSeconds ?? currentSeconds;
       lastPostedBuffering = effectiveBuffering;
       host('state', {
-        positionMs: Math.round(video.currentTime * 1000),
+        positionMs: Math.round(positionSeconds * 1000),
         durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : config.durationMs,
         isPlaying: !video.paused && !video.ended,
         isBuffering: effectiveBuffering
@@ -346,9 +490,7 @@
       setTimeout(() => {
         unmuteScheduled = false;
         if (!desiredPlaying || video.ended || !video.muted) return;
-        video.muted = false;
-        video.defaultMuted = false;
-        log(`unmuted after ${reason}`);
+        forceAudible(`scheduled-${reason}`);
         if (video.paused) playVideo(`unmute-${reason}`).catch(fail);
         else postState(false);
       }, 250);
@@ -357,28 +499,19 @@
     async function playVideo(source) {
       desiredPlaying = true;
       try {
-        if (video.muted) {
-          video.muted = false;
-          video.defaultMuted = false;
-        }
+        forceAudible(source);
         await video.play();
+        reportAudioState(`play-${source}`);
         postState(false);
         return true;
       } catch (err) {
         if (err && err.name === 'NotAllowedError') {
-          log(`play blocked on ${source}; retrying muted`);
-          video.defaultMuted = true;
-          video.muted = true;
-          try {
-            await video.play();
-            scheduleUnmute(source);
-            postState(false);
-            return true;
-          } catch (mutedErr) {
-            host('autoplay-blocked', { message: mutedErr && mutedErr.message ? mutedErr.message : String(mutedErr) });
-            postState(false);
-            return false;
-          }
+          desiredPlaying = false;
+          const message = err && err.message ? err.message : String(err);
+          log(`audible play blocked on ${source}: ${message}`);
+          host('autoplay-blocked', { message });
+          postState(false);
+          return false;
         }
         throw err;
       }
@@ -397,6 +530,7 @@
         if (now - lastBufferedLogAt > 2000) {
           lastBufferedLogAt = now;
           log(`recover ${reason}: readyState=${video.readyState} paused=${video.paused} ahead=${ahead.toFixed(2)}s pos=${(video.currentTime || 0).toFixed(2)}s`);
+          reportAudioState(`recover-${reason}`, true);
         }
 
         if (video.paused && !video.ended) {
@@ -426,9 +560,11 @@
 
         if (now - lastHardRecoveryAt > 8000) {
           lastHardRecoveryAt = now;
+          const recoverySeconds = pendingSeekSeconds
+            ?? (Number.isFinite(video.currentTime) ? video.currentTime : startSeconds || 0);
           host('recover-restart', {
             reason,
-            positionMs: Math.round((video.currentTime || startSeconds || 0) * 1000)
+            positionMs: Math.round(recoverySeconds * 1000)
           });
         }
       } finally {
@@ -447,6 +583,77 @@
       }, 1200);
     }
 
+    async function rebuildBufferWindow(seconds, shouldPlay) {
+      if (!sourceOpen || mediaSource.readyState === 'closed' || !videoBufferRef || !audioBufferRef) {
+        video.currentTime = seconds;
+        pendingSeekSeconds = null;
+        if (shouldPlay) await playVideo('seek-simple');
+        else postState(false);
+        return;
+      }
+
+      const generation = ++appendGeneration;
+      const startIndex = segmentIndexForSeconds(seconds);
+      const startupEnd = Math.min(config.segmentTimes.length, startIndex + 5);
+      log(`seek rebuild range ${startIndex + 1}-${startupEnd}/${config.segmentTimes.length} at ${seconds.toFixed(2)}s`);
+
+      try {
+        if (!video.paused)
+          video.pause();
+
+        await Promise.all([
+          clearBufferedRanges(videoBufferRef, 'video'),
+          clearBufferedRanges(audioBufferRef, 'audio')
+        ]);
+
+        if (fatal || generation !== appendGeneration) return;
+
+        await Promise.all([
+          appendTrackRange(videoBufferRef, config.video.initUrl, config.video.segmentUrls, 'video', startIndex, startupEnd, true, generation),
+          appendTrackRange(audioBufferRef, config.audio.initUrl, config.audio.segmentUrls, 'audio', startIndex, startupEnd, true, generation)
+        ]);
+
+        if (fatal || generation !== appendGeneration) return;
+
+        video.currentTime = seconds;
+        pendingSeekSeconds = null;
+        lastPlaybackPosition = seconds;
+        lastPlaybackProgressAt = performance.now();
+        postState(shouldPlay);
+
+        if (shouldPlay)
+          await playVideo('seek-window');
+
+        startBackgroundAppend(startupEnd, generation);
+      } catch (err) {
+        if (generation !== appendGeneration) return;
+        pendingSeekSeconds = null;
+        log(`seek rebuild failed: ${err && err.message ? err.message : String(err)}`);
+        host('recover-restart', {
+          reason: 'seek-window-failed',
+          positionMs: Math.round(seconds * 1000)
+        });
+      }
+    }
+
+    async function seekTo(ms) {
+      const seconds = clampPlaybackSeconds(Number(ms) / 1000);
+      pendingSeekSeconds = seconds;
+      postState(true);
+
+      if (isTimeBuffered(seconds)) {
+        video.currentTime = seconds;
+        pendingSeekSeconds = null;
+        lastPlaybackPosition = seconds;
+        lastPlaybackProgressAt = performance.now();
+        if (desiredPlaying) await playVideo('seek-buffered');
+        else postState(false);
+        return;
+      }
+
+      await rebuildBufferWindow(seconds, desiredPlaying);
+    }
+
     async function startMse() {
       mediaSource = new MediaSource();
       video.src = URL.createObjectURL(mediaSource);
@@ -457,6 +664,8 @@
 
       const videoBuffer = mediaSource.addSourceBuffer(config.video.contentType);
       const audioBuffer = mediaSource.addSourceBuffer(config.audio.contentType);
+      videoBufferRef = videoBuffer;
+      audioBufferRef = audioBuffer;
       videoBuffer.mode = 'segments';
       audioBuffer.mode = 'segments';
 
@@ -477,27 +686,29 @@
         postState(false);
       }
 
-      Promise.all([
-        appendTrackWindow(videoBuffer, config.video.segmentUrls, 'video', startupEnd),
-        appendTrackWindow(audioBuffer, config.audio.segmentUrls, 'audio', startupEnd)
-      ]).then(() => {
-        log('background append complete');
-        if (mediaSource.readyState === 'open') mediaSource.endOfStream();
-      }).catch(fail);
+      startBackgroundAppend(startupEnd, appendGeneration);
     }
 
     video.addEventListener('timeupdate', () => postState(false));
     video.addEventListener('durationchange', () => postState(false));
     video.addEventListener('loadeddata', () => postFirstFrame('loadeddata'));
     video.addEventListener('canplay', () => postFirstFrame('canplay'));
-    video.addEventListener('playing', () => { postFirstFrame('playing'); postState(false); });
+    video.addEventListener('playing', () => { postFirstFrame('playing'); forceAudible('playing'); reportAudioState('playing'); postState(false); });
+    video.addEventListener('volumechange', () => reportAudioState('volumechange', true));
     video.addEventListener('canplaythrough', () => postState(false));
-    video.addEventListener('pause', () => postState(false));
+    video.addEventListener('pause', () => {
+      if (desiredPlaying && !video.ended) {
+        postState(true);
+        scheduleStallRecovery('unexpected-pause');
+      } else {
+        postState(false);
+      }
+    });
     video.addEventListener('waiting', () => { postState(true); scheduleStallRecovery('waiting'); });
     video.addEventListener('stalled', () => { postState(true); scheduleStallRecovery('stalled'); });
     video.addEventListener('seeking', () => postState(true));
-    video.addEventListener('seeked', () => postState(false));
-    video.addEventListener('ended', () => host('ended'));
+    video.addEventListener('seeked', () => { pendingSeekSeconds = null; postState(false); });
+    video.addEventListener('ended', () => { desiredPlaying = false; host('ended'); });
     video.addEventListener('error', () => fail(video.error ? `media error code=${video.error.code} message=${video.error.message}` : 'media error'));
 
     setInterval(() => {
@@ -505,7 +716,17 @@
 
       const madeProgress = notePlaybackProgress();
       const isPlaying = !video.paused && !video.ended;
-      if (!isPlaying || madeProgress) {
+      if (!isPlaying) {
+        if (desiredPlaying && !video.ended) {
+          postState(true);
+          recoverPlayback('watchdog-paused').catch(fail);
+        } else if (lastPostedBuffering) {
+          postState(false);
+        }
+        return;
+      }
+
+      if (madeProgress) {
         if (lastPostedBuffering) postState(false);
         return;
       }
@@ -516,6 +737,7 @@
         && !nearEnd
         && (video.readyState < 3 || performance.now() - lastPlaybackProgressAt > 1800);
 
+      reportAudioState('watchdog');
       if (buffering) recoverPlayback('watchdog').catch(fail);
 
       if (buffering !== lastPostedBuffering)
@@ -524,9 +746,23 @@
 
     window.__waveePlayer = {
       play: () => playVideo('host-play').catch(fail),
-      pause: () => video.pause(),
-      seek: ms => { video.currentTime = Math.max(0, ms / 1000); postState(false); },
-      setVolume: value => { video.volume = Math.max(0, Math.min(1, value)); }
+      pause: () => {
+        desiredPlaying = false;
+        video.pause();
+        postState(false);
+      },
+      seek: ms => seekTo(ms).catch(fail),
+      setVolume: value => {
+        const clamped = Math.max(0, Math.min(1, Number(value)));
+        hostVolumeSet = true;
+        video.volume = Number.isFinite(clamped) ? clamped : 1;
+        if (video.volume > 0 && video.muted) {
+          video.muted = false;
+          video.defaultMuted = false;
+        }
+        reportAudioState('host-volume', true);
+        postState(false);
+      }
     };
 
     (async () => {

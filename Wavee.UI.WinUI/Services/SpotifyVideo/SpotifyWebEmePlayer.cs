@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +18,7 @@ namespace Wavee.UI.WinUI.Services.SpotifyVideo;
 internal sealed class SpotifyWebEmePlayer : IDisposable
 {
     public const string PlayerUrl = "https://wavee-player.example/spotify-video-player.html";
+    private const string PlayerBrowserArguments = "--autoplay-policy=no-user-gesture-required";
 
     private readonly DispatcherQueue _dispatcher;
     private readonly SpotifyWebEmePlayerDocumentRenderer _documentRenderer;
@@ -99,7 +101,7 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
             }
 
             _logger?.LogDebug("SpotifyWebEmePlayer: initializing xamlRoot={HasXamlRoot}", webView.XamlRoot is not null);
-            await webView.EnsureCoreWebView2Async();
+            await EnsureCoreWebView2ForPlayerAsync(webView, cancellationToken);
             webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
             webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
@@ -115,6 +117,44 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
             webView.CoreWebView2.Navigate(PlayerUrl);
             _logger?.LogDebug("SpotifyWebEmePlayer: document navigated url={Url}", PlayerUrl);
         });
+    }
+
+    private async Task EnsureCoreWebView2ForPlayerAsync(WebView2 webView, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Wavee",
+                "WebView2",
+                "SpotifyVideo");
+            Directory.CreateDirectory(userDataFolder);
+
+            var options = new CoreWebView2EnvironmentOptions
+            {
+                AdditionalBrowserArguments = PlayerBrowserArguments
+            };
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                null,
+                userDataFolder,
+                options);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await webView.EnsureCoreWebView2Async(environment);
+            _logger?.LogDebug(
+                "SpotifyWebEmePlayer: using dedicated WebView2 environment args={Args}",
+                PlayerBrowserArguments);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(
+                ex,
+                "SpotifyWebEmePlayer: dedicated autoplay WebView2 environment failed; falling back to default environment");
+            cancellationToken.ThrowIfCancellationRequested();
+            await webView.EnsureCoreWebView2Async();
+        }
     }
 
     public Task PauseAsync()
