@@ -705,6 +705,7 @@
                     <!-- Grid view (wrapping multi-row, click to expand inline) -->
                     <ItemsRepeater x:Name="AlbumsGridRepeater"
                                    ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
+                                   ElementClearing="DiscographyRepeater_ElementClearing"
                                    Visibility="{x:Bind ViewModel.AlbumsGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
                             <!-- MinItemWidth/Height come from ViewModel.DiscographyGridScale × base size
@@ -740,7 +741,9 @@
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                     <!-- List view -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
+                    <ItemsRepeater x:Name="AlbumsListRepeater"
+                                   ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
+                                   ElementClearing="DiscographyRepeater_ElementClearing"
                                    Visibility="{x:Bind ViewModel.AlbumsGridView, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
                             <StackLayout Orientation="Vertical" Spacing="2"/>
@@ -830,6 +833,7 @@
                     <!-- Grid view (wrapping multi-row, click to expand inline) -->
                     <ItemsRepeater x:Name="SinglesGridRepeater"
                                    ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
+                                   ElementClearing="DiscographyRepeater_ElementClearing"
                                    Visibility="{x:Bind ViewModel.SinglesGridView, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
                             <!-- Same scale-driven sizing as Albums; both grids share
@@ -862,7 +866,9 @@
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                     <!-- List view -->
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
+                    <ItemsRepeater x:Name="SinglesListRepeater"
+                                   ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
+                                   ElementClearing="DiscographyRepeater_ElementClearing"
                                    Visibility="{x:Bind ViewModel.SinglesGridView, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                         <ItemsRepeater.Layout>
                             <StackLayout Orientation="Vertical" Spacing="2"/>

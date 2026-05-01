@@ -32,12 +32,13 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// details) and a column header row that shares widths with <c>TrackItem</c>'s internal
 /// Row grid.
 /// </summary>
-public sealed partial class TrackDataGrid : UserControl
+public sealed partial class TrackDataGrid : UserControl, IDisposable
 {
     private readonly ObservableCollection<ITrackItem> _visibleRows = new();
     private IReadOnlyList<ITrackItem> _sourceSnapshot = Array.Empty<ITrackItem>();
     private INotifyCollectionChanged? _subscribedSource;
     private string _filterText = string.Empty;
+    private bool _disposed;
 
     // Size-slider stops (matches the XS/S/M/L/XL segmentation in the view flyout).
     // MinHeight floor per row; content (padding + art + text) may still push the
@@ -1151,5 +1152,69 @@ public sealed partial class TrackDataGrid : UserControl
             if (parameter is TrackDataGridColumn col)
                 _owner.Columns?.CycleSort(col);
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+
+        if (_rowsListScrollViewerWinUi is not null)
+        {
+            _rowsListScrollViewerWinUi.ViewChanged -= RowsListScrollViewer_ViewChanged;
+            _rowsListScrollViewerWinUi = null;
+        }
+
+        RowsList.ContainerContentChanging -= RowsList_ContainerContentChanging;
+        RowsList.Loaded -= RowsList_Loaded;
+        RowsList.Unloaded -= RowsList_Unloaded;
+
+        foreach (var item in RowsList.Items)
+        {
+            if (RowsList.ContainerFromItem(item) is not ListViewItem container)
+                continue;
+
+            ClearLazyRowSubscription(container);
+            if (_containerPointerPressedHandler is not null)
+                container.RemoveHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler);
+            if (_containerTappedHandler is not null)
+                container.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
+        }
+
+        if (_subscribedSource is not null)
+            _subscribedSource.CollectionChanged -= OnSourceCollectionChanged;
+        _subscribedSource = null;
+
+        if (Columns is not null)
+            UnsubscribeColumns(Columns);
+        foreach (var col in _headerSlots.Keys)
+            col.PropertyChanged -= OnHeaderColumnChanged;
+        _headerSlots.Clear();
+
+        if (SortBySubItem is not null)
+        {
+            foreach (var item in SortBySubItem.Items.OfType<RadioMenuFlyoutItem>())
+                item.Click -= SortByItem_Click;
+            SortBySubItem.Items.Clear();
+        }
+
+        HeaderHost.Children.Clear();
+        HeaderHost.ColumnDefinitions.Clear();
+        RowsList.SelectedItems.Clear();
+        RowsList.ItemsSource = null;
+        _visibleRows.Clear();
+        _sourceSnapshot = Array.Empty<ITrackItem>();
+        _pressedWhileSelected = null;
+
+        ItemsSource = null;
+        PlayCommand = null;
+        DateAddedFormatter = null;
+        PlayCountFormatter = null;
+        AddedByFormatter = null;
+        FooterContent = null;
+        ToolbarLeftContent = null;
+        FilterBarContent = null;
+        DataContext = null;
     }
 }

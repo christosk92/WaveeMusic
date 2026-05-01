@@ -47,6 +47,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private readonly ITrackLikeService? _likeService;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
+    private bool _disposed;
 
     /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
     private List<LazyTrackItem> _allTracks = [];
@@ -654,7 +655,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)
     {
-        if (AlbumId != expectedAlbumId)
+        if (_disposed || AlbumId != expectedAlbumId)
         {
             _logger?.LogDebug(
                 "[xfade][album-vm:{Id}] state.skip expected={Expected} current={Current}",
@@ -858,7 +859,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// </summary>
     private async Task ApplyDetailAsync(AlbumDetailResult detail, string albumId)
     {
-        if (AlbumId != albumId) return;
+        if (_disposed || AlbumId != albumId) return;
         _appliedDetailFor = albumId;
         HasError = false;
         ErrorMessage = null;
@@ -989,7 +990,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         try
         {
             var list = await _libraryDataService.GetUserPlaylistsAsync().ConfigureAwait(false);
-            _dispatcherQueue.TryEnqueue(() => Playlists = list);
+            if (_disposed)
+                return;
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_disposed)
+                    Playlists = list;
+            });
         }
         catch (Exception ex)
         {
@@ -1203,9 +1211,20 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
+
+        Deactivate();
+
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
 
         _allTracks.Clear();
+        FilteredTracks = Array.Empty<LazyTrackItem>();
+        AlternateReleases.Clear();
+        MoreByArtist.Clear();
+        MerchItems.Clear();
+        Playlists = Array.Empty<PlaylistSummaryDto>();
     }
 }

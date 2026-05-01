@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -127,42 +129,16 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // Editorial / radio playlists don't carry added-at timestamps — hide the whole
         // Date Added column when the loaded tracks have none. Also watch HeaderImageUrl
         // so the composition backdrop reloads when the ViewModel's detail arrives.
-        ViewModel.PropertyChanged += (_, ev) =>
-        {
-            if (ev.PropertyName == nameof(PlaylistViewModel.HasAnyAddedAt))
-                ApplyDateAddedColumnVisibility();
-            else if (ev.PropertyName == nameof(PlaylistViewModel.HeaderImageUrl))
-                ApplyHeaderBackground();
-            else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
-                RebuildDescriptionInlines();
-            else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
-            {
-                string action;
-                if (ViewModel.IsLoading) action = "skip-still-loading";
-                else if (_showingContent) action = "skip-already-shown";
-                else if (_crossfadeScheduled) action = "skip-already-scheduled";
-                else action = "schedule";
-                _logger?.LogDebug(
-                    "[xfade][playlist:{Id}] propchg.isLoading val={Val} showing={Showing} scheduled={Scheduled} action={Action}",
-                    XfadeLog.Tag(ViewModel.PlaylistId), ViewModel.IsLoading, _showingContent, _crossfadeScheduled, action);
-                if (action == "schedule")
-                    ScheduleCrossfade();
-            }
-        };
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         // Rebuild the avatar stack visual whenever the resolved Collaborators
         // collection mutates (full clear / refill on each load completion).
-        ViewModel.Collaborators.CollectionChanged += (_, _) => RebuildCollaboratorStack();
+        ViewModel.Collaborators.CollectionChanged += Collaborators_CollectionChanged;
 
         // Re-push AddedBy cell content onto realized rows once the VM finishes
         // resolving display names + avatars. Without this hook the cells stay
         // on the bare-id "@…" fallback because the imperative formatter only
         // runs at row materialization, not when the source DTO mutates.
-        ViewModel.AddedByResolved += (_, _) =>
-        {
-            _logger?.LogInformation("[addedby] page received AddedByResolved → calling RefreshAddedByCells()");
-            if (DispatcherQueue is null) { TrackGrid.RefreshAddedByCells(); return; }
-            DispatcherQueue.TryEnqueue(() => TrackGrid.RefreshAddedByCells());
-        };
+        ViewModel.AddedByResolved += ViewModel_AddedByResolved;
         ApplyDateAddedColumnVisibility();
         RebuildDescriptionInlines();
 
@@ -183,15 +159,69 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _isNavigatingAway = true;
     }
 
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
+    {
+        if (_isDisposed)
+            return;
+
+        if (ev.PropertyName == nameof(PlaylistViewModel.HasAnyAddedAt))
+            ApplyDateAddedColumnVisibility();
+        else if (ev.PropertyName == nameof(PlaylistViewModel.HeaderImageUrl))
+            ApplyHeaderBackground();
+        else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
+            RebuildDescriptionInlines();
+        else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
+        {
+            string action;
+            if (ViewModel.IsLoading) action = "skip-still-loading";
+            else if (_showingContent) action = "skip-already-shown";
+            else if (_crossfadeScheduled) action = "skip-already-scheduled";
+            else action = "schedule";
+            _logger?.LogDebug(
+                "[xfade][playlist:{Id}] propchg.isLoading val={Val} showing={Showing} scheduled={Scheduled} action={Action}",
+                XfadeLog.Tag(ViewModel.PlaylistId), ViewModel.IsLoading, _showingContent, _crossfadeScheduled, action);
+            if (action == "schedule")
+                ScheduleCrossfade();
+        }
+    }
+
+    private void Collaborators_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (!_isDisposed)
+            RebuildCollaboratorStack();
+    }
+
+    private void ViewModel_AddedByResolved(object? sender, EventArgs e)
+    {
+        if (_isDisposed)
+            return;
+
+        _logger?.LogInformation("[addedby] page received AddedByResolved -> calling RefreshAddedByCells()");
+        if (DispatcherQueue is null)
+        {
+            TrackGrid.RefreshAddedByCells();
+            return;
+        }
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_isDisposed)
+                TrackGrid.RefreshAddedByCells();
+        });
+    }
+
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
 
         Unloaded -= PlaylistPage_Unloaded;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.Collaborators.CollectionChanged -= Collaborators_CollectionChanged;
+        ViewModel.AddedByResolved -= ViewModel_AddedByResolved;
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
+        TrackGrid.Dispose();
         _heroImageSurface?.Dispose();
         _heroImageSurface = null;
         _heroSurfaceBrush = null;

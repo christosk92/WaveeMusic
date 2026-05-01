@@ -128,6 +128,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.AlternateReleases.CollectionChanged -= AlternateReleases_CollectionChanged;
+        TrackGrid.Dispose();
         if (OtherVersionsFlyout != null)
             OtherVersionsFlyout.Items.Clear();
         (ViewModel as IDisposable)?.Dispose();

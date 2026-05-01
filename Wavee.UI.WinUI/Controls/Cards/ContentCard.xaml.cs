@@ -233,6 +233,8 @@ public sealed partial class ContentCard : UserControl
     private bool _isPlaybackPending;
     private int _playbackPendingVersion;
     private bool _circleSizeHandlerAttached;
+    private bool _hasEffectiveViewport;
+    private bool _isInsideEffectiveViewport = true;
 
     private readonly ImageCacheService? _imageCache;
     private readonly ThemeColorService? _themeColorService;
@@ -294,7 +296,8 @@ public sealed partial class ContentCard : UserControl
             var (contextUri, albumUri, playing) = _highlightService.Current;
             ApplyHighlight(contextUri, albumUri, playing);
         }
-        LoadImage(ImageUrl);
+        if (!_hasEffectiveViewport || _isInsideEffectiveViewport)
+            LoadImage(ImageUrl);
         SyncInitialPlaybackState();
     }
 
@@ -314,10 +317,7 @@ public sealed partial class ContentCard : UserControl
             _circleSizeHandlerAttached = false;
         }
 
-        if (SquareImage != null)
-            SquareImage.Source = null;
-        if (CircleImageBrush != null)
-            CircleImageBrush.ImageSource = null;
+        ReleaseImage();
 
         // Remove passive pointer handlers using the SAME instances that were added
         if (_passiveHandlersAdded)
@@ -403,6 +403,12 @@ public sealed partial class ContentCard : UserControl
     {
         var card = (ContentCard)d;
         var url = e.NewValue as string;
+        if (card._hasEffectiveViewport && !card._isInsideEffectiveViewport)
+        {
+            card.ReleaseImage();
+            return;
+        }
+
         card.LoadImage(url);
     }
 
@@ -465,15 +471,64 @@ public sealed partial class ContentCard : UserControl
 
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
     {
+        _hasEffectiveViewport = true;
+        _isInsideEffectiveViewport = IntersectsEffectiveViewport(sender, args.EffectiveViewport);
+
+        if (!_isInsideEffectiveViewport)
+        {
+            ReleaseImage();
+            return;
+        }
+
         // Cheap short-circuit: 99% of fires are scroll noise on already-loaded
         // cards. Only act when the image was nulled (by OnUnloaded) and we
         // have a URL to reload.
         if (string.IsNullOrEmpty(ImageUrl)) return;
-        var needsLoad = IsCircularImage
-            ? CircleImageBrush?.ImageSource == null
-            : SquareImage?.Source == null;
-        if (!needsLoad) return;
+        if (HasImage()) return;
         LoadImage(ImageUrl);
+    }
+
+    public void ReleaseImage()
+    {
+        if (SquareImage != null)
+        {
+            SquareImage.Source = null;
+            SquareImage.Opacity = 1;
+        }
+
+        if (CircleImageBrush != null)
+            CircleImageBrush.ImageSource = null;
+
+        if (SquarePlaceholderIcon != null)
+            SquarePlaceholderIcon.Visibility = Visibility.Visible;
+        if (CirclePlaceholderIcon != null)
+            CirclePlaceholderIcon.Visibility = Visibility.Visible;
+    }
+
+    public void ReloadImageIfNeeded()
+    {
+        if (_hasEffectiveViewport && !_isInsideEffectiveViewport)
+            return;
+        if (HasImage())
+            return;
+
+        LoadImage(ImageUrl);
+    }
+
+    private bool HasImage()
+        => IsCircularImage
+            ? CircleImageBrush?.ImageSource != null
+            : SquareImage?.Source != null;
+
+    private static bool IntersectsEffectiveViewport(FrameworkElement element, Rect effectiveViewport)
+    {
+        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+            return false;
+
+        return effectiveViewport.Right > 0
+               && effectiveViewport.Bottom > 0
+               && effectiveViewport.Left < element.ActualWidth
+               && effectiveViewport.Top < element.ActualHeight;
     }
 
     private void LoadImage(string? url)

@@ -22,6 +22,7 @@ using Wavee.Core.Http;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
+using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -72,6 +73,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private bool _crossfadeScheduled;
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
+    private bool _discographyRepeatersDetached;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -765,6 +767,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
                 _splitRepeaterAfter.ItemsSource = itemsAfter;
             else
             {
+                _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
+                ReleaseImagesInSubtree(_splitRepeaterAfter);
                 _splitParent.Children.Remove(_splitRepeaterAfter);
                 _splitRepeaterAfter = null;
             }
@@ -784,6 +788,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
                 ItemTemplate = _originalRepeater.ItemTemplate,
                 ItemsSource = itemsAfter
             };
+            _splitRepeaterAfter.ElementClearing += DiscographyRepeater_ElementClearing;
             var panelIndex = _splitParent.Children.IndexOf(_activeDetailPanel);
             if (panelIndex >= 0)
                 _splitParent.Children.Insert(panelIndex + 1, _splitRepeaterAfter);
@@ -963,6 +968,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // Hibernate releases the store subscription and heavy bound collections
         // before the page is hidden. Revisit speed comes from warm data caches.
         ViewModel.Hibernate();
+        ReleaseNavigationCachedImages();
         HeroGrid?.ReleaseSurface();
     }
 
@@ -979,9 +985,82 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (!string.IsNullOrEmpty(ViewModel.ArtistId))
         {
             ViewModel.Initialize(ViewModel.ArtistId);
+            RestoreDiscographyRepeaters();
             SetupWatchFeedVideo();
             TryShowContentNow();
         }
+    }
+
+    private void ReleaseNavigationCachedImages()
+    {
+        DetachDiscographyRepeaters();
+        ReleaseImagesInSubtree(ArtistImageContainer);
+        ReleaseImagesInSubtree(PinnedTopTracksCard);
+        ReleaseImagesInSubtree(LatestReleaseCard);
+        ReleaseImagesInSubtree(ShyHeaderHost);
+    }
+
+    private void DetachDiscographyRepeaters()
+    {
+        if (_discographyRepeatersDetached)
+            return;
+
+        ReleaseImagesInSubtree(AlbumsSection);
+        ReleaseImagesInSubtree(SinglesSection);
+        ReleaseImagesInSubtree(CompilationsSection);
+
+        if (AlbumsGridRepeater is not null) AlbumsGridRepeater.ItemsSource = null;
+        if (AlbumsListRepeater is not null) AlbumsListRepeater.ItemsSource = null;
+        if (SinglesGridRepeater is not null) SinglesGridRepeater.ItemsSource = null;
+        if (SinglesListRepeater is not null) SinglesListRepeater.ItemsSource = null;
+        if (CompilationsShelf is not null) CompilationsShelf.ItemsSource = null;
+
+        _discographyRepeatersDetached = true;
+    }
+
+    private void RestoreDiscographyRepeaters()
+    {
+        if (!_discographyRepeatersDetached)
+            return;
+
+        if (AlbumsGridRepeater is not null) AlbumsGridRepeater.ItemsSource = ViewModel.Albums;
+        if (AlbumsListRepeater is not null) AlbumsListRepeater.ItemsSource = ViewModel.Albums;
+        if (SinglesGridRepeater is not null) SinglesGridRepeater.ItemsSource = ViewModel.Singles;
+        if (SinglesListRepeater is not null) SinglesListRepeater.ItemsSource = ViewModel.Singles;
+        if (CompilationsShelf is not null) CompilationsShelf.ItemsSource = ViewModel.Compilations;
+
+        _discographyRepeatersDetached = false;
+    }
+
+    private void DiscographyRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
+        => ReleaseImagesInSubtree(args.Element);
+
+    private static void ReleaseImagesInSubtree(DependencyObject? root)
+    {
+        if (root is null)
+            return;
+
+        switch (root)
+        {
+            case ContentCard card:
+                card.ReleaseImage();
+                break;
+            case Image image:
+                image.Source = null;
+                image.Opacity = 1;
+                image.Visibility = Visibility.Visible;
+                break;
+            case Microsoft.UI.Xaml.Shapes.Shape { Fill: ImageBrush shapeBrush }:
+                shapeBrush.ImageSource = null;
+                break;
+            case Border { Background: ImageBrush borderBrush }:
+                borderBrush.ImageSource = null;
+                break;
+        }
+
+        var childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < childCount; i++)
+            ReleaseImagesInSubtree(VisualTreeHelper.GetChild(root, i));
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -1012,6 +1091,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         {
             if (!string.IsNullOrEmpty(ViewModel.ArtistId))
                 ViewModel.Initialize(ViewModel.ArtistId);
+            RestoreDiscographyRepeaters();
             SetupWatchFeedVideo();
             TryShowContentNow();
             return;
@@ -1036,6 +1116,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 0;
         ShimmerContainer.Visibility = Visibility.Visible;
         ShimmerContainer.Opacity = 1;
+        RestoreDiscographyRepeaters();
 
         if (parameter is ContentNavigationParameter navParam)
         {
@@ -1217,11 +1298,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // (ItemsRepeater can't process CollectionChanged while disconnected)
         if (_activeDetailPanel != null)
         {
+            ReleaseImagesInSubtree(_activeDetailPanel);
             _activeDetailPanel.Tracks = null;
             _splitParent.Children.Remove(_activeDetailPanel);
         }
         if (_splitRepeaterAfter != null)
+        {
+            _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
+            ReleaseImagesInSubtree(_splitRepeaterAfter);
             _splitParent.Children.Remove(_splitRepeaterAfter);
+        }
 
         // Restore original items source
         _originalRepeater.ItemsSource = _originalItemsSource;
@@ -1300,6 +1386,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         CollapseExpandedAlbum();
         TeardownWatchFeed();
         try { _shyHeaderTransition?.Stop(); } catch { }
+        ReleaseNavigationCachedImages();
         (ViewModel as IDisposable)?.Dispose();
     }
 

@@ -785,6 +785,7 @@ public static class AppLifecycleHelper
 
                 // Image cache cleanup adapter
                 .AddSingleton<ICleanableCache, ImageCacheCleanupAdapter>()
+                .AddSingleton<MemoryBudgetService>()
 
                 // Rich-type detail-page hot caches. Wired into ArtistStore /
                 // AlbumStore / PlaylistStore's ReadHotAsync/WriteHot so a

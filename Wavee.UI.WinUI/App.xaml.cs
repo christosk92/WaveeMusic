@@ -118,6 +118,7 @@ public partial class App : Application
 
         // Start background cache cleanup
         Ioc.Default.GetRequiredService<CacheCleanupService>().Start();
+        Ioc.Default.GetRequiredService<MemoryBudgetService>().Start();
 
         // Local file library: point the image pipeline at the cache directory
         // and kick off the indexer (initial scan + watcher + periodic loop).

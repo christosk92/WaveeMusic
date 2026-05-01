@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 
 namespace Wavee.UI.WinUI.Services;
@@ -37,6 +38,7 @@ public static class MemoryReleaseHelper
         GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
         GC.Collect();
+        TrimWorkingSet(logger, reason);
 
         long afterManaged = GC.GetTotalMemory(false);
         long afterWorkingSet = SafeWorkingSet();
@@ -49,6 +51,32 @@ public static class MemoryReleaseHelper
             (afterManaged - beforeManaged) / 1048576.0,
             beforeWorkingSet / 1048576.0, afterWorkingSet / 1048576.0,
             (afterWorkingSet - beforeWorkingSet) / 1048576.0);
+    }
+
+    /// <summary>
+    /// Asks Windows to trim pages the process can release from its working set.
+    /// This does not free live memory; it just returns unused committed pages to
+    /// the OS sooner, which is what Task Manager's Memory column reflects.
+    /// </summary>
+    public static void TrimWorkingSet(ILogger? logger = null, string reason = "")
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        try
+        {
+            if (!SetProcessWorkingSetSize(_selfProcess.Handle, -1, -1))
+            {
+                logger?.LogDebug(
+                    "MemoryRelease ({Reason}): working-set trim failed win32={Error}",
+                    string.IsNullOrEmpty(reason) ? "manual" : reason,
+                    Marshal.GetLastWin32Error());
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogDebug(ex, "MemoryRelease ({Reason}): working-set trim failed", reason);
+        }
     }
 
     // Cached single Process handle for the current process. Process is finalizable;
@@ -71,4 +99,10 @@ public static class MemoryReleaseHelper
             return 0;
         }
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessWorkingSetSize(
+        IntPtr hProcess,
+        nint dwMinimumWorkingSetSize,
+        nint dwMaximumWorkingSetSize);
 }

@@ -801,6 +801,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _paletteCts?.Cancel();
         _paletteCts?.Dispose();
         _paletteCts = null;
+        _sessionSignalCts?.Cancel();
+        _sessionSignalCts?.Dispose();
+        _sessionSignalCts = null;
         // Search timer holds a Tick closure over `this`; stop it on nav-away so it
         // doesn't fire against a cached-but-hidden page.
         _searchDebounceTimer.Stop();
@@ -2500,12 +2503,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             return;
 
         _disposed = true;
-        _subscriptions?.Dispose();
-        _subscriptions = null;
-        _tracksCts?.Cancel();
-        _tracksCts?.Dispose();
-        _tracksCts = null;
-        _searchDebounceTimer.Stop();
+        Deactivate();
+        FilteredTracks.Clear();
+        _allTracks = new List<PlaylistTrackDto>();
+        Collaborators.Clear();
+        SessionControlChips.Clear();
+        SelectedItems = Array.Empty<object>();
+        SelectedSessionControlChip = null;
     }
 
     #region Explicit ITrackListViewModel ICommand Implementation

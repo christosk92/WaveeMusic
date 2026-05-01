@@ -382,19 +382,30 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ClearLiveContent()
     {
-        if (_previousContent != null)
+        var activeContent = ContentFrame.Content;
+        var previousContent = _previousContent;
+        var pendingContent = _contentPendingDisposal;
+        _previousContent = null;
+        _contentPendingDisposal = null;
+
+        if (previousContent != null)
         {
-            _previousContent.ContentChanged -= TabItemContent_ContentChanged;
-            _previousContent = null;
+            previousContent.ContentChanged -= TabItemContent_ContentChanged;
+            if (!ReferenceEquals(previousContent, activeContent) && previousContent is IDisposable previousDisposable)
+                previousDisposable.Dispose();
         }
 
-        if (TabItemContent is IDisposable disposable)
+        if (pendingContent != null && !ReferenceEquals(pendingContent, activeContent))
+            pendingContent.Dispose();
+
+        if (activeContent is IDisposable disposable)
             disposable.Dispose();
 
         ContentFrame.BackStack.Clear();
         ContentFrame.ForwardStack.Clear();
         ContentFrame.Content = null;
         ContentFrame.CacheSize = 0;
+        _navigationParameter = null;
     }
 
     private void ResetFrameForWake()
