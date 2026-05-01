@@ -30,6 +30,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
 using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
 
@@ -39,6 +40,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 {
     private const int ShimmerCollapseDelayMs = 250;
     private const int ResizeDebounceDelayMs = 150;
+    private const int ScrollRestoreMaxAttempts = 12;
+    private const int ScrollRestoreRetryDelayMs = 16;
     private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
     private const double ShyHeaderPinThresholdPx = 24;
 
@@ -74,6 +77,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
     private bool _discographyRepeatersDetached;
+    private double? _pendingNavigationScrollOffset;
+    private string? _pendingNavigationScrollArtistId;
+    private int _scrollRestoreGeneration;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -958,6 +964,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (_trimmedForNavigationCache)
             return;
 
+        CaptureNavigationScrollPosition();
         _trimmedForNavigationCache = true;
         _isNavigatingAway = true;
         CancelResizeDebounce();
@@ -988,6 +995,64 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             RestoreDiscographyRepeaters();
             SetupWatchFeedVideo();
             TryShowContentNow();
+            TryRestorePendingNavigationScroll();
+        }
+    }
+
+    private void CaptureNavigationScrollPosition()
+    {
+        _pendingNavigationScrollArtistId = ViewModel.ArtistId;
+        _pendingNavigationScrollOffset = PageScrollView?.VerticalOffset ?? 0;
+        _scrollRestoreGeneration++;
+    }
+
+    private void ClearPendingNavigationScrollPosition()
+    {
+        _pendingNavigationScrollArtistId = null;
+        _pendingNavigationScrollOffset = null;
+        _scrollRestoreGeneration++;
+    }
+
+    private void TryRestorePendingNavigationScroll()
+    {
+        if (_pendingNavigationScrollOffset is not { } offset
+            || string.IsNullOrEmpty(_pendingNavigationScrollArtistId)
+            || !string.Equals(_pendingNavigationScrollArtistId, ViewModel.ArtistId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var generation = _scrollRestoreGeneration;
+        _ = RestorePendingNavigationScrollAsync(offset, generation);
+    }
+
+    private async Task RestorePendingNavigationScrollAsync(double offset, int generation)
+    {
+        if (offset <= 0 || PageScrollView is null)
+        {
+            ClearPendingNavigationScrollPosition();
+            return;
+        }
+
+        for (var attempt = 0; attempt < ScrollRestoreMaxAttempts; attempt++)
+        {
+            await Task.Yield();
+            if (attempt > 0)
+                await Task.Delay(ScrollRestoreRetryDelayMs);
+
+            if (_isDisposed || _isNavigatingAway || generation != _scrollRestoreGeneration || PageScrollView is null)
+                return;
+
+            var maxOffset = Math.Max(0, PageScrollView.ExtentHeight - PageScrollView.ViewportHeight);
+            if (maxOffset <= 0 && attempt + 1 < ScrollRestoreMaxAttempts)
+                continue;
+
+            var target = Math.Clamp(offset, 0, maxOffset);
+            PageScrollView.ScrollToImmediate(0, target);
+            UpdateHeroScrollFade();
+            _ = EvaluateShyHeaderAsync();
+            ClearPendingNavigationScrollPosition();
+            return;
         }
     }
 
@@ -1094,6 +1159,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             RestoreDiscographyRepeaters();
             SetupWatchFeedVideo();
             TryShowContentNow();
+            TryRestorePendingNavigationScroll();
             return;
         }
 
@@ -1103,6 +1169,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private void LoadNewContent(object? parameter)
     {
         _trimmedForNavigationCache = false;
+        ClearPendingNavigationScrollPosition();
         // Reset visual state for fresh load
         PageScrollView.ScrollTo(0, 0);
         ResetShyHeaderState();

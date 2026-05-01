@@ -320,7 +320,8 @@ public static class AppLifecycleHelper
                     new Wavee.Connect.ConnectCommandClient(
                         sp.GetRequiredService<Session>(),
                         sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("Wavee"),
-                        sp.GetService<ILogger<Wavee.Connect.ConnectCommandClient>>()))
+                        sp.GetService<ILogger<Wavee.Connect.ConnectCommandClient>>(),
+                        sp.GetService<Wavee.Connect.Diagnostics.IRemoteStateRecorder>()))
                 .AddSingleton<IPlaybackCommandExecutor>(sp =>
                     new ConnectCommandExecutor(
                         sp.GetRequiredService<Wavee.Connect.ConnectCommandClient>(),
@@ -507,6 +508,11 @@ public static class AppLifecycleHelper
                     return profiler;
                 })
                 .AddSingleton(inMemorySink)
+                .AddSingleton<Wavee.Connect.Diagnostics.IRemoteStateRecorder>(sp =>
+                    new Wavee.UI.WinUI.Services.RemoteStateRecorder(
+                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
+                .AddSingleton<Wavee.UI.WinUI.Services.RemoteStateRecorder>(sp =>
+                    (Wavee.UI.WinUI.Services.RemoteStateRecorder)sp.GetRequiredService<Wavee.Connect.Diagnostics.IRemoteStateRecorder>())
                 .AddSingleton<Wavee.Core.Http.IColorService>(sp =>
                     new Wavee.Core.Http.ExtractedColorService(
                         sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
@@ -548,7 +554,8 @@ public static class AppLifecycleHelper
                 .AddSingleton(sp => Session.Create(
                     sp.GetRequiredService<SessionConfig>(),
                     sp.GetRequiredService<System.Net.Http.IHttpClientFactory>(),
-                    sp.GetService<ILogger<Session>>()))
+                    sp.GetService<ILogger<Session>>(),
+                    sp.GetService<Wavee.Connect.Diagnostics.IRemoteStateRecorder>()))
                 .AddSingleton<ISession>(sp => sp.GetRequiredService<Session>())
                 .AddSingleton<Wavee.Core.Http.IExtendedMetadataClient>(sp =>
                     new Wavee.Core.Http.ExtendedMetadataClient(
@@ -586,7 +593,8 @@ public static class AppLifecycleHelper
                     new Wavee.Core.Playlists.PlaylistCacheService(
                         sp.GetRequiredService<ISession>(),
                         sp.GetRequiredService<IMetadataDatabase>(),
-                        sp.GetService<ILogger<Wavee.Core.Playlists.PlaylistCacheService>>()))
+                        sp.GetService<ILogger<Wavee.Core.Playlists.PlaylistCacheService>>(),
+                        sp.GetService<Wavee.Connect.Diagnostics.IRemoteStateRecorder>()))
                 .AddSingleton<IUserScopeGuard>(sp =>
                     new UserScopeGuard(
                         sp.GetRequiredService<IMetadataDatabase>(),
@@ -727,7 +735,13 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Services.IActiveVideoSurfaceService>(),
                         sp.GetService<Wavee.UI.Contracts.IPlaybackStateService>(),
                         sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
-                        sp.GetService<IPathfinderClient>(),
+                        // IPathfinderClient is exposed off ISession (not a top-level
+                        // DI service), same as every other VM that uses Pathfinder
+                        // (line 740 below for MiniVideoPlayer, plus the album/
+                        // artist/playlist VMs above). Pre-fix this pulled
+                        // GetService<IPathfinderClient>() which silently returned
+                        // null, leaving npv + recommender API calls unfired.
+                        sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
                         sp.GetService<IExtendedMetadataClient>(),
                         sp.GetService<ILogger<VideoPlayerPageViewModel>>()))
                 .AddSingleton<MiniVideoPlayerViewModel>(sp =>

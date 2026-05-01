@@ -14,106 +14,14 @@
     MinHeight="160"
     Visibility="Collapsed"
     PointerEntered="Root_PointerEntered"
-    PointerMoved="Root_PointerMoved"
     PointerExited="Root_PointerExited">
 
     <UserControl.Resources>
-        <ResourceDictionary>
-            <!-- Per-theme overlay brushes. Buttons sit on top of video
-                 frames, which can be any color, so we lean on the
-                 system-defined Control-On-Image brushes (WinUI's purpose-
-                 built tokens for controls on images/video). They carry
-                 sensible defaults plus we override per state below for the
-                 hover/pressed feedback the bare defaults skip.
-                 NOTE: property elements (ThemeDictionaries) MUST be the
-                 first or last child — XAML forbids splitting content with
-                 property elements. Keeping ThemeDictionaries first then
-                 the regular resources after. -->
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Default">
-                    <SolidColorBrush x:Key="MiniOverlayRest" Color="#66000000"/>
-                    <SolidColorBrush x:Key="MiniOverlayHover" Color="#99000000"/>
-                    <SolidColorBrush x:Key="MiniOverlayPressed" Color="#B3000000"/>
-                    <SolidColorBrush x:Key="MiniOverlayForeground" Color="White"/>
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Light">
-                    <!-- In Light theme overlays still target dark video, so
-                         keep the backdrop dark — the foreground stays white
-                         for readability. Same shape, same feel; the system
-                         theme is honoured for the surrounding chrome (the
-                         bottom title bar uses SubtleFillColorSecondaryBrush
-                         which IS theme-aware). -->
-                    <SolidColorBrush x:Key="MiniOverlayRest" Color="#66000000"/>
-                    <SolidColorBrush x:Key="MiniOverlayHover" Color="#99000000"/>
-                    <SolidColorBrush x:Key="MiniOverlayPressed" Color="#B3000000"/>
-                    <SolidColorBrush x:Key="MiniOverlayForeground" Color="White"/>
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="HighContrast">
-                    <SolidColorBrush x:Key="MiniOverlayRest" Color="{ThemeResource SystemColorButtonFaceColor}"/>
-                    <SolidColorBrush x:Key="MiniOverlayHover" Color="{ThemeResource SystemColorHighlightColor}"/>
-                    <SolidColorBrush x:Key="MiniOverlayPressed" Color="{ThemeResource SystemColorHighlightColor}"/>
-                    <SolidColorBrush x:Key="MiniOverlayForeground" Color="{ThemeResource SystemColorButtonTextColor}"/>
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
-
-            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-
-            <!-- Custom-templated round overlay button. The default Button
-                 template's hover/pressed brushes are tied to system control
-                 tokens that bleed through with the wrong contrast on video;
-                 a hand-rolled template lets us bind directly to the
-                 MiniOverlay* brushes above and keep visual states tight. -->
-            <Style x:Key="OverlayCircleButtonStyle" TargetType="Button">
-                <Setter Property="Background" Value="{ThemeResource MiniOverlayRest}"/>
-                <Setter Property="Foreground" Value="{ThemeResource MiniOverlayForeground}"/>
-                <Setter Property="BorderBrush" Value="Transparent"/>
-                <Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Padding" Value="0"/>
-                <Setter Property="VerticalAlignment" Value="Center"/>
-                <Setter Property="HorizontalAlignment" Value="Center"/>
-                <Setter Property="UseSystemFocusVisuals" Value="True"/>
-                <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                <Setter Property="VerticalContentAlignment" Value="Center"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Grid x:Name="RootGrid"
-                                  Background="{TemplateBinding Background}"
-                                  CornerRadius="{TemplateBinding CornerRadius}">
-                                <ContentPresenter
-                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                    Content="{TemplateBinding Content}"
-                                    ContentTemplate="{TemplateBinding ContentTemplate}"
-                                    Padding="{TemplateBinding Padding}"/>
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal"/>
-                                        <VisualState x:Name="PointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="RootGrid.Background"
-                                                        Value="{ThemeResource MiniOverlayHover}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Pressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="RootGrid.Background"
-                                                        Value="{ThemeResource MiniOverlayPressed}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Disabled">
-                                            <VisualState.Setters>
-                                                <Setter Target="RootGrid.Opacity" Value="0.5"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-        </ResourceDictionary>
+        <!-- OverlayCircleButtonStyle and its MiniOverlay* theme brushes were
+             promoted to Wavee.UI.WinUI/Styles/ButtonStyles.xaml so the full
+             VideoPlayerPage can reuse the same style. Locally we just declare
+             the converter we still need. -->
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </UserControl.Resources>
 
     <!-- Card frame: Acrylic surface so the bottom chrome reads as a

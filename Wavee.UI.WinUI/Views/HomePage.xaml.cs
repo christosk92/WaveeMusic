@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -49,10 +50,14 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private const double ShyHeaderHysteresisPx = 16;
     private const double ShyHeaderHeroFallbackPx = 140;
     private const int NavigationCacheTrimDelaySeconds = 45;
+    private const int ScrollRestoreMaxAttempts = 12;
+    private const int ScrollRestoreRetryDelayMs = 16;
     private CommunityToolkit.WinUI.TransitionHelper? _shyHeaderTransition;
     private bool _isShyHeaderPinned;
     private bool _isShyHeaderTransitionRunning;
     private bool _shyHeaderRecheckPending;
+    private bool _isRestoringScroll;
+    private int _scrollRestoreGeneration;
     // Captured max-height of the in-flow hero. HeroOverlayPanel IS the
     // TransitionHelper Source, so its ActualHeight collapses to 0 once pinned
     // (SourceToggleMethod=ByVisibility). Reading the live value would make
@@ -285,6 +290,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     {
         base.OnNavigatedFrom(e);
         _isNavigatedAway = true;
+        CancelScrollRestore();
 
         // Stop background feed work immediately, but delay tearing down the
         // visual tree. Quick page hops can then reuse the navigation-cached
@@ -344,6 +350,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             return;
 
         _trimmedForNavigationCache = false;
+        BeginScrollRestoreIfNeeded();
         AttachSectionsRepeater();
         ViewModel.ResumeFromNavigationCache();
         TryApplyPendingSleepState();
@@ -353,6 +360,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        CancelScrollRestore();
 
         if (_navigationTrimTimer is not null)
         {
@@ -470,6 +478,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private void ContentContainer_ViewChanged(ScrollView sender, object args)
     {
         UpdatePageBleedOpacity();
+        if (_isRestoringScroll)
+            return;
+
         _ = EvaluateShyHeaderAsync();
     }
 
@@ -491,6 +502,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private async Task EvaluateShyHeaderAsync()
     {
         if (HeroOverlayPanel == null || ContentContainer == null)
+            return;
+        if (_isRestoringScroll)
             return;
 
         if (_isShyHeaderTransitionRunning)
@@ -560,9 +573,121 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         var state = _pendingSleepState;
         _pendingSleepState = null;
 
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => ContentContainer.ScrollTo(0, state.VerticalOffset));
+        if (state.VerticalOffset <= 0)
+        {
+            EndScrollRestore(_scrollRestoreGeneration, reloadImages: true);
+            return;
+        }
+
+        BeginScrollRestore();
+        var generation = _scrollRestoreGeneration;
+        _ = RestoreScrollOffsetAsync(state.VerticalOffset, generation);
+    }
+
+    private void BeginScrollRestoreIfNeeded()
+    {
+        if (_pendingSleepState is { VerticalOffset: > 0 })
+            BeginScrollRestore();
+    }
+
+    private void BeginScrollRestore()
+    {
+        _scrollRestoreGeneration++;
+        _isRestoringScroll = true;
+        ContentCard.IsImageLoadingSuspended = true;
+        try { _shyHeaderTransition?.Stop(); } catch { }
+    }
+
+    private void CancelScrollRestore()
+    {
+        _scrollRestoreGeneration++;
+        _isRestoringScroll = false;
+        ContentCard.IsImageLoadingSuspended = false;
+    }
+
+    private async Task RestoreScrollOffsetAsync(double offset, int generation)
+    {
+        for (var attempt = 0; attempt < ScrollRestoreMaxAttempts; attempt++)
+        {
+            await Task.Yield();
+            if (attempt > 0)
+                await Task.Delay(ScrollRestoreRetryDelayMs);
+
+            if (_isDisposed || _isNavigatedAway || generation != _scrollRestoreGeneration || ContentContainer == null)
+                return;
+
+            var maxOffset = Math.Max(0, ContentContainer.ExtentHeight - ContentContainer.ViewportHeight);
+            if (maxOffset <= 0 && attempt + 1 < ScrollRestoreMaxAttempts)
+                continue;
+
+            var target = Math.Clamp(offset, 0, maxOffset);
+            ContentContainer.ScrollToImmediate(0, target);
+            await Task.Yield();
+            await Task.Delay(ScrollRestoreRetryDelayMs);
+            EndScrollRestore(generation, reloadImages: true);
+            return;
+        }
+
+        EndScrollRestore(generation, reloadImages: true);
+    }
+
+    private void EndScrollRestore(int generation, bool reloadImages)
+    {
+        if (generation != _scrollRestoreGeneration)
+            return;
+
+        _isRestoringScroll = false;
+        ContentCard.IsImageLoadingSuspended = false;
+        SnapShyHeaderToCurrentScroll();
+
+        if (reloadImages)
+            ReloadImagesInSubtree(ContentContainer);
+    }
+
+    private void SnapShyHeaderToCurrentScroll()
+    {
+        if (HeroOverlayPanel == null || ContentContainer == null)
+            return;
+
+        if (HeroOverlayPanel.ActualHeight > _heroMeasuredHeightPx)
+        {
+            _heroMeasuredHeightPx = HeroOverlayPanel.ActualHeight;
+            if (HeroSpacer != null)
+                HeroSpacer.MinHeight = _heroMeasuredHeightPx;
+        }
+
+        UpdatePageBleedOpacity();
+
+        double heroH = _heroMeasuredHeightPx > 0 ? _heroMeasuredHeightPx : ShyHeaderHeroFallbackPx;
+        double pinOffset = Math.Max(0, heroH - ShyHeaderHeroResidualPx);
+        var shouldPin = ContentContainer.VerticalOffset >= pinOffset;
+
+        if (shouldPin)
+        {
+            if (EnsureShyHeaderRealized())
+                _shyHeaderTransition?.Reset(toInitialState: false);
+        }
+        else
+        {
+            _shyHeaderTransition?.Reset(toInitialState: true);
+        }
+
+        _isShyHeaderPinned = shouldPin;
+        _isShyHeaderTransitionRunning = false;
+        _shyHeaderRecheckPending = false;
+    }
+
+    private static void ReloadImagesInSubtree(DependencyObject? root)
+    {
+        if (root is null)
+            return;
+
+        if (root is ContentCard card)
+            card.ReloadImageIfNeeded();
+
+        var childCount = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < childCount; i++)
+            ReloadImagesInSubtree(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i));
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──

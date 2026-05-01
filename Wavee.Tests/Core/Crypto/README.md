@@ -78,12 +78,13 @@ To ensure our C# implementations are correct, we:
    rustup default stable-x86_64-pc-windows-msvc
    ```
 
-2. **librespot source code** (already included in this repo at `librespot/`)
+2. **librespot source code** — clone from https://github.com/librespot-org/librespot (it is **not** vendored in this repo). The vector-generation `cargo` examples below are scripts you'd add to your local librespot checkout, modeled on librespot's `audio/src/decrypt.rs` and `core/src/connection/codec.rs` (the Shannon cipher path).
 
 ### Generate Audio Decrypt Vectors
 
+From your librespot checkout's `audio/` crate:
+
 ```bash
-cd C:\Users\ckara\Personal\Wavee\librespot\audio
 cargo run --example generate_test_vectors
 ```
 
@@ -94,8 +95,9 @@ cargo run --example generate_test_vectors
 
 ### Generate Shannon Cipher Vectors
 
+From your librespot checkout's `core/` crate:
+
 ```bash
-cd C:\Users\ckara\Personal\Wavee\librespot\core
 cargo run --example generate_shannon_vectors
 ```
 
@@ -110,8 +112,7 @@ cargo run --example generate_shannon_vectors
 
 ### All Crypto Tests
 ```bash
-cd C:\Users\ckara\Personal\Wavee\Wavee
-dotnet test Wavee.Tests/Wavee.Tests.csproj --filter "Namespace~Wavee.Tests.Core.Crypto"
+dotnet test Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~Wavee.Tests.Core.Crypto"
 ```
 
 ### AudioDecryptStream Only

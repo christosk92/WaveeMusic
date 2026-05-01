@@ -573,9 +573,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             if (message.AlbumId != null) CurrentAlbumId = message.AlbumId;
             if (message.Artists != null) CurrentArtists = message.Artists;
 
-            // Re-extract color if album art was enriched.
+            // Re-extract color if album art was enriched. For music-video
+            // playback, keep UI chrome themed from the original audio track
+            // artwork instead of the video-track thumbnail.
             if (message.AlbumArt != null)
-                _ = ExtractAlbumColorAsync(message.AlbumArt);
+            {
+                var colorImageUrl = GetCurrentColorImageUrl(message.AlbumArt);
+                if (!string.IsNullOrEmpty(colorImageUrl))
+                    _ = ExtractAlbumColorAsync(colorImageUrl);
+            }
         });
     }
 
@@ -626,7 +632,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         // actual extraction on a ThreadPool worker after the dispatcher tick
         // ends, so the colour service's sync ramp doesn't count against
         // [PlaybackStateFlush] (measured 169ms on first render).
-        var imageUrl = connectState.Track?.ImageUrl;
+        var imageUrl = GetColorImageUrlForState(
+            connectState.Track?.ImageUrl,
+            metadata,
+            CurrentTrackIsVideo);
         if (!string.IsNullOrEmpty(imageUrl))
         {
             _pendingColorImageUrl = imageUrl;
@@ -637,6 +646,46 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _pendingColorImageUrl = null;
             _pendingColorClear = true;
         }
+    }
+
+    private string? GetCurrentColorImageUrl(string? fallback)
+    {
+        if (!CurrentTrackIsVideo)
+            return fallback;
+
+        return FirstNonWhiteSpace(
+            CurrentOriginalAlbumArtLarge,
+            CurrentOriginalAlbumArt,
+            fallback);
+    }
+
+    private static string? GetColorImageUrlForState(
+        string? currentImageUrl,
+        IReadOnlyDictionary<string, string>? metadata,
+        bool currentTrackIsVideo)
+    {
+        if (!currentTrackIsVideo || metadata is null)
+            return currentImageUrl;
+
+        return FirstNonWhiteSpace(
+            TryGetMetadataValue(metadata, "wavee.original_image_url"),
+            TryGetMetadataValue(metadata, "wavee.original_image_large_url"),
+            TryGetMetadataValue(metadata, "wavee.original_image_xlarge_url"),
+            currentImageUrl);
+    }
+
+    private static string? TryGetMetadataValue(IReadOnlyDictionary<string, string> metadata, string key)
+        => metadata.TryGetValue(key, out var value) ? value : null;
+
+    private static string? FirstNonWhiteSpace(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
     }
 
     private void ApplyOriginalTrackMetadata(

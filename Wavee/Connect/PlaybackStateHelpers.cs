@@ -993,17 +993,33 @@ public static class PlaybackStateHelpers
             changes |= StateChanges.Track;
 
         // SMART POSITION DETECTION (librespot pattern)
-        // Calculate "nominal start time" (when playback started) to detect seeks vs natural progression
-        // During normal playback, nominal start time stays constant even as position advances
-        // A seek causes nominal start time to change significantly
-        var prevNominalStart = previous.Timestamp - previous.PositionMs;
-        var currNominalStart = current.Timestamp - current.PositionMs;
-        var nominalDelta = Math.Abs(currNominalStart - prevNominalStart);
-
-        // Only detect position change if nominal start time changed significantly
-        // This filters out natural playback progression (which keeps nominal start constant)
-        if (nominalDelta > PositionChangeThresholdMs)
-            changes |= StateChanges.Position;
+        // Calculate "nominal start time" (when playback started) to detect seeks vs natural progression.
+        // During normal playback, nominal start time stays constant even as position advances —
+        // a real seek causes it to jump. BUT this only holds while playing: when paused/stopped,
+        // the engine still emits ticks with fresh timestamps but position stays frozen, so the
+        // nominal start drifts linearly with timestamp and the heuristic falsely flags a Position
+        // change every <threshold> ms — which would spam PutState every ~2 seconds while paused.
+        //
+        // Fix: gate the nominal-start check to actually-playing states. When paused/stopped/buffering,
+        // a Position change is only real if the position itself moved (i.e. the user seeked).
+        var currentlyPlaying = current.Status == PlaybackStatus.Playing;
+        if (currentlyPlaying)
+        {
+            var prevNominalStart = previous.Timestamp - previous.PositionMs;
+            var currNominalStart = current.Timestamp - current.PositionMs;
+            var nominalDelta = Math.Abs(currNominalStart - prevNominalStart);
+            if (nominalDelta > PositionChangeThresholdMs)
+                changes |= StateChanges.Position;
+        }
+        else
+        {
+            // Paused/stopped/buffering — only a real seek (position actually differs)
+            // flips the Position bit. Status changes are handled below and suppress
+            // Position regardless, so transitions like Playing → Paused don't cause
+            // a phantom Position notification here.
+            if (Math.Abs(current.PositionMs - previous.PositionMs) > PositionChangeThresholdMs)
+                changes |= StateChanges.Position;
+        }
 
         // Status changed
         if (previous.Status != current.Status)

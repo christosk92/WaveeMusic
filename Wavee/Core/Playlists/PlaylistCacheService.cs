@@ -4,6 +4,7 @@ using System.Reactive.Subjects;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
+using Wavee.Connect.Diagnostics;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
@@ -40,6 +41,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
     private readonly ISession _session;
     private readonly IMetadataDatabase _database;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
     private readonly HotCache<CachedPlaylist> _hotCache;
     private readonly Subject<PlaylistChangeEvent> _changes = new();
     // Lazy-wrapped so GetOrAdd+factory can be invoked twice under contention
@@ -91,11 +93,13 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
     public PlaylistCacheService(
         ISession session,
         IMetadataDatabase database,
-        ILogger<PlaylistCacheService>? logger = null)
+        ILogger<PlaylistCacheService>? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _session = session;
         _database = database;
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
         _hotCache = new HotCache<CachedPlaylist>(64);
 
         _ = WarmupAsync();
@@ -1332,7 +1336,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             if (_session is not Wavee.Core.Session.Session concreteSession || concreteSession.Dealer == null)
                 return;
 
-            _libraryChangeManager = new LibraryChangeManager(concreteSession.Dealer, _logger);
+            _libraryChangeManager = new LibraryChangeManager(concreteSession.Dealer, _logger, _remoteStateRecorder);
 
             // Direct-apply path: when a Mercury push carries the full diff
             // payload (FromRevision + Ops), apply it locally with zero network

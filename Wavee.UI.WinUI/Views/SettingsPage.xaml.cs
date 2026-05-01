@@ -7,6 +7,7 @@ using Wavee.UI.WinUI.Controls.Settings;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -26,6 +27,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
     private AudioSettingsSection? _audioSection;
     private StorageNetworkSettingsSection? _storageSection;
     private DiagnosticsSettingsSection? _diagnosticsSection;
+    private ConnectStateSection? _connectSection;
     private AboutSettingsSection? _aboutSection;
     private string? _activeSectionTag;
     private int _deferredShowSectionAttempts;
@@ -55,6 +57,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
         ViewModel.StopAudioDiagnostics();
         _diagnosticsSection?.Dispose();
+        _connectSection?.Dispose();
         ViewModel.Dispose();
     }
 
@@ -89,6 +92,8 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
             "audio" => _audioSection ??= new AudioSettingsSection(ViewModel),
             "storage" => _storageSection ??= new StorageNetworkSettingsSection(ViewModel),
             "diagnostics" => _diagnosticsSection ??= new DiagnosticsSettingsSection(ViewModel),
+            "connect" => _connectSection ??= new ConnectStateSection(
+                new ConnectStateViewModel(Ioc.Default.GetRequiredService<RemoteStateRecorder>())),
             "about" => _aboutSection ??= new AboutSettingsSection(ViewModel),
             _ => _generalSection ??= new GeneralSettingsSection(ViewModel)
         };

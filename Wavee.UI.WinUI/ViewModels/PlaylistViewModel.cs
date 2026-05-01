@@ -48,6 +48,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private readonly IPlaylistCacheService? _playlistCache;
     private readonly Services.PlaylistMosaicService? _mosaicService;
     private readonly Services.IUserProfileResolver? _userProfileResolver;
+    private readonly Services.IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
 
@@ -436,7 +437,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         Services.PlaylistMosaicService? mosaicService = null,
         Services.IUserProfileResolver? userProfileResolver = null,
         ISession? session = null,
-        IPlaylistCacheService? playlistCache = null)
+        IPlaylistCacheService? playlistCache = null,
+        Services.IMusicVideoMetadataService? musicVideoMetadata = null)
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
@@ -445,6 +447,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _playlistCache = playlistCache;
         _mosaicService = mosaicService;
         _userProfileResolver = userProfileResolver;
+        _musicVideoMetadata = musicVideoMetadata;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -1574,6 +1577,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 if (isWarmHit && TracksAreEquivalent(_allTracks, tracks))
                 {
                     ApplyVideoAvailabilityToCurrentTracks(tracks);
+                    TryTriggerVideoAvailabilityFetch(playlistId, ct);
                     _tracksLoadedFor = playlistId;
                     IsLoadingTracks = false;
                     ClearPendingSignalChip();
@@ -1589,6 +1593,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 NotifyVideoFilterProperties();
                 UpdateAggregates();
                 ApplyFilterAndSortIntoExistingLoadingRows();
+                TryTriggerVideoAvailabilityFetch(playlistId, ct);
                 _tracksLoadedFor = playlistId;
                 IsLoadingTracks = false;
                 ClearPendingSignalChip();
@@ -1713,6 +1718,66 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         NotifyVideoFilterProperties();
         if (ShowOnlyVideoTracks)
             ApplyFilterAndSort();
+    }
+
+    private void TryTriggerVideoAvailabilityFetch(string playlistId, CancellationToken cancellationToken)
+    {
+        if (_musicVideoMetadata is null || _allTracks.Count == 0)
+            return;
+
+        var tracksByUri = _allTracks
+            .Where(track => !string.IsNullOrWhiteSpace(track.Uri))
+            .GroupBy(track => track.Uri, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        if (tracksByUri.Count == 0)
+            return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var availability = await _musicVideoMetadata
+                    .EnsureAvailabilityAsync(tracksByUri.Keys, cancellationToken)
+                    .ConfigureAwait(false);
+
+                _dispatcherQueue.TryEnqueue(() =>
+                {
+                    if (_disposed || PlaylistId != playlistId)
+                        return;
+
+                    var changed = false;
+                    foreach (var entry in availability)
+                    {
+                        if (!tracksByUri.TryGetValue(entry.Key, out var tracks))
+                            continue;
+
+                        foreach (var track in tracks)
+                        {
+                            if (track.HasVideo == entry.Value)
+                                continue;
+
+                            track.HasVideo = entry.Value;
+                            changed = true;
+                        }
+                    }
+
+                    if (!changed)
+                        return;
+
+                    NotifyVideoFilterProperties();
+                    if (ShowOnlyVideoTracks)
+                        ApplyFilterAndSort();
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                // Playlist navigation superseded this enrichment pass.
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Music-video availability enrichment failed for playlist {PlaylistId}", playlistId);
+            }
+        }, CancellationToken.None);
     }
 
     private async Task LoadRootlistAsync()

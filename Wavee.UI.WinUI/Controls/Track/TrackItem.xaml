@@ -15,20 +15,14 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <Style x:Key="VideoAvailabilityBadgeStyle" TargetType="Border">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Width" Value="18"/>
-            <Setter Property="Height" Value="16"/>
-            <Setter Property="Opacity" Value="0.62"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-
+        <!-- Inline metadata glyphs: a flat camera icon, no Border/box. The previous
+             box-frame look made the badge feel like a clickable button on rows
+             without album art (album page); a standalone glyph reads as metadata. -->
         <Style x:Key="VideoAvailabilityBadgeIconStyle" TargetType="FontIcon">
             <Setter Property="Glyph" Value="&#xE714;"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="Opacity" Value="0.7"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
@@ -41,7 +35,7 @@
             <Setter Property="MinWidth" Value="13"/>
             <Setter Property="Height" Value="13"/>
             <Setter Property="Padding" Value="2,0"/>
-            <Setter Property="Opacity" Value="0.72"/>
+            <Setter Property="Opacity" Value="0.6"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
@@ -141,12 +135,10 @@
                             ToolTipService.ToolTip="Explicit">
                         <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
                     </Border>
-                    <Border x:Name="CompactVideoBadge"
-                            Style="{StaticResource VideoAvailabilityBadgeStyle}"
-                            Visibility="Collapsed"
-                            ToolTipService.ToolTip="Music video available">
-                        <FontIcon Style="{StaticResource VideoAvailabilityBadgeIconStyle}"/>
-                    </Border>
+                    <FontIcon x:Name="CompactVideoBadge"
+                              Style="{StaticResource VideoAvailabilityBadgeIconStyle}"
+                              Visibility="Collapsed"
+                              ToolTipService.ToolTip="Music video available"/>
                     <TextBlock x:Name="CompactVideoSeparator"
                                Text="&#x00B7;"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -283,6 +275,19 @@
                                         Orientation="Horizontal"
                                         Spacing="5"
                                         VerticalAlignment="Center">
+                                <!-- Inline badge slots: used when the artist subline
+                                     is hidden (album page) so badges sit beside the
+                                     title instead of floating on an empty subline. -->
+                                <Border x:Name="RowExplicitInline"
+                                        Style="{StaticResource ExplicitContentBadgeStyle}"
+                                        Visibility="Collapsed"
+                                        ToolTipService.ToolTip="Explicit">
+                                    <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
+                                </Border>
+                                <FontIcon x:Name="RowVideoBadgeInline"
+                                          Style="{StaticResource VideoAvailabilityBadgeIconStyle}"
+                                          Visibility="Collapsed"
+                                          ToolTipService.ToolTip="Music video available"/>
                                 <FontIcon x:Name="RowLocalBadge" Visibility="Collapsed"
                                           Glyph="&#xE8B7;" FontSize="12"
                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
@@ -299,12 +304,10 @@
                                     ToolTipService.ToolTip="Explicit">
                                 <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
                             </Border>
-                            <Border x:Name="RowVideoBadge"
-                                    Style="{StaticResource VideoAvailabilityBadgeStyle}"
-                                    Visibility="Collapsed"
-                                    ToolTipService.ToolTip="Music video available">
-                                <FontIcon Style="{StaticResource VideoAvailabilityBadgeIconStyle}"/>
-                            </Border>
+                            <FontIcon x:Name="RowVideoBadge"
+                                      Style="{StaticResource VideoAvailabilityBadgeIconStyle}"
+                                      Visibility="Collapsed"
+                                      ToolTipService.ToolTip="Music video available"/>
                             <TextBlock x:Name="RowVideoSeparator"
                                        Text="&#x00B7;"
                                        Style="{StaticResource CaptionTextBlockStyle}"

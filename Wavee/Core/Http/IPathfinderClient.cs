@@ -147,4 +147,24 @@ public interface IPathfinderClient
         string artistUri, string trackUri,
         int contributorsLimit = 10, int contributorsOffset = 0,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches Spotify's "watch next" track recommendations for a given track URI.
+    /// Backed by the <c>internalLinkRecommenderTrack</c> persisted query — same
+    /// data that drives the SEO-related-tracks list on share pages and the
+    /// desktop player's "Recommended" sidebar. Used to populate the YouTube-
+    /// style up-next list on the Now Playing video page.
+    /// </summary>
+    Task<SeoRecommendedTracksResponse> GetSeoRecommendedTracksAsync(
+        string trackUri, int limit = 20, CancellationToken ct = default);
+
+    /// <summary>
+    /// Full track payload — playcount, duration, content rating, album, and
+    /// the first artist's discography. Backed by the <c>getTrack</c> persisted
+    /// query. Used by the Now Playing video page hero to surface
+    /// "X plays" next to the track title (Track protobuf and npvArtist
+    /// don't carry playcount, so this query is required for that field).
+    /// </summary>
+    Task<GetTrackResponse> GetTrackAsync(
+        string trackUri, CancellationToken ct = default);
 }

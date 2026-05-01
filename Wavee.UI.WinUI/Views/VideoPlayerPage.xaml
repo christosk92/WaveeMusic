@@ -7,7 +7,13 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
+    xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
+    xmlns:shimmer="using:CommunityToolkit.WinUI.Controls"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     NavigationCacheMode="Disabled"
@@ -22,17 +28,8 @@
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
         <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter"/>
 
-        <ui:AttachedCardShadow x:Key="VideoCardShadow"
-                               BlurRadius="30"
-                               Offset="0,12"
-                               Opacity="0.24"
-                               Color="Black"
-                               CornerRadius="8"
-                               InnerContentClipMode="CompositionMaskBrush"/>
-
-        <!-- Card row used in the "Up next" panel. Subtle hover/press, full
-             stretch, rounded corners — matches WinUI list-item affordance. -->
-        <Style x:Key="UpNextRowStyle" TargetType="Button">
+        <!-- Up next row: subtle hover/press, full stretch, rounded corners. -->
+        <Style x:Key="WatchNextRowStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -40,748 +37,1326 @@
             <Setter Property="Padding" Value="8"/>
             <Setter Property="CornerRadius" Value="8"/>
         </Style>
-
-        <!-- 40×40 circular icon-only action button. Same shape and tokens as
-             the playlist/album action rows (PlaylistPage.xaml:244-265,
-             AlbumPage.xaml). Keeping a single shared visual language across
-             pages — no bespoke pill style for this view. -->
-        <Style x:Key="ActionIconButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="40"/>
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="CornerRadius" Value="20"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-        </Style>
     </Page.Resources>
 
-    <!-- Two-column layout. Left ~65% gets the video + metadata + actions.
-         Right column is a fixed 360 wide "Up next" panel that collapses on
-         narrow viewports (handled by code-behind toggling Visibility). -->
+    <!-- Cinematic page layout. The backdrop layers paint the album-art
+         palette gradient at full intensity across the top of the page;
+         beneath, a content grid hosts the video on the left and an "Up
+         next" panel on the right. The same code-behind responsiveness logic
+         (collapse Up Next < 920 px, theatre mode) is preserved by keeping
+         the x:Name="UpNextColumn" handle the .xaml.cs uses. -->
     <Grid>
-        <Border IsHitTestVisible="False"
-                Background="{x:Bind ViewModel.PaletteBackdropBrush, Mode=OneWay}"/>
+
+        <!-- Layer 1: top palette gradient. Bound to PaletteHeroGradientBrush
+             which the VM rebuilds on every track change AND every theme
+             change (post the _isDarkTheme cache fix). The gradient stops
+             already include their own alpha falloff so the gradient self-
+             fades into the page background by ~600 px. -->
+        <Border VerticalAlignment="Top"
+                Height="600"
+                IsHitTestVisible="False"
+                Background="{x:Bind ViewModel.PaletteHeroGradientBrush, Mode=OneWay}"/>
+
+        <!-- Layer 2: subtle radial vignette to add depth at the top-left
+             corner. Uses a theme-aware Layer fill (not a hard-coded color)
+             at low opacity so it only nudges the surface, never competes
+             with content. -->
+        <Border VerticalAlignment="Top"
+                Height="600"
+                IsHitTestVisible="False"
+                Opacity="0.18">
+            <Border.Background>
+                <RadialGradientBrush Center="0.0,0.0" GradientOrigin="0.0,0.0" RadiusX="0.9" RadiusY="0.9">
+                    <GradientStop Color="{ThemeResource SystemAccentColorLight2}" Offset="0"/>
+                    <GradientStop Color="Transparent" Offset="1"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
 
         <Grid x:Name="RootGrid"
               RowSpacing="0"
-              ColumnSpacing="24"
-              Padding="40,32,40,40"
+              ColumnSpacing="28"
+              Padding="40,32,40,0"
               MaxWidth="1440"
               HorizontalAlignment="Stretch">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition x:Name="UpNextColumn" Width="360"/>
-        </Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="UpNextColumn" Width="360"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- LEFT: video + metadata stack -->
-        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="14">
+            <!-- LEFT: video + hero metadata stack. Migrated to the WinUI 3
+                 ScrollView (the new control — ScrollViewer is the legacy one).
+                 Bottom padding inside the scrollable content keeps the
+                 description card from scrolling under the persistent bottom
+                 PlayerBar overlay. -->
+            <ScrollView Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="20" Padding="0,0,0,120">
 
-                <!-- Video host. 16:9 aspect via the wrapping AspectRatio binding;
-                     MediaPlayerElement is constructed in code-behind so the
-                     surface lifecycle is centrally arbitrated by
-                     IActiveVideoSurfaceService. The ControlsOverlay sits as
-                     a sibling on top of VideoHost, anchored to the bottom
-                     edge — YouTube-style transport on the video frame. -->
-                <Border x:Name="VideoFrame"
-                        CornerRadius="8"
-                        Background="Black"
-                        Loaded="VideoFrame_Loaded"
-                        SizeChanged="VideoFrame_SizeChanged">
-                    <winUi:Effects.Shadow>
-                        <ui:AttachedCardShadow BlurRadius="30"
-                                               Offset="0,12"
-                                               Opacity="0.24"
-                                               Color="Black"
-                                               CornerRadius="8"
-                                               InnerContentClipMode="CompositionMaskBrush"/>
-                    </winUi:Effects.Shadow>
-                    <Grid PointerMoved="VideoFrame_PointerMoved"
-                          PointerExited="VideoFrame_PointerExited">
-                        <Grid x:Name="VideoHost"
-                              MinHeight="240"
-                              Canvas.ZIndex="0"/>
+                    <!-- Hero frame host. Two mutually-exclusive presentations:
+                         - VideoFrame (16:9) when the engine is rendering a
+                           music video (CurrentTrackIsVideo == true).
+                         - AudioFrame (square album art + optional lyrics
+                           overlay) when the engine is rendering audio.
+                         Wrapping in a Grid lets both share the column slot
+                         and the same drop-shadow positioning. -->
+                    <Grid>
+                    <Border x:Name="VideoFrame"
+                            CornerRadius="12"
+                            Background="Black"
+                            Loaded="VideoFrame_Loaded"
+                            SizeChanged="VideoFrame_SizeChanged"
+                            Visibility="{x:Bind ViewModel.IsAudioMode, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <winUi:Effects.Shadow>
+                            <ui:AttachedCardShadow x:Name="VideoFrameShadow"
+                                                   BlurRadius="44"
+                                                   Offset="0,18"
+                                                   Opacity="0.32"
+                                                   Color="Black"
+                                                   CornerRadius="12"
+                                                   InnerContentClipMode="CompositionMaskBrush"/>
+                        </winUi:Effects.Shadow>
+                        <Grid PointerExited="VideoFrame_PointerExited">
+                            <Grid x:Name="VideoHost"
+                                  MinHeight="320"
+                                  Canvas.ZIndex="0"/>
 
-                        <Grid x:Name="VideoLoadingOverlay"
-                              Canvas.ZIndex="4"
-                              Background="#99000000"
-                              IsHitTestVisible="False"
-                              Visibility="Collapsed">
-                            <Grid.OpacityTransition>
-                                <ScalarTransition Duration="0:0:0.18"/>
-                            </Grid.OpacityTransition>
-                            <StackPanel
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Spacing="10">
-                                <ProgressRing
+                            <!-- Subtle top inner highlight — classic WinUI
+                                 glass-surface tell. ControlElevationBorder
+                                 is theme-aware but reads white-ish on the
+                                 black video frame, which is the desired
+                                 effect in both themes. -->
+                            <Border IsHitTestVisible="False"
+                                    BorderThickness="1,1,1,0"
+                                    BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                                    CornerRadius="12,12,0,0"
+                                    VerticalAlignment="Stretch"
+                                    Canvas.ZIndex="1"/>
+
+                            <Grid x:Name="VideoLoadingOverlay"
+                                  Canvas.ZIndex="4"
+                                  Background="#99000000"
+                                  IsHitTestVisible="False"
+                                  Visibility="Collapsed">
+                                <Grid.OpacityTransition>
+                                    <ScalarTransition Duration="0:0:0.18"/>
+                                </Grid.OpacityTransition>
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="10">
+                                    <ProgressRing
+                                        Width="34"
+                                        Height="34"
+                                        IsActive="True"
+                                        Foreground="White"/>
+                                    <TextBlock
+                                        x:Name="VideoLoadingText"
+                                        Text="Loading video..."
+                                        FontSize="13"
+                                        FontWeight="SemiBold"
+                                        Foreground="White"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid x:Name="VideoTakeoverOverlay"
+                                  Canvas.ZIndex="2"
+                                  Background="Black"
+                                  Visibility="Collapsed">
+                                <Button
                                     Width="34"
                                     Height="34"
-                                    IsActive="True"
-                                    Foreground="White"/>
-                                <TextBlock
-                                    x:Name="VideoLoadingText"
-                                    Text="Loading video..."
-                                    FontSize="13"
-                                    FontWeight="SemiBold"
-                                    Foreground="White"/>
-                            </StackPanel>
-                        </Grid>
-
-                        <Grid x:Name="VideoTakeoverOverlay"
-                              Canvas.ZIndex="2"
-                              Background="Black"
-                              Visibility="Collapsed">
-                            <Button
-                                Width="34"
-                                Height="34"
-                                Padding="0"
-                                CornerRadius="17"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Top"
-                                Margin="14"
-                                Click="VideoTakeoverDismissButton_Click"
-                                ToolTipService.ToolTip="Dismiss">
-                                <FontIcon Glyph="&#xE711;" FontSize="12"/>
-                            </Button>
-                            <StackPanel
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Spacing="14"
-                                MaxWidth="360">
-                                <FontIcon
-                                    Glyph="&#xE8A7;"
-                                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                    FontSize="36"
-                                    Opacity="0.7"
-                                    Foreground="White"/>
-                                <TextBlock
-                                    Text="Playing in another window"
-                                    FontSize="18"
-                                    FontWeight="SemiBold"
-                                    Foreground="White"
-                                    TextAlignment="Center"
-                                    HorizontalAlignment="Center"/>
-                                <TextBlock
-                                    Text="Only one video surface can render at a time."
-                                    FontSize="13"
-                                    Opacity="0.74"
-                                    Foreground="White"
-                                    TextAlignment="Center"
-                                    TextWrapping="Wrap"/>
-                                <Button
-                                    Padding="16,8"
-                                    CornerRadius="18"
-                                    Click="VideoTakeoverButton_Click"
-                                    ToolTipService.ToolTip="Move video playback to this page">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon Glyph="&#xE768;" FontSize="13"/>
-                                        <TextBlock Text="Play here instead"/>
-                                    </StackPanel>
+                                    Padding="0"
+                                    CornerRadius="17"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    Margin="14"
+                                    Click="VideoTakeoverDismissButton_Click"
+                                    ToolTipService.ToolTip="Dismiss">
+                                    <FontIcon Glyph="&#xE711;" FontSize="12"/>
                                 </Button>
-                            </StackPanel>
-                        </Grid>
-
-                        <!-- Transport overlay. Visibility is driven by code-
-                             behind: shows on pointer move + when paused, fades
-                             on a 3-second inactivity timer while playing.
-                             Background gradient fades the controls into the
-                             video frame so the controls are legible without
-                             obscuring content above. -->
-                        <Grid x:Name="ControlsOverlay"
-                              Canvas.ZIndex="3"
-                              VerticalAlignment="Bottom"
-                              Padding="14,12,14,10"
-                              RowSpacing="2"
-                              IsHitTestVisible="True"
-                              PointerEntered="ControlsOverlay_PointerEntered"
-                              PointerExited="ControlsOverlay_PointerExited">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Grid.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#00000000" Offset="0"/>
-                                    <GradientStop Color="#CC000000" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Grid.Background>
-
-                            <!-- Scrub bar. Same CompositionProgressBar the
-                                 PlayerBar uses, wired through the singleton
-                                 PlayerBarViewModel so seeks here drive the
-                                 same StartSeeking / CommitSeekFromBar path
-                                 used everywhere else. -->
-                            <playback:CompositionProgressBar
-                                Grid.Row="0"
-                                x:Name="VideoScrubBar"
-                                VerticalAlignment="Center"
-                                PositionMs="{x:Bind ViewModel.Player.AnchorPositionMs, Mode=OneWay}"
-                                DurationMs="{x:Bind ViewModel.Player.Duration, Mode=OneWay}"
-                                IsPlaying="{x:Bind ViewModel.Player.IsPlaying, Mode=OneWay}"
-                                IsBuffering="{x:Bind ViewModel.Player.IsBuffering, Mode=OneWay}"
-                                SeekStarted="VideoScrubBar_SeekStarted"
-                                SeekCommitted="VideoScrubBar_SeekCommitted"/>
-
-                            <!-- Controls row -->
-                            <Grid Grid.Row="1" Margin="0,4,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <!-- Left cluster: prev / play-pause / next / mute / time -->
-                                <StackPanel Grid.Column="0"
-                                            Orientation="Horizontal"
-                                            Spacing="2"
-                                            VerticalAlignment="Center">
-                                    <Button Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Command="{x:Bind ViewModel.Player.PreviousCommand}"
-                                            ToolTipService.ToolTip="Previous">
-                                        <FontIcon Glyph="&#xF8AC;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="14"
-                                                  Foreground="White"/>
-                                    </Button>
-                                    <Button Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Command="{x:Bind ViewModel.Player.PlayPauseCommand}"
-                                            ToolTipService.ToolTip="Play/Pause">
-                                        <playback:PlaybackActionContent
-                                            IconSize="18"
-                                            SpinnerSize="22"
-                                            IsPlaying="{x:Bind ViewModel.Player.IsPlaying, Mode=OneWay}"
-                                            IsPending="{x:Bind ViewModel.Player.IsBuffering, Mode=OneWay}"
-                                            ActionForeground="White"/>
-                                    </Button>
-                                    <Button Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Command="{x:Bind ViewModel.Player.NextCommand}"
-                                            ToolTipService.ToolTip="Next">
-                                        <FontIcon Glyph="&#xF8AD;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="14"
-                                                  Foreground="White"/>
-                                    </Button>
-                                    <Button Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Command="{x:Bind ViewModel.Player.ToggleMuteCommand}"
-                                            ToolTipService.ToolTip="Mute">
-                                        <!-- Static volume glyph; TODO swap on
-                                             IsMuted with a mute-X glyph once
-                                             we add a tiny converter for it.
-                                             For now the tooltip + button
-                                             toggle is enough signal. -->
-                                        <FontIcon Glyph="&#xE767;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="14"
-                                                  Foreground="White"/>
-                                    </Button>
-                                    <TextBlock VerticalAlignment="Center"
-                                               Margin="6,0,0,0"
-                                               FontSize="12"
-                                               Foreground="White">
-                                        <Run Text="{x:Bind ViewModel.Player.PositionText, Mode=OneWay}"/>
-                                        <Run Text=" / "/>
-                                        <Run Text="{x:Bind ViewModel.Player.DurationText, Mode=OneWay}"/>
-                                    </TextBlock>
-                                </StackPanel>
-
-                                <!-- Right cluster: theatre mode + fullscreen -->
-                                <StackPanel Grid.Column="2"
-                                            Orientation="Horizontal"
-                                            Spacing="2"
-                                            VerticalAlignment="Center">
-                                    <Button x:Name="VideoQualityButton"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Click="VideoQualityButton_Click"
-                                            Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                            ToolTipService.ToolTip="Quality and stream details">
-                                        <FontIcon Glyph="&#xE713;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="14"
-                                                  Foreground="White"/>
-                                    </Button>
-                                    <Button Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Command="{x:Bind ViewModel.Player.SwitchToAudioCommand}"
-                                            IsEnabled="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                            Visibility="{x:Bind ViewModel.Player.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                            ToolTipService.ToolTip="Listen as audio">
-                                        <Grid Width="16" Height="16">
-                                            <FontIcon Glyph="&#xE8D6;"
-                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                      FontSize="14"
-                                                      Foreground="White"
-                                                      Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                            <ProgressRing Width="16"
-                                                          Height="16"
-                                                          Foreground="White"
-                                                          IsActive="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay}"
-                                                          Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                        </Grid>
-                                    </Button>
-                                    <Button x:Name="TheatreModeButton"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Click="TheatreModeButton_Click"
-                                            ToolTipService.ToolTip="Theatre mode">
-                                        <FontIcon Glyph="&#xE961;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="14"
-                                                  Foreground="White"/>
-                                    </Button>
-                                    <Button Background="Transparent"
-                                            BorderThickness="0"
-                                            Padding="8"
-                                            Foreground="White"
-                                            Click="FullscreenButton_Click"
-                                            ToolTipService.ToolTip="Fullscreen">
-                                        <FontIcon Glyph="&#xE740;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="14"
-                                                  Foreground="White"/>
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="14"
+                                    MaxWidth="360">
+                                    <FontIcon
+                                        Glyph="&#xE8A7;"
+                                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                        FontSize="36"
+                                        Opacity="0.7"
+                                        Foreground="White"/>
+                                    <TextBlock
+                                        Text="Playing in another window"
+                                        FontSize="18"
+                                        FontWeight="SemiBold"
+                                        Foreground="White"
+                                        TextAlignment="Center"
+                                        HorizontalAlignment="Center"/>
+                                    <TextBlock
+                                        Text="Only one video surface can render at a time."
+                                        FontSize="13"
+                                        Opacity="0.74"
+                                        Foreground="White"
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap"/>
+                                    <Button
+                                        Padding="16,8"
+                                        CornerRadius="18"
+                                        Click="VideoTakeoverButton_Click"
+                                        ToolTipService.ToolTip="Move video playback to this page">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <FontIcon Glyph="&#xE768;" FontSize="13"/>
+                                            <TextBlock Text="Play here instead"/>
+                                        </StackPanel>
                                     </Button>
                                 </StackPanel>
                             </Grid>
-                        </Grid>
-                    </Grid>
-                </Border>
 
-                <!-- Title — full TitleTextBlockStyle for hierarchy.
-                     Two-line cap with ellipsis keeps long filenames from
-                     pushing the metadata card off-screen. -->
-                <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
-                           Style="{ThemeResource TitleTextBlockStyle}"
-                           TextTrimming="CharacterEllipsis"
-                           Margin="0,4,0,0"
-                           MaxLines="2"/>
+                            <!-- Transport overlay. Visibility driven by
+                                 code-behind: visible on pointer move and
+                                 while paused, fades on a 3 s inactivity
+                                 timer while playing. Backing gradient is
+                                 always-dark by intent (overlay sits on
+                                 video pixels, not on the theme surface). -->
+                            <Grid x:Name="ControlsOverlay"
+                                  Canvas.ZIndex="3"
+                                  VerticalAlignment="Bottom"
+                                  Padding="16,16,16,12"
+                                  RowSpacing="6"
+                                  IsHitTestVisible="True"
+                                  PointerEntered="ControlsOverlay_PointerEntered"
+                                  PointerExited="ControlsOverlay_PointerExited">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#00000000" Offset="0"/>
+                                        <GradientStop Color="#99000000" Offset="0.6"/>
+                                        <GradientStop Color="#E6000000" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Grid.Background>
 
-                <!-- Source row, YouTube-channel style: avatar circle on the
-                     left, primary/secondary text next to it, action pills on
-                     the right. The avatar is a folder glyph in a tinted
-                     circle for local; we'll swap to a real PersonPicture
-                     when artist/show avatars land for Spotify sources. -->
-                <Grid x:Name="SourceRow" ColumnSpacing="14" Margin="0,2,0,0">
-                    <Grid.OpacityTransition>
-                        <ScalarTransition Duration="0:0:0.18"/>
-                    </Grid.OpacityTransition>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                                <playback:CompositionProgressBar
+                                    Grid.Row="0"
+                                    x:Name="VideoScrubBar"
+                                    VerticalAlignment="Center"
+                                    PositionMs="{x:Bind ViewModel.Player.AnchorPositionMs, Mode=OneWay}"
+                                    DurationMs="{x:Bind ViewModel.Player.Duration, Mode=OneWay}"
+                                    IsPlaying="{x:Bind ViewModel.Player.IsPlaying, Mode=OneWay}"
+                                    IsBuffering="{x:Bind ViewModel.Player.IsBuffering, Mode=OneWay}"
+                                    SeekStarted="VideoScrubBar_SeekStarted"
+                                    SeekCommitted="VideoScrubBar_SeekCommitted"/>
 
-                    <!-- Avatar circle -->
-                    <Border Grid.Column="0"
-                            Width="44" Height="44"
-                            CornerRadius="22"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource AccentFillColorTertiaryBrush}">
-                        <Grid>
-                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                      FontSize="18"
-                                      Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                      Glyph="&#xED25;"
-                                      Visibility="{x:Bind ViewModel.ShowOpenFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            <Image Source="{x:Bind ViewModel.SourceChipImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=96}"
-                                   Stretch="UniformToFill"
-                                   Visibility="{x:Bind ViewModel.SourceChipImageUrl, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                <Grid Grid.Row="1" Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Left cluster: prev / play / next / mute / time. -->
+                                    <StackPanel Grid.Column="0"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                VerticalAlignment="Center">
+                                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Command="{x:Bind ViewModel.Player.PreviousCommand}"
+                                                ToolTipService.ToolTip="Previous">
+                                            <FontIcon Glyph="&#xF8AC;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="40" Height="40"
+                                                CornerRadius="20"
+                                                Command="{x:Bind ViewModel.Player.PlayPauseCommand}"
+                                                ToolTipService.ToolTip="Play/Pause">
+                                            <playback:PlaybackActionContent
+                                                IconSize="18"
+                                                SpinnerSize="22"
+                                                IsPlaying="{x:Bind ViewModel.Player.IsPlaying, Mode=OneWay}"
+                                                IsPending="{x:Bind ViewModel.Player.IsBuffering, Mode=OneWay}"
+                                                ActionForeground="White"/>
+                                        </Button>
+                                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Command="{x:Bind ViewModel.Player.NextCommand}"
+                                                ToolTipService.ToolTip="Next">
+                                            <FontIcon Glyph="&#xF8AD;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Margin="2,0,0,0"
+                                                Command="{x:Bind ViewModel.Player.ToggleMuteCommand}"
+                                                ToolTipService.ToolTip="Mute">
+                                            <FontIcon Glyph="&#xE767;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Margin="10,0,0,0"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="White">
+                                            <Run Text="{x:Bind ViewModel.Player.PositionText, Mode=OneWay}"/>
+                                            <Run Text=" / "/>
+                                            <Run Text="{x:Bind ViewModel.Player.DurationText, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <!-- Right cluster: quality / switch-to-audio / theatre / fullscreen. -->
+                                    <StackPanel Grid.Column="2"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                VerticalAlignment="Center">
+                                        <Button x:Name="VideoQualityButton"
+                                                Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Click="VideoQualityButton_Click"
+                                                Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                ToolTipService.ToolTip="Quality and stream details">
+                                            <FontIcon Glyph="&#xE713;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Command="{x:Bind ViewModel.Player.SwitchToAudioCommand}"
+                                                IsEnabled="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                                Visibility="{x:Bind ViewModel.Player.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                ToolTipService.ToolTip="Listen as audio">
+                                            <Grid Width="16" Height="16">
+                                                <FontIcon Glyph="&#xE8D6;"
+                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="13"
+                                                          Foreground="White"
+                                                          Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                                <ProgressRing Width="16"
+                                                              Height="16"
+                                                              Foreground="White"
+                                                              IsActive="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay}"
+                                                              Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            </Grid>
+                                        </Button>
+                                        <!-- Lyrics toggle — only meaningful in
+                                             audio mode (videos already embed
+                                             their own lyrics). Hidden in video
+                                             mode so it doesn't sit over a
+                                             playing video. -->
+                                        <Button x:Name="LyricsToggleButton"
+                                                Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Click="LyricsToggleButton_Click"
+                                                ToolTipService.ToolTip="Show lyrics"
+                                                Visibility="{x:Bind ViewModel.IsAudioMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <FontIcon Glyph="&#xE8D2;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                        <Button x:Name="TheatreModeButton"
+                                                Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Click="TheatreModeButton_Click"
+                                                ToolTipService.ToolTip="Theatre mode">
+                                            <FontIcon Glyph="&#xE961;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                        <Button Style="{StaticResource OverlayCircleButtonStyle}"
+                                                Width="34" Height="34"
+                                                CornerRadius="17"
+                                                Click="FullscreenButton_Click"
+                                                ToolTipService.ToolTip="Fullscreen">
+                                            <FontIcon Glyph="&#xE740;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="13"
+                                                      Foreground="White"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
                         </Grid>
                     </Border>
 
-                    <!-- Primary + secondary lines -->
-                    <StackPanel Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Spacing="0">
-                        <TextBlock Text="{x:Bind ViewModel.SourceChipText, Mode=OneWay}"
-                                   Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="Local files"
-                                   Style="{ThemeResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Visibility="{x:Bind ViewModel.ShowOpenFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    </StackPanel>
+                    <!-- AudioFrame — square album-art card shown when the
+                         current track is audio (no music video). Hosts the
+                         album art (default) or the synced lyrics canvas
+                         (when IsLyricsVisible is toggled by the lyrics
+                         button in the transport overlay). Same drop shadow
+                         and corner radius as VideoFrame so the hero slot
+                         visually matches when swapping. -->
+                    <Border x:Name="AudioFrame"
+                            CornerRadius="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            HorizontalAlignment="Center"
+                            Width="{Binding ActualWidth, ElementName=RootGrid}"
+                            MaxWidth="520"
+                            Loaded="AudioFrame_Loaded"
+                            SizeChanged="AudioFrame_SizeChanged"
+                            Visibility="{x:Bind ViewModel.IsAudioMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <winUi:Effects.Shadow>
+                            <ui:AttachedCardShadow BlurRadius="44"
+                                                   Offset="0,18"
+                                                   Opacity="0.32"
+                                                   Color="Black"
+                                                   CornerRadius="12"
+                                                   InnerContentClipMode="CompositionMaskBrush"/>
+                        </winUi:Effects.Shadow>
+                        <Grid>
+                            <!-- Album art (default audio presentation).
+                                 CrossFadeImage swaps covers smoothly on
+                                 track change without a flash to empty. -->
+                            <imaging:CrossFadeImage
+                                Source="{x:Bind ViewModel.Player.AlbumArtLarge, Mode=OneWay}"
+                                FallbackSource="{x:Bind ViewModel.Player.AlbumArt, Mode=OneWay}"
+                                DecodePixelWidth="640"
+                                CornerRadius="12"
+                                Stretch="UniformToFill"
+                                Visibility="{x:Bind ViewModel.IsLyricsVisible, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
-                    <!-- Action icons — same 40×40 circular subtle-fill pattern
-                         as PlaylistPage / AlbumPage action rows. Single
-                         visual language across the app. -->
-                    <StackPanel Grid.Column="2"
-                                Orientation="Horizontal"
-                                Spacing="8"
-                                VerticalAlignment="Center">
-                        <Button Style="{StaticResource ActionIconButtonStyle}"
-                                Command="{x:Bind ViewModel.ToggleLikeCommand}"
-                                ToolTipService.ToolTip="Save to your library">
-                            <FontIcon Glyph="{x:Bind ViewModel.IsSaved, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
-                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                      FontSize="14"/>
-                        </Button>
-
-                        <Button Style="{StaticResource ActionIconButtonStyle}"
-                                Command="{x:Bind ViewModel.OpenSourceCommand}"
-                                Visibility="{x:Bind ViewModel.ShowOpenFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Show in folder">
-                            <FontIcon Glyph="&#xE838;"
-                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                      FontSize="14"/>
-                        </Button>
-
-                        <Button Style="{StaticResource ActionIconButtonStyle}"
-                                Command="{x:Bind ViewModel.OpenSourceCommand}"
-                                Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Open in Spotify">
-                            <FontIcon Glyph="&#xE8A7;"
-                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                      FontSize="14"/>
-                        </Button>
-
-                        <Button Style="{StaticResource ActionIconButtonStyle}"
-                                Click="VideoQualityButton_Click"
-                                Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Quality and stream details">
-                            <FontIcon Glyph="&#xE713;"
-                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                      FontSize="14"/>
-                        </Button>
-
-                        <Button Style="{StaticResource ActionIconButtonStyle}"
-                                Command="{x:Bind ViewModel.Player.SwitchToAudioCommand}"
-                                IsEnabled="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                Visibility="{x:Bind ViewModel.Player.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Listen as audio">
-                            <Grid Width="16" Height="16">
-                                <FontIcon Glyph="&#xE8D6;"
+                            <!-- Synced lyrics canvas. Bound imperatively
+                                 from code-behind: SetLyricsData / SetPosition /
+                                 SetIsPlaying / SetNowPlayingPalette pushed
+                                 from VideoPlayerPage.xaml.cs subscribing to
+                                 ViewModel.LyricsData, Player.Position, etc. -->
+                            <lyrics:NowPlayingCanvas x:Name="LyricsCanvas"
+                                                     Visibility="{x:Bind ViewModel.IsLyricsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <Button x:Name="AudioLyricsToggleButton"
+                                    Style="{StaticResource OverlayCircleButtonStyle}"
+                                    Width="38"
+                                    Height="38"
+                                    CornerRadius="19"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Margin="0,0,14,14"
+                                    Canvas.ZIndex="4"
+                                    Click="LyricsToggleButton_Click"
+                                    ToolTipService.ToolTip="Show lyrics">
+                                <FontIcon Glyph="&#xE8D2;"
                                           FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                           FontSize="14"
-                                          Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                <ProgressRing Width="16"
-                                              Height="16"
-                                              IsActive="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay}"
-                                              Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            </Grid>
-                        </Button>
-                    </StackPanel>
-                </Grid>
+                                          Foreground="White"/>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    </Grid>
 
-                <!-- Metadata card — sits below the actions row. Single subtle
-                     surface with two stacked lines (filename · duration · size,
-                     then the absolute path). Plays the role of YouTube's
-                     "video description" expander but for file metadata. -->
-                <Border x:Name="MetadataCard"
-                        CornerRadius="8"
-                        Padding="14,12"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        Margin="0,4,0,0">
-                    <Border.OpacityTransition>
-                        <ScalarTransition Duration="0:0:0.18"/>
-                    </Border.OpacityTransition>
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8"
-                                    Margin="0,0,0,6"
-                                    Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <!-- Title block. TitleLargeTextBlockStyle (40 px) for the
+                         hero title; the 28 px TitleTextBlockStyle felt too
+                         small under the large video frame. Two-line cap with
+                         ellipsis keeps long names from pushing the metadata
+                         off-screen. -->
+                    <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                               Style="{ThemeResource TitleLargeTextBlockStyle}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="2"
+                               Margin="0,4,0,0"/>
+
+                    <!-- Identity row: avatar (56×56) + artist name + caption. -->
+                    <Grid ColumnSpacing="14" Margin="0,-4,0,0">
+                        <Grid.OpacityTransition>
+                            <ScalarTransition Duration="0:0:0.18"/>
+                        </Grid.OpacityTransition>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Width="56" Height="56"
+                                CornerRadius="28"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource AccentFillColorTertiaryBrush}">
                             <Grid>
-                                <Border CornerRadius="14"
-                                        Padding="10,3,10,5"
-                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
-                                        BorderThickness="1">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="22"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                          Glyph="&#xED25;"
+                                          Visibility="{x:Bind ViewModel.ShowOpenFolder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Image Source="{x:Bind ViewModel.SourceChipImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=120}"
+                                       Stretch="UniformToFill"
+                                       Visibility="{x:Bind ViewModel.SourceChipImageUrl, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                            <TextBlock Text="{x:Bind ViewModel.SourceChipText, Mode=OneWay}"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       FontSize="16"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{x:Bind ViewModel.SubtitleLine, Mode=OneWay}"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <!-- Playcount line. Pulled from getTrack
+                                 (Track protobuf and npv don't carry it).
+                                 Hidden when no playcount is available. -->
+                            <TextBlock Text="{x:Bind ViewModel.PlayCountText, Mode=OneWay}"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="{x:Bind ViewModel.PlayCountText, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Badge row. The "MUSIC VIDEO" badge layers a palette-
+                         tinted variant on top of the theme accent so the badge
+                         picks up album-art colour when palette is available
+                         and falls back gracefully when it isn't. -->
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8"
+                                Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Border CornerRadius="16"
+                                    Padding="12,4,14,5"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE714;"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="11"
+                                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
                                     <TextBlock Text="MUSIC VIDEO"
                                                FontSize="11"
                                                FontWeight="SemiBold"
                                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                                </Border>
-                                <Border CornerRadius="14"
-                                        Padding="10,3,10,5"
-                                        Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
-                                        BorderBrush="Transparent"
-                                        BorderThickness="1">
+                                </StackPanel>
+                            </Border>
+                            <Border CornerRadius="16"
+                                    Padding="12,4,14,5"
+                                    Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE714;"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="11"
+                                              Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
                                     <TextBlock Text="MUSIC VIDEO"
                                                FontSize="11"
                                                FontWeight="SemiBold"
                                                Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
-                                </Border>
-                            </Grid>
-                            <Border CornerRadius="14"
-                                    Padding="10,3,10,5"
-                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="1">
-                                <TextBlock Text="Original track metadata"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                                </StackPanel>
                             </Border>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Action bar (full restructure). Primary labelled pills
+                         on the left, secondary icon-only pills pushed to the
+                         right by a Width="*" spacer. Replaces the previous
+                         row of five floating circular icons. -->
+                    <Grid Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal"
+                                    Spacing="10"
+                                    VerticalAlignment="Center">
+
+                            <!-- Save / Saved pill. Heart glyph swaps via the
+                                 existing BoolToHeartGlyphConverter; label
+                                 swaps via SaveLabelText (kept in sync by the
+                                 OnIsSavedChanged partial in the VM). -->
+                            <Button Style="{StaticResource HeroPrimaryPillStyle}"
+                                    Command="{x:Bind ViewModel.ToggleLikeCommand}"
+                                    ToolTipService.ToolTip="Save to your library">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <FontIcon Glyph="{x:Bind ViewModel.IsSaved, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="14"/>
+                                    <TextBlock Text="{x:Bind ViewModel.SaveLabelText, Mode=OneWay}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Listen as audio pill. Spinner replaces the
+                                 icon during the transient switch. -->
+                            <Button Style="{StaticResource HeroPrimaryPillStyle}"
+                                    Command="{x:Bind ViewModel.Player.SwitchToAudioCommand}"
+                                    IsEnabled="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                    Visibility="{x:Bind ViewModel.Player.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    ToolTipService.ToolTip="Listen as audio">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Grid Width="16" Height="16">
+                                        <FontIcon Glyph="&#xE8D6;"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="14"
+                                                  Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                        <ProgressRing Width="16"
+                                                      Height="16"
+                                                      IsActive="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay}"
+                                                      Visibility="{x:Bind ViewModel.Player.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </Grid>
+                                    <TextBlock Text="Listen as audio"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
-                        <TextBlock Text="{x:Bind ViewModel.SubtitleLine, Mode=OneWay}"
-                                   Style="{ThemeResource BodyTextBlockStyle}"
-                                   TextWrapping="WrapWholeWords"/>
-                        <TextBlock Text="{x:Bind ViewModel.PathOrSecondary, Mode=OneWay}"
-                                   Style="{ThemeResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                   IsTextSelectionEnabled="True"
-                                   TextWrapping="WrapWholeWords"
-                                   Visibility="{x:Bind ViewModel.PathOrSecondary, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
 
-                        <StackPanel Spacing="10"
-                                    Margin="0,8,0,0"
-                                    Visibility="{x:Bind ViewModel.IsSpotifyVideoDetailsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <Border Height="116"
-                                    CornerRadius="8"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    Visibility="{x:Bind ViewModel.SpotifyArtistHeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
-                                <Image Source="{x:Bind ViewModel.SpotifyArtistHeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
-                                       Stretch="UniformToFill"/>
-                            </Border>
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Center">
 
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="72"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0"
-                                        Width="72"
-                                        Height="72"
-                                        CornerRadius="6"
-                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
-                                    <Image Source="{x:Bind ViewModel.SpotifyVideoImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
-                                           Stretch="UniformToFill"/>
-                                </Border>
-                                <StackPanel Grid.Column="1"
-                                            Spacing="3"
-                                            VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyVideoTitle, Mode=OneWay}"
-                                               Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                               TextWrapping="WrapWholeWords"/>
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyVideoAlbumLine, Mode=OneWay}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               TextWrapping="WrapWholeWords"
-                                               Visibility="{x:Bind ViewModel.SpotifyVideoAlbumLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyVideoReleaseLine, Mode=OneWay}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               TextWrapping="WrapWholeWords"
-                                               Visibility="{x:Bind ViewModel.SpotifyVideoReleaseLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyRelatedVideosLine, Mode=OneWay}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               Visibility="{x:Bind ViewModel.SpotifyRelatedVideosLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                </StackPanel>
-                            </Grid>
+                            <!-- Quality (Spotify only). -->
+                            <Button Style="{StaticResource HeroSecondaryIconPillStyle}"
+                                    Click="VideoQualityButton_Click"
+                                    Visibility="{x:Bind ViewModel.ShowOpenInSpotify, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    ToolTipService.ToolTip="Quality and stream details">
+                                <FontIcon Glyph="&#xE713;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="14"/>
+                            </Button>
 
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="44"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0"
-                                        Width="44"
-                                        Height="44"
-                                        CornerRadius="22"
-                                        Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                        Visibility="{x:Bind ViewModel.SpotifyArtistAvatarUrl, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
-                                    <Image Source="{x:Bind ViewModel.SpotifyArtistAvatarUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
-                                           Stretch="UniformToFill"/>
-                                </Border>
-                                <StackPanel Grid.Column="1"
-                                            Spacing="3"
-                                            VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyArtistStatsLine, Mode=OneWay}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Visibility="{x:Bind ViewModel.SpotifyArtistStatsLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyArtistTopCitiesLine, Mode=OneWay}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               TextWrapping="WrapWholeWords"
-                                               Visibility="{x:Bind ViewModel.SpotifyArtistTopCitiesLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                    <TextBlock Text="{x:Bind ViewModel.SpotifyArtistBioLine, Mode=OneWay}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               MaxLines="2"
-                                               TextTrimming="CharacterEllipsis"
-                                               TextWrapping="WrapWholeWords"
-                                               Visibility="{x:Bind ViewModel.SpotifyArtistBioLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                </StackPanel>
-                            </Grid>
+                            <!-- Open source — single button replaces the old
+                                 conditional pair (folder for local, Spotify
+                                 for Spotify). Glyph + tooltip swap on
+                                 ActiveKind via VM properties. -->
+                            <Button Style="{StaticResource HeroSecondaryIconPillStyle}"
+                                    Command="{x:Bind ViewModel.OpenSourceCommand}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.SourceActionTooltip, Mode=OneWay}">
+                                <FontIcon Glyph="{x:Bind ViewModel.SourceActionGlyph, Mode=OneWay}"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="14"/>
+                            </Button>
 
-                            <TextBlock Text="{x:Bind ViewModel.SpotifyVideoCreditsLine, Mode=OneWay}"
+                            <!-- More overflow. Empty placeholder for now
+                                 (future: theatre toggle, share, etc.). The
+                                 affordance is here so future actions land
+                                 in a discoverable place. -->
+                            <Button Style="{StaticResource HeroSecondaryIconPillStyle}"
+                                    ToolTipService.ToolTip="More">
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight"/>
+                                </Button.Flyout>
+                                <FontIcon Glyph="&#xE712;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="14"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Description block. Two clickable sub-cards (track →
+                         album, artist → artist) plus credits and a Stream-
+                         details Expander defaulting collapsed. The block
+                         itself is layout-only (no card chrome) — the sub-
+                         cards carry their own surface so the click affordance
+                         reads correctly. -->
+                    <StackPanel Spacing="14" Margin="0,4,0,0">
+                        <StackPanel.OpacityTransition>
+                            <ScalarTransition Duration="0:0:0.18"/>
+                        </StackPanel.OpacityTransition>
+
+                        <!-- Local-only file path. Selectable so users can
+                             copy the path to clipboard. Wrapped in a card-
+                             styled Border to match the visual rhythm of the
+                             Spotify sub-cards below. -->
+                        <Border CornerRadius="8"
+                                Padding="14"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Visibility="{x:Bind ViewModel.PathOrSecondary, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                            <TextBlock Text="{x:Bind ViewModel.PathOrSecondary, Mode=OneWay}"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="WrapWholeWords"
-                                       Visibility="{x:Bind ViewModel.SpotifyVideoCreditsLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                            <StackPanel Spacing="3"
-                                        Visibility="{x:Bind ViewModel.IsSpotifyPlaybackDetailsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoQualityLine, Mode=OneWay}"
-                                           Style="{ThemeResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Visibility="{x:Bind ViewModel.SpotifyVideoQualityLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoDrmLine, Mode=OneWay}"
-                                           Style="{ThemeResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                           Visibility="{x:Bind ViewModel.SpotifyVideoDrmLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoDashLine, Mode=OneWay}"
-                                           Style="{ThemeResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                           Visibility="{x:Bind ViewModel.SpotifyVideoDashLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="WrapWholeWords"/>
+                        </Border>
 
-        <!-- RIGHT: Up next. Wrapped in a card surface so the column reads as
-             a discrete panel rather than floating text on the page bg. -->
-        <Border x:Name="UpNextPanel"
-                Grid.Column="1"
-                CornerRadius="8"
-                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                Padding="14,12">
-            <Border.OpacityTransition>
-                <ScalarTransition Duration="0:0:0.22"/>
-            </Border.OpacityTransition>
-            <Grid RowSpacing="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                        <!-- Spotify rich details. -->
+                        <StackPanel Spacing="14"
+                                    Visibility="{x:Bind ViewModel.IsSpotifyVideoDetailsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
-                <!-- Header row: title + count chip. -->
-                <Grid Grid.Row="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="Up next"
-                               Style="{ThemeResource SubtitleTextBlockStyle}"
-                               FontSize="16"
-                               FontWeight="SemiBold"/>
-                </Grid>
+                            <!-- Track sub-card. Click → navigate to album. -->
+                            <Button Style="{StaticResource DescriptionSubCardStyle}"
+                                    Command="{x:Bind ViewModel.OpenAlbumCommand}"
+                                    Visibility="{x:Bind ViewModel.SpotifyAlbumUri, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
 
-                <!-- List, populated case. -->
-                <ScrollViewer Grid.Row="1"
-                              VerticalScrollBarVisibility="Auto"
-                              Visibility="{x:Bind ViewModel.HasUpNext, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.UpNext}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Vertical" Spacing="2"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:UpNextItem">
-                                <Button Style="{StaticResource UpNextRowStyle}"
-                                        Tag="{x:Bind Uri}"
-                                        Click="UpNextRow_Click">
-                                    <Grid ColumnSpacing="12">
+                                    <Border Grid.Column="0"
+                                            Width="72"
+                                            Height="72"
+                                            CornerRadius="6"
+                                            Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                        <Image Source="{x:Bind ViewModel.SpotifyVideoImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                               Stretch="UniformToFill"/>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1"
+                                                Spacing="3"
+                                                VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind ViewModel.TrackCardHeaderText, Mode=OneWay}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                        <TextBlock Text="{x:Bind ViewModel.SpotifyVideoTitle, Mode=OneWay}"
+                                                   Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="1"/>
+                                        <TextBlock Text="{x:Bind ViewModel.SpotifyVideoAlbumLine, Mode=OneWay}"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="1"
+                                                   Visibility="{x:Bind ViewModel.SpotifyVideoAlbumLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                        <TextBlock Text="{x:Bind ViewModel.SpotifyVideoReleaseLine, Mode=OneWay}"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="1"
+                                                   Visibility="{x:Bind ViewModel.SpotifyVideoReleaseLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                    </StackPanel>
+
+                                    <FontIcon Grid.Column="2"
+                                              Glyph="&#xE76C;"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="14"
+                                              VerticalAlignment="Center"
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
+                            </Button>
+
+                            <!-- Artist sub-card. Click anywhere → navigate
+                                 to artist. The "Read more" inner button
+                                 stops the click so it doesn't trigger
+                                 navigation while the user is reading bio. -->
+                            <Button Style="{StaticResource DescriptionSubCardStyle}"
+                                    Padding="0"
+                                    Command="{x:Bind ViewModel.OpenArtistCommand}"
+                                    Visibility="{x:Bind ViewModel.SpotifyArtistUri, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                                <StackPanel Spacing="0">
+
+                                    <!-- Artist header image — WhatsApp blur-frame effect:
+                                         blurred UniformToFill fill (Composition SpriteVisual)
+                                         behind a centered Uniform sharp image. -->
+                                    <Border Height="148"
+                                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                            CornerRadius="8,8,0,0"
+                                            Visibility="{x:Bind ViewModel.SpotifyArtistHeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                                        <Grid>
+                                            <Border x:Name="ArtistHeaderBlurHost"
+                                                    SizeChanged="ArtistHeaderBlurHost_SizeChanged"/>
+                                            <Image Source="{x:Bind ViewModel.SpotifyArtistHeaderImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                                   Stretch="Uniform"
+                                                   RenderTransformOrigin="0.5,0.5">
+                                                <Image.RenderTransform>
+                                                    <ScaleTransform ScaleX="1.35" ScaleY="1.35"/>
+                                                </Image.RenderTransform>
+                                            </Image>
+                                        </Grid>
+                                    </Border>
+
+                                    <Grid Padding="14"
+                                          ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
                                         <Border Grid.Column="0"
-                                                CornerRadius="6"
-                                                Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                                Width="120" Height="68">
-                                            <Grid>
-                                                <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=120}"
-                                                       Stretch="UniformToFill"/>
-                                                <FontIcon Glyph="&#xE714;"
-                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                          FontSize="11"
-                                                          Foreground="White"
-                                                          HorizontalAlignment="Left"
-                                                          VerticalAlignment="Top"
-                                                          Margin="6,4,0,0"
-                                                          Visibility="{x:Bind IsVideo, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                                <Border HorizontalAlignment="Right"
-                                                        VerticalAlignment="Bottom"
-                                                        Background="#B3000000"
-                                                        CornerRadius="4"
-                                                        Padding="4,1"
-                                                        Margin="0,0,4,4"
-                                                        Visibility="{x:Bind DurationText, Converter={StaticResource NullToCollapsedConverter}}">
-                                                    <TextBlock Text="{x:Bind DurationText}"
-                                                               Foreground="White"
-                                                               FontSize="10"/>
-                                                </Border>
-                                            </Grid>
+                                                Grid.Row="0"
+                                                Grid.RowSpan="3"
+                                                Width="44"
+                                                Height="44"
+                                                CornerRadius="22"
+                                                VerticalAlignment="Top"
+                                                Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                            <Image Source="{x:Bind ViewModel.SpotifyArtistAvatarUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                                                   Stretch="UniformToFill"/>
                                         </Border>
 
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
-                                            <TextBlock Text="{x:Bind Title}"
+                                        <!-- Header row: name + chevron -->
+                                        <StackPanel Grid.Column="1"
+                                                    Grid.Row="0"
+                                                    Spacing="2">
+                                            <TextBlock Text="ABOUT THE ARTIST"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                            <TextBlock Text="{x:Bind ViewModel.SourceChipText, Mode=OneWay}"
                                                        Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                                       FontSize="13"
+                                                       FontSize="16"
                                                        TextTrimming="CharacterEllipsis"
-                                                       MaxLines="2"/>
-                                            <TextBlock Text="{x:Bind Subtitle}"
+                                                       MaxLines="1"/>
+                                            <TextBlock Text="{x:Bind ViewModel.SpotifyArtistStatsLine, Mode=OneWay}"
                                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                                       Visibility="{x:Bind ViewModel.SpotifyArtistStatsLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
                                         </StackPanel>
-                                    </Grid>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
 
-                <!-- Empty state. Centered icon + headline + helper text — the
-                     standard WinUI "no items" presentation. Visible when
-                     HasUpNext == false; the actual list above hides itself
-                     to give the empty state the full column. -->
-                <StackPanel Grid.Row="1"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Spacing="10"
-                            MaxWidth="260"
-                            Visibility="{x:Bind ViewModel.HasUpNext, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                    <Border Width="56" Height="56"
-                            CornerRadius="28"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}">
-                        <FontIcon Glyph="&#xE93C;"
-                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                  FontSize="22"
-                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Border>
-                    <TextBlock Text="Nothing queued"
-                               Style="{ThemeResource BodyStrongTextBlockStyle}"
-                               TextAlignment="Center"
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Text="Tracks playing next from this context will show up here."
-                               Style="{ThemeResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"
-                               HorizontalAlignment="Center"/>
+                                        <FontIcon Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Glyph="&#xE76C;"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="14"
+                                                  VerticalAlignment="Top"
+                                                  Margin="0,12,0,0"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                                        <!-- Bio + Read more / less. Bound
+                                             MaxLines: 0 (unlimited) when
+                                             expanded, 3 when collapsed. -->
+                                        <StackPanel Grid.Column="1"
+                                                    Grid.ColumnSpan="2"
+                                                    Grid.Row="1"
+                                                    Margin="0,12,0,0"
+                                                    Spacing="4"
+                                                    Visibility="{x:Bind ViewModel.SpotifyArtistBioLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                                            <!-- HtmlTextBlock parses the
+                                                 <a href="spotify:..."> markup
+                                                 Spotify embeds in artist
+                                                 bios into clickable inline
+                                                 links — same rendering the
+                                                 Artist page uses. -->
+                                            <controls:HtmlTextBlock Text="{x:Bind ViewModel.SpotifyArtistBioLine, Mode=OneWay}"
+                                                                    MaxLines="{x:Bind ViewModel.BioMaxLines, Mode=OneWay}"
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            <HyperlinkButton Click="BioReadMore_Click"
+                                                             Padding="0,4"
+                                                             FontSize="12"
+                                                             Content="{x:Bind ViewModel.BioReadMoreLabel, Mode=OneWay}"/>
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Column="1"
+                                                   Grid.ColumnSpan="2"
+                                                   Grid.Row="2"
+                                                   Margin="0,8,0,0"
+                                                   Text="{x:Bind ViewModel.SpotifyArtistTopCitiesLine, Mode=OneWay}"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                   TextWrapping="WrapWholeWords"
+                                                   Visibility="{x:Bind ViewModel.SpotifyArtistTopCitiesLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Credits. Single line, no header — flat-
+                                 formatted by the VM as "Role Name · …". -->
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8"
+                                        Margin="2,0"
+                                        Visibility="{x:Bind ViewModel.SpotifyVideoCreditsLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}">
+                                <FontIcon Glyph="&#xE946;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="11"
+                                          VerticalAlignment="Top"
+                                          Margin="0,3,0,0"
+                                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Text="{x:Bind ViewModel.SpotifyVideoCreditsLine, Mode=OneWay}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                            </StackPanel>
+
+                            <!-- Stream details — collapsed by default; hides
+                                 quality / DRM / DASH lines from normal users
+                                 unless they actively expand. -->
+                            <Expander HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch"
+                                      IsExpanded="{x:Bind ViewModel.IsStreamDetailsExpanded, Mode=TwoWay}"
+                                      Visibility="{x:Bind ViewModel.IsSpotifyPlaybackDetailsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Expander.Header>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE713;"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="14"/>
+                                        <TextBlock Text="Stream details"
+                                                   Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                   FontSize="13"/>
+                                    </StackPanel>
+                                </Expander.Header>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="{x:Bind ViewModel.SpotifyVideoQualityLine, Mode=OneWay}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Visibility="{x:Bind ViewModel.SpotifyVideoQualityLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                    <TextBlock Text="{x:Bind ViewModel.SpotifyVideoDrmLine, Mode=OneWay}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               Visibility="{x:Bind ViewModel.SpotifyVideoDrmLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                    <TextBlock Text="{x:Bind ViewModel.SpotifyVideoDashLine, Mode=OneWay}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               Visibility="{x:Bind ViewModel.SpotifyVideoDashLine, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
-            </Grid>
-        </Border>
+            </ScrollView>
+
+            <!-- RIGHT: YouTube-style chip-tabbed sidebar. SessionTokenView
+                 at the top renders three filter chips (Recommended /
+                 Music videos / Queue); below, the matching content section
+                 is shown — Spotify SEO recommender list, npv music-videos
+                 list, or the real QueueControl. Acrylic surface visually
+                 separates the panel from the gradient backdrop. -->
+            <Border x:Name="UpNextPanel"
+                    Grid.Column="1"
+                    CornerRadius="10"
+                    Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    Padding="14,12">
+                <Border.OpacityTransition>
+                    <ScalarTransition Duration="0:0:0.22"/>
+                </Border.OpacityTransition>
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Filter chips. Vendored CommunityToolkit Labs
+                         TokenView — same control PlaylistPage uses for its
+                         session-control chip row. SelectedItem two-way
+                         binds to the VM, which maps to the section flags
+                         used below. -->
+                    <sessionTokens:SessionTokenView
+                        Grid.Row="0"
+                        IsWrapped="False"
+                        CanRemoveTokens="False"
+                        ItemsSource="{x:Bind ViewModel.RightPanelTabs}"
+                        SelectedItem="{x:Bind ViewModel.SelectedRightPanelTab, Mode=TwoWay}">
+                        <sessionTokens:SessionTokenView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RightPanelTabChip">
+                                <TextBlock Text="{x:Bind Label}" FontSize="13"/>
+                            </DataTemplate>
+                        </sessionTokens:SessionTokenView.ItemTemplate>
+                    </sessionTokens:SessionTokenView>
+
+                    <!-- Chip section #1 — Recommended (SEO recommender).
+                         Renders one of four overlays based on
+                         RecommendedStatus: Loading spinner / Loaded list /
+                         Empty state / Error state. -->
+                    <Grid Grid.Row="1"
+                          Visibility="{x:Bind ViewModel.IsRecommendedTabSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ScrollView ContentOrientation="Vertical"
+                                    VerticalScrollMode="Enabled"
+                                    HorizontalScrollMode="Disabled"
+                                    ZoomMode="Disabled"
+                                    Visibility="{x:Bind ViewModel.IsRecommendedLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.WatchNext}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Vertical" Spacing="2"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="vm:WatchNextItem">
+                                    <Button Style="{StaticResource WatchNextRowStyle}"
+                                            Tag="{x:Bind TrackUri}"
+                                            Click="WatchNextCard_Click">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0"
+                                                    CornerRadius="6"
+                                                    Width="120"
+                                                    Height="80"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                                <Grid>
+                                                    <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=300}"
+                                                           Stretch="UniformToFill"/>
+                                                    <Border HorizontalAlignment="Left"
+                                                            VerticalAlignment="Top"
+                                                            Background="#B3000000"
+                                                            CornerRadius="3"
+                                                            Padding="4,1"
+                                                            Margin="4,4,0,0"
+                                                            Visibility="{x:Bind IsExplicit, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <TextBlock Text="E"
+                                                                   FontSize="9"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="White"/>
+                                                    </Border>
+                                                    <!-- Video badge (TR) — set when this recommendation
+                                                         also has a music video, cross-referenced from
+                                                         the npv RelatedVideos list on the same fetch. -->
+                                                    <Border HorizontalAlignment="Right"
+                                                            VerticalAlignment="Top"
+                                                            Background="#B3000000"
+                                                            CornerRadius="3"
+                                                            Padding="4,1"
+                                                            Margin="0,4,4,0"
+                                                            Visibility="{x:Bind HasVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <FontIcon Glyph="&#xE714;"
+                                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                  FontSize="10"
+                                                                  Foreground="White"/>
+                                                    </Border>
+                                                    <Border HorizontalAlignment="Right"
+                                                            VerticalAlignment="Bottom"
+                                                            Background="#B3000000"
+                                                            CornerRadius="3"
+                                                            Padding="4,1"
+                                                            Margin="0,0,4,4">
+                                                        <TextBlock Text="{x:Bind DurationText}"
+                                                                   Foreground="White"
+                                                                   FontSize="10"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Spacing="2">
+                                                <TextBlock Text="{x:Bind Title}"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                           FontSize="13"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="2"
+                                                           TextWrapping="WrapWholeWords"/>
+                                                <TextBlock Text="{x:Bind ArtistsLine}"
+                                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                                           FontSize="12"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1"/>
+                                                <TextBlock Text="{x:Bind PlaysText}"
+                                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                                           FontSize="11"
+                                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                           Visibility="{x:Bind PlaysText, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                        </ScrollView>
+
+                        <!-- Loading shimmer skeleton — placeholder rows that
+                             mimic the watch-next row layout while the SEO
+                             recommender call is in flight. -->
+                        <ItemsControl Visibility="{x:Bind ViewModel.IsRecommendedLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                      VerticalAlignment="Top">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" Spacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="180" Height="12"/>
+                                    <shimmer:Shimmer Width="120" Height="10"/>
+                                    <shimmer:Shimmer Width="80" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="160" Height="12"/>
+                                    <shimmer:Shimmer Width="100" Height="10"/>
+                                    <shimmer:Shimmer Width="60" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="200" Height="12"/>
+                                    <shimmer:Shimmer Width="80" Height="10"/>
+                                    <shimmer:Shimmer Width="100" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="170" Height="12"/>
+                                    <shimmer:Shimmer Width="110" Height="10"/>
+                                    <shimmer:Shimmer Width="70" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                        </ItemsControl>
+
+                        <!-- Empty state — fetch succeeded, returned 0 items. -->
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="10"
+                                    MaxWidth="260"
+                                    Visibility="{x:Bind ViewModel.IsRecommendedEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border Width="56" Height="56"
+                                    CornerRadius="28"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE721;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="22"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Border>
+                            <TextBlock Text="No recommendations yet"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextAlignment="Center"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="We couldn't find anything to recommend for this track right now."
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Error state — API call threw. Distinct icon
+                             (warning triangle) so users can tell empty
+                             from broken. -->
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="10"
+                                    MaxWidth="260"
+                                    Visibility="{x:Bind ViewModel.IsRecommendedError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border Width="56" Height="56"
+                                    CornerRadius="28"
+                                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                                <FontIcon Glyph="&#xE7BA;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="22"
+                                          Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                            </Border>
+                            <TextBlock Text="Couldn't load recommendations"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextAlignment="Center"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Something went wrong fetching recommendations from Spotify. They'll retry on the next track."
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Chip section #2 — Music videos by this artist (npv).
+                         Same Loading / Loaded / Empty / Error pattern as the
+                         Recommended section. -->
+                    <Grid Grid.Row="1"
+                          Visibility="{x:Bind ViewModel.IsVideosTabSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ScrollView ContentOrientation="Vertical"
+                                    VerticalScrollMode="Enabled"
+                                    HorizontalScrollMode="Disabled"
+                                    ZoomMode="Disabled"
+                                    Visibility="{x:Bind ViewModel.IsVideosLoaded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.RelatedVideos}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Vertical" Spacing="2"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RelatedVideoItem">
+                                    <Button Style="{StaticResource WatchNextRowStyle}"
+                                            Tag="{x:Bind AudioTrackUri}"
+                                            Click="RelatedVideoCard_Click">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0"
+                                                    CornerRadius="6"
+                                                    Width="120"
+                                                    Height="80"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                                <Grid>
+                                                    <Image Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=300}"
+                                                           Stretch="UniformToFill"/>
+                                                    <Border HorizontalAlignment="Left"
+                                                            VerticalAlignment="Top"
+                                                            Background="#B3000000"
+                                                            CornerRadius="3"
+                                                            Padding="4,1"
+                                                            Margin="4,4,0,0">
+                                                        <FontIcon Glyph="&#xE714;"
+                                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                  FontSize="10"
+                                                                  Foreground="White"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Spacing="2">
+                                                <TextBlock Text="{x:Bind Title}"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                           FontSize="13"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="2"
+                                                           TextWrapping="WrapWholeWords"/>
+                                                <!-- Playcount, when this video's audio
+                                                     URI matched the artist's top-tracks
+                                                     map built from getTrack. Empty
+                                                     string when not in the map. -->
+                                                <TextBlock Text="{x:Bind PlaysText}"
+                                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                                           FontSize="11"
+                                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                           Visibility="{x:Bind PlaysText, Converter={StaticResource NullToCollapsedConverter}}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                        </ScrollView>
+
+                        <!-- Loading shimmer skeleton — placeholder rows
+                             that mimic the watch-next row layout while the
+                             Pathfinder fetch is in flight. -->
+                        <ItemsControl Visibility="{x:Bind ViewModel.IsVideosLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                      VerticalAlignment="Top">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" Spacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="180" Height="12"/>
+                                    <shimmer:Shimmer Width="120" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="160" Height="12"/>
+                                    <shimmer:Shimmer Width="100" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnSpacing="10" Padding="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <shimmer:Shimmer Grid.Column="0" Width="120" Height="80"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <shimmer:Shimmer Width="200" Height="12"/>
+                                    <shimmer:Shimmer Width="80" Height="10"/>
+                                </StackPanel>
+                            </Grid>
+                        </ItemsControl>
+
+                        <!-- Empty state — fetch succeeded but artist has no
+                             other music videos. -->
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="10"
+                                    MaxWidth="260"
+                                    Visibility="{x:Bind ViewModel.IsVideosEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border Width="56" Height="56"
+                                    CornerRadius="28"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE714;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="22"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Border>
+                            <TextBlock Text="No music videos"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextAlignment="Center"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="This artist doesn't have any other music videos here yet."
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Error state — npv call threw. -->
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="10"
+                                    MaxWidth="260"
+                                    Visibility="{x:Bind ViewModel.IsVideosError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border Width="56" Height="56"
+                                    CornerRadius="28"
+                                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                                <FontIcon Glyph="&#xE7BA;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="22"
+                                          Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                            </Border>
+                            <TextBlock Text="Couldn't load videos"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextAlignment="Center"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Something went wrong fetching this artist's other music videos."
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Chip section #3 — Real playback queue. QueueControl
+                         owns its own empty state. -->
+                    <queue:QueueControl Grid.Row="1"
+                                        Visibility="{x:Bind ViewModel.IsQueueTabSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Page>

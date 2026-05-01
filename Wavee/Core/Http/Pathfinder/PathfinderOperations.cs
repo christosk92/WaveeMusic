@@ -78,4 +78,17 @@ internal static class PathfinderOperations
 
     public const string QueryTrackCreditsModal = "queryTrackCreditsModal";
     public const string QueryTrackCreditsModalHash = "e2ca40d46cf1fde36562261ccec754f23fb31b561877252e9fe0d6834aabb84b";
+
+    // "Watch next" / Spotify recommender — drives the YouTube-style
+    // up-next list on the Now Playing video page. Same persisted query that
+    // backs the SEO-related-tracks list on share pages.
+    public const string InternalLinkRecommenderTrack = "internalLinkRecommenderTrack";
+    public const string InternalLinkRecommenderTrackHash = "c77098ee9d6ee8ad3eb844938722db60570d040b49f41f5ec6e7be9160a7c86b";
+
+    // Full track payload — playcount, full album, firstArtist + discography.
+    // Used by the video page hero to render plays count next to the title.
+    // Track protobuf and npvArtist response don't carry playcount, so this
+    // is a separate query.
+    public const string GetTrack = "getTrack";
+    public const string GetTrackHash = "612585ae06ba435ad26369870deaae23b5c8800a256cd8a57e08eddc25a37294";
 }

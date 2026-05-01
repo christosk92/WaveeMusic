@@ -78,6 +78,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        MediaFrame.AddHandler(PointerMovedEvent, new PointerEventHandler(MediaFrame_PointerMoved), true);
 
         var heartCommand = new RelayCommand(OnHeartClicked);
         HeartButton.Command = heartCommand;

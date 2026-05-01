@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.ConnectStateSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels">
+
+    <Grid Padding="0,16,0,24" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12,8">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <AutoSuggestBox Grid.Column="0"
+                                QueryIcon="Find"
+                                PlaceholderText="Filter summary, JSON, headers, correlation id..."
+                                Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           FontFamily="Consolas"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                    <Run Text="{x:Bind ViewModel.FilteredEvents.Count, Mode=OneWay}"/>
+                    <Run Text="events"/>
+                </TextBlock>
+
+                <ToggleButton Grid.Column="2"
+                              Content="Pause"
+                              IsChecked="{x:Bind ViewModel.IsPaused, Mode=TwoWay}"
+                              Padding="10,6"
+                              MinHeight="0"/>
+
+                <Button Grid.Column="3"
+                        Content="&#xE74D;"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="12"
+                        ToolTipService.ToolTip="Clear"
+                        Command="{x:Bind ViewModel.ClearCommand}"
+                        Padding="10,6"
+                        MinHeight="0"
+                        MinWidth="0"/>
+            </Grid>
+        </Border>
+
+        <ScrollView Grid.Row="1"
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Hidden">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <ToggleButton Content="PUT req" IsChecked="{x:Bind ViewModel.ShowPutStateRequest, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="PUT resp" IsChecked="{x:Bind ViewModel.ShowPutStateResponse, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Cluster" IsChecked="{x:Bind ViewModel.ShowClusterUpdate, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Volume" IsChecked="{x:Bind ViewModel.ShowVolumeCommand, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Cmd" IsChecked="{x:Bind ViewModel.ShowDealerCommand, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Reply" IsChecked="{x:Bind ViewModel.ShowDealerReply, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Dealer" IsChecked="{x:Bind ViewModel.ShowDealerLifecycle, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="ConnId" IsChecked="{x:Bind ViewModel.ShowConnectionLifecycle, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Subs" IsChecked="{x:Bind ViewModel.ShowSubscriptions, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+                <ToggleButton Content="Self echo" IsChecked="{x:Bind ViewModel.ShowSelfEcho, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
+            </StackPanel>
+        </ScrollView>
+
+        <Border Grid.Row="2"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <ScrollView VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Hidden">
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.FilteredEvents, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="1"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ConnectStateEventRow">
+                            <Expander HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch"
+                                      Padding="0">
+                                <Expander.Header>
+                                    <Grid ColumnSpacing="10" Padding="12,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="76"/>
+                                            <ColumnDefinition Width="36"/>
+                                            <ColumnDefinition Width="150"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="76"/>
+                                            <ColumnDefinition Width="64"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{x:Bind TimeString}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{x:Bind DirectionGlyph}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind KindText}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="3"
+                                                   Text="{x:Bind Summary}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   TextWrapping="NoWrap"/>
+                                        <TextBlock Grid.Column="4"
+                                                   Text="{x:Bind PayloadBytesDisplay}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="10"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                        <TextBlock Grid.Column="5"
+                                                   Text="{x:Bind ElapsedDisplay}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="10"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                    </Grid>
+                                </Expander.Header>
+
+                                <Grid Padding="12,0,12,12" RowSpacing="8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0"
+                                               Text="{x:Bind Notes}"
+                                               Visibility="{x:Bind HasNotes, Converter={StaticResource BoolToVisibilityConverter}}"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+
+                                    <TextBlock Grid.Row="1"
+                                               Text="{x:Bind HeadersText}"
+                                               Visibility="{x:Bind HasHeaders, Converter={StaticResource BoolToVisibilityConverter}}"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                                    <controls:JsonRichTextBlock Grid.Row="2"
+                                                                Text="{x:Bind JsonBody}"
+                                                                SearchText="{x:Bind SearchText}"
+                                                                MinHeight="160"
+                                                                Height="420"
+                                                                Visibility="{x:Bind HasJsonBody, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </Grid>
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </ScrollView>
+        </Border>
+    </Grid>
+</UserControl>

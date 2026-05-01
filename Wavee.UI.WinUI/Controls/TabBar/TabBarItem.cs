@@ -1,4 +1,5 @@
 using System;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -117,7 +118,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                     _pendingNavId = navId;
                     _pendingPageName = _navigationParameter.InitialPageType.Name;
 
-                    ContentFrame.Navigate(
+                    TryNavigateFrame(
                         _navigationParameter.InitialPageType,
                         _navigationParameter.NavigationParameter,
                         new DrillInNavigationTransitionInfo());
@@ -141,13 +142,112 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         };
         ContentFrame.Navigating += ContentFrame_Navigating;
         ContentFrame.Navigated += ContentFrame_Navigated;
-        ContentFrame.NavigationFailed += (_, e) =>
+        ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
+    }
+
+    private void ContentFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    {
+        e.Handled = true;
+        ShowNavigationError(
+            e.SourcePageType,
+            _navigationParameter?.NavigationParameter,
+            e.Exception);
+    }
+
+    private bool TryNavigateFrame(
+        Type pageType,
+        object? parameter,
+        NavigationTransitionInfo transition)
+    {
+        try
         {
-            _contentPendingDisposal = null;
-            e.Handled = true;
-            System.Diagnostics.Debug.WriteLine(
-                $"NavigationFailed [{e.SourcePageType?.Name}]: {e.Exception?.Message}");
+            var navigated = ContentFrame.Navigate(pageType, parameter, transition);
+            if (!navigated)
+            {
+                ShowNavigationError(
+                    pageType,
+                    parameter,
+                    new InvalidOperationException($"Frame rejected navigation to {pageType.Name}."));
+            }
+
+            return navigated;
+        }
+        catch (Exception ex)
+        {
+            ShowNavigationError(pageType, parameter, ex);
+            return false;
+        }
+    }
+
+    private void ShowNavigationError(Type? pageType, object? parameter, Exception? exception)
+    {
+        var pageName = pageType?.Name ?? _pendingPageName ?? "page";
+        System.Diagnostics.Debug.WriteLine(
+            $"NavigationFailed [{pageName}]: {exception?.Message}");
+
+        if (_pendingNavId != 0)
+        {
+            WaveeNavigationEventSource.Log.Navigated(_pendingNavId, $"{pageName}.Failed");
+            _pendingNavId = 0;
+            _pendingPageName = null;
+        }
+
+        if (_previousContent != null)
+        {
+            _previousContent.ContentChanged -= TabItemContent_ContentChanged;
+            _previousContent = null;
+        }
+
+        var oldContent = ContentFrame.Content;
+        var pendingContent = _contentPendingDisposal;
+        _contentPendingDisposal = null;
+
+        ContentFrame.Content = CreateNavigationErrorContent(pageType, parameter, exception);
+
+        if (pendingContent != null && !ReferenceEquals(pendingContent, ContentFrame.Content))
+            pendingContent.Dispose();
+
+        if (oldContent is IDisposable disposableOld
+            && !ReferenceEquals(oldContent, pendingContent)
+            && !ReferenceEquals(oldContent, ContentFrame.Content))
+        {
+            disposableOld.Dispose();
+        }
+    }
+
+    private UIElement CreateNavigationErrorContent(Type? pageType, object? parameter, Exception? exception)
+    {
+        var title = pageType is null
+            ? "Couldn't open this page"
+            : $"Couldn't open {GetReadablePageName(pageType)}";
+        var message = exception is null
+            ? "Navigation failed before the page could be loaded."
+            : $"{exception.GetType().Name}: {exception.Message}";
+
+        var error = new Wavee.UI.WinUI.Controls.ErrorStateView
+        {
+            Title = title,
+            Message = message,
+            RetryButtonText = "Try again",
+            RetryCommand = pageType is null
+                ? null
+                : new RelayCommand(() => Navigate(pageType, parameter))
         };
+
+        return new Grid
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Children = { error }
+        };
+    }
+
+    private static string GetReadablePageName(Type pageType)
+    {
+        var name = pageType.Name;
+        return name.EndsWith("Page", StringComparison.Ordinal)
+            ? name[..^4]
+            : name;
     }
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
@@ -190,9 +290,19 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             // Different parameter — let the page refresh in-place
             if (ContentFrame.Content is ITabBarItemContent refreshable)
             {
-                refreshable.RefreshWithParameter(parameter);
-                // RefreshWithParameter is synchronous from our caller's perspective; close the pair.
-                WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
+                try
+                {
+                    refreshable.RefreshWithParameter(parameter);
+                    // RefreshWithParameter is synchronous from our caller's perspective; close the pair.
+                    WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
+                }
+                catch (Exception ex)
+                {
+                    _pendingNavId = navId;
+                    _pendingPageName = pageType.Name;
+                    ShowNavigationError(pageType, parameter, ex);
+                }
+
                 return;
             }
 
@@ -211,7 +321,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         //     ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
         //     : new DrillInNavigationTransitionInfo();
         var transition = (NavigationTransitionInfo)new DrillInNavigationTransitionInfo();
-        ContentFrame.Navigate(pageType, parameter, transition);
+        TryNavigateFrame(pageType, parameter, transition);
         MarkActivated();
     }
 
@@ -292,7 +402,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             _pendingNavId = WaveeNavigationEventSource.Log.NextNavId();
             _pendingPageName = _navigationParameter.InitialPageType.Name;
             WaveeNavigationEventSource.Log.Navigating(_pendingNavId, _pendingPageName, "WakeFallback");
-            ContentFrame.Navigate(
+            TryNavigateFrame(
                 _navigationParameter.InitialPageType,
                 _navigationParameter.NavigationParameter,
                 new DrillInNavigationTransitionInfo());
@@ -374,6 +484,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         ContentFrame.Navigating -= ContentFrame_Navigating;
         ContentFrame.Navigated -= ContentFrame_Navigated;
+        ContentFrame.NavigationFailed -= ContentFrame_NavigationFailed;
         DiscardSleepState();
 
         ClearLiveContent();

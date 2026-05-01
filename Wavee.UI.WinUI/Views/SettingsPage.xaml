@@ -54,6 +54,7 @@
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_4" x:Name="AudioItem" Content="Audio" Tag="audio"/>
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_5" x:Name="StorageItem" Content="Storage &amp; Network" Tag="storage"/>
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_6" x:Name="DiagnosticsItem" Content="Diagnostics" Tag="diagnostics"/>
+            <controls:SegmentedItem x:Name="ConnectItem" Content="Connect" Tag="connect"/>
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_7" x:Name="AboutItem" Content="About" Tag="about"/>
         </controls:Segmented>
 

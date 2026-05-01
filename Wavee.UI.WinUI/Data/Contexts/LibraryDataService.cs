@@ -373,10 +373,10 @@ public sealed class LibraryDataService : ILibraryDataService
             }
         }
 
-        var videoAvailability = _musicVideoMetadata is null
+        var cachedVideoAvailability = _musicVideoMetadata is null
             ? new Dictionary<string, bool>(StringComparer.Ordinal)
             : await _musicVideoMetadata
-                .EnsureAvailabilityAsync(trackItems.Select(static item => item.Uri), ct)
+                .GetCachedAvailabilityAsync(trackItems.Select(static item => item.Uri), ct)
                 .ConfigureAwait(false);
 
         var tracks = new List<PlaylistTrackDto>(trackItems.Length);
@@ -406,7 +406,7 @@ public sealed class LibraryDataService : ILibraryDataService
                 // the format web/mobile clients publish for skip-to-uid round-trip.
                 Uid = item.ItemId is { Length: > 0 } id ? Convert.ToHexString(id).ToLowerInvariant() : null,
                 FormatAttributes = item.FormatAttributes.Count > 0 ? item.FormatAttributes : null,
-                HasVideo = videoAvailability.TryGetValue(item.Uri, out var hasVideo) && hasVideo
+                HasVideo = cachedVideoAvailability.TryGetValue(item.Uri, out var hasVideo) && hasVideo
             });
         }
 

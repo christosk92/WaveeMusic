@@ -2,6 +2,12 @@
 
 This document provides a detailed technical analysis of the two OAuth 2.0 flows supported by Spotify for obtaining access tokens.
 
+> **Implementation pointers (this codebase):**
+> - Public entry: `OAuthClient` in `OAuthClient.cs` — exposes both flows behind a single `Create(...)` API.
+> - Authorization Code + PKCE: `AuthorizationCodeFlow.cs` (internal). Default redirect URI is `http://127.0.0.1:8898/login` (loopback IP rather than `localhost` — more reliable on Windows).
+> - Device Code (RFC 8628): `DeviceCodeFlow.cs` (internal). Raises a `DeviceCodeReceived` event so the host UI can render the user code (or a QR code from `verification_uri_complete`).
+> - Token plumbing: `OAuthHttpClient.cs`, `OAuthToken.cs`. Errors surface via `OAuthException`.
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -104,12 +110,14 @@ OAuth 2.0 Authorization Code Flow enhanced with **PKCE** (Proof Key for Code Exc
 https://accounts.spotify.com/authorize
   ?client_id=65b708073fc0480ea92a077233ca87bd
   &response_type=code
-  &redirect_uri=http://localhost:8898/callback
+  &redirect_uri=http://127.0.0.1:8898/login
   &code_challenge_method=S256
   &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
   &scope=streaming user-read-playback-state user-modify-playback-state
   &state=<random-csrf-token>
 ```
+
+> Wavee's `OAuthClient` defaults to `http://127.0.0.1:8898/login` rather than `localhost`. The IPv4 loopback avoids a class of Windows resolution / hosts-file issues that can break the callback.
 
 **Required Parameters**:
 - `client_id`: Your Spotify application client ID

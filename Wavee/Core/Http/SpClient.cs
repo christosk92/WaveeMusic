@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Diagnostics;
 using Wavee.Core;
 using Wavee.Core.Audio;
 using Wavee.Core.Http.Lyrics;
@@ -47,6 +48,7 @@ public sealed class SpClient : ISpClient
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
     private readonly ClientTokenManager? _clientTokenManager;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
 
     /// <summary>
     /// Gets the base URL for the SpClient API (e.g., "https://spclient.wg.spotify.com").
@@ -61,7 +63,8 @@ public sealed class SpClient : ISpClient
     /// <param name="baseUrl">Resolved SpClient endpoint (e.g., "spclient.wg.spotify.com:443").</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
     internal SpClient(ISession session, HttpClient httpClient, string baseUrl,
-        ClientTokenManager? clientTokenManager = null, ILogger? logger = null)
+        ClientTokenManager? clientTokenManager = null, ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -71,6 +74,7 @@ public sealed class SpClient : ISpClient
         _httpClient = httpClient;
         _clientTokenManager = clientTokenManager;
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
 
         // Normalize base URL: remove port suffix and ensure https:// prefix
         var hostOnly = baseUrl.Split(':')[0];
@@ -441,6 +445,8 @@ public sealed class SpClient : ISpClient
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
         ArgumentNullException.ThrowIfNull(request);
 
+        var startTicks = Environment.TickCount64;
+
         // Get access token (auto-refreshes if needed)
         var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
 
@@ -482,6 +488,28 @@ public sealed class SpClient : ISpClient
             {
                 _logger?.LogWarning(ex, "PutConnectState: failed to obtain client-token, continuing without");
             }
+        }
+
+        if (_remoteStateRecorder != null)
+        {
+            string? json = null;
+            string? notes = null;
+            try
+            {
+                json = Google.Protobuf.JsonFormatter.Default.Format(request);
+            }
+            catch (Exception ex)
+            {
+                notes = $"failed to format PutState request: {ex.Message}";
+            }
+
+            _remoteStateRecorder.Record(
+                kind: RemoteStateEventKind.PutStateRequest,
+                direction: RemoteStateDirection.Outbound,
+                summary: $"PutState reason={request.PutStateReason} active={request.IsActive} track={request.Device?.PlayerState?.Track?.Uri ?? "<none>"} pos={request.Device?.PlayerState?.Position ?? 0}ms",
+                correlationId: request.MessageId.ToString(),
+                jsonBody: json,
+                notes: notes);
         }
 
         // Serialize + gzip the protobuf body
@@ -526,6 +554,32 @@ public sealed class SpClient : ISpClient
 
         // Read response body - Spotify returns a ClusterUpdate protobuf
         var responseBody = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var elapsedMs = Environment.TickCount64 - startTicks;
+
+        if (_remoteStateRecorder != null)
+        {
+            string? json = null;
+            string? notes = null;
+            try
+            {
+                var cluster = Wavee.Protocol.Player.Cluster.Parser.ParseFrom(responseBody);
+                json = Google.Protobuf.JsonFormatter.Default.Format(cluster);
+            }
+            catch (Exception ex)
+            {
+                notes = $"failed to parse Cluster: {ex.Message}";
+            }
+
+            _remoteStateRecorder.Record(
+                kind: RemoteStateEventKind.PutStateResponse,
+                direction: RemoteStateDirection.Inbound,
+                summary: $"PutState response corrId={request.MessageId} bytes={responseBody.Length} elapsedMs={elapsedMs}",
+                correlationId: request.MessageId.ToString(),
+                elapsedMs: elapsedMs,
+                payloadBytes: responseBody.Length,
+                jsonBody: json,
+                notes: notes);
+        }
 
         _logger?.LogDebug("Successfully updated connect state for device {DeviceId}, response size: {Size} bytes",
             deviceId, responseBody.Length);

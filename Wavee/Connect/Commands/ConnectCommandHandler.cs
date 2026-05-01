@@ -3,6 +3,7 @@ using System.Reactive.Linq;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Diagnostics;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Utilities;
 
@@ -27,6 +28,7 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
 {
     private readonly ICommandSource _commandSource;
     private readonly ILogger? _logger;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
 
     // Command observables - use SafeSubject for exception isolation
     private readonly SafeSubject<PlayCommand> _playCommands = new();
@@ -61,8 +63,11 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
     /// </summary>
     /// <param name="dealerClient">The dealer client to receive commands from</param>
     /// <param name="logger">Optional logger for diagnostics</param>
-    public ConnectCommandHandler(DealerClient dealerClient, ILogger? logger = null)
-        : this(new DealerClientCommandSource(dealerClient), logger)
+    public ConnectCommandHandler(
+        DealerClient dealerClient,
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
+        : this(new DealerClientCommandSource(dealerClient), logger, remoteStateRecorder)
     {
     }
 
@@ -72,10 +77,14 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
     /// </summary>
     /// <param name="commandSource">The command source to receive requests from and send replies to</param>
     /// <param name="logger">Optional logger for diagnostics</param>
-    public ConnectCommandHandler(ICommandSource commandSource, ILogger? logger = null)
+    public ConnectCommandHandler(
+        ICommandSource commandSource,
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _commandSource = commandSource ?? throw new ArgumentNullException(nameof(commandSource));
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
 
         // Create worker for async command processing (bounded capacity for backpressure)
         _commandWorker = new AsyncWorker<ConnectCommand>(
@@ -92,6 +101,10 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
                 onError: ex => _logger?.LogError(ex, "Error in dealer request stream"));
 
         _disposables.Add(_requestSubscription);
+        _remoteStateRecorder.Record(
+            kind: RemoteStateEventKind.SubscriptionRegistered,
+            direction: RemoteStateDirection.Internal,
+            summary: "ConnectCommandHandler -> hm://connect-state/v1/* (REQUEST messages)");
 
         _logger?.LogInformation("ConnectCommandHandler initialized and listening for commands");
     }
@@ -159,6 +172,14 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
             if (command == null)
             {
                 _logger?.LogWarning("Failed to parse dealer request: {MessageIdent}", request.MessageIdent);
+                _remoteStateRecorder.Record(
+                    kind: RemoteStateEventKind.DealerCommand,
+                    direction: RemoteStateDirection.Inbound,
+                    summary: $"DealerCommand unsupported ident={request.MessageIdent} sender={request.SenderDeviceId} key={request.Key}",
+                    correlationId: request.Key,
+                    headers: request.Headers,
+                    jsonBody: GetCommandJson(request),
+                    notes: "failed to parse dealer command");
 
                 // Send error reply
                 _ = SendReplyAsync(request.Key, RequestResult.DeviceDoesNotSupportCommand);
@@ -167,6 +188,13 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
 
             _logger?.LogDebug("Parsed command: {Endpoint} key={Key} messageId={MessageId} sender={Sender}",
                 command.Endpoint, command.Key, command.MessageId, command.SenderDeviceId ?? "<none>");
+            _remoteStateRecorder.Record(
+                kind: RemoteStateEventKind.DealerCommand,
+                direction: RemoteStateDirection.Inbound,
+                summary: $"DealerCommand endpoint={command.Endpoint} sender={command.SenderDeviceId ?? "<none>"} key={command.Key}",
+                correlationId: command.Key,
+                headers: request.Headers,
+                jsonBody: GetCommandJson(request));
 
             // Queue command for async processing
             if (!_commandWorker.TrySubmit(command))
@@ -180,6 +208,18 @@ public sealed class ConnectCommandHandler : IAsyncDisposable
         {
             _logger?.LogError(ex, "Error processing dealer request: {MessageIdent}", request.MessageIdent);
             _ = SendReplyAsync(request.Key, RequestResult.UpstreamError);
+        }
+    }
+
+    private static string? GetCommandJson(DealerRequest request)
+    {
+        try
+        {
+            return request.Command.GetRawText();
+        }
+        catch
+        {
+            return null;
         }
     }
 

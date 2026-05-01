@@ -16,6 +16,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.System;
@@ -975,8 +976,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 : pipeline.OrderByDescending(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects));
         }
 
-        foreach (var t in pipeline)
-            _visibleRows.Add(t);
+        _visibleRows.ReplaceWith(pipeline);
     }
 
     private static object? SortValue(ITrackItem item, string sortKey) => sortKey switch

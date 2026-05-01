@@ -84,7 +84,6 @@
                 VerticalAlignment="Center"
                 RenderTransformOrigin="0.5,0.5"
                 PointerEntered="MediaFrame_PointerEntered"
-                PointerMoved="MediaFrame_PointerMoved"
                 PointerExited="MediaFrame_PointerExited">
                 <Grid.RenderTransform>
                     <CompositeTransform x:Name="MediaFrameTransform" />

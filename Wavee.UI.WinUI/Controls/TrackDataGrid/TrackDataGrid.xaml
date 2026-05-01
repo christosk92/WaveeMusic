@@ -311,6 +311,17 @@
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 KeyDown="RowsList_KeyDown"
                 SelectionMode="Extended">
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection>
+                        <EntranceThemeTransition IsStaggeringEnabled="False"/>
+                        <AddDeleteThemeTransition/>
+                    </TransitionCollection>
+                </ListView.ItemContainerTransitions>
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel ItemsUpdatingScrollMode="KeepScrollOffset"/>
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
                 <!--
                     ItemContainerStyle + ItemTemplate mirror TrackListView — selection pill,
                     hover paint, heart toggle, index/play/equalizer swap, tap-to-play, and

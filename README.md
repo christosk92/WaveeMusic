@@ -1,6 +1,6 @@
 # WaveeMusic
 
-A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
+A modern, open-source Spotify desktop client for Windows — built with .NET 10 and WinUI 3.
 
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)
 ![WinUI](https://img.shields.io/badge/WinUI-3-0078D4?logo=windows)
@@ -8,33 +8,45 @@ A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
 
 ![Wavee](screenshots/home.png)
 
+## What it is
+
+Wavee is an alternative client for Spotify on Windows. Under the hood it's a clean‑room reimplementation of Spotify's Access Point, Connect, Mercury, and metadata protocols — the same ones the official client speaks — wrapped in a polished WinUI 3 desktop app.
+
+A **Spotify Premium** account is required, and the app is intended for personal use.
+
 ## Features
 
-### Desktop Application
-- **Modern UI** - WinUI 3 with Mica backdrop and Fluent Design
-- **Browser-like Tabs** - Pin, compact, drag-and-drop, and context menus
-- **Sidebar Navigation** - Quick access to Home, Library, Search, and playlists
-- **Full Player Controls** - Play, pause, seek, shuffle, repeat, volume, and queue
+### Desktop app
+- **Home, Search, Library** — liked songs, saved artists, saved albums, playlists.
+- **Artist, Album, Playlist pages** — full discography, top tracks, biography, related, color extraction from art.
+- **Browser-style tabs** with pin / drag-and-drop / context menus, plus a sidebar for navigation and an expandable now‑playing pane.
+- **Music videos** — Spotify videos play with PlayReady DRM via WebView2; local videos play through the platform media player.
+- **Lyrics** — synced lyrics with shader effects, multi‑language detection, and CJK romanization (pinyin / kana).
+- **Local file library** — index audio and video files from disk, browse them alongside Spotify content.
+- **Friends feed**, **profile**, **concerts**, in‑app **settings** (theme, audio device, EQ, language, diagnostics).
 
 ### Spotify Connect
-- **Remote Playback Control** - Control playback on any Spotify Connect device
-- **Real-Time Sync** - WebSocket-based Dealer protocol for instant updates
-- **Device Management** - Transfer playback between devices seamlessly
+- Full Dealer WebSocket implementation, real‑time cluster state synchronization.
+- Device picker for transferring playback between devices.
+- Volume sync, queue updates, remote command handling — works as both controller and target.
 
-### Audio Pipeline
-- **BASS Audio Engine** - High-quality local playback with BASS decoder
-- **Audio Processing** - 10-band equalizer, compressor, limiter, normalization
-- **HTTP Streaming** - Native support for radio streams and URLs
-- **Crossfade** - Smooth transitions between tracks
+### Audio
+- Audio runs in a separate process (`Wavee.AudioHost`) over named‑pipe IPC, so audio engine crashes don't take the UI down.
+- BASS for decode + DSP, NVorbis for Ogg Vorbis decryption, PortAudio for cross‑arch output.
+- 10‑band equalizer, normalization (loudness), and crossfade between tracks.
 
 ### Authentication
-- **OAuth 2.0** - Authorization Code Flow with PKCE (browser-based)
-- **Device Code Flow** - Console and headless authentication
-- **Secure Storage** - Encrypted credential caching
+- OAuth 2.0 — both **Authorization Code with PKCE** (browser flow) and **Device Code** flow.
+- Credentials cached encrypted on disk via Windows DPAPI, so you only sign in once.
+
+### Architecture highlights
+- **.NET 10** with Native AOT compatibility on the core library and console.
+- **MVVM + DI** in the desktop app (`Microsoft.Extensions.DependencyInjection`, `CommunityToolkit.Mvvm`, `ReactiveUI`).
+- **Single-project MSIX** packaging for x86 / x64 / ARM64.
 
 ## Screenshots
 
-### Desktop App
+### Desktop app
 
 <table>
   <tr>
@@ -53,14 +65,14 @@ A high-performance Spotify client for Windows, built with .NET 10 and WinUI 3.
 
 ![Console](screenshots/console.png)
 
-## Quick Start
+## Quick start
 
 ### Prerequisites
-- Windows 10 version 1809 or later
-- .NET 10.0 SDK
-- Spotify Premium account
+- Windows 10 version 1809 (build 17763) or later
+- .NET 10 SDK
+- A Spotify **Premium** account
 
-### Running the Desktop App
+### Run the desktop app
 
 ```bash
 git clone https://github.com/christosk92/WaveeMusic.git
@@ -68,62 +80,42 @@ cd WaveeMusic
 dotnet run --project Wavee.UI.WinUI
 ```
 
-### Running the Console App
+### Run the console app
 
 ```bash
 dotnet run --project Wavee.Console
 ```
 
-## Project Structure
+## Project structure
 
 ```
 WaveeMusic/
-├── Wavee/                          # Core library
-│   ├── Core/                       # Authentication, session, crypto
-│   ├── Connect/                    # Spotify Connect protocol
-│   │   ├── Playback/               # Audio pipeline and processors
-│   │   └── DealerClient.cs         # WebSocket orchestrator
-│   ├── OAuth/                      # OAuth 2.0 flows
-│   └── Protocol/                   # Protobuf definitions
-├── Wavee.UI.WinUI/                 # WinUI 3 Desktop App
-│   ├── Controls/                   # TabBar, Sidebar, PlayerBar
-│   ├── Views/                      # Home, Library, Search, Artist, Album
-│   ├── ViewModels/                 # MVVM view models
-│   └── Services/                   # Navigation, theming
-├── Wavee.Console/                  # Interactive console app
-└── Wavee.Tests/                    # Test suite
+├── Wavee/                          # Core protocol library (auth, Connect, audio orchestration, metadata)
+├── Wavee.UI/                       # Framework-neutral UI service layer (no XAML)
+├── Wavee.UI.WinUI/                 # WinUI 3 desktop app (the headline client)
+├── Wavee.Controls.Lyrics/          # Lyrics rendering library (D2D shaders, language detect, romanization)
+├── Wavee.AudioHost/                # Out-of-process audio runtime (BASS + NVorbis + PortAudio, x64-only)
+├── Wavee.Playback.Contracts/       # Shared IPC contracts between WinUI app and AudioHost
+├── Wavee.Console/                  # AOT-compiled CLI client (Spectre.Console + Docker-friendly)
+├── Wavee.Tests/                    # Tests for the core library
+├── Wavee.UI.Tests/                 # Tests for the UI service layer
+├── Wavee.PlayPlay.Tests/           # PlayPlay decryption tests
+├── Lyricify.Lyrics.Helper/         # Vendored: multi-provider lyrics search (QQ, Kugou, Netease)
+├── NVorbis/                        # Vendored: managed Ogg Vorbis decoder
+└── Wavee.sln                       # Solution
 ```
 
-## Technology Stack
-
-| Component | Technology |
-|-----------|------------|
-| **Framework** | .NET 10.0, C# 13 |
-| **UI** | WinUI 3, Windows App SDK |
-| **Audio** | BASS Audio Library |
-| **Protocols** | Protocol Buffers, WebSocket |
-| **Reactive** | System.Reactive (Rx.NET) |
-| **MVVM** | CommunityToolkit.Mvvm |
-
-## Implementation Status
-
-### Complete
-- OAuth 2.0 authentication (Authorization Code + Device Code)
-- Spotify Connect protocol (Dealer WebSocket)
-- Remote playback control (play, pause, seek, skip, shuffle, repeat)
-- Device state synchronization
-- Search functionality (GraphQL Pathfinder API)
-- Audio pipeline with BASS decoder
-- Audio processors (equalizer, compressor, limiter, normalization)
-
-### In Progress
-- WinUI 3 desktop application
-- Playlist management
-- Library synchronization
-
-### Planned
-- Mercury protocol for metadata
-- Offline playback
+Each first‑party project has its own README with developer-facing details:
+[Wavee](Wavee/README.md) ·
+[Wavee.UI](Wavee.UI/README.md) ·
+[Wavee.UI.WinUI](Wavee.UI.WinUI/README.md) ·
+[Wavee.Controls.Lyrics](Wavee.Controls.Lyrics/README.md) ·
+[Wavee.AudioHost](Wavee.AudioHost/README.md) ·
+[Wavee.Playback.Contracts](Wavee.Playback.Contracts/README.md) ·
+[Wavee.Console](Wavee.Console/README.md) ·
+[Wavee.Tests](Wavee.Tests/README.md) ·
+[Wavee.UI.Tests](Wavee.UI.Tests/README.md) ·
+[Wavee.PlayPlay.Tests](Wavee.PlayPlay.Tests/README.md).
 
 ## Building
 
@@ -131,32 +123,40 @@ WaveeMusic/
 # Build entire solution
 dotnet build
 
-# Build release
+# Release build
 dotnet build -c Release
 
 # Run tests
 dotnet test
 ```
 
-## Contributing
+`Wavee.UI.WinUI` builds `Wavee.AudioHost` automatically as an x64 subprocess (via the `BuildAudioHost` MSBuild target). This is normal even on ARM64 Windows — the audio host loads `Spotify.dll` (x86_64) for PlayPlay key derivation, and the OS runs it under built-in x64 emulation. See [Wavee.AudioHost/README.md](Wavee.AudioHost/README.md) for the why.
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Technology stack
 
-Areas where help is needed:
-- UI/UX improvements
-- Additional audio format support
-- Platform-specific features
-- Documentation and examples
+| Component       | Technology                                                                 |
+|-----------------|----------------------------------------------------------------------------|
+| **Framework**   | .NET 10, C# preview                                                        |
+| **UI**          | WinUI 3, Windows App SDK 2.0, CommunityToolkit, ReactiveUI                 |
+| **Audio**       | BASS (DSP), NVorbis (Ogg), PortAudio (output) — out-of-process             |
+| **Protocols**   | Protocol Buffers (Google.Protobuf), WebSocket, Mercury, ZStandard, Shannon |
+| **Reactive**    | System.Reactive (Rx.NET)                                                   |
+| **MVVM / DI**   | CommunityToolkit.Mvvm, Microsoft.Extensions.DependencyInjection / Hosting  |
+| **Storage**     | SQLite (Microsoft.Data.Sqlite) for library / playlist cache                |
+| **Logging**     | Serilog                                                                    |
+| **Lyrics**      | ComputeSharp.D2D1.WinUI, NTextCat, csharp-pinyin, WanaKana                 |
 
-## What Wavee sends to Spotify
+## Gabo events (telemetry)
 
-Wavee posts the bare minimum set of playback events Spotify's backend needs to credit your plays toward Recently Played, play counts, and the "made for you" recommendations you already get from any official client. Everything goes to `gabo-receiver-service/v3/events/` over HTTPS.
+Wavee posts the bare minimum set of playback events Spotify's backend needs to credit your plays toward Recently Played, play counts, and the "made for you" recommendations you already get from any official client. Everything goes to `https://spclient.wg.spotify.com/gabo-receiver-service/v3/events/`.
 
-**Events sent — playback only:**
+The legacy `event-service/v1/events` path (both Mercury and HTTPS variants) returns 404 — gabo is the only working transport, and our event surface is built around it.
+
+### Events sent — playback only
 
 | Event | When | What |
 |---|---|---|
-| `RawCoreStream` | At the end of each track | Track URI, context URI, ms played, reason started/ended, audio format |
+| `RawCoreStream` | At the end of each track | Track URI, context URI, ms played, reason started/ended, audio format. **This is the play-history event** — Recently Played and play counts both come from here. |
 | `RawCoreStreamSegment` | Per pause/resume/seek split inside a track | Same playback id + segment ms range |
 | `AudioSessionEvent` | When playback opens/seeks/closes | Session lifecycle markers |
 | `BoomboxPlaybackSession` | Once per track | Buffering / resolve / setup latencies + duration |
@@ -164,24 +164,51 @@ Wavee posts the bare minimum set of playback events Spotify's backend needs to c
 | `CorePlaybackCommandCorrelation` | When a play command runs | Maps command id → playback id |
 | `ContentIntegrity` | Per track | Playback id + a flag stating we played in real-time (not ripping) |
 
-**Events Wavee deliberately does NOT send** (the desktop client sends these; we don't because none of them are required to make Recently Played work):
+### Events Wavee deliberately does NOT send
 
-- Ad pipeline (`AdEvent`, `AdRequestEvent`, `AdOpportunityEvent`, `AdSlotEvent`) — Premium-only client, no ads
-- UI interaction telemetry (`DesktopUIShellInteractionNonAuth`, `WindowSizeNonAuth`)
-- System / driver fingerprinting (`AudioDriverInfo`, `WasapiAudioDriverInfo`, `ModuleDebug`, `ConfigurationFetched`, `TimeMeasurement`, `ClientRuntimeDiag`)
-- Library / cache reports (`LocalFilesReport`, `CacheReport`, `OfflinePruneReport`, `CollectionEndpointUsage`)
-- Anything else from the 100+ event types defined in Spotify's binary
+The desktop client sends these; we don't because none of them are required to make Recently Played work:
 
-The full list of events Wavee implements lives under `Wavee/Connect/Events/`. The bare envelope shape (and the anti-fraud-safe context fragments — manufacturer, OS version, machine SID, etc.) is documented in `Wavee/Connect/Events/GaboEnvelopeFactory.cs`.
+- **Ad pipeline** — `AdEvent`, `AdRequestEvent`, `AdOpportunityEvent`, `AdSlotEvent`. Premium-only client, no ads.
+- **UI interaction telemetry** — `DesktopUIShellInteractionNonAuth`, `WindowSizeNonAuth`.
+- **System / driver fingerprinting** — `AudioDriverInfo`, `WasapiAudioDriverInfo`, `ModuleDebug`, `ConfigurationFetched`, `TimeMeasurement`, `ClientRuntimeDiag`.
+- **Library / cache reports** — `LocalFilesReport`, `CacheReport`, `OfflinePruneReport`, `CollectionEndpointUsage`.
+- Anything else from the 100+ event types defined in Spotify's binary.
+
+### How it's wired
+
+| File | Role |
+|---|---|
+| `Wavee/Connect/Events/EventService.cs` | Posts each `IPlaybackEvent` (one envelope per POST in v1; client-side batching can be layered later). Exposes `IObservable<IPlaybackEvent>` so in-process subscribers can mirror what's sent. |
+| `Wavee/Connect/Events/GaboEnvelopeFactory.cs` | Builds the protobuf envelope. The per-event payload is one `EventFragment`; the rest of the fragments are the **context block** — client id, installation id, application/device descriptors, time, SDK. |
+| `Wavee/Connect/Events/IPlaybackEvent.cs` | Interface for one event type. Implementations: `RawCoreStreamPlaybackEvent`, `RawCoreStreamSegmentPlaybackEvent`, `AudioSessionPlaybackEvent`, `BoomboxPlaybackSessionEvent`, `DownloadPlaybackEvent`, `HeadFileDownloadPlaybackEvent`, `CorePlaybackCommandCorrelationEvent`, `ContentIntegrityPlaybackEvent`. |
+| `Wavee/Core/Http/SpClient.cs` (`PostGaboEventAsync`) | The actual HTTPS POST. |
+
+### Mimicry of the desktop client (anti-fraud avoidance)
+
+Spotify's anti-fraud pipeline drops batches whose context block doesn't look like a first-party client. To stay below that bar, the envelope's `context_sdk` fragment uses the same `sdk_version_name` and `sdk_type` strings the C++ desktop client emits, the `application_desktop` fragment carries the desktop client's app version (`1.2.88.483` / version code `128800483`), and the device-context fragments use the real machine's BIOS manufacturer/model + OS version + Windows machine SID. The breakthrough is documented inline in `GaboEnvelopeFactory.cs`. If you change the SDK strings or version code, expect Recently Played to silently stop working.
+
+## What's NOT in this repo (proprietary)
+
+Three Spotify-property files are deliberately excluded from the public source tree. The build still compiles without them — stubs are provided where needed — but a few features are degraded or disabled.
+
+| Excluded file | What it does | Effect of the stub |
+|---|---|---|
+| `Wavee/Core/Crypto/AudioDecryptStream.cs` | AES-128-CTR Big-Endian decryption for Spotify audio files (matches librespot's `audio/src/decrypt.rs`). Provides streaming decrypt with arbitrary seeking. | The file is excluded entirely (no stub). Test fixtures (`Wavee.Tests/Core/Crypto/...`) document what *would* be tested. Without it, you cannot decrypt encrypted Spotify Ogg streams in this repo's open form. |
+| `Wavee/Core/Audio/PlayPlayConstants.cs` | Spotify-specific constants used to derive PlayPlay AES keys directly from `Spotify.dll`, used as a fallback when the AP audio-key channel returns a permanent error. | `PlayPlayConstants.Stub.cs` ships in its place; the runtime feature stays disabled. `AudioKeyManager` falls back to AP-only key resolution. |
+| `Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` | The actual emulator that loads `Spotify.dll` (x86_64) in-process and exercises PlayPlay. | `PlayPlayKeyEmulator.Stub.cs` ships in its place. `Wavee.PlayPlay.Tests` runs against the stub and skips the real test vectors. |
+
+**Why excluded:** these files reproduce Spotify's DRM (the AES decryption stream) and proprietary key-derivation data (PlayPlay constants embedded in `Spotify.dll`). Both are part of Spotify's intellectual property; we're not in a position to redistribute them. The connection-protocol layer (handshake, Shannon cipher, packet framing) is fully open and included — see [Wavee/Core/Crypto/README.md](Wavee/Core/Crypto/README.md) for the legal note.
+
+**What still works without them:** authentication, session management, Spotify Connect (full controller + target), all metadata APIs (SpClient + Pathfinder), the WinUI app's UI, library sync, search, lyrics, music videos via PlayReady, Connect command issuance, telemetry — everything except the actual decryption of Spotify-encrypted audio files. If you need to play encrypted streams, you'll need to implement audio decryption yourself or obtain proper licensing.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Disclaimer
 
-This project is not affiliated with Spotify AB. All trademarks are property of their respective owners. WaveeMusic is for educational and personal use only. Users must comply with Spotify's Terms of Service and have a valid Spotify Premium subscription.
+This project is not affiliated with, endorsed by, or sponsored by Spotify AB. All trademarks are property of their respective owners. WaveeMusic is for educational and personal use only. Users must comply with Spotify's Terms of Service and have a valid Spotify Premium subscription.
 
 ---
 
-**Status**: Active Development | **Platform**: Windows 10/11
+**Status**: Active development · **Platform**: Windows 10 (1809) and 11

@@ -85,6 +85,7 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        AddHandler(PointerMovedEvent, new PointerEventHandler(Root_PointerMoved), true);
         Visibility = ViewModel.IsVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 

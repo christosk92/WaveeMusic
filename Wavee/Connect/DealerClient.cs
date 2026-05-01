@@ -5,6 +5,7 @@ using System.Reactive.Subjects;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using Wavee.Connect.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Connection;
 using Wavee.Connect.Protocol;
@@ -22,6 +23,7 @@ public sealed class DealerClient : IAsyncDisposable
     private readonly ILogger? _logger;
     private readonly IDealerConnection _connection;
     private readonly DealerClientConfig _config;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
 
     // Hot observables (SafeSubject<T> isolates subscriber exceptions)
     private readonly SafeSubject<DealerMessage> _messages;
@@ -102,11 +104,15 @@ public sealed class DealerClient : IAsyncDisposable
     /// </summary>
     /// <param name="config">Configuration for dealer client behavior.</param>
     /// <param name="connection">Optional dealer connection (for testing). If null, creates a new DealerConnection.</param>
-    public DealerClient(DealerClientConfig? config = null, IDealerConnection? connection = null)
+    public DealerClient(
+        DealerClientConfig? config = null,
+        IDealerConnection? connection = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _config = config ?? new DealerClientConfig();
         _logger = _config.Logger;
         _connection = connection ?? new DealerConnection(_config.Logger);
+        _remoteStateRecorder = remoteStateRecorder;
 
         // Initialize SafeSubjects with logger for exception isolation
         _messages = new SafeSubject<DealerMessage>(_logger);
@@ -269,6 +275,25 @@ public sealed class DealerClient : IAsyncDisposable
 #pragma warning restore IL2026, IL3050
 
         await _connection.SendAsync(replyJson, cancellationToken);
+
+        if (_remoteStateRecorder != null)
+        {
+            string ident = "<unknown>";
+            long? elapsedMs = null;
+            if (_pendingRequests.TryGetValue(key, out var pending))
+            {
+                ident = pending.Request.MessageIdent;
+                elapsedMs = (long)(DateTimeOffset.UtcNow - pending.Timestamp).TotalMilliseconds;
+            }
+
+            _remoteStateRecorder.Record(
+                kind: RemoteStateEventKind.DealerReply,
+                direction: RemoteStateDirection.Outbound,
+                summary: $"Reply key={key} result={result} ident={ident}",
+                correlationId: key,
+                elapsedMs: elapsedMs,
+                jsonBody: replyJson);
+        }
 
         // Remove from pending requests and cancel timeout (reply sent)
         if (_pendingRequests.TryRemove(key, out var pendingRequest))

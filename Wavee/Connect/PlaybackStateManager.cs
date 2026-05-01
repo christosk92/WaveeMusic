@@ -2,6 +2,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Diagnostics;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Audio;
 using Wavee.Core.Http;
@@ -63,6 +64,7 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     private IExtendedMetadataClient? _metadataClient; // For enriching incomplete cluster metadata
     private CancellationTokenSource? _enrichCts;
     private readonly ILogger? _logger;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
 
     // State
     private readonly BehaviorSubject<PlaybackState> _stateSubject;
@@ -268,10 +270,14 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// </summary>
     /// <param name="dealerClient">DealerClient for receiving cluster updates.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
-    public PlaybackStateManager(DealerClient dealerClient, ILogger? logger = null)
+    public PlaybackStateManager(
+        DealerClient dealerClient,
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _dealerClient = dealerClient ?? throw new ArgumentNullException(nameof(dealerClient));
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
 
         // Initialize with empty state
         _currentState = PlaybackState.Empty;
@@ -287,6 +293,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
 
         _logger?.LogDebug("PlaybackStateManager initialized (remote-only mode)");
         _logger?.LogTrace("Subscribed to cluster updates and PUT state responses");
+        _remoteStateRecorder.Record(
+            kind: RemoteStateEventKind.SubscriptionRegistered,
+            direction: RemoteStateDirection.Internal,
+            summary: "PlaybackStateManager -> hm://connect-state/v1/cluster*, hm://connect-state/v1/put-state-response*");
     }
 
     /// <summary>
@@ -303,8 +313,9 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         IPlaybackEngine playbackEngine,
         SpClient spClient,
         ISession session,
-        ILogger? logger = null)
-        : this(dealerClient, logger)  // Chain to primary constructor for cluster subscription
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
+        : this(dealerClient, logger, remoteStateRecorder)  // Chain to primary constructor for cluster subscription
     {
         _playbackEngine = playbackEngine ?? throw new ArgumentNullException(nameof(playbackEngine));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
@@ -438,6 +449,37 @@ public sealed class PlaybackStateManager : IAsyncDisposable
         }
 
         // Always propagate the Connect device roster — orthogonal to local playback state.
+        if (_remoteStateRecorder != null)
+        {
+            string? json = null;
+            string? notes = null;
+            try
+            {
+                json = JsonFormatter.Default.Format(cluster);
+            }
+            catch (Exception ex)
+            {
+                notes = $"failed to format Cluster: {ex.Message}";
+                _logger?.LogTrace("recorder: cluster JSON format failed: {Err}", ex.Message);
+            }
+
+            var kind = isSelfEcho
+                ? RemoteStateEventKind.PutStateResponseEcho
+                : RemoteStateEventKind.ClusterUpdate;
+            var corrId = message.Headers.TryGetValue("X-Wavee-Corr", out var c) ? c : null;
+            var summary = $"Cluster #{clusterSeq} active={cluster.ActiveDeviceId ?? "<none>"} track={cluster.PlayerState?.Track?.Uri ?? "<none>"} selfEcho={isSelfEcho} uri={message.Uri}";
+
+            _remoteStateRecorder.Record(
+                kind: kind,
+                direction: RemoteStateDirection.Inbound,
+                summary: summary,
+                correlationId: corrId,
+                payloadBytes: message.Payload.Length,
+                headers: message.Headers,
+                jsonBody: json,
+                notes: notes);
+        }
+
         TryEmitConnectDeviceUpdate(cluster, clusterSeq);
 
         // Proxy-only mode: AudioHost owns playback state, so skip the full state merge.

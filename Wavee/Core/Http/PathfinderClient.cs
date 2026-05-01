@@ -106,7 +106,9 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.ConcertLocationsByLatLon
             or PathfinderOperations.SaveLocation
             or PathfinderOperations.SearchConcertLocations
-            or PathfinderOperations.Concert;
+            or PathfinderOperations.Concert
+            or PathfinderOperations.InternalLinkRecommenderTrack
+            or PathfinderOperations.GetTrack;
         httpRequest.Headers.TryAddWithoutValidation("app-platform", useWebPlayer ? "WebPlayer" : "Win32_x86_64");
         if (useXpuiDesktop)
         {
@@ -483,6 +485,38 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<SeoRecommendedTracksResponse> GetSeoRecommendedTracksAsync(
+        string trackUri, int limit = 20, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackUri);
+
+        var variables = new SeoRecommendedTracksVariables(trackUri, limit);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.InternalLinkRecommenderTrack,
+            PathfinderOperations.InternalLinkRecommenderTrackHash,
+            SeoRecommendedTracksJsonContext.Default.SeoRecommendedTracksResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<GetTrackResponse> GetTrackAsync(
+        string trackUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackUri);
+
+        var variables = new GetTrackVariables(trackUri);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.GetTrack,
+            PathfinderOperations.GetTrackHash,
+            GetTrackJsonContext.Default.GetTrackResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<TrackCreditsResponse> GetTrackCreditsAsync(
         string trackUri, int contributorsLimit = 100, CancellationToken ct = default)
     {
@@ -749,6 +783,14 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is NpvArtistVariables npv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(npv, NpvArtistVariablesJsonContext.Default.NpvArtistVariables);
+        }
+        else if (variables is SeoRecommendedTracksVariables srtv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(srtv, SeoRecommendedTracksVariablesJsonContext.Default.SeoRecommendedTracksVariables);
+        }
+        else if (variables is GetTrackVariables gtv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(gtv, GetTrackVariablesJsonContext.Default.GetTrackVariables);
         }
         else if (variables is TrackCreditsVariables tcv)
         {

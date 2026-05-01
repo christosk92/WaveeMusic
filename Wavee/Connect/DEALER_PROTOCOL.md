@@ -35,15 +35,16 @@ wss://{dealer-host}/?access_token={token}
 
 ### Connection Lifecycle
 
-**States:**
-- **Connected**: WebSocket open, heartbeat active
-- **Disconnected**: WebSocket closed, attempting reconnection
-- **Failed**: Connection error, scheduled retry
+**States** (`Wavee.Connect.Connection.ConnectionState`):
+- **Disconnected** — WebSocket closed.
+- **Connecting** — WebSocket handshake in progress.
+- **Connected** — WebSocket open, heartbeat active.
 
-**Reconnection Strategy:**
-- Wait 10 seconds after disconnection
-- Retry indefinitely until successful
-- Refresh access token if expired
+**Reconnection Strategy** — implemented in `Wavee/Connect/ReconnectionManager.cs`:
+- Exponential backoff between attempts, configurable via `ReconnectionManager(initialDelay, maxDelay, maxAttempts, callback, logger)`.
+- Defaults today: initial delay 1 second, max delay 30 seconds, unlimited attempts.
+- Refresh access token if expired before reconnecting (the dealer URL embeds the token in the query string).
+- `ReconnectionSucceeded` / `ReconnectionFailed` events surface the outcome.
 
 ---
 

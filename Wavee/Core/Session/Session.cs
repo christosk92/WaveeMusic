@@ -5,6 +5,7 @@ using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
+using Wavee.Connect.Diagnostics;
 using Wavee.Connect.Events;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Audio;
@@ -41,6 +42,7 @@ public sealed class Session : ISession, IAsyncDisposable
     private readonly SessionConfig _config;
     private readonly SessionData _data;
     private readonly ILogger? _logger;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
     private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
@@ -88,6 +90,8 @@ public sealed class Session : ISession, IAsyncDisposable
     // Proactive AP health check: timestamp of last packet received from AP
     private DateTime _lastApPacketUtc = DateTime.UtcNow;
     private IDisposable? _dealerReconnectSubscription;
+    private IDisposable? _recorderDealerStateSubscription;
+    private IDisposable? _recorderConnectionIdSubscription;
 
     // Clock synchronization
     private SpotifyClockService? _clockService;
@@ -113,12 +117,17 @@ public sealed class Session : ISession, IAsyncDisposable
     /// </summary>
     public SessionConfig Config => _config;
 
-    private Session(SessionConfig config, IHttpClientFactory httpClientFactory, ILogger? logger)
+    private Session(
+        SessionConfig config,
+        IHttpClientFactory httpClientFactory,
+        ILogger? logger,
+        IRemoteStateRecorder? remoteStateRecorder)
     {
         ArgumentNullException.ThrowIfNull(httpClientFactory);
 
         _config = config;
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
         _httpClient = httpClientFactory.CreateClient("Wavee");
         _data = new SessionData(config, _httpClient, logger);
 
@@ -136,11 +145,15 @@ public sealed class Session : ISession, IAsyncDisposable
     /// <param name="httpClientFactory">HTTP client factory for creating HttpClient instances.</param>
     /// <param name="logger">Optional logger for diagnostic output.</param>
     /// <returns>A new session instance.</returns>
-    public static Session Create(SessionConfig config, IHttpClientFactory httpClientFactory, ILogger? logger = null)
+    public static Session Create(
+        SessionConfig config,
+        IHttpClientFactory httpClientFactory,
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(httpClientFactory);
-        return new Session(config, httpClientFactory, logger);
+        return new Session(config, httpClientFactory, logger, remoteStateRecorder);
     }
 
     /// <summary>
@@ -340,7 +353,10 @@ public sealed class Session : ISession, IAsyncDisposable
             _logger?.LogDebug("Initializing Spotify Connect subsystem");
 
             // Create and connect DealerClient with config containing logger
-            _dealerClient = new DealerClient(config: new DealerClientConfig { Logger = _logger });
+            _dealerClient = new DealerClient(
+                config: new DealerClientConfig { Logger = _logger },
+                remoteStateRecorder: _remoteStateRecorder);
+            SubscribeRemoteStateRecorder(_dealerClient);
             await _dealerClient.ConnectAsync(this, _httpClient, cancellationToken);
             _logger?.LogDebug("DealerClient connected");
 
@@ -357,14 +373,15 @@ public sealed class Session : ISession, IAsyncDisposable
                 (SpClient)SpClient,
                 _dealerClient,
                 initialVolume: _config.InitialVolume,
-                logger: _logger);
+                logger: _logger,
+                remoteStateRecorder: _remoteStateRecorder);
 
             // Create command handler for processing incoming REQUESTs
-            _commandHandler = new ConnectCommandHandler(_dealerClient, _logger);
+            _commandHandler = new ConnectCommandHandler(_dealerClient, _logger, _remoteStateRecorder);
             _logger?.LogDebug("ConnectCommandHandler created");
 
             // Create playback state manager for processing cluster MESSAGEs
-            _playbackStateManager = new PlaybackStateManager(_dealerClient, _logger);
+            _playbackStateManager = new PlaybackStateManager(_dealerClient, _logger, _remoteStateRecorder);
             _logger?.LogDebug("PlaybackStateManager created");
 
             // Create event service for reporting playback events. Routes through
@@ -418,6 +435,7 @@ public sealed class Session : ISession, IAsyncDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to initialize Spotify Connect subsystem");
+            DisposeRemoteStateRecorderSubscriptions();
             // Non-fatal: session can still work without Connect
         }
     }
@@ -473,7 +491,8 @@ public sealed class Session : ISession, IAsyncDisposable
         _httpClient,
         _spClientEndpoint ?? "spclient.wg.spotify.com:443",
         _clientTokenManager,
-        _logger);
+        _logger,
+        _remoteStateRecorder);
 
     /// <summary>
     /// Gets the resolved SpClient endpoint URL.
@@ -1435,6 +1454,56 @@ public sealed class Session : ISession, IAsyncDisposable
         }
     }
 
+    private void SubscribeRemoteStateRecorder(DealerClient dealerClient)
+    {
+        if (_remoteStateRecorder == null) return;
+
+        DisposeRemoteStateRecorderSubscriptions();
+
+        _recorderDealerStateSubscription = dealerClient.ConnectionState
+            .DistinctUntilChanged()
+            .Skip(1)
+            .Subscribe(state =>
+            {
+                _remoteStateRecorder.Record(
+                    kind: RemoteStateEventKind.DealerLifecycle,
+                    direction: RemoteStateDirection.Internal,
+                    summary: $"Dealer {state}");
+            });
+
+        string? lastConnectionId = null;
+        _recorderConnectionIdSubscription = dealerClient.ConnectionId
+            .Where(id => !string.IsNullOrEmpty(id))
+            .DistinctUntilChanged()
+            .Subscribe(id =>
+            {
+                if (string.IsNullOrEmpty(id)) return;
+
+                var kind = lastConnectionId == null
+                    ? RemoteStateEventKind.ConnectionIdAcquired
+                    : RemoteStateEventKind.ConnectionIdChanged;
+                var summary = lastConnectionId == null
+                    ? $"acquired connectionId={id}"
+                    : $"connectionId changed: {lastConnectionId} -> {id}";
+
+                _remoteStateRecorder.Record(
+                    kind: kind,
+                    direction: RemoteStateDirection.Internal,
+                    summary: summary,
+                    correlationId: id);
+
+                lastConnectionId = id;
+            });
+    }
+
+    private void DisposeRemoteStateRecorderSubscriptions()
+    {
+        _recorderDealerStateSubscription?.Dispose();
+        _recorderDealerStateSubscription = null;
+        _recorderConnectionIdSubscription?.Dispose();
+        _recorderConnectionIdSubscription = null;
+    }
+
     private void OnDisconnected()
     {
         Disconnected?.Invoke(this, EventArgs.Empty);
@@ -1488,6 +1557,7 @@ public sealed class Session : ISession, IAsyncDisposable
 
         _dealerReconnectSubscription?.Dispose();
         _dealerReconnectSubscription = null;
+        DisposeRemoteStateRecorderSubscriptions();
 
         if (_dealerClient is not null)
         {

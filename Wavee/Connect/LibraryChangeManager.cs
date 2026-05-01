@@ -1,6 +1,7 @@
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Diagnostics;
 using Wavee.Connect.Protocol;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.Playlist;
@@ -15,6 +16,7 @@ public sealed class LibraryChangeManager : IAsyncDisposable
 {
     private readonly DealerClient _dealerClient;
     private readonly ILogger? _logger;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
     private readonly Subject<LibraryChangeEvent> _changes = new();
     private IDisposable? _subscription;
     private bool _disposed;
@@ -30,10 +32,14 @@ public sealed class LibraryChangeManager : IAsyncDisposable
     /// </summary>
     /// <param name="dealerClient">The dealer client to subscribe to.</param>
     /// <param name="logger">Optional logger.</param>
-    public LibraryChangeManager(DealerClient dealerClient, ILogger? logger = null)
+    public LibraryChangeManager(
+        DealerClient dealerClient,
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _dealerClient = dealerClient ?? throw new ArgumentNullException(nameof(dealerClient));
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
 
         // Subscribe to collection update messages
         // Spotify sends updates via hm://collection/ or hm://playlist/ URIs
@@ -44,6 +50,10 @@ public sealed class LibraryChangeManager : IAsyncDisposable
             .Subscribe(OnLibraryMessage, OnError);
 
         _logger?.LogInformation("LibraryChangeManager initialized and subscribed to collection updates");
+        _remoteStateRecorder.Record(
+            kind: RemoteStateEventKind.SubscriptionRegistered,
+            direction: RemoteStateDirection.Internal,
+            summary: "LibraryChangeManager -> hm://collection/*, hm://playlist/*, *collection-update*");
     }
 
     private void OnLibraryMessage(DealerMessage message)

@@ -514,10 +514,9 @@ public sealed partial class TrackItem : UserControl
             CompactTitle.Text = track.Title ?? "";
             CompactSubtitle.Text = track.ArtistName ?? "";
             CompactDuration.Text = track.DurationFormatted ?? "";
-            CompactExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
             CompactLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
 
-            UpdateVideoBadgeVisibility();
+            UpdateBadgePlacement();
             CompactHeartButton.IsLiked = GetTrackLikedState(track);
             CompactHeartButton.Visibility = Visibility.Visible;
             ApplyCompactAlbumArt(track.ImageUrl);
@@ -527,11 +526,9 @@ public sealed partial class TrackItem : UserControl
             CompactTitle.Text = "";
             CompactSubtitle.Text = "";
             CompactDuration.Text = "";
-            CompactExplicit.Visibility = Visibility.Collapsed;
             CompactLocalBadge.Visibility = Visibility.Collapsed;
-            CompactVideoBadge.Visibility = Visibility.Collapsed;
-            CompactVideoSeparator.Visibility = Visibility.Collapsed;
             CompactHeartButton.Visibility = Visibility.Collapsed;
+            UpdateBadgePlacement();
             ApplyCompactAlbumArt(null);
         }
     }
@@ -541,8 +538,6 @@ public sealed partial class TrackItem : UserControl
         if (track != null)
         {
             RowTitle.Text = track.Title ?? "";
-            UpdateVideoBadgeVisibility();
-            RowExplicit.Visibility = track.IsExplicit ? Visibility.Visible : Visibility.Collapsed;
             RowLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
             RowDuration.Text = track.DurationFormatted ?? "";
 
@@ -556,6 +551,8 @@ public sealed partial class TrackItem : UserControl
             RowArtistLink.Visibility = (ShowArtistColumn && !string.IsNullOrEmpty(artistName))
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+            // Must run after RowArtistLink.Visibility is set — placement depends on it.
+            UpdateBadgePlacement();
             RowAlbumLink.Content = track.AlbumName ?? "";
             RowAlbumLink.Tag = track.AlbumId;
             ApplyRowAlbumArt(track.ImageUrl);
@@ -568,13 +565,11 @@ public sealed partial class TrackItem : UserControl
         else
         {
             RowTitle.Text = "";
-            RowVideoBadge.Visibility = Visibility.Collapsed;
-            RowVideoSeparator.Visibility = Visibility.Collapsed;
-            RowExplicit.Visibility = Visibility.Collapsed;
             RowLocalBadge.Visibility = Visibility.Collapsed;
             RowDuration.Text = "";
             RowArtistLink.Content = "";
             RowAlbumLink.Content = "";
+            UpdateBadgePlacement();
             ApplyRowAlbumArt(null);
         }
     }
@@ -989,6 +984,10 @@ public sealed partial class TrackItem : UserControl
         ShimDateColDef.Width      = RowDateColDef.Width;
         ShimPlayCountColDef.Width = RowPlayCountColDef.Width;
         ShimDurationColDef.Width  = RowDurationColDef.Width;
+
+        // Subline visibility just changed (artist link) — re-evaluate whether the
+        // explicit/video badges should sit on the subline or inline beside the title.
+        UpdateBadgePlacement();
     }
 
     private void ApplyRowDensityPadding()
@@ -1182,7 +1181,7 @@ public sealed partial class TrackItem : UserControl
         RebindAlbumArtIfNeeded();
         RefreshPlaybackState();
         UpdateOverlayState();
-        UpdateVideoBadgeVisibility();
+        UpdateBadgePlacement();
         RefreshLikedState();
 
         // Subscribe to global state changes for reactive updates
@@ -1634,7 +1633,7 @@ public sealed partial class TrackItem : UserControl
         }
 
         if (propertyName == nameof(ITrackItem.HasVideo))
-            UpdateVideoBadgeVisibility();
+            UpdateBadgePlacement();
     }
 
     private static bool IsTrackContentProperty(string propertyName) => propertyName switch
@@ -1659,18 +1658,46 @@ public sealed partial class TrackItem : UserControl
         _ => false,
     };
 
-    private void UpdateVideoBadgeVisibility()
+    // Places the explicit + video badges in the right slot for the current row layout.
+    // Row mode has two slots: the subline (alongside the artist link) and an inline
+    // slot beside the title. When the subline is hidden (album page, XS density,
+    // missing artist) the inline slot is used so badges don't float on an empty row.
+    // Compact mode always has the artist subtitle, so badges always go on the subline.
+    private void UpdateBadgePlacement()
     {
         var track = Track;
         var hasVideo = track?.HasVideo == true;
-        var hasArtist = !string.IsNullOrWhiteSpace(track?.ArtistName);
-        var badgeVisibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
-        var separatorVisibility = hasVideo && hasArtist ? Visibility.Visible : Visibility.Collapsed;
+        var isExplicit = track?.IsExplicit == true;
 
-        CompactVideoBadge.Visibility = badgeVisibility;
-        RowVideoBadge.Visibility = badgeVisibility;
-        CompactVideoSeparator.Visibility = separatorVisibility;
-        RowVideoSeparator.Visibility = separatorVisibility;
+        // Compact: subtitle is the artist text and is always present when bound.
+        CompactExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
+        CompactVideoBadge.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+        var compactHasSubtitle = !string.IsNullOrWhiteSpace(track?.ArtistName);
+        CompactVideoSeparator.Visibility = (hasVideo && compactHasSubtitle)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        // Row: subline is visible only when the artist link is. Separator depends on
+        // the link's visibility, not just on whether ArtistName is set — that's the
+        // fix for the orphan "·" on album rows where the link is collapsed but the
+        // album artist name is non-empty.
+        var sublineVisible = RowArtistLink.Visibility == Visibility.Visible;
+        if (sublineVisible)
+        {
+            RowExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
+            RowVideoBadge.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+            RowVideoSeparator.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+            RowExplicitInline.Visibility = Visibility.Collapsed;
+            RowVideoBadgeInline.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            RowExplicit.Visibility = Visibility.Collapsed;
+            RowVideoBadge.Visibility = Visibility.Collapsed;
+            RowVideoSeparator.Visibility = Visibility.Collapsed;
+            RowExplicitInline.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
+            RowVideoBadgeInline.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)

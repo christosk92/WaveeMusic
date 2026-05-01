@@ -13,6 +13,7 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Search;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -231,7 +232,7 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
 
         DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => PageScrollView.ScrollTo(0, state.VerticalOffset));
+            () => PageScrollView.ScrollToImmediate(0, state.VerticalOffset));
     }
 
     private void UpdateFilterSelection()

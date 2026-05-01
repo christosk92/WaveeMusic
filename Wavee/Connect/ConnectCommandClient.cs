@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Diagnostics;
 using Wavee.Core.Session;
 
 namespace Wavee.Connect;
@@ -28,6 +29,7 @@ public sealed class ConnectCommandClient : IAsyncDisposable
     private readonly Session _session;
     private readonly HttpClient _httpClient;
     private readonly ILogger? _logger;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
 
     // Pending ack_ids waiting for confirmation
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingAcks = new();
@@ -42,11 +44,13 @@ public sealed class ConnectCommandClient : IAsyncDisposable
     public ConnectCommandClient(
         Session session,
         HttpClient httpClient,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
     }
 
     private void EnsureSubscribed()
@@ -60,6 +64,10 @@ public sealed class ConnectCommandClient : IAsyncDisposable
             .Subscribe(OnClusterUpdate);
         _subscribed = true;
         _logger?.LogDebug("ConnectCommandClient subscribed to dealer cluster updates");
+        _remoteStateRecorder.Record(
+            kind: RemoteStateEventKind.SubscriptionRegistered,
+            direction: RemoteStateDirection.Internal,
+            summary: "ConnectCommandClient -> hm://connect-state/* (ack confirmation)");
     }
 
     /// <summary>

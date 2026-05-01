@@ -789,8 +789,36 @@ public sealed class SpotifyVideoProvider
 
     private void OnWebEmeError(object? sender, string message)
     {
+        if (!ReferenceEquals(sender, _webEmePlayer))
+        {
+            _logger?.LogDebug("SpotifyVideoProvider: ignoring stale WebView2 error {Error}", message);
+            return;
+        }
+
+        if (IsRecoverableWebEmeError(message))
+        {
+            _logger?.LogWarning("SpotifyVideoProvider: recoverable WebView2 error {Error}", message);
+            OnWebEmeRecoveryRequested(
+                sender,
+                new SpotifyWebEmePlayerRecoveryRequest(_webPositionMs, "webview-recoverable-error"));
+            return;
+        }
+
         _logger?.LogError("SpotifyVideoProvider: WebView2 error {Error}", message);
         OnWebError(message);
+    }
+
+    private static bool IsRecoverableWebEmeError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("AbortError", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("Timeout", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("Failed to fetch", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("fetch failed", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("append-fetch-failed", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("background-append-failed", StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnWebEmeLog(object? sender, string message)

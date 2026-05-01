@@ -24,6 +24,8 @@ public sealed partial class ContentCard : UserControl
 {
     // ── Dependency Properties ──
 
+    public static bool IsImageLoadingSuspended { get; set; }
+
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null, OnImageUrlChanged));
@@ -403,6 +405,12 @@ public sealed partial class ContentCard : UserControl
     {
         var card = (ContentCard)d;
         var url = e.NewValue as string;
+        if (IsImageLoadingSuspended)
+        {
+            card.ReleaseImage();
+            return;
+        }
+
         if (card._hasEffectiveViewport && !card._isInsideEffectiveViewport)
         {
             card.ReleaseImage();
@@ -535,6 +543,7 @@ public sealed partial class ContentCard : UserControl
     {
         // Guard: template may not be applied yet
         if (SquareImage == null) return;
+        if (IsImageLoadingSuspended) return;
 
         // Show placeholders — they sit on top of the image via z-order
         // Image stays Visible (Collapsed causes unload on scroll)

@@ -1,6 +1,7 @@
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
+using Wavee.Connect.Diagnostics;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
@@ -21,6 +22,7 @@ public sealed class DeviceStateManager : IAsyncDisposable
     private readonly SpClient _spClient;
     private readonly DealerClient _dealerClient;
     private readonly ILogger? _logger;
+    private readonly IRemoteStateRecorder? _remoteStateRecorder;
 
     // Subscriptions
     private readonly IDisposable _connectionIdSubscription;
@@ -67,12 +69,14 @@ public sealed class DeviceStateManager : IAsyncDisposable
         SpClient spClient,
         DealerClient dealerClient,
         int initialVolume = ConnectStateHelpers.MaxVolume / 2,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        IRemoteStateRecorder? remoteStateRecorder = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
         _dealerClient = dealerClient ?? throw new ArgumentNullException(nameof(dealerClient));
         _logger = logger;
+        _remoteStateRecorder = remoteStateRecorder;
 
         // Initialize device info
         _currentVolume = Math.Clamp(initialVolume, 0, ConnectStateHelpers.MaxVolume);
@@ -93,6 +97,10 @@ public sealed class DeviceStateManager : IAsyncDisposable
             .Where(m => m.Uri.StartsWith("hm://connect-state/v1/connect/volume", StringComparison.OrdinalIgnoreCase))
             .Subscribe(OnVolumeMessage);
         _logger?.LogTrace("Subscribed to volume messages from DealerClient.Messages observable");
+        _remoteStateRecorder.Record(
+            kind: RemoteStateEventKind.SubscriptionRegistered,
+            direction: RemoteStateDirection.Internal,
+            summary: "DeviceStateManager -> hm://connect-state/v1/connect/volume");
 
         _logger?.LogDebug("DeviceStateManager initialized for device {DeviceId}", session.Config.DeviceId);
     }
@@ -151,6 +159,30 @@ public sealed class DeviceStateManager : IAsyncDisposable
             // Parse SetVolumeCommand protobuf
             var volumeCommand = SetVolumeCommand.Parser.ParseFrom(payload);
             var newVolume = (int)volumeCommand.Volume;
+
+            if (_remoteStateRecorder != null)
+            {
+                string? json = null;
+                string? notes = null;
+                try
+                {
+                    json = Google.Protobuf.JsonFormatter.Default.Format(volumeCommand);
+                }
+                catch (Exception ex)
+                {
+                    notes = $"failed to format SetVolumeCommand: {ex.Message}";
+                    _logger?.LogTrace("recorder: volume JSON format failed: {Err}", ex.Message);
+                }
+
+                _remoteStateRecorder.Record(
+                    kind: RemoteStateEventKind.VolumeCommand,
+                    direction: RemoteStateDirection.Inbound,
+                    summary: $"SetVolume volume={newVolume} (was {_deviceInfo.Volume})",
+                    payloadBytes: message.Payload.Length,
+                    headers: message.Headers,
+                    jsonBody: json,
+                    notes: notes);
+            }
 
             _logger?.LogInformation("Volume changed to {Volume}", newVolume);
             _logger?.LogTrace("Updating device info volume: old={OldVolume}, new={NewVolume}",
