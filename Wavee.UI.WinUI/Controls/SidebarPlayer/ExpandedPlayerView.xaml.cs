@@ -992,16 +992,14 @@ public sealed partial class ExpandedPlayerView : UserControl
         LyricsHoverExplainButton.Margin = new Thickness(x, y, 0, 0);
         LyricsHoverExplainButton.Visibility = Visibility.Visible;
 
-        const double stickyPadding = 24;
+        const double stickyHorizontalPadding = 24;
         var left = Math.Min(lineBounds.Left, x);
-        var top = Math.Min(lineBounds.Top, y);
         var right = Math.Max(lineBounds.Right, x + buttonSize);
-        var bottom = Math.Max(lineBounds.Bottom, y + buttonSize);
         _lyricsHoverExplainHitRect = new Rect(
-            left - stickyPadding,
-            top - stickyPadding,
-            Math.Max(1, right - left + (stickyPadding * 2)),
-            Math.Max(1, bottom - top + (stickyPadding * 2)));
+            left - stickyHorizontalPadding,
+            lineBounds.Top,
+            Math.Max(1, right - left + (stickyHorizontalPadding * 2)),
+            Math.Max(1, lineBounds.Height));
     }
 
     private void HideLyricsHoverExplainButton()

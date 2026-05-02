@@ -1251,7 +1251,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
     /// <returns>Estimated current position in milliseconds.</returns>
     public long GetCurrentPosition()
     {
-        return PlaybackStateHelpers.CalculateCurrentPosition(_currentState);
+        var nowMs = _currentState.Source == StateSource.Cluster
+            ? _session?.Clock.NowMs
+            : null;
+        return PlaybackStateHelpers.CalculateCurrentPosition(_currentState, nowMs);
     }
 
     /// <summary>

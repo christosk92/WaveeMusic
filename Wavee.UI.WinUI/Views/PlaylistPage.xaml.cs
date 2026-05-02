@@ -329,6 +329,31 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         dateCol.IsVisible = ViewModel.HasAnyAddedAt;
     }
 
+    private bool TryHandlePendingPlaylistArtConnectedAnimation()
+    {
+        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt))
+            return false;
+
+        _showingContent = true;
+        _crossfadeScheduled = false;
+        ShimmerContainer.Visibility = Visibility.Collapsed;
+        ShimmerContainer.Opacity = 0;
+        WidePlaylistScroller.Opacity = 1;
+        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
+        ElementCompositionPreview.GetElementVisual(WidePlaylistScroller).Opacity = 1;
+        TwoColumnGrid.Opacity = 1;
+
+        UpdateLayout();
+        var started = ConnectedAnimationHelper.TryStartAnimation(
+            ConnectedAnimationHelper.PlaylistArt,
+            PlaylistArtContainer);
+
+        _logger?.LogDebug(
+            "[xfade][playlist:{Id}] connected.playlistArt action={Action}",
+            XfadeLog.Tag(ViewModel.PlaylistId), started ? "started" : "miss");
+        return true;
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -352,9 +377,13 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // Reset shimmer / content visual state for the fresh load — mirrors
         // ArtistPage / AlbumPage so the next playlist fades in cleanly instead
         // of inheriting the previous playlist's already-shown content layer.
+        var hasPendingPlaylistArtAnimation =
+            ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
+
         ResetCrossfadeForNewLoad();
 
         string? playlistId = null;
+        Data.Parameters.ContentNavigationParameter? connectedAnimationNav = null;
 
         if (parameter is Data.Parameters.ContentNavigationParameter nav)
         {
@@ -365,8 +394,18 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             // Activate first so its new-playlist clear-down runs BEFORE PrefillFrom
             // writes the nav values — otherwise the clear would wipe the prefill and
             // the UI would stay blank until the store's Ready push arrives.
-            ViewModel.Activate(nav.Uri);
-            ViewModel.PrefillFrom(nav);
+            if (hasPendingPlaylistArtAnimation)
+            {
+                // Keep the destination cover/title materialized so TryStart can run
+                // before the VM seeds placeholders and subscribes to the store.
+                connectedAnimationNav = nav;
+                ViewModel.PrefillFrom(nav, clearMissing: true);
+            }
+            else
+            {
+                ViewModel.Activate(nav.Uri);
+                ViewModel.PrefillFrom(nav);
+            }
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
@@ -388,9 +427,23 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 // hide tracks on Playlist B. Sort + column widths intentionally persist.
                 TrackGrid.ResetFilter();
                 _lastPlaylistId = playlistId;
-                AnimatePlaylistSwap();
+                if (!hasPendingPlaylistArtAnimation)
+                    AnimatePlaylistSwap();
             }
             RestorePlaylistPanelWidth(playlistId);
+        }
+
+        if (hasPendingPlaylistArtAnimation && TryHandlePendingPlaylistArtConnectedAnimation())
+        {
+            if (connectedAnimationNav is not null)
+            {
+                var uri = connectedAnimationNav.Uri;
+                await Task.Yield();
+                if (!_isNavigatingAway)
+                    ViewModel.Activate(uri, preserveHeaderPrefill: true);
+            }
+
+            return;
         }
 
         // Warm-cache trigger. PlaylistStore is a BehaviorSubject — Activate's subscribe
@@ -398,6 +451,9 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // returns. After one yield it has landed (PlaylistName populated, IsLoading
         // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
         // same-id case where the IsLoading=false write was a no-op.
+        if (connectedAnimationNav is not null)
+            ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
+
         await Task.Yield();
         if (_isNavigatingAway) return;
         TryShowContentNow();

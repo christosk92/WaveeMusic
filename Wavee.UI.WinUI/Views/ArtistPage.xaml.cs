@@ -85,6 +85,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
+    public bool ReuseForParameterNavigation => false;
+
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     public ArtistPage()

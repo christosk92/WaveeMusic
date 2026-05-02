@@ -575,7 +575,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
         if (state.VerticalOffset <= 0)
         {
-            EndScrollRestore(_scrollRestoreGeneration, reloadImages: true);
+            EndScrollRestore(_scrollRestoreGeneration);
             return;
         }
 
@@ -624,14 +624,14 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             ContentContainer.ScrollToImmediate(0, target);
             await Task.Yield();
             await Task.Delay(ScrollRestoreRetryDelayMs);
-            EndScrollRestore(generation, reloadImages: true);
+            EndScrollRestore(generation);
             return;
         }
 
-        EndScrollRestore(generation, reloadImages: true);
+        EndScrollRestore(generation);
     }
 
-    private void EndScrollRestore(int generation, bool reloadImages)
+    private void EndScrollRestore(int generation)
     {
         if (generation != _scrollRestoreGeneration)
             return;
@@ -639,9 +639,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _isRestoringScroll = false;
         ContentCard.IsImageLoadingSuspended = false;
         SnapShyHeaderToCurrentScroll();
-
-        if (reloadImages)
-            ReloadImagesInSubtree(ContentContainer);
     }
 
     private void SnapShyHeaderToCurrentScroll()
@@ -675,19 +672,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _isShyHeaderPinned = shouldPin;
         _isShyHeaderTransitionRunning = false;
         _shyHeaderRecheckPending = false;
-    }
-
-    private static void ReloadImagesInSubtree(DependencyObject? root)
-    {
-        if (root is null)
-            return;
-
-        if (root is ContentCard card)
-            card.ReloadImageIfNeeded();
-
-        var childCount = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < childCount; i++)
-            ReloadImagesInSubtree(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i));
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──

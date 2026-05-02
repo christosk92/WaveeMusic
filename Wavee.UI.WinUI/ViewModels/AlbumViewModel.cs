@@ -542,7 +542,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         Diagnostics.LiveInstanceTracker.Register(this);
     }
 
-    public void Initialize(string albumId)
+    public void Initialize(string albumId, bool preserveHeaderPrefill = false)
     {
         var branch = AlbumId != albumId ? "reset" : "same";
         _logger?.LogDebug(
@@ -559,9 +559,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // artist name); the AlbumStore push fills the rest.
             ArtistImageUrl = null;
             ArtistId = "";
-            ArtistName = "";
-            AlbumImageUrl = null;
-            AlbumName = "";
+            if (!preserveHeaderPrefill)
+            {
+                ArtistName = "";
+                AlbumImageUrl = null;
+                AlbumName = "";
+            }
             Year = 0;
             AlbumType = null;
             Label = null;
@@ -587,7 +590,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Force the page + grid back into the loading/skeleton states so the
             // cached page doesn't paint old tracks under the new header during the
             // gap between Activate and the AlbumStore's first push.
-            IsLoading = true;
+            IsLoading = !preserveHeaderPrefill || string.IsNullOrEmpty(AlbumImageUrl);
             IsLoadingTracks = true;
             _allTracks = [];
             FilteredTracks = Enumerable.Range(0, 10)
@@ -600,6 +603,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         {
             Title = "Album"
         };
+        if (preserveHeaderPrefill)
+            UpdateTabTitle();
 
         RefreshSaveState();
     }
@@ -608,10 +613,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// Start observing the album detail through AlbumStore. Disposing the
     /// subscription on navigation-away cancels any inflight Pathfinder query.
     /// </summary>
-    public void Activate(string albumId)
+    public void Activate(string albumId, bool preserveHeaderPrefill = false)
     {
         _logger?.LogDebug("[xfade][album-vm:{Id}] activate", XfadeLog.Tag(albumId));
-        Initialize(albumId);
+        Initialize(albumId, preserveHeaderPrefill);
 
         _subscriptions?.Dispose();
         _subscriptions = new CompositeDisposable();
@@ -845,11 +850,16 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
     }
 
-    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav)
+    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav, bool clearMissing = false)
     {
         if (!string.IsNullOrEmpty(nav.Title)) AlbumName = nav.Title;
+        else if (clearMissing) AlbumName = "";
+
         if (!string.IsNullOrEmpty(nav.ImageUrl)) AlbumImageUrl = nav.ImageUrl;
+        else if (clearMissing) AlbumImageUrl = null;
+
         if (!string.IsNullOrEmpty(nav.Subtitle)) ArtistName = nav.Subtitle;
+        else if (clearMissing) ArtistName = "";
     }
 
     /// <summary>

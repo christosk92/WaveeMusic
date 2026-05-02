@@ -61,6 +61,35 @@ public sealed partial class ConnectStateViewModel : ObservableObject, IDisposabl
     private void OnSourceChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_disposed) return;
+
+        if (e.Action == NotifyCollectionChangedAction.Add
+            && e.NewStartingIndex == 0
+            && e.NewItems is { Count: > 0 })
+        {
+            for (var i = e.NewItems.Count - 1; i >= 0; i--)
+            {
+                if (e.NewItems[i] is not RemoteStateEvent evt) continue;
+                if (!MatchesKind(evt) || !MatchesSearch(evt, SearchText.Trim())) continue;
+                FilteredEvents.Insert(0, new ConnectStateEventRow(evt, SearchText.Trim()));
+            }
+
+            return;
+        }
+
+        if (e.Action == NotifyCollectionChangedAction.Remove
+            && e.OldItems is { Count: > 0 })
+        {
+            foreach (var old in e.OldItems)
+            {
+                if (old is not RemoteStateEvent evt) continue;
+                var row = FilteredEvents.FirstOrDefault(r => ReferenceEquals(r.Event, evt));
+                if (row != null)
+                    FilteredEvents.Remove(row);
+            }
+
+            return;
+        }
+
         Rebuild();
     }
 
@@ -119,13 +148,15 @@ public sealed partial class ConnectStateViewModel : ObservableObject, IDisposabl
     }
 }
 
-public sealed class ConnectStateEventRow
+public sealed partial class ConnectStateEventRow : ObservableObject
 {
     public ConnectStateEventRow(RemoteStateEvent evt, string searchText)
     {
         Event = evt;
         SearchText = searchText;
     }
+
+    [ObservableProperty] private bool _isExpanded;
 
     public RemoteStateEvent Event { get; }
     public string SearchText { get; }

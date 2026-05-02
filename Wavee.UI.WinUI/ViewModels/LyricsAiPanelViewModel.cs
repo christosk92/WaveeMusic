@@ -118,7 +118,8 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
         if (lineIndex < 0 || lineIndex >= lyrics.LyricsLines.Count) return;
 
         var line = lyrics.LyricsLines[lineIndex];
-        if (line is null || string.IsNullOrWhiteSpace(line.PrimaryText))
+        var lineText = SnapshotText(line?.PrimaryText);
+        if (string.IsNullOrWhiteSpace(lineText))
         {
             ResultCaption = "No lyric line is active right now";
             ResultText = string.Empty;
@@ -126,17 +127,19 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
             return;
         }
 
-        var fullText = lyrics.WrappedOriginalText;
+        var fullText = SnapshotText(lyrics.WrappedOriginalText);
         if (string.IsNullOrWhiteSpace(fullText))
-            fullText = line.PrimaryText;
+            fullText = lineText;
+
+        var trackUri = BuildTrackUri(_lyrics.PlaybackState.CurrentTrackId);
 
         await RunGenerationAsync(
-            captionWhileBusy: $"Explaining: \"{Truncate(line.PrimaryText, 60)}\"",
+            captionWhileBusy: $"Explaining: \"{Truncate(lineText, 60)}\"",
             captionOnDone: "AI interpretation",
             invoke: (deltaProgress, ct) => _aiService.ExplainLineAsync(
-                trackUri: BuildTrackUri(_lyrics.PlaybackState.CurrentTrackId),
+                trackUri: trackUri,
                 lineIndex: lineIndex,
-                line: line.PrimaryText,
+                line: lineText,
                 fullLyric: fullText,
                 deltaProgress: deltaProgress,
                 ct: ct));
@@ -314,6 +317,9 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
 
     private static string BuildTrackUri(string? trackId) =>
         string.IsNullOrEmpty(trackId) ? "spotify:track:unknown" : $"spotify:track:{trackId}";
+
+    private static string SnapshotText(string? text) =>
+        string.IsNullOrEmpty(text) ? string.Empty : new string(text.AsSpan());
 
     private static string Truncate(string s, int max)
     {

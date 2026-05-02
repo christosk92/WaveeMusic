@@ -92,6 +92,7 @@
                         <DataTemplate x:DataType="vm:ConnectStateEventRow">
                             <Expander HorizontalAlignment="Stretch"
                                       HorizontalContentAlignment="Stretch"
+                                      IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
                                       Padding="0">
                                 <Expander.Header>
                                     <Grid ColumnSpacing="10" Padding="12,4">
@@ -139,7 +140,10 @@
                                     </Grid>
                                 </Expander.Header>
 
-                                <Grid Padding="12,0,12,12" RowSpacing="8">
+                                <Grid x:Load="{x:Bind IsExpanded, Mode=OneWay}"
+                                      x:Name="IsExpandedSection"
+                                      Padding="12,0,12,12"
+                                      RowSpacing="8">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>

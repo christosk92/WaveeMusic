@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media.Animation;
 
 namespace Wavee.UI.WinUI.Helpers;
@@ -13,6 +17,10 @@ public static class ConnectedAnimationHelper
     public const string AlbumArt = "albumArt";
     public const string ArtistImage = "artistImage";
     public const string PlaylistArt = "playlistArt";
+    private static readonly HashSet<string> PendingKeys = [];
+    private static readonly TimeSpan ConnectedAnimationDuration = TimeSpan.FromMilliseconds(300);
+    private static readonly Vector2 ConnectedAnimationEaseControlPoint1 = new(0.37f, 0.0f);
+    private static readonly Vector2 ConnectedAnimationEaseControlPoint2 = new(0.63f, 1.0f);
 
     /// <summary>
     /// Prepare a connected animation from the source element.
@@ -23,7 +31,14 @@ public static class ConnectedAnimationHelper
     public static void PrepareAnimation(string key, UIElement source)
     {
         var service = ConnectedAnimationService.GetForCurrentView();
+        ConfigureConnectedAnimation(service, source);
         service.PrepareToAnimate(key, source);
+        PendingKeys.Add(key);
+    }
+
+    public static bool HasPendingAnimation(string key)
+    {
+        return PendingKeys.Contains(key);
     }
 
     /// <summary>
@@ -40,11 +55,14 @@ public static class ConnectedAnimationHelper
 
         if (animation != null)
         {
-            // Use gravity configuration for a smooth, natural-feeling forward navigation
+            ConfigureConnectedAnimation(service, destination);
             animation.Configuration = new GravityConnectedAnimationConfiguration();
-            return animation.TryStart(destination);
+            var started = animation.TryStart(destination);
+            PendingKeys.Remove(key);
+            return started;
         }
 
+        PendingKeys.Remove(key);
         return false;
     }
 
@@ -66,10 +84,14 @@ public static class ConnectedAnimationHelper
 
         if (animation != null)
         {
-            animation.Configuration = new DirectConnectedAnimationConfiguration();
-            return animation.TryStart(destination, coordinatedElements);
+            ConfigureConnectedAnimation(service, destination);
+            animation.Configuration = new BasicConnectedAnimationConfiguration();
+            var started = animation.TryStart(destination, coordinatedElements);
+            PendingKeys.Remove(key);
+            return started;
         }
 
+        PendingKeys.Remove(key);
         return false;
     }
 
@@ -84,6 +106,9 @@ public static class ConnectedAnimationHelper
         service.GetAnimation(AlbumArt)?.Cancel();
         service.GetAnimation(ArtistImage)?.Cancel();
         service.GetAnimation(PlaylistArt)?.Cancel();
+        PendingKeys.Remove(AlbumArt);
+        PendingKeys.Remove(ArtistImage);
+        PendingKeys.Remove(PlaylistArt);
     }
 
     /// <summary>
@@ -95,7 +120,19 @@ public static class ConnectedAnimationHelper
     public static void PrepareBackAnimation(string key, UIElement source)
     {
         var service = ConnectedAnimationService.GetForCurrentView();
+        ConfigureConnectedAnimation(service, source);
         var animation = service.PrepareToAnimate(key, source);
-        animation.Configuration = new DirectConnectedAnimationConfiguration();
+        animation.Configuration = new BasicConnectedAnimationConfiguration();
+        PendingKeys.Add(key);
+    }
+
+    private static void ConfigureConnectedAnimation(ConnectedAnimationService service, UIElement anchor)
+    {
+        service.DefaultDuration = ConnectedAnimationDuration;
+
+        var compositor = ElementCompositionPreview.GetElementVisual(anchor).Compositor;
+        service.DefaultEasingFunction = compositor.CreateCubicBezierEasingFunction(
+            ConnectedAnimationEaseControlPoint1,
+            ConnectedAnimationEaseControlPoint2);
     }
 }

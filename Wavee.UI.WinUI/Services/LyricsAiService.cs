@@ -21,7 +21,7 @@ namespace Wavee.UI.WinUI.Services;
 /// without touching the model.
 ///
 /// Caching: in-memory only for the pilot (per-process, lost on restart). Keyed by
-/// <c>(trackUri, lineIndex)</c> for explanations and <c>trackUri</c> for lyrics meaning.
+/// <c>(trackUri, lineIndex, line)</c> for explanations and <c>trackUri</c> for lyrics meaning.
 /// TODO: persist via <c>IMetadataDatabase</c> once a cache table is added — current
 /// IMetadataDatabase contract has lyrics + extended-metadata tables but no generic AI
 /// blob store. Cache hit ratios should be high in a single session anyway (a user
@@ -37,7 +37,7 @@ public sealed class LyricsAiService
     private readonly AiCapabilities _capabilities;
     private readonly ILogger? _logger;
 
-    private readonly ConcurrentDictionary<(string trackUri, int lineIndex), string> _explanationCache = new();
+    private readonly ConcurrentDictionary<(string trackUri, int lineIndex, string line), string> _explanationCache = new();
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _lyricsMeaningRequests =
         new(StringComparer.Ordinal);
 
@@ -78,7 +78,8 @@ public sealed class LyricsAiService
             return LyricsAiResult.Empty;
 
         var normalizedTrackUri = NormalizeTrackUri(trackUri);
-        if (_explanationCache.TryGetValue((normalizedTrackUri, lineIndex), out var cached))
+        var explanationCacheKey = (normalizedTrackUri, lineIndex, line);
+        if (_explanationCache.TryGetValue(explanationCacheKey, out var cached))
             return LyricsAiResult.Ok(cached, fromCache: true);
 
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
@@ -101,7 +102,7 @@ public sealed class LyricsAiService
                 return LyricsAiResult.Filtered;
 
             var trimmed = ClampLength(stripped, MaxExplanationCharacters);
-            _explanationCache[(normalizedTrackUri, lineIndex)] = trimmed;
+            _explanationCache[explanationCacheKey] = trimmed;
             return LyricsAiResult.Ok(trimmed, fromCache: false);
         }
         catch (OperationCanceledException)

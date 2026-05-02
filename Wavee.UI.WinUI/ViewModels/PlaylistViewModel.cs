@@ -643,7 +643,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// <summary>
     /// Prefills the ViewModel with data already known from the source card.
     /// </summary>
-    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav)
+    public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav, bool clearMissing = false)
     {
         _logger?.LogInformation(
             "PrefillFrom: Uri='{Uri}', Title='{Title}', Subtitle='{Subtitle}', ImageUrl='{ImageUrl}'",
@@ -656,6 +656,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             && !string.Equals(nav.Title, "Playlist", StringComparison.OrdinalIgnoreCase))
         {
             PlaylistName = nav.Title;
+        }
+        else if (clearMissing)
+        {
+            PlaylistName = string.Empty;
         }
         else
         {
@@ -673,7 +677,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         {
             PlaylistImageUrl = nav.ImageUrl;
         }
+        else if (clearMissing)
+        {
+            PlaylistImageUrl = null;
+        }
+
         if (!string.IsNullOrEmpty(nav.Subtitle)) OwnerName = nav.Subtitle;
+        else if (clearMissing) OwnerName = string.Empty;
     }
 
     /// <summary>
@@ -681,7 +691,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// prior subscription (which cancels its inflight fetch). Call Deactivate()
     /// on navigation-away.
     /// </summary>
-    public void Activate(string? playlistId)
+    public void Activate(string? playlistId, bool preserveHeaderPrefill = false)
     {
         if (string.IsNullOrEmpty(playlistId))
         {
@@ -710,11 +720,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // null-guards and ApplyDetail's empty-string guards would leave stale
             // values visible whenever the new playlist is missing a field (e.g.
             // editorial playlists with no description).
-            PlaylistName = string.Empty;
+            if (!preserveHeaderPrefill)
+                PlaylistName = string.Empty;
             PlaylistDescription = null;
-            PlaylistImageUrl = null;
+            if (!preserveHeaderPrefill)
+                PlaylistImageUrl = null;
             HeaderImageUrl = null;
-            OwnerName = string.Empty;
+            if (!preserveHeaderPrefill)
+                OwnerName = string.Empty;
             OwnerId = null;
             OwnerAvatarUrl = null;
             Collaborators.Clear();

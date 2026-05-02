@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Wavee.UI.WinUI.Views;
@@ -304,16 +305,17 @@ public static class NavigationHelpers
             return;
         }
 
-        // CONNECTED-ANIM (disabled): suppression of default transition is only
-        // meaningful when connected animations are running. With them disabled,
-        // every navigation uses the default DrillIn transition.
-        // var hasConnectedAnim = IsContentPage(pageType);
+        var suppressTransition =
+            pageType == typeof(AlbumPage)
+                && ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt)
+            || pageType == typeof(PlaylistPage)
+                && ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
 
         var currentTab = ShellViewModel.TabInstances[currentIndex];
         currentTab.Header = header;
         currentTab.IconSource = icon;
         currentTab.ToolTipText = header;
-        currentTab.Navigate(pageType, parameter, suppressTransition: false);
+        currentTab.Navigate(pageType, parameter, suppressTransition);
     }
 
     private static void AddNewTab(Type pageType, object? parameter, string header, IconSource icon)
@@ -431,14 +433,6 @@ public static class NavigationHelpers
 
         return pageType.Name.Replace("Page", "");
     }
-
-    // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
-    // private static bool IsContentPage(Type pageType)
-    // {
-    //     return pageType == typeof(ArtistPage)
-    //         || pageType == typeof(AlbumPage)
-    //         || pageType == typeof(PlaylistPage);
-    // }
 
     /// <summary>
     /// Handle content changes from pages to update tab header

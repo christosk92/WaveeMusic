@@ -391,9 +391,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         BufferingTrackId = null;
                     }
 
-                    // Position is already server-clock-corrected by the AudioHost before IPC.
-                    // Use local wall-clock for the small IPC transit delta only.
-                    long correctedNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    // Cluster state timestamps are in Spotify's server clock domain.
+                    // Local AudioHost state timestamps are in the local clock domain.
+                    long correctedNow = GetPositionClockNowMs(state);
 
                     var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
 
@@ -444,7 +444,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         // interpolator, retrigger PropertyChanged, and re-render bindings
                         // without the user noticing the change.
                         var posDelta = Math.Abs(calculatedPos - Position);
-                        if (posDelta >= 250 || !IsPlaying)
+                        if (state.Changes.HasFlag(StateChanges.Track) || posDelta >= 250 || !IsPlaying)
                         {
                             Position = calculatedPos;
                         }
@@ -850,6 +850,14 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             : $"{prefix}{CurrentTrackId}";
     }
 
+    private long GetPositionClockNowMs(PlaybackState state)
+    {
+        if (state.Source == StateSource.Cluster && _session.IsConnected())
+            return _session.Clock.NowMs;
+
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    }
+
     private static PlaybackContextInfo? ParseContext(string? contextUri)
     {
         if (string.IsNullOrEmpty(contextUri)) return null;
@@ -1244,6 +1252,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         var playing = IsPlaying;
         _logger?.LogInformation("[Cmd] PlayPause: isPlaying={Was} → optimistic={Next}, track={Track}, pendingSeek={Seek}",
             playing, !playing, CurrentTrackId ?? "<none>", pendingSeek?.ToString("F0") ?? "<none>");
+
         IsPlaying = !playing; // optimistic
         if (!playing && CurrentTrackId != null) SetBuffering(CurrentTrackId);
 

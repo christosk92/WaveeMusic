@@ -2,6 +2,7 @@ using FluentAssertions;
 using System.Reactive.Linq;
 using Wavee.Connect;
 using Wavee.Connect.Protocol;
+using Wavee.Protocol.Player;
 using Wavee.Tests.Connect;
 using Wavee.Tests.Helpers;
 using Xunit;
@@ -384,6 +385,130 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
 
         // Assert - Position should NOT increase
         positionAfter.Should().Be(positionBefore);
+    }
+
+    [Fact]
+    public void ClusterToPlaybackState_PlayingPosition_ShouldUsePlayerStateTimestamp()
+    {
+        // Arrange: mirrors a PUT state response where the cluster response is fresh,
+        // but the embedded player state is a snapshot from earlier playback.
+        var cluster = new Cluster
+        {
+            ActiveDeviceId = "device_123",
+            ChangedTimestampMs = 10_000,
+            ServerTimestampMs = 10_000,
+            PlayerState = new PlayerState
+            {
+                Timestamp = 5_000,
+                PositionAsOfTimestamp = 1_000,
+                Duration = 300_000,
+                IsPlaying = true,
+                Track = new ProvidedTrack
+                {
+                    Uri = "spotify:track:abc",
+                    Uid = "track_uid"
+                }
+            }
+        };
+
+        // Act
+        var state = PlaybackStateHelpers.ClusterToPlaybackState(cluster, PlaybackState.Empty);
+        var currentPosition = PlaybackStateHelpers.CalculateCurrentPosition(state, nowMs: 10_000);
+
+        // Assert
+        state.Timestamp.Should().Be(5_000);
+        state.PositionMs.Should().Be(1_000);
+        currentPosition.Should().Be(6_000);
+    }
+
+    [Fact]
+    public void ClusterToPlaybackState_ResumeAfterPause_ShouldAnchorPositionAtResumeTimestamp()
+    {
+        // Arrange: Spotify Connect keeps the paused position, but moves
+        // PlayerState.timestamp to the resume command time.
+        const long pausedPositionMs = 146_330;
+        const long resumeTimestampMs = 1_777_681_520_531;
+
+        var previous = PlaybackState.Empty with
+        {
+            Track = new TrackInfo { Uri = "spotify:track:abc" },
+            PositionMs = pausedPositionMs,
+            DurationMs = 277_741,
+            Status = PlaybackStatus.Paused,
+            Timestamp = 1_777_681_456_508,
+            Source = StateSource.Cluster
+        };
+
+        var cluster = new Cluster
+        {
+            ActiveDeviceId = "device_123",
+            ChangedTimestampMs = 1_777_681_520_633,
+            ServerTimestampMs = 1_777_681_520_637,
+            PlayerState = new PlayerState
+            {
+                Timestamp = resumeTimestampMs,
+                PositionAsOfTimestamp = pausedPositionMs,
+                Duration = 277_741,
+                IsPlaying = true,
+                Track = new ProvidedTrack
+                {
+                    Uri = "spotify:track:abc",
+                    Uid = "track_uid"
+                }
+            }
+        };
+
+        // Act
+        var state = PlaybackStateHelpers.ClusterToPlaybackState(cluster, previous);
+        var currentPosition = PlaybackStateHelpers.CalculateCurrentPosition(state, nowMs: cluster.ServerTimestampMs);
+
+        // Assert
+        state.Timestamp.Should().Be(resumeTimestampMs);
+        state.PositionMs.Should().Be(pausedPositionMs);
+        currentPosition.Should().Be(146_436);
+    }
+
+    [Fact]
+    public void ClusterToPlaybackState_TrackChangeWithZeroPosition_ShouldIgnoreStaleLegacyPosition()
+    {
+        // Arrange: some Connect frames can carry a stale legacy `position`
+        // field while the new track's position_as_of_timestamp is default/zero.
+        var previous = PlaybackState.Empty with
+        {
+            Track = new TrackInfo { Uri = "spotify:track:old" },
+            PositionMs = 74_000,
+            DurationMs = 180_000,
+            Status = PlaybackStatus.Playing,
+            Timestamp = 1_000,
+            Source = StateSource.Cluster
+        };
+
+        var cluster = new Cluster
+        {
+            ActiveDeviceId = "device_123",
+            ChangedTimestampMs = 5_000,
+            ServerTimestampMs = 5_000,
+            PlayerState = new PlayerState
+            {
+                Timestamp = 5_000,
+                PositionAsOfTimestamp = 0,
+                Position = 74_000,
+                Duration = 210_000,
+                IsPlaying = true,
+                Track = new ProvidedTrack
+                {
+                    Uri = "spotify:track:new",
+                    Uid = "new_uid"
+                }
+            }
+        };
+
+        // Act
+        var state = PlaybackStateHelpers.ClusterToPlaybackState(cluster, previous);
+
+        // Assert
+        state.Track!.Uri.Should().Be("spotify:track:new");
+        state.PositionMs.Should().Be(0);
     }
 
     #endregion

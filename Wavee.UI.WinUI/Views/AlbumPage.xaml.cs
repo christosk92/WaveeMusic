@@ -15,6 +15,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Diagnostics;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -106,6 +107,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _logger?.LogDebug(
             "[xfade][album:{Id}] loaded showing={Showing} scheduled={Scheduled} navAway={NavAway}",
             XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);
+
     }
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
@@ -224,6 +226,30 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     // ── Navigation ───────────────────────────────────────────────────────────
 
+    private bool TryHandlePendingAlbumArtConnectedAnimation()
+    {
+        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt))
+            return false;
+
+        _showingContent = true;
+        _crossfadeScheduled = false;
+        ShimmerContainer.Visibility = Visibility.Collapsed;
+        ShimmerContainer.Opacity = 0;
+        ContentContainer.Opacity = 1;
+        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
+
+        UpdateLayout();
+        var started = ConnectedAnimationHelper.TryStartAnimation(
+            ConnectedAnimationHelper.AlbumArt,
+            AlbumArtContainer);
+
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] connected.albumArt action={Action}",
+            XfadeLog.Tag(ViewModel.AlbumId), started ? "started" : "miss");
+        return true;
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         var incomingId = e.Parameter is ContentNavigationParameter nav ? nav.Uri
@@ -299,7 +325,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // cleanly instead of inheriting the previous album's faded-in chrome.
         ResetCrossfadeForNewLoad();
 
+        var hasPendingAlbumArtAnimation =
+            ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
+
         string? albumId = null;
+        ContentNavigationParameter? connectedAnimationNav = null;
 
         if (parameter is ContentNavigationParameter nav)
         {
@@ -308,8 +338,18 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             // PrefillFrom writes the nav values — otherwise the clear would wipe the
             // prefill and the cached page would keep showing the previous album's
             // header until the store push arrived. Same pattern as PlaylistPage.
-            ViewModel.Activate(nav.Uri);
-            ViewModel.PrefillFrom(nav);
+            if (hasPendingAlbumArtAnimation)
+            {
+                // Keep the destination cover/title materialized so TryStart can run
+                // before the VM seeds placeholders and subscribes to the store.
+                connectedAnimationNav = nav;
+                ViewModel.PrefillFrom(nav, clearMissing: true);
+            }
+            else
+            {
+                ViewModel.Activate(nav.Uri);
+                ViewModel.PrefillFrom(nav);
+            }
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
         {
@@ -320,11 +360,27 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         if (!string.IsNullOrEmpty(albumId))
             RestoreAlbumPanelWidth(albumId);
 
+        if (hasPendingAlbumArtAnimation && TryHandlePendingAlbumArtConnectedAnimation())
+        {
+            if (connectedAnimationNav is not null)
+            {
+                var uri = connectedAnimationNav.Uri;
+                await Task.Yield();
+                if (!_isNavigatingAway)
+                    ViewModel.Activate(uri, preserveHeaderPrefill: true);
+            }
+
+            return;
+        }
+
         // Warm-cache trigger. AlbumStore is a BehaviorSubject — Activate's subscribe
         // queues ApplyDetailState via the dispatcher, which runs after this method
         // returns. After one yield it has landed (AlbumName populated, IsLoading
         // stayed false), so TryShowContentNow can fire ScheduleCrossfade for the
         // same-id case where the IsLoading=false write was a no-op.
+        if (connectedAnimationNav is not null)
+            ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
+
         await Task.Yield();
         if (_isNavigatingAway) return;
         TryShowContentNow();

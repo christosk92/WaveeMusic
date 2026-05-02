@@ -24,7 +24,21 @@ public sealed partial class ContentCard : UserControl
 {
     // ── Dependency Properties ──
 
-    public static bool IsImageLoadingSuspended { get; set; }
+    private static bool _isImageLoadingSuspended;
+    public static bool IsImageLoadingSuspended
+    {
+        get => _isImageLoadingSuspended;
+        set
+        {
+            if (_isImageLoadingSuspended == value)
+                return;
+
+            _isImageLoadingSuspended = value;
+            ImageLoadingSuspensionChanged?.Invoke(value);
+        }
+    }
+
+    private static event Action<bool>? ImageLoadingSuspensionChanged;
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(ContentCard),
@@ -237,6 +251,10 @@ public sealed partial class ContentCard : UserControl
     private bool _circleSizeHandlerAttached;
     private bool _hasEffectiveViewport;
     private bool _isInsideEffectiveViewport = true;
+    private const int CardImageDecodeSize = 200;
+    private string? _currentImageCacheUrl;
+    private string? _retryImageCacheUrl;
+    private int _retryImageLoadCount;
 
     private readonly ImageCacheService? _imageCache;
     private readonly ThemeColorService? _themeColorService;
@@ -298,6 +316,7 @@ public sealed partial class ContentCard : UserControl
             var (contextUri, albumUri, playing) = _highlightService.Current;
             ApplyHighlight(contextUri, albumUri, playing);
         }
+        ImageLoadingSuspensionChanged += OnImageLoadingSuspensionChanged;
         if (!_hasEffectiveViewport || _isInsideEffectiveViewport)
             LoadImage(ImageUrl);
         SyncInitialPlaybackState();
@@ -311,6 +330,7 @@ public sealed partial class ContentCard : UserControl
         // Unsubscribe from the highlight service — strong event, explicit unsubscribe required.
         if (_highlightService != null)
             _highlightService.CurrentChanged -= OnHighlightServiceChanged;
+        ImageLoadingSuspensionChanged -= OnImageLoadingSuspensionChanged;
 
         // Clean up SizeChanged subscription to prevent memory leaks
         if (CircleImageContainer != null && _circleSizeHandlerAttached)
@@ -319,6 +339,12 @@ public sealed partial class ContentCard : UserControl
             _circleSizeHandlerAttached = false;
         }
 
+        // EffectiveViewportChanged can report an empty/stale viewport while a
+        // navigation-cached page is being detached. The card's image source is
+        // released below, so the next attach must take a fresh viewport sample
+        // instead of trusting the old "outside viewport" result and skipping reload.
+        _hasEffectiveViewport = false;
+        _isInsideEffectiveViewport = true;
         ReleaseImage();
 
         // Remove passive pointer handlers using the SAME instances that were added
@@ -477,6 +503,18 @@ public sealed partial class ContentCard : UserControl
 
     // ── Image loading ──
 
+    private void OnImageLoadingSuspensionChanged(bool suspended)
+    {
+        if (suspended || !IsLoaded)
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsLoaded && !IsImageLoadingSuspended)
+                ReloadImageIfNeeded(ignoreViewportGate: true);
+        });
+    }
+
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
     {
         _hasEffectiveViewport = true;
@@ -513,12 +551,18 @@ public sealed partial class ContentCard : UserControl
             CirclePlaceholderIcon.Visibility = Visibility.Visible;
     }
 
-    public void ReloadImageIfNeeded()
+    public void ReloadImageIfNeeded(bool ignoreViewportGate = false)
     {
-        if (_hasEffectiveViewport && !_isInsideEffectiveViewport)
+        if (!ignoreViewportGate && _hasEffectiveViewport && !_isInsideEffectiveViewport)
             return;
         if (HasImage())
             return;
+
+        if (ignoreViewportGate)
+        {
+            _hasEffectiveViewport = false;
+            _isInsideEffectiveViewport = true;
+        }
 
         LoadImage(ImageUrl);
     }
@@ -560,13 +604,21 @@ public sealed partial class ContentCard : UserControl
         if (CircleImageBrush != null)
             CircleImageBrush.ImageSource = null;
 
+        _currentImageCacheUrl = null;
         if (string.IsNullOrEmpty(url)) return;
 
         var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(url);
         if (string.IsNullOrEmpty(httpsUrl)) return;
 
+        _currentImageCacheUrl = httpsUrl;
+        if (!string.Equals(_retryImageCacheUrl, httpsUrl, StringComparison.Ordinal))
+        {
+            _retryImageCacheUrl = httpsUrl;
+            _retryImageLoadCount = 0;
+        }
+
         // Use the shared LRU bitmap cache via DI
-        var bitmap = _imageCache?.GetOrCreate(httpsUrl, 200) ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = 200, DecodePixelType = DecodePixelType.Logical };
+        var bitmap = _imageCache?.GetOrCreate(httpsUrl, CardImageDecodeSize) ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = CardImageDecodeSize, DecodePixelType = DecodePixelType.Logical };
 
         if (IsCircularImage)
         {
@@ -667,8 +719,34 @@ public sealed partial class ContentCard : UserControl
 
     private void SquareImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
     {
+        var failedUrl = _currentImageCacheUrl;
+        if (!string.IsNullOrEmpty(failedUrl))
+            _imageCache?.Invalidate(failedUrl, CardImageDecodeSize);
+
         SquareImage.Source = null;
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
+
+        if (string.IsNullOrEmpty(failedUrl)
+            || !IsLoaded
+            || IsImageLoadingSuspended
+            || _retryImageLoadCount >= 1)
+        {
+            return;
+        }
+
+        _retryImageLoadCount++;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsLoaded
+                || IsImageLoadingSuspended
+                || HasImage()
+                || !string.Equals(_currentImageCacheUrl, failedUrl, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            LoadImage(ImageUrl);
+        });
     }
 
     // ── Hover handling ──
@@ -903,10 +981,12 @@ public sealed partial class ContentCard : UserControl
         // Self-navigation: if NavigationUri is set, navigate directly
         if (!string.IsNullOrEmpty(NavigationUri))
         {
-            // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
-            // PrepareConnectedAnimation();
+            var openInNewTab = Helpers.Navigation.NavigationHelpers.IsCtrlPressed();
+            if (!openInNewTab)
+                PrepareConnectedAnimation();
+
             ResetInteractionState();
-            if (NavigateToUri(Helpers.Navigation.NavigationHelpers.IsCtrlPressed()))
+            if (NavigateToUri(openInNewTab))
                 return;
         }
 
@@ -1089,30 +1169,32 @@ public sealed partial class ContentCard : UserControl
         return false;
     }
 
-    internal void PrepareConnectedAnimation()
+    internal bool PrepareConnectedAnimation()
     {
-        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
-        // var uri = NavigationUri;
-        // if (string.IsNullOrEmpty(uri)) return;
-        //
-        // var parts = uri.Split(':');
-        // if (parts.Length < 2) return;
-        //
-        // var type = parts[1];
-        // var imageElement = IsCircularImage
-        //     ? (UIElement)CircleImageContainer
-        //     : (UIElement)SquareImageContainer;
-        //
-        // var key = type switch
-        // {
-        //     "artist" => Helpers.ConnectedAnimationHelper.ArtistImage,
-        //     "album" => Helpers.ConnectedAnimationHelper.AlbumArt,
-        //     "playlist" => Helpers.ConnectedAnimationHelper.PlaylistArt,
-        //     _ => null
-        // };
-        //
-        // if (key != null)
-        //     Helpers.ConnectedAnimationHelper.PrepareAnimation(key, imageElement);
+        var uri = NavigationUri;
+        if (string.IsNullOrEmpty(uri) || IsCircularImage)
+            return false;
+
+        var parts = uri.Split(':');
+        if (parts.Length < 3)
+            return false;
+
+        var key = parts[1] switch
+        {
+            var type when type.Equals("album", StringComparison.OrdinalIgnoreCase)
+                => Helpers.ConnectedAnimationHelper.AlbumArt,
+            var type when type.Equals("playlist", StringComparison.OrdinalIgnoreCase)
+                => Helpers.ConnectedAnimationHelper.PlaylistArt,
+            _ => null
+        };
+
+        if (key is null)
+            return false;
+
+        Helpers.ConnectedAnimationHelper.PrepareAnimation(
+            key,
+            SquareImageContainer);
+        return true;
     }
 
     // ── Helpers ──

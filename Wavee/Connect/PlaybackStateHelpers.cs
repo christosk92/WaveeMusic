@@ -368,12 +368,17 @@ public static class PlaybackStateHelpers
             ? PlaybackStatus.Paused
             : rawStatus;
 
-        // Merge: start from previous state, override only fields with real values
+        // Merge: start from previous state, override only fields with real values.
+        // PlayerState.position_as_of_timestamp is anchored to PlayerState.timestamp,
+        // not Cluster.changed_timestamp_ms. PUT state responses can arrive much
+        // later than the player-state snapshot they echo, so rebasing the position
+        // to the cluster timestamp makes Connect playback start from a stale
+        // playhead.
         var newState = prev with
         {
             Track = trackInfo,
             Status = status,
-            PositionMs = ps?.PositionAsOfTimestamp ?? prev.PositionMs,
+            PositionMs = ResolveClusterPosition(ps, prev),
             DurationMs = ps?.Duration > 0 ? ps.Duration : prev.DurationMs,
             PlaybackSpeed = ExtractPlaybackSpeed(ps, prev.PlaybackSpeed),
             ContextUri = contextUri,
@@ -399,7 +404,7 @@ public static class PlaybackStateHelpers
             AvailableConnectDevices = availableConnectDevices,
             Volume = volume,
             IsVolumeRestricted = isVolumeRestricted,
-            Timestamp = cluster.ChangedTimestampMs,
+            Timestamp = ResolveClusterPositionTimestamp(ps, cluster, prev),
             Source = StateSource.Cluster,
             ContextDescription = ExtractContextDescription(ps, trackInfo, prev),
             ContextImageUrl = ExtractContextImageUrl(ps, trackInfo, prev),
@@ -408,6 +413,37 @@ public static class PlaybackStateHelpers
 
         var changes = DetectChanges(previousState, newState);
         return newState with { Changes = changes };
+    }
+
+    private static long ResolveClusterPosition(PlayerState? playerState, PlaybackState previous)
+    {
+        if (playerState is null)
+            return previous.PositionMs;
+
+        var isNewTrack = !string.Equals(previous.Track?.Uri, playerState.Track?.Uri, StringComparison.Ordinal);
+        if (isNewTrack && playerState.PositionAsOfTimestamp == 0)
+            return 0;
+
+        if (playerState.PositionAsOfTimestamp != 0 || playerState.Position == 0)
+            return playerState.PositionAsOfTimestamp;
+
+        return playerState.Position;
+    }
+
+    private static long ResolveClusterPositionTimestamp(PlayerState? playerState, Cluster cluster, PlaybackState previous)
+    {
+        if (playerState is null)
+            return previous.Timestamp;
+
+        if (playerState.Timestamp > 0)
+            return playerState.Timestamp;
+
+        if (cluster.ServerTimestampMs > 0)
+            return cluster.ServerTimestampMs;
+
+        return cluster.ChangedTimestampMs > 0
+            ? cluster.ChangedTimestampMs
+            : previous.Timestamp;
     }
 
     /// <summary>
@@ -1240,8 +1276,9 @@ public static class PlaybackStateHelpers
             return state.PositionMs;
 
         var now = nowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var elapsed = now - state.Timestamp;
-        var estimatedPosition = state.PositionMs + elapsed;
+        var elapsed = Math.Max(0, now - state.Timestamp);
+        var speed = state.PlaybackSpeed > 0 ? state.PlaybackSpeed : 1.0;
+        var estimatedPosition = state.PositionMs + (long)Math.Round(elapsed * speed);
 
         // Clamp to duration
         return Math.Min(estimatedPosition, state.DurationMs);

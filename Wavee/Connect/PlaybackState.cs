@@ -162,7 +162,8 @@ public sealed record PlaybackState
     public bool IsVolumeRestricted { get; init; }
 
     /// <summary>
-    /// Timestamp when this state was captured (Unix milliseconds).
+    /// Clock timestamp that <see cref="PositionMs"/> is anchored to (Unix milliseconds).
+    /// Cluster-sourced states use Spotify server time; local states use local time.
     /// </summary>
     public long Timestamp { get; init; }
 

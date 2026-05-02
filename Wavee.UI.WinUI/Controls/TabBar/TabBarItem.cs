@@ -99,6 +99,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // sequential — no interleaving possible.
     private long _pendingNavId;
     private string? _pendingPageName;
+    private bool _skipNextNavigationCacheTrim;
 
     private TabItemParameter? _navigationParameter;
     public DateTimeOffset LastActivatedAtUtc { get; private set; } = DateTimeOffset.UtcNow;
@@ -287,41 +288,45 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 return;
             }
 
-            // Different parameter — let the page refresh in-place
+            // Different parameter — most pages can refresh in-place, but pages
+            // with heavy scroll/transition state can opt into a real Frame
+            // navigation so the outgoing page is not visibly mutated.
             if (ContentFrame.Content is ITabBarItemContent refreshable)
             {
-                try
+                if (refreshable.ReuseForParameterNavigation)
                 {
-                    refreshable.RefreshWithParameter(parameter);
-                    // RefreshWithParameter is synchronous from our caller's perspective; close the pair.
-                    WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
-                }
-                catch (Exception ex)
-                {
-                    _pendingNavId = navId;
-                    _pendingPageName = pageType.Name;
-                    ShowNavigationError(pageType, parameter, ex);
-                }
+                    try
+                    {
+                        refreshable.RefreshWithParameter(parameter);
+                        // RefreshWithParameter is synchronous from our caller's perspective; close the pair.
+                        WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _pendingNavId = navId;
+                        _pendingPageName = pageType.Name;
+                        ShowNavigationError(pageType, parameter, ex);
+                    }
 
-                return;
+                    return;
+                }
             }
 
-            // Fallback: page doesn't support refresh, force re-creation
-            ContentFrame.Content = null;
+            // Fall through to a normal Frame.Navigate. This preserves the old
+            // page as a back-stack entry and gives the new parameter a fresh
+            // visual tree.
         }
 
         // Real Frame.Navigate path — stash the nav id so ContentFrame_Navigated can close the pair.
         _pendingNavId = navId;
         _pendingPageName = pageType.Name;
 
-        // CONNECTED-ANIM (disabled): suppression branch was only used for content
-        // pages running connected animations. With them disabled, every navigation
-        // uses the default DrillIn transition.
-        // var transition = suppressTransition
-        //     ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
-        //     : new DrillInNavigationTransitionInfo();
-        var transition = (NavigationTransitionInfo)new DrillInNavigationTransitionInfo();
-        TryNavigateFrame(pageType, parameter, transition);
+        var transition = suppressTransition
+            ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
+            : new DrillInNavigationTransitionInfo();
+        _skipNextNavigationCacheTrim = suppressTransition;
+        if (!TryNavigateFrame(pageType, parameter, transition))
+            _skipNextNavigationCacheTrim = false;
         MarkActivated();
     }
 
@@ -422,7 +427,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ContentFrame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
     {
-        TrimActiveContentForNavigationCache();
+        if (_skipNextNavigationCacheTrim)
+            _skipNextNavigationCacheTrim = false;
+        else
+            TrimActiveContentForNavigationCache();
+
         _contentPendingDisposal = ContentFrame.Content as IDisposable;
     }
 
