@@ -359,6 +359,34 @@
                     </StackPanel>
                 </ListView.Footer>
             </ListView>
+
+            <ItemsView
+                x:Name="RowsItemsView"
+                Grid.Row="1"
+                Visibility="Collapsed"
+                SelectionMode="Extended"
+                KeyDown="RowsList_KeyDown"
+                SelectionChanged="RowsItemsView_SelectionChanged">
+                <ItemsView.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="0"/>
+                </ItemsView.Layout>
+                <ItemsView.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:ITrackItem">
+                        <ItemContainer
+                            Padding="0"
+                            Margin="0,2"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            MinHeight="0">
+                            <track:TrackItem
+                                Track="{x:Bind}"
+                                Mode="Row"
+                                Loaded="RowsItemsViewTrackItem_Loaded"
+                                Unloaded="RowsItemsViewTrackItem_Unloaded"/>
+                        </ItemContainer>
+                    </DataTemplate>
+                </ItemsView.ItemTemplate>
+            </ItemsView>
         </Grid>
     </Grid>
 </UserControl>

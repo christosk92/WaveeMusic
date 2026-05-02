@@ -580,8 +580,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
             if (message.Title != null) CurrentTrackTitle = message.Title;
             if (message.ArtistName != null) CurrentArtistName = message.ArtistName;
-            if (message.AlbumArt != null) CurrentAlbumArt = message.AlbumArt;
-            if (message.AlbumArtLarge != null) CurrentAlbumArtLarge = message.AlbumArtLarge;
+            if (message.AlbumArt != null) CurrentAlbumArt = GetCurrentDisplayAlbumArt(message.AlbumArt);
+            if (message.AlbumArtLarge != null) CurrentAlbumArtLarge = GetCurrentDisplayAlbumArtLarge(message.AlbumArtLarge);
             if (message.ArtistId != null) CurrentArtistId = message.ArtistId;
             if (message.AlbumId != null) CurrentAlbumId = message.AlbumId;
             if (message.Artists != null) CurrentArtists = message.Artists;
@@ -609,13 +609,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private void ApplyConnectState(string trackUri, PlaybackState connectState)
     {
         var trackId = ExtractTrackId(trackUri);
+        var trackImageUrl = connectState.Track?.ImageUrl;
+        var trackImageLargeUrl = connectState.Track?.ImageLargeUrl
+            ?? connectState.Track?.ImageXLargeUrl
+            ?? connectState.Track?.ImageUrl;
 
         CurrentTrackTitle = connectState.Track?.Title;
         CurrentArtistName = connectState.Track?.Artist;
-        CurrentAlbumArt = connectState.Track?.ImageUrl;
-        CurrentAlbumArtLarge = connectState.Track?.ImageLargeUrl
-            ?? connectState.Track?.ImageXLargeUrl
-            ?? connectState.Track?.ImageUrl;
         CurrentArtistId = connectState.Track?.ArtistUri;
         CurrentAlbumId = connectState.Track?.AlbumUri;
         CurrentArtists = null; // Connect state lacks per-artist data; enricher will populate
@@ -637,6 +637,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             && mediaMeta.TryGetValue("track_player", out var player)
             && string.Equals(player, "video", StringComparison.OrdinalIgnoreCase);
         ApplyOriginalTrackMetadata(metadata, CurrentTrackIsVideo, connectState);
+        CurrentAlbumArt = GetCurrentDisplayAlbumArt(trackImageUrl);
+        CurrentAlbumArtLarge = GetCurrentDisplayAlbumArtLarge(trackImageLargeUrl);
 
         // Set CurrentTrackId last — fires PropertyChanged which triggers lyrics fetch
         CurrentTrackId = trackId;
@@ -662,6 +664,27 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     }
 
     private string? GetCurrentColorImageUrl(string? fallback)
+    {
+        if (!CurrentTrackIsVideo)
+            return fallback;
+
+        return FirstNonWhiteSpace(
+            CurrentOriginalAlbumArtLarge,
+            CurrentOriginalAlbumArt,
+            fallback);
+    }
+
+    private string? GetCurrentDisplayAlbumArt(string? fallback)
+    {
+        if (!CurrentTrackIsVideo)
+            return fallback;
+
+        return FirstNonWhiteSpace(
+            CurrentOriginalAlbumArt,
+            fallback);
+    }
+
+    private string? GetCurrentDisplayAlbumArtLarge(string? fallback)
     {
         if (!CurrentTrackIsVideo)
             return fallback;

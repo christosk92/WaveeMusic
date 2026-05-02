@@ -53,8 +53,8 @@
 
     <!-- Apple-Music iPad-style left column. Generous padding, large rounded
          album art with drop shadow, big transport row with a 56 px play button,
-         horizontal volume slider, AirPlay/device picker pinned bottom-left.
-         Reuses HeartButton / OutputDevicePicker / CompositionProgressBar /
+         AirPlay/device picker pinned bottom-left.
+         Reuses HeartButton / AudioOutputPicker / CompositionProgressBar /
          PlaybackActionContent — no parallel widgets. -->
     <Grid
         x:Name="LayoutRoot"
@@ -875,41 +875,9 @@
         </Grid>
 
         <!-- Volume — horizontal slider with low/high glyphs -->
-        <Grid
-              x:Name="VolumeRow"
-              Grid.Row="4"
-              ColumnSpacing="10"
-              MaxWidth="420"
-              HorizontalAlignment="Stretch"
-              Margin="36,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <FontIcon Grid.Column="0"
-                      Glyph="&#xE993;"
-                      FontSize="13"
-                      Opacity="0.6"
-                      VerticalAlignment="Center" />
-            <Slider Grid.Column="1"
-                    MinWidth="160"
-                    Minimum="0" Maximum="100"
-                    Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                    IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                    IsThumbToolTipEnabled="False"
-                    VerticalAlignment="Center" />
-            <FontIcon Grid.Column="2"
-                      Glyph="&#xE995;"
-                      FontSize="13"
-                      Opacity="0.6"
-                      VerticalAlignment="Center" />
-        </Grid>
-
-        <!-- AirPlay / device picker bottom-left -->
-        <playback:OutputDevicePicker
+        <playback:AudioOutputPicker
             x:Name="DevicePicker"
-            Grid.Row="5"
+            Grid.Row="4"
             HorizontalAlignment="Left" />
     </Grid>
 </UserControl>

@@ -304,6 +304,7 @@
                 <tdg:TrackDataGrid Grid.Column="2"
                                    x:Name="TrackGrid"
                                    PageKey="album" VerticalAlignment="Top"
+                                   UseItemsViewRows="True"
                                    ShowToolbar="False"
                                    AllowHorizontalRowScroll="False"
                                    ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"

@@ -41,6 +41,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private ISettingsService? _settingsService;
     private string _filterText = string.Empty;
     private bool _disposed;
+    private readonly HashSet<Track.TrackItem> _itemsViewRows = new();
+    private readonly Dictionary<Track.TrackItem, Action> _itemsViewLazyRowCleanups = new();
     public event EventHandler<ITrackItem>? RowSelected;
 
     // Size-slider stops (matches the XS/S/M/L/XL segmentation in the view flyout).
@@ -52,10 +54,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         InitializeComponent();
         RowsList.ItemsSource = _visibleRows;
+        RowsItemsView.ItemsSource = _visibleRows;
         RowsList.ContainerContentChanging += RowsList_ContainerContentChanging;
         RowsList.SelectionChanged += RowsList_SelectionChanged;
         RowsList.Loaded += RowsList_Loaded;
         RowsList.Unloaded += RowsList_Unloaded;
+        RowsItemsView.Loaded += RowsItemsView_Loaded;
+        RowsItemsView.Unloaded += RowsItemsView_Unloaded;
 
         // Set Slider.Value AFTER InitializeComponent so Minimum/Maximum are already in
         // place — attribute-order parsing in XAML was failing to apply Value="2" before
@@ -70,6 +75,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         SyncAddedByColumnVisibility();
         RebuildHeader();
         RebuildSortFlyout();
+        ApplyRowsPresenterMode();
     }
 
     // Sticky-header sync: the HeaderHost Grid lives outside the ListView's
@@ -81,6 +87,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     // known virtualization + input-routing bugs in WinUI 3 (microsoft-ui-xaml
     // issue #10172).
     private ScrollViewer? _rowsListScrollViewerWinUi;
+    private ScrollView? _rowsItemsViewScrollView;
 
     private void RowsList_Loaded(object sender, RoutedEventArgs e)
     {
@@ -97,6 +104,21 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
     }
 
+    private void RowsItemsView_Loaded(object sender, RoutedEventArgs e)
+    {
+        HookRowsItemsViewScrollView();
+        ApplyHorizontalRowScroll();
+    }
+
+    private void RowsItemsView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (_rowsItemsViewScrollView is not null)
+        {
+            _rowsItemsViewScrollView.ViewChanged -= RowsItemsViewScrollView_ViewChanged;
+            _rowsItemsViewScrollView = null;
+        }
+    }
+
     private void ApplyHorizontalRowScroll()
     {
         if (RowsList is null) return;
@@ -104,11 +126,21 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             ScrollViewer.SetHorizontalScrollMode(RowsList, ScrollMode.Auto);
             ScrollViewer.SetHorizontalScrollBarVisibility(RowsList, ScrollBarVisibility.Auto);
+            if (RowsItemsView.ScrollView is { } itemsScrollView)
+            {
+                itemsScrollView.HorizontalScrollMode = ScrollingScrollMode.Auto;
+                itemsScrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
+            }
         }
         else
         {
             ScrollViewer.SetHorizontalScrollMode(RowsList, ScrollMode.Disabled);
             ScrollViewer.SetHorizontalScrollBarVisibility(RowsList, ScrollBarVisibility.Disabled);
+            if (RowsItemsView.ScrollView is { } itemsScrollView)
+            {
+                itemsScrollView.HorizontalScrollMode = ScrollingScrollMode.Disabled;
+                itemsScrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
+            }
         }
     }
 
@@ -134,6 +166,23 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             HeaderScrollTransform.X = -sv.HorizontalOffset;
     }
 
+    private void HookRowsItemsViewScrollView()
+    {
+        if (_rowsItemsViewScrollView is not null) return;
+
+        var scrollView = RowsItemsView.ScrollView;
+        if (scrollView is null) return;
+
+        _rowsItemsViewScrollView = scrollView;
+        scrollView.ViewChanged += RowsItemsViewScrollView_ViewChanged;
+        HeaderScrollTransform.X = -scrollView.HorizontalOffset;
+    }
+
+    private void RowsItemsViewScrollView_ViewChanged(ScrollView sender, object args)
+    {
+        HeaderScrollTransform.X = -sender.HorizontalOffset;
+    }
+
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
         if (root is T match) return match;
@@ -143,6 +192,18 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
             var found = FindDescendant<T>(child);
             if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var parent = VisualTreeHelper.GetParent(child);
+        while (parent is not null)
+        {
+            if (parent is T match)
+                return match;
+            parent = VisualTreeHelper.GetParent(parent);
         }
         return null;
     }
@@ -247,6 +308,98 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         if (container.Tag is not Action cleanup) return;
         cleanup();
         container.Tag = null;
+    }
+
+    private void RowsItemsViewTrackItem_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Track.TrackItem row)
+            return;
+
+        _itemsViewRows.Add(row);
+        var sourceItem = row.Track;
+        var index = sourceItem is null ? -1 : _visibleRows.IndexOf(sourceItem);
+        ConfigureItemsViewRow(row, sourceItem, index);
+        SyncLazyRowSubscription(row, sourceItem);
+        ApplyItemsViewContainerDensity(row);
+        row.IsSelected = sourceItem is not null && RowsItemsView.SelectedItems.Contains(sourceItem);
+    }
+
+    private void RowsItemsViewTrackItem_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Track.TrackItem row)
+            return;
+
+        _itemsViewRows.Remove(row);
+        ClearLazyRowSubscription(row);
+    }
+
+    private void ConfigureItemsViewRow(Track.TrackItem row, object? sourceItem, int itemIndex)
+    {
+        row.PlayCommand = PlayCommand;
+        row.RowDensity = _preferredDensity;
+        row.SetAlternatingBorder(itemIndex >= 0 && itemIndex % 2 != 0, UseCardRows);
+        row.IsLoading = sourceItem is ITrackItem { IsLoaded: false };
+
+        row.BeginBatchUpdate();
+        row.ShowAlbumArt = ColumnVisible("TrackArt");
+        row.ShowArtistColumn = PageKey != TrackDataGridDefaults.AlbumPageKey;
+        row.ShowAlbumColumn = ColumnVisible("Album");
+        row.ShowAddedByColumn = AddedByVisible && ColumnVisible("AddedBy");
+        row.ShowDateAdded = ColumnVisible("DateAdded");
+        row.ShowPlayCount = ColumnVisible("PlayCount");
+        row.ShowProgress = ShouldShowInlineProgress();
+        PushWidthsToRow(row);
+        row.EndBatchUpdate();
+
+        ApplyFormattedCells(row, sourceItem);
+    }
+
+    private void SyncLazyRowSubscription(Track.TrackItem row, object? sourceItem)
+    {
+        ClearLazyRowSubscription(row);
+
+        if (sourceItem is not LazyTrackItem lazy)
+            return;
+
+        PropertyChangedEventHandler handler = (_, e) =>
+        {
+            if (e.PropertyName is not (nameof(LazyTrackItem.IsLoaded)
+                or nameof(LazyTrackItem.Data)
+                or nameof(ITrackItem.AddedAtFormatted)
+                or nameof(ITrackItem.PlayCountFormatted)))
+            {
+                return;
+            }
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!ReferenceEquals(row.Track, lazy)) return;
+
+                row.IsLoading = !lazy.IsLoaded;
+                if (lazy.IsLoaded)
+                    ApplyFormattedCells(row, lazy);
+            });
+        };
+
+        lazy.PropertyChanged += handler;
+        _itemsViewLazyRowCleanups[row] = () => lazy.PropertyChanged -= handler;
+    }
+
+    private void ClearLazyRowSubscription(Track.TrackItem row)
+    {
+        if (!_itemsViewLazyRowCleanups.Remove(row, out var cleanup))
+            return;
+
+        cleanup();
+    }
+
+    private void ApplyItemsViewContainerDensity(Track.TrackItem row)
+    {
+        if (FindParent<ItemContainer>(row) is not { } container)
+            return;
+
+        container.MinHeight = _preferredRowHeight ?? DensityRowHeights[_preferredDensity];
+        container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
     }
 
     private void ApplyFormattedCells(Track.TrackItem item, object? row)
@@ -406,6 +559,20 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 walked++;
             }
         }
+        foreach (var ti in _itemsViewRows.ToArray())
+        {
+            ti.BeginBatchUpdate();
+            ti.ShowAlbumArt = ColumnVisible("TrackArt");
+            ti.ShowAlbumColumn = ColumnVisible("Album");
+            ti.ShowArtistColumn = PageKey != TrackDataGridDefaults.AlbumPageKey;
+            ti.ShowAddedByColumn = addedByShow;
+            ti.ShowDateAdded = ColumnVisible("DateAdded");
+            ti.ShowPlayCount = ColumnVisible("PlayCount");
+            ti.ShowProgress = ShouldShowInlineProgress();
+            PushWidthsToRow(ti);
+            ti.EndBatchUpdate();
+            walked++;
+        }
         System.Diagnostics.Debug.WriteLine($"[addedby-grid] RefreshRowShowFlags: walked={walked} addedByShow={addedByShow} (AddedByVisible={AddedByVisible} colVisible={ColumnVisible("AddedBy")})");
     }
 
@@ -419,27 +586,34 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
             if (container.ContentTemplateRoot is not Track.TrackItem ti) continue;
-            switch (changed.Key)
-            {
-                case "Album":
-                    ti.AlbumColumnWidth = WidthOf("Album", 180);
-                    break;
-                case "AddedBy":
-                    ti.AddedByColumnWidth = WidthOf("AddedBy", 140);
-                    break;
-                case "DateAdded":
-                    ti.DateAddedColumnWidth = WidthOf("DateAdded", 120);
-                    break;
-                case "PlayCount":
-                    ti.PlayCountColumnWidth = WidthOf("PlayCount", 100);
-                    break;
-                case "Progress":
-                    ti.ProgressColumnWidth = WidthOf("Progress", 150);
-                    break;
-                case "Duration":
-                    ti.DurationColumnWidth = WidthOf("Duration", 60);
-                    break;
-            }
+            PushSingleColumnWidthToRow(ti, changed);
+        }
+        foreach (var ti in _itemsViewRows.ToArray())
+            PushSingleColumnWidthToRow(ti, changed);
+    }
+
+    private void PushSingleColumnWidthToRow(Track.TrackItem ti, TrackDataGridColumn changed)
+    {
+        switch (changed.Key)
+        {
+            case "Album":
+                ti.AlbumColumnWidth = WidthOf("Album", 180);
+                break;
+            case "AddedBy":
+                ti.AddedByColumnWidth = WidthOf("AddedBy", 140);
+                break;
+            case "DateAdded":
+                ti.DateAddedColumnWidth = WidthOf("DateAdded", 120);
+                break;
+            case "PlayCount":
+                ti.PlayCountColumnWidth = WidthOf("PlayCount", 100);
+                break;
+            case "Progress":
+                ti.ProgressColumnWidth = WidthOf("Progress", 150);
+                break;
+            case "Duration":
+                ti.DurationColumnWidth = WidthOf("Duration", 60);
+                break;
         }
     }
 
@@ -578,9 +752,41 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             grid.RefreshRowCardStyles();
     }
 
+    public static readonly DependencyProperty UseItemsViewRowsProperty =
+        DependencyProperty.Register(nameof(UseItemsViewRows), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnUseItemsViewRowsChanged));
+
+    public bool UseItemsViewRows
+    {
+        get => (bool)GetValue(UseItemsViewRowsProperty);
+        set => SetValue(UseItemsViewRowsProperty, value);
+    }
+
+    private static void OnUseItemsViewRowsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ApplyRowsPresenterMode();
+    }
+
+    private void ApplyRowsPresenterMode()
+    {
+        if (RowsList is null || RowsItemsView is null) return;
+
+        RowsList.Visibility = UseItemsViewRows ? Visibility.Collapsed : Visibility.Visible;
+        RowsItemsView.Visibility = UseItemsViewRows ? Visibility.Visible : Visibility.Collapsed;
+        ApplyHorizontalRowScroll();
+        if (UseItemsViewRows)
+            HookRowsItemsViewScrollView();
+        else
+            HookRowsListScrollViewer();
+    }
+
     public void ClearSelection()
     {
-        RowsList.SelectedItems.Clear();
+        if (UseItemsViewRows)
+            RowsItemsView.DeselectAll();
+        else
+            RowsList.SelectedItems.Clear();
     }
 
     private void RefreshRowCardStyles()
@@ -594,6 +800,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
             var index = RowsList.IndexFromContainer(container);
             row.SetAlternatingBorder(index % 2 != 0, UseCardRows);
+        }
+
+        foreach (var row in _itemsViewRows.ToArray())
+        {
+            var index = row.Track is null ? -1 : _visibleRows.IndexOf(row.Track);
+            row.SetAlternatingBorder(index >= 0 && index % 2 != 0, UseCardRows);
         }
     }
 
@@ -624,6 +836,15 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
             if (container.ContentTemplateRoot is not Track.TrackItem ti) continue;
             var info = AddedByFormatter(item);
+            ti.AddedByText = info.Text;
+            ti.AddedByAvatarUrl = info.AvatarUrl;
+            refreshed++;
+        }
+        foreach (var ti in _itemsViewRows.ToArray())
+        {
+            walked++;
+            if (ti.Track is null) continue;
+            var info = AddedByFormatter(ti.Track);
             ti.AddedByText = info.Text;
             ti.AddedByAvatarUrl = info.AvatarUrl;
             refreshed++;
@@ -1207,6 +1428,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             if (container.ContentTemplateRoot is Track.TrackItem ti)
                 ti.RowDensity = stop;
         }
+        foreach (var row in _itemsViewRows.ToArray())
+        {
+            row.RowDensity = stop;
+            ApplyItemsViewContainerDensity(row);
+        }
 
         // Preserve for future containers (virtualization materializes on demand).
         _preferredRowHeight = height;
@@ -1223,7 +1449,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         if (DetailsToggle.IsChecked == true)
         {
-            var track = RowsList.SelectedItem as ITrackItem ?? _visibleRows.FirstOrDefault();
+            var track = SelectedRowItem() as ITrackItem ?? _visibleRows.FirstOrDefault();
             if (track is null)
             {
                 DetailsToggle.IsChecked = false;
@@ -1239,10 +1465,22 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     }
 
     // Selection menu — Select all / Invert / Clear.
-    private void SelectAllItem_Click(object sender, RoutedEventArgs e) => RowsList.SelectAll();
+    private void SelectAllItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (UseItemsViewRows)
+            RowsItemsView.SelectAll();
+        else
+            RowsList.SelectAll();
+    }
 
     private void InvertSelectionItem_Click(object sender, RoutedEventArgs e)
     {
+        if (UseItemsViewRows)
+        {
+            RowsItemsView.InvertSelection();
+            return;
+        }
+
         var currentlySelected = new HashSet<object>(RowsList.SelectedItems.Cast<object>());
         RowsList.SelectedItems.Clear();
         foreach (var item in RowsList.Items)
@@ -1252,16 +1490,40 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
     }
 
-    private void ClearSelectionItem_Click(object sender, RoutedEventArgs e) => RowsList.SelectedItems.Clear();
+    private void ClearSelectionItem_Click(object sender, RoutedEventArgs e) => ClearSelection();
 
     private void RowsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var selected = RowsList.SelectedItem;
+        var selected = SelectedRowItem();
         if (selected is ITrackItem track)
             RowSelected?.Invoke(this, track);
 
         if (selected is not null && SelectionChangedCommand?.CanExecute(selected) == true)
             SelectionChangedCommand.Execute(selected);
+    }
+
+    private void RowsItemsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
+    {
+        SyncItemsViewRowSelectionState();
+        var selected = SelectedRowItem();
+        if (selected is ITrackItem track)
+            RowSelected?.Invoke(this, track);
+
+        if (selected is not null && SelectionChangedCommand?.CanExecute(selected) == true)
+            SelectionChangedCommand.Execute(selected);
+    }
+
+    private object? SelectedRowItem()
+        => UseItemsViewRows ? RowsItemsView.SelectedItem : RowsList.SelectedItem;
+
+    private void SyncItemsViewRowSelectionState()
+    {
+        if (!UseItemsViewRows)
+            return;
+
+        var selected = new HashSet<object>(RowsItemsView.SelectedItems.Cast<object>());
+        foreach (var row in _itemsViewRows.ToArray())
+            row.IsSelected = row.Track is not null && selected.Contains(row.Track);
     }
 
     // Tap / DoubleTap are handled inside TrackItem (respecting AppSettings.TrackClickBehavior)
@@ -1271,7 +1533,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private void RowsList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if ((e.Key == VirtualKey.Enter || e.Key == VirtualKey.Space) &&
-            RowsList.SelectedItem is ITrackItem track)
+            SelectedRowItem() is ITrackItem track)
         {
             PlayCommand?.Execute(track);
             e.Handled = true;
@@ -1304,11 +1566,19 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             _rowsListScrollViewerWinUi.ViewChanged -= RowsListScrollViewer_ViewChanged;
             _rowsListScrollViewerWinUi = null;
         }
+        if (_rowsItemsViewScrollView is not null)
+        {
+            _rowsItemsViewScrollView.ViewChanged -= RowsItemsViewScrollView_ViewChanged;
+            _rowsItemsViewScrollView = null;
+        }
 
         RowsList.ContainerContentChanging -= RowsList_ContainerContentChanging;
         RowsList.SelectionChanged -= RowsList_SelectionChanged;
         RowsList.Loaded -= RowsList_Loaded;
         RowsList.Unloaded -= RowsList_Unloaded;
+        RowsItemsView.SelectionChanged -= RowsItemsView_SelectionChanged;
+        RowsItemsView.Loaded -= RowsItemsView_Loaded;
+        RowsItemsView.Unloaded -= RowsItemsView_Unloaded;
 
         foreach (var item in RowsList.Items)
         {
@@ -1321,6 +1591,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             if (_containerTappedHandler is not null)
                 container.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
         }
+        foreach (var row in _itemsViewRows.ToArray())
+            ClearLazyRowSubscription(row);
+        _itemsViewRows.Clear();
+        _itemsViewLazyRowCleanups.Clear();
 
         if (_subscribedSource is not null)
             _subscribedSource.CollectionChanged -= OnSourceCollectionChanged;
@@ -1343,6 +1617,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         HeaderHost.ColumnDefinitions.Clear();
         RowsList.SelectedItems.Clear();
         RowsList.ItemsSource = null;
+        RowsItemsView.DeselectAll();
+        RowsItemsView.ItemsSource = null;
         _visibleRows.Clear();
         _sourceSnapshot = Array.Empty<ITrackItem>();
         _pressedWhileSelected = null;

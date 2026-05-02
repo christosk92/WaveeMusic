@@ -9,6 +9,7 @@
     xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:local="using:Wavee.UI.WinUI.Controls.RightPanel"
+    xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -84,42 +85,6 @@
             </Style>
 
             <!-- Output Device row template — used by both local audio and Spotify Connect ItemsRepeaters -->
-            <DataTemplate x:Key="OutputDeviceRowTemplate" x:DataType="local:OutputDeviceRowViewModel">
-                <Button Style="{StaticResource SubtleButtonStyle}"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Padding="10,8"
-                        CornerRadius="6"
-                        Background="{x:Bind RowBackground, Mode=OneWay}"
-                        Tag="{x:Bind}"
-                        Click="DeviceRow_Click">
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="{x:Bind Icon}"
-                                  FontSize="14"
-                                  Foreground="{x:Bind RowForeground, Mode=OneWay}"
-                                  VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{x:Bind Name}"
-                                   FontSize="13"
-                                   VerticalAlignment="Center"
-                                   Foreground="{x:Bind RowForeground, Mode=OneWay}"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <cards:LottieEqualizer Grid.Column="2"
-                                               IsActive="{x:Bind IsPlayingOnRow, Mode=OneWay}"
-                                               IconSize="16"
-                                               Visibility="{x:Bind EqualizerVisibility, Mode=OneWay}"/>
-                        <ProgressRing Grid.Column="2"
-                                      IsActive="{x:Bind IsSwitching, Mode=OneWay}"
-                                      Width="14" Height="14"
-                                      Visibility="{x:Bind SpinnerVisibility, Mode=OneWay}"/>
-                    </Grid>
-                </Button>
-            </DataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -656,147 +621,10 @@
                         <!-- ================================ -->
                         <!-- Output Device card                -->
                         <!-- ================================ -->
-                        <Border x:Name="DetailsOutputDeviceCard"
-                                Background="{ThemeResource DetailsCardBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1" CornerRadius="8"
-                                Visibility="Collapsed">
-                            <StackPanel>
-                                <!-- Clickable header row -->
-                                <Button x:Name="DetailsDeviceCardHeader"
-                                        Style="{StaticResource SubtleButtonStyle}"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Stretch"
-                                        Padding="14,12"
-                                        CornerRadius="8"
-                                        Click="DetailsDeviceCardHeader_Click">
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="32"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <FontIcon x:Name="DetailsDeviceIcon"
-                                                  Glyph="&#xE995;"
-                                                  FontSize="20"
-                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                  VerticalAlignment="Center"
-                                                  HorizontalAlignment="Center"/>
-
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                            <TextBlock x:Name="DetailsDeviceLabel"
-                                                       Text="Playing on"
-                                                       FontSize="11"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                            <TextBlock x:Name="DetailsDeviceName"
-                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
-                                                       FontSize="14"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       MaxLines="1"/>
-                                        </StackPanel>
-
-                                        <FontIcon x:Name="DetailsDeviceChevron"
-                                                  Grid.Column="2"
-                                                  Glyph="&#xE70D;"
-                                                  FontSize="10"
-                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                  VerticalAlignment="Center"
-                                                  RenderTransformOrigin="0.5,0.5">
-                                            <FontIcon.RenderTransform>
-                                                <RotateTransform x:Name="DetailsDeviceChevronRotation" Angle="0"/>
-                                            </FontIcon.RenderTransform>
-                                        </FontIcon>
-                                    </Grid>
-                                </Button>
-
-                                <!-- Expanded device list -->
-                                <StackPanel x:Name="DetailsDeviceExpandedPanel"
-                                            Visibility="Collapsed"
-                                            Padding="0,0,0,8">
-                                    <animations:Implicit.ShowAnimations>
-                                        <animations:OpacityAnimation Duration="0:0:0.22" From="0" To="1"/>
-                                        <animations:TranslationAnimation Duration="0:0:0.22" From="0,-6,0" To="0"/>
-                                    </animations:Implicit.ShowAnimations>
-                                    <animations:Implicit.HideAnimations>
-                                        <animations:OpacityAnimation Duration="0:0:0.12" From="1" To="0"/>
-                                    </animations:Implicit.HideAnimations>
-
-                                    <Border Height="1"
-                                            Background="{ThemeResource CardStrokeColorDefaultBrush}"
-                                            Margin="0,0,0,6"/>
-
-                                    <!-- LOCAL AUDIO section header -->
-                                    <TextBlock x:Name="DetailsLocalDeviceHeader"
-                                               Text="LOCAL AUDIO"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               CharacterSpacing="80"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               Margin="14,6,14,4"
-                                               Visibility="Collapsed"/>
-                                    <ItemsRepeater x:Name="DetailsLocalDeviceList"
-                                                   Margin="6,0"
-                                                   ItemTemplate="{StaticResource OutputDeviceRowTemplate}"/>
-
-                                    <!-- Separator between sections -->
-                                    <Border x:Name="DetailsDeviceSectionSeparator"
-                                            Height="1"
-                                            Background="{ThemeResource CardStrokeColorDefaultBrush}"
-                                            Margin="14,6,14,6"
-                                            Visibility="Collapsed"/>
-
-                                    <!-- SPOTIFY CONNECT section header -->
-                                    <TextBlock x:Name="DetailsConnectDeviceHeader"
-                                               Text="SPOTIFY CONNECT"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               CharacterSpacing="80"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               Margin="14,6,14,4"
-                                               Visibility="Collapsed"/>
-                                    <ItemsRepeater x:Name="DetailsConnectDeviceList"
-                                                   Margin="6,0"
-                                                   ItemTemplate="{StaticResource OutputDeviceRowTemplate}"/>
-
-                                    <!-- Empty state -->
-                                    <TextBlock x:Name="DetailsNoOtherDevicesText"
-                                               Text="No other devices nearby"
-                                               FontSize="12"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               HorizontalAlignment="Center"
-                                               Margin="0,6,0,6"
-                                               Visibility="Collapsed"/>
-                                </StackPanel>
-
-                                <!-- Audio engine offline state -->
-                                <Grid x:Name="DetailsDeviceOfflinePanel"
-                                      Padding="14,12"
-                                      ColumnSpacing="12"
-                                      Visibility="Collapsed">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE74F;"
-                                              FontSize="18"
-                                              Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                                              VerticalAlignment="Center"
-                                              HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="1"
-                                               Text="Audio engine offline"
-                                               VerticalAlignment="Center"
-                                               FontSize="13"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                    <Button Grid.Column="2"
-                                            Content="Retry"
-                                            FontSize="12"
-                                            Style="{StaticResource SubtleButtonStyle}"
-                                            Click="DetailsDeviceRetry_Click"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
+                        <playback:AudioOutputPicker
+                            x:Name="DetailsOutputDeviceCard"
+                            DisplayMode="Card"
+                            HideWhenNoTrack="True" />
 
                         <!-- Lyrics snippet (tap to open Lyrics tab) -->
                         <Border x:Name="DetailsLyricsSnippet"

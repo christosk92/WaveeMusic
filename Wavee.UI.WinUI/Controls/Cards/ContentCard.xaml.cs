@@ -253,6 +253,7 @@ public sealed partial class ContentCard : UserControl
     private bool _isInsideEffectiveViewport = true;
     private const int CardImageDecodeSize = 200;
     private string? _currentImageCacheUrl;
+    private string? _pinnedImageCacheUrl;
     private string? _retryImageCacheUrl;
     private int _retryImageLoadCount;
 
@@ -517,8 +518,19 @@ public sealed partial class ContentCard : UserControl
 
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
     {
+        if (!TryGetEffectiveViewportIntersection(sender, args.EffectiveViewport, out var isInsideEffectiveViewport))
+        {
+            // During page re-attach WinUI can raise this before layout has a
+            // real size. That is an unknown viewport sample, not an offscreen
+            // card; releasing here races the Loaded reload and leaves
+            // placeholders behind.
+            _hasEffectiveViewport = false;
+            _isInsideEffectiveViewport = true;
+            return;
+        }
+
         _hasEffectiveViewport = true;
-        _isInsideEffectiveViewport = IntersectsEffectiveViewport(sender, args.EffectiveViewport);
+        _isInsideEffectiveViewport = isInsideEffectiveViewport;
 
         if (!_isInsideEffectiveViewport)
         {
@@ -536,6 +548,8 @@ public sealed partial class ContentCard : UserControl
 
     public void ReleaseImage()
     {
+        UnpinImageCacheUrl();
+
         if (SquareImage != null)
         {
             SquareImage.Source = null;
@@ -572,15 +586,24 @@ public sealed partial class ContentCard : UserControl
             ? CircleImageBrush?.ImageSource != null
             : SquareImage?.Source != null;
 
-    private static bool IntersectsEffectiveViewport(FrameworkElement element, Rect effectiveViewport)
+    private static bool TryGetEffectiveViewportIntersection(
+        FrameworkElement element,
+        Rect effectiveViewport,
+        out bool intersects)
     {
+        intersects = true;
+
         if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
             return false;
 
-        return effectiveViewport.Right > 0
-               && effectiveViewport.Bottom > 0
-               && effectiveViewport.Left < element.ActualWidth
-               && effectiveViewport.Top < element.ActualHeight;
+        if (effectiveViewport.Width <= 0 || effectiveViewport.Height <= 0)
+            return false;
+
+        intersects = effectiveViewport.Right > 0
+                     && effectiveViewport.Bottom > 0
+                     && effectiveViewport.Left < element.ActualWidth
+                     && effectiveViewport.Top < element.ActualHeight;
+        return true;
     }
 
     private void LoadImage(string? url)
@@ -597,18 +620,25 @@ public sealed partial class ContentCard : UserControl
             CirclePlaceholderIcon.Visibility = Visibility.Visible;
 
         // Clear any previous bitmap on every load. Without this, a recycled
-        // ItemsRepeater container whose new item has no ImageUrl (e.g. Liked Songs,
-        // or any item using a spotify:mosaic: URI that ToHttpsUrl can't resolve)
-        // would keep showing the previous item's bitmap.
+        // ItemsRepeater container whose new item has no loadable artwork would
+        // keep showing the previous item's bitmap.
         SquareImage.Source = null;
         if (CircleImageBrush != null)
             CircleImageBrush.ImageSource = null;
 
         _currentImageCacheUrl = null;
-        if (string.IsNullOrEmpty(url)) return;
+        if (string.IsNullOrEmpty(url))
+        {
+            UnpinImageCacheUrl();
+            return;
+        }
 
-        var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(url);
-        if (string.IsNullOrEmpty(httpsUrl)) return;
+        var httpsUrl = ResolveCardImageUrl(url);
+        if (string.IsNullOrEmpty(httpsUrl))
+        {
+            UnpinImageCacheUrl();
+            return;
+        }
 
         _currentImageCacheUrl = httpsUrl;
         if (!string.Equals(_retryImageCacheUrl, httpsUrl, StringComparison.Ordinal))
@@ -619,6 +649,7 @@ public sealed partial class ContentCard : UserControl
 
         // Use the shared LRU bitmap cache via DI
         var bitmap = _imageCache?.GetOrCreate(httpsUrl, CardImageDecodeSize) ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = CardImageDecodeSize, DecodePixelType = DecodePixelType.Logical };
+        PinImageCacheUrl(httpsUrl);
 
         if (IsCircularImage)
         {
@@ -634,6 +665,38 @@ public sealed partial class ContentCard : UserControl
             // will not always fire again when a virtualized card is recycled.
             SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private static string? ResolveCardImageUrl(string? url)
+    {
+        var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(url);
+        if (!string.IsNullOrEmpty(httpsUrl))
+            return httpsUrl;
+
+        // Home cards need a cheap preview. Full playlist/sidebar surfaces still
+        // use PlaylistMosaicService for composed 2x2 mosaics.
+        return Helpers.SpotifyImageHelper.TryParseMosaicTileUrls(url, out var tileUrls) && tileUrls.Count > 0
+            ? tileUrls[0]
+            : null;
+    }
+
+    private void PinImageCacheUrl(string httpsUrl)
+    {
+        if (_imageCache == null || string.Equals(_pinnedImageCacheUrl, httpsUrl, StringComparison.Ordinal))
+            return;
+
+        UnpinImageCacheUrl();
+        _imageCache.Pin(httpsUrl, CardImageDecodeSize);
+        _pinnedImageCacheUrl = httpsUrl;
+    }
+
+    private void UnpinImageCacheUrl()
+    {
+        if (_imageCache == null || string.IsNullOrEmpty(_pinnedImageCacheUrl))
+            return;
+
+        _imageCache.Unpin(_pinnedImageCacheUrl, CardImageDecodeSize);
+        _pinnedImageCacheUrl = null;
     }
 
     private void ApplyPlaceholderColor(string? hex)
@@ -722,6 +785,8 @@ public sealed partial class ContentCard : UserControl
         var failedUrl = _currentImageCacheUrl;
         if (!string.IsNullOrEmpty(failedUrl))
             _imageCache?.Invalidate(failedUrl, CardImageDecodeSize);
+        if (string.Equals(_pinnedImageCacheUrl, failedUrl, StringComparison.Ordinal))
+            UnpinImageCacheUrl();
 
         SquareImage.Source = null;
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
@@ -739,6 +804,7 @@ public sealed partial class ContentCard : UserControl
         {
             if (!IsLoaded
                 || IsImageLoadingSuspended
+                || (_hasEffectiveViewport && !_isInsideEffectiveViewport)
                 || HasImage()
                 || !string.Equals(_currentImageCacheUrl, failedUrl, StringComparison.Ordinal))
             {

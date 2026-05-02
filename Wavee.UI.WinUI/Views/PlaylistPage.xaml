@@ -383,6 +383,7 @@
                 VerticalAlignment="Stretch"
                 Margin="0,0,0,0"
                 PageKey="playlist"
+                UseItemsViewRows="True"
                 AddedByVisible="{x:Bind ViewModel.ShouldShowAddedByColumn, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
                 PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">

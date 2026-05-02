@@ -39,7 +39,7 @@
                 <Setter Property="MinWidth" Value="0" />
             </Style>
 
-            <!-- DevicePickerRowStyle moved into OutputDevicePicker control. -->
+            <!-- Device picker styling lives inside AudioOutputPicker. -->
 
             <!-- Theme-aware chevron pill: white-ish translucent over album art in dark mode,
                  black-ish translucent over album art in light mode. Glyph follows the theme's
@@ -375,7 +375,7 @@
                      handles row click → IPlaybackService internally. The
                      trigger renders the active device + chevron. Replaces a
                      ~200-line chip+flyout block previously inlined here. -->
-                <playback:OutputDevicePicker
+                <playback:AudioOutputPicker
                     Grid.Row="2"
                     Margin="2,0,2,0"
                     HorizontalAlignment="Left" />

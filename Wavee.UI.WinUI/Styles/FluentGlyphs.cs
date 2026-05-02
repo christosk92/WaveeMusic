@@ -102,9 +102,9 @@ public static class FluentGlyphs
     public const string Video = "";
 
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
-    public const string DeviceRemote = "";
+    public const string DeviceRemote = "\uE703";
     /// <summary>Volume — single-speaker glyph used for local audio chips (E767).</summary>
-    public const string DeviceLocalSpeaker = "";
+    public const string DeviceLocalSpeaker = "\uE767";
 
     // ── Device types (output-device picker icons) ─────────────────────
     /// <summary>Devices2 — generic computer/PC icon (E977).</summary>

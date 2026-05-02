@@ -25,7 +25,7 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// Apple-Music-style "now playing" left column for the floating player's
 /// expanded layout. Reuses the singleton <see cref="PlayerBarViewModel"/> as
 /// the data source and the small primitive controls (<c>HeartButton</c>,
-/// <c>OutputDevicePicker</c>, <c>CompositionProgressBar</c>,
+/// <c>AudioOutputPicker</c>, <c>CompositionProgressBar</c>,
 /// <c>PlaybackActionContent</c>) — no parallel transport implementation.
 /// </summary>
 public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfaceConsumer
@@ -428,7 +428,6 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         AlbumArtImage.CornerRadius = new CornerRadius(cornerRadius);
 
         MusicTransportRow.Visibility = useVideoLayout ? Visibility.Collapsed : Visibility.Visible;
-        VolumeRow.Visibility = useVideoLayout ? Visibility.Collapsed : Visibility.Visible;
         DevicePicker.Visibility = useVideoLayout ? Visibility.Collapsed : Visibility.Visible;
         VideoTheaterModeButton.IsChecked = useTheaterLayout;
         VideoOverlayTheaterModeButton.IsChecked = useTheaterLayout;
