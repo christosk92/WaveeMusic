@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Comments.CommentsList"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:comments="using:Wavee.UI.WinUI.Controls.Comments"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    mc:Ignorable="d">
+
+    <StackPanel Spacing="10">
+        <!-- Section header — 3 px accent stripe + caption text. Hidden when
+             HeaderText is null/empty (e.g. right panel sets it imperatively
+             via code-behind). -->
+        <StackPanel x:Name="HeaderPanel"
+                    Orientation="Horizontal"
+                    Spacing="10"
+                    Visibility="Collapsed">
+            <Border Width="3" MinHeight="22" CornerRadius="1.5"
+                    VerticalAlignment="Stretch"
+                    Background="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+            <TextBlock x:Name="HeaderTextBlock"
+                       FontWeight="Bold"
+                       FontSize="18"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <comments:CommentComposer x:Name="ComposerControl"
+                                  SubmitRequested="Composer_SubmitRequested"/>
+
+        <!-- Empty hint — single icon + caption when zero comments. -->
+        <StackPanel x:Name="EmptyHintPanel"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Padding="2,6"
+                    Visibility="Collapsed">
+            <FontIcon Glyph="&#xE90A;" FontSize="14"
+                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                      VerticalAlignment="Center"/>
+            <TextBlock Text="No comments yet — be the first."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <ItemsRepeater x:Name="CommentsRepeater">
+            <ItemsRepeater.Layout>
+                <StackLayout Orientation="Vertical" Spacing="0"/>
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+                <DataTemplate x:DataType="vm:PodcastCommentViewModel">
+                    <comments:CommentThreadItem
+                        Comment="{x:Bind}"
+                        CompactMode="{Binding ElementName=Root, Path=CompactMode, Mode=OneWay}"
+                        ShowReactionsRequested="Item_ShowReactionsRequested"
+                        ShowReplyReactionsRequested="Item_ShowReplyReactionsRequested"
+                        ReplySubmitRequested="Item_ReplySubmitRequested"/>
+                </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+
+        <!-- Loading-more skeleton — 2 placeholder rows shimmer while a Load
+             More fetch is in flight. Mirrors the existing YourEpisodesView
+             skeleton (36 px avatar + 2 text lines per row). -->
+        <StackPanel x:Name="LoadingPanel"
+                    Spacing="10"
+                    Padding="0,4,0,0"
+                    Visibility="Collapsed">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <controls:Shimmer Grid.Column="0" Width="36" Height="36" CornerRadius="18"/>
+                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                    <controls:Shimmer Width="140" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                    <controls:Shimmer Width="260" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Grid>
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <controls:Shimmer Grid.Column="0" Width="36" Height="36" CornerRadius="18"/>
+                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                    <controls:Shimmer Width="120" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                    <controls:Shimmer Width="200" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+
+        <HyperlinkButton x:Name="LoadMoreButton"
+                         Content="Load more comments"
+                         Padding="0,4"
+                         HorizontalAlignment="Left"
+                         Visibility="Collapsed"/>
+    </StackPanel>
+</UserControl>

@@ -210,6 +210,17 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
         flyout.ShowAt(target);
     }
 
+    private void PodcastEpisodeScopeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PodcastEpisodeScopeSelector is null)
+            return;
+
+        ViewModel.SetPodcastEpisodeScope(
+            PodcastEpisodeScopeSelector.SelectedIndex == 1
+                ? PodcastEpisodeScope.Latest
+                : PodcastEpisodeScope.Saved);
+    }
+
     private void AddSortItem(MenuFlyout flyout, string text, LibrarySortBy sortBy)
     {
         var item = new RadioMenuFlyoutItem
@@ -612,6 +623,50 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
 
         if (ViewModel.SubmitCommentCommand.CanExecute(null))
             await ViewModel.SubmitCommentCommand.ExecuteAsync(null);
+    }
+
+    // ── Shared CommentsList handlers ─────────────────────────────────────
+    // These wire the new Comments UserControl into the same consent gate +
+    // reactions dialog the old inline template used.
+
+    private async void EpisodeCommentsList_SubmitRequested(
+        Wavee.UI.WinUI.Controls.Comments.CommentsList sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.SubmitCommentCommand.CanExecute(null))
+            return;
+        if (!await EnsurePodcastCommentsConsentAcceptedAsync())
+            return;
+        if (ViewModel.SubmitCommentCommand.CanExecute(null))
+            await ViewModel.SubmitCommentCommand.ExecuteAsync(null);
+    }
+
+    private async void EpisodeCommentsList_ReplySubmitRequested(
+        Wavee.UI.WinUI.Controls.Comments.CommentsList sender, PodcastCommentViewModel comment)
+    {
+        if (!comment.SubmitReplyCommand.CanExecute(null))
+            return;
+        if (!await EnsurePodcastCommentsConsentAcceptedAsync())
+            return;
+        if (comment.SubmitReplyCommand.CanExecute(null))
+            await comment.SubmitReplyCommand.ExecuteAsync(null);
+    }
+
+    private async void EpisodeCommentsList_ShowReactionsRequested(
+        Wavee.UI.WinUI.Controls.Comments.CommentsList sender, PodcastCommentViewModel comment)
+    {
+        if (XamlRoot is null) return;
+        await Wavee.UI.WinUI.Helpers.PodcastCommentReactionsDialog.ShowAsync(
+            XamlRoot,
+            (token, reaction) => comment.GetReactionsAsync(token, reaction));
+    }
+
+    private async void EpisodeCommentsList_ShowReplyReactionsRequested(
+        Wavee.UI.WinUI.Controls.Comments.CommentsList sender, PodcastReplyViewModel reply)
+    {
+        if (XamlRoot is null) return;
+        await Wavee.UI.WinUI.Helpers.PodcastCommentReactionsDialog.ShowAsync(
+            XamlRoot,
+            (token, reaction) => reply.GetReactionsAsync(token, reaction));
     }
 
     private async void SubmitReplyButton_Click(object sender, RoutedEventArgs e)

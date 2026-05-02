@@ -129,7 +129,21 @@ public interface ILibraryDataService
     /// <summary>
     /// Gets just the played-state fields needed by podcast library rows.
     /// </summary>
-    Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(string episodeUri, CancellationToken ct = default);
+    Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(
+        string episodeUri,
+        CancellationToken ct = default,
+        bool allowEpisodeLookupFallback = false);
+
+    /// <summary>
+    /// Persists the user's podcast resume point to Spotify Herodotus. Pass
+    /// <c>null</c> for <paramref name="resumePosition"/> when the episode is
+    /// completed.
+    /// </summary>
+    Task SavePodcastEpisodeProgressAsync(
+        string episodeUri,
+        TimeSpan? resumePosition,
+        bool completed,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Creates a podcast episode comment. Spotify write support is currently stubbed.

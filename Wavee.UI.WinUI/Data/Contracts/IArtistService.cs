@@ -46,6 +46,7 @@ public sealed record ArtistOverviewResult
     public ArtistPalette? Palette { get; init; }
     public long MonthlyListeners { get; init; }
     public long Followers { get; init; }
+    public int? WorldRank { get; init; }
     public string? Biography { get; init; }
     public bool IsVerified { get; init; }
 

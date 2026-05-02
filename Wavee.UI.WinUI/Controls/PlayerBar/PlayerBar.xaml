@@ -21,7 +21,6 @@
                 <ResourceDictionary Source="ms-appx:///Styles/PlayerBarStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <converters:VolumeToGlyphConverter x:Key="VolumeGlyphConverter" />
             <converters:RepeatModeToGlyphConverter x:Key="RepeatGlyphConverter" />
             <converters:RepeatModeToCheckedConverter x:Key="RepeatCheckedConverter" />
             <converters:RepeatModeToSymbolConverter x:Key="RepeatSymbolConverter" />
@@ -31,15 +30,6 @@
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
-            <Style x:Key="PlayerVolumeFlyoutPresenterStyle" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}" TargetType="FlyoutPresenter">
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="MinWidth" Value="260" />
-                <Setter Property="MaxWidth" Value="280" />
-                <Setter Property="ScrollViewer.HorizontalScrollMode" Value="Disabled" />
-                <Setter Property="ScrollViewer.VerticalScrollMode" Value="Disabled" />
-                <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden" />
-                <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden" />
-            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -157,6 +147,20 @@
             CloseButtonContent="Dismiss"
             ActionButtonClick="VideoPopoutTeachingTip_ActionButtonClick"
             Closed="VideoPopoutTeachingTip_Closed" />
+
+        <TeachingTip
+            x:Name="PodcastResumeTeachingTip"
+            Title="Resume episode?"
+            Subtitle="{x:Bind ViewModel.PodcastResumePromptText, Mode=OneWay}"
+            Target="{x:Bind PlayerBarLayoutRoot}"
+            PreferredPlacement="Top"
+            IsLightDismissEnabled="True"
+            IsOpen="{x:Bind ViewModel.IsPodcastResumePromptVisible, Mode=TwoWay}"
+            ActionButtonContent="{x:Bind ViewModel.PodcastResumeActionText, Mode=OneWay}"
+            CloseButtonContent="Keep from start"
+            ActionButtonClick="PodcastResumeTeachingTip_ActionButtonClick"
+            CloseButtonClick="PodcastResumeTeachingTip_CloseButtonClick"
+            Closed="PodcastResumeTeachingTip_Closed" />
 
     <Border
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -398,6 +402,7 @@
                             DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
                             IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                             IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                            Segments="{x:Bind ViewModel.Chapters, Mode=OneWay}"
                             SeekStarted="ProgressBar_SeekStarted"
                             SeekCommitted="ProgressBar_SeekCommitted" />
                     </Grid>
@@ -447,139 +452,24 @@
                             </ToggleButton>
                         </StackPanel>
 
-                        <StackPanel
+                        <playback:AudioOutputPicker
                             x:Name="InlineVolumeGroup"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            Spacing="0">
-                            <Button
-                                Style="{StaticResource TransparentButtonStyle}"
-                                Width="32"
-                                Height="32"
-                                Padding="0"
-                                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                ToolTipService.ToolTip="Volume">
-                                <Button.Flyout>
-                                    <Flyout Placement="TopEdgeAlignedRight">
-                                        <Flyout.FlyoutPresenterStyle>
-                                            <StaticResource ResourceKey="PlayerVolumeFlyoutPresenterStyle" />
-                                        </Flyout.FlyoutPresenterStyle>
-                                        <Grid Padding="4" RowSpacing="2">
-                                            <Grid
-                                                Padding="12,10"
-                                                ColumnSpacing="10"
-                                                VerticalAlignment="Center">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <FontIcon
-                                                    Grid.Column="0"
-                                                    FontSize="14"
-                                                    Opacity="0.75"
-                                                    VerticalAlignment="Center"
-                                                    Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                                <Slider
-                                                    Grid.Column="1"
-                                                    Minimum="0"
-                                                    Maximum="100"
-                                                    Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                                                    IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                                    IsThumbToolTipEnabled="False"
-                                                    VerticalAlignment="Center" />
-                                                <ToggleButton
-                                                    Grid.Column="2"
-                                                    Style="{StaticResource SubtleToggleButtonStyle}"
-                                                    Width="30"
-                                                    Height="30"
-                                                    Padding="0"
-                                                    IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
-                                                    Command="{x:Bind ViewModel.ToggleMuteCommand}"
-                                                    ToolTipService.ToolTip="Mute">
-                                                    <FontIcon
-                                                        FontSize="13"
-                                                        Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                                </ToggleButton>
-                                            </Grid>
-                                        </Grid>
-                                    </Flyout>
-                                </Button.Flyout>
-                                <FontIcon
-                                    FontSize="14"
-                                    Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                            </Button>
-
-                            <Slider
-                                x:Name="VolumeSlider"
-                                Width="90"
-                                VerticalAlignment="Center"
-                                Minimum="0"
-                                Maximum="100"
-                                Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                IsThumbToolTipEnabled="False" />
-                        </StackPanel>
-
-                        <Button
-                            x:Name="CollapsedVolumeButton"
-                            Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
                             Height="32"
-                            Padding="0"
+                            VerticalAlignment="Center"
+                            CompactIconOnly="True"
+                            CompactMaxWidth="32"
+                            CompactFlyoutPlacement="TopEdgeAlignedRight" />
+
+                        <playback:AudioOutputPicker
+                            x:Name="CollapsedVolumeButton"
+                            Width="32"
+                            Height="32"
                             Visibility="Collapsed"
-                            IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                            ToolTipService.ToolTip="Volume">
-                            <Button.Flyout>
-                                <Flyout Placement="TopEdgeAlignedRight">
-                                    <Flyout.FlyoutPresenterStyle>
-                                        <StaticResource ResourceKey="PlayerVolumeFlyoutPresenterStyle" />
-                                    </Flyout.FlyoutPresenterStyle>
-                                    <Grid Padding="4" RowSpacing="2">
-                                        <Grid
-                                            Padding="12,10"
-                                            ColumnSpacing="10"
-                                            VerticalAlignment="Center">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <FontIcon
-                                                Grid.Column="0"
-                                                FontSize="14"
-                                                Opacity="0.75"
-                                                VerticalAlignment="Center"
-                                                Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                            <Slider
-                                                Grid.Column="1"
-                                                Minimum="0"
-                                                Maximum="100"
-                                                Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                                                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                                IsThumbToolTipEnabled="False"
-                                                VerticalAlignment="Center" />
-                                            <ToggleButton
-                                                Grid.Column="2"
-                                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                                Width="30"
-                                                Height="30"
-                                                Padding="0"
-                                                IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
-                                                Command="{x:Bind ViewModel.ToggleMuteCommand}"
-                                                ToolTipService.ToolTip="Mute">
-                                                <FontIcon
-                                                    FontSize="13"
-                                                    Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                            </ToggleButton>
-                                        </Grid>
-                                    </Grid>
-                                </Flyout>
-                            </Button.Flyout>
-                            <FontIcon
-                                FontSize="14"
-                                Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                        </Button>
+                            VerticalAlignment="Center"
+                            CompactIconOnly="True"
+                            CompactMaxWidth="32"
+                            CompactFlyoutPlacement="TopEdgeAlignedRight" />
 
                         <StackPanel
                             x:Name="InlinePanelGroup"
@@ -1029,64 +919,14 @@
                             </ToggleButton>
                         </StackPanel>
 
-                        <Button
+                        <playback:AudioOutputPicker
                             x:Name="NarrowVolumeButton"
-                            Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
                             Height="32"
-                            Padding="0"
-                            IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                            ToolTipService.ToolTip="Volume">
-                            <Button.Flyout>
-                                <Flyout Placement="TopEdgeAlignedRight">
-                                    <Flyout.FlyoutPresenterStyle>
-                                        <StaticResource ResourceKey="PlayerVolumeFlyoutPresenterStyle" />
-                                    </Flyout.FlyoutPresenterStyle>
-                                    <Grid Padding="4" RowSpacing="2">
-                                        <Grid
-                                            Padding="12,10"
-                                            ColumnSpacing="10"
-                                            VerticalAlignment="Center">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <FontIcon
-                                                Grid.Column="0"
-                                                FontSize="14"
-                                                Opacity="0.75"
-                                                VerticalAlignment="Center"
-                                                Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                            <Slider
-                                                Grid.Column="1"
-                                                Minimum="0"
-                                                Maximum="100"
-                                                Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                                                IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                                IsThumbToolTipEnabled="False"
-                                                VerticalAlignment="Center" />
-                                            <ToggleButton
-                                                Grid.Column="2"
-                                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                                Width="30"
-                                                Height="30"
-                                                Padding="0"
-                                                IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
-                                                Command="{x:Bind ViewModel.ToggleMuteCommand}"
-                                                ToolTipService.ToolTip="Mute">
-                                                <FontIcon
-                                                    FontSize="13"
-                                                    Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                            </ToggleButton>
-                                        </Grid>
-                                    </Grid>
-                                </Flyout>
-                            </Button.Flyout>
-                            <FontIcon
-                                FontSize="14"
-                                Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                        </Button>
+                            VerticalAlignment="Center"
+                            CompactIconOnly="True"
+                            CompactMaxWidth="32"
+                            CompactFlyoutPlacement="TopEdgeAlignedRight" />
 
                         <Button
                             x:Name="NarrowOverflowButton"
@@ -1232,6 +1072,7 @@
                         DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
                         IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                         IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                        Segments="{x:Bind ViewModel.Chapters, Mode=OneWay}"
                         SeekStarted="ProgressBar_SeekStarted"
                         SeekCommitted="ProgressBar_SeekCommitted" />
 

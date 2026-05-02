@@ -26,6 +26,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         [SavedItemType.Track] = ("spotify:track:", SpotifyLibraryItemType.Track, "collection"),
         [SavedItemType.Album] = ("spotify:album:", SpotifyLibraryItemType.Album, "collection"),
         [SavedItemType.Artist] = ("spotify:artist:", SpotifyLibraryItemType.Artist, "artists"),
+        [SavedItemType.Show] = ("spotify:show:", SpotifyLibraryItemType.Show, "shows"),
     };
 
     private readonly Dictionary<SavedItemType, HashSet<string>> _caches = new()
@@ -33,6 +34,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         [SavedItemType.Track] = new(StringComparer.Ordinal),
         [SavedItemType.Album] = new(StringComparer.Ordinal),
         [SavedItemType.Artist] = new(StringComparer.Ordinal),
+        [SavedItemType.Show] = new(StringComparer.Ordinal),
     };
 
     private readonly IMetadataDatabase _database;
@@ -113,10 +115,11 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         }
 
         _logger?.LogInformation(
-            "LibrarySaveService initialized: {Tracks} tracks, {Albums} albums, {Artists} artists",
+            "LibrarySaveService initialized: {Tracks} tracks, {Albums} albums, {Artists} artists, {Shows} shows",
             _caches[SavedItemType.Track].Count,
             _caches[SavedItemType.Album].Count,
-            _caches[SavedItemType.Artist].Count);
+            _caches[SavedItemType.Artist].Count,
+            _caches[SavedItemType.Show].Count);
 
         SubscribeToLibraryChanges();
     }
@@ -141,10 +144,11 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         }
 
         _logger?.LogInformation(
-            "Cache reloaded: {Tracks} tracks, {Albums} albums, {Artists} artists",
+            "Cache reloaded: {Tracks} tracks, {Albums} albums, {Artists} artists, {Shows} shows",
             _caches[SavedItemType.Track].Count,
             _caches[SavedItemType.Album].Count,
-            _caches[SavedItemType.Artist].Count);
+            _caches[SavedItemType.Artist].Count,
+            _caches[SavedItemType.Show].Count);
 
         SaveStateChanged?.Invoke();
     }
@@ -205,6 +209,8 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
                         (SavedItemType.Album, false) => await _libraryService.SaveAlbumAsync(itemUri).ConfigureAwait(false),
                         (SavedItemType.Artist, true) => await _libraryService.UnfollowArtistAsync(itemUri).ConfigureAwait(false),
                         (SavedItemType.Artist, false) => await _libraryService.FollowArtistAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Show, true) => await _libraryService.UnsubscribeShowAsync(itemUri).ConfigureAwait(false),
+                        (SavedItemType.Show, false) => await _libraryService.SubscribeShowAsync(itemUri).ConfigureAwait(false),
                         _ => false
                     };
                     _logger?.LogInformation("ToggleSave: library service returned success={Success}", success);

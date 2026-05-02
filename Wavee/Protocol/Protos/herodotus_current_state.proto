@@ -16,6 +16,15 @@ message ListCurrentStatesResponse {
   repeated CurrentStateEntry states = 1;
 }
 
+message CreateResumePointRevisionRequest {
+  string entity_uri = 2;
+  CurrentStateRevision revision = 4;
+}
+
+message CreateResumePointRevisionResponse {
+  CurrentStateRevision revision = 1;
+}
+
 message CurrentStateEntry {
   string entity_uri = 1;
   CurrentStateRevision revision = 2;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +15,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Enums;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
@@ -29,17 +31,35 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// </summary>
 public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 {
+    private const double PodcastResumePromptMinimumMs = 30_000;
+    private const double PodcastResumePromptEndBufferMs = 30_000;
+    private const double PodcastProgressSaveIntervalMs = 15_000;
+    private const double PodcastProgressSaveDeltaMs = 10_000;
+    private const double PodcastProgressMinimumSaveMs = 5_000;
+    private const double PodcastCompletedThresholdMs = 90_000;
+
     private readonly IPlaybackStateService _playbackStateService;
     private readonly IConnectivityService? _connectivityService;
     private readonly INotificationService? _notificationService;
     private readonly IPanelDockingService? _dockingService;
+    private readonly IPodcastService? _podcastService;
+    private readonly ILibraryDataService? _libraryDataService;
     private readonly ILogger? _logger;
     private bool _disposed;
+    private CancellationTokenSource? _chapterFetchCts;
     private DispatcherTimer? _positionTimer;
     private DateTime _lastServicePositionUpdate = DateTime.UtcNow;
     private double _lastServicePosition;
     private bool _autoVideoSwitchInFlight;
     private string? _lastAutoVideoSwitchTrackId;
+    private int _podcastResumeProbeVersion;
+    private string? _podcastResumeEpisodeUri;
+    private string? _dismissedPodcastResumeEpisodeUri;
+    private double _podcastResumePositionMs;
+    private DateTime _lastPodcastProgressSaveAttemptUtc = DateTime.MinValue;
+    private string? _lastPodcastProgressSavedEpisodeUri;
+    private double _lastPodcastProgressSavedPositionMs = -1;
+    private bool _lastPodcastProgressSavedCompleted;
 
     // Track info (synced from IPlaybackStateService)
     [ObservableProperty]
@@ -68,6 +88,15 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _hasTrack;
+
+    /// <summary>
+    /// Chapter / display-segment list for the currently-playing podcast episode,
+    /// or empty when nothing is playing or the episode has no chapters. Drives
+    /// the chapter-aware progress bar; cleared synchronously when the track
+    /// changes and re-populated asynchronously after the Pathfinder fetch lands.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<EpisodeChapterVm> _chapters = Array.Empty<EpisodeChapterVm>();
 
     [ObservableProperty]
     private bool _isAlbumArtExpanded;
@@ -168,9 +197,18 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     public string PlaybackSpeedText => $"{PlaybackSpeed:0.##}x";
 
     public bool IsCurrentItemEpisode =>
-        _playbackStateService.CurrentTrackId?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
+        GetCurrentEpisodeUri() is not null;
 
     private bool CanChangePlaybackSpeed => CanExecutePlayback && IsCurrentItemEpisode;
+
+    [ObservableProperty]
+    private bool _isPodcastResumePromptVisible;
+
+    [ObservableProperty]
+    private string _podcastResumePromptText = "";
+
+    [ObservableProperty]
+    private string _podcastResumeActionText = "Resume";
 
     // Progress (in milliseconds)
     [ObservableProperty]
@@ -216,12 +254,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                               IConnectivityService? connectivityService = null,
                               INotificationService? notificationService = null,
                               IPanelDockingService? dockingService = null,
+                              IPodcastService? podcastService = null,
+                              ILibraryDataService? libraryDataService = null,
                               ILoggerFactory? loggerFactory = null)
     {
         _playbackStateService = playbackStateService;
         _connectivityService = connectivityService;
         _notificationService = notificationService;
         _dockingService = dockingService;
+        _podcastService = podcastService;
+        _libraryDataService = libraryDataService;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
         _navigateToArtistCommand = new RelayCommand<string?>(NavigateToArtist);
@@ -258,6 +300,251 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             vm.IsFriendsPanelActive = isOpen && mode == RightPanelMode.FriendsActivity;
             vm.IsDetailsPanelActive = isOpen && mode == RightPanelMode.Details;
         });
+
+        // Cold-load case: SyncFromService bypassed the property-change handler,
+        // so kick off the initial chapter fetch here for any episode that's
+        // already playing when the VM was constructed.
+        LoadChaptersForCurrentTrack(_playbackStateService.CurrentTrackId);
+        BeginPodcastResumePromptProbe();
+    }
+
+    /// <summary>
+    /// Cancels any in-flight chapter fetch and either clears the chapter list
+    /// (non-episode track) or schedules a new fetch for the given episode URI.
+    /// Safe to call from the property-changed handler — the actual await runs
+    /// on a fire-and-forget Task that resumes back on the captured dispatcher
+    /// before mutating the bound <see cref="Chapters"/> property.
+    /// </summary>
+    private void LoadChaptersForCurrentTrack(string? trackId)
+    {
+        _chapterFetchCts?.Cancel();
+        _chapterFetchCts?.Dispose();
+        _chapterFetchCts = null;
+
+        // Always reset to empty synchronously so a previous episode's chapters
+        // never leak onto a freshly-loaded track while the new fetch is in flight.
+        Chapters = Array.Empty<EpisodeChapterVm>();
+
+        if (_podcastService is null || string.IsNullOrEmpty(trackId)) return;
+
+        var episodeUri = trackId.StartsWith("spotify:episode:", StringComparison.Ordinal)
+            ? trackId
+            : !trackId.Contains(':', StringComparison.Ordinal)
+              && (_playbackStateService.CurrentContext?.Type is PlaybackContextType.Show or PlaybackContextType.Episode
+                  || _playbackStateService.CurrentAlbumId?.StartsWith("spotify:show:", StringComparison.Ordinal) == true)
+                ? $"spotify:episode:{trackId}"
+                : null;
+        if (episodeUri is null) return;
+
+        var cts = new CancellationTokenSource();
+        _chapterFetchCts = cts;
+        _ = LoadChaptersAsync(episodeUri, cts.Token);
+    }
+
+    private async Task LoadChaptersAsync(string episodeUri, CancellationToken ct)
+    {
+        try
+        {
+            // ConfigureAwait(true) keeps us on the captured UI sync-context so
+            // the [ObservableProperty] setter fires on the dispatcher thread.
+            var chapters = await _podcastService!.GetEpisodeChaptersAsync(episodeUri, ct).ConfigureAwait(true);
+            if (ct.IsCancellationRequested) return;
+            // Late check: a track change may have raced the fetch — only commit
+            // when the URI we fetched still matches the active track.
+            if (!string.Equals(GetCurrentEpisodeUri(), episodeUri, StringComparison.Ordinal)) return;
+            Chapters = chapters;
+            _logger?.LogDebug("[PlayerBar] Loaded {Count} chapter(s) for {Uri}", chapters.Count, episodeUri);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Chapter fetch failed for {Uri}", episodeUri);
+        }
+    }
+
+    private void BeginPodcastResumePromptProbe()
+    {
+        var episodeUri = GetCurrentEpisodeUri();
+        _podcastResumeProbeVersion++;
+        IsPodcastResumePromptVisible = false;
+        _podcastResumeEpisodeUri = null;
+        _podcastResumePositionMs = 0;
+        PodcastResumePromptText = "";
+        PodcastResumeActionText = "Resume";
+
+        if (_libraryDataService is null || string.IsNullOrWhiteSpace(episodeUri))
+        {
+            _logger?.LogDebug(
+                "[PlayerBar] Podcast resume prompt skipped: episode={EpisodeUri}, libraryService={HasLibraryService}",
+                episodeUri ?? "<none>",
+                _libraryDataService is not null);
+            return;
+        }
+
+        if (string.Equals(_dismissedPodcastResumeEpisodeUri, episodeUri, StringComparison.Ordinal))
+        {
+            _logger?.LogDebug("[PlayerBar] Podcast resume prompt skipped for dismissed episode {EpisodeUri}", episodeUri);
+            return;
+        }
+
+        var version = _podcastResumeProbeVersion;
+        _ = LoadPodcastResumePromptAsync(episodeUri, version);
+    }
+
+    private async Task LoadPodcastResumePromptAsync(string episodeUri, int version)
+    {
+        try
+        {
+            await Task.Yield();
+
+            var progress = await _libraryDataService!
+                .GetPodcastEpisodeProgressAsync(
+                    episodeUri,
+                    allowEpisodeLookupFallback: true)
+                .ConfigureAwait(true);
+
+            if (version != _podcastResumeProbeVersion)
+                return;
+
+            if (!ShouldShowPodcastResumePrompt(progress))
+            {
+                _logger?.LogDebug(
+                    "[PlayerBar] Podcast resume prompt hidden for {EpisodeUri}: state={State}, pos={PositionMs}ms, duration={DurationMs}ms",
+                    episodeUri,
+                    progress?.PlayedState ?? "<none>",
+                    progress?.PlayedPosition.TotalMilliseconds ?? 0,
+                    progress?.Duration.TotalMilliseconds ?? 0);
+                return;
+            }
+
+            var resumeMs = progress!.PlayedPosition.TotalMilliseconds;
+            _podcastResumeEpisodeUri = episodeUri;
+            _podcastResumePositionMs = resumeMs;
+            var formatted = FormatTime(resumeMs);
+            PodcastResumeActionText = $"Resume at {formatted}";
+            PodcastResumePromptText = $"This episode has a saved position at {formatted}. Playback started from the beginning.";
+            IsPodcastResumePromptVisible = true;
+            _logger?.LogInformation("[PlayerBar] Showing podcast resume prompt for {EpisodeUri} at {PositionMs}ms",
+                episodeUri,
+                (long)resumeMs);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[PlayerBar] Failed to load podcast resume prompt for {EpisodeUri}", episodeUri);
+        }
+    }
+
+    private bool ShouldShowPodcastResumePrompt(PodcastEpisodeProgressDto? progress)
+    {
+        if (progress is null)
+            return false;
+
+        if (string.Equals(progress.PlayedState, PodcastEpisodeProgressDto.ErrorState, StringComparison.Ordinal)
+            || string.Equals(progress.PlayedState, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var resumeMs = progress.PlayedPosition.TotalMilliseconds;
+        if (resumeMs < PodcastResumePromptMinimumMs)
+            return false;
+
+        var durationMs = Duration > 0 ? Duration : progress.Duration.TotalMilliseconds;
+        if (durationMs > 0 && resumeMs >= durationMs - PodcastResumePromptEndBufferMs)
+            return false;
+
+        return true;
+    }
+
+    private string? GetCurrentEpisodeUri()
+    {
+        var trackId = _playbackStateService.CurrentTrackId;
+        if (!string.IsNullOrWhiteSpace(trackId))
+        {
+            if (trackId.StartsWith("spotify:episode:", StringComparison.Ordinal))
+                return trackId;
+
+            if (!trackId.Contains(':', StringComparison.Ordinal)
+                && (_playbackStateService.CurrentContext?.Type is PlaybackContextType.Show or PlaybackContextType.Episode
+                    || _playbackStateService.CurrentAlbumId?.StartsWith("spotify:show:", StringComparison.Ordinal) == true))
+            {
+                return $"spotify:episode:{trackId}";
+            }
+        }
+
+        var contextUri = _playbackStateService.CurrentContext?.ContextUri;
+        return contextUri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true
+            ? contextUri
+            : null;
+    }
+
+    private void ResetPodcastProgressSaveThrottle()
+    {
+        _lastPodcastProgressSaveAttemptUtc = DateTime.MinValue;
+        _lastPodcastProgressSavedEpisodeUri = null;
+        _lastPodcastProgressSavedPositionMs = -1;
+        _lastPodcastProgressSavedCompleted = false;
+    }
+
+    private void MaybeSavePodcastEpisodeProgress(bool force = false)
+    {
+        if (_libraryDataService is null)
+            return;
+
+        var episodeUri = GetCurrentEpisodeUri();
+        if (string.IsNullOrWhiteSpace(episodeUri))
+            return;
+
+        var durationMs = Math.Max(0, Duration);
+        var positionMs = Math.Max(0, Position);
+        if (durationMs > 0)
+            positionMs = Math.Min(positionMs, durationMs);
+
+        var completed = durationMs > 0 && durationMs - positionMs <= PodcastCompletedThresholdMs;
+        if (!completed && positionMs < PodcastProgressMinimumSaveMs)
+            return;
+
+        var now = DateTime.UtcNow;
+        if (!force && now - _lastPodcastProgressSaveAttemptUtc < TimeSpan.FromMilliseconds(PodcastProgressSaveIntervalMs))
+            return;
+
+        if (!force
+            && string.Equals(_lastPodcastProgressSavedEpisodeUri, episodeUri, StringComparison.Ordinal)
+            && _lastPodcastProgressSavedCompleted == completed
+            && Math.Abs(_lastPodcastProgressSavedPositionMs - positionMs) < PodcastProgressSaveDeltaMs)
+        {
+            return;
+        }
+
+        _lastPodcastProgressSaveAttemptUtc = now;
+        _lastPodcastProgressSavedEpisodeUri = episodeUri;
+        _lastPodcastProgressSavedPositionMs = positionMs;
+        _lastPodcastProgressSavedCompleted = completed;
+
+        var resumePosition = completed ? (TimeSpan?)null : TimeSpan.FromMilliseconds(positionMs);
+        _ = SavePodcastEpisodeProgressAsync(episodeUri, resumePosition, completed);
+    }
+
+    private async Task SavePodcastEpisodeProgressAsync(
+        string episodeUri,
+        TimeSpan? resumePosition,
+        bool completed)
+    {
+        try
+        {
+            await _libraryDataService!
+                .SavePodcastEpisodeProgressAsync(episodeUri, resumePosition, completed)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(
+                ex,
+                "[PlayerBar] Failed to save podcast progress for {EpisodeUri} at {PositionMs}ms completed={Completed}",
+                episodeUri,
+                resumePosition?.TotalMilliseconds ?? 0,
+                completed);
+        }
     }
 
     private bool CanExecutePlayback => _connectivityService?.IsConnected ?? true;
@@ -313,6 +600,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var newPlaying = _playbackStateService.IsPlaying;
                 _logger?.LogDebug("[PlayerBar] IsPlaying → {Value} (was {Old})", newPlaying, IsPlaying);
                 IsPlaying = newPlaying;
+                MaybeSavePodcastEpisodeProgress(force: !newPlaying);
                 break;
             case nameof(IPlaybackStateService.IsBuffering):
                 var newBuf = _playbackStateService.IsBuffering;
@@ -330,6 +618,14 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsCurrentItemEpisode));
                 SetPlaybackSpeedCommand.NotifyCanExecuteChanged();
                 TryAutoSwitchToVideo("track-changed");
+                LoadChaptersForCurrentTrack(newTrackId);
+                BeginPodcastResumePromptProbe();
+                ResetPodcastProgressSaveThrottle();
+                break;
+            case nameof(IPlaybackStateService.CurrentContext):
+                OnPropertyChanged(nameof(IsCurrentItemEpisode));
+                SetPlaybackSpeedCommand.NotifyCanExecuteChanged();
+                BeginPodcastResumePromptProbe();
                 break;
             case nameof(IPlaybackStateService.CurrentTrackTitle):
                 TrackTitle = _playbackStateService.CurrentTrackTitle;
@@ -376,6 +672,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 if (!IsSeeking)
                 {
                     ApplyPlaybackPosition(_playbackStateService.Position, updateProgressBar: true, resetInterpolationClock: true);
+                    MaybeSavePodcastEpisodeProgress();
                 }
                 else
                 {
@@ -386,6 +683,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var newDur = _playbackStateService.Duration;
                 _logger?.LogDebug("[PlayerBar] Duration → {Dur}ms", newDur);
                 Duration = newDur;
+                MaybeSavePodcastEpisodeProgress();
                 break;
             case nameof(IPlaybackStateService.Volume):
                 Volume = _playbackStateService.Volume;
@@ -429,6 +727,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             var interpolated = GetInterpolatedPlaybackPosition();
             Position = interpolated;
             AnchorPositionMs = interpolated;
+            MaybeSavePodcastEpisodeProgress();
         }
     }
 
@@ -623,6 +922,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _logger?.LogInformation("[PlayerBar] SkipBackward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
         ApplyPlaybackPosition(newPos, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(newPos);
+        MaybeSavePodcastEpisodeProgress(force: true);
     }
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
@@ -632,6 +932,35 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _logger?.LogInformation("[PlayerBar] SkipForward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
         ApplyPlaybackPosition(newPos, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(newPos);
+        MaybeSavePodcastEpisodeProgress(force: true);
+    }
+
+    [RelayCommand]
+    private void ResumePodcastEpisode()
+    {
+        var episodeUri = GetCurrentEpisodeUri();
+        if (string.IsNullOrWhiteSpace(episodeUri)
+            || !string.Equals(episodeUri, _podcastResumeEpisodeUri, StringComparison.Ordinal)
+            || _podcastResumePositionMs <= 0)
+        {
+            DismissPodcastResumePrompt();
+            return;
+        }
+
+        _logger?.LogInformation("[PlayerBar] Resuming podcast episode {EpisodeUri} at {PositionMs}ms",
+            episodeUri,
+            (long)_podcastResumePositionMs);
+
+        ApplyPlaybackPosition(_podcastResumePositionMs, updateProgressBar: true, resetInterpolationClock: true);
+        _playbackStateService.Seek(_podcastResumePositionMs);
+        DismissPodcastResumePrompt();
+    }
+
+    [RelayCommand]
+    private void DismissPodcastResumePrompt()
+    {
+        _dismissedPodcastResumeEpisodeUri = _podcastResumeEpisodeUri ?? GetCurrentEpisodeUri();
+        IsPodcastResumePromptVisible = false;
     }
 
     [RelayCommand(CanExecute = nameof(CanChangePlaybackSpeed))]
@@ -882,6 +1211,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// </summary>
     public void StartSeeking()
     {
+        if (IsPodcastResumePromptVisible)
+            DismissPodcastResumePrompt();
+
         IsSeeking = true;
     }
 
@@ -895,6 +1227,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         var seekPosition = ClampPlaybackPosition(Position);
         ApplyPlaybackPosition(seekPosition, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(seekPosition);
+        MaybeSavePodcastEpisodeProgress(force: true);
     }
 
     /// <summary>
@@ -977,6 +1310,10 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         if (_connectivityService != null)
             _connectivityService.PropertyChanged -= OnConnectivityPropertyChanged;
         WeakReferenceMessenger.Default.Unregister<RightPanelStateChangedMessage>(this);
+
+        _chapterFetchCts?.Cancel();
+        _chapterFetchCts?.Dispose();
+        _chapterFetchCts = null;
 
         if (_positionTimer != null)
         {

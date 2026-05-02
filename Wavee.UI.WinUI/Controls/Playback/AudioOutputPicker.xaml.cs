@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Connect;
+using Wavee.Core.Session;
 using Wavee.Playback.Contracts;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Styles;
@@ -45,6 +46,20 @@ public sealed partial class AudioOutputPicker : UserControl
             typeof(double),
             typeof(AudioOutputPicker),
             new PropertyMetadata(220d, OnCompactMaxWidthChanged));
+
+    public static readonly DependencyProperty CompactIconOnlyProperty =
+        DependencyProperty.Register(
+            nameof(CompactIconOnly),
+            typeof(bool),
+            typeof(AudioOutputPicker),
+            new PropertyMetadata(false, OnCompactChromeChanged));
+
+    public static readonly DependencyProperty CompactFlyoutPlacementProperty =
+        DependencyProperty.Register(
+            nameof(CompactFlyoutPlacement),
+            typeof(FlyoutPlacementMode),
+            typeof(AudioOutputPicker),
+            new PropertyMetadata(FlyoutPlacementMode.BottomEdgeAlignedLeft, OnCompactChromeChanged));
 
     private readonly ObservableCollection<AudioOutputDeviceRowViewModel> _localRows = new();
     private readonly ObservableCollection<AudioOutputDeviceRowViewModel> _connectRows = new();
@@ -88,6 +103,18 @@ public sealed partial class AudioOutputPicker : UserControl
         set => SetValue(CompactMaxWidthProperty, value);
     }
 
+    public bool CompactIconOnly
+    {
+        get => (bool)GetValue(CompactIconOnlyProperty);
+        set => SetValue(CompactIconOnlyProperty, value);
+    }
+
+    public FlyoutPlacementMode CompactFlyoutPlacement
+    {
+        get => (FlyoutPlacementMode)GetValue(CompactFlyoutPlacementProperty);
+        set => SetValue(CompactFlyoutPlacementProperty, value);
+    }
+
     private static void OnDisplayModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is AudioOutputPicker picker)
@@ -104,6 +131,12 @@ public sealed partial class AudioOutputPicker : UserControl
     {
         if (d is AudioOutputPicker picker)
             picker.CompactRoot.MaxWidth = picker.CompactMaxWidth;
+    }
+
+    private static void OnCompactChromeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is AudioOutputPicker picker)
+            picker.ApplyCompactChrome();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -184,6 +217,7 @@ public sealed partial class AudioOutputPicker : UserControl
         if (CompactRoot == null || CardRoot == null)
             return;
 
+        ApplyCompactChrome();
         CompactRoot.MaxWidth = CompactMaxWidth;
         var hidden = ShouldHideForCurrentState();
         CompactRoot.Visibility = !hidden && DisplayMode == AudioOutputPickerDisplayMode.Compact
@@ -192,6 +226,37 @@ public sealed partial class AudioOutputPicker : UserControl
         CardRoot.Visibility = !hidden && DisplayMode == AudioOutputPickerDisplayMode.Card
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void ApplyCompactChrome()
+    {
+        if (CompactRoot == null || PickerFlyout == null)
+            return;
+
+        PickerFlyout.Placement = CompactFlyoutPlacement;
+        if (CompactIconOnly)
+        {
+            CompactRoot.Width = 32;
+            CompactRoot.Height = 32;
+            CompactRoot.Padding = new Thickness(0);
+            CompactRoot.HorizontalContentAlignment = HorizontalAlignment.Center;
+            CompactContentRoot.ColumnSpacing = 0;
+            CompactNameColumn.Width = new GridLength(0);
+            CompactChevronColumn.Width = new GridLength(0);
+            CompactDeviceName.Visibility = Visibility.Collapsed;
+            CompactChevron.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        CompactRoot.Width = double.NaN;
+        CompactRoot.Height = double.NaN;
+        CompactRoot.Padding = new Thickness(8, 4, 8, 4);
+        CompactRoot.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        CompactContentRoot.ColumnSpacing = 6;
+        CompactNameColumn.Width = new GridLength(1, GridUnitType.Star);
+        CompactChevronColumn.Width = GridLength.Auto;
+        CompactDeviceName.Visibility = Visibility.Visible;
+        CompactChevron.Visibility = Visibility.Visible;
     }
 
     private bool ShouldHideForCurrentState()
@@ -232,11 +297,12 @@ public sealed partial class AudioOutputPicker : UserControl
             ? ResourceBrush("AccentTextFillColorPrimaryBrush")
             : ResourceBrush("TextFillColorPrimaryBrush");
 
-        CompactDeviceIcon.Glyph = glyph;
+        if (!CompactIconOnly)
+            CompactDeviceIcon.Glyph = glyph;
         CompactDeviceIcon.Foreground = foreground;
         CompactDeviceName.Text = displayName;
         CompactDeviceName.Foreground = textForeground;
-        ToolTipService.SetToolTip(CompactRoot, displayName);
+        ToolTipService.SetToolTip(CompactRoot, CompactIconOnly ? "Volume and output device" : displayName);
 
         CardDeviceIcon.Glyph = glyph;
         CardDeviceIcon.Foreground = isRemote
@@ -267,6 +333,8 @@ public sealed partial class AudioOutputPicker : UserControl
 
         FlyoutVolumeText.Text = volume.ToString();
         CardVolumeText.Text = $"{volume}%";
+        if (CompactIconOnly)
+            CompactDeviceIcon.Glyph = glyph;
         FlyoutVolumeIcon.Glyph = glyph;
         CardVolumeIcon.Glyph = glyph;
         FlyoutVolumeSlider.IsEnabled = !restricted;
@@ -546,9 +614,7 @@ public sealed partial class AudioOutputDeviceRowViewModel : ObservableObject
     [ObservableProperty] private bool _isActive;
     [ObservableProperty] private bool _isSwitching;
 
-    public Brush? RowBackground => IsActive
-        ? Application.Current.Resources["AccentFillColorTertiaryBrush"] as Brush
-        : null;
+    public Brush? RowBackground => null;
 
     public Brush? RowForeground => IsActive
         ? Application.Current.Resources["AccentTextFillColorPrimaryBrush"] as Brush

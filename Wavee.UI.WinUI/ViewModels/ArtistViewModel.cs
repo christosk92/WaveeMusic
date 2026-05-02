@@ -141,6 +141,22 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [NotifyPropertyChangedFor(nameof(MonthlyListenersDescription))]
     private string? _monthlyListeners;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWorldRank))]
+    [NotifyPropertyChangedFor(nameof(WorldRankNumberText))]
+    private int? _worldRank;
+
+    public bool HasWorldRank => WorldRank is > 0;
+
+    public string? WorldRankNumberText
+    {
+        get
+        {
+            var rank = WorldRank;
+            return rank is > 0 ? $"#{rank.Value:N0}" : null;
+        }
+    }
+
     /// <summary>Description-line variant for the About SettingsExpander header.</summary>
     public string MonthlyListenersDescription =>
         string.IsNullOrEmpty(MonthlyListeners)
@@ -594,6 +610,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         HeaderHeroColorHex = null;
         Palette = null;
         MonthlyListeners = null;
+        WorldRank = null;
         Followers = 0;
         Biography = null;
         IsVerified = false;
@@ -714,6 +731,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             MonthlyListeners = overview.MonthlyListeners > 0
                 ? overview.MonthlyListeners.ToString("N0")
                 : null;
+            WorldRank = overview.WorldRank;
             Followers = overview.Followers;
             Biography = overview.Biography;
             IsVerified = overview.IsVerified;

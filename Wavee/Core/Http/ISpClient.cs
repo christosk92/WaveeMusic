@@ -57,9 +57,11 @@ public interface ISpClient
     /// <remarks>
     /// Spotify episodes are streamed like tracks - they have file IDs and use
     /// the same CDN/storage mechanism. The metadata includes an audio list
-    /// (equivalent to track's file list) with available formats.
+    /// (equivalent to track's file list) with available formats. Backed by
+    /// extended-metadata EPISODE_V4 because the legacy /metadata/4/episode
+    /// route 404s for some valid episodes.
     /// </remarks>
-    /// <param name="episodeId">Spotify episode ID (base62 format, 22 characters).</param>
+    /// <param name="episodeId">Spotify episode ID. Accepts spotify:episode URI, 22-char base62, or 32-char hex.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Protobuf-encoded episode metadata.</returns>
     /// <exception cref="SpClientException">Thrown if the request fails.</exception>
@@ -229,6 +231,17 @@ public interface ISpClient
     Task<ListCurrentStatesResponse> ListCurrentStatesAsync(
         DateTimeOffset updatedAfter,
         int limit = 1021,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a Herodotus resume-point revision for a podcast episode. Pass
+    /// <c>null</c> for <paramref name="resumePosition"/> to mark the episode
+    /// completed; Spotify represents that as a current-state value without a
+    /// resumePoint.
+    /// </summary>
+    Task<CreateResumePointRevisionResponse> CreateResumePointRevisionAsync(
+        string episodeUri,
+        TimeSpan? resumePosition,
         CancellationToken cancellationToken = default);
 
     /// <summary>

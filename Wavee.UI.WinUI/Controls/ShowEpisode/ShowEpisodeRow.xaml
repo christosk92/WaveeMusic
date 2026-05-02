@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.ShowEpisode.ShowEpisodeRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Row chrome — thin-bordered card container hosting the existing layout
+         Grid. Container background + border + progress fill are driven by the
+         show palette (CoverColorBrush DP) so each row state reads with the show's
+         identity colour instead of a hardcoded Spotify green. -->
+    <Border x:Name="RowContainer"
+            CornerRadius="8"
+            BorderThickness="1"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            Background="Transparent">
+    <Grid x:Name="RowRoot"
+          Background="Transparent"
+          Padding="12,10,12,10"
+          ColumnSpacing="14"
+          PointerEntered="RowRoot_PointerEntered"
+          PointerExited="RowRoot_PointerExited"
+          Tapped="RowRoot_Tapped">
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Hover wash — subtle, sits behind everything. -->
+        <Border x:Name="HoverFill"
+                Grid.ColumnSpan="3"
+                Grid.RowSpan="3"
+                CornerRadius="8"
+                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                Opacity="0"
+                IsHitTestVisible="False"/>
+
+        <!-- Cover thumbnail — 64×64, lazily loaded with a podcast-glyph
+             placeholder so virtualised rows don't paint blank squares while
+             the network image is in flight. -->
+        <Grid Grid.Column="0"
+              Grid.RowSpan="3"
+              Width="64" Height="64"
+              CornerRadius="6"
+              Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+              VerticalAlignment="Top">
+            <FontIcon x:Name="CoverPlaceholderIcon"
+                      Glyph="&#xE93E;"
+                      FontSize="22"
+                      Opacity="0.4"
+                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"/>
+            <Image x:Name="CoverImage"
+                   Stretch="UniformToFill"
+                   ImageOpened="CoverImage_ImageOpened"/>
+        </Grid>
+
+        <!-- Title + description block. -->
+        <StackPanel Grid.Column="1" Grid.Row="0" Spacing="2">
+            <Grid ColumnSpacing="6" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="EpisodeNumberChip"
+                        Grid.Column="0"
+                        Visibility="Collapsed"
+                        Padding="7,1,7,2"
+                        CornerRadius="6"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="EpisodeNumberText"
+                               FontSize="11"
+                               FontWeight="SemiBold"/>
+                </Border>
+
+                <TextBlock x:Name="TitleText"
+                           Grid.Column="1"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"
+                           VerticalAlignment="Center"/>
+                <!-- Compact "E" explicit chip — matches the badge used elsewhere
+                     in the app so users can scan podcast lists fast. -->
+                <Border x:Name="ExplicitChip"
+                        Grid.Column="2"
+                        Visibility="Collapsed"
+                        Padding="4,0,4,1"
+                        CornerRadius="3"
+                        Background="{ThemeResource ControlFillColorTertiaryBrush}"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="E"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Border>
+                <!-- Inline "video" glyph for video episodes; 12 px so it never
+                     pulls focus away from the title. -->
+                <FontIcon x:Name="VideoGlyph"
+                          Grid.Column="3"
+                          Visibility="Collapsed"
+                          Glyph="&#xE714;"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="12"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          VerticalAlignment="Center"/>
+                <Border x:Name="StatusChip"
+                        Grid.Column="4"
+                        Visibility="Collapsed"
+                        Padding="7,1,7,2"
+                        CornerRadius="10"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusChipText"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Border>
+            </Grid>
+            <TextBlock x:Name="DescriptionText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       TextTrimming="CharacterEllipsis"
+                       MaxLines="2"/>
+        </StackPanel>
+
+        <!-- Hover-only action cluster — play button, like, more. We only
+             inflate these on hover so the resting state stays visually quiet.
+             VerticalAlignment="Top" anchors them to the title row, not the
+             centre of the description; that matches Spotify desktop. -->
+        <StackPanel x:Name="ActionCluster"
+                    Grid.Column="2" Grid.Row="0"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center"
+                    Opacity="0">
+            <Button x:Name="PlayButton"
+                    Width="36" Height="36"
+                    CornerRadius="18"
+                    Padding="0"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    BorderThickness="0"
+                    ToolTipService.ToolTip="Play episode"
+                    Click="PlayButton_Click">
+                <FontIcon Glyph="&#xE768;" FontSize="13"/>
+            </Button>
+            <Button x:Name="LikeButton"
+                    Width="36" Height="36"
+                    CornerRadius="18"
+                    Padding="0"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    BorderThickness="0"
+                    ToolTipService.ToolTip="Save episode"
+                    Click="LikeButton_Click">
+                <FontIcon Glyph="&#xEB51;" FontSize="13"/>
+            </Button>
+        </StackPanel>
+
+        <!-- Meta row spans the lower half of the right side: date · duration ·
+             played-state. Aligned with the description on the left so the
+             text-block has a stable visual baseline. -->
+        <StackPanel Grid.Column="1" Grid.ColumnSpan="2"
+                    Grid.Row="1"
+                    Margin="0,8,0,0"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    VerticalAlignment="Center">
+            <FontIcon x:Name="StateGlyph"
+                      Visibility="Collapsed"
+                      Glyph="&#xE73E;"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                      FontSize="12"
+                      VerticalAlignment="Center"/>
+            <TextBlock x:Name="MetaText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- 2 px green progress underline — only visible for IN_PROGRESS.
+             Same recipe as EpisodeCard.ProgressBar so the visual signal is
+             identical between the home shelf and the detail page. -->
+        <Grid x:Name="ProgressBar"
+              Grid.Column="1" Grid.ColumnSpan="2"
+              Grid.Row="2"
+              Visibility="Collapsed"
+              Margin="0,8,0,0"
+              VerticalAlignment="Bottom"
+              Height="2">
+            <Border Background="{ThemeResource CardStrokeColorDefaultBrush}" CornerRadius="1"/>
+            <Border x:Name="ProgressFill"
+                    HorizontalAlignment="Left"
+                    CornerRadius="1"
+                    Width="0"/>
+        </Grid>
+    </Grid>
+    </Border>
+</UserControl>

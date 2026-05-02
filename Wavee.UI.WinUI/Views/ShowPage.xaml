@@ -1,0 +1,543 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.ShowPage"
+    x:Name="PageRoot"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
+    xmlns:winUi="using:CommunityToolkit.WinUI"
+    xmlns:appControls="using:Wavee.UI.WinUI.Controls"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:dtos="using:Wavee.UI.WinUI.Data.DTOs"
+    xmlns:showEpisode="using:Wavee.UI.WinUI.Controls.ShowEpisode"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    mc:Ignorable="d"
+    NavigationCacheMode="Disabled"
+    Background="Transparent">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
+        <converters:BoolToFollowGlyphConverter x:Key="BoolToFollowGlyphConverter"/>
+        <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter"/>
+    </Page.Resources>
+
+    <Grid>
+        <!-- Palette wash sitting on top of Mica. Brush is a SolidColorBrush
+             produced by ShowViewModel.ApplyTheme; null brush => nothing renders. -->
+        <Border IsHitTestVisible="False"
+                Background="{x:Bind ViewModel.PaletteBackdropBrush, Mode=OneWay}"/>
+
+        <!-- Loading skeleton — same structure as the real layout so the
+             user sees the page shape stabilise immediately. ScheduleCrossfade
+             in code-behind fades shimmer to content over ~300 ms. -->
+        <Grid x:Name="ShimmerContainer"
+              Padding="40,32,40,40"
+              ColumnSpacing="24">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Spacing="12">
+                <controls:Shimmer Width="248" Height="248" CornerRadius="8"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <controls:Shimmer Width="80" Height="26" CornerRadius="13"/>
+                    <controls:Shimmer Width="86" Height="26" CornerRadius="13"/>
+                </StackPanel>
+                <controls:Shimmer Width="240" Height="28"/>
+                <controls:Shimmer Width="160" Height="16"/>
+                <controls:Shimmer Width="200" Height="14"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                    <controls:Shimmer Width="80" Height="40" CornerRadius="20"/>
+                    <controls:Shimmer Width="120" Height="40" CornerRadius="20"/>
+                    <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="10">
+                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Content. Composition Opacity starts at 0 (set in code-behind);
+             ScheduleCrossfade fades it to 1 once IsLoading flips false. -->
+        <Grid x:Name="ContentContainer">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- TWO-COLUMN MAIN AREA -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="LeftPanelColumn" Width="280" MinWidth="220" MaxWidth="500"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- LEFT PANEL — sticky show identity. -->
+                <ScrollViewer Grid.Column="0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="0">
+                    <StackPanel Padding="20,24,12,24"
+                                Spacing="14">
+
+                        <!-- Cover. Square via SizeChanged; AttachedCardShadow lifts it
+                             off the palette wash so it reads as a podcast tile, not a
+                             flat thumbnail. -->
+                        <Grid HorizontalAlignment="Stretch">
+                            <winUi:Effects.Shadow>
+                                <ui:AttachedCardShadow BlurRadius="32" Offset="0,12" Opacity="0.28"
+                                                       Color="Black" CornerRadius="8"
+                                                       InnerContentClipMode="CompositionMaskBrush"/>
+                            </winUi:Effects.Shadow>
+                            <Border x:Name="CoverContainer"
+                                    CornerRadius="8"
+                                    HorizontalAlignment="Stretch"
+                                    SizeChanged="CoverContainer_SizeChanged"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <Grid>
+                                    <FontIcon Glyph="&#xE93E;" FontSize="64" Opacity="0.3"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Visibility="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                    <Image Source="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                           Stretch="UniformToFill"
+                                           Visibility="{x:Bind ViewModel.CoverArtUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Type pill row. Always shows PODCAST; EXCLUSIVE only when
+                             showTypes contains an EXCLUSIVE flag. Sits in a horizontal
+                             stack so the two pills line up regardless of width. -->
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border CornerRadius="14"
+                                    Padding="10,3,10,5"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <TextBlock Text="PODCAST"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                            </Border>
+                            <Border CornerRadius="14"
+                                    Padding="10,3,10,5"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    Visibility="{x:Bind ViewModel.IsExclusive, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="EXCLUSIVE"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Title. -->
+                        <TextBlock Text="{x:Bind ViewModel.ShowName, Mode=OneWay}"
+                                   FontSize="22"
+                                   FontWeight="Bold"
+                                   TextWrapping="Wrap"
+                                   MaxLines="3"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+
+                        <!-- Publisher. Hyperlink so the affordance reads "linkable" even
+                             when the destination page doesn't exist yet. -->
+                        <HyperlinkButton Padding="0"
+                                         Visibility="{x:Bind ViewModel.PublisherName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                         IsEnabled="False">
+                            <TextBlock Text="{x:Bind ViewModel.PublisherName, Mode=OneWay}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"/>
+                        </HyperlinkButton>
+
+                        <!-- Rating + episode count. Both are CaptionTextBlock so they
+                             read as supporting metadata and don't compete with the title. -->
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{x:Bind ViewModel.RatingLine, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Visibility="{x:Bind ViewModel.RatingLine, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                            <TextBlock Text="{x:Bind ViewModel.EpisodeCountLine, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+
+                        <!-- Topics — small subtle-fill chips. Wraps onto multiple rows
+                             when the show has many topics; spacing matches Album type pills. -->
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Topics, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.HasTopics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="6" VerticalSpacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="dtos:ShowTopicDto">
+                                    <Border CornerRadius="12"
+                                            Padding="10,3,10,4"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                        <TextBlock Text="{x:Bind Title}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Explicit + audio-only / video flags. Inline subtle row, only
+                             rendered when the badge applies. -->
+                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                    Visibility="{x:Bind ViewModel.IsExplicit, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border CornerRadius="3"
+                                    Padding="4,0,4,1"
+                                    Background="{ThemeResource ControlFillColorTertiaryBrush}">
+                                <TextBlock Text="E" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Border>
+                            <TextBlock Text="EXPLICIT"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- CTAs. Primary Play uses the palette accent so the page
+                             feels colored by the show; Follow toggles between AddFriend
+                             and CheckMark glyphs same as ArtistPage's follow flow. -->
+                        <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="8" Margin="0,8,0,0">
+                            <Button Style="{StaticResource AccentButtonStyle}"
+                                    Command="{x:Bind ViewModel.PlayShowCommand}"
+                                    Padding="18,10" CornerRadius="20"
+                                    ToolTipService.ToolTip="Play">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                    <TextBlock Text="Play" FontSize="13" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                                    Padding="14,10" CornerRadius="20"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderThickness="0">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowGlyphConverter}}"
+                                              FontSize="13"/>
+                                    <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"
+                                               FontSize="13" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{x:Bind ViewModel.ShareCommand}"
+                                    Click="Share_Click"
+                                    IsEnabled="{x:Bind ViewModel.CanShare, Mode=OneWay}"
+                                    Width="40" Height="40" CornerRadius="20" Padding="0"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderThickness="0"
+                                    ToolTipService.ToolTip="Copy link to show">
+                                <FontIcon Glyph="&#xE72D;" FontSize="14"/>
+                            </Button>
+                        </controls:WrapPanel>
+
+                        <!-- Description. Plain text after htmlDescription is stripped
+                             in the service. Trimmed inline; expander reveals the rest
+                             when the content is longer than ~6 lines. -->
+                        <Expander HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch"
+                                  CornerRadius="6"
+                                  Background="{ThemeResource SubtleFillColorTransparentBrush}"
+                                  BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                  Padding="12,8,12,12"
+                                  Margin="0,8,0,0"
+                                  Visibility="{x:Bind ViewModel.Description, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                            <Expander.Header>
+                                <TextBlock Text="About"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            </Expander.Header>
+                            <TextBlock Text="{x:Bind ViewModel.Description, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- SPLITTER — same control AlbumPage uses. -->
+                <appControls:GridSplitter
+                    x:Name="ShowSplitter"
+                    Grid.Column="1"
+                    Width="12"
+                    ResizeCompleted="ShowSplitter_ResizeCompleted"/>
+
+                <!-- RIGHT COLUMN — filter bar + episode list + recommendation shelf. -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Filter / sort / search row. Compact, fits in 56 px. -->
+                    <Grid Grid.Row="0"
+                          Padding="20,16,20,8"
+                          ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox x:Name="FilterCombo"
+                                  Grid.Column="0"
+                                  Width="160"
+                                  SelectionChanged="FilterCombo_SelectionChanged">
+                            <ComboBoxItem Tag="All" IsSelected="True">All episodes</ComboBoxItem>
+                            <ComboBoxItem Tag="Unplayed">Unplayed</ComboBoxItem>
+                            <ComboBoxItem Tag="InProgress">In progress</ComboBoxItem>
+                            <ComboBoxItem Tag="Completed">Played</ComboBoxItem>
+                        </ComboBox>
+
+                        <ComboBox x:Name="SortCombo"
+                                  Grid.Column="1"
+                                  Width="140"
+                                  SelectionChanged="SortCombo_SelectionChanged">
+                            <ComboBoxItem Tag="Newest" IsSelected="True">Newest first</ComboBoxItem>
+                            <ComboBoxItem Tag="Oldest">Oldest first</ComboBoxItem>
+                        </ComboBox>
+
+                        <TextBlock Grid.Column="2"
+                                   Text="{x:Bind ViewModel.ArchiveSummaryLine, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"/>
+
+                        <AutoSuggestBox Grid.Column="3"
+                                        PlaceholderText="Search episodes"
+                                        QueryIcon="Find"
+                                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay}"/>
+                    </Grid>
+
+                    <!-- Episode list. ScrollView wraps the ItemsRepeater so it can
+                         virtualise; we cap each row's chrome by setting min height
+                         on the ItemsRepeater layout below. -->
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="20,4,20,32">
+                        <StackPanel Spacing="32">
+                            <StackPanel Spacing="14"
+                                        Visibility="{x:Bind ViewModel.HasListenNextEpisodes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="Listen next"
+                                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                                   FontWeight="Bold"/>
+                                        <TextBlock Text="{x:Bind ViewModel.ListeningSummaryLine, Mode=OneWay}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            Command="{x:Bind ViewModel.PlayShowCommand}"
+                                            Padding="14,8"
+                                            CornerRadius="18"
+                                            VerticalAlignment="Center"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            BorderThickness="0">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE768;" FontSize="12"/>
+                                            <TextBlock Text="Play next" FontSize="12" FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <!-- Resume banner — only when there's an in-progress episode in the
+                                     listen-next list. Promoted out of the grid into a full-width
+                                     hero card with palette-tinted backdrop and a big Resume CTA. -->
+                                <ContentPresenter Content="{x:Bind ViewModel.ResumeEpisode, Mode=OneWay}"
+                                                  Visibility="{x:Bind ViewModel.HasResumeEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <ContentPresenter.ContentTemplate>
+                                        <DataTemplate x:DataType="dtos:ShowEpisodeDto">
+                                            <showEpisode:ShowResumeBanner
+                                                Episode="{x:Bind}"
+                                                CoverColorBrush="{Binding ElementName=PageRoot, Path=ViewModel.PaletteCoverColorBrush}"
+                                                CoverArtUrl="{Binding ElementName=PageRoot, Path=ViewModel.CoverArtUrl}"
+                                                PlayRequested="ResumeBanner_PlayRequested"/>
+                                        </DataTemplate>
+                                    </ContentPresenter.ContentTemplate>
+                                </ContentPresenter>
+
+                                <!-- "UP NEXT" eyebrow only when the banner is above; otherwise the
+                                     section header alone tells the user what they're looking at. -->
+                                <TextBlock Text="UP NEXT"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           CharacterSpacing="120"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Margin="2,8,0,0"
+                                           Visibility="{x:Bind ViewModel.HasResumeEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                <!-- Up-next grid — auto-fits column count by container width.
+                                     MinItemWidth=240 + ItemsStretch=Fill means cards stretch to
+                                     fill leftover space at every viewport width without leaving
+                                     awkward right-side gaps. -->
+                                <ItemsRepeater ItemsSource="{x:Bind ViewModel.UpNextEpisodes, Mode=OneWay}">
+                                    <ItemsRepeater.Layout>
+                                        <muxc:UniformGridLayout MinItemWidth="240"
+                                                                MinItemHeight="92"
+                                                                MinColumnSpacing="12"
+                                                                MinRowSpacing="10"
+                                                                ItemsStretch="Fill"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="dtos:ShowEpisodeDto">
+                                            <showEpisode:ShowUpNextCard
+                                                Episode="{x:Bind}"
+                                                CoverColorBrush="{Binding ElementName=PageRoot, Path=ViewModel.PaletteCoverColorBrush}"
+                                                PlayRequested="UpNextCard_PlayRequested"/>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="Episode archive"
+                                               Style="{StaticResource SubtitleTextBlockStyle}"
+                                               FontWeight="Bold"/>
+                                    <TextBlock Text="Search, filter, or jump into the full back catalog."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Empty state when filter/search nukes every episode. -->
+                            <StackPanel Spacing="8"
+                                        Padding="0,32,0,32"
+                                        HorizontalAlignment="Center"
+                                        Visibility="{x:Bind ViewModel.NoEpisodesMatch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <FontIcon Glyph="&#xE721;" FontSize="32" Opacity="0.5"
+                                          HorizontalAlignment="Center"/>
+                                <TextBlock Text="No episodes match these filters."
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="Try clearing the search box or switching the filter."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+
+                            <!-- Episodes -->
+                            <ItemsRepeater x:Name="EpisodesRepeater"
+                                           ItemsSource="{x:Bind ViewModel.FilteredEpisodes, Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Vertical" Spacing="2"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="dtos:ShowEpisodeDto">
+                                        <showEpisode:ShowEpisodeRow
+                                            Episode="{x:Bind}"
+                                            CoverColorBrush="{Binding ElementName=PageRoot, Path=ViewModel.PaletteCoverColorBrush}"
+                                            PlayRequested="EpisodeRow_PlayRequested"
+                                            LikeRequested="EpisodeRow_LikeRequested"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+
+                            <!-- Recommendations shelf. Mirror of AlbumPage's
+                                 "More by Artist" shelf — same scroller, same chevron
+                                 buttons, same fade-right gradient. -->
+                            <StackPanel Spacing="16"
+                                        Visibility="{x:Bind ViewModel.HasRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="More podcasts you might like"
+                                               Style="{StaticResource SubtitleTextBlockStyle}"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                Visibility="{Binding ElementName=RecommendedShowsShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                Command="{Binding ElementName=RecommendedShowsShelf, Path=PageLeftCommand}">
+                                            <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                        </Button>
+                                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                Command="{Binding ElementName=RecommendedShowsShelf, Path=PageRightCommand}">
+                                            <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid>
+                                    <shelf:ShelfScroller x:Name="RecommendedShowsShelf"
+                                                         ItemsSource="{x:Bind ViewModel.Recommendations, Mode=OneWay}"
+                                                         MinItemWidth="160" MaxItemWidth="200" Spacing="12">
+                                        <shelf:ShelfScroller.ItemTemplate>
+                                            <DataTemplate x:DataType="dtos:ShowRecommendationDto">
+                                                <cards:ContentCard
+                                                    Tag="{x:Bind}"
+                                                    ImageUrl="{x:Bind CoverArtUrl}"
+                                                    Title="{x:Bind Name}"
+                                                    Subtitle="{x:Bind PublisherName}"
+                                                    NavigationUri="{x:Bind Uri}"
+                                                    PlaceholderGlyph="&#xE93E;"
+                                                    IsCircularImage="False"
+                                                    Tapped="RecommendedShow_Tapped"/>
+                                            </DataTemplate>
+                                        </shelf:ShelfScroller.ItemTemplate>
+                                    </shelf:ShelfScroller>
+                                    <Border HorizontalAlignment="Right"
+                                            Width="96"
+                                            IsHitTestVisible="False"
+                                            Background="{ThemeResource ShelfFadeRightBrush}"
+                                            Visibility="{Binding ElementName=RecommendedShowsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- Error state — rendered on top of (collapsed) content layer. Same
+             vibe as the standard "couldn't load" empty states elsewhere. -->
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12"
+                    Padding="32"
+                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <FontIcon Glyph="&#xE783;" FontSize="36" Opacity="0.6" HorizontalAlignment="Center"/>
+            <TextBlock Text="We couldn't load this show."
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center"
+                       TextWrapping="Wrap"
+                       MaxWidth="400"/>
+        </StackPanel>
+    </Grid>
+</Page>

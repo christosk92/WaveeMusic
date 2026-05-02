@@ -218,7 +218,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// Persisted sort + view-mode preferences, keyed by library tab
-    /// ("albums", "artists"). Unknown tabs fall back to defaults.
+    /// ("albums", "artists", "podcasts"). Unknown tabs fall back to defaults.
     /// </summary>
     public Dictionary<string, LibraryTabPreferences> LibraryTabs { get; set; } = new();
 

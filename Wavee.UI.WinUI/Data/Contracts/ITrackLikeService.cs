@@ -7,7 +7,7 @@ namespace Wavee.UI.WinUI.Data.Contracts;
 /// <summary>
 /// The type of library item (track, album, artist).
 /// </summary>
-public enum SavedItemType { Track, Album, Artist }
+public enum SavedItemType { Track, Album, Artist, Show }
 
 /// <summary>
 /// In-memory cache of saved/liked item IDs (tracks, albums, artists).

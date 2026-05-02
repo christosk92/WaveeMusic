@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Comments.CommentComposer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <StackPanel Spacing="8">
+        <TextBox x:Name="DraftBox"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 TextChanged="DraftBox_TextChanged"/>
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="CharCountText"
+                       Grid.Column="0"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                       VerticalAlignment="Center"/>
+
+            <Button x:Name="SubmitButton"
+                    Grid.Column="1"
+                    Padding="14,6"
+                    Click="SubmitButton_Click"/>
+        </Grid>
+
+        <InfoBar x:Name="StatusInfoBar"
+                 IsClosable="False"
+                 Severity="Informational"
+                 Visibility="Collapsed"/>
+
+        <TextBlock x:Name="InlineStatusText"
+                   FontSize="11"
+                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                   TextWrapping="WrapWholeWords"
+                   Visibility="Collapsed"/>
+    </StackPanel>
+</UserControl>

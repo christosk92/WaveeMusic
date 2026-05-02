@@ -149,6 +149,16 @@ public interface IPathfinderClient
         CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches NPV podcast episode details for the details panel, including
+    /// generated chapters, transcript metadata, show metadata, and episode
+    /// description. Backed by Spotify's <c>queryNpvEpisode</c> persisted query.
+    /// </summary>
+    Task<GetEpisodeOrChapterResponse> GetNpvEpisodeAsync(
+        string episodeUri,
+        int numberOfChapters = 10,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Fetches Spotify's "watch next" track recommendations for a given track URI.
     /// Backed by the <c>internalLinkRecommenderTrack</c> persisted query — same
     /// data that drives the SEO-related-tracks list on share pages and the
@@ -182,6 +192,30 @@ public interface IPathfinderClient
     /// </summary>
     Task<SeoRecommendedEpisodesResponse> GetSeoRecommendedEpisodesAsync(
         string episodeUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches the chapter / display-segment list for a podcast episode (talk
+    /// segments with seekStart/seekStop ranges + chapter titles). Backed by the
+    /// <c>queryNpvEpisodeChapters</c> persisted query. Used to render a
+    /// chapter-aware playback position bar.
+    /// </summary>
+    Task<QueryNpvEpisodeChaptersResponse> GetEpisodeChaptersAsync(
+        string episodeUri, int offset = 0, int limit = 50, CancellationToken ct = default);
+
+    /// <summary>
+    /// Full podcast show metadata: cover, title, publisher, description,
+    /// rating, topics, palette colors, and the first page of episode URIs.
+    /// Backed by Spotify's <c>queryShowMetadataV2</c> persisted query.
+    /// </summary>
+    Task<QueryShowMetadataV2Response> GetShowMetadataAsync(
+        string showUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches Spotify's "more podcasts you might like" carousel for a given
+    /// show URI. Backed by the <c>internalLinkRecommenderShow</c> persisted query.
+    /// </summary>
+    Task<InternalLinkRecommenderShowResponse> GetSeoRecommendedShowsAsync(
+        string showUri, CancellationToken ct = default);
 
     /// <summary>
     /// Fetches the public comment page for a podcast episode or other entity.

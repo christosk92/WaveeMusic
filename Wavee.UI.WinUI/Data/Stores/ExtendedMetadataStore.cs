@@ -45,7 +45,7 @@ public sealed class ExtendedMetadataStore : EntityStore<ExtensionRequestKey, byt
         IExtendedMetadataClient client,
         ILogger<ExtendedMetadataStore>? logger = null,
         TimeSpan? batchWindow = null,
-        int maxBatchSize = 200)
+        int maxBatchSize = 500)
         : base(logger: logger)
     {
         _client = client;

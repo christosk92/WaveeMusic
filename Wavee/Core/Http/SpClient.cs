@@ -2,8 +2,10 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect.Diagnostics;
 using Wavee.Core;
@@ -12,6 +14,7 @@ using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Http.Presence;
 using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
+using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Playplay;
 using Wavee.Protocol.Resumption;
 using Wavee.Protocol.Storage;
@@ -51,6 +54,8 @@ public sealed class SpClient : ISpClient
     private readonly ILogger? _logger;
     private readonly ClientTokenManager? _clientTokenManager;
     private readonly IRemoteStateRecorder? _remoteStateRecorder;
+    private const string ExtendedMetadataContentType = "application/protobuf";
+    private const string PlayerMetadataClientFeatureId = "player_mdata";
 
     /// <summary>
     /// Gets the base URL for the SpClient API (e.g., "https://spclient.wg.spotify.com").
@@ -230,8 +235,11 @@ public sealed class SpClient : ISpClient
     /// Spotify episodes are streamed like tracks - they have file IDs and use
     /// the same CDN/storage mechanism. The metadata includes an audio list
     /// (equivalent to track's file list) with available formats.
+    /// Modern Spotify clients fetch this through extended-metadata EPISODE_V4;
+    /// the legacy /metadata/4/episode/{hex} route returns 404 for some valid
+    /// episodes.
     /// </remarks>
-    /// <param name="episodeId">Spotify episode ID (base62 format, 22 characters).</param>
+    /// <param name="episodeId">Spotify episode ID. Accepts spotify:episode URI, 22-char base62, or 32-char hex.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Protobuf-encoded episode metadata.</returns>
     /// <exception cref="SpClientException">Thrown if the request fails.</exception>
@@ -241,8 +249,133 @@ public sealed class SpClient : ISpClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
 
-        var url = $"{_baseUrl}/metadata/4/episode/{episodeId}?market=from_token";
-        return await GetProtobufAsync(url, cancellationToken);
+        var entityUri = NormalizeEpisodeMetadataUri(episodeId);
+        return await GetSingleExtendedMetadataAsync(entityUri, ExtensionKind.EpisodeV4, cancellationToken);
+    }
+
+    private static string NormalizeEpisodeMetadataUri(string episodeId)
+    {
+        var id = episodeId.Trim();
+        if (id.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase))
+            return $"spotify:episode:{SpotifyId.FromUri(id).ToBase62()}";
+
+        if (id.Length == SpotifyId.RawLength * 2 && id.All(static c => Uri.IsHexDigit(c)))
+            return $"spotify:episode:{SpotifyId.FromBase16(id, SpotifyIdType.Episode).ToBase62()}";
+
+        if (id.Length == SpotifyId.Base62Length)
+            return $"spotify:episode:{SpotifyId.FromBase62(id, SpotifyIdType.Episode).ToBase62()}";
+
+        return id;
+    }
+
+    private async Task<byte[]> GetSingleExtendedMetadataAsync(
+        string entityUri,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken)
+    {
+        var countryCode = await _session.GetCountryCodeAsync(cancellationToken);
+        var accountType = await _session.GetAccountTypeAsync(cancellationToken);
+        var catalogue = accountType switch
+        {
+            AccountType.Premium => "premium",
+            AccountType.Family => "premium",
+            AccountType.Free => "free",
+            AccountType.Artist => "premium",
+            _ => "premium"
+        };
+
+        var requestBody = new BatchedEntityRequest
+        {
+            Header = new BatchedEntityRequestHeader
+            {
+                Country = countryCode,
+                Catalogue = catalogue,
+                TaskId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(16))
+            }
+        };
+
+        var entityRequest = new EntityRequest { EntityUri = entityUri };
+        entityRequest.Query.Add(new ExtensionQuery { ExtensionKind = extensionKind });
+        requestBody.EntityRequest.Add(entityRequest);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/extended-metadata/v0/extended-metadata";
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Version = HttpVersion.Version11;
+        httpRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ExtendedMetadataContentType));
+        httpRequest.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+        httpRequest.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("deflate"));
+        httpRequest.Headers.Connection.Add("keep-alive");
+        httpRequest.Headers.TryAddWithoutValidation("Accept-Language", GetMetadataRequestLanguage());
+        httpRequest.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+        httpRequest.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyClientIdentity.AppVersionHeader);
+        httpRequest.Headers.TryAddWithoutValidation("client-feature-id", PlayerMetadataClientFeatureId);
+        httpRequest.Headers.TryAddWithoutValidation("Origin", _baseUrl);
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+        httpRequest.Headers.TryAddWithoutValidation("User-Agent", SpotifyClientIdentity.GetUserAgent());
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrWhiteSpace(clientToken))
+                    httpRequest.Headers.TryAddWithoutValidation("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get client token for extended metadata request, continuing without");
+            }
+        }
+
+        httpRequest.Content = new ByteArrayContent(requestBody.ToByteArray());
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(ExtendedMetadataContentType);
+
+        var httpResponse = await SendWithRetryAsync(httpRequest, cancellationToken);
+        switch (httpResponse.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Extended metadata not found: {entityUri}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.BadRequest:
+                throw new SpClientException(SpClientFailureReason.RequestFailed, $"Invalid extended metadata request: {entityUri}");
+            case HttpStatusCode.TooManyRequests:
+                throw new SpClientException(SpClientFailureReason.RateLimited, "Rate limit exceeded");
+        }
+
+        if ((int)httpResponse.StatusCode >= 500)
+        {
+            throw new SpClientException(
+                SpClientFailureReason.ServerError,
+                $"Server error: {httpResponse.StatusCode}");
+        }
+
+        httpResponse.EnsureSuccessStatusCode();
+
+        var responseBytes = await ExtendedMetadataClient.ReadResponseBytesAsync(httpResponse, cancellationToken);
+        var response = BatchedExtensionResponse.Parser.ParseFrom(responseBytes);
+        var extensionData = response.GetExtensionData(entityUri, extensionKind);
+        if (extensionData?.ExtensionData is null)
+            throw new SpClientException(SpClientFailureReason.NotFound, $"Extended metadata not found: {entityUri}");
+
+        return extensionData.ExtensionData.Value.ToByteArray();
+    }
+
+    private string GetMetadataRequestLanguage()
+    {
+        var locale = GetEffectiveLocale();
+        if (string.IsNullOrWhiteSpace(locale))
+            return "en";
+
+        var separatorIndex = locale.IndexOfAny(['-', '_']);
+        var language = separatorIndex > 0 ? locale[..separatorIndex] : locale;
+        return language.ToLowerInvariant();
     }
 
     /// <summary>
@@ -1179,6 +1312,92 @@ public sealed class SpClient : ISpClient
             "Herodotus current states fetched: states={Count}, updatedAfter={UpdatedAfter:o}",
             payload.States.Count,
             updatedAfter);
+        return payload;
+    }
+
+    /// <inheritdoc cref="ISpClient.CreateResumePointRevisionAsync"/>
+    public async Task<CreateResumePointRevisionResponse> CreateResumePointRevisionAsync(
+        string episodeUri,
+        TimeSpan? resumePosition,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+        if (!episodeUri.StartsWith("spotify:episode:", StringComparison.Ordinal))
+            episodeUri = $"spotify:episode:{episodeUri}";
+
+        var revisionValue = new CurrentStateValue();
+        if (resumePosition.HasValue)
+        {
+            revisionValue.ResumePoint = new ResumePoint
+            {
+                PositionSeconds = (uint)Math.Max(0, Math.Round(resumePosition.Value.TotalSeconds))
+            };
+        }
+
+        var now = Timestamp.FromDateTime(DateTime.UtcNow);
+        var request = new CreateResumePointRevisionRequest
+        {
+            EntityUri = episodeUri,
+            Revision = new CurrentStateRevision
+            {
+                Value = revisionValue,
+                CreateTime = now
+            }
+        };
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/herodotus/spotify.resumption.v1.ResumePointRevisionService/CreateResumePointRevision";
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.AcceptLanguage.ParseAdd("en");
+        httpRequest.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        httpRequest.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+        httpRequest.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        httpRequest.Headers.TryAddWithoutValidation("Origin", _baseUrl);
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    httpRequest.Headers.TryAddWithoutValidation("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "CreateResumePointRevision: failed to obtain client-token, continuing without");
+            }
+        }
+
+        httpRequest.Content = new ByteArrayContent(request.ToByteArray());
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+
+        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.TooManyRequests:
+                throw new SpClientException(SpClientFailureReason.RateLimited, "Rate limit exceeded");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var payload = CreateResumePointRevisionResponse.Parser.ParseFrom(bytes);
+        _logger?.LogDebug(
+            "Herodotus resume point saved: episode={EpisodeUri}, position={PositionSeconds}",
+            episodeUri,
+            resumePosition.HasValue ? Math.Round(resumePosition.Value.TotalSeconds) : null);
         return payload;
     }
 

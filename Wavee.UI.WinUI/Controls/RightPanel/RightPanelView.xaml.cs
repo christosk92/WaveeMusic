@@ -54,6 +54,7 @@ public sealed partial class RightPanelView : UserControl
     private const float AlbumArtSaturationAmount = 0.88f;
     private const float CanvasSaturationAmount = 0.82f;
     private const int BlurredAlbumArtRenderTolerancePx = 36;
+    private const int PodcastChapterPreviewCount = 4;
 
     private bool _draggingResizer;
     private double _preManipulationWidth;
@@ -70,6 +71,10 @@ public sealed partial class RightPanelView : UserControl
 
     // Details integration
     private TrackDetailsViewModel? _detailsVm;
+    private DispatcherQueueTimer? _podcastChapterTimelineTimer;
+    private bool _showAllPodcastChapters;
+    private int _podcastChapterPreviewStart = -1;
+    private string? _podcastChapterEpisodeUri;
 
     // Lyrics integration
     private LyricsViewModel? _lyricsVm;
@@ -201,6 +206,7 @@ public sealed partial class RightPanelView : UserControl
         SizeChanged += OnPanelSizeChanged;
         UpdateCanvasClearColor();
         ApplyEmbeddedChrome();
+        EnsurePodcastChapterTimelineTimer();
         EnsureTabContentFadeComposition();
         UpdateBackgroundChrome();
         RefreshBackgroundTint();
@@ -218,6 +224,7 @@ public sealed partial class RightPanelView : UserControl
         // content (e.g. Queue list visible while the Lyrics tab is selected).
         UpdateContentVisibility();
         UpdateLyricsConsumerActivity();
+        UpdatePodcastChapterTimelineTimerState();
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
@@ -241,6 +248,7 @@ public sealed partial class RightPanelView : UserControl
         UnregisterDetailsWheelHandler();
         UpdateLyricsConsumerActivity(active: false);
         TeardownLyrics();
+        TeardownPodcastChapterTimelineTimer();
 
         if (_detailsVm != null && _detailsSubscribed)
         {
@@ -403,11 +411,13 @@ public sealed partial class RightPanelView : UserControl
         {
             SyncNowPlayingCanvasPosition();
             UpdateTimerState();
+            UpdatePodcastChapterTimelineTimerState();
             UpdateDetailsLyricsUpdateMode();
         }
         else if (e.PropertyName is nameof(IPlaybackStateService.Position))
         {
             SyncNowPlayingCanvasPosition();
+            UpdatePodcastChapterTimelineProgress();
         }
 
         if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
@@ -421,6 +431,7 @@ public sealed partial class RightPanelView : UserControl
             // strand the panel on the fallback color. Just clear the canvas treatment.
             ApplyDetailsBackground(null, false);
             UpdateBackgroundChrome();
+            UpdatePodcastChapterTimelineTimerState();
         }
 
         // Update the shared media treatment when playback visuals change.
@@ -569,13 +580,20 @@ public sealed partial class RightPanelView : UserControl
         }
 
         UpdateTimerState();
+        UpdatePodcastChapterTimelineTimerState();
     }
 
     private void UpdateTimerState()
     {
+        var shouldRunPodcastTimeline = ShouldRunPodcastChapterTimelineTimer();
+
         if (_lyricsVm == null)
         {
-            _positionTimer?.Stop();
+            if (shouldRunPodcastTimeline)
+                _positionTimer?.Start();
+            else
+                _positionTimer?.Stop();
+
             NowPlayingCanvas.SetRenderingActive(false);
             return;
         }
@@ -585,7 +603,7 @@ public sealed partial class RightPanelView : UserControl
                         && _lyricsVm.HasLyrics
                         && _lyricsVm.CurrentLyrics != null;
 
-        var shouldRunSharedTimer = ShouldRunDetailsLyricsSharedTimer();
+        var shouldRunSharedTimer = ShouldRunDetailsLyricsSharedTimer() || shouldRunPodcastTimeline;
 
         // Keep rendering active only for realtime playback or direct user interaction.
         var isInteracting = NowPlayingCanvas.IsMouseInLyricsArea
@@ -619,9 +637,10 @@ public sealed partial class RightPanelView : UserControl
 
     private void OnPositionTimerTick(DispatcherQueueTimer sender, object args)
     {
-        if (_lyricsVm == null) return;
+        if (ShouldRunPodcastChapterTimelineTimer())
+            UpdatePodcastChapterTimelineProgress();
 
-        if (!ShouldRunDetailsLyricsSharedTimer())
+        if (_lyricsVm == null || !ShouldRunDetailsLyricsSharedTimer())
             return;
 
         var tickMs = Environment.TickCount64;
@@ -2129,7 +2148,17 @@ public sealed partial class RightPanelView : UserControl
         if (_detailsVm == null) return;
         if (DetailsContent == null) return;
 
+        DetailsContent.DataContext = _detailsVm;
         var hasData = _detailsVm.HasData;
+        var isPodcast = hasData && _detailsVm.IsPodcastEpisode;
+
+        if (isPodcast)
+        {
+            UpdatePodcastDetailsContent();
+            return;
+        }
+
+        HidePodcastDetailsContent();
 
         // Artist header
         DetailsArtistHeaderCard.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
@@ -2197,6 +2226,302 @@ public sealed partial class RightPanelView : UserControl
         DetailsRelatedVideosList.ItemsSource = _detailsVm.RelatedVideos;
         UpdateDetailsCanvasSyncBadge();
 
+    }
+
+    private void UpdatePodcastDetailsContent()
+    {
+        if (_detailsVm == null) return;
+
+        DetailsArtistHeaderCard.Visibility = Visibility.Collapsed;
+        DetailsLyricsSnippet.Visibility = Visibility.Collapsed;
+        TeardownDetailsLyricsSnippet();
+        DetailsAiMeaningSection.Visibility = Visibility.Collapsed;
+        CancelDetailsAiMeaningRequest();
+        ResetDetailsAiMeaningUi(clearText: true);
+        DetailsBio.Visibility = Visibility.Collapsed;
+        DetailsCreditsSection.Visibility = Visibility.Collapsed;
+        DetailsConcertsSection.Visibility = Visibility.Collapsed;
+        DetailsRelatedVideosSection.Visibility = Visibility.Collapsed;
+
+        DetailsPodcastHeaderCard.Visibility = Visibility.Visible;
+        DetailsPodcastTitle.Text = _detailsVm.PodcastEpisodeTitle;
+        DetailsPodcastShowLine.Text = _detailsVm.PodcastShowName;
+        DetailsPodcastMetaLine.Text = _detailsVm.PodcastEpisodeMetadata;
+
+        DetailsPodcastArtwork.Source = string.IsNullOrWhiteSpace(_detailsVm.PodcastEpisodeImageUrl)
+            ? null
+            : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(_detailsVm.PodcastEpisodeImageUrl));
+
+        DetailsPodcastDescriptionSection.Visibility = _detailsVm.HasPodcastDescription
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetailsPodcastDescriptionText.Text = _detailsVm.PodcastEpisodeDescription ?? "";
+        DetailsPodcastTranscriptChip.Visibility = _detailsVm.HasPodcastTranscript
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetailsPodcastTranscriptText.Text = _detailsVm.PodcastTranscriptLabel;
+
+        DetailsPodcastChaptersSection.Visibility = _detailsVm.HasPodcastChapters
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        var episodeUri = _detailsVm.PodcastEpisodeDetail?.Uri;
+        if (!string.Equals(_podcastChapterEpisodeUri, episodeUri, StringComparison.Ordinal))
+        {
+            _podcastChapterEpisodeUri = episodeUri;
+            _showAllPodcastChapters = false;
+            _podcastChapterPreviewStart = -1;
+        }
+
+        UpdatePodcastChapterTimelineProgress();
+        UpdatePodcastChaptersSource(force: true);
+        UpdatePodcastChapterTimelineTimerState();
+
+        DetailsPodcastCommentsSection.Visibility = Visibility.Visible;
+        DetailsPodcastComments.HeaderText = _detailsVm.PodcastCommentsCountLabel;
+        DetailsPodcastComments.Comments = _detailsVm.PodcastComments;
+        DetailsPodcastComments.HasNoComments = !_detailsVm.HasPodcastComments;
+        DetailsPodcastComments.HasMoreComments = _detailsVm.HasMorePodcastComments;
+        DetailsPodcastComments.StatusText = _detailsVm.HasPodcastCommentStatus
+            ? _detailsVm.PodcastCommentStatus
+            : null;
+
+        UpdateDetailsCanvasSyncBadge();
+    }
+
+    private void HidePodcastDetailsContent()
+    {
+        DetailsPodcastHeaderCard.Visibility = Visibility.Collapsed;
+        DetailsPodcastArtwork.Source = null;
+        DetailsPodcastDescriptionSection.Visibility = Visibility.Collapsed;
+        DetailsPodcastChaptersSection.Visibility = Visibility.Collapsed;
+        DetailsPodcastCommentsSection.Visibility = Visibility.Collapsed;
+        DetailsPodcastChaptersList.ItemsSource = null;
+        _podcastChapterPreviewStart = -1;
+        UpdatePodcastChapterTimelineTimerState();
+        DetailsPodcastComments.Comments = null;
+    }
+
+    // Reactions popup — uses the shared PodcastCommentReactionsDialog helper
+    // so the right panel renders the same dialog as the library episode detail.
+    private async void DetailsPodcastComments_ShowReactionsRequested(
+        Wavee.UI.WinUI.Controls.Comments.CommentsList sender,
+        PodcastCommentViewModel comment)
+    {
+        if (XamlRoot is null) return;
+        await PodcastCommentReactionsDialog.ShowAsync(
+            XamlRoot,
+            (token, reaction) => comment.GetReactionsAsync(token, reaction));
+    }
+
+    private async void DetailsPodcastComments_ShowReplyReactionsRequested(
+        Wavee.UI.WinUI.Controls.Comments.CommentsList sender,
+        PodcastReplyViewModel reply)
+    {
+        // Compact mode hides replies so this is unlikely to fire, but route to
+        // the same dialog if it ever does.
+        if (XamlRoot is null) return;
+        await PodcastCommentReactionsDialog.ShowAsync(
+            XamlRoot,
+            (token, reaction) => reply.GetReactionsAsync(token, reaction));
+    }
+
+    private void DetailsPodcastChapter_Click(object sender, RoutedEventArgs e)
+    {
+        if (_detailsVm is null || sender is not FrameworkElement { Tag: EpisodeChapterVm chapter })
+            return;
+
+        AnimatePodcastChapterRow((FrameworkElement)sender, 0.992f, 90);
+        if (_detailsVm.SeekPodcastChapterCommand.CanExecute(chapter))
+            _detailsVm.SeekPodcastChapterCommand.Execute(chapter);
+    }
+
+    private void DetailsPodcastChaptersToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _showAllPodcastChapters = !_showAllPodcastChapters;
+        _podcastChapterPreviewStart = -1;
+        UpdatePodcastChaptersSource(force: true);
+    }
+
+    private void DetailsPodcastChapter_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+            return;
+
+        element.ChangeCursor(InputSystemCursor.Create(InputSystemCursorShape.Hand));
+        AnimatePodcastChapterRow(element, 1.012f, 160);
+    }
+
+    private void DetailsPodcastChapter_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+            return;
+
+        element.ChangeCursor(InputSystemCursor.Create(InputSystemCursorShape.Arrow));
+        AnimatePodcastChapterRow(element, 1f, 150);
+    }
+
+    private void DetailsPodcastChapter_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+            AnimatePodcastChapterRow(element, 0.992f, 80);
+    }
+
+    private void DetailsPodcastChapter_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+            AnimatePodcastChapterRow(element, 1.012f, 120);
+    }
+
+    private void DetailsPodcastChapter_PointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+            AnimatePodcastChapterRow(element, 1f, 120);
+    }
+
+    private void UpdatePodcastChapterTimelineProgress()
+    {
+        if (_detailsVm?.IsPodcastEpisode == true)
+        {
+            _detailsVm.UpdatePodcastChapterTimeline(GetPodcastTimelinePositionMs());
+            UpdatePodcastChaptersSource();
+        }
+    }
+
+    private double GetPodcastTimelinePositionMs()
+    {
+        if (_lyricsVm is not null)
+            return _lyricsVm.GetInterpolatedPosition().TotalMilliseconds;
+
+        return _detailsVm?.PlaybackState.Position ?? 0;
+    }
+
+    private void UpdatePodcastChaptersSource(bool force = false)
+    {
+        if (_detailsVm is null || DetailsPodcastChaptersList is null)
+            return;
+
+        var chapters = _detailsVm.PodcastChapters;
+        var count = chapters.Count;
+        var hasOverflow = count > PodcastChapterPreviewCount;
+
+        DetailsPodcastChaptersToggleButton.Visibility = hasOverflow
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetailsPodcastChaptersToggleButton.Content = _showAllPodcastChapters
+            ? "Show less"
+            : $"Show all {count}";
+
+        if (!hasOverflow || _showAllPodcastChapters)
+        {
+            if (force || !ReferenceEquals(DetailsPodcastChaptersList.ItemsSource, chapters))
+                DetailsPodcastChaptersList.ItemsSource = chapters;
+
+            _podcastChapterPreviewStart = 0;
+            return;
+        }
+
+        var activeIndex = -1;
+        for (var i = 0; i < count; i++)
+        {
+            if (chapters[i].IsActive)
+            {
+                activeIndex = i;
+                break;
+            }
+        }
+
+        if (activeIndex < 0)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                if (!chapters[i].IsCompleted)
+                {
+                    activeIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (activeIndex < 0)
+            activeIndex = 0;
+
+        var start = Math.Clamp(activeIndex - 1, 0, Math.Max(0, count - PodcastChapterPreviewCount));
+        if (!force && start == _podcastChapterPreviewStart)
+            return;
+
+        _podcastChapterPreviewStart = start;
+        DetailsPodcastChaptersList.ItemsSource = chapters
+            .Skip(start)
+            .Take(PodcastChapterPreviewCount)
+            .ToList();
+    }
+
+    private bool ShouldRunPodcastChapterTimelineTimer()
+    {
+        return SelectedMode == RightPanelMode.Details
+            && Visibility == Visibility.Visible
+            && _detailsVm?.IsPodcastEpisode == true
+            && _detailsVm.HasPodcastChapters
+            && _detailsVm.PlaybackState.IsPlaying;
+    }
+
+    private void EnsurePodcastChapterTimelineTimer()
+    {
+        if (_podcastChapterTimelineTimer is not null)
+            return;
+
+        _podcastChapterTimelineTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _podcastChapterTimelineTimer.Interval = TimeSpan.FromMilliseconds(250);
+        _podcastChapterTimelineTimer.Tick += OnPodcastChapterTimelineTimerTick;
+    }
+
+    private void OnPodcastChapterTimelineTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        if (!ShouldRunPodcastChapterTimelineTimer())
+        {
+            sender.Stop();
+            return;
+        }
+
+        UpdatePodcastChapterTimelineProgress();
+    }
+
+    private void UpdatePodcastChapterTimelineTimerState()
+    {
+        EnsurePodcastChapterTimelineTimer();
+        if (ShouldRunPodcastChapterTimelineTimer())
+            _podcastChapterTimelineTimer?.Start();
+        else
+            _podcastChapterTimelineTimer?.Stop();
+    }
+
+    private void TeardownPodcastChapterTimelineTimer()
+    {
+        if (_podcastChapterTimelineTimer is null)
+            return;
+
+        _podcastChapterTimelineTimer.Stop();
+        _podcastChapterTimelineTimer.Tick -= OnPodcastChapterTimelineTimerTick;
+        _podcastChapterTimelineTimer = null;
+    }
+
+    private static void AnimatePodcastChapterRow(FrameworkElement element, float scale, double durationMs)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        visual.CenterPoint = new Vector3(
+            (float)Math.Max(0, element.ActualWidth / 2),
+            (float)Math.Max(0, element.ActualHeight / 2),
+            0);
+
+        var compositor = visual.Compositor;
+        var easing = compositor.CreateCubicBezierEasingFunction(
+            new Vector2(0.16f, 1f),
+            new Vector2(0.3f, 1f));
+        var animation = compositor.CreateVector3KeyFrameAnimation();
+        animation.Duration = TimeSpan.FromMilliseconds(durationMs);
+        animation.InsertKeyFrame(1f, new Vector3(scale, scale, 1f), easing);
+        visual.StartAnimation(nameof(Visual.Scale), animation);
     }
 
     private async void DetailsCanvasSyncBadge_Click(object sender, RoutedEventArgs e)

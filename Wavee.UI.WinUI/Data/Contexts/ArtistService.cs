@@ -102,6 +102,7 @@ public sealed class ArtistService : IArtistService
             Palette = MapPalette(artist.VisualIdentity),
             MonthlyListeners = artist.Stats?.MonthlyListeners ?? 0,
             Followers = artist.Stats?.Followers ?? 0,
+            WorldRank = artist.Stats?.WorldRank is > 0 ? artist.Stats.WorldRank : null,
             Biography = artist.Profile?.Biography?.Text,
             IsVerified = artist.Profile?.Verified ?? false,
 

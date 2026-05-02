@@ -47,6 +47,7 @@ public sealed class LyricsAiService
     /// avoid pathological model outputs that ramble. Max ~80 tokens ≈ 320 chars.
     /// </summary>
     private const int MaxExplanationCharacters = 360;
+    private const int MaxFallbackLyricsCharacters = 3200;
 
     public LyricsAiService(AiCapabilities capabilities, ILogger<LyricsAiService>? logger = null)
     {
@@ -93,13 +94,31 @@ public sealed class LyricsAiService
 
         try
         {
-            var responseText = await GenerateAsync(prompt, deltaProgress, ct);
-            if (string.IsNullOrWhiteSpace(responseText))
-                return LyricsAiResult.Filtered;
+            var response = await GenerateAsync(prompt, deltaProgress, ct);
+            if (ShouldRetryWithCompactPrompt(response))
+            {
+                _logger?.LogInformation(
+                    "ExplainLineAsync retrying with compact quote-free prompt after Phi Silica status {Status}.",
+                    response.Status);
+                response = await GenerateAsync(BuildExplainFallbackPrompt(line, lineIndex, fullLyric), deltaProgress, ct);
+            }
 
-            var stripped = StripEvidenceLines(responseText);
+            if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+                return ToFailureResult(response, "ExplainLineAsync");
+
+            var stripped = StripEvidenceLines(response.Text);
             if (string.IsNullOrWhiteSpace(stripped))
-                return LyricsAiResult.Filtered;
+            {
+                _logger?.LogInformation("ExplainLineAsync retrying after Phi Silica returned no usable explanation text.");
+                response = await GenerateAsync(BuildExplainFallbackPrompt(line, lineIndex, fullLyric), deltaProgress, ct);
+                if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+                    return ToFailureResult(response, "ExplainLineAsync fallback");
+
+                stripped = StripEvidenceLines(response.Text);
+            }
+
+            if (string.IsNullOrWhiteSpace(stripped))
+                return LyricsAiResult.Error("Phi Silica returned an empty explanation.");
 
             var trimmed = ClampLength(stripped, MaxExplanationCharacters);
             _explanationCache[explanationCacheKey] = trimmed;
@@ -246,20 +265,20 @@ public sealed class LyricsAiService
         return
             "You interpret song lyrics as evidence. Read only the lyrics provided — " +
             "do not use outside knowledge of any song, artist, or title.\n\n" +
-            "Output one short verbatim quote from the lyrics that supports your reading, " +
-            "on its own line, prefixed \"EVIDENCE:\". Then explain the marked lyric line " +
+            "Explain the marked lyric line " +
             "(between >>> and <<<) in 2 to 4 plain sentences. Connect it to other parts " +
             "of the lyrics when the connection is supported. Name the speaker/addressee " +
             "dynamic, emotion, image, wordplay, or conflict, but do not summarize the " +
             "whole song. Do not use bullets, headings, markdown, or generic phrases like " +
-            "\"emotional depth\". If the marked line is too short or ambiguous even with " +
+            "\"emotional depth\". For Korean or other non-English lyrics, interpret the " +
+            "meaning in English when possible. Do not quote or repeat lyric text verbatim; " +
+            "paraphrase instead. If the marked line is too short or ambiguous even with " +
             "context, say that plainly.\n\n" +
             "EXAMPLE\n" +
             "LYRICS:\n" +
             "i wake up and i still feel tired\n" +
             ">>> the kind of tired sleep cannot fix <<<\n" +
             "i wonder if i am hard to love\n" +
-            "EVIDENCE: i wonder if i am hard to love\n" +
             "The speaker describes an exhaustion that is emotional, not physical — sleep " +
             "does not reach it. Following the line about being hard to love, this points " +
             "to depression and self-doubt rather than a busy schedule. The marked line " +
@@ -283,6 +302,45 @@ public sealed class LyricsAiService
             return $">>> {line.Trim()} <<<\n\n{fullLyric.Trim()}";
 
         return string.Join("\n", lines).Trim();
+    }
+
+    private static string BuildExplainFallbackPrompt(string line, int lineIndex, string? fullLyric)
+    {
+        var markedLyrics = BuildNearbyLyricsContext(fullLyric, lineIndex, line);
+
+        return
+            "Explain the marked song lyric line in English in 1 to 2 plain sentences. " +
+            "Use only the lyrics shown here. The lyrics may be Korean or another " +
+            "non-English language. Do not quote, copy, romanize, or repeat any lyric text; " +
+            "paraphrase only. If the meaning is unclear, say so plainly.\n\n" +
+            "LYRICS:\n" +
+            markedLyrics;
+    }
+
+    private static string BuildNearbyLyricsContext(string? fullLyric, int lineIndex, string line)
+    {
+        if (string.IsNullOrWhiteSpace(fullLyric))
+            return $">>> {line.Trim()} <<<";
+
+        var lines = fullLyric
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n');
+
+        if (lineIndex < 0 || lineIndex >= lines.Length)
+            return $">>> {line.Trim()} <<<";
+
+        var start = Math.Max(0, lineIndex - 4);
+        var end = Math.Min(lines.Length - 1, lineIndex + 4);
+        var window = new string[end - start + 1];
+        for (var source = start; source <= end; source++)
+        {
+            var target = source - start;
+            window[target] = source == lineIndex
+                ? $">>> {lines[source].Trim()} <<<"
+                : lines[source];
+        }
+
+        return string.Join("\n", window).Trim();
     }
 
     // ── Phi Silica bridges ────────────────────────────────────────────────
@@ -310,13 +368,31 @@ public sealed class LyricsAiService
             }
 
             var prompt = BuildLyricsMeaningPrompt(fullLyric);
-            var responseText = await GenerateAsync(prompt, deltaProgress, CancellationToken.None);
-            if (string.IsNullOrWhiteSpace(responseText))
-                return LyricsAiResult.Filtered;
+            var response = await GenerateAsync(prompt, deltaProgress, CancellationToken.None);
+            if (ShouldRetryWithCompactPrompt(response))
+            {
+                _logger?.LogInformation(
+                    "GetLyricsMeaningAsync retrying with compact quote-free prompt after Phi Silica status {Status}.",
+                    response.Status);
+                response = await GenerateAsync(BuildLyricsMeaningFallbackPrompt(fullLyric), deltaProgress, CancellationToken.None);
+            }
 
-            var stripped = StripEvidenceLines(responseText);
+            if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+                return ToFailureResult(response, "GetLyricsMeaningAsync");
+
+            var stripped = StripEvidenceLines(response.Text);
             if (string.IsNullOrWhiteSpace(stripped))
-                return LyricsAiResult.Filtered;
+            {
+                _logger?.LogInformation("GetLyricsMeaningAsync retrying after Phi Silica returned no usable meaning text.");
+                response = await GenerateAsync(BuildLyricsMeaningFallbackPrompt(fullLyric), deltaProgress, CancellationToken.None);
+                if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+                    return ToFailureResult(response, "GetLyricsMeaningAsync fallback");
+
+                stripped = StripEvidenceLines(response.Text);
+            }
+
+            if (string.IsNullOrWhiteSpace(stripped))
+                return LyricsAiResult.Error("Phi Silica returned an empty lyrics meaning.");
 
             var normalized = NormalizeLyricsMeaningOutput(stripped);
             return LyricsAiResult.Ok(normalized.Trim(), fromCache: false);
@@ -347,25 +423,25 @@ public sealed class LyricsAiService
     // on-device model, the title alone biases the interpretation toward whatever
     // cliché the title evokes (e.g. "I wish u knew" → confession), short-circuiting
     // a real reading of the lyrics. The interpretation has to stand on the lyrics
-    // alone. Evidence-first one-shot — see plan: the-ai-cozy-wall.md.
+    // alone. Quote-free one-shot because repeating multilingual lyrics can trip
+    // Phi Silica's moderation even when the lyric is benign.
     private static string BuildLyricsMeaningPrompt(string fullLyric)
     {
         return
             "You interpret song lyrics as evidence. Read only the lyrics provided — " +
             "do not use outside knowledge of any song, artist, or title.\n\n" +
-            "Output two short verbatim quotes from the lyrics on their own lines, " +
-            "prefixed \"EVIDENCE:\". Then write one paragraph (3 to 5 sentences, " +
+            "Write one paragraph (3 to 5 sentences, " +
             "around 80 to 120 words) describing who is speaking, to whom, what they " +
             "feel, and what they want, using only the lyrics as evidence. " +
             "Do not use bullets, numbered lists, headings, markdown, or line breaks " +
-            "in the paragraph.\n\n" +
+            "in the paragraph. For Korean or other non-English lyrics, interpret the " +
+            "meaning in English when possible. Do not quote or repeat lyric text verbatim; " +
+            "paraphrase instead.\n\n" +
             "EXAMPLE\n" +
             "LYRICS:\n" +
             "i'm so tired of hating who i am\n" +
             "nothing i do feels like enough\n" +
             "please don't go, you're the only thing keeping me here\n" +
-            "EVIDENCE: nothing i do feels like enough\n" +
-            "EVIDENCE: you're the only thing keeping me here\n" +
             "The speaker is talking to someone close while struggling with self-loathing " +
             "and exhaustion. They confess that nothing they do feels worthwhile and admit " +
             "the listener is what keeps them going. The mood is desperate dependence on " +
@@ -375,28 +451,36 @@ public sealed class LyricsAiService
             fullLyric;
     }
 
+    private static string BuildLyricsMeaningFallbackPrompt(string fullLyric)
+    {
+        return
+            "Interpret these song lyrics in English in one short paragraph. Use only " +
+            "the lyrics shown here. The lyrics may be Korean or another non-English " +
+            "language. Do not quote, copy, romanize, or repeat any lyric text; paraphrase " +
+            "only. If there is not enough understandable context, say so plainly.\n\n" +
+            "LYRICS:\n" +
+            TrimLyricsForFallback(fullLyric);
+    }
+
     private static string NormalizeTrackUri(string trackUri)
         => string.IsNullOrWhiteSpace(trackUri) ? "spotify:track:unknown" : trackUri.Trim();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static async Task<string> GenerateAsync(
+    private static async Task<LanguageModelGeneratedText> GenerateAsync(
         string prompt,
         IProgress<string>? deltaProgress,
         CancellationToken ct)
     {
         using var languageModel = await Microsoft.Windows.AI.Text.LanguageModel.CreateAsync();
 
-        // We intentionally do NOT pass a custom ContentFilterOptions here.
+        // We pass a custom ContentFilterOptions here.
         // The type's namespace location is not stable across WinAppSDK versions
-        // (1.7.x: Microsoft.Windows.AI.ContentSafety; 1.8.x: integrated into
-        // Microsoft.Windows.AI.Text), and our build target strips the
-        // ContentModeration projection assembly to save space. Phi Silica's
-        // built-in defaults (Medium severity for hate / sexual / violent /
-        // self-harm) are appropriate for music lyrics — they let through
-        // explicit profanity in normal song contexts but still refuse to
-        // produce hateful or violent content. If a future WinAppSDK release
-        // makes ContentFilterOptions reachable from a stable location, swap
-        // to GenerateResponseAsync(prompt, options) and tune severities here.
+        // (1.7.x and 1.8.x: Microsoft.Windows.AI.ContentSafety), and our build
+        // target now ships that projection. Phi Silica's built-in defaults
+        // (Medium severity for hate / sexual / violent /
+        // self-harm) are too aggressive for some benign multilingual lyrics.
+        // High remains inside Phi Silica's safety system while reducing false
+        // positives for lyrics interpretation.
         //
         // We DO pass Temperature/TopP. Phi Silica's defaults are tuned for
         // chat-style explorativeness; for grounded lyric interpretation we
@@ -422,13 +506,43 @@ public sealed class LyricsAiService
             };
         }
 
-        ct.Register(() =>
+        using var ctReg = ct.Register(() =>
         {
             try { op.Cancel(); } catch { /* ignore — op may have completed */ }
         });
 
         var result = await op;
-        return result?.Text ?? string.Empty;
+        if (result is null)
+        {
+            return new LanguageModelGeneratedText(
+                LanguageModelGeneratedTextStatus.Error,
+                string.Empty,
+                "LanguageModel returned no result.");
+        }
+
+        return new LanguageModelGeneratedText(
+            result.Status switch
+            {
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.Complete =>
+                    LanguageModelGeneratedTextStatus.Complete,
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.InProgress =>
+                    LanguageModelGeneratedTextStatus.InProgress,
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.BlockedByPolicy =>
+                    LanguageModelGeneratedTextStatus.BlockedByPolicy,
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.PromptLargerThanContext =>
+                    LanguageModelGeneratedTextStatus.PromptLargerThanContext,
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.PromptBlockedByContentModeration =>
+                    LanguageModelGeneratedTextStatus.PromptBlockedByContentModeration,
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.ResponseBlockedByContentModeration =>
+                    LanguageModelGeneratedTextStatus.ResponseBlockedByContentModeration,
+                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.Error =>
+                    LanguageModelGeneratedTextStatus.Error,
+                _ => LanguageModelGeneratedTextStatus.Error,
+            },
+            result.Text ?? string.Empty,
+            result.ExtendedError is null
+                ? null
+                : $"{result.ExtendedError.GetType().Name}: 0x{result.ExtendedError.HResult:X8} {result.ExtendedError.Message}");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -440,10 +554,59 @@ public sealed class LyricsAiService
             {
                 Temperature = 0.3f,
                 TopP = 0.9f,
+                ContentFilterOptions = new Microsoft.Windows.AI.ContentSafety.ContentFilterOptions
+                {
+                    PromptMaxAllowedSeverityLevel = new Microsoft.Windows.AI.ContentSafety.TextContentFilterSeverity(
+                        Microsoft.Windows.AI.ContentSafety.SeverityLevel.High),
+                    ResponseMaxAllowedSeverityLevel = new Microsoft.Windows.AI.ContentSafety.TextContentFilterSeverity(
+                        Microsoft.Windows.AI.ContentSafety.SeverityLevel.High),
+                },
             };
         }
         catch (TypeLoadException) { return null; }
         catch (FileNotFoundException) { return null; }
+    }
+
+    private LyricsAiResult ToFailureResult(LanguageModelGeneratedText generated, string operation)
+    {
+        _logger?.LogWarning(
+            "{Operation} returned Phi Silica status {Status}. {ErrorMessage}",
+            operation,
+            generated.Status,
+            string.IsNullOrWhiteSpace(generated.ErrorMessage) ? "<no extended error>" : generated.ErrorMessage);
+
+        return generated.Status switch
+        {
+            LanguageModelGeneratedTextStatus.BlockedByPolicy => LyricsAiResult.Unavailable,
+            LanguageModelGeneratedTextStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
+            LanguageModelGeneratedTextStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
+            LanguageModelGeneratedTextStatus.PromptLargerThanContext =>
+                LyricsAiResult.Error("Prompt exceeded Phi Silica's context window."),
+            _ => LyricsAiResult.Error(generated.ErrorMessage ?? generated.Status.ToString()),
+        };
+    }
+
+    private static bool ShouldRetryWithCompactPrompt(LanguageModelGeneratedText generated)
+        => generated.Status is LanguageModelGeneratedTextStatus.PromptLargerThanContext
+               or LanguageModelGeneratedTextStatus.PromptBlockedByContentModeration
+               or LanguageModelGeneratedTextStatus.ResponseBlockedByContentModeration
+           || (generated.Status == LanguageModelGeneratedTextStatus.Complete
+               && string.IsNullOrWhiteSpace(generated.Text));
+
+    private static string TrimLyricsForFallback(string fullLyric)
+    {
+        if (string.IsNullOrWhiteSpace(fullLyric))
+            return string.Empty;
+
+        var normalized = fullLyric.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+        if (normalized.Length <= MaxFallbackLyricsCharacters)
+            return normalized;
+
+        var headLength = (int)(MaxFallbackLyricsCharacters * 0.65);
+        var tailLength = MaxFallbackLyricsCharacters - headLength;
+        return normalized[..headLength].TrimEnd() +
+               "\n...\n" +
+               normalized[^tailLength..].TrimStart();
     }
 
     private static string ClampLength(string s, int max)
@@ -492,11 +655,10 @@ public sealed class LyricsAiService
         return normalized.Trim();
     }
 
-    // The lyrics-meaning and explain prompts ask Phi Silica to emit one or two
-    // verbatim lyric quotes prefixed "EVIDENCE:" before the actual paragraph.
-    // The EVIDENCE lines are scaffolding for grounding — they force the model
-    // to commit to lyric evidence before interpreting — but the user shouldn't
-    // see them. Drop any line whose first non-whitespace token is "EVIDENCE:".
+    // Older prompts asked Phi Silica to emit verbatim lyric quotes prefixed
+    // "EVIDENCE:" before the actual paragraph. The current prompts are
+    // quote-free to avoid moderation false positives on multilingual lyrics,
+    // but keep this cleanup for cached or non-compliant model output.
     private static string StripEvidenceLines(string s)
     {
         if (string.IsNullOrWhiteSpace(s))
@@ -537,6 +699,22 @@ public sealed class LyricsAiService
         }
 
         return false;
+    }
+
+    private readonly record struct LanguageModelGeneratedText(
+        LanguageModelGeneratedTextStatus Status,
+        string Text,
+        string? ErrorMessage);
+
+    private enum LanguageModelGeneratedTextStatus
+    {
+        Complete,
+        InProgress,
+        BlockedByPolicy,
+        PromptLargerThanContext,
+        PromptBlockedByContentModeration,
+        ResponseBlockedByContentModeration,
+        Error,
     }
 }
 

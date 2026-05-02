@@ -103,6 +103,10 @@ public static class FluentGlyphs
 
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
     public const string DeviceRemote = "\uE703";
+    /// <summary>CheckMark - E73E. Used for the "Played" podcast-episode state.</summary>
+    public const string CheckMark = "\uE73E";
+    /// <summary>Volume / equalizer-ish glyph for the in-progress podcast state (E767).</summary>
+    public const string PlayingIndicator = "\uE767";
     /// <summary>Volume — single-speaker glyph used for local audio chips (E767).</summary>
     public const string DeviceLocalSpeaker = "\uE767";
 

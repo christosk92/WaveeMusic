@@ -175,6 +175,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         settings.ShellSession.Layout ??= new();
         settings.ShellSession.SidebarGroups ??= [];
         settings.ShellSession.Tabs ??= [];
+        settings.LibraryTabs ??= new();
         settings.LyricsSourcePreferences ??= [];
         settings.EqualizerBandGains ??= [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     }

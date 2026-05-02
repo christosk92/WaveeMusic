@@ -98,6 +98,7 @@ public sealed class PathfinderClient : IPathfinderClient
         // mapping pages (relatedMusicVideos/unmappedMusicVideos), while the
         // WebPlayer profile only gives us the top-track has-video hint.
         var useWebPlayer = operationName is PathfinderOperations.QueryNpvArtist
+            or PathfinderOperations.QueryNpvEpisode
             or PathfinderOperations.QueryTrackCreditsModal
             or PathfinderOperations.Home
             or PathfinderOperations.FeedBaselineLookup
@@ -111,6 +112,8 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.GetTrack
             or PathfinderOperations.GetEpisodeOrChapter
             or PathfinderOperations.InternalLinkRecommenderEpisode
+            or PathfinderOperations.QueryShowMetadataV2
+            or PathfinderOperations.InternalLinkRecommenderShow
             or PathfinderOperations.GetCommentsForEntity
             or PathfinderOperations.GetReplies
             or PathfinderOperations.GetReactions;
@@ -490,6 +493,24 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<GetEpisodeOrChapterResponse> GetNpvEpisodeAsync(
+        string episodeUri,
+        int numberOfChapters = 10,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+
+        var variables = new QueryNpvEpisodeVariables(episodeUri, numberOfChapters);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryNpvEpisode,
+            PathfinderOperations.QueryNpvEpisodeHash,
+            GetEpisodeOrChapterJsonContext.Default.GetEpisodeOrChapterResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<SeoRecommendedTracksResponse> GetSeoRecommendedTracksAsync(
         string trackUri, int limit = 20, CancellationToken ct = default)
     {
@@ -550,6 +571,54 @@ public sealed class PathfinderClient : IPathfinderClient
             PathfinderOperations.InternalLinkRecommenderEpisode,
             PathfinderOperations.InternalLinkRecommenderEpisodeHash,
             SeoRecommendedEpisodesJsonContext.Default.SeoRecommendedEpisodesResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<QueryShowMetadataV2Response> GetShowMetadataAsync(
+        string showUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(showUri);
+
+        var variables = new QueryShowMetadataV2Variables(showUri);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryShowMetadataV2,
+            PathfinderOperations.QueryShowMetadataV2Hash,
+            QueryShowMetadataV2JsonContext.Default.QueryShowMetadataV2Response,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<QueryNpvEpisodeChaptersResponse> GetEpisodeChaptersAsync(
+        string episodeUri, int offset = 0, int limit = 50, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+
+        var variables = new QueryNpvEpisodeChaptersVariables(episodeUri, offset, limit);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.QueryNpvEpisodeChapters,
+            PathfinderOperations.QueryNpvEpisodeChaptersHash,
+            QueryNpvEpisodeChaptersJsonContext.Default.QueryNpvEpisodeChaptersResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<InternalLinkRecommenderShowResponse> GetSeoRecommendedShowsAsync(
+        string showUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(showUri);
+
+        var variables = new InternalLinkRecommenderShowVariables(showUri);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.InternalLinkRecommenderShow,
+            PathfinderOperations.InternalLinkRecommenderShowHash,
+            InternalLinkRecommenderShowJsonContext.Default.InternalLinkRecommenderShowResponse,
             ct);
     }
 
@@ -869,6 +938,10 @@ public sealed class PathfinderClient : IPathfinderClient
         {
             json = JsonSerializer.SerializeToUtf8Bytes(npv, NpvArtistVariablesJsonContext.Default.NpvArtistVariables);
         }
+        else if (variables is QueryNpvEpisodeVariables qnev)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(qnev, QueryNpvEpisodeVariablesJsonContext.Default.QueryNpvEpisodeVariables);
+        }
         else if (variables is SeoRecommendedTracksVariables srtv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(srtv, SeoRecommendedTracksVariablesJsonContext.Default.SeoRecommendedTracksVariables);
@@ -900,6 +973,18 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is TrackCreditsVariables tcv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(tcv, TrackCreditsVariablesJsonContext.Default.TrackCreditsVariables);
+        }
+        else if (variables is QueryShowMetadataV2Variables qsmv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(qsmv, QueryShowMetadataV2VariablesJsonContext.Default.QueryShowMetadataV2Variables);
+        }
+        else if (variables is QueryNpvEpisodeChaptersVariables qnecv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(qnecv, QueryNpvEpisodeChaptersVariablesJsonContext.Default.QueryNpvEpisodeChaptersVariables);
+        }
+        else if (variables is InternalLinkRecommenderShowVariables ilrsv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(ilrsv, InternalLinkRecommenderShowVariablesJsonContext.Default.InternalLinkRecommenderShowVariables);
         }
         else
         {

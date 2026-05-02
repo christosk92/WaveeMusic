@@ -181,7 +181,7 @@ public sealed class TrackResolver
         try
         {
             var episodeId = SpotifyId.FromUri(uri);
-            var metadataBytes = await _spClient.GetEpisodeMetadataAsync(episodeId.ToBase62(), ct).ConfigureAwait(false);
+            var metadataBytes = await _spClient.GetEpisodeMetadataAsync(uri, ct).ConfigureAwait(false);
             var episode = Episode.Parser.ParseFrom(metadataBytes);
 
             var selectedFile = SelectAudioFileFromEpisode(episode, _preferredQuality);
@@ -449,7 +449,7 @@ public sealed class TrackResolver
         _logger?.LogInformation("Resolving episode (with head) {Uri} at quality {Quality}", uri, _preferredQuality);
 
         var episodeId = SpotifyId.FromUri(uri);
-        var metadataBytes = await _spClient.GetEpisodeMetadataAsync(episodeId.ToBase62(), ct).ConfigureAwait(false);
+        var metadataBytes = await _spClient.GetEpisodeMetadataAsync(uri, ct).ConfigureAwait(false);
         var episode = Episode.Parser.ParseFrom(metadataBytes);
 
         if (episode.Audio.Count == 0)
@@ -682,7 +682,7 @@ public sealed class TrackResolver
         _logger?.LogInformation("Resolving episode {Uri}", uri);
 
         var episodeId = SpotifyId.FromUri(uri);
-        var metadataBytes = await _spClient.GetEpisodeMetadataAsync(episodeId.ToBase62(), ct);
+        var metadataBytes = await _spClient.GetEpisodeMetadataAsync(uri, ct);
         var episode = Episode.Parser.ParseFrom(metadataBytes);
 
         // Select audio file from episode

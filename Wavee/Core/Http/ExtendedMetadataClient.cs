@@ -495,6 +495,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                         var show = Show.Parser.ParseFrom(data);
                         await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
                     }
+                    else if (extensionKind == ExtensionKind.ShowV5)
+                    {
+                        var show = Show.Parser.ParseFrom(data);
+                        await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
+                    }
                     else if (extensionKind == ExtensionKind.EpisodeV4)
                     {
                         var episode = Episode.Parser.ParseFrom(data);
@@ -732,6 +737,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                     await StoreArtistPropertiesAsync(entityUri, artist, cancellationToken);
                 }
                 else if (extensionKind == ExtensionKind.ShowV4)
+                {
+                    var show = Show.Parser.ParseFrom(data);
+                    await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
+                }
+                else if (extensionKind == ExtensionKind.ShowV5)
                 {
                     var show = Show.Parser.ParseFrom(data);
                     await StoreShowPropertiesAsync(entityUri, show, cancellationToken);

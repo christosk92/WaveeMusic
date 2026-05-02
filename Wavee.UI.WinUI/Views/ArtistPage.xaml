@@ -39,6 +39,8 @@
                     <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="White"/>
                     <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="#66FFFFFF"/>
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#66FFFFFF"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="#24FFFFFF"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="#45FFFFFF"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <!-- Inverted: bright translucent pill over the now white-scrimmed hero. -->
@@ -51,6 +53,8 @@
                     <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="#1A1A1A"/>
                     <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="#33000000"/>
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#33000000"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="#17000000"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="#2A000000"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
@@ -62,6 +66,8 @@
                     <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
                     <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
@@ -206,12 +212,32 @@
                                      more Fluent than a floating circle badge. -->
                                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,2"
                                             Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                    <Border CornerRadius="12"
+                                            Padding="8,3"
+                                            Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
+                                            BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
+                                            BorderThickness="1"
+                                            Visibility="{x:Bind ViewModel.HasWorldRank, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="WORLD RANK"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       CharacterSpacing="120"
+                                                       Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}"
+                                                       Opacity=".78"/>
+                                            <TextBlock Text="{x:Bind ViewModel.WorldRankNumberText, Mode=OneWay}"
+                                                       FontSize="11"
+                                                       FontWeight="Bold"
+                                                       Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
+                                        </StackPanel>
+                                    </Border>
                                     <TextBlock Text="ARTIST"
                                                FontSize="11"
                                                FontWeight="SemiBold"
                                                CharacterSpacing="120"
                                                Foreground="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay, Converter={StaticResource NullToForegroundConverter}}"
-                                               Opacity=".75"/>
+                                               Opacity=".75"
+                                               Visibility="{x:Bind ViewModel.HasWorldRank, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                                     <StackPanel Orientation="Horizontal" Spacing="4"
                                                 VerticalAlignment="Center"
                                                 Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay}"

@@ -203,8 +203,12 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         else if (options?.StartIndex is > 0)
             commandOptions["skip_to"] = new Dictionary<string, object> { ["track_index"] = options.StartIndex.Value };
 
-        if (options?.PositionMs is > 0)
-            commandOptions["seek_to"] = options.PositionMs.Value;
+        var forceEpisodeStartAtZero = options?.PositionMs is null
+                                      && (IsEpisodeUri(options?.StartTrackUri)
+                                          || IsEpisodeUri(contextUri));
+
+        if (options?.PositionMs is >= 0 || forceEpisodeStartAtZero)
+            commandOptions["seek_to"] = options?.PositionMs ?? 0;
 
         if (options?.Shuffle == true)
             commandOptions["player_options_override"] = new Dictionary<string, object> { ["shuffling_context"] = true };
@@ -223,7 +227,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             ContextFeature = PlayOriginFeatureForUri(contextUri),
             TrackUri = options?.StartTrackUri,
             SkipToIndex = options?.StartIndex,
-            PositionMs = options?.PositionMs,
+            PositionMs = options?.PositionMs ?? (forceEpisodeStartAtZero ? 0L : null),
         };
 
         return SendAsync("play", data, typedCmd, ct);
@@ -281,11 +285,20 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             }
         };
 
+        var startUri = startIndex >= 0 && startIndex < normalizedUris.Count
+            ? normalizedUris[startIndex]
+            : null;
+        var forceEpisodeStartAtZero = IsEpisodeUri(startUri);
+        var commandOptions = new Dictionary<string, object>();
+
         if (startIndex > 0)
-            data["options"] = new Dictionary<string, object>
-            {
-                ["skip_to"] = new Dictionary<string, object> { ["track_index"] = startIndex }
-            };
+            commandOptions["skip_to"] = new Dictionary<string, object> { ["track_index"] = startIndex };
+
+        if (forceEpisodeStartAtZero)
+            commandOptions["seek_to"] = 0;
+
+        if (commandOptions.Count > 0)
+            data["options"] = commandOptions;
 
         var typedCmd = new Wavee.Connect.Commands.PlayCommand
         {
@@ -301,6 +314,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             ContextTrackCount = context is null ? null : normalizedUris.Count,
             ContextFormatAttributes = context?.FormatAttributes,
             SkipToIndex = startIndex > 0 ? startIndex : null,
+            PositionMs = forceEpisodeStartAtZero ? 0L : null,
             PageTracks = pageTracks,
         };
 
@@ -329,6 +343,9 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             _ when contextUri.Contains("collection",          StringComparison.OrdinalIgnoreCase) => "collection",
             _ => null
         };
+
+    private static bool IsEpisodeUri(string? uri)
+        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
 
     public Task<PlaybackResult> ResumeAsync(CancellationToken ct)
         => SendAsync("resume", null, ct);

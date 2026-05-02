@@ -379,7 +379,10 @@ public sealed class MockLibraryDataService : ILibraryDataService
         return Task.CompletedTask;
     }
 
-    public Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(string episodeUri, CancellationToken ct = default)
+    public Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(
+        string episodeUri,
+        CancellationToken ct = default,
+        bool allowEpisodeLookupFallback = false)
     {
         var episode = _mockYourEpisodes
             .Concat(_mockRecentlyPlayedPodcastEpisodes)
@@ -397,6 +400,15 @@ public sealed class MockLibraryDataService : ILibraryDataService
             Duration = episode.Duration,
             UpdatedAt = DateTimeOffset.Now.AddHours(-1)
         });
+    }
+
+    public Task SavePodcastEpisodeProgressAsync(
+        string episodeUri,
+        TimeSpan? resumePosition,
+        bool completed,
+        CancellationToken ct = default)
+    {
+        return Task.CompletedTask;
     }
 
     public Task<PodcastEpisodeCommentDto> CreatePodcastEpisodeCommentAsync(

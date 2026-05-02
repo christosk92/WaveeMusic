@@ -155,6 +155,16 @@ public interface ISpotifyLibraryService : IAsyncDisposable
     /// </summary>
     Task<bool> UnfollowArtistAsync(string artistUri, CancellationToken ct = default);
 
+    /// <summary>
+    /// Subscribes to (follows) a podcast show.
+    /// </summary>
+    Task<bool> SubscribeShowAsync(string showUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Unsubscribes from (unfollows) a podcast show.
+    /// </summary>
+    Task<bool> UnsubscribeShowAsync(string showUri, CancellationToken ct = default);
+
     #endregion
 
     #region Outbox

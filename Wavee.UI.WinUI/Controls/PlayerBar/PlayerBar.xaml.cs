@@ -87,6 +87,7 @@ public sealed partial class PlayerBar : UserControl
         ViewModel.SetSurfaceVisible("bar", true);
         UpdateLayoutState(PlayerBarLayoutRoot.ActualWidth > 0 ? PlayerBarLayoutRoot.ActualWidth : ActualWidth);
         UpdateVideoPopoutTeachingTip();
+        SyncPodcastResumeTeachingTip();
 
         AlbumArtHost?.ChangeCursor(HandCursor);
         NarrowAlbumArtHost?.ChangeCursor(HandCursor);
@@ -287,12 +288,39 @@ public sealed partial class PlayerBar : UserControl
         {
             UpdatePlayerHeartState();
         }
+        else if (e.PropertyName == nameof(PlayerBarViewModel.IsPodcastResumePromptVisible))
+        {
+            SyncPodcastResumeTeachingTip();
+        }
 
         if (e.PropertyName is nameof(PlayerBarViewModel.IsAlbumArtExpanded)
             or nameof(PlayerBarViewModel.IsPlayingRemotely))
         {
             ApplyLayoutState(_currentLayoutState ?? "Wide");
         }
+    }
+
+    private void SyncPodcastResumeTeachingTip()
+    {
+        if (FindName("PodcastResumeTeachingTip") is not TeachingTip tip)
+            return;
+
+        if (!ViewModel.IsPodcastResumePromptVisible)
+        {
+            tip.IsOpen = false;
+            return;
+        }
+
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (!ViewModel.IsPodcastResumePromptVisible)
+                return;
+
+            tip.Target = ProgressGroup?.Visibility == Visibility.Visible
+                ? ProgressGroup
+                : PlayerBarLayoutRoot;
+            tip.IsOpen = true;
+        });
     }
 
     private string? GetCurrentTrackId()
@@ -562,6 +590,18 @@ public sealed partial class PlayerBar : UserControl
 
         if (args.Reason is TeachingTipCloseReason.LightDismiss or TeachingTipCloseReason.CloseButton)
             s_videoPopoutTeachingTipDismissed = true;
+    }
+
+    private void PodcastResumeTeachingTip_ActionButtonClick(TeachingTip sender, object args)
+        => ViewModel.ResumePodcastEpisodeCommand.Execute(null);
+
+    private void PodcastResumeTeachingTip_CloseButtonClick(TeachingTip sender, object args)
+        => ViewModel.DismissPodcastResumePromptCommand.Execute(null);
+
+    private void PodcastResumeTeachingTip_Closed(TeachingTip sender, TeachingTipClosedEventArgs args)
+    {
+        if (args.Reason is TeachingTipCloseReason.LightDismiss or TeachingTipCloseReason.CloseButton)
+            ViewModel.DismissPodcastResumePromptCommand.Execute(null);
     }
 
     // Old Slider PointerPressed/Released/CaptureLost handlers were removed when

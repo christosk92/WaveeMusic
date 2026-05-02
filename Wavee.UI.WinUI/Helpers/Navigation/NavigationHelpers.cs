@@ -168,26 +168,58 @@ public static class NavigationHelpers
     }
 
     /// <summary>
-    /// Open a podcast / show. Stub for now — ShowPage is not yet built; tap
-    /// just logs the URI so the card binds to a real symbol and lights up
-    /// trace logs when interacted with. Replace the body with a Navigate(...)
-    /// call once <c>ShowPage</c> exists.
+    /// Open a podcast / show in the dedicated <see cref="ShowPage"/>. Accepts
+    /// either a <c>spotify:show:*</c> URI or a bare show id.
     /// </summary>
     public static void OpenShow(string showUri, string title, bool openInNewTab = false)
     {
-        System.Diagnostics.Debug.WriteLine(
-            $"[NavigationHelpers] TODO: ShowPage not yet implemented — would open {showUri} ({title}, newTab={openInNewTab})");
+        if (string.IsNullOrWhiteSpace(showUri)) return;
+        Navigate(typeof(ShowPage), showUri, title, CreateIconSource(typeof(ShowPage), showUri), openInNewTab);
     }
 
     /// <summary>
-    /// Start playback for an episode. Stub for now — episode playback path is
-    /// not yet wired through the same PlayCommand plumbing as albums/playlists.
-    /// Logs the URI so taps don't fail silently in production traces.
+    /// Start playback for a single podcast episode by URI. Uses the same
+    /// queue-loading path as the in-app library views so the episode lands in
+    /// the player with a single-item queue and a podcast-context.
     /// </summary>
     public static void PlayEpisode(string episodeUri)
     {
-        System.Diagnostics.Debug.WriteLine(
-            $"[NavigationHelpers] TODO: PlayEpisode not yet wired — would play {episodeUri}");
+        if (string.IsNullOrWhiteSpace(episodeUri)) return;
+
+        try
+        {
+            var playback = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.UI.Contracts.IPlaybackStateService>();
+            if (playback is null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NavigationHelpers] PlayEpisode: IPlaybackStateService unavailable for {episodeUri}");
+                return;
+            }
+
+            var item = new Wavee.UI.Models.QueueItem
+            {
+                TrackId = episodeUri,
+                Title = "",
+                ArtistName = "",
+                AlbumArt = null,
+                DurationMs = 0,
+                IsUserQueued = false,
+            };
+
+            var context = new Wavee.UI.Models.PlaybackContextInfo
+            {
+                ContextUri = episodeUri,
+                Type = Wavee.UI.Models.PlaybackContextType.Episode,
+                Name = "",
+                ImageUrl = null,
+            };
+
+            playback.LoadQueue(new[] { item }, context, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NavigationHelpers] PlayEpisode failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -362,6 +394,9 @@ public static class NavigationHelpers
 
         if (pageType == typeof(AlbumPage) || pageType == typeof(ConcertPage))
             return new SymbolIconSource { Symbol = Symbol.Audio };
+
+        if (pageType == typeof(ShowPage))
+            return new FontIconSource { Glyph = "" };
 
         if (pageType == typeof(LocalLibraryPage))
             return new SymbolIconSource { Symbol = Symbol.Folder };

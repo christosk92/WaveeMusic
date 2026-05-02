@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.ShowEpisode.ShowResumeBanner"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:winUi="using:CommunityToolkit.WinUI"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
+    mc:Ignorable="d">
+
+    <!-- Cinematic Resume banner. Two regions side by side inside one rounded card:
+         left = 1:1 cover image at banner height; right = palette-tinted content area.
+         Whole surface is clickable; hover lifts the card and scales the Resume button. -->
+    <Border x:Name="BannerRoot"
+            Height="140"
+            CornerRadius="10"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            PointerEntered="BannerRoot_PointerEntered"
+            PointerExited="BannerRoot_PointerExited"
+            Tapped="BannerRoot_Tapped">
+
+        <winUi:Effects.Shadow>
+            <ui:AttachedCardShadow BlurRadius="24" Offset="0,8" Opacity="0.22"
+                                   Color="Black" CornerRadius="10"
+                                   InnerContentClipMode="CompositionMaskBrush"/>
+        </winUi:Effects.Shadow>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT — 1:1 cover image. UniformToFill so portrait covers crop the
+                 vertical edges instead of letterboxing; the parent Border's CornerRadius
+                 clips the top-left and bottom-left corners. -->
+            <Image x:Name="BackdropImage"
+                   Grid.Column="0"
+                   Stretch="UniformToFill"
+                   IsHitTestVisible="False"/>
+
+            <!-- RIGHT — palette-tinted content area. Sits on a saturated palette
+                 backplate (set in code-behind from CoverColorBrush) plus a left-edge
+                 gradient that smooths the seam against the cover. -->
+            <Grid Grid.Column="1">
+                <!-- Solid palette backplate — full saturation of the show's dominant tone. -->
+                <Border x:Name="PaletteBackplate"/>
+                <!-- Left-edge gradient that blends the cover into the palette wash. -->
+                <Border>
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0.5" EndPoint="0.4,0.5">
+                            <GradientStop x:Name="OverlayStopLeft"
+                                          Color="#00000000" Offset="0.0"/>
+                            <GradientStop x:Name="OverlayStopRight"
+                                          Color="#00000000" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+                <!-- Bottom→top vignette that gently darkens the lower half so the
+                     progress bar + button stay legible regardless of palette colour. -->
+                <Border>
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                            <GradientStop Color="#00000000" Offset="0.0"/>
+                            <GradientStop Color="#33000000" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Content layer. Padding intentionally tight — banner is 140 px
+                     tall and the eyebrow/title/meta/progress/button stack must fit
+                     without clipping at common font scales. -->
+                <Grid Padding="20,12,18,12" RowSpacing="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header — eyebrow + #N — title + meta line. -->
+                    <StackPanel Grid.Row="0" Spacing="0" VerticalAlignment="Center">
+                        <TextBlock x:Name="EyebrowText"
+                                   Text="CONTINUE LISTENING"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   CharacterSpacing="120"
+                                   Opacity="0.85"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
+                            <Border x:Name="EpisodeNumberChip"
+                                    CornerRadius="6"
+                                    Padding="8,1,8,2"
+                                    VerticalAlignment="Center">
+                                <TextBlock x:Name="EpisodeNumberText"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"/>
+                            </Border>
+                            <TextBlock x:Name="TitleText"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock x:Name="MetaText"
+                                   FontSize="12"
+                                   Opacity="0.85"
+                                   Margin="0,2,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"/>
+                    </StackPanel>
+
+                    <!-- Resume CTA row — stretching progress + right-aligned button. -->
+                    <Grid Grid.Row="1"
+                          ColumnSpacing="14"
+                          VerticalAlignment="Bottom"
+                          Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0" Height="5" VerticalAlignment="Center">
+                            <Border x:Name="ProgressTrack"
+                                    CornerRadius="3"
+                                    Background="#33FFFFFF"/>
+                            <Border x:Name="ProgressFill"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="3"
+                                    Width="0"
+                                    SizeChanged="ProgressLane_SizeChanged"/>
+                        </Grid>
+
+                        <Button Grid.Column="1"
+                                x:Name="ResumeButton"
+                                CornerRadius="18"
+                                Padding="14,7"
+                                BorderThickness="0"
+                                Click="ResumeButton_Click"
+                                ToolTipService.ToolTip="Resume">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE768;" FontSize="12"/>
+                                <TextBlock Text="Resume" FontSize="12" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

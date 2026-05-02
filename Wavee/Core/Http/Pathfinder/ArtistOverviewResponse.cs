@@ -246,6 +246,9 @@ public sealed class ArtistStats
     [JsonPropertyName("monthlyListeners")]
     public long MonthlyListeners { get; init; }
 
+    [JsonPropertyName("worldRank")]
+    public int? WorldRank { get; init; }
+
     [JsonPropertyName("topCities")]
     public ArtistTopCities? TopCities { get; init; }
 }

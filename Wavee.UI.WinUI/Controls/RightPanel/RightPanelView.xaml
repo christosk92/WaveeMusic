@@ -8,6 +8,7 @@
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:comments="using:Wavee.UI.WinUI.Controls.Comments"
     xmlns:local="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
@@ -618,6 +619,82 @@
                         </Grid>
                         </Border>
 
+                        <!-- Podcast episode header -->
+                        <Border x:Name="DetailsPodcastHeaderCard"
+                                Background="{ThemeResource DetailsCardBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="72" Height="72" CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <FontIcon Glyph="&#xE189;"
+                                                      FontSize="26"
+                                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            <Image x:Name="DetailsPodcastArtwork"
+                                                   Stretch="UniformToFill"
+                                                   behaviors:ImageFallbackBehavior.HideOnError="True"
+                                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                                   behaviors:ImageFallbackBehavior.DecodePixelWidth="168"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                        <TextBlock x:Name="DetailsPodcastTitle"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   TextWrapping="WrapWholeWords"
+                                                   MaxLines="3"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="DetailsPodcastShowLine"
+                                                   FontSize="12"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="WrapWholeWords"
+                                                   MaxLines="2"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="DetailsPodcastMetaLine"
+                                                   FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                   TextWrapping="WrapWholeWords"
+                                                   MaxLines="2"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Command="{Binding OpenPodcastEpisodeDetailCommand}"
+                                            Style="{StaticResource SubtleButtonStyle}"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE8A7;" FontSize="13"/>
+                                            <TextBlock Text="Episode"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Grid.Column="1"
+                                            Command="{Binding OpenPodcastShowCommand}"
+                                            Style="{StaticResource SubtleButtonStyle}"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE93C;" FontSize="13"/>
+                                            <TextBlock Text="Show"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <!-- ================================ -->
                         <!-- Output Device card                -->
                         <!-- ================================ -->
@@ -738,6 +815,184 @@
                                     Margin="0,4,0,0"
                                     Visibility="Collapsed"/>
                             </StackPanel>
+                        </Border>
+
+                        <!-- Podcast description -->
+                        <Border x:Name="DetailsPodcastDescriptionSection"
+                                Background="{ThemeResource DetailsCardBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="About this episode"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock x:Name="DetailsPodcastDescriptionText"
+                                           FontSize="12"
+                                           LineHeight="18"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"
+                                           MaxLines="8"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border x:Name="DetailsPodcastTranscriptChip"
+                                        HorizontalAlignment="Left"
+                                        Background="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                        CornerRadius="6"
+                                        Padding="8,4"
+                                        Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE8D2;"
+                                                  FontSize="11"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock x:Name="DetailsPodcastTranscriptText"
+                                                   FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Podcast chapters -->
+                        <Border x:Name="DetailsPodcastChaptersSection"
+                                Background="{ThemeResource DetailsCardBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="10"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Chapters"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               VerticalAlignment="Center"/>
+                                    <Button x:Name="DetailsPodcastChaptersToggleButton"
+                                            Grid.Column="1"
+                                            Click="DetailsPodcastChaptersToggle_Click"
+                                            Padding="8,4"
+                                            MinHeight="0"
+                                            Style="{StaticResource SubtleButtonStyle}"
+                                            Visibility="Collapsed"/>
+                                </Grid>
+                                <ItemsRepeater x:Name="DetailsPodcastChaptersList">
+                                    <ItemsRepeater.Layout>
+                                        <StackLayout Spacing="0"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Tag="{Binding}"
+                                                    Click="DetailsPodcastChapter_Click"
+                                                    PointerEntered="DetailsPodcastChapter_PointerEntered"
+                                                    PointerExited="DetailsPodcastChapter_PointerExited"
+                                                    PointerPressed="DetailsPodcastChapter_PointerPressed"
+                                                    PointerReleased="DetailsPodcastChapter_PointerReleased"
+                                                    PointerCanceled="DetailsPodcastChapter_PointerCanceled"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Padding="0"
+                                                    MinHeight="0"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    ToolTipService.ToolTip="Seek to chapter"
+                                                    AutomationProperties.Name="{Binding Title}">
+                                                <Grid ColumnSpacing="8" Padding="0,1,0,1">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="42"/>
+                                                        <ColumnDefinition Width="18"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding StartTime}"
+                                                               FontSize="10"
+                                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                               Opacity="{Binding ChromeOpacity}"
+                                                               TextAlignment="Right"
+                                                               TextWrapping="NoWrap"
+                                                               VerticalAlignment="Center"/>
+
+                                                    <local:PodcastChapterTimelineRail Grid.Column="1"
+                                                                                      Progress="{Binding TimelineCellProgress}"
+                                                                                      IsActive="{Binding IsActive}"
+                                                                                      IsCompleted="{Binding IsCompleted}"
+                                                                                      IsFirst="{Binding IsFirst}"
+                                                                                      IsLast="{Binding IsLast}"/>
+
+                                                    <Border Grid.Column="2"
+                                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="8"
+                                                            Padding="8,6"
+                                                            Opacity="{Binding ContentOpacity}">
+                                                        <Grid ColumnSpacing="8">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <StackPanel Spacing="3">
+                                                                <TextBlock Text="{Binding ChapterLabel}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                                           Opacity="{Binding ChromeOpacity}"/>
+                                                                <TextBlock Text="{Binding Title}"
+                                                                           FontSize="11.5"
+                                                                           FontWeight="SemiBold"
+                                                                           TextWrapping="WrapWholeWords"
+                                                                           MaxLines="1"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                                <TextBlock Text="{Binding Subtitle}"
+                                                                           FontSize="10.5"
+                                                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                                           TextWrapping="WrapWholeWords"
+                                                                           MaxLines="1"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                            </StackPanel>
+
+                                                            <Border Grid.Column="1"
+                                                                    Width="24"
+                                                                    Height="24"
+                                                                    CornerRadius="12"
+                                                                    Background="{ThemeResource SubtleFillColorTertiaryBrush}"
+                                                                    VerticalAlignment="Center">
+                                                                <FontIcon Glyph="&#xE768;"
+                                                                          FontSize="10"
+                                                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                          HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </Grid>
+                                                    </Border>
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Podcast comments — uses the shared CommentsList control
+                             in CompactMode so styling + behavior match the library
+                             episode detail. Code-behind sets HeaderText, Comments,
+                             HasNoComments, HasMoreComments, StatusText imperatively
+                             (the right panel resolves its VM lazily). -->
+                        <Border x:Name="DetailsPodcastCommentsSection"
+                                Background="{ThemeResource DetailsCardBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <comments:CommentsList x:Name="DetailsPodcastComments"
+                                                   CompactMode="True"
+                                                   PlaceholderText="Add a comment..."
+                                                   ShowStatusAsInfoBar="False"
+                                                   Draft="{Binding PodcastCommentDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                   CharacterCount="{Binding PodcastCommentCharacterCount}"
+                                                   SubmitCommand="{Binding SubmitPodcastCommentCommand}"
+                                                   LoadMoreCommand="{Binding LoadMorePodcastCommentsCommand}"
+                                                   ShowReactionsRequested="DetailsPodcastComments_ShowReactionsRequested"
+                                                   ShowReplyReactionsRequested="DetailsPodcastComments_ShowReplyReactionsRequested"/>
                         </Border>
 
                         <!-- Credits -->

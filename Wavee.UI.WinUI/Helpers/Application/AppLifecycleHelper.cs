@@ -692,6 +692,14 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetService<ILogger<Data.Contexts.AlbumService>>(),
                         cacheCapacities.AlbumTracksHotCacheCapacity))
+                .AddSingleton<IPodcastService>(sp =>
+                    new Data.Contexts.PodcastService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
+                        sp.GetService<ILibraryDataService>(),
+                        sp.GetService<ILogger<Data.Contexts.PodcastService>>()))
                 .AddSingleton<ISearchService>(sp =>
                     new Data.Contexts.SearchService(
                         sp.GetRequiredService<ISession>().Pathfinder))
@@ -730,6 +738,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<ITrackCreditsService>(),
+                        sp.GetRequiredService<ILibraryDataService>(),
                         sp.GetRequiredService<IMediaOverrideService>(),
                         sp.GetService<ILogger<TrackDetailsViewModel>>()))
 
@@ -742,6 +751,8 @@ public static class AppLifecycleHelper
                         sp.GetService<IConnectivityService>(),
                         sp.GetService<INotificationService>(),
                         sp.GetService<IPanelDockingService>(),
+                        sp.GetService<IPodcastService>(),
+                        sp.GetService<ILibraryDataService>(),
                         sp.GetService<ILoggerFactory>()))
                 .AddTransient<HomeViewModel>(sp =>
                     new HomeViewModel(
@@ -755,6 +766,7 @@ public static class AppLifecycleHelper
                         sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
+                .AddTransient<ShowViewModel>()
                 .AddTransient<LibraryPageViewModel>()
                 .AddTransient<AlbumsLibraryViewModel>()
                 .AddTransient<ArtistsLibraryViewModel>()

@@ -107,11 +107,13 @@
             BorderThickness="0"
             ToolTipService.ToolTip="Choose output device"
             HorizontalContentAlignment="Stretch">
-            <Grid ColumnSpacing="6" VerticalAlignment="Center">
+            <Grid x:Name="CompactContentRoot"
+                  ColumnSpacing="6"
+                  VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition x:Name="CompactIconColumn" Width="Auto" />
+                    <ColumnDefinition x:Name="CompactNameColumn" Width="*" />
+                    <ColumnDefinition x:Name="CompactChevronColumn" Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <FontIcon
                     x:Name="CompactDeviceIcon"
@@ -131,6 +133,7 @@
                     TextTrimming="CharacterEllipsis"
                     Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <FontIcon
+                    x:Name="CompactChevron"
                     Grid.Column="2"
                     Glyph="&#xE76C;"
                     FontSize="9"

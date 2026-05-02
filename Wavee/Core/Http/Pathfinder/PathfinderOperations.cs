@@ -76,6 +76,12 @@ internal static class PathfinderOperations
     public const string QueryNpvArtist = "queryNpvArtist";
     public const string QueryNpvArtistHash = "047c9c225967d41a763949a4db3f0493e901c9f8689a6537408aabf9beffc177";
 
+    public const string QueryNpvEpisode = "queryNpvEpisode";
+    public const string QueryNpvEpisodeHash = "5460cf262b0eed4ca71be308a0e4991ac72184660ed504af77ee2440d79ba7b6";
+
+    public const string QueryNpvEpisodeChapters = "queryNpvEpisodeChapters";
+    public const string QueryNpvEpisodeChaptersHash = "367f0e93a0d219ae6f5874bcc460201db0a43467ae94f16298931a704ac62ea6";
+
     public const string QueryTrackCreditsModal = "queryTrackCreditsModal";
     public const string QueryTrackCreditsModalHash = "e2ca40d46cf1fde36562261ccec754f23fb31b561877252e9fe0d6834aabb84b";
 
@@ -97,6 +103,15 @@ internal static class PathfinderOperations
 
     public const string InternalLinkRecommenderEpisode = "internalLinkRecommenderEpisode";
     public const string InternalLinkRecommenderEpisodeHash = "122f5c777aae5c0918baec11cd646b7034b8f213f260097b4d229ad947ec7f93";
+
+    // Show metadata — drives the Show detail page hero (cover, title, publisher,
+    // description, rating, topics, palette colors, first page of episodes).
+    public const string QueryShowMetadataV2 = "queryShowMetadataV2";
+    public const string QueryShowMetadataV2Hash = "aaad798a17a43c0f443c45d630a83df39d2ca1062a090c2e4fb045d6b00ab360";
+
+    // "More podcasts you might like" carousel for the Show detail page.
+    public const string InternalLinkRecommenderShow = "internalLinkRecommenderShow";
+    public const string InternalLinkRecommenderShowHash = "6c369ff272a666b31fef1629c169925a1bd80f372195396c82304142cacd89e8";
 
     public const string GetCommentsForEntity = "getCommentsForEntity";
     public const string GetCommentsForEntityHash = "bba34fe5f2da3aaa25ab5c90eef1fe2036d325bf32e791ae462b637665185d83";

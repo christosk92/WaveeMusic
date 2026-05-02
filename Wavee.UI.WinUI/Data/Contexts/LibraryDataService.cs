@@ -604,13 +604,33 @@ public sealed class LibraryDataService : ILibraryDataService
         }
     }
 
-    public async Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(string episodeUri, CancellationToken ct = default)
+    public async Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(
+        string episodeUri,
+        CancellationToken ct = default,
+        bool allowEpisodeLookupFallback = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
 
         var cached = await GetPodcastEpisodeProgressCacheAsync(ct).ConfigureAwait(false);
         if (cached.TryGetValue(episodeUri, out var progress))
             return progress;
+
+        if (allowEpisodeLookupFallback)
+        {
+            var fallback = await TryGetPodcastEpisodeProgressFromEpisodeAsync(episodeUri, ct).ConfigureAwait(false);
+            if (fallback is not null)
+            {
+                var updated = new Dictionary<string, PodcastEpisodeProgressDto>(
+                    _cachedPodcastEpisodeProgress,
+                    StringComparer.Ordinal)
+                {
+                    [episodeUri] = fallback,
+                    [fallback.Uri] = fallback
+                };
+                _cachedPodcastEpisodeProgress = updated;
+                return fallback;
+            }
+        }
 
         return _podcastProgressFetchFailed
             ? CreatePodcastProgressError(episodeUri)
@@ -665,7 +685,8 @@ public sealed class LibraryDataService : ILibraryDataService
     }
 
     private bool IsPodcastProgressCacheFresh(DateTimeOffset now)
-        => _podcastProgressFetchedAt != default &&
+        => !_podcastProgressFetchFailed &&
+           _podcastProgressFetchedAt != default &&
            now - _podcastProgressFetchedAt < PodcastProgressCacheTtl;
 
     private static PodcastEpisodeProgressDto CreatePodcastProgressError(string episodeUri) => new()
@@ -673,6 +694,108 @@ public sealed class LibraryDataService : ILibraryDataService
         Uri = episodeUri,
         PlayedState = PodcastEpisodeProgressDto.ErrorState
     };
+
+    private async Task<PodcastEpisodeProgressDto?> TryGetPodcastEpisodeProgressFromEpisodeAsync(
+        string episodeUri,
+        CancellationToken ct)
+    {
+        try
+        {
+            var response = await _session.Pathfinder
+                .GetEpisodeOrChapterAsync(episodeUri, ct)
+                .ConfigureAwait(false);
+            var episode = response.Data?.EpisodeUnionV2;
+            var played = episode?.PlayedState;
+            if (episode is null || played is null)
+                return null;
+
+            var playedPosition = TimeSpan.FromMilliseconds(Math.Max(0, played.PlayPositionMilliseconds));
+            return new PodcastEpisodeProgressDto
+            {
+                Uri = string.IsNullOrWhiteSpace(episode.Uri) ? episodeUri : episode.Uri!,
+                PlayedPosition = playedPosition,
+                PlayedState = !string.IsNullOrWhiteSpace(played.State)
+                    ? played.State
+                    : playedPosition > TimeSpan.Zero
+                        ? "IN_PROGRESS"
+                        : "NOT_STARTED",
+                Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration?.TotalMilliseconds ?? 0))
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch episode played-state fallback for {EpisodeUri}", episodeUri);
+            return null;
+        }
+    }
+
+    public async Task SavePodcastEpisodeProgressAsync(
+        string episodeUri,
+        TimeSpan? resumePosition,
+        bool completed,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+
+        var normalizedUri = episodeUri.StartsWith("spotify:episode:", StringComparison.Ordinal)
+            ? episodeUri
+            : $"spotify:episode:{episodeUri}";
+        var serverResumePosition = completed ? null : resumePosition;
+
+        try
+        {
+            var response = await _session.SpClient
+                .CreateResumePointRevisionAsync(normalizedUri, serverResumePosition, ct)
+                .ConfigureAwait(false);
+
+            var revision = response.Revision;
+            var savedPosition = revision?.Value?.ResumePoint?.PositionSeconds is { } seconds
+                ? TimeSpan.FromSeconds(seconds)
+                : TimeSpan.Zero;
+            var savedState = completed || revision?.Value?.ResumePoint is null
+                ? "COMPLETED"
+                : savedPosition > TimeSpan.Zero
+                    ? "IN_PROGRESS"
+                    : "NOT_STARTED";
+
+            UpsertPodcastProgress(new PodcastEpisodeProgressDto
+            {
+                Uri = normalizedUri,
+                PlayedPosition = savedPosition,
+                PlayedState = savedState,
+                CreatedAt = ToDateTimeOffset(revision?.CreateTime),
+                UpdatedAt = ToDateTimeOffset(revision?.UpdateTime)
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to save Herodotus podcast progress for {EpisodeUri}", normalizedUri);
+            throw;
+        }
+    }
+
+    private void UpsertPodcastProgress(PodcastEpisodeProgressDto progress)
+    {
+        var updated = new Dictionary<string, PodcastEpisodeProgressDto>(
+            _cachedPodcastEpisodeProgress,
+            StringComparer.Ordinal)
+        {
+            [progress.Uri] = progress
+        };
+
+        _cachedPodcastEpisodeProgress = updated;
+        _podcastProgressFetchedAt = DateTimeOffset.UtcNow;
+        _podcastProgressFetchFailed = false;
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+    }
 
     private async Task<LibraryEpisodeDto?> FetchRecentPodcastEpisodeAsync(
         PodcastEpisodeProgressDto progress,
@@ -1357,13 +1480,33 @@ public sealed class LibraryDataService : ILibraryDataService
                 continue;
             }
 
-            var positionSeconds = state.Revision?.Value?.ResumePoint?.PositionSeconds ?? 0;
+            // Spotify resumption convention:
+            //   • Value present, ResumePoint missing → episode COMPLETED. The
+            //     server drops the resumePoint on completion; an entry remains
+            //     so other devices learn the episode is done.
+            //   • ResumePoint with positionSeconds > 0 → IN_PROGRESS. The
+            //     "near end → completed" promotion happens later in
+            //     PodcastService.MapEpisode, where episode duration is known.
+            //   • ResumePoint with positionSeconds == 0 → NOT_STARTED (e.g.
+            //     user explicitly reset to start).
+            var revisionValue = state.Revision?.Value;
+            var resumePoint = revisionValue?.ResumePoint;
+            var positionSeconds = resumePoint?.PositionSeconds ?? 0;
             var playedPosition = TimeSpan.FromSeconds(positionSeconds);
+
+            string playedState;
+            if (revisionValue is not null && resumePoint is null)
+                playedState = "COMPLETED";
+            else if (positionSeconds > 0)
+                playedState = "IN_PROGRESS";
+            else
+                playedState = "NOT_STARTED";
+
             result[uri] = new PodcastEpisodeProgressDto
             {
                 Uri = uri,
                 PlayedPosition = playedPosition,
-                PlayedState = playedPosition > TimeSpan.Zero ? "IN_PROGRESS" : "NOT_STARTED",
+                PlayedState = playedState,
                 CreatedAt = ToDateTimeOffset(state.Revision?.CreateTime),
                 UpdatedAt = ToDateTimeOffset(state.Revision?.UpdateTime)
             };

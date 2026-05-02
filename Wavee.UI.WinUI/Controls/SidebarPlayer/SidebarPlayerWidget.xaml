@@ -31,14 +31,6 @@
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
 
-            <!-- Mirrors PlayerBarStyles.xaml's PlayerVolumeFlyoutPresenterStyle but locally
-                 duplicated so we don't depend on it being exported. Tight padding so the
-                 vertical slider sits flush. -->
-            <Style x:Key="SidebarVolumeFlyoutPresenterStyle" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}" TargetType="FlyoutPresenter">
-                <Setter Property="Padding" Value="12" />
-                <Setter Property="MinWidth" Value="0" />
-            </Style>
-
             <!-- Device picker styling lives inside AudioOutputPicker. -->
 
             <!-- Theme-aware chevron pill: white-ish translucent over album art in dark mode,
@@ -568,39 +560,6 @@
                                 IsActive="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                         </Grid>
-                    </Button>
-                    <Button
-                        x:Name="ExpandedVolumeButton"
-                        Style="{StaticResource TransparentButtonStyle}"
-                        Width="28"
-                        Height="28"
-                        Padding="0"
-                        IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                        ToolTipService.ToolTip="Volume">
-                        <Button.Flyout>
-                            <Flyout Placement="Top">
-                                <Flyout.FlyoutPresenterStyle>
-                                    <StaticResource ResourceKey="SidebarVolumeFlyoutPresenterStyle" />
-                                </Flyout.FlyoutPresenterStyle>
-                                <StackPanel Spacing="8" HorizontalAlignment="Center">
-                                    <FontIcon
-                                        HorizontalAlignment="Center"
-                                        FontSize="14"
-                                        Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
-                                    <Slider
-                                        Height="132"
-                                        Orientation="Vertical"
-                                        Minimum="0"
-                                        Maximum="100"
-                                        Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
-                                        IsEnabled="{x:Bind ViewModel.IsVolumeRestricted, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                                        IsThumbToolTipEnabled="False" />
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                        <FontIcon
-                            FontSize="12"
-                            Glyph="{x:Bind ViewModel.Volume, Mode=OneWay, Converter={StaticResource VolumeGlyphConverter}}" />
                     </Button>
                 </StackPanel>
             </Grid>

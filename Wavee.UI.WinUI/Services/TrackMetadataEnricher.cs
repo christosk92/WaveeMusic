@@ -235,8 +235,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         {
             await Task.Yield();
 
-            var episodeId = SpotifyId.FromUri(episodeUri).ToBase62();
-            var bytes = await _spClient.GetEpisodeMetadataAsync(episodeId, ct).ConfigureAwait(false);
+            var bytes = await _spClient.GetEpisodeMetadataAsync(episodeUri, ct).ConfigureAwait(false);
             if (ct.IsCancellationRequested || bytes.Length == 0) return;
 
             var episode = Episode.Parser.ParseFrom(bytes);
@@ -411,13 +410,9 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                     result[uri] = cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
             }
 
-            // Episodes — go through the EpisodeV4 batched extension. The
-            // per-URI _spClient.GetEpisodeMetadataAsync path (kept as
-            // GetEpisodeImageAsync below for the queue-enrichment caller) hits
-            // /metadata/4/episode/{id}?market=from_token, which 404s for
-            // user-only "Your Episodes" entries. The extended-metadata endpoint
-            // populates the rest of the app's episode UI and handles those
-            // entries correctly.
+            // Episodes go through the EpisodeV4 batched extension. This matches
+            // Spotify desktop/librespot; the legacy /metadata/4/episode route
+            // 404s for some valid episodes.
             //
             // GetBatchedExtensionsAsync already de-dupes against the SQLite
             // extension cache and only fetches uncached entries — no outer
@@ -525,8 +520,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
     {
         if (!IsSpotifyEpisodeUri(episodeUri)) return null;
 
-        var episodeId = SpotifyId.FromUri(episodeUri).ToBase62();
-        var bytes = await _spClient.GetEpisodeMetadataAsync(episodeId, ct).ConfigureAwait(false);
+        var bytes = await _spClient.GetEpisodeMetadataAsync(episodeUri, ct).ConfigureAwait(false);
         return bytes.Length == 0 ? null : Episode.Parser.ParseFrom(bytes);
     }
 
