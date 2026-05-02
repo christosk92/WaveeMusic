@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.AiSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <ScrollView>
+        <StackPanel Spacing="4" Padding="0,16,0,24">
+
+            <!-- Section header — gradient-stroked sparkle to match Windows 11
+                 Settings → AI components page. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+                <Border CornerRadius="14"
+                        Padding="6"
+                        BorderThickness="1.5"
+                        BorderBrush="{ThemeResource AiAccentGradientBrush}"
+                        VerticalAlignment="Center">
+                    <ic:SymbolIcon Symbol="Sparkle"
+                                   IconVariant="Filled"
+                                   FontSize="16"
+                                   Foreground="{ThemeResource AiAccentGradientBrush}" />
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="On-device AI"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="{x:Bind ViewModel.StatusDescription, Mode=OneWay}"
+                               Style="{StaticResource AiCaptionTextBlockStyle}" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Style="{StaticResource AiCaptionUnderlineStyle}"
+                    Margin="0,0,0,12" />
+
+            <!-- Background note -->
+            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8">
+                <Run Text="Powered by Phi Silica running on your PC's neural processor (NPU). Nothing is sent off-device. Available only on Copilot+ PCs (Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2."/>
+            </TextBlock>
+
+            <!-- ── Master toggle ── -->
+            <controls:SettingsCard Header="Enable on-device AI features"
+                                   Description="Off by default. When on, the model is downloaded the first time you use a feature."
+                                   IsEnabled="{x:Bind ViewModel.CanUseAi, Mode=OneWay}">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="Sparkle" IconVariant="Filled" />
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AiFeaturesEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
+            <!-- ── Model preparation panel ── -->
+            <Grid Margin="0,8,0,0">
+                <!-- Active download / preparation -->
+                <Border Visibility="{x:Bind ViewModel.IsModelPreparing, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                        Background="{ThemeResource AiPanelBackgroundBrush}"
+                        BorderBrush="{ThemeResource AiBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="14,12,14,14">
+                    <StackPanel Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ProgressRing Width="18" Height="18"
+                                          IsActive="True"
+                                          Foreground="{ThemeResource AiAccentSolidBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.ModelPreparationStatus, Mode=OneWay}"
+                                       Style="{StaticResource AiCaptionTextBlockStyle}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ProgressBar Foreground="{ThemeResource AiAccentGradientBrush}"
+                                     Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="{x:Bind ViewModel.ModelPreparationProgress, Mode=OneWay}"
+                                     IsIndeterminate="False" />
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap">
+                            The Phi Silica model is downloading from the Microsoft Store. This is a one-time setup — the model is shared across all apps that use Windows AI APIs.
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- Successfully prepared -->
+                <Border Visibility="{x:Bind ViewModel.IsModelReady, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                        Background="{ThemeResource AiPanelBackgroundBrush}"
+                        BorderBrush="{ThemeResource AiBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="14,10,14,10">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <ic:SymbolIcon Symbol="CheckmarkCircle"
+                                       IconVariant="Filled"
+                                       FontSize="16"
+                                       Foreground="{ThemeResource AiAccentGradientBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.ModelPreparationStatus, Mode=OneWay}"
+                                   Style="{StaticResource AiCaptionTextBlockStyle}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ── Per-feature toggles ── -->
+            <TextBlock Text="Lyrics"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Margin="0,24,0,8" />
+
+            <controls:SettingsCard Header="Explain a lyric line"
+                                   Description="Tap a line in the expanded now-playing view to get a one- or two-sentence interpretation."
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="LightbulbFilament" IconVariant="Filled" />
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AiLyricsExplainEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Header="Lyrics meaning"
+                                   Description="Explain the song's lyrics, imagery, and emotional arc on demand."
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="DocumentSparkle" IconVariant="Filled" />
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AiLyricsSummarizeEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
+        </StackPanel>
+    </ScrollView>
+</UserControl>

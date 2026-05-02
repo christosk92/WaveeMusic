@@ -167,6 +167,11 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
             Title = ViewModel.TrackTitle ?? "Album",
             ImageUrl = ViewModel.AlbumArt
         };
+        if (albumId.StartsWith("spotify:show:", StringComparison.Ordinal))
+        {
+            NavigationHelpers.OpenShow(albumId, param.Title);
+            return;
+        }
         NavigationHelpers.OpenAlbum(param, param.Title);
     }
 

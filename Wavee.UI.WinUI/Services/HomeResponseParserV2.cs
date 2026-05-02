@@ -423,11 +423,12 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         if (string.IsNullOrEmpty(uri)) return null;
         if (uri.Contains(":collection", StringComparison.OrdinalIgnoreCase))
         {
+            var isEpisodes = uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase);
             return new HomeSectionItem
             {
                 Uri = uri,
-                Title = "Liked Songs",
-                ContentType = HomeContentType.Playlist,
+                Title = isEpisodes ? "Podcasts" : "Liked Songs",
+                ContentType = isEpisodes ? HomeContentType.Episode : HomeContentType.Playlist,
                 PlaceholderGlyph = FluentGlyphs.HeartFilled,
                 ColorHex = "#4B2A8A"
             };
@@ -442,6 +443,9 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     {
         var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage);
         var isSaved = formatAttributes?.Any(a => a.Key == "recent_type_saved") == true;
+        var isEpisodeCollection =
+            uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase) ||
+            formatAttributes?.Any(a => a.Key.Contains("podcasts", StringComparison.OrdinalIgnoreCase)) == true;
 
         // group_metadata is a base64-encoded protobuf carrying the recently-
         // added count + up to 3 track URIs Spotify wants drawn as thumbnails
@@ -466,21 +470,28 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             }
         }
 
+        if (!isEpisodeCollection && thumbnailUris.Any(IsSpotifyEpisodeUri))
+            isEpisodeCollection = true;
+
+        var noun = isEpisodeCollection ? "episode" : "song";
         var subtitle = isSaved
-            ? (addedCount.HasValue ? $"{addedCount} songs added" : "Songs added")
+            ? (addedCount.HasValue
+                ? $"{addedCount} {noun}{(addedCount.Value == 1 ? "" : "s")} added"
+                : $"{char.ToUpperInvariant(noun[0])}{noun[1..]}s added")
             : "Playlist";
 
         return new HomeSectionItem
         {
             Uri = uri,
-            Title = entityData.IdentityTrait?.Name ?? "Liked Songs",
+            Title = entityData.IdentityTrait?.Name ?? (isEpisodeCollection ? "Podcasts" : "Liked Songs"),
             Subtitle = subtitle,
             ImageUrl = imageUrl,
-            ContentType = HomeContentType.Playlist,
+            ContentType = isEpisodeCollection ? HomeContentType.Episode : HomeContentType.Playlist,
             PlaceholderGlyph = FluentGlyphs.HeartFilled,
             ColorHex = "#4B2A8A",
             IsRecentlySaved = isSaved,
             RecentlyAddedCount = addedCount,
+            RecentlyAddedItemNoun = noun,
             RecentlyAddedThumbnailUris = thumbnailUris
         };
     }
@@ -512,7 +523,8 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                 if (fieldNum == 2 && trackUris.Count < 3)
                 {
                     var s = System.Text.Encoding.UTF8.GetString(data, i, (int)len);
-                    if (s.StartsWith("spotify:track:", StringComparison.Ordinal))
+                    if (s.StartsWith("spotify:track:", StringComparison.Ordinal) ||
+                        s.StartsWith("spotify:episode:", StringComparison.Ordinal))
                         trackUris.Add(s);
                 }
                 i += (int)len;
@@ -540,6 +552,9 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     }
 
     // ── Content type resolution ──
+
+    private static bool IsSpotifyEpisodeUri(string? uri)
+        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
 
     private static HomeContentType ResolveContentType(HomeEntityData entityData)
     {

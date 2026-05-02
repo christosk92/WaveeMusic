@@ -24,11 +24,17 @@ public sealed record SetOptionsCommand : ConnectCommand
     /// </summary>
     public bool? RepeatingTrack { get; init; }
 
+    /// <summary>
+    /// Requested playback speed (null if not changing).
+    /// </summary>
+    public double? PlaybackSpeed { get; init; }
+
     internal static SetOptionsCommand FromJson(DealerRequest request, JsonElement json)
     {
         bool? shuffling = null;
         bool? repeatingContext = null;
         bool? repeatingTrack = null;
+        double? playbackSpeed = null;
 
         // Options can be in a nested "options" object or at root level
         var options = json.TryGetProperty("options", out var optProp) ? optProp : json;
@@ -48,6 +54,13 @@ public sealed record SetOptionsCommand : ConnectCommand
             repeatingTrack = repTrk.ValueKind == JsonValueKind.True;
         }
 
+        if (options.TryGetProperty("playback_speed", out var speed)
+            && speed.ValueKind == JsonValueKind.Number
+            && speed.TryGetDouble(out var parsedSpeed))
+        {
+            playbackSpeed = parsedSpeed;
+        }
+
         return new SetOptionsCommand
         {
             Endpoint = "set_options",
@@ -57,7 +70,8 @@ public sealed record SetOptionsCommand : ConnectCommand
             Key = request.Key,
             ShufflingContext = shuffling,
             RepeatingContext = repeatingContext,
-            RepeatingTrack = repeatingTrack
+            RepeatingTrack = repeatingTrack,
+            PlaybackSpeed = playbackSpeed
         };
     }
 }

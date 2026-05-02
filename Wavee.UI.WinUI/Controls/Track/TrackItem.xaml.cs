@@ -118,6 +118,16 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(PlayCountColumnWidthProperty, value);
     }
 
+    public static readonly DependencyProperty ProgressColumnWidthProperty =
+        DependencyProperty.Register(nameof(ProgressColumnWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(150d, OnRowColumnWidthChanged));
+
+    public double ProgressColumnWidth
+    {
+        get => (double)GetValue(ProgressColumnWidthProperty);
+        set => SetValue(ProgressColumnWidthProperty, value);
+    }
+
     public static readonly DependencyProperty AddedByColumnWidthProperty =
         DependencyProperty.Register(nameof(AddedByColumnWidth), typeof(double), typeof(TrackItem),
             new PropertyMetadata(140d, OnRowColumnWidthChanged));
@@ -177,6 +187,10 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty PlayCountTextProperty =
         DependencyProperty.Register(nameof(PlayCountText), typeof(string), typeof(TrackItem),
             new PropertyMetadata(null, OnPlayCountTextChanged));
+
+    public static readonly DependencyProperty ShowProgressProperty =
+        DependencyProperty.Register(nameof(ShowProgress), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, OnColumnVisibilityChanged));
 
     public static readonly DependencyProperty ShowAddedByColumnProperty =
         DependencyProperty.Register(nameof(ShowAddedByColumn), typeof(bool), typeof(TrackItem),
@@ -317,6 +331,12 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(ShowPlayCountProperty, value);
     }
 
+    public bool ShowProgress
+    {
+        get => (bool)GetValue(ShowProgressProperty);
+        set => SetValue(ShowProgressProperty, value);
+    }
+
     public bool ShowAddedByColumn
     {
         get => (bool)GetValue(ShowAddedByColumnProperty);
@@ -384,6 +404,7 @@ public sealed partial class TrackItem : UserControl
 
     private bool _isHovered;
     private bool _isAlternateRow;
+    private bool _useCardRow;
     private readonly ThemeColorService? _themeColors = Ioc.Default.GetService<ThemeColorService>();
     private readonly Data.Contracts.ITrackLikeService? _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
     private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
@@ -548,13 +569,14 @@ public sealed partial class TrackItem : UserControl
             RowArtistLink.Tag = track.ArtistId;
             // Hide the subline when ShowArtistColumn is off OR the artist name is blank
             // (e.g. local files, editorial placeholders).
-            RowArtistLink.Visibility = (ShowArtistColumn && !string.IsNullOrEmpty(artistName))
+            RowArtistLink.Visibility = (ShowArtistColumn && !ShowProgress && !string.IsNullOrEmpty(artistName))
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             // Must run after RowArtistLink.Visibility is set — placement depends on it.
             UpdateBadgePlacement();
             RowAlbumLink.Content = track.AlbumName ?? "";
             RowAlbumLink.Tag = track.AlbumId;
+            ApplyRowProgress(track);
             ApplyRowAlbumArt(track.ImageUrl);
 
             // Row index
@@ -569,9 +591,32 @@ public sealed partial class TrackItem : UserControl
             RowDuration.Text = "";
             RowArtistLink.Content = "";
             RowAlbumLink.Content = "";
+            ApplyRowProgress(null);
             UpdateBadgePlacement();
             ApplyRowAlbumArt(null);
         }
+    }
+
+    private void ApplyRowProgress(ITrackItem? track)
+    {
+        var progress = Math.Clamp(track?.PlaybackProgress ?? 0d, 0d, 1d);
+        RowProgressBar.Value = progress * 100d;
+        var hasError = track?.HasPlaybackProgressError == true;
+        var isPlayed = !hasError && progress >= 0.995d;
+        var hasProgressBar = !hasError && !isPlayed && progress > 0.001d;
+        RowProgressExplicit.Visibility = track?.IsExplicit == true ? Visibility.Visible : Visibility.Collapsed;
+        RowPlayedIndicator.Visibility = isPlayed ? Visibility.Visible : Visibility.Collapsed;
+        RowProgressBar.Visibility = hasProgressBar ? Visibility.Visible : Visibility.Collapsed;
+        RowProgressText.Visibility = isPlayed ? Visibility.Collapsed : Visibility.Visible;
+        Grid.SetColumn(RowProgressText, hasProgressBar ? 2 : 1);
+        Grid.SetColumnSpan(RowProgressText, hasProgressBar ? 1 : 2);
+        RowProgressText.HorizontalAlignment = hasProgressBar ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        RowProgressText.Foreground = hasError
+            ? (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
+            : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        RowProgressText.Text = string.IsNullOrWhiteSpace(track?.PlaybackProgressText)
+            ? "Unplayed"
+            : track.PlaybackProgressText;
     }
 
     private void ApplyCompactAlbumArt(string? imageUrl)
@@ -892,9 +937,10 @@ public sealed partial class TrackItem : UserControl
     /// </summary>
     private static readonly Brush DefaultBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
-    public void SetAlternatingBorder(bool isAlternate)
+    public void SetAlternatingBorder(bool isAlternate, bool useCardRow = false)
     {
         _isAlternateRow = isAlternate;
+        _useCardRow = useCardRow;
         ApplyRowBackground();
     }
 
@@ -956,8 +1002,11 @@ public sealed partial class TrackItem : UserControl
         RowAlbumColDef.Width      = ShowAlbumColumn    ? new GridLength(AlbumColumnWidth)     : new GridLength(0);
         RowAddedByColDef.Width    = ShowAddedByColumn  ? new GridLength(AddedByColumnWidth)   : new GridLength(0);
         RowDateColDef.Width       = ShowDateAdded      ? new GridLength(DateAddedColumnWidth) : new GridLength(0);
-        RowPlayCountColDef.Width  = ShowPlayCount      ? new GridLength(PlayCountColumnWidth) : new GridLength(0);
+        RowPlayCountColDef.Width  = ShowPlayCount      ? new GridLength(PlayCountColumnWidth)
+            : new GridLength(0);
         RowDurationColDef.Width   = new GridLength(DurationColumnWidth);
+        RowPlayCount.Visibility = ShowPlayCount ? Visibility.Visible : Visibility.Collapsed;
+        RowProgressCell.Visibility = ShowProgress ? Visibility.Visible : Visibility.Collapsed;
 
         // Collapsing the column to Width=0 alone isn't enough: RowAlbumArtBorder
         // has a fixed Width/Height in XAML and would still render into the next
@@ -974,7 +1023,7 @@ public sealed partial class TrackItem : UserControl
 
         // Artist subline is hidden at XS too — single-line rows are how we hit the
         // 32-px target height.
-        RowArtistLink.Visibility = (ShowArtistColumn && density > 0) ? Visibility.Visible : Visibility.Collapsed;
+        RowArtistLink.Visibility = (ShowArtistColumn && density > 0 && !ShowProgress) ? Visibility.Visible : Visibility.Collapsed;
 
         // Keep the shimmer overlay's columns in sync so loading rows align with the
         // real row layout (and with the column headers above).
@@ -1119,15 +1168,17 @@ public sealed partial class TrackItem : UserControl
 
         bool nativePillShowing = IsSelected || _isHovered;
 
-        if (!nativePillShowing && _isAlternateRow)
+        if (!nativePillShowing && (_useCardRow || _isAlternateRow))
         {
             // CardBackground (Fluent card tint) gives visible alternating-row
             // striping in both light and dark. The boxed-in-light-mode look
             // users previously complained about was driven by the per-row
             // drop shadow — that's been removed, and the card fill alone
             // reads cleanly in both themes.
-            RowRoot.Background = _themeColors?.CardBackground
-                ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            RowRoot.Background = _useCardRow && !_isAlternateRow
+                ? (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+                : _themeColors?.CardBackground
+                  ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
         }
         else
         {
@@ -1141,7 +1192,7 @@ public sealed partial class TrackItem : UserControl
         // inner content by 1 px and producing the visible flicker the user
         // reported. Keep the geometry stable; only repaint.
         RowRoot.BorderThickness = new Thickness(1);
-        if (!nativePillShowing && _isAlternateRow)
+        if (!nativePillShowing && (_useCardRow || _isAlternateRow))
         {
             RowRoot.BorderBrush = _themeColors?.CardStroke
                 ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
@@ -1243,6 +1294,9 @@ public sealed partial class TrackItem : UserControl
 
     private bool GetTrackLikedState(ITrackItem track)
     {
+        if (IsSpotifyEpisodeUri(track.Uri))
+            return track.IsLiked;
+
         if (_likeService is null)
             return track.IsLiked;
 
@@ -1546,11 +1600,17 @@ public sealed partial class TrackItem : UserControl
         if (IsCurrentPlaybackVideoTrack(track))
             return PlaybackSaveTargetResolver.GetTrackUri(_playbackStateService);
 
+        if (IsSpotifyEpisodeUri(track.Uri))
+            return null;
+
         if (!string.IsNullOrEmpty(track.Uri))
             return track.Uri;
 
         return string.IsNullOrEmpty(track.Id) ? null : $"spotify:track:{track.Id}";
     }
+
+    private static bool IsSpotifyEpisodeUri(string? uri)
+        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
 
     private bool IsCurrentPlaybackVideoTrack(ITrackItem track)
     {
@@ -1654,6 +1714,9 @@ public sealed partial class TrackItem : UserControl
         nameof(ITrackItem.IsLiked) => true,
         nameof(ITrackItem.IsLocal) => true,
         nameof(ITrackItem.HasVideo) => true,
+        nameof(ITrackItem.PlaybackProgress) => true,
+        nameof(ITrackItem.PlaybackProgressText) => true,
+        nameof(ITrackItem.HasPlaybackProgressError) => true,
         "Data" => true,
         _ => false,
     };
@@ -1681,7 +1744,7 @@ public sealed partial class TrackItem : UserControl
         // the link's visibility, not just on whether ArtistName is set — that's the
         // fix for the orphan "·" on album rows where the link is collapsed but the
         // album artist name is non-empty.
-        var sublineVisible = RowArtistLink.Visibility == Visibility.Visible;
+        var sublineVisible = RowArtistLink.Visibility == Visibility.Visible && !ShowProgress;
         if (sublineVisible)
         {
             RowExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
@@ -1695,7 +1758,7 @@ public sealed partial class TrackItem : UserControl
             RowExplicit.Visibility = Visibility.Collapsed;
             RowVideoBadge.Visibility = Visibility.Collapsed;
             RowVideoSeparator.Visibility = Visibility.Collapsed;
-            RowExplicitInline.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
+            RowExplicitInline.Visibility = isExplicit && !ShowProgress ? Visibility.Visible : Visibility.Collapsed;
             RowVideoBadgeInline.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
         }
     }

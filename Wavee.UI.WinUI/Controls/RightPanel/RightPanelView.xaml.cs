@@ -79,6 +79,9 @@ public sealed partial class RightPanelView : UserControl
     private bool _lyricsInitialized;
     private bool _lyricsConsumerActive;
     private bool _pendingCanvasLayoutRetry;
+    private int _lyricsHoverExplainLineIndex = -1;
+    private Rect _lyricsHoverExplainHitRect = Rect.Empty;
+    private DispatcherQueueTimer? _lyricsHoverExplainHideTimer;
     private LyricsData? _appliedLyricsData;
     private SongInfo? _appliedSongInfo;
     private bool _lyricsCanvasDataCleared = true;
@@ -87,6 +90,11 @@ public sealed partial class RightPanelView : UserControl
     private readonly IColorService? _colorService;
     private readonly ISettingsService? _settingsService;
     private readonly INotificationService? _notificationService;
+    private readonly LyricsAiService? _lyricsAiService;
+    private readonly AiCapabilities? _aiCapabilities;
+    private CancellationTokenSource? _detailsAiMeaningCts;
+    private string? _detailsAiMeaningTrackUri;
+    private bool _detailsAiMeaningBusy;
     private bool _themeColorsSubscribed;
     private readonly List<CompositionObject> _backgroundOverlayCompositionObjects = [];
     private ContainerVisual? _backgroundOverlayContainer;
@@ -166,6 +174,8 @@ public sealed partial class RightPanelView : UserControl
         _colorService = Ioc.Default.GetService<IColorService>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
         _notificationService = Ioc.Default.GetService<INotificationService>();
+        _lyricsAiService = Ioc.Default.GetService<LyricsAiService>();
+        _aiCapabilities = Ioc.Default.GetService<AiCapabilities>();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         _detailsVm = Ioc.Default.GetService<TrackDetailsViewModel>();
         Visibility = Visibility.Collapsed;
@@ -246,6 +256,7 @@ public sealed partial class RightPanelView : UserControl
         _canvasDevice?.Dispose();
         _canvasDevice = null;
         TeardownDetailsLyricsSnippet();
+        CancelDetailsAiMeaningRequest();
     }
 
     private void OnThemeColorsChanged()
@@ -460,6 +471,7 @@ public sealed partial class RightPanelView : UserControl
         else
             TeardownDetailsLyricsSnippet();
 
+        SyncDetailsAiMeaningForCurrentTrack(showLyricsSnippet);
         UpdateCanvasLyricsVisibility();
     }
 
@@ -661,6 +673,7 @@ public sealed partial class RightPanelView : UserControl
     private void LyricsOverlay_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         NowPlayingCanvas.IsMouseInLyricsArea = false;
+        QueueHideLyricsHoverExplainButton();
         UpdateTimerState();
     }
 
@@ -668,6 +681,7 @@ public sealed partial class RightPanelView : UserControl
     {
         var point = e.GetCurrentPoint(LyricsInteractionOverlay).Position;
         NowPlayingCanvas.MousePosition = point;
+        UpdateLyricsHoverExplainButton(point);
     }
 
     private void LyricsOverlay_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -702,6 +716,7 @@ public sealed partial class RightPanelView : UserControl
                 value);
 
         NowPlayingCanvas.MouseScrollOffset = value;
+        UpdateLyricsHoverExplainButton(point.Position);
 
         // Auto-resume after 3s of no scrolling
         _scrollResetTimer ??= CreateScrollResetTimer();
@@ -711,6 +726,122 @@ public sealed partial class RightPanelView : UserControl
 
         e.Handled = true;
     }
+
+    private async void LyricsHoverExplainButton_Click(object sender, RoutedEventArgs e)
+    {
+        var lineIndex = _lyricsHoverExplainLineIndex;
+        HideLyricsHoverExplainButton();
+
+        if (lineIndex < 0 || RightPanelLyricsAi?.ViewModel is null)
+            return;
+
+        await RightPanelLyricsAi.ViewModel.ExplainLineAtIndexAsync(lineIndex);
+    }
+
+    private void UpdateLyricsHoverExplainButton(Point pointer)
+    {
+        StopLyricsHoverExplainHideTimer();
+
+        if (SelectedMode != RightPanelMode.Lyrics
+            || _lyricsVm?.HasLyrics != true
+            || _lyricsVm.CurrentLyrics is null)
+        {
+            HideLyricsHoverExplainButton();
+            return;
+        }
+
+        if (!NowPlayingCanvas.TryRefreshHoveringLine(out var lineIndex, out var lineBounds))
+        {
+            if (IsInsideLyricsHoverExplainHitRect(pointer) || LyricsHoverExplainButton?.IsPointerOver == true)
+                return;
+
+            QueueHideLyricsHoverExplainButton();
+            return;
+        }
+
+        _lyricsHoverExplainLineIndex = lineIndex;
+
+        const double buttonSize = 34;
+        var maxX = Math.Max(0, LyricsInteractionOverlay.ActualWidth - buttonSize);
+        var maxY = Math.Max(0, LyricsInteractionOverlay.ActualHeight - buttonSize);
+        var x = lineBounds.Right + 10;
+        if (x > maxX)
+            x = lineBounds.Left - buttonSize - 10;
+
+        var y = lineBounds.Top + ((lineBounds.Height - buttonSize) / 2);
+        if (double.IsNaN(x) || double.IsInfinity(x))
+            x = pointer.X + 12;
+        if (double.IsNaN(y) || double.IsInfinity(y))
+            y = pointer.Y - (buttonSize / 2);
+
+        x = Math.Clamp(x, 0, maxX);
+        y = Math.Clamp(y, 0, maxY);
+
+        LyricsHoverExplainButton.Margin = new Thickness(x, y, 0, 0);
+        LyricsHoverExplainButton.Visibility = Visibility.Visible;
+
+        const double stickyPadding = 24;
+        var left = Math.Min(lineBounds.Left, x);
+        var top = Math.Min(lineBounds.Top, y);
+        var right = Math.Max(lineBounds.Right, x + buttonSize);
+        var bottom = Math.Max(lineBounds.Bottom, y + buttonSize);
+        _lyricsHoverExplainHitRect = new Rect(
+            left - stickyPadding,
+            top - stickyPadding,
+            Math.Max(1, right - left + (stickyPadding * 2)),
+            Math.Max(1, bottom - top + (stickyPadding * 2)));
+    }
+
+    private void HideLyricsHoverExplainButton()
+    {
+        StopLyricsHoverExplainHideTimer();
+        _lyricsHoverExplainLineIndex = -1;
+        _lyricsHoverExplainHitRect = Rect.Empty;
+        if (LyricsHoverExplainButton != null)
+            LyricsHoverExplainButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void QueueHideLyricsHoverExplainButton()
+    {
+        _lyricsHoverExplainHideTimer ??= CreateLyricsHoverExplainHideTimer();
+        _lyricsHoverExplainHideTimer.Stop();
+        _lyricsHoverExplainHideTimer.Start();
+    }
+
+    private DispatcherQueueTimer CreateLyricsHoverExplainHideTimer()
+    {
+        var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.IsRepeating = false;
+        timer.Interval = TimeSpan.FromMilliseconds(350);
+        timer.Tick += OnLyricsHoverExplainHideTimerTick;
+        return timer;
+    }
+
+    private void OnLyricsHoverExplainHideTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (LyricsHoverExplainButton?.IsPointerOver == true)
+            return;
+
+        HideLyricsHoverExplainButton();
+    }
+
+    private void StopLyricsHoverExplainHideTimer()
+        => _lyricsHoverExplainHideTimer?.Stop();
+
+    private bool IsInsideLyricsHoverExplainHitRect(Point point)
+        => _lyricsHoverExplainHitRect.Width > 0
+           && _lyricsHoverExplainHitRect.Height > 0
+           && point.X >= _lyricsHoverExplainHitRect.X
+           && point.X <= _lyricsHoverExplainHitRect.X + _lyricsHoverExplainHitRect.Width
+           && point.Y >= _lyricsHoverExplainHitRect.Y
+           && point.Y <= _lyricsHoverExplainHitRect.Y + _lyricsHoverExplainHitRect.Height;
+
+    private void LyricsHoverExplainButton_PointerEntered(object sender, PointerRoutedEventArgs e)
+        => StopLyricsHoverExplainHideTimer();
+
+    private void LyricsHoverExplainButton_PointerExited(object sender, PointerRoutedEventArgs e)
+        => QueueHideLyricsHoverExplainButton();
 
     private DispatcherQueueTimer CreateScrollResetTimer()
     {
@@ -735,6 +866,7 @@ public sealed partial class RightPanelView : UserControl
     {
         NowPlayingCanvas.MouseScrollOffset = 0;
         NowPlayingCanvas.IsMouseScrolling = false;
+        HideLyricsHoverExplainButton();
         if (LyricsSyncButton != null)
             LyricsSyncButton.Visibility = Visibility.Collapsed;
         UpdateTimerState();
@@ -791,7 +923,8 @@ public sealed partial class RightPanelView : UserControl
         const double padLeft = 12, padRight = 12, padBottom = 12;
         const double topGap = 8;
 
-        var lyricsW = w - resizerW - padLeft - padRight;
+        var explainButtonGutter = w >= 280 ? 52 : 0;
+        var lyricsW = w - resizerW - padLeft - padRight - explainButtonGutter;
         var lyricsH = h - tabH - topGap - padBottom;
 
         NowPlayingCanvas.LyricsStartX = resizerW + padLeft;
@@ -2045,6 +2178,8 @@ public sealed partial class RightPanelView : UserControl
             TeardownDetailsLyricsSnippet();
 
         // Credits (collapsed by default — show first group only)
+        SyncDetailsAiMeaningForCurrentTrack(showLyricsSnippet);
+
         _creditsExpanded = false;
         var hasCredits = hasData && _detailsVm.CreditGroups.Count > 0;
         DetailsCreditsSection.Visibility = hasCredits ? Visibility.Visible : Visibility.Collapsed;
@@ -2270,6 +2405,169 @@ public sealed partial class RightPanelView : UserControl
 
     // ── Lyrics snippet (TextBlock-based, synced to playback) ──
 
+    // Details sidebar AI lyrics meaning
+    private void SyncDetailsAiMeaningForCurrentTrack(bool hasLyrics)
+    {
+        if (DetailsContent == null)
+            return;
+
+        var canShow = hasLyrics
+                      && _lyricsAiService != null
+                      && _aiCapabilities?.IsLyricsSummarizeEnabled == true
+                      && _lyricsVm?.CurrentLyrics != null;
+
+        DetailsAiMeaningSection.Visibility = canShow ? Visibility.Visible : Visibility.Collapsed;
+        if (!canShow)
+        {
+            CancelDetailsAiMeaningRequest();
+            ResetDetailsAiMeaningUi(clearText: true);
+            _detailsAiMeaningTrackUri = null;
+            return;
+        }
+
+        var trackUri = GetCurrentTrackUriForAi();
+        if (!string.Equals(_detailsAiMeaningTrackUri, trackUri, StringComparison.Ordinal))
+        {
+            CancelDetailsAiMeaningRequest();
+            _detailsAiMeaningTrackUri = trackUri;
+            ResetDetailsAiMeaningUi(clearText: true);
+        }
+
+        if (_lyricsAiService.TryGetCachedLyricsMeaning(trackUri, out var cached))
+            ApplyDetailsAiMeaningResult(cached);
+        else if (!_detailsAiMeaningBusy)
+            DetailsAiMeaningButton.Content = "Generate";
+
+        DetailsAiMeaningButton.IsEnabled = !_detailsAiMeaningBusy;
+    }
+
+    private async void DetailsAiMeaningButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lyricsAiService == null
+            || _aiCapabilities?.IsLyricsSummarizeEnabled != true
+            || _lyricsVm?.CurrentLyrics == null)
+        {
+            return;
+        }
+
+        var fullText = _lyricsVm.CurrentLyrics.WrappedOriginalText;
+        if (string.IsNullOrWhiteSpace(fullText))
+        {
+            ApplyDetailsAiMeaningResult(LyricsAiResult.Empty);
+            return;
+        }
+
+        var trackUri = GetCurrentTrackUriForAi();
+        _detailsAiMeaningTrackUri = trackUri;
+
+        CancelDetailsAiMeaningRequest();
+        var cts = _detailsAiMeaningCts = new CancellationTokenSource();
+        SetDetailsAiMeaningBusy(true);
+
+        try
+        {
+            var result = await _lyricsAiService.GetLyricsMeaningAsync(
+                trackUri,
+                fullText,
+                deltaProgress: null,
+                ct: cts.Token);
+
+            if (cts.IsCancellationRequested)
+                return;
+
+            ApplyDetailsAiMeaningResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // Details card was hidden or the track changed.
+        }
+        finally
+        {
+            if (ReferenceEquals(_detailsAiMeaningCts, cts))
+            {
+                _detailsAiMeaningCts = null;
+                SetDetailsAiMeaningBusy(false);
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    private void ApplyDetailsAiMeaningResult(LyricsAiResult result)
+    {
+        DetailsAiMeaningText.Visibility = Visibility.Visible;
+        DetailsAiMeaningButton.Content = result.Kind == LyricsAiResultKind.Ok ? "Ready" : "Retry";
+
+        DetailsAiMeaningText.Text = result.Kind switch
+        {
+            LyricsAiResultKind.Ok => result.Text,
+            LyricsAiResultKind.Filtered => "The on-device safety filter blocked this lyrics meaning.",
+            LyricsAiResultKind.Empty => "No lyrics are available to interpret.",
+            LyricsAiResultKind.Unavailable => "On-device AI is not available right now.",
+            LyricsAiResultKind.Error => "Something went wrong asking the on-device model.",
+            _ => string.Empty,
+        };
+    }
+
+    private void SetDetailsAiMeaningBusy(bool isBusy)
+    {
+        _detailsAiMeaningBusy = isBusy;
+        DetailsAiMeaningProgress.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        DetailsAiMeaningButton.IsEnabled = !isBusy;
+        if (isBusy)
+            DetailsAiMeaningButton.Content = "Generating";
+    }
+
+    private void ResetDetailsAiMeaningUi(bool clearText)
+    {
+        _detailsAiMeaningBusy = false;
+        DetailsAiMeaningProgress.Visibility = Visibility.Collapsed;
+        DetailsAiMeaningButton.IsEnabled = true;
+        DetailsAiMeaningButton.Content = "Generate";
+        if (clearText)
+        {
+            DetailsAiMeaningText.Text = string.Empty;
+            DetailsAiMeaningText.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void CancelDetailsAiMeaningRequest()
+    {
+        try
+        {
+            _detailsAiMeaningCts?.Cancel();
+        }
+        catch
+        {
+            // Already disposed; harmless.
+        }
+        finally
+        {
+            _detailsAiMeaningCts?.Dispose();
+            _detailsAiMeaningCts = null;
+            _detailsAiMeaningBusy = false;
+        }
+    }
+
+    private string GetCurrentTrackUriForAi()
+    {
+        if (!string.IsNullOrWhiteSpace(_detailsVm?.CurrentTrackUri))
+            return _detailsVm.CurrentTrackUri!;
+
+        return BuildTrackUri(_lyricsVm?.PlaybackState.CurrentTrackId);
+    }
+
+    private static string BuildTrackUri(string? trackId)
+    {
+        if (string.IsNullOrWhiteSpace(trackId))
+            return "spotify:track:unknown";
+
+        return trackId.StartsWith("spotify:track:", StringComparison.Ordinal)
+            ? trackId.Trim()
+            : $"spotify:track:{trackId.Trim()}";
+    }
+
+    // Lyrics snippet (TextBlock-based, synced to playback)
     private readonly record struct CanvasLyricPresentation(
         int PastCharCount,
         int HeldStartIndex,
@@ -3396,7 +3694,7 @@ public sealed partial class RightPanelView : UserControl
     {
         var all = new FrameworkElement[]
         {
-            DetailsArtistHeaderCard, DetailsOutputDeviceCard, DetailsLyricsSnippet, DetailsBio,
+            DetailsArtistHeaderCard, DetailsOutputDeviceCard, DetailsLyricsSnippet, DetailsAiMeaningSection, DetailsBio,
             DetailsCreditsSection, DetailsConcertsSection, DetailsRelatedVideosSection
         };
         return all.Where(c => c != null && c.Visibility == Visibility.Visible).ToArray();

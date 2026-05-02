@@ -2,6 +2,7 @@ using Wavee.Core.Audio;
 using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Http.Presence;
 using Wavee.Protocol.Collection;
+using Wavee.Protocol.Resumption;
 using Wavee.Protocol.Storage;
 
 namespace Wavee.Core.Http;
@@ -220,6 +221,14 @@ public interface ISpClient
         string username,
         string set,
         IEnumerable<CollectionItem> items,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists Herodotus current-state rows, including podcast resume points.
+    /// </summary>
+    Task<ListCurrentStatesResponse> ListCurrentStatesAsync(
+        DateTimeOffset updatedAfter,
+        int limit = 1021,
         CancellationToken cancellationToken = default);
 
     /// <summary>

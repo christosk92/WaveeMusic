@@ -160,7 +160,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to" => TimeSpan.FromMilliseconds(1500),
 
         // Option toggles are non-critical; short timeout keeps UI snappy.
-        "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume" => TimeSpan.FromMilliseconds(1200),
+        "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_options" or "set_volume" => TimeSpan.FromMilliseconds(1200),
 
         _ => TimeSpan.FromMilliseconds(2000)
     };
@@ -173,7 +173,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         // confirmation — the dealer ack is a secondary signal that often doesn't arrive
         // within the 2.5s window when the target device is slow to pick up the command.
         "play" or "add_to_queue" or "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to"
-            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_volume"
+            or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_options" or "set_volume"
             or "transfer" => false,
         _ => true
     };
@@ -312,6 +312,8 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         PlaybackContextType.Playlist   => "playlist",
         PlaybackContextType.Album      => "album",
         PlaybackContextType.Artist     => "artist",
+        PlaybackContextType.Show       => "show",
+        PlaybackContextType.Episode    => "episode",
         PlaybackContextType.LikedSongs => "collection",
         _                              => "wavee"
     };
@@ -322,6 +324,8 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             _ when contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal) => "playlist",
             _ when contextUri.StartsWith("spotify:album:",    StringComparison.Ordinal) => "album",
             _ when contextUri.StartsWith("spotify:artist:",   StringComparison.Ordinal) => "artist",
+            _ when contextUri.StartsWith("spotify:show:",     StringComparison.Ordinal) => "show",
+            _ when contextUri.StartsWith("spotify:episode:",  StringComparison.Ordinal) => "episode",
             _ when contextUri.Contains("collection",          StringComparison.OrdinalIgnoreCase) => "collection",
             _ => null
         };
@@ -353,6 +357,18 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             _ => ("set_repeating_context", false)
         };
         return SendAsync(endpoint, new Dictionary<string, object> { ["value"] = value }, ct);
+    }
+
+    public Task<PlaybackResult> SetPlaybackSpeedAsync(double speed, CancellationToken ct)
+    {
+        var normalized = Math.Clamp(speed, 0.5, 3.5);
+        return SendAsync("set_options", new Dictionary<string, object>
+        {
+            ["options"] = new Dictionary<string, object>
+            {
+                ["playback_speed"] = normalized
+            }
+        }, ct);
     }
 
     public Task<PlaybackResult> SetVolumeAsync(int volumePercent, CancellationToken ct)
@@ -477,6 +493,16 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                 case "set_repeating_track":
                     if (data?.TryGetValue("value", out var repeatTrkVal) == true)
                         await engine.SetRepeatTrackAsync(Convert.ToBoolean(repeatTrkVal), ct).ConfigureAwait(false);
+                    break;
+                case "set_options":
+                    if (data?.TryGetValue("options", out var optionsObj) == true
+                        && optionsObj is Dictionary<string, object> options
+                        && options.ContainsKey("playback_speed"))
+                    {
+                        return PlaybackResult.Failure(
+                            PlaybackErrorKind.Unavailable,
+                            "Playback speed is not supported by the local audio engine yet.");
+                    }
                     break;
                 case "set_volume":
                     if (data?.TryGetValue("value", out var volVal) == true)

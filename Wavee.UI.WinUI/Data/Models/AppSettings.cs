@@ -173,6 +173,11 @@ public sealed class AppSettings
     /// </summary>
     public bool FeedbackAnonymous { get; set; } = true;
 
+    /// <summary>
+    /// True after the user accepts the first-time public comments consent.
+    /// </summary>
+    public bool PodcastCommentsConsentAccepted { get; set; }
+
     // ── Diagnostics / Logging ──
 
     /// <summary>
@@ -216,6 +221,31 @@ public sealed class AppSettings
     /// ("albums", "artists"). Unknown tabs fall back to defaults.
     /// </summary>
     public Dictionary<string, LibraryTabPreferences> LibraryTabs { get; set; } = new();
+
+    // ── On-device AI (Copilot+ PC, opt-in) ──
+
+    /// <summary>
+    /// Master switch for any on-device AI feature. Default false — until the user
+    /// flips this on in Settings, no AI affordance renders, no Phi Silica model is
+    /// downloaded, and zero calls land in Microsoft.Windows.AI.Text. Per-feature
+    /// toggles below are only honored when this is true.
+    /// </summary>
+    public bool AiFeaturesEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Per-feature toggle: per-line "what does this lyric mean?" affordance on
+    /// the expanded now-playing panel. Only effective when <see cref="AiFeaturesEnabled"/>
+    /// is true. Default true so a user who opts in to AI gets the feature without
+    /// having to toggle a second switch.
+    /// </summary>
+    public bool AiLyricsExplainEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Per-feature toggle: header-level "summarize song themes" affordance on the
+    /// expanded now-playing panel. Only effective when <see cref="AiFeaturesEnabled"/>
+    /// is true. Default true.
+    /// </summary>
+    public bool AiLyricsSummarizeEnabled { get; set; } = true;
 }
 
 public sealed class LibraryTabPreferences

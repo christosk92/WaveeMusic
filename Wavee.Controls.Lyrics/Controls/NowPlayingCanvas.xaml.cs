@@ -149,6 +149,9 @@ namespace Wavee.Controls.Lyrics.Controls
         }
 
         public void FireSeekIfHovering() => _engine.FireSeekIfHovering();
+        public int RefreshHoveringLineIndex() => _engine.RefreshHoveringLineIndex();
+        public bool TryRefreshHoveringLine(out int lineIndex, out Rect bounds)
+            => _engine.TryRefreshHoveringLine(out lineIndex, out bounds);
 
         public void SetClearColor(Color color)
         {

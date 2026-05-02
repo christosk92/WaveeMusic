@@ -41,7 +41,24 @@ public sealed class ShellSessionService : IShellSessionService
             RightPanelMode = layout.RightPanelMode,
             SelectedTabIndex = layout.SelectedTabIndex,
             PlayerLocation = layout.PlayerLocation,
-            SidebarPlayerCollapsed = layout.SidebarPlayerCollapsed
+            SidebarPlayerCollapsed = layout.SidebarPlayerCollapsed,
+            PlayerWindowDetached = layout.PlayerWindowDetached,
+            PlayerWindowX = layout.PlayerWindowX,
+            PlayerWindowY = layout.PlayerWindowY,
+            PlayerWindowWidth = layout.PlayerWindowWidth,
+            PlayerWindowHeight = layout.PlayerWindowHeight,
+            PlayerWindowExpanded = layout.PlayerWindowExpanded,
+            PlayerWindowExpandedMode = layout.PlayerWindowExpandedMode,
+            PlayerWindowAlwaysOnTop = layout.PlayerWindowAlwaysOnTop,
+            PlayerWindowExpandedX = layout.PlayerWindowExpandedX,
+            PlayerWindowExpandedY = layout.PlayerWindowExpandedY,
+            PlayerWindowExpandedWidth = layout.PlayerWindowExpandedWidth,
+            PlayerWindowExpandedHeight = layout.PlayerWindowExpandedHeight,
+            RightPanelWindowDetached = layout.RightPanelWindowDetached,
+            RightPanelWindowX = layout.RightPanelWindowX,
+            RightPanelWindowY = layout.RightPanelWindowY,
+            RightPanelWindowWidth = layout.RightPanelWindowWidth,
+            RightPanelWindowHeight = layout.RightPanelWindowHeight
         };
     }
 

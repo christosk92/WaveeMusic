@@ -495,6 +495,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                         var show = Show.Parser.ParseFrom(data);
                         await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
                     }
+                    else if (extensionKind == ExtensionKind.EpisodeV4)
+                    {
+                        var episode = Episode.Parser.ParseFrom(data);
+                        await StoreEpisodePropertiesAsync(entityUri, episode, cancellationToken);
+                    }
                 }
                 catch
                 {
@@ -656,6 +661,47 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             cancellationToken: cancellationToken);
     }
 
+    private async Task StoreEpisodePropertiesAsync(string uri, Episode episode, CancellationToken cancellationToken)
+    {
+        var show = episode.Show;
+        var showUri = show?.Gid is { Length: > 0 } gid
+            ? $"spotify:show:{SpotifyId.FromRaw(gid.Span, SpotifyIdType.Show).ToBase62()}"
+            : null;
+
+        var imageUrl = GetImageUrl(episode.CoverImage) ?? GetImageUrl(show?.CoverImage);
+
+        await _database.UpsertEntityAsync(
+            uri: uri,
+            entityType: EntityType.Episode,
+            title: episode.Name,
+            artistName: show?.Publisher,
+            albumName: show?.Name,
+            albumUri: showUri,
+            durationMs: episode.Duration,
+            trackNumber: episode.Number,
+            releaseYear: episode.PublishTime?.Year,
+            imageUrl: imageUrl,
+            publisher: show?.Publisher,
+            description: episode.Description,
+            cancellationToken: cancellationToken);
+    }
+
+    private static string? GetImageUrl(ImageGroup? imageGroup)
+    {
+        if (imageGroup?.Image.Count > 0 != true)
+            return null;
+
+        var image = imageGroup.Image
+            .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                    i.Size == Image.Types.Size.Large ? 1 : 0)
+            .FirstOrDefault();
+        if (image?.FileId is not { Length: > 0 } fileId)
+            return null;
+
+        var imageId = Convert.ToHexString(fileId.ToByteArray()).ToLowerInvariant();
+        return $"https://i.scdn.co/image/{imageId}";
+    }
+
     private async Task EnsureEntitiesFromCacheAsync(
         Dictionary<(string, ExtensionKind), byte[]> cachedData,
         CancellationToken cancellationToken)
@@ -689,6 +735,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                 {
                     var show = Show.Parser.ParseFrom(data);
                     await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
+                }
+                else if (extensionKind == ExtensionKind.EpisodeV4)
+                {
+                    var episode = Episode.Parser.ParseFrom(data);
+                    await StoreEpisodePropertiesAsync(entityUri, episode, cancellationToken);
                 }
             }
             catch

@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package spotify.resumption.v1;
+option csharp_namespace = "Wavee.Protocol.Resumption";
+
+import "google/protobuf/timestamp.proto";
+
+option optimize_for = CODE_SIZE;
+
+message ListCurrentStatesRequest {
+  int32 limit = 2;
+  string filter = 4;
+}
+
+message ListCurrentStatesResponse {
+  repeated CurrentStateEntry states = 1;
+}
+
+message CurrentStateEntry {
+  string entity_uri = 1;
+  CurrentStateRevision revision = 2;
+}
+
+message CurrentStateRevision {
+  string revision_id = 1;
+  CurrentStateValue value = 2;
+  google.protobuf.Timestamp create_time = 3;
+  google.protobuf.Timestamp update_time = 4;
+}
+
+message CurrentStateValue {
+  string entity_uri = 1;
+  ResumePoint resume_point = 2;
+}
+
+message ResumePoint {
+  uint32 position_seconds = 1;
+}

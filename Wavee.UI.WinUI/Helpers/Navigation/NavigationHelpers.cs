@@ -156,6 +156,16 @@ public static class NavigationHelpers
         Navigate(typeof(LibraryPage), "likedsongs", AppLocalization.GetString("Shell_SidebarLikedSongs"), CreateIconSource(typeof(LibraryPage), "likedsongs"), openInNewTab);
     }
 
+    public static void OpenYourEpisodes(bool openInNewTab = false)
+    {
+        OpenPodcasts(openInNewTab);
+    }
+
+    public static void OpenPodcasts(bool openInNewTab = false)
+    {
+        Navigate(typeof(LibraryPage), "podcasts", AppLocalization.GetString("Shell_SidebarPodcasts"), CreateIconSource(typeof(LibraryPage), "podcasts"), openInNewTab);
+    }
+
     /// <summary>
     /// Open a podcast / show. Stub for now — ShowPage is not yet built; tap
     /// just logs the URI so the card binds to a real symbol and lights up
@@ -376,6 +386,7 @@ public static class NavigationHelpers
                 "albums" => new SymbolIconSource { Symbol = Symbol.Audio },
                 "artists" => new SymbolIconSource { Symbol = Symbol.Contact },
                 "likedsongs" => new SymbolIconSource { Symbol = Symbol.Like },
+                "podcasts" or "yourepisodes" => new FontIconSource { Glyph = "\uEC05" },
                 _ => new SymbolIconSource { Symbol = Symbol.Library }
             };
         }
@@ -413,6 +424,7 @@ public static class NavigationHelpers
                 "albums" => AppLocalization.GetString("Shell_SidebarAlbums"),
                 "artists" => AppLocalization.GetString("Shell_SidebarArtists"),
                 "likedsongs" => AppLocalization.GetString("Shell_SidebarLikedSongs"),
+                "podcasts" or "yourepisodes" => AppLocalization.GetString("Shell_SidebarPodcasts"),
                 _ => AppLocalization.GetString("Shell_SidebarYourLibrary")
             };
         }

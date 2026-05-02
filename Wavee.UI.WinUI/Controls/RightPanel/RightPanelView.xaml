@@ -9,6 +9,8 @@
     xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:local="using:Wavee.UI.WinUI.Controls.RightPanel"
+    xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
@@ -363,6 +365,31 @@
                         CornerRadius="16"
                         Visibility="Collapsed"/>
 
+                    <Button
+                        x:Name="LyricsHoverExplainButton"
+                        Click="LyricsHoverExplainButton_Click"
+                        PointerEntered="LyricsHoverExplainButton_PointerEntered"
+                        PointerExited="LyricsHoverExplainButton_PointerExited"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        MinWidth="0"
+                        MinHeight="0"
+                        CornerRadius="17"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                        BorderThickness="1"
+                        Visibility="Collapsed"
+                        Canvas.ZIndex="6"
+                        ToolTipService.ToolTip="Explain this line">
+                        <ic:SymbolIcon Symbol="LightbulbFilament"
+                                       IconVariant="Filled"
+                                       FontSize="14"
+                                       Foreground="{ThemeResource AiAccentSolidBrush}"/>
+                    </Button>
+
                     <!-- Loading indicator -->
                     <ProgressRing
                         x:Name="LyricsLoadingRing"
@@ -415,6 +442,13 @@
                         Opacity="0.5"
                         Background="Transparent"
                         Visibility="Collapsed"/>
+
+                    <sidebarplayer:LyricsAiPanel
+                        x:Name="RightPanelLyricsAi"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Margin="0,4,0,0"
+                        Canvas.ZIndex="4" />
                 </Grid>
 
                 <!-- Friends tab (its own UserControl) -->
@@ -798,6 +832,47 @@
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                            TextWrapping="WrapWholeWords" MaxLines="1"
                                            TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- On-device AI lyrics meaning -->
+                        <Border x:Name="DetailsAiMeaningSection"
+                                Background="{ThemeResource DetailsCardBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xECAD;"
+                                                  FontSize="12"
+                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="Lyrics meaning"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <Button x:Name="DetailsAiMeaningButton"
+                                            Grid.Column="1"
+                                            Content="Generate"
+                                            Click="DetailsAiMeaningButton_Click"
+                                            Style="{StaticResource SubtleButtonStyle}"
+                                            Padding="8,4"
+                                            MinHeight="0"/>
+                                </Grid>
+                                <ProgressBar x:Name="DetailsAiMeaningProgress"
+                                             IsIndeterminate="True"
+                                             Visibility="Collapsed"/>
+                                <TextBlock x:Name="DetailsAiMeaningText"
+                                           TextWrapping="WrapWholeWords"
+                                           LineHeight="19"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Visibility="Collapsed"/>
                             </StackPanel>
                         </Border>
 

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Storage;
+using Wavee.Core.Storage.Entities;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 using Wavee.UI.Models;
@@ -65,7 +66,21 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         _enrichmentCts = new CancellationTokenSource();
         var ct = _enrichmentCts.Token;
 
-        _ = EnrichTrackAsync(trackUri, ct);
+        _ = EnrichPlayableAsync(trackUri, ct);
+    }
+
+    private async Task EnrichPlayableAsync(string uri, CancellationToken ct)
+    {
+        if (IsSpotifyEpisodeUri(uri))
+        {
+            await EnrichEpisodeAsync(uri, ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (IsSpotifyTrackUri(uri))
+        {
+            await EnrichTrackAsync(uri, ct).ConfigureAwait(false);
+        }
     }
 
     private async Task EnrichTrackAsync(string trackUri, CancellationToken ct)
@@ -214,6 +229,46 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         }
     }
 
+    private async Task EnrichEpisodeAsync(string episodeUri, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Yield();
+
+            var episodeId = SpotifyId.FromUri(episodeUri).ToBase62();
+            var bytes = await _spClient.GetEpisodeMetadataAsync(episodeId, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested || bytes.Length == 0) return;
+
+            var episode = Episode.Parser.ParseFrom(bytes);
+            var showName = episode.Show?.Name;
+            var showUri = GetShowUri(episode.Show);
+            var imageDefault = GetEpisodeImageUrl(episode, Image.Types.Size.Default);
+            var imageLarge = GetEpisodeImageUrl(episode, Image.Types.Size.Large);
+            var imageXLarge = GetEpisodeImageUrl(episode, Image.Types.Size.Xlarge);
+
+            _logger?.LogInformation("Episode metadata enriched: \"{Title}\" from \"{Show}\" (uri={Uri})",
+                episode.Name, showName, episodeUri);
+
+            _messenger.Send(new TrackMetadataEnrichedMessage
+            {
+                TrackId = episodeUri,
+                TrackUri = episodeUri,
+                Title = episode.Name,
+                ArtistName = showName,
+                AlbumArt = imageDefault ?? imageLarge ?? imageXLarge,
+                AlbumArtLarge = imageLarge ?? imageXLarge ?? imageDefault,
+                ArtistId = null,
+                AlbumId = showUri,
+                Artists = null,
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to enrich episode metadata for {Uri}", episodeUri);
+        }
+    }
+
     // ── Queue batch enrichment ──
 
     public void Receive(QueueEnrichmentRequestMessage message)
@@ -229,57 +284,70 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         {
             await Task.Yield();
 
-            _logger?.LogDebug("Queue enrichment: fetching metadata for {Count} tracks", trackUris.Count);
+            _logger?.LogDebug("Queue enrichment: fetching metadata for {Count} playable items", trackUris.Count);
 
-            // Check cache first. Treat an entry with no ImageUrl as incomplete —
-            // it was likely populated by a path that stored only title/artist
-            // (bare playback, TrackReference) without running the TrackV4
-            // extension fetch that carries album cover art. Without this, the
-            // queue shows enriched titles but empty artwork placeholders forever,
-            // because the enricher considers any entry "done" once it exists.
-            var cached = await _cacheService.GetTracksAsync(trackUris, CancellationToken.None);
-            var uncached = trackUris.Where(u =>
-                !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
+            var trackOnlyUris = trackUris.Where(IsSpotifyTrackUri).Distinct().ToList();
+            var episodeUris = trackUris.Where(IsSpotifyEpisodeUri).Distinct().ToList();
+            var result = new Dictionary<string, QueueTrackMetadata>();
 
-            // Batch-fetch uncached (or incomplete)
-            if (uncached.Count > 0)
+            if (trackOnlyUris.Count > 0)
             {
-                _logger?.LogDebug("Queue enrichment: {CachedCount} cached, {UncachedCount} need fetch (missing or incomplete)",
-                    cached.Count, uncached.Count);
+                // Check cache first. Treat an entry with no ImageUrl as incomplete —
+                // it was likely populated by a path that stored only title/artist
+                // (bare playback, TrackReference) without running the TrackV4
+                // extension fetch that carries album cover art. Without this, the
+                // queue shows enriched titles but empty artwork placeholders forever,
+                // because the enricher considers any entry "done" once it exists.
+                var cached = await _cacheService.GetTracksAsync(trackOnlyUris, CancellationToken.None);
+                var uncached = trackOnlyUris.Where(u =>
+                    !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
 
-                const int batchSize = 500;
-                for (int i = 0; i < uncached.Count; i += batchSize)
+                // Batch-fetch uncached (or incomplete)
+                if (uncached.Count > 0)
                 {
-                    var batch = uncached.Skip(i).Take(batchSize)
-                        .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
-                    try
+                    _logger?.LogDebug("Queue enrichment: {CachedCount} cached, {UncachedCount} need fetch (missing or incomplete)",
+                        cached.Count, uncached.Count);
+
+                    const int batchSize = 500;
+                    for (int i = 0; i < uncached.Count; i += batchSize)
                     {
-                        await _metadataClient.GetBatchedExtensionsAsync(batch, CancellationToken.None);
+                        var batch = uncached.Skip(i).Take(batchSize)
+                            .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+                        try
+                        {
+                            await _metadataClient.GetBatchedExtensionsAsync(batch, CancellationToken.None);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Queue enrichment batch failed at offset {Offset}", i);
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogWarning(ex, "Queue enrichment batch failed at offset {Offset}", i);
-                    }
+
+                    // Re-read from cache
+                    var newCached = await _cacheService.GetTracksAsync(uncached, CancellationToken.None);
+                    foreach (var (uri, entry) in newCached)
+                        cached[uri] = entry;
                 }
 
-                // Re-read from cache
-                var newCached = await _cacheService.GetTracksAsync(uncached, CancellationToken.None);
-                foreach (var (uri, entry) in newCached)
-                    cached[uri] = entry;
+                foreach (var (uri, entry) in cached)
+                {
+                    result[uri] = new QueueTrackMetadata(
+                        Title: entry.Title ?? "",
+                        ArtistName: entry.Artist ?? "",
+                        AlbumArt: entry.ImageUrl,
+                        DurationMs: entry.DurationMs ?? 0);
+                }
             }
 
-            // Build result
-            var result = new Dictionary<string, QueueTrackMetadata>();
-            foreach (var (uri, entry) in cached)
+            foreach (var episodeUri in episodeUris)
             {
-                result[uri] = new QueueTrackMetadata(
-                    Title: entry.Title ?? "",
-                    ArtistName: entry.Artist ?? "",
-                    AlbumArt: entry.ImageUrl,
-                    DurationMs: entry.DurationMs ?? 0);
+                var metadata = await GetEpisodeQueueMetadataAsync(episodeUri, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (metadata != null)
+                    result[episodeUri] = metadata;
             }
 
-            _logger?.LogDebug("Queue enrichment complete: {EnrichedCount}/{TotalCount} tracks enriched",
+            _logger?.LogDebug("Queue enrichment complete: {EnrichedCount}/{TotalCount} playable items enriched",
                 result.Count, trackUris.Count);
 
             if (result.Count > 0)
@@ -306,36 +374,82 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
         try
         {
+            var trackOnlyUris = trackUris.Where(IsSpotifyTrackUri).Distinct().ToList();
+            var episodeUris = trackUris.Where(IsSpotifyEpisodeUri).Distinct().ToList();
+
             // Mirror QueueEnrichmentRequestMessage's flow: cache lookup, then
             // batch-fetch any missing/incomplete entries via TrackV4 extension.
-            var cached = await _cacheService.GetTracksAsync(trackUris, ct);
-            var uncached = trackUris.Where(u =>
-                !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
-
-            if (uncached.Count > 0)
+            if (trackOnlyUris.Count > 0)
             {
-                const int batchSize = 500;
-                for (int i = 0; i < uncached.Count; i += batchSize)
+                var cached = await _cacheService.GetTracksAsync(trackOnlyUris, ct);
+                var uncached = trackOnlyUris.Where(u =>
+                    !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
+
+                if (uncached.Count > 0)
                 {
-                    var batch = uncached.Skip(i).Take(batchSize)
-                        .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+                    const int batchSize = 500;
+                    for (int i = 0; i < uncached.Count; i += batchSize)
+                    {
+                        var batch = uncached.Skip(i).Take(batchSize)
+                            .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
+                        try
+                        {
+                            await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Track-image enrichment batch failed at offset {Offset}", i);
+                        }
+                    }
+
+                    var newCached = await _cacheService.GetTracksAsync(uncached, ct);
+                    foreach (var (uri, entry) in newCached)
+                        cached[uri] = entry;
+                }
+
+                foreach (var uri in trackOnlyUris)
+                    result[uri] = cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
+            }
+
+            // Episodes — go through the EpisodeV4 batched extension. The
+            // per-URI _spClient.GetEpisodeMetadataAsync path (kept as
+            // GetEpisodeImageAsync below for the queue-enrichment caller) hits
+            // /metadata/4/episode/{id}?market=from_token, which 404s for
+            // user-only "Your Episodes" entries. The extended-metadata endpoint
+            // populates the rest of the app's episode UI and handles those
+            // entries correctly.
+            //
+            // GetBatchedExtensionsAsync already de-dupes against the SQLite
+            // extension cache and only fetches uncached entries — no outer
+            // batching loop needed here. We still pre-check via GetEpisodesAsync
+            // so cache hits skip the call entirely; misses are forwarded.
+            if (episodeUris.Count > 0)
+            {
+                var cached = await _cacheService.GetEpisodesAsync(episodeUris, ct);
+                var uncached = episodeUris.Where(u =>
+                    !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
+
+                if (uncached.Count > 0)
+                {
                     try
                     {
-                        await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                        await _metadataClient.GetBatchedExtensionsAsync(
+                            uncached.Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.EpisodeV4 })),
+                            ct);
                     }
                     catch (Exception ex)
                     {
-                        _logger?.LogWarning(ex, "Track-image enrichment batch failed at offset {Offset}", i);
+                        _logger?.LogWarning(ex, "Episode-image enrichment failed for {Count} URIs", uncached.Count);
                     }
+
+                    var newCached = await _cacheService.GetEpisodesAsync(uncached, ct);
+                    foreach (var (uri, entry) in newCached)
+                        cached[uri] = entry;
                 }
 
-                var newCached = await _cacheService.GetTracksAsync(uncached, ct);
-                foreach (var (uri, entry) in newCached)
-                    cached[uri] = entry;
+                foreach (var uri in episodeUris)
+                    result[uri] = cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
             }
-
-            foreach (var uri in trackUris)
-                result[uri] = cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
         }
         catch (Exception ex)
         {
@@ -347,6 +461,12 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
     // ── Helpers ──
 
+    private static bool IsSpotifyTrackUri(string? uri)
+        => uri?.StartsWith("spotify:track:", StringComparison.Ordinal) == true;
+
+    private static bool IsSpotifyEpisodeUri(string? uri)
+        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
+
     private static string? ExtractTrackId(string? uri)
     {
         if (string.IsNullOrEmpty(uri)) return null;
@@ -354,11 +474,88 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         return uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
     }
 
+    private static string? ExtractEpisodeId(string? uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+        const string prefix = "spotify:episode:";
+        return uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
+    }
+
+    private async Task<QueueTrackMetadata?> GetEpisodeQueueMetadataAsync(string episodeUri, CancellationToken ct)
+    {
+        try
+        {
+            var episode = await GetEpisodeAsync(episodeUri, ct).ConfigureAwait(false);
+            if (episode is null) return null;
+
+            return new QueueTrackMetadata(
+                Title: episode.Name ?? "",
+                ArtistName: episode.Show?.Name ?? "",
+                AlbumArt: GetEpisodeImageUrl(episode, Image.Types.Size.Default)
+                          ?? GetEpisodeImageUrl(episode, Image.Types.Size.Large)
+                          ?? GetEpisodeImageUrl(episode, Image.Types.Size.Xlarge),
+                DurationMs: episode.Duration);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve episode queue metadata for {Uri}", episodeUri);
+            return null;
+        }
+    }
+
+    private async Task<string?> GetEpisodeImageAsync(string episodeUri, CancellationToken ct)
+    {
+        try
+        {
+            var episode = await GetEpisodeAsync(episodeUri, ct).ConfigureAwait(false);
+            if (episode is null) return null;
+
+            return GetEpisodeImageUrl(episode, Image.Types.Size.Default)
+                   ?? GetEpisodeImageUrl(episode, Image.Types.Size.Large)
+                   ?? GetEpisodeImageUrl(episode, Image.Types.Size.Xlarge);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve episode image for {Uri}", episodeUri);
+            return null;
+        }
+    }
+
+    private async Task<Episode?> GetEpisodeAsync(string episodeUri, CancellationToken ct)
+    {
+        if (!IsSpotifyEpisodeUri(episodeUri)) return null;
+
+        var episodeId = SpotifyId.FromUri(episodeUri).ToBase62();
+        var bytes = await _spClient.GetEpisodeMetadataAsync(episodeId, ct).ConfigureAwait(false);
+        return bytes.Length == 0 ? null : Episode.Parser.ParseFrom(bytes);
+    }
+
+    private static string? GetShowUri(Show? show)
+    {
+        if (show?.Gid is not { Length: > 0 } gid)
+            return null;
+
+        return $"spotify:show:{SpotifyId.FromRaw(gid.Span, SpotifyIdType.Show).ToBase62()}";
+    }
+
     private static string? GetImageUrl(Album? album, Image.Types.Size preferredSize)
     {
-        if (album?.CoverGroup?.Image.Count is not > 0) return null;
-        var image = album.CoverGroup.Image.FirstOrDefault(i => i.Size == preferredSize)
-                    ?? album.CoverGroup.Image.FirstOrDefault();
+        return GetImageUrl(album?.CoverGroup, preferredSize);
+    }
+
+    private static string? GetEpisodeImageUrl(Episode? episode, Image.Types.Size preferredSize)
+    {
+        var image = GetImageUrl(episode?.CoverImage, preferredSize);
+        if (!string.IsNullOrEmpty(image)) return image;
+
+        return GetImageUrl(episode?.Show?.CoverImage, preferredSize);
+    }
+
+    private static string? GetImageUrl(ImageGroup? imageGroup, Image.Types.Size preferredSize)
+    {
+        if (imageGroup?.Image.Count is not > 0) return null;
+        var image = imageGroup.Image.FirstOrDefault(i => i.Size == preferredSize)
+                    ?? imageGroup.Image.FirstOrDefault();
         if (image == null) return null;
         return $"spotify:image:{Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant()}";
     }

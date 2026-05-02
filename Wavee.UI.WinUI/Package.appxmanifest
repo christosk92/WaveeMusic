@@ -5,7 +5,10 @@
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
+  IgnorableNamespaces="uap rescap com desktop systemai">
 
   <Identity
     Name="4f5ca249-aa41-4d46-84ce-62b6098fdb06"
@@ -21,8 +24,11 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+    <!-- MaxVersionTested must be >= 10.0.26226.0 for the system AI runtime to
+         grant access to Microsoft.Windows.AI.* APIs. Per Microsoft's official
+         "Get started building an app with Windows AI APIs" guide. -->
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.26100.0" MaxVersionTested="10.0.26226.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.26100.0" MaxVersionTested="10.0.26226.0" />
   </Dependencies>
 
   <Resources>
@@ -42,10 +48,41 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+
+      <!--
+        App Notification activation.
+        Required so a click on a Wavee toast (e.g. the AI model download
+        progress toast) routes back into the running app via the
+        AppNotificationManager.NotificationInvoked event. The CLSID below is
+        a stable per-app identifier (generated once, never change it). The
+        ExeServer Arguments value (four dashes followed by AppNotificationActivated:)
+        is the magic token the WinAppSDK looks for to dispatch the activation
+        as an AppNotification kind. See:
+        learn.microsoft.com/windows/apps/windows-app-sdk/notifications/app-notifications/app-notifications-quickstart
+      -->
+      <Extensions>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="173C9CEA-F703-437A-86F9-B1E4BEAB5F90" />
+        </desktop:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="Wavee.UI.WinUI.exe" DisplayName="Wavee" Arguments="----AppNotificationActivated:">
+              <com:Class Id="173C9CEA-F703-437A-86F9-B1E4BEAB5F90" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
     </Application>
   </Applications>
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <!-- systemAIModels capability: required by the Windows AI runtime to grant
+         this app access to Microsoft.Windows.AI.* APIs (Phi Silica, etc.).
+         Without this declaration, the OS won't load the AI projection
+         assemblies for our app and Microsoft.Windows.AI.Text.LanguageModel
+         throws FileNotFoundException at JIT time on the first method that
+         touches it. Per Microsoft's official Windows AI APIs setup guide. -->
+    <systemai:Capability Name="systemAIModels" />
   </Capabilities>
 </Package>

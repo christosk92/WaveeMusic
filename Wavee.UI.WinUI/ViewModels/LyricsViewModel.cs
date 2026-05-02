@@ -190,6 +190,17 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (trackId.Contains(':', StringComparison.Ordinal)
+            && !trackId.StartsWith("spotify:track:", StringComparison.Ordinal))
+        {
+            _loadedTrackId = trackId;
+            _loadedTrackSucceeded = true;
+            CurrentLyrics = null;
+            HasLyrics = false;
+            IsLoading = false;
+            return;
+        }
+
         // Only skip re-fetching if we already have a successful result for this track.
         // A previous failed attempt (e.g. metadata race, transient provider error) must
         // be retryable — otherwise the VM is wedged for the rest of the track's playback.

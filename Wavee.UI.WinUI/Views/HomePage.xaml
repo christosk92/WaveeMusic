@@ -129,6 +129,7 @@
             <cards:LikedSongsRecentCard
                 Title="{x:Bind Title, Mode=OneWay}"
                 AddedCount="{x:Bind RecentlyAddedCount, Mode=OneWay}"
+                AddedItemNoun="{x:Bind RecentlyAddedItemNoun, Mode=OneWay}"
                 Thumbnail1ImageUrl="{x:Bind RecentlyAddedThumbnail1Url, Mode=OneWay}"
                 Thumbnail2ImageUrl="{x:Bind RecentlyAddedThumbnail2Url, Mode=OneWay}"
                 Thumbnail3ImageUrl="{x:Bind RecentlyAddedThumbnail3Url, Mode=OneWay}"

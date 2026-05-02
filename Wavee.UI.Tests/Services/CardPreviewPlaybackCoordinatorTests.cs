@@ -448,6 +448,9 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> SetRepeatModeAsync(RepeatMode mode, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
+        public Task<PlaybackResult> SetPlaybackSpeedAsync(double speed, CancellationToken ct = default)
+            => Task.FromResult(PlaybackResult.Success());
+
         public Task<PlaybackResult> SetVolumeAsync(int volumePercent, CancellationToken ct = default)
         {
             SetVolumeCalls.Add(volumePercent);
@@ -464,7 +467,10 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> SwitchAudioOutputAsync(int deviceIndex, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
-        public Task<PlaybackResult> SwitchToVideoAsync(string? manifestIdOverride = null, CancellationToken ct = default)
+        public Task<PlaybackResult> SwitchToVideoAsync(string? manifestIdOverride = null, string? videoTrackUriOverride = null, CancellationToken ct = default)
+            => Task.FromResult(PlaybackResult.Success());
+
+        public Task<PlaybackResult> SwitchToAudioAsync(CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
         public void ClearVolumeCalls()
@@ -547,6 +553,7 @@ public sealed class CardPreviewPlaybackCoordinatorTests
 
         public double Position { get; set; }
         public double Duration => 0;
+        public double PlaybackSpeed => 1.0;
 
         public double Volume
         {
@@ -584,6 +591,10 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         {
         }
 
+        public void SetPlaybackSpeed(double speed)
+        {
+        }
+
         public void PlayContext(PlaybackContextInfo context, int startIndex = 0)
         {
         }
@@ -613,6 +624,7 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         }
 
         public Task<bool> SwitchToVideoAsync() => Task.FromResult(false);
+        public Task<bool> SwitchToAudioAsync() => Task.FromResult(false);
 
         public bool IsAtEndOfContext => false;
         public void NotifyEndOfContext() { }

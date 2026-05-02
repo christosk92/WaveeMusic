@@ -294,6 +294,61 @@
                                           ToolTipService.ToolTip="On this PC"/>
                             </StackPanel>
                         </Grid>
+                        <Grid x:Name="RowProgressCell"
+                              Margin="0,3,0,0"
+                              ColumnSpacing="8"
+                              VerticalAlignment="Center"
+                              Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="RowProgressExplicit"
+                                    Grid.Column="0"
+                                    Style="{StaticResource ExplicitContentBadgeStyle}"
+                                    Visibility="Collapsed"
+                                    ToolTipService.ToolTip="Explicit">
+                                <TextBlock Text="E" Style="{StaticResource ExplicitContentBadgeTextStyle}"/>
+                            </Border>
+                            <ProgressBar x:Name="RowProgressBar"
+                                         Grid.Column="1"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Height="3"
+                                         VerticalAlignment="Center"/>
+                            <StackPanel x:Name="RowPlayedIndicator"
+                                        Grid.Column="1"
+                                        Grid.ColumnSpan="2"
+                                        Orientation="Horizontal"
+                                        Spacing="6"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed">
+                                <Border Width="14"
+                                        Height="14"
+                                        CornerRadius="7"
+                                        BorderThickness="1.5"
+                                        BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}">
+                                    <FontIcon Glyph="&#xE73E;"
+                                              FontSize="8"
+                                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="Played"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock x:Name="RowProgressText"
+                                       Grid.Column="2"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
                         <StackPanel Orientation="Horizontal"
                                     Spacing="4"
                                     Margin="0,-2,0,0"

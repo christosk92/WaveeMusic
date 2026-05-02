@@ -91,4 +91,19 @@ internal static class PathfinderOperations
     // is a separate query.
     public const string GetTrack = "getTrack";
     public const string GetTrackHash = "612585ae06ba435ad26369870deaae23b5c8800a256cd8a57e08eddc25a37294";
+
+    public const string GetEpisodeOrChapter = "getEpisodeOrChapter";
+    public const string GetEpisodeOrChapterHash = "3416929067571ac4b79db16716be3c6ea5f6265f7975a0ee94b1fc5ee1dc1e9d";
+
+    public const string InternalLinkRecommenderEpisode = "internalLinkRecommenderEpisode";
+    public const string InternalLinkRecommenderEpisodeHash = "122f5c777aae5c0918baec11cd646b7034b8f213f260097b4d229ad947ec7f93";
+
+    public const string GetCommentsForEntity = "getCommentsForEntity";
+    public const string GetCommentsForEntityHash = "bba34fe5f2da3aaa25ab5c90eef1fe2036d325bf32e791ae462b637665185d83";
+
+    public const string GetReplies = "getReplies";
+    public const string GetRepliesHash = "a2018b23184ee9c8f355f5bcb0584aa3afbacaed6912195a367aa1bb807359f6";
+
+    public const string GetReactions = "getReactions";
+    public const string GetReactionsHash = "0d209bf9507779887fe2b3032d1afd8f35de8425b01aead094698ff1abecda71";
 }

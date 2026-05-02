@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -161,6 +162,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private RepeatMode _repeatMode = RepeatMode.Off;
 
+    [ObservableProperty]
+    private double _playbackSpeed = 1.0;
+
+    public string PlaybackSpeedText => $"{PlaybackSpeed:0.##}x";
+
+    public bool IsCurrentItemEpisode =>
+        _playbackStateService.CurrentTrackId?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
+
+    private bool CanChangePlaybackSpeed => CanExecutePlayback && IsCurrentItemEpisode;
+
     // Progress (in milliseconds)
     [ObservableProperty]
     private double _position;
@@ -260,6 +271,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             NextCommand.NotifyCanExecuteChanged();
             SkipBackwardCommand.NotifyCanExecuteChanged();
             SkipForwardCommand.NotifyCanExecuteChanged();
+            SetPlaybackSpeedCommand.NotifyCanExecuteChanged();
             ToggleShuffleCommand.NotifyCanExecuteChanged();
             ToggleRepeatCommand.NotifyCanExecuteChanged();
         }
@@ -279,6 +291,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _isPlaying = _playbackStateService.IsPlaying;
         _isShuffle = _playbackStateService.IsShuffle;
         _repeatMode = _playbackStateService.RepeatMode;
+        _playbackSpeed = _playbackStateService.PlaybackSpeed;
         _duration = _playbackStateService.Duration;
         _position = ClampPlaybackPosition(_playbackStateService.Position);
         _anchorPositionMs = _position;
@@ -314,6 +327,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var hasTrack = !string.IsNullOrEmpty(newTrackId);
                 _logger?.LogDebug("[PlayerBar] CurrentTrackId → {TrackId} (hasTrack={HasTrack})", newTrackId ?? "<none>", hasTrack);
                 HasTrack = hasTrack;
+                OnPropertyChanged(nameof(IsCurrentItemEpisode));
+                SetPlaybackSpeedCommand.NotifyCanExecuteChanged();
                 TryAutoSwitchToVideo("track-changed");
                 break;
             case nameof(IPlaybackStateService.CurrentTrackTitle):
@@ -384,6 +399,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var newRepeat = _playbackStateService.RepeatMode;
                 _logger?.LogDebug("[PlayerBar] RepeatMode → {Value}", newRepeat);
                 RepeatMode = newRepeat;
+                break;
+            case nameof(IPlaybackStateService.PlaybackSpeed):
+                PlaybackSpeed = _playbackStateService.PlaybackSpeed;
                 break;
             case nameof(IPlaybackStateService.IsPlayingRemotely):
                 var newRemote = _playbackStateService.IsPlayingRemotely;
@@ -476,6 +494,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
         if (value > 0 && Position > value)
             ApplyPlaybackPosition(value, updateProgressBar: true, resetInterpolationClock: true);
+    }
+
+    partial void OnPlaybackSpeedChanged(double value)
+    {
+        OnPropertyChanged(nameof(PlaybackSpeedText));
     }
 
     partial void OnIsPlayingChanged(bool value)
@@ -596,8 +619,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void SkipBackward()
     {
-        // Skip back 10 seconds
-        var newPos = Math.Max(0, Position - 10000);
+        var newPos = Math.Max(0, Position - 15000);
         _logger?.LogInformation("[PlayerBar] SkipBackward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
         ApplyPlaybackPosition(newPos, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(newPos);
@@ -606,11 +628,19 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void SkipForward()
     {
-        // Skip forward 30 seconds
-        var newPos = Math.Min(Duration, Position + 30000);
+        var newPos = Math.Min(Duration, Position + 15000);
         _logger?.LogInformation("[PlayerBar] SkipForward clicked: {From}ms → {To}ms", (long)Position, (long)newPos);
         ApplyPlaybackPosition(newPos, updateProgressBar: true, resetInterpolationClock: true);
         _playbackStateService.Seek(newPos);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangePlaybackSpeed))]
+    private void SetPlaybackSpeed(string? value)
+    {
+        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var speed))
+            return;
+
+        _playbackStateService.SetPlaybackSpeed(speed);
     }
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]

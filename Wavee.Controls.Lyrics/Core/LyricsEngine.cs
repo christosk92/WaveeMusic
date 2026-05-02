@@ -231,6 +231,48 @@ namespace Wavee.Controls.Lyrics.Core
             }
         }
 
+        public int RefreshHoveringLineIndex()
+        {
+            if (_lyricsWindowStatus == null)
+                return -1;
+
+            _mouseHoverLineIndex = LyricsLayoutManager.FindMouseHoverLineIndex(
+                _renderLyricsLines,
+                _isMouseInLyricsArea,
+                _mousePosition,
+                _canvasYScrollTransition.Value + _mouseYScrollTransition.Value,
+                _renderLyricsHeight,
+                _lyricsWindowStatus.LyricsStyleSettings.PlayingLineTopOffset / 100.0);
+
+            return _mouseHoverLineIndex;
+        }
+
+        public bool TryRefreshHoveringLine(out int lineIndex, out Rect bounds)
+        {
+            lineIndex = RefreshHoveringLineIndex();
+            bounds = Rect.Empty;
+
+            if (lineIndex < 0
+                || _renderLyricsLines == null
+                || lineIndex >= _renderLyricsLines.Count
+                || _lyricsWindowStatus == null)
+            {
+                return false;
+            }
+
+            var line = _renderLyricsLines[lineIndex];
+            var yOffset = _canvasYScrollTransition.Value
+                          + _mouseYScrollTransition.Value
+                          + _renderLyricsHeight * (_lyricsWindowStatus.LyricsStyleSettings.PlayingLineTopOffset / 100.0);
+
+            var left = line.TopLeftPosition.X;
+            var top = yOffset + line.TopLeftPosition.Y;
+            var width = Math.Max(0, line.BottomRightPosition.X - line.TopLeftPosition.X);
+            var height = Math.Max(0, line.BottomRightPosition.Y - line.TopLeftPosition.Y);
+            bounds = new Rect(left, top, width, height);
+            return width > 0 && height > 0;
+        }
+
         public void SetLyricsData(LyricsData? lyricsData)
         {
             _lyricsData = lyricsData;

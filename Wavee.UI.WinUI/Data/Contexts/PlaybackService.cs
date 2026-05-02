@@ -207,6 +207,9 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         return ExecuteWithRetryAsync(c => _executor.SetRepeatAsync(state, c), nameof(SetRepeatModeAsync), ct, maxRetries: 0);
     }
 
+    public Task<PlaybackResult> SetPlaybackSpeedAsync(double speed, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.SetPlaybackSpeedAsync(speed, c), nameof(SetPlaybackSpeedAsync), ct, maxRetries: 0);
+
     public Task<PlaybackResult> SetVolumeAsync(int volumePercent, CancellationToken ct)
         => ExecuteWithRetryAsync(c => _executor.SetVolumeAsync(volumePercent, c), nameof(SetVolumeAsync), ct, maxRetries: 0);
 

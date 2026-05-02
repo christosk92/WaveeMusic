@@ -437,6 +437,11 @@ public sealed partial class PlayerBar : UserControl
             Title = ViewModel.TrackTitle ?? "Album",
             ImageUrl = ViewModel.AlbumArt
         };
+        if (albumId.StartsWith("spotify:show:", StringComparison.Ordinal))
+        {
+            NavigationHelpers.OpenShow(albumId, param.Title);
+            return;
+        }
         NavigationHelpers.OpenAlbum(param, param.Title);
     }
 
@@ -471,6 +476,15 @@ public sealed partial class PlayerBar : UserControl
                 break;
             case PlaybackContextType.LikedSongs:
                 NavigationHelpers.OpenLikedSongs();
+                break;
+            case PlaybackContextType.Show:
+                NavigationHelpers.OpenShow(param.Uri, param.Title);
+                break;
+            case PlaybackContextType.Episode:
+                if (param.Uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase))
+                    NavigationHelpers.OpenYourEpisodes();
+                else
+                    NavigationHelpers.OpenShow(param.Uri, param.Title);
                 break;
             default:
                 // Queue / Search / Unknown — no canonical destination; fall back

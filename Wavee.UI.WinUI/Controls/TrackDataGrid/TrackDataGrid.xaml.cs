@@ -38,8 +38,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private readonly ObservableCollection<ITrackItem> _visibleRows = new();
     private IReadOnlyList<ITrackItem> _sourceSnapshot = Array.Empty<ITrackItem>();
     private INotifyCollectionChanged? _subscribedSource;
+    private ISettingsService? _settingsService;
     private string _filterText = string.Empty;
     private bool _disposed;
+    public event EventHandler<ITrackItem>? RowSelected;
 
     // Size-slider stops (matches the XS/S/M/L/XL segmentation in the view flyout).
     // MinHeight floor per row; content (padding + art + text) may still push the
@@ -51,6 +53,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         InitializeComponent();
         RowsList.ItemsSource = _visibleRows;
         RowsList.ContainerContentChanging += RowsList_ContainerContentChanging;
+        RowsList.SelectionChanged += RowsList_SelectionChanged;
         RowsList.Loaded += RowsList_Loaded;
         RowsList.Unloaded += RowsList_Unloaded;
 
@@ -60,6 +63,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         DensitySlider.Value = 2;
 
         var defaults = TrackDataGridDefaults.Create(TrackDataGridDefaults.PlaylistPageKey);
+        ApplyPersistedColumnWidths(defaults, TrackDataGridDefaults.PlaylistPageKey);
         SetValue(ColumnsProperty, defaults);
         Root.Tag = defaults;
         SubscribeColumns(defaults);
@@ -170,7 +174,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
                 item.RowDensity = _preferredDensity;
                 item.PlayCommand = PlayCommand;
-                item.SetAlternatingBorder(args.ItemIndex % 2 != 0);
+                item.SetAlternatingBorder(args.ItemIndex % 2 != 0, UseCardRows);
                 item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
                 SyncLazyRowSubscription(container, item, args.Item);
                 WireContainerToggleHandlers(container);
@@ -186,6 +190,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 item.ShowAddedByColumn   = AddedByVisible && ColumnVisible("AddedBy");
                 item.ShowDateAdded       = ColumnVisible("DateAdded");
                 item.ShowPlayCount       = ColumnVisible("PlayCount");
+                item.ShowProgress        = ShouldShowInlineProgress();
                 item.EndBatchUpdate();
                 args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
                 break;
@@ -350,6 +355,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private bool ColumnVisible(string key) =>
         Columns?.Any(c => c.Key == key && c.IsVisible) ?? false;
 
+    private bool ShouldShowInlineProgress() =>
+        PageKey == TrackDataGridDefaults.PodcastPageKey || ColumnVisible("Progress");
+
     private double WidthOf(string key, double fallback)
     {
         var col = Columns?.FirstOrDefault(c => c.Key == key);
@@ -364,6 +372,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         item.AddedByColumnWidth   = WidthOf("AddedBy", 140);
         item.DateAddedColumnWidth = WidthOf("DateAdded", 120);
         item.PlayCountColumnWidth = WidthOf("PlayCount", 100);
+        item.ProgressColumnWidth  = WidthOf("Progress", 150);
         item.DurationColumnWidth  = WidthOf("Duration", 60);
     }
 
@@ -391,6 +400,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 ti.ShowAddedByColumn   = addedByShow;
                 ti.ShowDateAdded       = ColumnVisible("DateAdded");
                 ti.ShowPlayCount       = ColumnVisible("PlayCount");
+                ti.ShowProgress        = ShouldShowInlineProgress();
                 PushWidthsToRow(ti);
                 ti.EndBatchUpdate();
                 walked++;
@@ -423,11 +433,79 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 case "PlayCount":
                     ti.PlayCountColumnWidth = WidthOf("PlayCount", 100);
                     break;
+                case "Progress":
+                    ti.ProgressColumnWidth = WidthOf("Progress", 150);
+                    break;
                 case "Duration":
                     ti.DurationColumnWidth = WidthOf("Duration", 60);
                     break;
             }
         }
+    }
+
+    private void ApplyPersistedColumnWidths(TrackDataGridColumns columns, string pageKey)
+    {
+        if (TryGetSettings()?.Settings.ColumnWidths is not { } allWidths)
+            return;
+
+        if (!allWidths.TryGetValue(pageKey, out var pageWidths))
+            return;
+
+        foreach (var column in columns)
+        {
+            if (!column.SupportsResize || string.IsNullOrWhiteSpace(column.Key))
+                continue;
+
+            if (!pageWidths.TryGetValue(column.Key, out var width) || width <= 0)
+                continue;
+
+            column.Length = new GridLength(CoerceColumnWidth(column, width), GridUnitType.Pixel);
+        }
+    }
+
+    private void PersistColumnWidth(TrackDataGridColumn column)
+    {
+        if (!column.SupportsResize || string.IsNullOrWhiteSpace(column.Key) || column.Length.Value <= 0)
+            return;
+
+        var pageKey = string.IsNullOrWhiteSpace(PageKey)
+            ? TrackDataGridDefaults.PlaylistPageKey
+            : PageKey;
+        var key = column.Key;
+        var width = Math.Round(CoerceColumnWidth(column, column.Length.Value));
+
+        TryGetSettings()?.Update(settings =>
+        {
+            if (!settings.ColumnWidths.TryGetValue(pageKey, out var pageWidths))
+            {
+                pageWidths = new Dictionary<string, double>(StringComparer.Ordinal);
+                settings.ColumnWidths[pageKey] = pageWidths;
+            }
+
+            pageWidths[key] = width;
+        });
+    }
+
+    private ISettingsService? TryGetSettings()
+    {
+        if (_settingsService is not null)
+            return _settingsService;
+
+        try
+        {
+            return _settingsService = Ioc.Default.GetService<ISettingsService>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double CoerceColumnWidth(TrackDataGridColumn column, double width)
+    {
+        var min = column.MinLength.IsAuto ? 0 : column.MinLength.Value;
+        var max = column.MaxLength.IsAuto ? double.PositiveInfinity : column.MaxLength.Value;
+        return Math.Clamp(width, min, max);
     }
 
     // ------------------------------------------------------------------ DPs
@@ -471,6 +549,52 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         get => (ICommand?)GetValue(PlayCommandProperty);
         set => SetValue(PlayCommandProperty, value);
+    }
+
+    public static readonly DependencyProperty SelectionChangedCommandProperty =
+        DependencyProperty.Register(nameof(SelectionChangedCommand), typeof(ICommand), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    /// <summary>Invoked with the selected row when the internal track list selection changes.</summary>
+    public ICommand? SelectionChangedCommand
+    {
+        get => (ICommand?)GetValue(SelectionChangedCommandProperty);
+        set => SetValue(SelectionChangedCommandProperty, value);
+    }
+
+    public static readonly DependencyProperty UseCardRowsProperty =
+        DependencyProperty.Register(nameof(UseCardRows), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnUseCardRowsChanged));
+
+    public bool UseCardRows
+    {
+        get => (bool)GetValue(UseCardRowsProperty);
+        set => SetValue(UseCardRowsProperty, value);
+    }
+
+    private static void OnUseCardRowsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.RefreshRowCardStyles();
+    }
+
+    public void ClearSelection()
+    {
+        RowsList.SelectedItems.Clear();
+    }
+
+    private void RefreshRowCardStyles()
+    {
+        foreach (var item in RowsList.Items)
+        {
+            if (RowsList.ContainerFromItem(item) is not ListViewItem container)
+                continue;
+            if (container.ContentTemplateRoot is not Track.TrackItem row)
+                continue;
+
+            var index = RowsList.IndexFromContainer(container);
+            row.SetAlternatingBorder(index % 2 != 0, UseCardRows);
+        }
     }
 
     public static readonly DependencyProperty AddedByVisibleProperty =
@@ -713,7 +837,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         if (d is not TrackDataGrid grid) return;
         if (e.NewValue is not string key || string.IsNullOrEmpty(key)) return;
-        grid.Columns = TrackDataGridDefaults.Create(key);
+        var columns = TrackDataGridDefaults.Create(key);
+        grid.ApplyPersistedColumnWidths(columns, key);
+        grid.Columns = columns;
     }
 
     private static void OnItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -841,7 +967,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 splitter.ResizeCompleted += (_, _) =>
                 {
                     if (_headerSlots.TryGetValue(capturedCol, out var slot))
+                    {
                         capturedCol.Length = slot.Def.Width;
+                        PersistColumnWidth(capturedCol);
+                    }
                 };
                 Grid.SetColumn(splitter, i + 1);
                 HeaderHost.Children.Add(splitter);
@@ -1125,6 +1254,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void ClearSelectionItem_Click(object sender, RoutedEventArgs e) => RowsList.SelectedItems.Clear();
 
+    private void RowsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var selected = RowsList.SelectedItem;
+        if (selected is ITrackItem track)
+            RowSelected?.Invoke(this, track);
+
+        if (selected is not null && SelectionChangedCommand?.CanExecute(selected) == true)
+            SelectionChangedCommand.Execute(selected);
+    }
+
     // Tap / DoubleTap are handled inside TrackItem (respecting AppSettings.TrackClickBehavior)
     // and native Extended-mode selection — nothing to wire at this level. Enter/Space on a
     // keyboard-selected row still plays via the handler below, matching TrackListView.
@@ -1167,6 +1306,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
 
         RowsList.ContainerContentChanging -= RowsList_ContainerContentChanging;
+        RowsList.SelectionChanged -= RowsList_SelectionChanged;
         RowsList.Loaded -= RowsList_Loaded;
         RowsList.Unloaded -= RowsList_Unloaded;
 
@@ -1209,6 +1349,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         ItemsSource = null;
         PlayCommand = null;
+        SelectionChangedCommand = null;
         DateAddedFormatter = null;
         PlayCountFormatter = null;
         AddedByFormatter = null;

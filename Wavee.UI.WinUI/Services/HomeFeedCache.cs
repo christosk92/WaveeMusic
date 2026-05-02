@@ -273,6 +273,7 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         SetStringPreservingExisting(target.BaselineGroupTitle, source.BaselineGroupTitle, v => target.BaselineGroupTitle = v);
         if (!ReferenceEquals(target.PreviewTracks, source.PreviewTracks)) target.PreviewTracks = source.PreviewTracks;
         if (target.RecentlyAddedCount != source.RecentlyAddedCount) target.RecentlyAddedCount = source.RecentlyAddedCount;
+        if (target.RecentlyAddedItemNoun != source.RecentlyAddedItemNoun) target.RecentlyAddedItemNoun = source.RecentlyAddedItemNoun;
         if (target.IsRecentlySaved != source.IsRecentlySaved) target.IsRecentlySaved = source.IsRecentlySaved;
         if (!ReferenceEquals(target.RecentlyAddedThumbnailUris, source.RecentlyAddedThumbnailUris)) target.RecentlyAddedThumbnailUris = source.RecentlyAddedThumbnailUris;
         SetStringPreservingExisting(target.RecentlyAddedThumbnail1Url, source.RecentlyAddedThumbnail1Url, v => target.RecentlyAddedThumbnail1Url = v);
@@ -350,6 +351,8 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
             target.PreviewTracks = source.PreviewTracks;
         if (target.RecentlyAddedCount is null && source.RecentlyAddedCount is not null)
             target.RecentlyAddedCount = source.RecentlyAddedCount;
+        if (target.RecentlyAddedItemNoun == "song" && source.RecentlyAddedItemNoun != "song")
+            target.RecentlyAddedItemNoun = source.RecentlyAddedItemNoun;
         if (!target.IsRecentlySaved && source.IsRecentlySaved)
             target.IsRecentlySaved = true;
         if (target.RecentlyAddedThumbnailUris.Count == 0 && source.RecentlyAddedThumbnailUris.Count > 0)

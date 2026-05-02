@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.SidebarPlayer.LyricsAiPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:ic="using:FluentIcons.WinUI"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <AcrylicBrush x:Key="LyricsAiCardBrush"
+                                  TintColor="#F7F7F7"
+                                  TintOpacity="0.46"
+                                  TintLuminosityOpacity="0.88"
+                                  FallbackColor="#EEF4F7FA" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <AcrylicBrush x:Key="LyricsAiCardBrush"
+                                  TintColor="#10161C"
+                                  TintOpacity="0.50"
+                                  TintLuminosityOpacity="0.76"
+                                  FallbackColor="#D910161C" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <AcrylicBrush x:Key="LyricsAiCardBrush"
+                                  TintColor="#10161C"
+                                  TintOpacity="0.50"
+                                  TintLuminosityOpacity="0.76"
+                                  FallbackColor="#D910161C" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <!--
+        Two-zone layout, mounted Stretch/Stretch in RightPanelView so the
+        result card can claim the full lyrics tab when expanded.
+          Row 0 (Auto)  — affordance pills row, right-anchored, always visible
+                          when AI gates pass.
+          Row 1 (Star)  — result card. Two visual states:
+                            • Compact  — small (MaxWidth 380, MaxHeight 240)
+                                         right-anchored acrylic chip; "Show
+                                         more" expands it.
+                            • Expanded — fills the lyrics tab; "Show less"
+                                         collapses back to compact.
+                          VSM animates MaxWidth/MaxHeight between states.
+    -->
+    <Grid x:Name="RootGrid"
+          Visibility="{x:Bind ViewModel.IsAnyAiAvailable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Affordance row -->
+        <StackPanel x:Name="AiActionsRow"
+                    Grid.Row="0"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    HorizontalAlignment="Right"
+                    Margin="0,6,8,8">
+
+            <Button Style="{StaticResource SparkleAffordanceButtonStyle}"
+                    Command="{x:Bind ViewModel.SummarizeSongCommand}"
+                    IsEnabled="{x:Bind ViewModel.IsSummarizeAvailable, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.IsSummarizeAvailable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                    ToolTipService.ToolTip="Interpret the lyrics on-device">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <controls:AiSparkleIcon State="{x:Bind ViewModel.SparkleState, Mode=OneWay}" />
+                    <TextBlock Text="Lyrics meaning"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <Button Style="{StaticResource SparkleAffordanceButtonStyle}"
+                    Command="{x:Bind ViewModel.ExplainCurrentLineCommand}"
+                    IsEnabled="{x:Bind ViewModel.IsExplainAvailable, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.IsExplainAvailable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                    ToolTipService.ToolTip="Explain the lyric line currently playing">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <ic:SymbolIcon Symbol="LightbulbFilament"
+                                   IconVariant="Filled"
+                                   FontSize="14"
+                                   Foreground="{ThemeResource AiAccentSolidBrush}" />
+                    <TextBlock Text="Explain line"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- Result card. Right-anchored so the compact→expanded transition
+             grows leftward from the same right edge. Acrylic background gives
+             the chip a soft material feel while still occluding the lyrics
+             behind it well enough to be readable. -->
+        <Border x:Name="ResultCard"
+                Grid.Row="1"
+                Background="{ThemeResource LyricsAiCardBrush}"
+                BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Width="368"
+                Height="240"
+                MaxWidth="368"
+                MaxHeight="240"
+                Margin="8,0,8,8"
+                Padding="14,12,14,14"
+                Visibility="{x:Bind ViewModel.HasResult, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+
+            <Grid x:Name="ResultContentGrid" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Header: caption + dismiss -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="{x:Bind ViewModel.ResultCaption, Mode=OneWay}"
+                               Style="{StaticResource AiCaptionTextBlockStyle}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+
+                    <Button Grid.Column="1"
+                            Command="{x:Bind ViewModel.DismissResultCommand}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="4"
+                            ToolTipService.ToolTip="Dismiss"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                        <FontIcon Glyph="{x:Bind ViewModel.DismissGlyph}" FontSize="10" />
+                    </Button>
+                </Grid>
+
+                <!-- Streaming progress — visible until the final token arrives. -->
+                <ProgressBar Grid.Row="1"
+                             IsIndeterminate="True"
+                             Foreground="{ThemeResource AiAccentGradientBrush}"
+                             Background="Transparent"
+                             Visibility="{x:Bind ViewModel.IsBusy, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+
+                <!-- Body. ScrollViewer name is referenced from code-behind so
+                     it auto-scrolls to bottom as deltas append. -->
+                <ScrollViewer x:Name="ResultScrollViewer"
+                              Grid.Row="2"
+                              VerticalScrollMode="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollMode="Disabled"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <TextBlock Text="{x:Bind ViewModel.ResultText, Mode=OneWay}"
+                               TextWrapping="WrapWholeWords"
+                               IsTextSelectionEnabled="True"
+                               LineHeight="20"
+                               FontSize="13"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                </ScrollViewer>
+
+                <!-- Footer: expand/collapse toggle. Caption flips with the
+                     expansion state. The expand button itself is hidden while
+                     the result is empty (e.g. cache miss yielded blank). -->
+                <Button Grid.Row="3"
+                        Command="{x:Bind ViewModel.ToggleExpandedCommand}"
+                        HorizontalAlignment="Right"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="6,3">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <FontIcon Glyph="{x:Bind ViewModel.ExpandToggleGlyph, Mode=OneWay}"
+                                  FontSize="10"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.ExpandToggleLabel, Mode=OneWay}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

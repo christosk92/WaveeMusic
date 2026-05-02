@@ -183,6 +183,13 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
             return;
         }
 
+        if (trackId.Contains(':', StringComparison.Ordinal)
+            && !trackId.StartsWith("spotify:track:", StringComparison.Ordinal))
+        {
+            ClearData();
+            return;
+        }
+
         if (trackId == _loadedTrackId) return;
         _loadedTrackId = trackId;
 

@@ -8,14 +8,14 @@ using Wavee.UI.WinUI.Data.Models;
 namespace Wavee.UI.WinUI.Data.Messages;
 
 /// <summary>
-/// Sent by PlaybackStateService when a new track starts playing.
+/// Sent by PlaybackStateService when a new track or episode starts playing.
 /// TrackMetadataEnricher picks this up and fetches full API metadata.
 /// </summary>
 public sealed class TrackEnrichmentRequestMessage(string trackUri)
     : ValueChangedMessage<string>(trackUri);
 
 /// <summary>
-/// Sent by TrackMetadataEnricher with full API-fetched track metadata.
+/// Sent by TrackMetadataEnricher with full API-fetched track or episode metadata.
 /// PlaybackStateService receives this and overwrites UI properties.
 /// </summary>
 public sealed class TrackMetadataEnrichedMessage
@@ -32,14 +32,14 @@ public sealed class TrackMetadataEnrichedMessage
 }
 
 /// <summary>
-/// Sent by PlaybackStateService when queue tracks lack metadata.
+/// Sent by PlaybackStateService when queue tracks or episodes lack metadata.
 /// TrackMetadataEnricher picks this up and fetches in batch.
 /// </summary>
 public sealed class QueueEnrichmentRequestMessage(IReadOnlyList<string> trackUris)
     : ValueChangedMessage<IReadOnlyList<string>>(trackUris);
 
 /// <summary>
-/// Sent by TrackMetadataEnricher with enriched queue track data.
+/// Sent by TrackMetadataEnricher with enriched queue item data.
 /// PlaybackStateService patches queue items with these results.
 /// </summary>
 public sealed class QueueMetadataEnrichedMessage
@@ -48,7 +48,7 @@ public sealed class QueueMetadataEnrichedMessage
 }
 
 /// <summary>
-/// Enriched metadata for a single queue track.
+/// Enriched metadata for a single queue track or episode.
 /// </summary>
 public sealed record QueueTrackMetadata(
     string Title,
@@ -67,11 +67,8 @@ public sealed class ExtendedTopTracksRequest : AsyncRequestMessage<List<ArtistTo
 }
 
 /// <summary>
-/// Request to resolve cover-art image URLs for a list of track URIs via the
-/// extended-metadata pipeline (cache + batched fetch). Used by ArtistViewModel
-/// to patch missing AlbumImageUrl values on the initial top-tracks list, since
-/// Spotify's getArtistOverview GraphQL response is inconsistent about
-/// returning albumOfTrack.coverArt for every track.
+/// Request to resolve cover-art image URLs for a list of playable URIs via the
+/// metadata pipeline. Supports tracks and episodes.
 /// </summary>
 public sealed class TrackImagesEnrichmentRequest : AsyncRequestMessage<IReadOnlyDictionary<string, string?>>
 {

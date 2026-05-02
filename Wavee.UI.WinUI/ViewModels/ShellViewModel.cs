@@ -531,6 +531,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                         IconSource = new FontIconSource { Glyph = "\uEB52" },
                         Tag = "LikedSongs",
                         BadgeCount = 156 // TODO: Connect to library service
+                    },
+                    new SidebarItemModel
+                    {
+                        Text = AppLocalization.GetString("Shell_SidebarPodcasts"),
+                        IconSource = new FontIconSource { Glyph = "\uEC05" },
+                        Tag = "Podcasts",
+                        BadgeCount = 0
                     }
                 }
             },
@@ -737,8 +744,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 var artistsItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "Artists");
                 if (artistsItem != null) artistsItem.BadgeCount = stats.ArtistCount;
 
-                    var likedItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "LikedSongs");
-                    if (likedItem != null) likedItem.BadgeCount = stats.LikedSongsCount;
+                var likedItem = libraryChildren.FirstOrDefault(x => x.Tag as string == "LikedSongs");
+                if (likedItem != null) likedItem.BadgeCount = stats.LikedSongsCount;
+
+                var podcastsItem = libraryChildren.FirstOrDefault(x => x.Tag as string is "Podcasts" or "YourEpisodes");
+                if (podcastsItem != null) podcastsItem.BadgeCount = stats.PodcastCount;
             }
 
             PopulatePlaylistsSidebar(await playlistsTask, await treeTask);

@@ -24,6 +24,7 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 - **Lyrics** — synced lyrics with shader effects, multi‑language detection, and CJK romanization (pinyin / kana).
 - **Local file library** — index audio and video files from disk, browse them alongside Spotify content.
 - **Friends feed**, **profile**, **concerts**, in‑app **settings** (theme, audio device, EQ, language, diagnostics).
+- **On-device AI on Copilot+ PCs** (opt-in) — explain a lyric line or summarize a song's themes with Phi Silica running locally on the NPU. Nothing leaves the machine; off by default.
 
 ### Spotify Connect
 - Full Dealer WebSocket implementation, real‑time cluster state synchronization.
@@ -68,7 +69,7 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 ## Quick start
 
 ### Prerequisites
-- Windows 10 version 1809 (build 17763) or later
+- **Windows 11 version 24H2 (build 26100)** or later — required since v0.1.0-beta to enable on-device AI features.
 - .NET 10 SDK
 - A Spotify **Premium** account
 
@@ -211,4 +212,4 @@ This project is not affiliated with, endorsed by, or sponsored by Spotify AB. Al
 
 ---
 
-**Status**: Active development · **Platform**: Windows 10 (1809) and 11
+**Status**: Active development · **Platform**: Windows 11 24H2+

@@ -57,6 +57,89 @@ public interface ILibraryDataService
     Task<IReadOnlyList<LikedSongDto>> GetLikedSongsAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Gets saved podcast episodes in the user's library.
+    /// </summary>
+    Task<IReadOnlyList<LibraryEpisodeDto>> GetYourEpisodesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets podcast episodes recently seen in Spotify's podcast resumption state.
+    /// Includes saved and unsaved episodes when metadata can be resolved.
+    /// </summary>
+    Task<IReadOnlyList<LibraryEpisodeDto>> GetRecentlyPlayedPodcastEpisodesAsync(int limit = 50, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets followed podcasts plus podcast shows inferred from saved episodes.
+    /// </summary>
+    Task<IReadOnlyList<LibraryPodcastShowDto>> GetPodcastShowsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets enriched podcast episode details from Spotify when available,
+    /// including recommendations and comments.
+    /// </summary>
+    Task<PodcastEpisodeDetailDto?> GetPodcastEpisodeDetailAsync(string episodeUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches a subsequent page of public comments for a podcast episode using
+    /// the page token returned by an earlier call.
+    /// </summary>
+    Task<PodcastEpisodeCommentsPageDto?> GetPodcastEpisodeCommentsPageAsync(
+        string episodeUri, string? pageToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches a page of replies for a single comment.
+    /// </summary>
+    Task<PodcastCommentRepliesPageDto?> GetPodcastCommentRepliesAsync(
+        string commentUri, string? pageToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches a page of reactions for a single comment or reply.
+    /// </summary>
+    Task<PodcastCommentReactionsPageDto?> GetPodcastCommentReactionsAsync(
+        string uri,
+        string? pageToken,
+        string? reactionUnicode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a reply for a public podcast comment. Spotify write support is currently stubbed.
+    /// </summary>
+    Task<PodcastEpisodeCommentReplyDto> CreatePodcastCommentReplyAsync(
+        string commentUri,
+        string text,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds or updates the current user's emoji reaction for a public podcast comment.
+    /// Spotify write support is currently stubbed.
+    /// </summary>
+    Task ReactToPodcastCommentAsync(
+        string commentUri,
+        string emoji,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds or updates the current user's emoji reaction for a public podcast comment reply.
+    /// Spotify write support is currently stubbed.
+    /// </summary>
+    Task ReactToPodcastCommentReplyAsync(
+        string replyUri,
+        string emoji,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets just the played-state fields needed by podcast library rows.
+    /// </summary>
+    Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(string episodeUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a podcast episode comment. Spotify write support is currently stubbed.
+    /// </summary>
+    Task<PodcastEpisodeCommentDto> CreatePodcastEpisodeCommentAsync(
+        string episodeUri,
+        string text,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Gets Spotify-provided content filters for the liked songs page.
     /// </summary>
     Task<IReadOnlyList<LikedSongsFilterDto>> GetLikedSongFiltersAsync(CancellationToken ct = default);

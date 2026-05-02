@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Core.Storage.Abstractions;
+using Wavee.Core.Storage.Entities;
 
 namespace Wavee.Core.Storage;
 
@@ -15,6 +16,13 @@ public interface ICacheService : IAsyncDisposable
     Task<Dictionary<string, TrackCacheEntry>> GetTracksAsync(IEnumerable<string> uris, CancellationToken ct = default);
     Task SetTrackAsync(string uri, TrackCacheEntry entry, CancellationToken ct = default);
     Task SetTracksAsync(IEnumerable<(string Uri, TrackCacheEntry Entry)> tracks, CancellationToken ct = default);
+
+    // Episode operations — SQLite-backed read path mirroring GetTracksAsync.
+    // No dedicated hot cache today (the existing hot cache is typed for
+    // TrackCacheEntry); episodes are read from the unified metadata DB which
+    // is populated by ExtendedMetadataClient.StoreEpisodePropertiesAsync when
+    // a batched EpisodeV4 extension fetch lands.
+    Task<Dictionary<string, EpisodeCacheEntry>> GetEpisodesAsync(IEnumerable<string> uris, CancellationToken ct = default);
 
     // Audio key operations (keyed by trackUri + fileId)
     Task<byte[]?> GetAudioKeyAsync(string trackUri, FileId fileId, CancellationToken ct = default);
@@ -179,6 +187,31 @@ public sealed class CacheService : ICacheService, ICleanableCache
                 }
             }
         }
+
+        return result;
+    }
+
+    public async Task<Dictionary<string, EpisodeCacheEntry>> GetEpisodesAsync(
+        IEnumerable<string> uris,
+        CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var uriList = uris.ToList();
+        var result = new Dictionary<string, EpisodeCacheEntry>();
+
+        // Episodes don't have a hot cache layer yet — go straight to SQLite.
+        // Logged hits/misses mirror GetTracksAsync's shape so the trace lines
+        // line up symmetrically when both run during a single Home parse.
+        foreach (var uri in uriList)
+        {
+            var dbEntity = await _database.GetEntityAsync(uri, ct);
+            if (dbEntity != null && dbEntity.EntityType == EntityType.Episode)
+                result[uri] = MapToEpisodeCacheEntry(dbEntity);
+        }
+
+        _logger?.LogDebug("GetEpisodesAsync: 0 hot hits, {Misses} SQLite lookups",
+            uriList.Count);
 
         return result;
     }
@@ -580,6 +613,35 @@ public sealed class CacheService : ICacheService, ICleanableCache
             ReleaseYear = entity.ReleaseYear,
             ImageUrl = entity.ImageUrl,
             IsPlayable = true,
+            CachedAt = entity.UpdatedAt
+        };
+    }
+
+    /// <summary>
+    /// Maps a unified-store <see cref="CachedEntity"/> back into the typed
+    /// <see cref="EpisodeCacheEntry"/> used by callers. Field correspondence
+    /// matches what <c>ExtendedMetadataClient.StoreEpisodePropertiesAsync</c>
+    /// writes when an EpisodeV4 batched-extension response lands:
+    ///   entity.Title       ← episode.Name
+    ///   entity.AlbumName   ← episode.Show.Name      (carried as ShowName here)
+    ///   entity.AlbumUri    ← spotify:show:{base62}  (carried as ShowUri here)
+    ///   entity.ArtistName  ← episode.Show.Publisher (unused on EpisodeCacheEntry)
+    ///   entity.ImageUrl    ← episode.CoverImage ?? show.CoverImage
+    /// </summary>
+    private static EpisodeCacheEntry MapToEpisodeCacheEntry(CachedEntity entity)
+    {
+        return new EpisodeCacheEntry
+        {
+            Uri = entity.Uri,
+            Name = entity.Title,
+            ShowUri = entity.AlbumUri,
+            ShowName = entity.AlbumName,
+            Description = entity.Description,
+            DurationMs = entity.DurationMs,
+            ReleaseDate = entity.ReleaseYear is { } year
+                ? new DateTimeOffset(year, 1, 1, 0, 0, 0, TimeSpan.Zero)
+                : null,
+            ImageUrl = entity.ImageUrl,
             CachedAt = entity.UpdatedAt
         };
     }

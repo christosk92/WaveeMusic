@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Wavee.UI.WinUI.ViewModels;
 
 /// <summary>
-/// Parent view model for the Library page. Lazily resolves the three
+/// Parent view model for the Library page. Lazily resolves the
 /// sub-view models and caches them for the lifetime of the LibraryPage,
 /// so switching tabs inside the library does not re-instantiate state.
 /// </summary>
@@ -16,6 +16,7 @@ public sealed class LibraryPageViewModel : IDisposable
     private AlbumsLibraryViewModel? _albums;
     private ArtistsLibraryViewModel? _artists;
     private LikedSongsViewModel? _likedSongs;
+    private YourEpisodesViewModel? _yourEpisodes;
 
     public LibraryPageViewModel(IServiceProvider services)
     {
@@ -37,6 +38,11 @@ public sealed class LibraryPageViewModel : IDisposable
             ? _likedSongs ??= _services.GetRequiredService<LikedSongsViewModel>()
             : throw new ObjectDisposedException(nameof(LibraryPageViewModel));
 
+    public YourEpisodesViewModel YourEpisodes =>
+        !_disposed
+            ? _yourEpisodes ??= _services.GetRequiredService<YourEpisodesViewModel>()
+            : throw new ObjectDisposedException(nameof(LibraryPageViewModel));
+
     public void Dispose()
     {
         if (_disposed)
@@ -47,6 +53,7 @@ public sealed class LibraryPageViewModel : IDisposable
         DisposeIfNeeded(ref _albums);
         DisposeIfNeeded(ref _artists);
         DisposeIfNeeded(ref _likedSongs);
+        DisposeIfNeeded(ref _yourEpisodes);
     }
 
     private static void DisposeIfNeeded<T>(ref T? value)

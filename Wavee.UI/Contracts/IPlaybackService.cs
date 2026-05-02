@@ -65,6 +65,7 @@ public interface IPlaybackService : INotifyPropertyChanged
 
     Task<PlaybackResult> SetShuffleAsync(bool enabled, CancellationToken ct = default);
     Task<PlaybackResult> SetRepeatModeAsync(RepeatMode mode, CancellationToken ct = default);
+    Task<PlaybackResult> SetPlaybackSpeedAsync(double speed, CancellationToken ct = default);
     Task<PlaybackResult> SetVolumeAsync(int volumePercent, CancellationToken ct = default);
 
     // ── Queue ──

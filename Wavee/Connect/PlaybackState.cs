@@ -57,6 +57,13 @@ public sealed record PlaybackState
     public long DurationMs { get; init; }
 
     /// <summary>
+    /// Selected playback speed for spoken-word media. Defaults to normal speed.
+    /// Top-level PlayerState may report 0 while paused, so this stores the
+    /// effective content rate rather than the transient transport rate.
+    /// </summary>
+    public double PlaybackSpeed { get; init; } = 1.0;
+
+    /// <summary>
     /// Current playback status.
     /// </summary>
     public PlaybackStatus Status { get; init; }
@@ -282,7 +289,7 @@ public sealed record PlaybackState
 public sealed record TrackInfo
 {
     /// <summary>
-    /// Spotify track URI (e.g., "spotify:track:xxx").
+    /// Spotify content URI (e.g., "spotify:track:xxx" or "spotify:episode:xxx").
     /// </summary>
     public required string Uri { get; init; }
 
@@ -302,12 +309,12 @@ public sealed record TrackInfo
     public string? Artist { get; init; }
 
     /// <summary>
-    /// Album name.
+    /// Album or show name.
     /// </summary>
     public string? Album { get; init; }
 
     /// <summary>
-    /// Album URI (e.g., "spotify:album:xxx").
+    /// Album or show URI (e.g., "spotify:album:xxx", "spotify:show:xxx").
     /// </summary>
     public string? AlbumUri { get; init; }
 
@@ -430,6 +437,9 @@ public enum StateChanges
     /// <summary>Volume changed on active device.</summary>
     Volume = 1 << 8,
 
+    /// <summary>Playback speed changed.</summary>
+    PlaybackSpeed = 1 << 9,
+
     /// <summary>All state changed (initial state or major update).</summary>
-    All = Track | Position | Status | Context | Options | ActiveDevice | Source | Queue | Volume
+    All = Track | Position | Status | Context | Options | ActiveDevice | Source | Queue | Volume | PlaybackSpeed
 }

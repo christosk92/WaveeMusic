@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -224,10 +225,32 @@ public static class AppLifecycleHelper
         // Propagate to the audio process so its CLI flag matches at first launch.
         Wavee.AudioIpc.AudioProcessManager.UseVerboseLogging = verboseEnabled;
 
-        var rxuiInstance = RxAppBuilder.CreateReactiveUIBuilder()
-            .WithWinUI() // Register WinUI platform services
-            .WithViewsFromAssembly(typeof(App).Assembly) // Register views and view models
-            .BuildApp();
+        // ReactiveUI's WithViewsFromAssembly calls Assembly.GetTypes() under the
+        // hood, which throws ReflectionTypeLoadException if ANY type in the
+        // assembly references something the loader can't resolve. We deliberately
+        // reference Microsoft.Windows.AI.Text.LanguageModel from AiCapabilities /
+        // LyricsAiService — strongly-typed, the right pattern — but on machines
+        // where the AI projection DLLs are absent (or our build target stripped
+        // them too aggressively) those types fail to load at metadata enumeration
+        // time, hard-crashing the app before OnLaunched returns.
+        //
+        // We cannot make GetTypes() succeed without the assemblies, but we CAN
+        // make startup robust: if the type-load throws, log the loader failures
+        // (so a future bug is diagnosable) and proceed without the ReactiveUI
+        // view registration. The typed AI calls then short-circuit naturally
+        // through AiCapabilities.LanguageModelHardwareAvailable returning false.
+        var rxuiBuilder = RxAppBuilder.CreateReactiveUIBuilder().WithWinUI();
+        try
+        {
+            rxuiBuilder = rxuiBuilder.WithViewsFromAssembly(typeof(App).Assembly);
+        }
+        catch (System.Reflection.ReflectionTypeLoadException ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[ReactiveUI] WithViewsFromAssembly failed with ReflectionTypeLoadException. " +
+                $"Loader failures: {string.Join(" | ", ex.LoaderExceptions.Where(e => e != null).Select(e => e!.Message))}");
+        }
+        var rxuiInstance = rxuiBuilder.BuildApp();
 
         // Create the InMemorySink early so Serilog can write to it from the start
         var inMemorySink = new InMemorySink(_uiDispatcher);
@@ -458,6 +481,20 @@ public static class AppLifecycleHelper
                 .AddSingleton<ILocalizationService, LocalizationService>()
                 .AddSingleton<IAppLocalizationService, AppLocalizationService>()
                 .AddSingleton<ISettingsService, SettingsService>()
+
+                // On-device AI (Copilot+ PC; opt-in via Settings → On-device AI)
+                .AddSingleton<AiCapabilities>(sp =>
+                    new AiCapabilities(
+                        sp.GetRequiredService<ISettingsService>(),
+                        sp.GetService<ILogger<AiCapabilities>>()))
+                .AddSingleton<LyricsAiService>(sp =>
+                    new LyricsAiService(
+                        sp.GetRequiredService<AiCapabilities>(),
+                        sp.GetService<ILogger<LyricsAiService>>()))
+                .AddSingleton<AiNotificationService>(sp =>
+                    new AiNotificationService(
+                        sp.GetService<ILogger<AiNotificationService>>()))
+
                 .AddSingleton<IShellSessionService, ShellSessionService>()
                 .AddSingleton<Services.Docking.IPanelDockingService, Services.Docking.PanelDockingService>()
                 .AddSingleton<IMediaOverrideService, MediaOverrideService>()
@@ -677,6 +714,12 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetRequiredService<ILyricsService>(),
                         sp.GetService<ILogger<LyricsViewModel>>()))
+                .AddTransient<LyricsAiPanelViewModel>(sp =>
+                    new LyricsAiPanelViewModel(
+                        sp.GetRequiredService<LyricsViewModel>(),
+                        sp.GetRequiredService<LyricsAiService>(),
+                        sp.GetRequiredService<AiCapabilities>(),
+                        sp.GetService<ILogger<LyricsAiPanelViewModel>>()))
                 .AddSingleton<ITrackCreditsService>(sp =>
                     new Data.Contexts.TrackCreditsService(
                         sp.GetRequiredService<ISession>().Pathfinder,
@@ -716,6 +759,7 @@ public static class AppLifecycleHelper
                 .AddTransient<AlbumsLibraryViewModel>()
                 .AddTransient<ArtistsLibraryViewModel>()
                 .AddTransient<LikedSongsViewModel>()
+                .AddTransient<YourEpisodesViewModel>()
                 .AddTransient<PlaylistViewModel>()
                 .AddTransient<CreatePlaylistViewModel>()
                 .AddTransient<ProfileViewModel>(sp =>

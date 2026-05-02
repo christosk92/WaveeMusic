@@ -2,7 +2,7 @@
 
 The headline app: a WinUI 3 / Windows App SDK Spotify client.
 
-`net10.0-windows10.0.26100.0` · min platform `10.0.17763.0` (Windows 10 1809) · **Single-project MSIX** · x86 / x64 / ARM64 · v0.1.0-beta.
+`net10.0-windows10.0.26100.0` · min platform `10.0.26100.0` (Windows 11 24H2 — required for the on-device AI projection assemblies to load cleanly at startup) · **Single-project MSIX** · x86 / x64 / ARM64 · v0.1.0-beta.
 
 ## Composition
 
@@ -136,7 +136,81 @@ WinUI AppX packaging copies `<Content>` items from referenced projects twice —
 
 ### `StripUnusedWindowsAiPayload` (AfterTargets: CopyFilesToOutputDirectory;_GenerateProjectPriFileCore)
 
-Windows App SDK bundles on-device ML by default — `Microsoft.Windows.AI.*` projections plus `onnxruntime.dll` (21.7 MB), `DirectML.dll` (18.5 MB), `Microsoft.Windows.AI.MachineLearning.dll` (1.0 MB). The app uses zero of these APIs (verified by grep), so they're ~42 MB on disk and 30-60 MB process RSS for nothing. The target deletes them under both `$(OutputPath)` and `AppX/` for every RID. Delete this target if a future feature ever needs on-device ML.
+Windows App SDK bundles a wide on-device ML surface by default. We use a narrow slice (Phi Silica via `Microsoft.Windows.AI.Text` for the on-device lyrics features), so the target keeps the bits Phi Silica needs and strips the rest:
+
+**Kept** (required for Phi Silica on Copilot+ PCs):
+- `Microsoft.Windows.AI.dll` — core projection
+- `Microsoft.Windows.AI.Text.dll` — `LanguageModel`
+- `Microsoft.Windows.AI.MachineLearning.dll` — NPU runtime backbone
+- `onnxruntime.dll` (~21.7 MB native) — model execution
+- `DirectML.dll` (~18.5 MB native) — NPU compute
+
+**Stripped** (currently unused features; ~6–8 MB shaved):
+- `Microsoft.Windows.AI.Imaging.Projection.dll` — Image Description / Super Resolution / object extractor + erase
+- `Microsoft.Windows.AI.Generative.Projection.dll` — text→image generation
+- `Microsoft.Windows.AI.ContentModeration.Projection.dll` — standalone safety APIs (Phi Silica's `ContentFilterOptions` ships in `Microsoft.Windows.AI.Text`)
+- `Microsoft.ML.OnnxRuntime.dll` — managed ONNX wrapper (Phi Silica calls native onnxruntime.dll directly)
+
+If a future feature needs Image Super Resolution or Image Description, remove the matching `<_StripManagedAi Include="…">` line.
+
+## On-device AI (Copilot+ PC)
+
+WaveeMusic uses **Phi Silica** — Microsoft's NPU-tuned 3.8B small language model that ships with the Windows App SDK — to power opt-in lyrics features everywhere lyrics are shown: explain a single lyric line, and explain the song's lyrics meaning. All inference runs on-device against the user's NPU; nothing is sent off the machine.
+
+**Hardware requirement:** Copilot+ PC (Snapdragon X Elite/Plus, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2. On every other configuration the affordances are hidden and the model is never downloaded. The app's `<TargetPlatformMinVersion>10.0.17763.0</>` (Windows 10 1809) means most users won't see the feature — that's intentional.
+
+**Opt-in by default:** Settings → On-device AI exposes a master toggle (default OFF) plus per-feature toggles. Until the user flips the master toggle, no AI affordance renders, no Phi Silica model is downloaded, and zero calls land in `Microsoft.Windows.AI.Text`.
+
+**Region gating:** Phi Silica isn't available in China. The Settings UI surfaces "Not available in your region" and the affordances stay hidden.
+
+**Limited Access Feature:** Phi Silica is a [Limited Access Feature](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.limitedaccessfeatures). Production builds need an LAF unlock token (request via https://go.microsoft.com/fwlink/?linkid=2271232) baked into `Package.appxmanifest`. Without it, `LanguageModel.CreateAsync()` throws — `AiCapabilities` swallows that and the affordances stay hidden.
+
+**Setup follows Microsoft's official "Get started building an app with Windows AI APIs" guide ([learn.microsoft.com](https://learn.microsoft.com/en-us/windows/ai/apis/get-started)) plus a 2.0.1 deployment workaround.**
+
+Two layers are needed:
+
+### Layer 1 — OS access gate (Microsoft documented setup)
+
+Without this, the Windows AI runtime refuses to load the projection assemblies for our app even if we deploy them ourselves:
+
+- `<systemai:Capability Name="systemAIModels" />` in `Package.appxmanifest` (under a new `xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"` namespace).
+- `MaxVersionTested="10.0.26226.0"` on `<TargetDeviceFamily>` entries.
+- `<AppxOSMinVersionReplaceManifestVersion>false</>` + `<AppxOSMaxVersionTestedReplaceManifestVersion>false</>` in the csproj so VS doesn't rewrite the manifest at packaging time.
+
+### Layer 2 - Force AI projection assemblies into AppX (2.0.1 workaround)
+
+The csproj also contains two MSBuild workaround targets:
+
+- `IncludeWindowsAiProjectionAssembliesInMsixPayload` adds the already-resolved AI projection assemblies from `$(OutputPath)` to `@(AppxPackagePayload)` for package generation.
+- `CopyWindowsAiProjectionAssembliesToAppxLayout` and `CopyWindowsAiProjectionAssembliesToAppxLayoutAfterPri` copy those same assemblies into `$(OutputPath)\AppX\` after the known layout-producing targets. That is the folder used by packaged F5/debug deploy.
+
+Why this layer is needed: WinAppSDK 2.0.1 has a known regression where the AI managed projection assemblies don't deploy into AppX even though they're present in the NuGet package's `lib/` folder. The 2.0.1 release notes explicitly acknowledge AI regressions ("*AICapabilities is missing from 2.0.1 ... We plan to restore them in the May release*"). Microsoft's official AI setup guide actually targets WinAppSDK **1.8 experimental**, which doesn't have this regression.
+
+What we tried before settling on this:
+
+- `<WindowsAppSDKSelfContained>true</>` — bundles native AI DLLs only, leaves managed projections out.
+- `<WindowsAppSDKFrameworkPackageReference>false</>` — bundles every other `Microsoft.Windows.*.Projection.dll` into AppX EXCEPT the `Microsoft.Windows.AI.*` set (specifically filtered).
+- Verified the installed `Microsoft.WindowsAppRuntime.2 v2.0.1.0` framework MSIX at `C:\Program Files\WindowsApps\…` ships the native AI DLLs but **zero** `.Projection.dll` files. The framework path Microsoft assumes works on 1.8 simply has nothing to load on 2.0.1.
+
+The csproj also contains `PreserveWindowsAiManifestMaxVersionTested`, which patches the generated AppX manifest back to `MaxVersionTested="10.0.26226.0"` immediately before the MSIX recipe/package is produced. This is needed because the local MSIX tooling rewrites the `Windows.Desktop` entry back to the installed Windows SDK version (`10.0.26100.0`) even though the source manifest is correct.
+
+**Delete these MSBuild workaround targets when you upgrade to a WinAppSDK/MSIX tooling release that fixes AI deployment and manifest preservation.** The systemAIModels capability + MaxVersionTested are sufficient on a working SDK; these targets are only for the 2.0.1/tooling gap.
+
+**Code map:**
+
+| File | Role |
+|---|---|
+| `Services/AiCapabilities.cs` | Composite gate — hardware (`LanguageModel.GetReadyState()`) + region + user opt-in. The single decision point every AI affordance binds against. |
+| `Services/LyricsAiService.cs` | Wraps `LanguageModel.GenerateResponseAsync` for line explanation and lyrics meaning. In-memory cache is keyed by `(trackUri, lineIndex)` for lines and by `trackUri` for lyrics meaning; per-track meaning uses a shared in-flight task so multiple UI surfaces do not duplicate model calls. |
+| `ViewModels/LyricsAiPanelViewModel.cs` | UI orchestration: cancellation-aware commands, observable result/caption/busy state. Resolves the currently synced line via `LyricsViewModel.LastServicePosition` so "Explain current line" works without canvas hit-testing. |
+| `Controls/SidebarPlayer/LyricsAiPanel.xaml(.cs)` | The floating affordance row + result chrome that mounts above the lyrics column on the expanded now-playing view. |
+| `Controls/AiSparkleIcon.xaml(.cs)` | The animated sparkle icon. State-driven Composition animations (pulse / rotate / wiggle) replace a Lottie source — same on-screen behavior, no LottieGen step. |
+| `Themes/AiBrandTheme.xaml` | `AiAccentGradientBrush` (Copilot rainbow), `AiAccentSolidBrush`, `AiBorderBrush`, `AiPanelBackgroundBrush`. Light/dark/HighContrast variants. `SparkleAffordanceButtonStyle` and `AiCaptionTextBlockStyle` for visual consistency. |
+| `Controls/Settings/AiSettingsSection.xaml(.cs)` + `ViewModels/AiSettingsViewModel.cs` | The Settings → On-device AI section. Master + per-feature toggles. |
+
+**Visual language** mirrors Windows 11's own AI surfaces (Settings → System → AI components): the FluentIcons `Sparkle` glyph, the Copilot rainbow gradient on hover/active, the AI-prefixed caption underline. Falls back gracefully when "Reduce animations" is on (Composition animations skip; static glyph stays).
+
+**Model download UX** uses two surfaces in parallel — the in-Settings ProgressBar (visible while you're on the AI section) and a Windows toast posted via `Microsoft.Windows.AppNotifications` (visible from the Action Center even after you navigate away). Both update from the same `IProgress<double>` flowing out of `AiCapabilities.EnsureLanguageModelReadyAsync`. The toast follows the same lifecycle the Microsoft Store uses for app installs: a single notification with an in-place updatable progress bar that swaps to a "Try it" button when done. Activation is wired through `AppNotificationActivationRouter` (deep-linking to Settings, now-playing, retry, or background cancel) — see `App.xaml.cs.OnAppNotificationInvoked` and the toast manifest extensions in `Package.appxmanifest`.
 
 ## GC / publish settings
 

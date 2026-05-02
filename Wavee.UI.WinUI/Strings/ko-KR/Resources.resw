@@ -887,6 +887,9 @@ Aggressive</value>
   <data name="Shell_SidebarLikedSongs" xml:space="preserve">
     <value>좋아요 표시한 곡</value>
   </data>
+  <data name="Shell_SidebarPodcasts" xml:space="preserve">
+    <value>Podcasts</value>
+  </data>
   <data name="Shell_SidebarNoPlaylists" xml:space="preserve">
     <value>아직 플레이리스트가 없습니다. 하나 만들어 보세요!</value>
   </data>
@@ -1722,5 +1725,8 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="MainWindow.Title" xml:space="preserve">
     <value>Wavee</value>
+  </data>
+  <data name="TrackGrid_Column_Progress" xml:space="preserve">
+    <value>Progress</value>
   </data>
 </root>

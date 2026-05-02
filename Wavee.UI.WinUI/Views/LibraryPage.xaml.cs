@@ -26,6 +26,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     private AlbumsLibraryView? _albumsView;
     private ArtistsLibraryView? _artistsView;
     private LikedSongsView? _likedSongsView;
+    private YourEpisodesView? _yourEpisodesView;
     private int _deferredShowTabAttempts;
     private TabItemParameter? _tabItemParameter;
     private bool _disposed;
@@ -72,6 +73,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         {
             "artists" => ArtistsItem,
             "likedsongs" or "liked-songs" => LikedSongsItem,
+            "podcasts" or "episodes" or "yourepisodes" or "your-episodes" => YourEpisodesItem,
             _ => AlbumsItem
         };
 
@@ -106,6 +108,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             {
                 "artists" => ArtistsItem,
                 "likedsongs" or "liked-songs" => LikedSongsItem,
+                "podcasts" or "episodes" or "yourepisodes" or "your-episodes" => YourEpisodesItem,
                 _ => AlbumsItem
             };
         }
@@ -172,6 +175,10 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         {
             view = _likedSongsView ??= new LikedSongsView(ViewModel.LikedSongs);
         }
+        else if (selectedItem == YourEpisodesItem)
+        {
+            view = _yourEpisodesView ??= new YourEpisodesView(ViewModel.YourEpisodes);
+        }
         else
         {
             view = _albumsView ??= new AlbumsLibraryView(ViewModel.Albums);
@@ -187,13 +194,14 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         UpdateTabItemParameter(selectedItem);
     }
 
-    private static string GetLocalizedTabTitle(SegmentedItem selectedItem, SegmentedItem albumsItem, SegmentedItem artistsItem, SegmentedItem likedSongsItem)
+    private static string GetLocalizedTabTitle(SegmentedItem selectedItem, SegmentedItem albumsItem, SegmentedItem artistsItem, SegmentedItem likedSongsItem, SegmentedItem yourEpisodesItem)
     {
         return selectedItem switch
         {
             _ when selectedItem == albumsItem => AppLocalization.GetString("Shell_SidebarAlbums"),
             _ when selectedItem == artistsItem => AppLocalization.GetString("Shell_SidebarArtists"),
             _ when selectedItem == likedSongsItem => AppLocalization.GetString("Shell_SidebarLikedSongs"),
+            _ when selectedItem == yourEpisodesItem => AppLocalization.GetString("Shell_SidebarPodcasts"),
             _ => AppLocalization.GetString("Shell_SidebarYourLibrary")
         };
     }
@@ -206,7 +214,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             return;
         }
 
-        var title = GetLocalizedTabTitle(selectedItem, AlbumsItem, ArtistsItem, LikedSongsItem);
+        var title = GetLocalizedTabTitle(selectedItem, AlbumsItem, ArtistsItem, LikedSongsItem, YourEpisodesItem);
         var currentTab = ShellViewModel.TabInstances[tabIndex];
         currentTab.Header = title;
         currentTab.ToolTipText = title;
@@ -218,13 +226,15 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             ? "artists"
             : selectedItem == LikedSongsItem
                 ? "likedsongs"
-                : "albums";
+                : selectedItem == YourEpisodesItem
+                    ? "podcasts"
+                    : "albums";
 
         _tabItemParameter = new TabItemParameter
         {
             InitialPageType = typeof(LibraryPage),
             NavigationParameter = tabKey,
-            Title = GetLocalizedTabTitle(selectedItem, AlbumsItem, ArtistsItem, LikedSongsItem),
+            Title = GetLocalizedTabTitle(selectedItem, AlbumsItem, ArtistsItem, LikedSongsItem, YourEpisodesItem),
             PageType = NavigationPageType.Library
         };
 
@@ -243,6 +253,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             _ when selectedItem == AlbumsItem => "Albums",
             _ when selectedItem == ArtistsItem => "Artists",
             _ when selectedItem == LikedSongsItem => "LikedSongs",
+            _ when selectedItem == YourEpisodesItem => "Podcasts",
             _ => null
         };
 
@@ -323,6 +334,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         DisposeIfNeeded(ref _albumsView);
         DisposeIfNeeded(ref _artistsView);
         DisposeIfNeeded(ref _likedSongsView);
+        DisposeIfNeeded(ref _yourEpisodesView);
 
         ViewModel.Dispose();
         ContentChanged = null;
@@ -349,6 +361,9 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
 
         if (selectedItem == LikedSongsItem)
             return "likedsongs";
+
+        if (selectedItem == YourEpisodesItem)
+            return "podcasts";
 
         return "albums";
     }

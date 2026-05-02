@@ -12,6 +12,7 @@
     xmlns:lyrics="using:Wavee.Controls.Lyrics.Controls"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:queue="using:Wavee.UI.WinUI.Controls.Queue"
+    xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     xmlns:shimmer="using:CommunityToolkit.WinUI.Controls"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
@@ -439,6 +440,13 @@
                                  ViewModel.LyricsData, Player.Position, etc. -->
                             <lyrics:NowPlayingCanvas x:Name="LyricsCanvas"
                                                      Visibility="{x:Bind ViewModel.IsLyricsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <sidebarplayer:LyricsAiPanel
+                                x:Name="VideoLyricsAi"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                Margin="0,14,14,0"
+                                Visibility="{x:Bind ViewModel.IsLyricsVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Canvas.ZIndex="5" />
                             <Button x:Name="AudioLyricsToggleButton"
                                     Style="{StaticResource OverlayCircleButtonStyle}"
                                     Width="38"

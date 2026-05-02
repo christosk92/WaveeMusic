@@ -1422,6 +1422,12 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         switch (type)
         {
+            case "collection" when item.Uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase):
+                Helpers.Navigation.NavigationHelpers.OpenYourEpisodes(openInNewTab);
+                break;
+            case "collection":
+                Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
+                break;
             case "artist":
                 Helpers.Navigation.NavigationHelpers.OpenArtist(param, item.Title ?? "Artist", openInNewTab);
                 break;
@@ -2030,6 +2036,7 @@ public sealed class HomeSectionItem : ObservableObject
     // See HomeResponseParserV2 for the decode.
 
     private int? _recentlyAddedCount;
+    private string _recentlyAddedItemNoun = "song";
     private bool _isRecentlySaved;
     private IReadOnlyList<string> _recentlyAddedThumbnailUris = [];
     private string? _recentlyAddedThumbnail1Url;
@@ -2044,6 +2051,12 @@ public sealed class HomeSectionItem : ObservableObject
     {
         get => _recentlyAddedCount;
         set => SetProperty(ref _recentlyAddedCount, value);
+    }
+
+    public string RecentlyAddedItemNoun
+    {
+        get => _recentlyAddedItemNoun;
+        set => SetProperty(ref _recentlyAddedItemNoun, string.IsNullOrWhiteSpace(value) ? "song" : value);
     }
 
     /// <summary>

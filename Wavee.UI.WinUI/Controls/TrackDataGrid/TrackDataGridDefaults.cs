@@ -13,6 +13,7 @@ public static class TrackDataGridDefaults
     public const string PlaylistPageKey = "playlist";
     public const string AlbumPageKey = "album";
     public const string LikedPageKey = "liked";
+    public const string PodcastPageKey = "podcasts";
 
     public static TrackDataGridColumns Create(string pageKey)
     {
@@ -20,6 +21,7 @@ public static class TrackDataGridDefaults
         {
             AlbumPageKey => BuildAlbumColumns(),
             LikedPageKey => BuildLikedColumns(),
+            PodcastPageKey => BuildPodcastColumns(),
             _ => BuildPlaylistColumns(),
         };
     }
@@ -63,6 +65,15 @@ public static class TrackDataGridDefaults
         Title(),
         Album(),
         DateAdded(),
+        Duration(),
+    ];
+
+    private static TrackDataGridColumns BuildPodcastColumns() =>
+    [
+        Index(),
+        Like(),
+        TrackArt(),
+        Title(),
         Duration(),
     ];
 

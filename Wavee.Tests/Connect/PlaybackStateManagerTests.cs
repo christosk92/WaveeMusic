@@ -147,6 +147,47 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
         state.Status.Should().Be(PlaybackStatus.Stopped);
     }
 
+    [Fact]
+    public async Task ClusterUpdate_RemoteDeviceDisconnected_ShouldClampPlayingToPaused()
+    {
+        // Repro for the "UI stuck on playing after remote device disappears" bug:
+        // Spotify keeps echoing player_state.is_playing=true in the cluster even
+        // after active_device_id transitions to empty. Clamp here so the change
+        // detector emits a Status transition the UI can act on.
+        _manager = new PlaybackStateManager(_mockDealer, null);
+        var receivedStates = new List<PlaybackState>();
+        _manager.StateChanges.Subscribe(s => receivedStates.Add(s));
+
+        var playingOnRemote = PlaybackStateTestHelpers.CreateClusterUpdateMessage(
+            activeDeviceId: "remote_device",
+            trackUri: "spotify:track:abc",
+            isPlaying: true);
+
+        var remoteDisappeared = PlaybackStateTestHelpers.CreateClusterUpdateMessage(
+            activeDeviceId: "",            // device gone
+            trackUri: "spotify:track:abc",
+            isPlaying: true);              // server still echoes IsPlaying=true
+
+        // Act
+        await _mockConnection.SimulateMessageAsync(playingOnRemote);
+        await Task.Delay(200);
+        await _mockConnection.SimulateMessageAsync(remoteDisappeared);
+        await Task.Delay(200);
+
+        // Skip the BehaviorSubject's initial empty replay
+        var emitted = receivedStates.Where(s => s.Changes != StateChanges.None).ToList();
+
+        // Assert
+        emitted.Should().HaveCountGreaterOrEqualTo(2);
+        emitted[0].Status.Should().Be(PlaybackStatus.Playing);
+        emitted[0].ActiveDeviceId.Should().Be("remote_device");
+
+        var afterDisconnect = emitted.Last();
+        afterDisconnect.Status.Should().Be(PlaybackStatus.Paused);
+        afterDisconnect.ActiveDeviceId.Should().BeEmpty();
+        afterDisconnect.Changes.Should().HaveFlag(StateChanges.Status);
+    }
+
     #endregion
 
     #region Observable Tests
@@ -515,7 +556,8 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
 
         // Act
         mockEngine.SimulateSeek(60000); // Seek to 1 minute
-        await Task.Delay(300);
+        // Position changes are non-critical → debounced ~750ms before publish
+        await Task.Delay(1200);
 
         // Assert
         tracker.Calls.Should().HaveCountGreaterOrEqualTo(1);
@@ -544,7 +586,8 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
 
         // Act
         mockEngine.SimulateShuffleChange(true);
-        await Task.Delay(300);
+        // Options changes are non-critical → debounced ~750ms before publish
+        await Task.Delay(1200);
 
         // Assert
         tracker.Calls.Should().HaveCountGreaterOrEqualTo(1);
@@ -776,7 +819,8 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
         mockEngine.SimulateResume();
         await Task.Delay(100);
         mockEngine.SimulateSeek(30000);
-        await Task.Delay(300);
+        // Seek is non-critical → debounced ~750ms before publish
+        await Task.Delay(1200);
 
         // Assert - All changes should be published
         tracker.Calls.Should().HaveCountGreaterOrEqualTo(4);

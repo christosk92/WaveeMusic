@@ -143,15 +143,32 @@ public sealed class RecentlyPlayedService : IDisposable
         try
         {
             var uris = item.RecentlyAddedThumbnailUris;
-            if (uris == null || uris.Count == 0) return;
+            if (uris == null || uris.Count == 0)
+            {
+                _logger?.LogDebug("[recents-thumb] {Uri}: no URIs in RecentlyAddedThumbnailUris — skipping resolve",
+                    item.Uri);
+                return;
+            }
+
+            _logger?.LogDebug("[recents-thumb] {Uri}: resolving {Count} URIs: {Uris}",
+                item.Uri, uris.Count, string.Join(", ", uris));
 
             var request = _messenger.Send(new TrackImagesEnrichmentRequest
             {
                 TrackUris = uris,
                 CancellationToken = CancellationToken.None
             });
-            if (!request.HasReceivedResponse) return;
+            if (!request.HasReceivedResponse)
+            {
+                _logger?.LogDebug("[recents-thumb] {Uri}: TrackImagesEnrichmentRequest got no handler response",
+                    item.Uri);
+                return;
+            }
             var resolved = await request.Response.ConfigureAwait(false);
+
+            _logger?.LogDebug("[recents-thumb] {Uri}: resolver returned {Count} entries: {Pairs}",
+                item.Uri, resolved.Count,
+                string.Join(", ", resolved.Select(kv => $"{kv.Key}={kv.Value ?? "<null>"}")));
 
             // Map to HTTPS — the cache returns spotify:image:{hex} form which
             // BitmapImage / LoadedImageSurface can't load directly. Order by

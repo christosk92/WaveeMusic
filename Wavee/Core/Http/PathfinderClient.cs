@@ -108,7 +108,12 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.SearchConcertLocations
             or PathfinderOperations.Concert
             or PathfinderOperations.InternalLinkRecommenderTrack
-            or PathfinderOperations.GetTrack;
+            or PathfinderOperations.GetTrack
+            or PathfinderOperations.GetEpisodeOrChapter
+            or PathfinderOperations.InternalLinkRecommenderEpisode
+            or PathfinderOperations.GetCommentsForEntity
+            or PathfinderOperations.GetReplies
+            or PathfinderOperations.GetReactions;
         httpRequest.Headers.TryAddWithoutValidation("app-platform", useWebPlayer ? "WebPlayer" : "Win32_x86_64");
         if (useXpuiDesktop)
         {
@@ -517,6 +522,86 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<GetEpisodeOrChapterResponse> GetEpisodeOrChapterAsync(
+        string episodeUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+
+        var variables = new GetEpisodeOrChapterVariables(episodeUri);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.GetEpisodeOrChapter,
+            PathfinderOperations.GetEpisodeOrChapterHash,
+            GetEpisodeOrChapterJsonContext.Default.GetEpisodeOrChapterResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<SeoRecommendedEpisodesResponse> GetSeoRecommendedEpisodesAsync(
+        string episodeUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+
+        var variables = new SeoRecommendedEpisodesVariables(episodeUri);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.InternalLinkRecommenderEpisode,
+            PathfinderOperations.InternalLinkRecommenderEpisodeHash,
+            SeoRecommendedEpisodesJsonContext.Default.SeoRecommendedEpisodesResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<EntityCommentsResponse> GetCommentsForEntityAsync(
+        string entityUri, string? token = null, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entityUri);
+
+        var variables = new EntityCommentsVariables(entityUri, token);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.GetCommentsForEntity,
+            PathfinderOperations.GetCommentsForEntityHash,
+            EntityCommentsJsonContext.Default.EntityCommentsResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<CommentRepliesResponse> GetCommentRepliesAsync(
+        string commentUri, string? pageToken = null, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(commentUri);
+
+        var variables = new CommentRepliesVariables(commentUri, pageToken);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.GetReplies,
+            PathfinderOperations.GetRepliesHash,
+            CommentRepliesJsonContext.Default.CommentRepliesResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<CommentReactionsResponse> GetCommentReactionsAsync(
+        string uri, string? token = null, string? reactionUnicode = null, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+
+        var variables = new CommentReactionsVariables(uri, token, reactionUnicode);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.GetReactions,
+            PathfinderOperations.GetReactionsHash,
+            CommentReactionsJsonContext.Default.CommentReactionsResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<TrackCreditsResponse> GetTrackCreditsAsync(
         string trackUri, int contributorsLimit = 100, CancellationToken ct = default)
     {
@@ -791,6 +876,26 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is GetTrackVariables gtv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(gtv, GetTrackVariablesJsonContext.Default.GetTrackVariables);
+        }
+        else if (variables is GetEpisodeOrChapterVariables geocv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(geocv, GetEpisodeOrChapterVariablesJsonContext.Default.GetEpisodeOrChapterVariables);
+        }
+        else if (variables is SeoRecommendedEpisodesVariables srev)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(srev, SeoRecommendedEpisodesVariablesJsonContext.Default.SeoRecommendedEpisodesVariables);
+        }
+        else if (variables is EntityCommentsVariables ecv2)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(ecv2, EntityCommentsVariablesJsonContext.Default.EntityCommentsVariables);
+        }
+        else if (variables is CommentRepliesVariables crv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(crv, CommentRepliesVariablesJsonContext.Default.CommentRepliesVariables);
+        }
+        else if (variables is CommentReactionsVariables crv2)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(crv2, CommentReactionsVariablesJsonContext.Default.CommentReactionsVariables);
         }
         else if (variables is TrackCreditsVariables tcv)
         {

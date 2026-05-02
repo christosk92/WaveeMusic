@@ -55,13 +55,14 @@
                         CornerRadius="{StaticResource CardCornerRadius}"
                         Width="56" Height="56">
                     <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#5038A0" Offset="0"/>
-                            <GradientStop Color="#7B5FCC" Offset="0.5"/>
-                            <GradientStop Color="#9CC5C5" Offset="1"/>
+                        <LinearGradientBrush x:Name="TileGradient" StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop x:Name="TileGradientStop1" Color="#5038A0" Offset="0"/>
+                            <GradientStop x:Name="TileGradientStop2" Color="#7B5FCC" Offset="0.5"/>
+                            <GradientStop x:Name="TileGradientStop3" Color="#9CC5C5" Offset="1"/>
                         </LinearGradientBrush>
                     </Border.Background>
                     <FontIcon
+                        x:Name="TileGlyph"
                         Glyph="&#xEB52;"
                         FontFamily="{ThemeResource SymbolThemeFontFamily}"
                         FontSize="22"

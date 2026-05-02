@@ -1057,6 +1057,12 @@ public sealed partial class ContentCard : UserControl
 
         switch (type)
         {
+            case "collection" when uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase):
+                Helpers.Navigation.NavigationHelpers.OpenYourEpisodes(openInNewTab);
+                return true;
+            case "collection":
+                Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
+                return true;
             case "artist":
                 Helpers.Navigation.NavigationHelpers.OpenArtist(param, title, openInNewTab);
                 return true;

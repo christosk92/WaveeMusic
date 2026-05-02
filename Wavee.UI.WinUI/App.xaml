@@ -23,6 +23,7 @@
                 <ResourceDictionary Source="ms-appx:///Controls/ErrorStateView.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Shelf/ShelfStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Themes/ContextMenu.xaml" />
+                <ResourceDictionary Source="ms-appx:///Themes/AiBrandTheme.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/AccentIcon/AccentIcon.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/SessionTokens/SessionTokenView.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/SessionTokens/SessionTokenItem.xaml" />

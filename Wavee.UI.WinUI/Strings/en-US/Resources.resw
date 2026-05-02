@@ -905,6 +905,9 @@ the music you previously queued?</value>
   <data name="Shell_SidebarLikedSongs" xml:space="preserve">
     <value>Liked Songs</value>
   </data>
+  <data name="Shell_SidebarPodcasts" xml:space="preserve">
+    <value>Podcasts</value>
+  </data>
   <data name="Shell_SidebarNoPlaylists" xml:space="preserve">
     <value>You have no playlists yet. Create one!</value>
   </data>
@@ -928,6 +931,9 @@ the music you previously queued?</value>
   </data>
   <data name="TrackGrid_Column_PlayCount" xml:space="preserve">
     <value>Plays</value>
+  </data>
+  <data name="TrackGrid_Column_Progress" xml:space="preserve">
+    <value>Progress</value>
   </data>
   <data name="TrackGrid_Column_Duration" xml:space="preserve">
     <value>Duration</value>

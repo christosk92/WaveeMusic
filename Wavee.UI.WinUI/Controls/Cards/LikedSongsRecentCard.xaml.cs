@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
@@ -12,6 +13,7 @@ using Windows.Foundation;
 using Windows.UI;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Styles;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -38,6 +40,10 @@ public sealed partial class LikedSongsRecentCard : UserControl
         DependencyProperty.Register(nameof(AddedCount), typeof(int?), typeof(LikedSongsRecentCard),
             new PropertyMetadata(null, OnAddedCountChanged));
 
+    public static readonly DependencyProperty AddedItemNounProperty =
+        DependencyProperty.Register(nameof(AddedItemNoun), typeof(string), typeof(LikedSongsRecentCard),
+            new PropertyMetadata("song", OnAddedItemNounChanged));
+
     public static readonly DependencyProperty Thumbnail1ImageUrlProperty =
         DependencyProperty.Register(nameof(Thumbnail1ImageUrl), typeof(string), typeof(LikedSongsRecentCard),
             new PropertyMetadata(null, (d, _) => ((LikedSongsRecentCard)d).RebuildThumbnails()));
@@ -52,7 +58,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
 
     public static readonly DependencyProperty NavigationUriProperty =
         DependencyProperty.Register(nameof(NavigationUri), typeof(string), typeof(LikedSongsRecentCard),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, (d, _) => ((LikedSongsRecentCard)d).ApplyTileVariant()));
 
     public string? Title
     {
@@ -64,6 +70,12 @@ public sealed partial class LikedSongsRecentCard : UserControl
     {
         get => (int?)GetValue(AddedCountProperty);
         set => SetValue(AddedCountProperty, value);
+    }
+
+    public string AddedItemNoun
+    {
+        get => (string)GetValue(AddedItemNounProperty);
+        set => SetValue(AddedItemNounProperty, value);
     }
 
     public string? Thumbnail1ImageUrl
@@ -164,7 +176,46 @@ public sealed partial class LikedSongsRecentCard : UserControl
     {
         _isLoaded = true;
         EnsureCompositionGraph();
+        ApplyTileVariant();
         RebuildThumbnails();
+    }
+
+    /// <summary>
+    /// Repaints the foreground tile (gradient + glyph) based on the current
+    /// <see cref="NavigationUri"/>. Liked Songs (<c>spotify:collection:tracks</c>)
+    /// keeps the purple gradient + heart it always had; the
+    /// <c>spotify:collection:your-episodes</c> pseudo-collection swaps to
+    /// Spotify's saved-episodes green identity with a headphones glyph so the
+    /// two recents-saved cards aren't visually indistinguishable. Called from
+    /// both <see cref="OnLoaded"/> (first realisation) and the
+    /// <see cref="NavigationUri"/> DP changed callback (ItemsRepeater
+    /// recycling — same control instance, new item).
+    /// </summary>
+    private void ApplyTileVariant()
+    {
+        // Defensive: DP can fire before InitializeComponent has populated
+        // the named XAML elements. ApplyTileVariant runs again from OnLoaded.
+        if (TileGradientStop1 == null || TileGradientStop2 == null
+            || TileGradientStop3 == null || TileGlyph == null)
+            return;
+
+        var isYourEpisodes = NavigationUri?.Contains("your-episodes",
+            StringComparison.OrdinalIgnoreCase) == true;
+
+        if (isYourEpisodes)
+        {
+            TileGradientStop1.Color = Color.FromArgb(0xFF, 0x1F, 0x8B, 0x47);
+            TileGradientStop2.Color = Color.FromArgb(0xFF, 0x0F, 0x5A, 0x2D);
+            TileGradientStop3.Color = Color.FromArgb(0xFF, 0x06, 0x2E, 0x18);
+            TileGlyph.Glyph = FluentGlyphs.DeviceHeadphones;
+        }
+        else
+        {
+            TileGradientStop1.Color = Color.FromArgb(0xFF, 0x50, 0x38, 0xA0);
+            TileGradientStop2.Color = Color.FromArgb(0xFF, 0x7B, 0x5F, 0xCC);
+            TileGradientStop3.Color = Color.FromArgb(0xFF, 0x9C, 0xC5, 0xC5);
+            TileGlyph.Glyph = FluentGlyphs.HeartFilled;
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -192,13 +243,34 @@ public sealed partial class LikedSongsRecentCard : UserControl
     private static void OnAddedCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (LikedSongsRecentCard)d;
-        var count = (int?)e.NewValue;
-        if (card.SubtitleText != null)
-            card.SubtitleText.Text = count.HasValue
-                ? $"{count} songs added"
-                : "Songs added";
+        card.UpdateSubtitleText();
         if (card.AddedCheckGlyph != null)
             card.AddedCheckGlyph.Visibility = Visibility.Visible;
+        card.RebuildThumbnails();
+    }
+
+    private static void OnAddedItemNounChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (LikedSongsRecentCard)d;
+        card.UpdateSubtitleText();
+    }
+
+    private void UpdateSubtitleText()
+    {
+        if (SubtitleText == null)
+            return;
+
+        var noun = string.IsNullOrWhiteSpace(AddedItemNoun) ? "song" : AddedItemNoun.Trim();
+        var count = AddedCount;
+        if (count.HasValue)
+        {
+            var suffix = count.Value == 1 ? string.Empty : "s";
+            SubtitleText.Text = $"{count.Value} {noun}{suffix} added";
+        }
+        else
+        {
+            SubtitleText.Text = $"{char.ToUpperInvariant(noun[0])}{noun[1..]}s added";
+        }
     }
 
     // ── Composition graph ─────────────────────────────────────────────
@@ -253,14 +325,23 @@ public sealed partial class LikedSongsRecentCard : UserControl
 
         _hostWidth = hostWidth;
 
-        // Always render all 3 fan slots — even when the URL hasn't arrived
-        // yet, the slot shows a placeholder colored sprite so the card never
-        // reads as empty. As each LoadedImageSurface completes, the placeholder
-        // brush is swapped to the image. Failed loads keep the placeholder.
+        // Render only the number of slots Spotify says were recently added,
+        // capped at the three thumbnails the home response can carry AND at
+        // the number of URLs we actually have. This avoids:
+        //   • a three-card fan for a one-episode save event (AddedCount cap)
+        //   • empty placeholder squares when the URI list is missing from
+        //     group_metadata (observed for spotify:collection:your-episodes —
+        //     Spotify omits field 2 episode URIs there, only ships the count)
+        // When the resolver later fills Thumbnail{1..3}ImageUrl, RebuildThumbnails
+        // re-runs and draws the slots that now have URLs.
         var placeholderBrush = _compositor.CreateColorBrush(
             Color.FromArgb(255, 0x2C, 0x2C, 0x32));
 
-        for (var i = 0; i < RestLayout.Length; i++)
+        var nonEmptyUrlCount = urls.Count(static url => !string.IsNullOrWhiteSpace(url));
+        var slotCount = Math.Clamp(
+            Math.Min(AddedCount ?? nonEmptyUrlCount, nonEmptyUrlCount),
+            0, RestLayout.Length);
+        for (var i = 0; i < slotCount; i++)
         {
             var url = urls[i];
             var pose = _isHovered ? HoverLayout[i] : RestLayout[i];
@@ -437,7 +518,10 @@ public sealed partial class LikedSongsRecentCard : UserControl
     private void CardRoot_Tapped(object sender, TappedRoutedEventArgs e)
     {
         var openInNewTab = NavigationHelpers.IsCtrlPressed();
-        NavigationHelpers.OpenLikedSongs(openInNewTab);
+        if (NavigationUri?.Contains("your-episodes", StringComparison.OrdinalIgnoreCase) == true)
+            NavigationHelpers.OpenYourEpisodes(openInNewTab);
+        else
+            NavigationHelpers.OpenLikedSongs(openInNewTab);
         e.Handled = true;
     }
 }

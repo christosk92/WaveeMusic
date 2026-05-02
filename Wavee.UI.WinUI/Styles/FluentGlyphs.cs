@@ -90,6 +90,12 @@ public static class FluentGlyphs
     public const string Background = "";
     /// <summary>Edit — E70F. Reused for Canvas editor.</summary>
     public const string Canvas = "";
+    /// <summary>ChevronDown — E70D.</summary>
+    public const string ChevronDown = "";
+    /// <summary>ChevronUp — E70E.</summary>
+    public const string ChevronUp = "";
+    /// <summary>Cancel / Close — E894 (small "x" dismiss).</summary>
+    public const string Cancel = "";
     /// <summary>ChevronRight — E76C.</summary>
     public const string ChevronRight = "";
     /// <summary>Video — E714. Used for "Watch Video" / music-video toggle.</summary>

@@ -44,6 +44,8 @@ public enum PlaybackContextType
     Album,
     Playlist,
     Artist,
+    Show,
+    Episode,
     LikedSongs,
     Queue,
     Search,

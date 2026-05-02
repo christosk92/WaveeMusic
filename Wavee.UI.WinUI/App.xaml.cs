@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -89,6 +90,23 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // App-notification activation must be wired BEFORE we touch
+        // AppInstance.GetActivatedEventArgs() — the WinAppSDK docs are emphatic
+        // about this ordering. Subscribing to NotificationInvoked + calling
+        // Register() turns the COM activation kind into our NotificationInvoked
+        // handler instead of a silent no-op.
+        try
+        {
+            Microsoft.Windows.AppNotifications.AppNotificationManager.Default.NotificationInvoked += OnAppNotificationInvoked;
+            Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Register();
+        }
+        catch (Exception ex)
+        {
+            // Notification registration failure must never block app start —
+            // the rest of the app works fine without toast deep-linking.
+            LogUnhandledException("AppNotificationRegister", ex);
+        }
+
         // Configure dependency injection
         _host = AppLifecycleHelper.ConfigureHost();
         Ioc.Default.ConfigureServices(_host.Services);
@@ -316,6 +334,31 @@ public partial class App : Application
         {
             _shutdownTask ??= ShutdownHostCoreAsync();
             return _shutdownTask;
+        }
+    }
+
+    /// <summary>
+    /// Fires when the user clicks an app notification (toast body or button)
+    /// while the app is already running. Cold-start activations come through
+    /// AppInstance.GetCurrent().GetActivatedEventArgs() in OnLaunched, but for
+    /// the AI feature pilot every relevant click happens with the app already
+    /// alive (the toast was posted by an in-process service moments earlier).
+    ///
+    /// We delegate routing to <see cref="AppNotificationActivationRouter"/>
+    /// so the action vocabulary stays in one place.
+    /// </summary>
+    private void OnAppNotificationInvoked(
+        Microsoft.Windows.AppNotifications.AppNotificationManager sender,
+        Microsoft.Windows.AppNotifications.AppNotificationActivatedEventArgs args)
+    {
+        try
+        {
+            var dispatcher = MainWindow.Instance?.DispatcherQueue;
+            AppNotificationActivationRouter.Route(args.Arguments.ToImmutableDictionary(), dispatcher);
+        }
+        catch (Exception ex)
+        {
+            LogUnhandledException("AppNotificationInvoked", ex);
         }
     }
 

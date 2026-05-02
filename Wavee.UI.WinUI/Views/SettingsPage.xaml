@@ -50,6 +50,7 @@
                             Style="{StaticResource PivotSegmentedStyle}"
                             SelectionChanged="SelectorBar_SelectionChanged">
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_2" x:Name="GeneralItem" Content="General" Tag="general"/>
+            <controls:SegmentedItem x:Name="AiItem" Content="On-device AI" Tag="ai"/>
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_3" x:Name="PlaybackItem" Content="Playback" Tag="playback"/>
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_4" x:Name="AudioItem" Content="Audio" Tag="audio"/>
             <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_5" x:Name="StorageItem" Content="Storage &amp; Network" Tag="storage"/>

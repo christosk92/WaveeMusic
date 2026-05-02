@@ -34,6 +34,7 @@
             <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_1" x:Name="AlbumsItem" Content="Albums"/>
             <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_2" x:Name="ArtistsItem" Content="Artists"/>
             <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_3" x:Name="LikedSongsItem" Content="Liked Songs"/>
+            <controls:SegmentedItem x:Name="YourEpisodesItem" Content="Podcasts"/>
         </controls:Segmented>
 
         <!-- Content area -->

@@ -313,9 +313,19 @@ internal sealed class MockPlaybackEngine : IPlaybackEngine
         return Task.CompletedTask;
     }
 
-    public Task SwitchToVideoAsync(string? manifestIdOverride = null, CancellationToken cancellationToken = default)
+    public Task SwitchToVideoAsync(
+        string? manifestIdOverride = null,
+        string? videoTrackUriOverride = null,
+        CancellationToken cancellationToken = default)
     {
-        CommandsReceived.Add($"SwitchToVideo:{manifestIdOverride ?? "<no-override>"}");
+        CommandsReceived.Add(
+            $"SwitchToVideo:{manifestIdOverride ?? "<no-override>"}:{videoTrackUriOverride ?? "<no-uri>"}");
+        return Task.CompletedTask;
+    }
+
+    public Task SwitchToAudioAsync(CancellationToken cancellationToken = default)
+    {
+        CommandsReceived.Add("SwitchToAudio");
         return Task.CompletedTask;
     }
 }

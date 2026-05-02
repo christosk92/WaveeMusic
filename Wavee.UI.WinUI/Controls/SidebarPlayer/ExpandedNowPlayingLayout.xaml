@@ -299,6 +299,16 @@
                                     VerticalAlignment="Center">
                                     <Button
                                         Style="{StaticResource VideoOverlayButtonStyle}"
+                                        Width="44"
+                                        Height="44"
+                                        CornerRadius="22"
+                                        Command="{x:Bind ViewModel.SkipBackwardCommand}"
+                                        Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        ToolTipService.ToolTip="Back 15 seconds">
+                                        <TextBlock Text="-15" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+                                    </Button>
+                                    <Button
+                                        Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="46"
                                         Height="46"
                                         CornerRadius="23"
@@ -328,6 +338,38 @@
                                         Command="{x:Bind ViewModel.NextCommand}"
                                         ToolTipService.ToolTip="Next">
                                         <FontIcon Glyph="&#xF8AD;" FontSize="17" Foreground="White" />
+                                    </Button>
+                                    <Button
+                                        Style="{StaticResource VideoOverlayButtonStyle}"
+                                        Width="44"
+                                        Height="44"
+                                        CornerRadius="22"
+                                        Command="{x:Bind ViewModel.SkipForwardCommand}"
+                                        Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        ToolTipService.ToolTip="Forward 15 seconds">
+                                        <TextBlock Text="+15" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+                                    </Button>
+                                    <Button
+                                        Style="{StaticResource VideoOverlayButtonStyle}"
+                                        Width="50"
+                                        Height="44"
+                                        CornerRadius="22"
+                                        Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        ToolTipService.ToolTip="Playback speed">
+                                        <Button.Flyout>
+                                            <MenuFlyout>
+                                                <MenuFlyoutItem Text="0.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.5" />
+                                                <MenuFlyoutItem Text="0.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.75" />
+                                                <MenuFlyoutItem Text="1x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1" />
+                                                <MenuFlyoutItem Text="1.25x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.25" />
+                                                <MenuFlyoutItem Text="1.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.5" />
+                                                <MenuFlyoutItem Text="1.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.75" />
+                                                <MenuFlyoutItem Text="2x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2" />
+                                                <MenuFlyoutItem Text="2.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2.5" />
+                                                <MenuFlyoutItem Text="3x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="3" />
+                                            </MenuFlyout>
+                                        </Button.Flyout>
+                                        <TextBlock Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" Foreground="White" />
                                     </Button>
                                 </StackPanel>
 
@@ -588,6 +630,13 @@
                 <FontIcon Glyph="&#xE8B1;" FontSize="16" />
             </ToggleButton>
             <Button Style="{StaticResource TransparentButtonStyle}"
+                    Width="40" Height="40" Padding="0"
+                    Command="{x:Bind ViewModel.SkipBackwardCommand}"
+                    Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Back 15 seconds">
+                <TextBlock Text="-15" FontSize="12" FontWeight="SemiBold" />
+            </Button>
+            <Button Style="{StaticResource TransparentButtonStyle}"
                     Width="44" Height="44" Padding="0"
                     Command="{x:Bind ViewModel.PreviousCommand}"
                     ToolTipService.ToolTip="Previous">
@@ -609,6 +658,32 @@
                     Command="{x:Bind ViewModel.NextCommand}"
                     ToolTipService.ToolTip="Next">
                 <FontIcon Glyph="&#xF8AD;" FontSize="20" />
+            </Button>
+            <Button Style="{StaticResource TransparentButtonStyle}"
+                    Width="40" Height="40" Padding="0"
+                    Command="{x:Bind ViewModel.SkipForwardCommand}"
+                    Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Forward 15 seconds">
+                <TextBlock Text="+15" FontSize="12" FontWeight="SemiBold" />
+            </Button>
+            <Button Style="{StaticResource TransparentButtonStyle}"
+                    Width="48" Height="40" Padding="0"
+                    Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Playback speed">
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem Text="0.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.5" />
+                        <MenuFlyoutItem Text="0.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.75" />
+                        <MenuFlyoutItem Text="1x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1" />
+                        <MenuFlyoutItem Text="1.25x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.25" />
+                        <MenuFlyoutItem Text="1.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.5" />
+                        <MenuFlyoutItem Text="1.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.75" />
+                        <MenuFlyoutItem Text="2x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2" />
+                        <MenuFlyoutItem Text="2.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2.5" />
+                        <MenuFlyoutItem Text="3x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="3" />
+                    </MenuFlyout>
+                </Button.Flyout>
+                <TextBlock Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
             </Button>
             <ToggleButton Style="{StaticResource SubtleToggleButtonStyle}"
                           Width="40" Height="40" Padding="0"
@@ -638,6 +713,16 @@
                 VerticalAlignment="Center">
                 <Button
                     Style="{StaticResource TransparentButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Command="{x:Bind ViewModel.SkipBackwardCommand}"
+                    Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Back 15 seconds">
+                    <TextBlock Text="-15" FontSize="11" FontWeight="SemiBold" />
+                </Button>
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="40"
                     Height="40"
                     Padding="0"
@@ -658,6 +743,38 @@
                     Command="{x:Bind ViewModel.NextCommand}"
                     ToolTipService.ToolTip="Next">
                     <FontIcon Glyph="&#xF8AD;" FontSize="17" />
+                </Button>
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    Command="{x:Bind ViewModel.SkipForwardCommand}"
+                    Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Forward 15 seconds">
+                    <TextBlock Text="+15" FontSize="11" FontWeight="SemiBold" />
+                </Button>
+                <Button
+                    Style="{StaticResource TransparentButtonStyle}"
+                    Width="42"
+                    Height="36"
+                    Padding="0"
+                    Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTipService.ToolTip="Playback speed">
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Text="0.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.5" />
+                            <MenuFlyoutItem Text="0.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="0.75" />
+                            <MenuFlyoutItem Text="1x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1" />
+                            <MenuFlyoutItem Text="1.25x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.25" />
+                            <MenuFlyoutItem Text="1.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.5" />
+                            <MenuFlyoutItem Text="1.75x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="1.75" />
+                            <MenuFlyoutItem Text="2x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2" />
+                            <MenuFlyoutItem Text="2.5x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="2.5" />
+                            <MenuFlyoutItem Text="3x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="3" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                    <TextBlock Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" />
                 </Button>
                 <ToggleButton
                     Style="{StaticResource SubtleToggleButtonStyle}"

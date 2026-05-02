@@ -104,6 +104,127 @@ public static class PlaybackStateHelpers
         return outputStream.ToArray();
     }
 
+    private static bool IsSpotifyEpisodeUri(string? uri)
+        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
+
+    private static bool IsSpotifyShowUri(string? uri)
+        => uri?.StartsWith("spotify:show:", StringComparison.Ordinal) == true;
+
+    private static string? FirstMetadataValue(
+        IEnumerable<KeyValuePair<string, string>>? metadata,
+        params string[] keys)
+    {
+        if (metadata is null) return null;
+
+        foreach (var key in keys)
+        {
+            foreach (var (metadataKey, value) in metadata)
+            {
+                if (string.Equals(metadataKey, key, StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? AlbumOrShowUriFor(ProvidedTrack track)
+    {
+        var metadata = track.Metadata;
+        var uri = !string.IsNullOrEmpty(track.AlbumUri)
+            ? track.AlbumUri
+            : FirstMetadataValue(metadata, "album_uri", "show_uri");
+
+        if (IsSpotifyEpisodeUri(track.Uri) && string.IsNullOrEmpty(uri))
+        {
+            var contextUri = FirstMetadataValue(metadata, "context_uri");
+            if (IsSpotifyShowUri(contextUri))
+                uri = contextUri;
+        }
+
+        return uri;
+    }
+
+    private static string? ArtistUriFor(ProvidedTrack track)
+    {
+        if (IsSpotifyEpisodeUri(track.Uri))
+            return null;
+
+        return !string.IsNullOrEmpty(track.ArtistUri)
+            ? track.ArtistUri
+            : FirstMetadataValue(track.Metadata, "artist_uri");
+    }
+
+    private static double NormalizePlaybackSpeed(double value)
+    {
+        if (value <= 0 || double.IsNaN(value) || double.IsInfinity(value))
+            return 1.0;
+
+        return Math.Clamp(value, 0.5, 3.5);
+    }
+
+    private static double ExtractPlaybackSpeed(PlayerState? playerState, double fallback)
+    {
+        if (playerState?.PlaybackSpeed > 0)
+            return NormalizePlaybackSpeed(playerState.PlaybackSpeed);
+
+        return NormalizePlaybackSpeed(fallback);
+    }
+
+    private static string? ExtractContextDescription(PlayerState? playerState, TrackInfo? track, PlaybackState previous)
+    {
+        var description = FirstMetadataValue(
+            playerState?.ContextMetadata,
+            "context_description",
+            "context_title",
+            "title",
+            "name");
+
+        if (!string.IsNullOrEmpty(description))
+            return description;
+
+        return IsSpotifyEpisodeUri(track?.Uri) && !string.IsNullOrEmpty(track?.Album)
+            ? track.Album
+            : previous.ContextDescription;
+    }
+
+    private static string? ExtractContextImageUrl(PlayerState? playerState, TrackInfo? track, PlaybackState previous)
+    {
+        var imageUrl = FirstMetadataValue(
+            playerState?.ContextMetadata,
+            "image_url",
+            "image_large_url",
+            "image_xlarge_url",
+            "image_small_url");
+
+        if (!string.IsNullOrEmpty(imageUrl))
+            return imageUrl;
+
+        return IsSpotifyEpisodeUri(track?.Uri)
+            ? track?.ImageUrl ?? track?.ImageLargeUrl ?? previous.ContextImageUrl
+            : previous.ContextImageUrl;
+    }
+
+    private static string? InferContextFeature(string? contextUri, string? previous)
+    {
+        if (string.IsNullOrEmpty(contextUri))
+            return previous;
+
+        return contextUri switch
+        {
+            _ when contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal) => "playlist",
+            _ when contextUri.StartsWith("spotify:album:", StringComparison.Ordinal) => "album",
+            _ when contextUri.StartsWith("spotify:artist:", StringComparison.Ordinal) => "artist",
+            _ when contextUri.StartsWith("spotify:show:", StringComparison.Ordinal) => "show",
+            _ when contextUri.StartsWith("spotify:episode:", StringComparison.Ordinal) => "episode",
+            _ when contextUri.Contains("collection", StringComparison.OrdinalIgnoreCase) => "collection",
+            _ => previous
+        };
+    }
+
     /// <summary>
     /// Extracts a list of <see cref="QueueTrack"/> from a repeated ProvidedTrack field.
     /// Filters out control markers (spotify:meta:*, spotify:delimiter).
@@ -145,15 +266,20 @@ public static class PlaybackStateHelpers
                 continue;
             }
 
-            // Regular track
-            metadata.TryGetValue("title", out var title);
-            metadata.TryGetValue("artist_name", out var artist);
-            metadata.TryGetValue("album_title", out var album);
+            // Regular playable item. Episodes carry show metadata in album_* keys.
+            var isEpisode = IsSpotifyEpisodeUri(pt.Uri);
+            var title = FirstMetadataValue(metadata, "title", "track_name", "name");
+            var artist = isEpisode
+                ? FirstMetadataValue(metadata, "album_title", "show_title", "show_name", "album_artist_name", "publisher", "artist_name", "artist")
+                : FirstMetadataValue(metadata, "artist_name", "artist", "album_artist_name");
+            var album = FirstMetadataValue(metadata, "album_title", "show_title", "show_name", "album");
 
-            metadata.TryGetValue("image_url", out var imageUrl);
-            imageUrl ??= metadata.GetValueOrDefault("image_xlarge_url")
-                      ?? metadata.GetValueOrDefault("image_large_url")
-                      ?? metadata.GetValueOrDefault("image_small_url");
+            var imageUrl = FirstMetadataValue(
+                metadata,
+                "image_url",
+                "image_xlarge_url",
+                "image_large_url",
+                "image_small_url");
 
             metadata.TryGetValue("duration", out var durationStr);
             int.TryParse(durationStr, out var durationMs);
@@ -169,8 +295,8 @@ public static class PlaybackStateHelpers
                 Title: title,
                 Artist: artist,
                 Album: album,
-                AlbumUri: !string.IsNullOrEmpty(pt.AlbumUri) ? pt.AlbumUri : metadata.GetValueOrDefault("album_uri"),
-                ArtistUri: !string.IsNullOrEmpty(pt.ArtistUri) ? pt.ArtistUri : metadata.GetValueOrDefault("artist_uri"),
+                AlbumUri: AlbumOrShowUriFor(pt),
+                ArtistUri: ArtistUriFor(pt),
                 DurationMs: durationMs > 0 ? durationMs : null,
                 ImageUrl: imageUrl,
                 IsUserQueued: provider == "queue",
@@ -227,14 +353,31 @@ public static class PlaybackStateHelpers
             ? nextQueue.OfType<QueueTrack>().Select(q => new TrackReference(q.Uri, q.Uid ?? "", q.AlbumUri, q.ArtistUri, q.IsUserQueued)).ToList()
             : (IReadOnlyList<TrackReference>)prev.NextTracks;
 
+        var trackInfo = ps?.Track != null ? ExtractTrackInfo(ps.Track) : prev.Track;
+        var contextUri = !string.IsNullOrEmpty(ps?.ContextUri) ? ps!.ContextUri : prev.ContextUri;
+        var contextUrl = !string.IsNullOrEmpty(ps?.ContextUrl) ? ps!.ContextUrl : prev.ContextUrl;
+        var contextFeature = !string.IsNullOrEmpty(ps?.PlayOrigin?.FeatureIdentifier)
+            ? ps!.PlayOrigin.FeatureIdentifier
+            : InferContextFeature(contextUri, prev.ContextFeature);
+
+        // No active device → no one is driving playback. Spotify keeps echoing the
+        // last known IsPlaying=true in the cluster's PlayerState even after a remote
+        // device disconnects, which would otherwise leave the UI stuck on "playing".
+        var rawStatus = ps != null ? DeterminePlaybackStatus(ps) : PlaybackStatus.Stopped;
+        var status = string.IsNullOrEmpty(cluster.ActiveDeviceId) && rawStatus == PlaybackStatus.Playing
+            ? PlaybackStatus.Paused
+            : rawStatus;
+
         // Merge: start from previous state, override only fields with real values
         var newState = prev with
         {
-            Track = ps?.Track != null ? ExtractTrackInfo(ps.Track) : prev.Track,
-            Status = ps != null ? DeterminePlaybackStatus(ps) : PlaybackStatus.Stopped,
+            Track = trackInfo,
+            Status = status,
             PositionMs = ps?.PositionAsOfTimestamp ?? prev.PositionMs,
             DurationMs = ps?.Duration > 0 ? ps.Duration : prev.DurationMs,
-            ContextUri = !string.IsNullOrEmpty(ps?.ContextUri) ? ps!.ContextUri : prev.ContextUri,
+            PlaybackSpeed = ExtractPlaybackSpeed(ps, prev.PlaybackSpeed),
+            ContextUri = contextUri,
+            ContextUrl = contextUrl,
             CurrentIndex = (int)(ps?.Index?.Track ?? (uint)prev.CurrentIndex),
             PrevTracks = prevTracks,
             NextTracks = nextTracks,
@@ -258,6 +401,9 @@ public static class PlaybackStateHelpers
             IsVolumeRestricted = isVolumeRestricted,
             Timestamp = cluster.ChangedTimestampMs,
             Source = StateSource.Cluster,
+            ContextDescription = ExtractContextDescription(ps, trackInfo, prev),
+            ContextImageUrl = ExtractContextImageUrl(ps, trackInfo, prev),
+            ContextFeature = contextFeature,
         };
 
         var changes = DetectChanges(previousState, newState);
@@ -396,6 +542,7 @@ public static class PlaybackStateHelpers
             Track = track ?? prev.Track,
             PositionMs = hasTrack ? localState.PositionMs : prev.PositionMs,
             DurationMs = localState.DurationMs > 0 ? localState.DurationMs : prev.DurationMs,
+            PlaybackSpeed = NormalizePlaybackSpeed(localState.PlaybackSpeed),
             Status = status,
             ContextUri = !string.IsNullOrEmpty(localState.ContextUri) ? localState.ContextUri : prev.ContextUri,
             ContextUrl = !string.IsNullOrEmpty(localState.ContextUrl) ? localState.ContextUrl : prev.ContextUrl,
@@ -491,7 +638,9 @@ public static class PlaybackStateHelpers
             IsPaused = state.Status == PlaybackStatus.Paused || state.Status == PlaybackStatus.Stopped,
             IsBuffering = state.Status == PlaybackStatus.Buffering || state.Status == PlaybackStatus.Paused,
 
-            PlaybackSpeed = state.Status == PlaybackStatus.Paused ? 0.0 : 1.0,
+            PlaybackSpeed = state.Status == PlaybackStatus.Paused
+                ? 0.0
+                : NormalizePlaybackSpeed(state.PlaybackSpeed),
 
             // CRITICAL: Required fields that librespot sets (missing causes Spotify to ignore state).
             // PlaybackId / SessionId now flow from PlaybackState — stable per-track
@@ -623,14 +772,19 @@ public static class PlaybackStateHelpers
             if (!string.IsNullOrEmpty(state.Track.Title))
                 meta["title"] = state.Track.Title;
             if (!string.IsNullOrEmpty(state.Track.Artist))
-                meta["artist_name"] = state.Track.Artist;
+            {
+                if (IsSpotifyEpisodeUri(state.Track.Uri))
+                    meta["album_artist_name"] = state.Track.Artist;
+                else
+                    meta["artist_name"] = state.Track.Artist;
+            }
             if (!string.IsNullOrEmpty(state.Track.Album))
                 meta["album_title"] = state.Track.Album;
 
             // URIs for rich display
             if (!string.IsNullOrEmpty(state.Track.AlbumUri))
                 meta["album_uri"] = state.Track.AlbumUri;
-            if (!string.IsNullOrEmpty(state.Track.ArtistUri))
+            if (!string.IsNullOrEmpty(state.Track.ArtistUri) && !IsSpotifyEpisodeUri(state.Track.Uri))
                 meta["artist_uri"] = state.Track.ArtistUri;
             if (!string.IsNullOrEmpty(state.ContextUri))
             {
@@ -774,23 +928,18 @@ public static class PlaybackStateHelpers
     {
         var metadata = providedTrack.Metadata;
 
-        // Extract common metadata fields (Spotify uses various key names)
-        metadata.TryGetValue("title", out var title);
-        metadata.TryGetValue("artist_name", out var artist);
-        metadata.TryGetValue("album_title", out var album);
+        var isEpisode = IsSpotifyEpisodeUri(providedTrack.Uri);
+        var title = FirstMetadataValue(metadata, "title", "track_name", "name");
+        var artist = isEpisode
+            ? FirstMetadataValue(metadata, "album_title", "show_title", "show_name", "album_artist_name", "publisher", "artist_name", "artist")
+            : FirstMetadataValue(metadata, "artist_name", "artist", "album_artist_name");
+        var album = FirstMetadataValue(metadata, "album_title", "show_title", "show_name", "album");
 
-        // Try alternative metadata keys
-        title ??= metadata.GetValueOrDefault("track_name");
-        artist ??= metadata.GetValueOrDefault("artist");
-        album ??= metadata.GetValueOrDefault("album");
+        var imageUrl = FirstMetadataValue(metadata, "image_url");
+        var imageSmallUrl = FirstMetadataValue(metadata, "image_small_url");
+        var imageLargeUrl = FirstMetadataValue(metadata, "image_large_url");
+        var imageXLargeUrl = FirstMetadataValue(metadata, "image_xlarge_url");
 
-        // Extract all image size variants
-        metadata.TryGetValue("image_url", out var imageUrl);
-        metadata.TryGetValue("image_small_url", out var imageSmallUrl);
-        metadata.TryGetValue("image_large_url", out var imageLargeUrl);
-        metadata.TryGetValue("image_xlarge_url", out var imageXLargeUrl);
-
-        // Fallback for default image
         imageUrl ??= imageXLargeUrl ?? imageLargeUrl ?? imageSmallUrl;
 
         return new TrackInfo
@@ -800,12 +949,8 @@ public static class PlaybackStateHelpers
             Title = title,
             Artist = artist,
             Album = album,
-            AlbumUri = !string.IsNullOrEmpty(providedTrack.AlbumUri)
-                ? providedTrack.AlbumUri
-                : metadata.GetValueOrDefault("album_uri"),
-            ArtistUri = !string.IsNullOrEmpty(providedTrack.ArtistUri)
-                ? providedTrack.ArtistUri
-                : metadata.GetValueOrDefault("artist_uri"),
+            AlbumUri = AlbumOrShowUriFor(providedTrack),
+            ArtistUri = ArtistUriFor(providedTrack),
             ImageUrl = imageUrl,
             ImageSmallUrl = imageSmallUrl,
             ImageLargeUrl = imageLargeUrl,
@@ -862,10 +1007,16 @@ public static class PlaybackStateHelpers
 
         var meta = pt.Metadata;
         if (track.Title != null) meta["title"] = track.Title;
-        if (track.Artist != null) meta["artist_name"] = track.Artist;
+        if (track.Artist != null)
+        {
+            if (IsSpotifyEpisodeUri(track.Uri))
+                meta["album_artist_name"] = track.Artist;
+            else
+                meta["artist_name"] = track.Artist;
+        }
         if (track.Album != null) meta["album_title"] = track.Album;
         if (!string.IsNullOrEmpty(track.AlbumUri)) meta["album_uri"] = track.AlbumUri;
-        if (!string.IsNullOrEmpty(track.ArtistUri)) meta["artist_uri"] = track.ArtistUri;
+        if (!string.IsNullOrEmpty(track.ArtistUri) && !IsSpotifyEpisodeUri(track.Uri)) meta["artist_uri"] = track.ArtistUri;
         // Queue-wide context URI is written only if the track's per-track
         // Metadata doesn't already carry one. This preserves the original
         // context URI on prev_tracks after an autoplay switchover (played
@@ -915,13 +1066,18 @@ public static class PlaybackStateHelpers
     public static QueueTrack ProvidedTrackToQueueTrack(ProvidedTrack pt)
     {
         var metadata = pt.Metadata;
-        metadata.TryGetValue("title", out var title);
-        metadata.TryGetValue("artist_name", out var artist);
-        metadata.TryGetValue("album_title", out var album);
-        metadata.TryGetValue("image_url", out var imageUrl);
-        imageUrl ??= metadata.GetValueOrDefault("image_xlarge_url")
-                  ?? metadata.GetValueOrDefault("image_large_url")
-                  ?? metadata.GetValueOrDefault("image_small_url");
+        var isEpisode = IsSpotifyEpisodeUri(pt.Uri);
+        var title = FirstMetadataValue(metadata, "title", "track_name", "name");
+        var artist = isEpisode
+            ? FirstMetadataValue(metadata, "album_title", "show_title", "show_name", "album_artist_name", "publisher", "artist_name", "artist")
+            : FirstMetadataValue(metadata, "artist_name", "artist", "album_artist_name");
+        var album = FirstMetadataValue(metadata, "album_title", "show_title", "show_name", "album");
+        var imageUrl = FirstMetadataValue(
+            metadata,
+            "image_url",
+            "image_xlarge_url",
+            "image_large_url",
+            "image_small_url");
 
         var provider = !string.IsNullOrEmpty(pt.Provider) ? pt.Provider : "context";
         if (metadata.TryGetValue("is_queued", out var isQueued) && isQueued == "true")
@@ -935,8 +1091,8 @@ public static class PlaybackStateHelpers
             Title: title,
             Artist: artist,
             Album: album,
-            AlbumUri: !string.IsNullOrEmpty(pt.AlbumUri) ? pt.AlbumUri : metadata.GetValueOrDefault("album_uri"),
-            ArtistUri: !string.IsNullOrEmpty(pt.ArtistUri) ? pt.ArtistUri : metadata.GetValueOrDefault("artist_uri"),
+            AlbumUri: AlbumOrShowUriFor(pt),
+            ArtistUri: ArtistUriFor(pt),
             ImageUrl: imageUrl,
             IsUserQueued: provider == "queue",
             Provider: provider
@@ -1035,6 +1191,9 @@ public static class PlaybackStateHelpers
             previous.Options.RepeatingTrack != current.Options.RepeatingTrack)
             changes |= StateChanges.Options;
 
+        if (Math.Abs(previous.PlaybackSpeed - current.PlaybackSpeed) > 0.001)
+            changes |= StateChanges.PlaybackSpeed;
+
         // Active device changed (id, type, or the visible device list)
         if (previous.ActiveDeviceId != current.ActiveDeviceId ||
             previous.ActiveDeviceType != current.ActiveDeviceType ||
@@ -1106,6 +1265,8 @@ public static class PlaybackStateHelpers
         "artist"     => "artist",
         "collection" => "your_library",
         "search"     => "search",
+        "show"       => "show",
+        "episode"    => "episode",
         _            => "home",
     };
 

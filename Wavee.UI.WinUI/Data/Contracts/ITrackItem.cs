@@ -113,6 +113,22 @@ public interface ITrackItem : INotifyPropertyChanged
     string PlayCountFormatted => string.Empty;
 
     /// <summary>
+    /// Optional playback progress from 0.0 to 1.0. Podcast episodes can populate
+    /// this from Spotify's <c>playedState.playPositionMilliseconds</c>.
+    /// </summary>
+    double? PlaybackProgress => null;
+
+    /// <summary>
+    /// Optional display text for <see cref="PlaybackProgress"/>, e.g. "42%".
+    /// </summary>
+    string PlaybackProgressText => string.Empty;
+
+    /// <summary>
+    /// True when the progress source failed, distinct from an unplayed episode.
+    /// </summary>
+    bool HasPlaybackProgressError => false;
+
+    /// <summary>
     /// Stable uid for this track within its source context (lower-case hex).
     /// Derived from the Spotify playlist <c>itemId</c> / album/artist <c>uid</c>
     /// at the API layer. Null when the source doesn't carry a uid (e.g. Liked Songs).

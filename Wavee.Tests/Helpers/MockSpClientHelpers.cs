@@ -65,8 +65,22 @@ internal static class MockSpClientHelpers
                     // Extract connection ID from headers
                     var connectionId = request.Headers.GetValues("X-Spotify-Connection-Id").FirstOrDefault() ?? "";
 
-                    // Parse protobuf request body
+                    // Parse protobuf request body. SpClient gzip-compresses the body
+                    // and signals it via the non-standard X-Transfer-Encoding header
+                    // (matching desktop wire format), so the mock must decompress
+                    // before parsing — otherwise PutStateRequest.Parser sees gzipped
+                    // bytes and throws InvalidProtocolBufferException.
                     var requestBody = request.Content?.ReadAsByteArrayAsync(ct).Result ?? Array.Empty<byte>();
+                    var isGzipped = request.Headers.TryGetValues("X-Transfer-Encoding", out var enc)
+                        && enc.Any(v => string.Equals(v, "gzip", StringComparison.OrdinalIgnoreCase));
+                    if (isGzipped)
+                    {
+                        using var input = new MemoryStream(requestBody);
+                        using var gz = new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress);
+                        using var output = new MemoryStream();
+                        gz.CopyTo(output);
+                        requestBody = output.ToArray();
+                    }
                     var putStateRequest = PutStateRequest.Parser.ParseFrom(requestBody);
 
                     tracker.Calls.Add(new PutStateCallTracker.PutStateCall

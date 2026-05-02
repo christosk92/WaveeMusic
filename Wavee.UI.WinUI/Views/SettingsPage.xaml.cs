@@ -23,6 +23,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     private GeneralSettingsSection? _generalSection;
+    private AiSettingsSection? _aiSection;
     private PlaybackSettingsSection? _playbackSection;
     private AudioSettingsSection? _audioSection;
     private StorageNetworkSettingsSection? _storageSection;
@@ -88,6 +89,11 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
         UserControl view = tag switch
         {
+            "ai" => _aiSection ??= new AiSettingsSection(
+                new AiSettingsViewModel(
+                    Ioc.Default.GetRequiredService<ISettingsService>(),
+                    Ioc.Default.GetRequiredService<AiCapabilities>(),
+                    Ioc.Default.GetService<AiNotificationService>())),
             "playback" => _playbackSection ??= new PlaybackSettingsSection(ViewModel),
             "audio" => _audioSection ??= new AudioSettingsSection(ViewModel),
             "storage" => _storageSection ??= new StorageNetworkSettingsSection(ViewModel),

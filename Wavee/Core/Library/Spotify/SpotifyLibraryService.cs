@@ -109,6 +109,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             (SpotifyLibraryItemType.Track, ExtensionKind.TrackV4, "tracks"),
             (SpotifyLibraryItemType.Album, ExtensionKind.AlbumV4, "albums"),
             (SpotifyLibraryItemType.Artist, ExtensionKind.ArtistV4, "artists"),
+            (SpotifyLibraryItemType.Show, ExtensionKind.ShowV4, "shows"),
         };
 
         var totalBackfilled = 0;
@@ -136,6 +137,24 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             }
         }
 
+        var missingListenLaterUris = await _database.GetLibraryUrisMissingMetadataAsync(SpotifyLibraryItemType.ListenLater, ct);
+        if (missingListenLaterUris.Count > 0)
+        {
+            _logger?.LogWarning("Backfill: {Count} listen later items are missing from entities table - fetching mixed metadata",
+                missingListenLaterUris.Count);
+
+            try
+            {
+                await FetchMixedTypeMetadataAsync(missingListenLaterUris, "listen later", ct);
+                totalBackfilled += missingListenLaterUris.Count;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Backfill: FAILED to fetch metadata for {Count} listen later items",
+                    missingListenLaterUris.Count);
+            }
+        }
+
         if (totalBackfilled > 0)
             _logger?.LogInformation("Metadata backfill complete: {Total} items repaired", totalBackfilled);
         else
@@ -149,6 +168,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         await SyncAlbumsAsync(ct);
         await SyncArtistsAsync(ct);
         await SyncShowsAsync(ct);
+        await SyncListenLaterAsync(ct);
     }
 
     /// <inheritdoc/>
@@ -418,18 +438,26 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             if (addCount > 0 && _metadataClient != null)
             {
                 var addedUris = items.Where(i => !i.IsRemoved).Select(i => i.Uri).ToList();
-                var extensionKind = itemType switch
+                if (itemType == SpotifyLibraryItemType.YlPin || itemType == SpotifyLibraryItemType.ListenLater)
                 {
-                    SpotifyLibraryItemType.Track => ExtensionKind.TrackV4,
-                    SpotifyLibraryItemType.Album => ExtensionKind.AlbumV4,
-                    SpotifyLibraryItemType.Artist => ExtensionKind.ArtistV4,
-                    SpotifyLibraryItemType.Show => ExtensionKind.ShowV4,
-                    _ => (ExtensionKind?)null
-                };
-                if (extensionKind.HasValue)
+                    _logger?.LogDebug("Fetching mixed metadata for {Count} new {Type} items", addedUris.Count, displayName);
+                    await FetchMixedTypeMetadataAsync(addedUris, displayName, ct);
+                }
+                else
                 {
-                    _logger?.LogDebug("Fetching metadata for {Count} new {Type} items", addedUris.Count, displayName);
-                    await FetchAndStoreMetadataAsync(addedUris, extensionKind.Value, displayName, ct);
+                    var extensionKind = itemType switch
+                    {
+                        SpotifyLibraryItemType.Track => ExtensionKind.TrackV4,
+                        SpotifyLibraryItemType.Album => ExtensionKind.AlbumV4,
+                        SpotifyLibraryItemType.Artist => ExtensionKind.ArtistV4,
+                        SpotifyLibraryItemType.Show => ExtensionKind.ShowV4,
+                        _ => (ExtensionKind?)null
+                    };
+                    if (extensionKind.HasValue)
+                    {
+                        _logger?.LogDebug("Fetching metadata for {Count} new {Type} items", addedUris.Count, displayName);
+                        await FetchAndStoreMetadataAsync(addedUris, extensionKind.Value, displayName, ct);
+                    }
                 }
             }
 
@@ -1052,6 +1080,9 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         {
             "artist" => SpotifyLibraryItemType.Artist,
             "show" => SpotifyLibraryItemType.Show,
+            "listenlater" => SpotifyLibraryItemType.ListenLater,
+            "ylpin" => SpotifyLibraryItemType.YlPin,
+            "enhanced" => SpotifyLibraryItemType.Enhanced,
             _ => SpotifyLibraryItemType.Track // Default to track
         };
     }

@@ -498,6 +498,11 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
             Title = ViewModel.TrackTitle ?? "Album",
             ImageUrl = ViewModel.AlbumArt
         };
+        if (albumId.StartsWith("spotify:show:", StringComparison.Ordinal))
+        {
+            NavigationHelpers.OpenShow(albumId, param.Title);
+            return;
+        }
         NavigationHelpers.OpenAlbum(param, param.Title);
     }
 
@@ -530,6 +535,15 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
                 break;
             case PlaybackContextType.LikedSongs:
                 NavigationHelpers.OpenLikedSongs();
+                break;
+            case PlaybackContextType.Show:
+                NavigationHelpers.OpenShow(param.Uri, param.Title);
+                break;
+            case PlaybackContextType.Episode:
+                if (param.Uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase))
+                    NavigationHelpers.OpenYourEpisodes();
+                else
+                    NavigationHelpers.OpenShow(param.Uri, param.Title);
                 break;
             default:
                 NavigateToAlbum();

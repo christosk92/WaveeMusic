@@ -106,6 +106,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private double _currentOriginalDuration;
     [ObservableProperty] private double _position;
     [ObservableProperty] private double _duration;
+    [ObservableProperty] private double _playbackSpeed = 1.0;
     [ObservableProperty] private double _volume = 100.0;
     [ObservableProperty] private bool _isShuffle;
     [ObservableProperty] private RepeatMode _repeatMode = RepeatMode.Off;
@@ -227,6 +228,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         CurrentArtists = null;
         Position = 0;
         Duration = 0;
+        PlaybackSpeed = 1.0;
         CurrentContext = null;
         QueuePosition = 0;
         IsPlayingRemotely = false;
@@ -352,8 +354,11 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         // Apply connect state immediately (may be incomplete)
                         ApplyConnectState(trackUri, state);
 
-                        // Request enrichment from TrackMetadataEnricher (if it exists post-connect)
-                        _messenger.Send(new TrackEnrichmentRequestMessage(trackUri));
+                        // Request enrichment for catalog tracks and episodes.
+                        // The enricher branches by URI type; episodes use podcast
+                        // metadata instead of the TrackV4 path.
+                        if (IsSpotifyTrackUri(trackUri) || IsSpotifyEpisodeUri(trackUri))
+                            _messenger.Send(new TrackEnrichmentRequestMessage(trackUri));
                     }
                 }
 
@@ -452,7 +457,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 }
 
                 // Options
-                if (state.Changes.HasFlag(StateChanges.Options))
+                if (state.Changes.HasFlag(StateChanges.Options) ||
+                    state.Changes.HasFlag(StateChanges.PlaybackSpeed))
                 {
                     _logger?.LogDebug("UI bridge: options → shuffle={Shuffle}, repeatCtx={RepeatCtx}, repeatTrack={RepeatTrack}",
                         state.Options.Shuffling, state.Options.RepeatingContext, state.Options.RepeatingTrack);
@@ -462,6 +468,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         : state.Options.RepeatingContext
                             ? RepeatMode.Context
                             : RepeatMode.Off;
+                    PlaybackSpeed = state.PlaybackSpeed;
                 }
 
                 // Context
@@ -563,7 +570,13 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _dispatcherQueue.TryEnqueue(() =>
         {
             // Only apply if this enrichment is for the currently playing track
-            if (CurrentTrackId != message.TrackId) return;
+            var currentUri = GetCurrentTrackUri();
+            if (!string.Equals(CurrentTrackId, message.TrackId, StringComparison.Ordinal)
+                && !string.Equals(CurrentTrackId, message.TrackUri, StringComparison.Ordinal)
+                && !string.Equals(currentUri, message.TrackUri, StringComparison.Ordinal))
+            {
+                return;
+            }
 
             if (message.Title != null) CurrentTrackTitle = message.Title;
             if (message.ArtistName != null) CurrentArtistName = message.ArtistName;
@@ -822,11 +835,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         return uri.StartsWith(prefix, StringComparison.Ordinal) ? uri[prefix.Length..] : uri;
     }
 
+    private static bool IsSpotifyTrackUri(string? uri)
+        => uri?.StartsWith("spotify:track:", StringComparison.Ordinal) == true;
+
+    private static bool IsSpotifyEpisodeUri(string? uri)
+        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
+
     private string? GetCurrentTrackUri()
     {
         if (string.IsNullOrEmpty(CurrentTrackId)) return null;
         const string prefix = "spotify:track:";
-        return CurrentTrackId.StartsWith(prefix, StringComparison.Ordinal)
+        return CurrentTrackId.Contains(':', StringComparison.Ordinal)
             ? CurrentTrackId
             : $"{prefix}{CurrentTrackId}";
     }
@@ -840,6 +859,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _ when contextUri.StartsWith("spotify:album:", StringComparison.Ordinal) => PlaybackContextType.Album,
             _ when contextUri.StartsWith("spotify:playlist:", StringComparison.Ordinal) => PlaybackContextType.Playlist,
             _ when contextUri.StartsWith("spotify:artist:", StringComparison.Ordinal) => PlaybackContextType.Artist,
+            _ when contextUri.StartsWith("spotify:show:", StringComparison.Ordinal) => PlaybackContextType.Show,
+            _ when contextUri.StartsWith("spotify:episode:", StringComparison.Ordinal) => PlaybackContextType.Episode,
             _ when contextUri.Contains("collection", StringComparison.OrdinalIgnoreCase) => PlaybackContextType.LikedSongs,
             _ => PlaybackContextType.Unknown
         };
@@ -973,7 +994,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             sparseUris = state.NextQueue
                 .OfType<Wavee.Audio.Queue.QueueTrack>()
-                .Where(NeedsQueueTrackEnrichment)
+                .Where(track => (IsSpotifyTrackUri(track.Uri) || IsSpotifyEpisodeUri(track.Uri))
+                    && NeedsQueueTrackEnrichment(track))
                 .Select(track => track.Uri)
                 .Distinct()
                 .ToList();
@@ -982,7 +1004,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             sparseUris = _queue
                 .Where(q => (!q.HasMetadata || string.IsNullOrEmpty(q.AlbumArt))
-                    && !string.IsNullOrEmpty(q.TrackId))
+                    && (IsSpotifyTrackUri(q.TrackId) || IsSpotifyEpisodeUri(q.TrackId)))
                 .Select(q => q.TrackId)
                 .Distinct()
                 .ToList();
@@ -1139,6 +1161,16 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         CurrentTrackHasMusicVideo = false;
         if (string.IsNullOrEmpty(value)) return;
         if (CurrentTrackIsVideo) return;
+
+        // Music-video discovery is track-only. Episodes and other fully-qualified
+        // playable URIs must not be coerced into spotify:track:*.
+        if (value.Contains(':', StringComparison.Ordinal)
+            && !value.StartsWith("spotify:track:", StringComparison.Ordinal))
+        {
+            CurrentTrackManifestId = null;
+            return;
+        }
+
         var audioUri = value.StartsWith("spotify:track:", StringComparison.Ordinal)
             ? value
             : $"spotify:track:{value}";
@@ -1331,6 +1363,26 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     }
 
     // Guard: when true, volume changes are from remote state sync — don't send commands back
+    public void SetPlaybackSpeed(double speed)
+    {
+        var normalized = Math.Clamp(speed, 0.5, 3.5);
+        var previous = PlaybackSpeed;
+        _logger?.LogInformation("[Cmd] SetPlaybackSpeed: {Was} -> {Next}", previous, normalized);
+        PlaybackSpeed = normalized;
+        _ = _playbackService.SetPlaybackSpeedAsync(normalized).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                _logger?.LogError(t.Exception, "[Cmd] SetPlaybackSpeed FAILED");
+                _dispatcherQueue.TryEnqueue(() => PlaybackSpeed = previous);
+            }
+            else
+            {
+                _logger?.LogDebug("[Cmd] SetPlaybackSpeed accepted");
+            }
+        });
+    }
+
     private bool _suppressVolumeCommand;
 
     /// <summary>

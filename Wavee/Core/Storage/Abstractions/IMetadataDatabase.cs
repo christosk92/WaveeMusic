@@ -191,7 +191,7 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// <returns>List of entities that are in the library.</returns>
     Task<List<CachedEntity>> GetSpotifyLibraryItemsAsync(
         SpotifyLibraryItemType itemType,
-        int limit = 50,
+        int limit = int.MaxValue - 1,
         int offset = 0,
         CancellationToken cancellationToken = default);
 

@@ -9,6 +9,7 @@
     xmlns:animations="using:CommunityToolkit.WinUI.Animations"
     xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -90,6 +91,39 @@
                         PointerReleased="LyricsInteractionRegion_PointerReleased"
                         PointerWheelChanged="LyricsInteractionRegion_PointerWheelChanged" />
 
+                    <sidebarplayer:LyricsAiPanel
+                        x:Name="ExpandedLyricsAi"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Margin="0,8,0,0"
+                        Visibility="Collapsed"
+                        Canvas.ZIndex="5" />
+
+                    <Button
+                        x:Name="LyricsHoverExplainButton"
+                        Click="LyricsHoverExplainButton_Click"
+                        PointerEntered="LyricsHoverExplainButton_PointerEntered"
+                        PointerExited="LyricsHoverExplainButton_PointerExited"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        MinWidth="0"
+                        MinHeight="0"
+                        CornerRadius="17"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                        BorderThickness="1"
+                        Visibility="Collapsed"
+                        Canvas.ZIndex="7"
+                        ToolTipService.ToolTip="Explain this line">
+                        <ic:SymbolIcon Symbol="LightbulbFilament"
+                                       IconVariant="Filled"
+                                       FontSize="14"
+                                       Foreground="{ThemeResource AiAccentSolidBrush}" />
+                    </Button>
+
                     <!-- "No lyrics" placeholder. Shown when lyrics mode is active
                          but the current track has no lyrics. IsHitTestVisible=False
                          so it doesn't swallow pointer events from the interaction
@@ -138,6 +172,7 @@
                         IsTabHeaderVisible="False"
                         IsEmbeddedChromeTransparent="True"
                         EmbeddedHostTintColor="{x:Bind ViewModel.AlbumArtColor, Mode=OneWay}" />
+
                 </Grid>
             </Border>
         </Grid>

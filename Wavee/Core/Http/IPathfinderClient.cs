@@ -167,4 +167,40 @@ public interface IPathfinderClient
     /// </summary>
     Task<GetTrackResponse> GetTrackAsync(
         string trackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Full podcast episode payload: description, show data, preview, share URL,
+    /// transcript metadata, and play state. Backed by Spotify's
+    /// <c>getEpisodeOrChapter</c> persisted query.
+    /// </summary>
+    Task<GetEpisodeOrChapterResponse> GetEpisodeOrChapterAsync(
+        string episodeUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches Spotify's recommended podcast episodes for a given episode URI.
+    /// Backed by the <c>internalLinkRecommenderEpisode</c> persisted query.
+    /// </summary>
+    Task<SeoRecommendedEpisodesResponse> GetSeoRecommendedEpisodesAsync(
+        string episodeUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches the public comment page for a podcast episode or other entity.
+    /// Backed by the <c>getCommentsForEntity</c> persisted query.
+    /// </summary>
+    Task<EntityCommentsResponse> GetCommentsForEntityAsync(
+        string entityUri, string? token = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches a page of replies for a single comment.
+    /// Backed by the <c>getReplies</c> persisted query.
+    /// </summary>
+    Task<CommentRepliesResponse> GetCommentRepliesAsync(
+        string commentUri, string? pageToken = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches reaction users and aggregate counts for a comment or reply.
+    /// Backed by the <c>getReactions</c> persisted query.
+    /// </summary>
+    Task<CommentReactionsResponse> GetCommentReactionsAsync(
+        string uri, string? token = null, string? reactionUnicode = null, CancellationToken ct = default);
 }

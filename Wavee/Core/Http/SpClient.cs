@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -12,6 +13,7 @@ using Wavee.Core.Http.Presence;
 using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.Playplay;
+using Wavee.Protocol.Resumption;
 using Wavee.Protocol.Storage;
 
 namespace Wavee.Core.Http;
@@ -1102,6 +1104,82 @@ public sealed class SpClient : ISpClient
         response.EnsureSuccessStatusCode();
 
         _logger?.LogDebug("Collection write completed: {Set}, items={Count}", set, request.Items.Count);
+    }
+
+    /// <inheritdoc cref="ISpClient.ListCurrentStatesAsync"/>
+    public async Task<ListCurrentStatesResponse> ListCurrentStatesAsync(
+        DateTimeOffset updatedAfter,
+        int limit = 1021,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var timestamp = updatedAfter
+            .UtcDateTime
+            .ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+
+        var request = new ListCurrentStatesRequest
+        {
+            Limit = limit,
+            Filter = $"cs.resume_point_revisions.exists(revision, revision.update_time > timestamp('{timestamp}'))"
+        };
+
+        var url = $"{_baseUrl}/herodotus/spotify.resumption.v1.CurrentStateService/ListCurrentStates";
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        httpRequest.Headers.AcceptLanguage.ParseAdd("en");
+        httpRequest.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        httpRequest.Headers.TryAddWithoutValidation("App-Platform", SpotifyClientIdentity.AppPlatform);
+        httpRequest.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        httpRequest.Headers.TryAddWithoutValidation("Origin", _baseUrl);
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+        httpRequest.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    httpRequest.Headers.TryAddWithoutValidation("client-token", clientToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "ListCurrentStates: failed to obtain client-token, continuing without");
+            }
+        }
+
+        httpRequest.Content = new ByteArrayContent(request.ToByteArray());
+        httpRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+
+        var response = await SendWithRetryAsync(httpRequest, cancellationToken);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.TooManyRequests:
+                throw new SpClientException(SpClientFailureReason.RateLimited, "Rate limit exceeded");
+        }
+
+        if ((int)response.StatusCode >= 500)
+        {
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var payload = ListCurrentStatesResponse.Parser.ParseFrom(bytes);
+        _logger?.LogDebug(
+            "Herodotus current states fetched: states={Count}, updatedAfter={UpdatedAfter:o}",
+            payload.States.Count,
+            updatedAfter);
+        return payload;
     }
 
     #endregion

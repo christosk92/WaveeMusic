@@ -605,6 +605,13 @@ public sealed partial class ShellPage : Page
                     else
                         NavigationHelpers.OpenLikedSongs(openInNewTab);
                     break;
+                case "Podcasts":
+                case "YourEpisodes":
+                    if (isOnLibraryPage && !openInNewTab)
+                        (currentPage as LibraryPage)?.SelectTab("podcasts");
+                    else
+                        NavigationHelpers.OpenPodcasts(openInNewTab);
+                    break;
                 default:
                     // Handle playlist navigation (tags starting with "spotify:playlist:")
                     if (tag.StartsWith("spotify:playlist:"))

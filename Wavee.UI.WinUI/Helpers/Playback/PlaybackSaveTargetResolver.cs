@@ -31,6 +31,13 @@ internal static class PlaybackSaveTargetResolver
         if (string.IsNullOrWhiteSpace(trackId))
             return null;
 
+        if (trackId.Contains(':', StringComparison.Ordinal)
+            && !trackId.StartsWith("spotify:track:", StringComparison.Ordinal)
+            && !trackId.StartsWith("wavee:local:track:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
         return trackId.Contains(':', StringComparison.Ordinal)
             ? trackId
             : $"spotify:track:{trackId}";

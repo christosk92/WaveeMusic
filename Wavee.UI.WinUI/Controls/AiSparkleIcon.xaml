@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.AiSparkleIcon"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:icc="using:FluentIcons.Common"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Width="16"
+    Height="16">
+
+    <!--
+        AiSparkleIcon — the AI brand glyph, scriptable via the State dependency
+        property. State drives Composition animations (scale pulse, slow rotate,
+        wiggle) without needing a Lottie file or LottieGen step. The glyph itself
+        is the FluentIcons "Sparkle" symbol filled with the Copilot rainbow
+        gradient.
+
+        Why a UserControl and not a plain FontIcon: we want the affordance to
+        feel alive — pulse on hover, slow rotate while generating, one-shot
+        completion pulse. Composition is the right WinUI primitive; Lottie would
+        also work but adds a build-time tool to the chain. The on-disk visual
+        match is identical at this size.
+
+        Reduce-animations safety: when the system "Reduce animations" toggle is
+        on, the framework's CompositionAnimationGroup respects ImplicitAnimation
+        = Disabled; we additionally short-circuit in the code-behind (see .xaml.cs).
+    -->
+
+    <Grid x:Name="VisualHost">
+        <ic:SymbolIcon
+            x:Name="Sparkle"
+            Symbol="Sparkle"
+            IconVariant="Filled"
+            FontSize="14"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Foreground="{ThemeResource AiAccentGradientBrush}" />
+    </Grid>
+</UserControl>

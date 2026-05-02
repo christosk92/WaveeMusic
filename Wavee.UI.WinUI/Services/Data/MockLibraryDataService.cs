@@ -79,6 +79,9 @@ public sealed class MockLibraryDataService : ILibraryDataService
     private readonly Dictionary<string, List<LibraryArtistTopTrackDto>> _mockArtistTopTracks;
     private readonly Dictionary<string, List<LibraryArtistAlbumDto>> _mockArtistAlbums;
     private readonly List<LikedSongDto> _mockLikedSongs;
+    private readonly List<LibraryEpisodeDto> _mockYourEpisodes;
+    private readonly List<LibraryEpisodeDto> _mockRecentlyPlayedPodcastEpisodes;
+    private readonly List<LibraryPodcastShowDto> _mockPodcastShows;
     private readonly List<LikedSongsFilterDto> _mockLikedSongFilters;
     private readonly Dictionary<string, List<PlaylistTrackDto>> _mockPlaylistTracks;
 
@@ -96,6 +99,9 @@ public sealed class MockLibraryDataService : ILibraryDataService
         (_mockAlbums, _mockAlbumTracks) = GenerateMockAlbums();
         (_mockArtists, _mockArtistTopTracks, _mockArtistAlbums) = GenerateMockArtists(_mockAlbums, _mockAlbumTracks);
         _mockLikedSongs = GenerateMockLikedSongs(_mockAlbums, _mockAlbumTracks);
+        _mockYourEpisodes = GenerateMockYourEpisodes();
+        _mockRecentlyPlayedPodcastEpisodes = GenerateMockRecentlyPlayedPodcastEpisodes(_mockYourEpisodes);
+        _mockPodcastShows = GenerateMockPodcastShows(_mockYourEpisodes);
         _mockLikedSongFilters = GenerateMockLikedSongFilters();
         _mockPlaylistTracks = GenerateMockPlaylistTracks(_mockPlaylists, _mockAlbums, _mockAlbumTracks);
     }
@@ -107,6 +113,8 @@ public sealed class MockLibraryDataService : ILibraryDataService
             AlbumCount = _mockAlbums.Count,
             ArtistCount = _mockArtists.Count,
             LikedSongsCount = _mockLikedSongs.Count,
+            YourEpisodesCount = _mockYourEpisodes.Count,
+            PodcastCount = _mockPodcastShows.Count,
             PlaylistCount = _mockPlaylists.Count,
             TotalPlayCount = _mockItems.Sum(x => x.PlayCount)
         };
@@ -164,6 +172,249 @@ public sealed class MockLibraryDataService : ILibraryDataService
     public Task<IReadOnlyList<LikedSongDto>> GetLikedSongsAsync(CancellationToken ct = default)
     {
         return Task.FromResult<IReadOnlyList<LikedSongDto>>(_mockLikedSongs);
+    }
+
+    public Task<IReadOnlyList<LibraryEpisodeDto>> GetYourEpisodesAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<LibraryEpisodeDto>>(_mockYourEpisodes);
+    }
+
+    public Task<IReadOnlyList<LibraryEpisodeDto>> GetRecentlyPlayedPodcastEpisodesAsync(
+        int limit = 50,
+        CancellationToken ct = default)
+    {
+        var episodes = _mockRecentlyPlayedPodcastEpisodes
+            .OrderByDescending(static episode => episode.AddedAt)
+            .Take(Math.Max(0, limit))
+            .ToList();
+        return Task.FromResult<IReadOnlyList<LibraryEpisodeDto>>(episodes);
+    }
+
+    public Task<IReadOnlyList<LibraryPodcastShowDto>> GetPodcastShowsAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<LibraryPodcastShowDto>>(_mockPodcastShows);
+    }
+
+    public Task<PodcastEpisodeDetailDto?> GetPodcastEpisodeDetailAsync(string episodeUri, CancellationToken ct = default)
+    {
+        var allPodcastEpisodes = _mockYourEpisodes
+            .Concat(_mockRecentlyPlayedPodcastEpisodes)
+            .GroupBy(static episode => episode.Uri, StringComparer.Ordinal)
+            .Select(static group => group.First())
+            .ToList();
+
+        var episode = allPodcastEpisodes.FirstOrDefault(e => string.Equals(e.Uri, episodeUri, StringComparison.Ordinal));
+        if (episode is null)
+            return Task.FromResult<PodcastEpisodeDetailDto?>(null);
+
+        var recommendations = allPodcastEpisodes
+            .Where(e => !string.Equals(e.Uri, episodeUri, StringComparison.Ordinal))
+            .Select(e => new PodcastEpisodeRecommendationDto
+            {
+                Uri = e.Uri,
+                Title = e.Title,
+                ShowName = e.AlbumName,
+                ImageUrl = e.ImageUrl,
+                Duration = e.Duration,
+                ReleaseDate = e.ReleaseDate,
+                IsExplicit = e.IsExplicit
+            })
+            .ToList();
+
+        var detail = PodcastEpisodeDetailDto.FromEpisode(episode) with
+        {
+            Recommendations = recommendations,
+            Comments =
+            [
+                new PodcastEpisodeCommentDto
+                {
+                    Uri = "spotify:comment:mock-wavee-listener",
+                    AuthorName = "Wavee listener",
+                    Text = "Saved this for the section on practical AI workflows.",
+                    CreatedAt = DateTimeOffset.Now.AddDays(-1),
+                    ReactionCount = 2,
+                    TopReactionEmoji = ["\U0001F602", "\u2764\uFE0F"]
+                }
+            ],
+            TranscriptLanguages = ["en-us"]
+        };
+
+        return Task.FromResult<PodcastEpisodeDetailDto?>(detail);
+    }
+
+    public Task<PodcastEpisodeCommentsPageDto?> GetPodcastEpisodeCommentsPageAsync(
+        string episodeUri,
+        string? pageToken,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+        ct.ThrowIfCancellationRequested();
+
+        if (!string.IsNullOrWhiteSpace(pageToken))
+        {
+            return Task.FromResult<PodcastEpisodeCommentsPageDto?>(new PodcastEpisodeCommentsPageDto
+            {
+                Items = [],
+                TotalCount = 1
+            });
+        }
+
+        return Task.FromResult<PodcastEpisodeCommentsPageDto?>(new PodcastEpisodeCommentsPageDto
+        {
+            Items =
+            [
+                new PodcastEpisodeCommentDto
+                {
+                    Uri = "spotify:comment:mock-wavee-listener",
+                    AuthorName = "Wavee listener",
+                    Text = "Saved this for the section on practical AI workflows.",
+                    CreatedAt = DateTimeOffset.Now.AddDays(-1),
+                    ReactionCount = 2,
+                    TopReactionEmoji = ["\U0001F602", "\u2764\uFE0F"]
+                }
+            ],
+            TotalCount = 1
+        });
+    }
+
+    public Task<PodcastCommentRepliesPageDto?> GetPodcastCommentRepliesAsync(
+        string commentUri,
+        string? pageToken,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(commentUri);
+        ct.ThrowIfCancellationRequested();
+
+        return Task.FromResult<PodcastCommentRepliesPageDto?>(new PodcastCommentRepliesPageDto
+        {
+            Items = [],
+            TotalCount = 0
+        });
+    }
+
+    public Task<PodcastCommentReactionsPageDto?> GetPodcastCommentReactionsAsync(
+        string uri,
+        string? pageToken,
+        string? reactionUnicode,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+        ct.ThrowIfCancellationRequested();
+
+        var all = new List<PodcastCommentReactionDto>
+        {
+            new()
+            {
+                AuthorName = "Maya",
+                CreatedAt = DateTimeOffset.Now.AddMinutes(-4),
+                ReactionUnicode = "\U0001F602"
+            },
+            new()
+            {
+                AuthorName = "Jon",
+                CreatedAt = DateTimeOffset.Now.AddMinutes(-12),
+                ReactionUnicode = "\u2764\uFE0F"
+            },
+            new()
+            {
+                AuthorName = "Priya",
+                CreatedAt = DateTimeOffset.Now.AddHours(-1),
+                ReactionUnicode = "\U0001F44D"
+            }
+        };
+
+        var filtered = string.IsNullOrWhiteSpace(reactionUnicode)
+            ? all
+            : all.Where(reaction => string.Equals(reaction.ReactionUnicode, reactionUnicode, StringComparison.Ordinal)).ToList();
+
+        return Task.FromResult<PodcastCommentReactionsPageDto?>(new PodcastCommentReactionsPageDto
+        {
+            Items = string.IsNullOrWhiteSpace(pageToken) ? filtered : [],
+            ReactionCounts =
+            [
+                new() { ReactionUnicode = "\U0001F602", Count = 1 },
+                new() { ReactionUnicode = "\u2764\uFE0F", Count = 1 },
+                new() { ReactionUnicode = "\U0001F44D", Count = 1 }
+            ]
+        });
+    }
+
+    public Task<PodcastEpisodeCommentReplyDto> CreatePodcastCommentReplyAsync(
+        string commentUri,
+        string text,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(commentUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        ct.ThrowIfCancellationRequested();
+
+        return Task.FromResult(new PodcastEpisodeCommentReplyDto
+        {
+            Uri = $"wavee:reply:{Guid.NewGuid():N}",
+            AuthorName = "You",
+            Text = text.Trim(),
+            CreatedAt = DateTimeOffset.Now
+        });
+    }
+
+    public Task ReactToPodcastCommentAsync(
+        string commentUri,
+        string emoji,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(commentUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(emoji);
+        ct.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public Task ReactToPodcastCommentReplyAsync(
+        string replyUri,
+        string emoji,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(replyUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(emoji);
+        ct.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(string episodeUri, CancellationToken ct = default)
+    {
+        var episode = _mockYourEpisodes
+            .Concat(_mockRecentlyPlayedPodcastEpisodes)
+            .GroupBy(static e => e.Uri, StringComparer.Ordinal)
+            .Select(static group => group.First())
+            .FirstOrDefault(e => string.Equals(e.Uri, episodeUri, StringComparison.Ordinal));
+        if (episode is null)
+            return Task.FromResult<PodcastEpisodeProgressDto?>(null);
+
+        return Task.FromResult<PodcastEpisodeProgressDto?>(new PodcastEpisodeProgressDto
+        {
+            Uri = episode.Uri,
+            PlayedPosition = episode.PlayedPosition,
+            PlayedState = episode.PlayedState,
+            Duration = episode.Duration,
+            UpdatedAt = DateTimeOffset.Now.AddHours(-1)
+        });
+    }
+
+    public Task<PodcastEpisodeCommentDto> CreatePodcastEpisodeCommentAsync(
+        string episodeUri,
+        string text,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        ct.ThrowIfCancellationRequested();
+
+        return Task.FromResult(new PodcastEpisodeCommentDto
+        {
+            Uri = $"wavee:comment:{Guid.NewGuid():N}",
+            AuthorName = "You",
+            Text = text.Trim(),
+            CreatedAt = DateTimeOffset.Now
+        });
     }
 
     public Task<IReadOnlyList<LikedSongsFilterDto>> GetLikedSongFiltersAsync(CancellationToken ct = default)
@@ -663,6 +914,164 @@ public sealed class MockLibraryDataService : ILibraryDataService
 
         // Sort by AddedAt descending (most recent first)
         return likedSongs.OrderByDescending(s => s.AddedAt).ToList();
+    }
+
+    private static List<LibraryEpisodeDto> GenerateMockYourEpisodes()
+    {
+        var now = DateTime.Now;
+        var episodes = new List<LibraryEpisodeDto>
+        {
+            new()
+            {
+                Id = "44EvzGeNJfNFKDlqnoLxRr",
+                Uri = "spotify:episode:44EvzGeNJfNFKDlqnoLxRr",
+                Title = "Inside MCP: How AI Agents Are Learning to Talk to Each Other",
+                ArtistName = "The Brave Technologist",
+                ArtistId = "",
+                AlbumName = "The Brave Technologist",
+                AlbumId = "spotify:show:38FtgGDbuNlSsBgpRdeMah",
+                ImageUrl = "https://i.scdn.co/image/ab67656300005f1f3894f3993d88d77b0ab2ab72",
+                Description = "Andy Maskin explains why brands are shifting from SEO to AI visibility and how cleaner data changes agentic AI outcomes.",
+                ReleaseDate = DateTimeOffset.Now.AddDays(-8),
+                ShareUrl = "https://open.spotify.com/episode/44EvzGeNJfNFKDlqnoLxRr",
+                PreviewUrl = "https://p.scdn.co/mp3-preview/28e627561d00849b8292750815b5831d9a1bd93f.mp3",
+                MediaTypes = ["AUDIO"],
+                Duration = TimeSpan.FromMinutes(33),
+                AddedAt = now.AddDays(-2),
+                IsExplicit = false,
+                IsPlayable = true,
+                OriginalIndex = 1,
+                IsLiked = true
+            },
+            new()
+            {
+                Id = "mock-episode-2",
+                Uri = "spotify:episode:mock-episode-2",
+                Title = "Designing Better Developer Tools",
+                ArtistName = "Wavee Labs",
+                ArtistId = "",
+                AlbumName = "Product Notes",
+                AlbumId = "spotify:show:mock-product-notes",
+                ImageUrl = "https://misc.spotifycdn.com/your-episodes/SE-300.png",
+                Description = "A practical discussion about designing developer tools that stay fast under repeated daily use.",
+                ReleaseDate = DateTimeOffset.Now.AddDays(-14),
+                MediaTypes = ["AUDIO"],
+                Duration = TimeSpan.FromMinutes(42),
+                AddedAt = now.AddDays(-9),
+                IsExplicit = false,
+                IsPlayable = true,
+                OriginalIndex = 2,
+                IsLiked = true
+            }
+        };
+
+        episodes[0].ApplyPlaybackProgress(TimeSpan.FromMinutes(32).Add(TimeSpan.FromSeconds(45)), "IN_PROGRESS");
+        episodes[1].ApplyPlaybackProgress(TimeSpan.Zero, "NOT_STARTED");
+        return episodes;
+    }
+
+    private static List<LibraryEpisodeDto> GenerateMockRecentlyPlayedPodcastEpisodes(IReadOnlyList<LibraryEpisodeDto> savedEpisodes)
+    {
+        var now = DateTime.Now;
+        var savedRecent = savedEpisodes[0] with
+        {
+            AddedAt = now.AddMinutes(-12),
+            OriginalIndex = 1
+        };
+        savedRecent.ApplyPlaybackProgress(TimeSpan.FromMinutes(32).Add(TimeSpan.FromSeconds(45)), "IN_PROGRESS");
+
+        var unsavedProgress = new LibraryEpisodeDto
+        {
+            Id = "mock-recent-unsaved-1",
+            Uri = "spotify:episode:mock-recent-unsaved-1",
+            Title = "Why Clean Data Makes Agents Useful",
+            ArtistName = "Applied AI Notes",
+            ArtistId = "",
+            AlbumName = "Applied AI Notes",
+            AlbumId = "spotify:show:mock-applied-ai-notes",
+            ImageUrl = "https://misc.spotifycdn.com/your-episodes/SE-300.png",
+            Description = "A recently played episode that is not saved and belongs to a show the user does not follow.",
+            ReleaseDate = DateTimeOffset.Now.AddDays(-4),
+            MediaTypes = ["AUDIO"],
+            Duration = TimeSpan.FromMinutes(38),
+            AddedAt = now.AddHours(-3),
+            IsExplicit = false,
+            IsPlayable = true,
+            OriginalIndex = 2,
+            IsLiked = false
+        };
+        unsavedProgress.ApplyPlaybackProgress(TimeSpan.FromMinutes(14), "IN_PROGRESS");
+
+        var unsavedUnplayed = new LibraryEpisodeDto
+        {
+            Id = "mock-recent-unsaved-2",
+            Uri = "spotify:episode:mock-recent-unsaved-2",
+            Title = "A New Season Trailer",
+            ArtistName = "Release Radar Stories",
+            ArtistId = "",
+            AlbumName = "Release Radar Stories",
+            AlbumId = "spotify:show:mock-empty-followed",
+            ImageUrl = "https://misc.spotifycdn.com/your-episodes/SE-300.png",
+            Description = "A zero-position Herodotus row, shown as unplayed.",
+            ReleaseDate = DateTimeOffset.Now.AddDays(-1),
+            MediaTypes = ["AUDIO"],
+            Duration = TimeSpan.FromMinutes(2),
+            AddedAt = now.AddHours(-8),
+            IsExplicit = false,
+            IsPlayable = true,
+            OriginalIndex = 3,
+            IsLiked = false
+        };
+        unsavedUnplayed.ApplyPlaybackProgress(TimeSpan.Zero, "NOT_STARTED");
+
+        return new List<LibraryEpisodeDto>
+        {
+            savedRecent,
+            unsavedProgress,
+            unsavedUnplayed
+        };
+    }
+
+    private static List<LibraryPodcastShowDto> GenerateMockPodcastShows(IReadOnlyList<LibraryEpisodeDto> episodes)
+    {
+        var episodeShows = episodes
+            .GroupBy(e => string.IsNullOrWhiteSpace(e.AlbumId) ? e.AlbumName : e.AlbumId)
+            .Select(group =>
+            {
+                var ordered = group.OrderByDescending(e => e.AddedAt).ToList();
+                var first = ordered[0];
+                return new LibraryPodcastShowDto
+                {
+                    Id = string.IsNullOrWhiteSpace(first.AlbumId)
+                        ? $"podcast:show:{Uri.EscapeDataString(first.AlbumName.ToLowerInvariant())}"
+                        : first.AlbumId,
+                    Name = string.IsNullOrWhiteSpace(first.AlbumName) ? first.ArtistName : first.AlbumName,
+                    Publisher = first.ArtistName,
+                    ImageUrl = first.ImageUrl,
+                    EpisodeCount = ordered.Count,
+                    SavedEpisodeCount = ordered.Count,
+                    AddedAt = ordered.Min(e => e.AddedAt),
+                    LastEpisodeAddedAt = ordered[0].AddedAt,
+                    IsFollowed = true
+                };
+            });
+
+        return episodeShows
+            .Append(new LibraryPodcastShowDto
+            {
+                Id = "spotify:show:mock-empty-followed",
+                Name = "Release Radar Stories",
+                Publisher = "Spotify",
+                Description = "A followed podcast with no saved episodes yet.",
+                ImageUrl = "https://misc.spotifycdn.com/your-episodes/SE-300.png",
+                EpisodeCount = 18,
+                SavedEpisodeCount = 0,
+                AddedAt = DateTime.Now.AddDays(-21),
+                IsFollowed = true
+            })
+            .OrderByDescending(show => show.SortDate)
+            .ThenBy(show => show.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static List<LikedSongsFilterDto> GenerateMockLikedSongFilters()

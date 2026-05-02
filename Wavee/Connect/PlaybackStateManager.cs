@@ -572,7 +572,9 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             if (newState.Changes.HasFlag(Connect.StateChanges.Track) && _metadataClient != null)
             {
                 var track = newState.Track;
-                if (track != null && (track.Title == null || track.Artist == null ||
+                if (track != null
+                    && track.Uri.StartsWith("spotify:track:", StringComparison.Ordinal)
+                    && (track.Title == null || track.Artist == null ||
                     track.ArtistUri == null || track.AlbumUri == null || track.ImageUrl == null))
                 {
                     _logger?.LogDebug("Incomplete track metadata — enriching from API for {Uri}", track.Uri);

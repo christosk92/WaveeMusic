@@ -126,8 +126,11 @@ public sealed class TrackResolver
     public async Task PrefetchAsync(string uri, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(uri)) return;
-        // Episodes fetch different metadata; keep prefetch scope to tracks for now.
-        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase)) return;
+        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase))
+        {
+            await PrefetchEpisodeAsync(uri, ct).ConfigureAwait(false);
+            return;
+        }
 
         try
         {
@@ -170,6 +173,44 @@ public sealed class TrackResolver
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Prefetch failed for {Uri} (non-fatal, real resolve will retry)", uri);
+        }
+    }
+
+    private async Task PrefetchEpisodeAsync(string uri, CancellationToken ct)
+    {
+        try
+        {
+            var episodeId = SpotifyId.FromUri(uri);
+            var metadataBytes = await _spClient.GetEpisodeMetadataAsync(episodeId.ToBase62(), ct).ConfigureAwait(false);
+            var episode = Episode.Parser.ParseFrom(metadataBytes);
+
+            var selectedFile = SelectAudioFileFromEpisode(episode, _preferredQuality);
+            if (selectedFile == null) return;
+
+            var fileId = FileId.FromBytes(selectedFile.FileId.Span);
+            var fileIdHex = fileId.ToBase16();
+
+            if (_audioCacheDirectory != null && AudioFileCache.IsCached(_audioCacheDirectory, fileIdHex))
+            {
+                await _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, ct).ConfigureAwait(false);
+                _logger?.LogDebug("Prefetch: episode audio cached on disk, warmed AudioKey only for {Uri}", uri);
+                return;
+            }
+
+            var headTask = GetHeadDataAsync(fileId, ct);
+            var keyTask = _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, ct);
+            var cdnTask = GetCdnUrlAsync(fileId, ct);
+
+            await Task.WhenAll(headTask, keyTask, cdnTask).ConfigureAwait(false);
+            _logger?.LogInformation("Prefetched next episode: {Uri} (fileId={FileId})", uri, fileIdHex);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is fine - prefetch is opportunistic.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Episode prefetch failed for {Uri} (non-fatal, real resolve will retry)", uri);
         }
     }
 
@@ -293,6 +334,9 @@ public sealed class TrackResolver
     /// </summary>
     public async Task<TrackResolution> ResolveWithHeadAsync(string uri, CancellationToken ct = default)
     {
+        if (uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase))
+            return await ResolveEpisodeWithHeadAsync(uri, ct).ConfigureAwait(false);
+
         _logger?.LogInformation("Resolving track (with head) {Uri} at quality {Quality}", uri, _preferredQuality);
 
         var trackId = SpotifyId.FromUri(uri);
@@ -397,6 +441,97 @@ public sealed class TrackResolver
             FileSizeTask = fileSizeTask,
             SpotifyFileId = fileIdHex,
             VideoManifestId = videoManifestId,
+        };
+    }
+
+    private async Task<TrackResolution> ResolveEpisodeWithHeadAsync(string uri, CancellationToken ct)
+    {
+        _logger?.LogInformation("Resolving episode (with head) {Uri} at quality {Quality}", uri, _preferredQuality);
+
+        var episodeId = SpotifyId.FromUri(uri);
+        var metadataBytes = await _spClient.GetEpisodeMetadataAsync(episodeId.ToBase62(), ct).ConfigureAwait(false);
+        var episode = Episode.Parser.ParseFrom(metadataBytes);
+
+        if (episode.Audio.Count == 0)
+            throw new InvalidOperationException($"No audio files for episode {uri}");
+
+        var selectedFile = SelectAudioFileFromEpisode(episode, _preferredQuality);
+        if (selectedFile == null)
+            throw new InvalidOperationException($"No suitable audio file found for episode {uri}");
+
+        var fileId = FileId.FromBytes(selectedFile.FileId.Span);
+        var fileIdHex = fileId.ToBase16();
+        var audioFormat = MapToAudioFileFormat(selectedFile.Format);
+        var metadata = BuildEpisodeMetadataDto(episode);
+
+        if (_audioCacheDirectory != null && AudioFileCache.IsCached(_audioCacheDirectory, fileIdHex))
+        {
+            _logger?.LogInformation("Cache HIT for episode {FileId} - skipping CDN and head fetch", fileIdHex);
+
+            var cachedFileSize = AudioFileCache.GetCachedFileSize(_audioCacheDirectory, fileIdHex);
+            var keyTaskCached = _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, ct);
+
+            return new TrackResolution
+            {
+                TrackUri = uri,
+                Codec = GetCodecName(audioFormat),
+                BitrateKbps = audioFormat.GetBitrate(),
+                HeadData = null,
+                Normalization = NormalizationData.Default,
+                Metadata = metadata,
+                DurationMs = episode.Duration,
+                AudioKeyTask = keyTaskCached,
+                CdnUrlTask = Task.FromResult(""),
+                FileSizeTask = Task.FromResult(cachedFileSize),
+                SpotifyFileId = fileIdHex,
+                LocalCacheFileId = fileIdHex
+            };
+        }
+
+        var headTask = GetHeadDataAsync(fileId, ct);
+        var keyTask = _session.AudioKeys.RequestAudioKeyAsync(episodeId, fileId, ct);
+        var cdnTask = GetCdnUrlAsync(fileId, ct);
+
+        var headData = await headTask.ConfigureAwait(false);
+
+        var normalization = headData != null && headData.Length > NormalizationData.FileOffset + NormalizationData.Size
+            ? ReadNormalizationFromHeadData(headData)
+            : NormalizationData.Default;
+
+        var cdnUrlTask = Task.Run(async () =>
+        {
+            var response = await cdnTask.ConfigureAwait(false);
+            return response.Cdnurl.Count > 0 ? response.Cdnurl[0] : throw new InvalidOperationException("No CDN URLs");
+        }, ct);
+
+        var fileSizeTask = Task.Run(async () =>
+        {
+            var cdnUrl = await cdnUrlTask.ConfigureAwait(false);
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Head, cdnUrl);
+                using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
+                return resp.Content.Headers.ContentLength ?? 8 * 1024 * 1024;
+            }
+            catch
+            {
+                return 8L * 1024 * 1024;
+            }
+        }, ct);
+
+        return new TrackResolution
+        {
+            TrackUri = uri,
+            Codec = GetCodecName(audioFormat),
+            BitrateKbps = audioFormat.GetBitrate(),
+            HeadData = headData,
+            Normalization = normalization,
+            Metadata = metadata,
+            DurationMs = episode.Duration,
+            AudioKeyTask = keyTask,
+            CdnUrlTask = cdnUrlTask,
+            FileSizeTask = fileSizeTask,
+            SpotifyFileId = fileIdHex
         };
     }
 
@@ -731,6 +866,30 @@ public sealed class TrackResolver
             ImageLargeUrl = GetAlbumImageUrl(track.Album, Image.Types.Size.Large),
             ImageXLargeUrl = GetAlbumImageUrl(track.Album, Image.Types.Size.Xlarge),
         };
+    }
+
+    private static TrackMetadataDto BuildEpisodeMetadataDto(Episode episode)
+    {
+        var imageUrl = GetEpisodeImageUrl(episode);
+        return new TrackMetadataDto
+        {
+            Title = episode.Name,
+            Artist = episode.Show?.Name,
+            Album = episode.Show?.Name,
+            AlbumUri = GetShowUri(episode.Show),
+            ImageUrl = imageUrl,
+            ImageSmallUrl = imageUrl,
+            ImageLargeUrl = imageUrl,
+            ImageXLargeUrl = imageUrl,
+        };
+    }
+
+    private static string? GetShowUri(Show? show)
+    {
+        if (show?.Gid is not { Length: > 0 } gid)
+            return null;
+
+        return $"spotify:show:{SpotifyId.FromRaw(gid.Span, SpotifyIdType.Show).ToBase62()}";
     }
 
     private static string? GetAlbumImageUrl(Album? album, Image.Types.Size preferredSize = Image.Types.Size.Default)

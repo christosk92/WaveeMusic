@@ -119,6 +119,7 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     bool IsAudioEngineAvailable { get; }
     double Position { get; set; }
     double Duration { get; }
+    double PlaybackSpeed { get; }
     double Volume { get; set; }
     bool IsShuffle { get; }
     RepeatMode RepeatMode { get; }
@@ -145,6 +146,7 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     void Next();
     void Previous();
     void Seek(double positionMs);
+    void SetPlaybackSpeed(double speed);
     void SetShuffle(bool shuffle);
     void SetRepeatMode(RepeatMode mode);
 
