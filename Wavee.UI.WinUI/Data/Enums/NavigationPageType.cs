@@ -13,5 +13,7 @@ public enum NavigationPageType
     Profile,
     Debug,
     Feedback,
-    Show
+    Show,
+    Episode,
+    PodcastBrowse
 }

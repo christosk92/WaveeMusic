@@ -27,8 +27,8 @@
         <!-- Segmented tab switcher (Pivot-style) with consistent padding -->
         <controls:Segmented
             x:Name="LibrarySelectorBar"
+            Canvas.ZIndex="1"
             Margin="12,0,24,0"
-            SelectedIndex="0"
             Style="{StaticResource PivotSegmentedStyle}"
             SelectionChanged="SelectorBar_SelectionChanged">
             <controls:SegmentedItem x:Uid="Views_LibraryPage__SegmentedItem_1" x:Name="AlbumsItem" Content="Albums"/>
@@ -38,7 +38,7 @@
         </controls:Segmented>
 
         <!-- Content area -->
-        <Grid Grid.Row="1" Padding="24,8,24,0">
+        <Grid x:Name="ContentArea" Grid.Row="1" Canvas.ZIndex="0" Padding="24,8,24,0">
             <ContentControl x:Name="ContentHost"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch">

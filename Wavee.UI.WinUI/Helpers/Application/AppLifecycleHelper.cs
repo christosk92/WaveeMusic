@@ -767,6 +767,7 @@ public static class AppLifecycleHelper
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
                 .AddTransient<ShowViewModel>()
+                .AddTransient<EpisodePageViewModel>()
                 .AddTransient<LibraryPageViewModel>()
                 .AddTransient<AlbumsLibraryViewModel>()
                 .AddTransient<ArtistsLibraryViewModel>()

@@ -74,11 +74,30 @@
              ScheduleCrossfade fades it to 1 once IsLoading flips false. -->
         <Grid x:Name="ContentContainer">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
+            <Border
+                x:Name="ShowBreadcrumb"
+                Grid.Row="0"
+                Margin="20,16,20,0"
+                Padding="10,6"
+                HorizontalAlignment="Left"
+                CornerRadius="18"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xEC05;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <muxc:BreadcrumbBar
+                        ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
+                        ItemClicked="ShowBreadcrumb_ItemClicked"/>
+                </StackPanel>
+            </Border>
+
             <!-- TWO-COLUMN MAIN AREA -->
-            <Grid Grid.Row="0">
+            <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="LeftPanelColumn" Width="280" MinWidth="220" MaxWidth="500"/>
                     <ColumnDefinition Width="Auto"/>
@@ -178,26 +197,21 @@
 
                         <!-- Topics — small subtle-fill chips. Wraps onto multiple rows
                              when the show has many topics; spacing matches Album type pills. -->
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.Topics, Mode=OneWay}"
-                                      Visibility="{x:Bind ViewModel.HasTopics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="6" VerticalSpacing="6"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
+                        <controls:TokenView IsWrapped="True"
+                                            CanRemoveTokens="False"
+                                            SelectionMode="None"
+                                            IsItemClickEnabled="True"
+                                            ItemClick="TopicToken_ItemClick"
+                                            ItemsSource="{x:Bind ViewModel.Topics, Mode=OneWay}"
+                                            Visibility="{x:Bind ViewModel.HasTopics, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <controls:TokenView.ItemTemplate>
                                 <DataTemplate x:DataType="dtos:ShowTopicDto">
-                                    <Border CornerRadius="12"
-                                            Padding="10,3,10,4"
-                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}">
-                                        <TextBlock Text="{x:Bind Title}"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                    </Border>
+                                    <TextBlock Text="{x:Bind Title}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"/>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </controls:TokenView.ItemTemplate>
+                        </controls:TokenView>
 
                         <!-- Explicit + audio-only / video flags. Inline subtle row, only
                              rendered when the badge applies. -->
@@ -377,6 +391,7 @@
                                                 Episode="{x:Bind}"
                                                 CoverColorBrush="{Binding ElementName=PageRoot, Path=ViewModel.PaletteCoverColorBrush}"
                                                 CoverArtUrl="{Binding ElementName=PageRoot, Path=ViewModel.CoverArtUrl}"
+                                                OpenRequested="ResumeBanner_OpenRequested"
                                                 PlayRequested="ResumeBanner_PlayRequested"/>
                                         </DataTemplate>
                                     </ContentPresenter.ContentTemplate>
@@ -409,6 +424,7 @@
                                             <showEpisode:ShowUpNextCard
                                                 Episode="{x:Bind}"
                                                 CoverColorBrush="{Binding ElementName=PageRoot, Path=ViewModel.PaletteCoverColorBrush}"
+                                                OpenRequested="UpNextCard_OpenRequested"
                                                 PlayRequested="UpNextCard_PlayRequested"/>
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
@@ -457,6 +473,7 @@
                                         <showEpisode:ShowEpisodeRow
                                             Episode="{x:Bind}"
                                             CoverColorBrush="{Binding ElementName=PageRoot, Path=ViewModel.PaletteCoverColorBrush}"
+                                            OpenRequested="EpisodeRow_OpenRequested"
                                             PlayRequested="EpisodeRow_PlayRequested"
                                             LikeRequested="EpisodeRow_LikeRequested"/>
                                     </DataTemplate>

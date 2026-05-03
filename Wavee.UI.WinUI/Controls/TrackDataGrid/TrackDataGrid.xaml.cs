@@ -235,7 +235,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
                 item.RowDensity = _preferredDensity;
                 item.PlayCommand = PlayCommand;
-                item.SetAlternatingBorder(args.ItemIndex % 2 != 0, UseCardRows);
+                item.SetAlternatingBorder(IsAlternateRow(args.Item, args.ItemIndex), UseCardRows);
                 item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
                 SyncLazyRowSubscription(container, item, args.Item);
                 WireContainerToggleHandlers(container);
@@ -337,7 +337,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         row.PlayCommand = PlayCommand;
         row.RowDensity = _preferredDensity;
-        row.SetAlternatingBorder(itemIndex >= 0 && itemIndex % 2 != 0, UseCardRows);
+        row.SetAlternatingBorder(IsAlternateRow(sourceItem, itemIndex), UseCardRows);
         row.IsLoading = sourceItem is ITrackItem { IsLoaded: false };
 
         row.BeginBatchUpdate();
@@ -799,14 +799,22 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 continue;
 
             var index = RowsList.IndexFromContainer(container);
-            row.SetAlternatingBorder(index % 2 != 0, UseCardRows);
+            row.SetAlternatingBorder(IsAlternateRow(item, index), UseCardRows);
         }
 
         foreach (var row in _itemsViewRows.ToArray())
         {
             var index = row.Track is null ? -1 : _visibleRows.IndexOf(row.Track);
-            row.SetAlternatingBorder(index >= 0 && index % 2 != 0, UseCardRows);
+            row.SetAlternatingBorder(IsAlternateRow(row.Track, index), UseCardRows);
         }
+    }
+
+    private static bool IsAlternateRow(object? row, int itemIndex)
+    {
+        if (row is ITrackItem { OriginalIndex: > 0 } track)
+            return track.OriginalIndex % 2 == 0;
+
+        return itemIndex >= 0 && itemIndex % 2 != 0;
     }
 
     public static readonly DependencyProperty AddedByVisibleProperty =

@@ -571,27 +571,32 @@ public sealed class LibraryDataService : ILibraryDataService
     public async Task<PodcastEpisodeDetailDto?> GetPodcastEpisodeDetailAsync(string episodeUri, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+        var normalizedUri = NormalizeEpisodeUri(episodeUri);
 
         try
         {
-            var episodeTask = _session.Pathfinder.GetEpisodeOrChapterAsync(episodeUri, ct);
+            var episodeTask = _session.Pathfinder.GetEpisodeOrChapterAsync(normalizedUri, ct);
             var recommendationsTask = FetchOptionalAsync(
-                () => _session.Pathfinder.GetSeoRecommendedEpisodesAsync(episodeUri, ct),
+                () => _session.Pathfinder.GetSeoRecommendedEpisodesAsync(normalizedUri, ct),
                 "episode recommendations");
             var commentsTask = FetchOptionalAsync(
-                () => _session.Pathfinder.GetCommentsForEntityAsync(episodeUri, null, ct),
+                () => _session.Pathfinder.GetCommentsForEntityAsync(normalizedUri, null, ct),
                 "episode comments");
+            var progressTask = FetchOptionalAsync(
+                () => GetPodcastEpisodeProgressAsync(normalizedUri, ct),
+                "episode Herodotus progress");
 
-            await Task.WhenAll(episodeTask, recommendationsTask, commentsTask).ConfigureAwait(false);
+            await Task.WhenAll(episodeTask, recommendationsTask, commentsTask, progressTask).ConfigureAwait(false);
 
             var episode = episodeTask.Result.Data?.EpisodeUnionV2;
             if (episode is null)
                 return null;
 
-            return MapPodcastEpisodeDetail(
+            var detail = MapPodcastEpisodeDetail(
                 episode,
                 recommendationsTask.Result,
                 commentsTask.Result);
+            return ApplyPodcastProgress(detail, progressTask.Result);
         }
         catch (OperationCanceledException)
         {
@@ -606,35 +611,21 @@ public sealed class LibraryDataService : ILibraryDataService
 
     public async Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(
         string episodeUri,
-        CancellationToken ct = default,
-        bool allowEpisodeLookupFallback = false)
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
+        var normalizedUri = NormalizeEpisodeUri(episodeUri);
 
         var cached = await GetPodcastEpisodeProgressCacheAsync(ct).ConfigureAwait(false);
-        if (cached.TryGetValue(episodeUri, out var progress))
-            return progress;
-
-        if (allowEpisodeLookupFallback)
+        if (cached.TryGetValue(normalizedUri, out var progress) ||
+            cached.TryGetValue(episodeUri, out progress))
         {
-            var fallback = await TryGetPodcastEpisodeProgressFromEpisodeAsync(episodeUri, ct).ConfigureAwait(false);
-            if (fallback is not null)
-            {
-                var updated = new Dictionary<string, PodcastEpisodeProgressDto>(
-                    _cachedPodcastEpisodeProgress,
-                    StringComparer.Ordinal)
-                {
-                    [episodeUri] = fallback,
-                    [fallback.Uri] = fallback
-                };
-                _cachedPodcastEpisodeProgress = updated;
-                return fallback;
-            }
+            return progress;
         }
 
         return _podcastProgressFetchFailed
-            ? CreatePodcastProgressError(episodeUri)
-            : null;
+            ? CreatePodcastProgressError(normalizedUri)
+            : CreatePodcastProgressNotStarted(normalizedUri);
     }
 
     private async Task<IReadOnlyDictionary<string, PodcastEpisodeProgressDto>> GetPodcastEpisodeProgressCacheAsync(
@@ -695,43 +686,12 @@ public sealed class LibraryDataService : ILibraryDataService
         PlayedState = PodcastEpisodeProgressDto.ErrorState
     };
 
-    private async Task<PodcastEpisodeProgressDto?> TryGetPodcastEpisodeProgressFromEpisodeAsync(
-        string episodeUri,
-        CancellationToken ct)
+    private static PodcastEpisodeProgressDto CreatePodcastProgressNotStarted(string episodeUri) => new()
     {
-        try
-        {
-            var response = await _session.Pathfinder
-                .GetEpisodeOrChapterAsync(episodeUri, ct)
-                .ConfigureAwait(false);
-            var episode = response.Data?.EpisodeUnionV2;
-            var played = episode?.PlayedState;
-            if (episode is null || played is null)
-                return null;
-
-            var playedPosition = TimeSpan.FromMilliseconds(Math.Max(0, played.PlayPositionMilliseconds));
-            return new PodcastEpisodeProgressDto
-            {
-                Uri = string.IsNullOrWhiteSpace(episode.Uri) ? episodeUri : episode.Uri!,
-                PlayedPosition = playedPosition,
-                PlayedState = !string.IsNullOrWhiteSpace(played.State)
-                    ? played.State
-                    : playedPosition > TimeSpan.Zero
-                        ? "IN_PROGRESS"
-                        : "NOT_STARTED",
-                Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration?.TotalMilliseconds ?? 0))
-            };
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Failed to fetch episode played-state fallback for {EpisodeUri}", episodeUri);
-            return null;
-        }
-    }
+        Uri = episodeUri,
+        PlayedState = "NOT_STARTED",
+        PlayedPosition = TimeSpan.Zero
+    };
 
     public async Task SavePodcastEpisodeProgressAsync(
         string episodeUri,
@@ -741,9 +701,7 @@ public sealed class LibraryDataService : ILibraryDataService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeUri);
 
-        var normalizedUri = episodeUri.StartsWith("spotify:episode:", StringComparison.Ordinal)
-            ? episodeUri
-            : $"spotify:episode:{episodeUri}";
+        var normalizedUri = NormalizeEpisodeUri(episodeUri);
         var serverResumePosition = completed ? null : resumePosition;
 
         try
@@ -762,14 +720,16 @@ public sealed class LibraryDataService : ILibraryDataService
                     ? "IN_PROGRESS"
                     : "NOT_STARTED";
 
-            UpsertPodcastProgress(new PodcastEpisodeProgressDto
-            {
-                Uri = normalizedUri,
-                PlayedPosition = savedPosition,
-                PlayedState = savedState,
-                CreatedAt = ToDateTimeOffset(revision?.CreateTime),
-                UpdatedAt = ToDateTimeOffset(revision?.UpdateTime)
-            });
+            UpsertPodcastProgress(
+                new PodcastEpisodeProgressDto
+                {
+                    Uri = normalizedUri,
+                    PlayedPosition = savedPosition,
+                    PlayedState = savedState,
+                    CreatedAt = ToDateTimeOffset(revision?.CreateTime),
+                    UpdatedAt = ToDateTimeOffset(revision?.UpdateTime)
+                },
+                episodeUri);
         }
         catch (OperationCanceledException)
         {
@@ -782,14 +742,18 @@ public sealed class LibraryDataService : ILibraryDataService
         }
     }
 
-    private void UpsertPodcastProgress(PodcastEpisodeProgressDto progress)
+    private void UpsertPodcastProgress(PodcastEpisodeProgressDto progress, string? aliasUri = null)
     {
+        var normalizedUri = NormalizeEpisodeUri(progress.Uri);
         var updated = new Dictionary<string, PodcastEpisodeProgressDto>(
             _cachedPodcastEpisodeProgress,
             StringComparer.Ordinal)
         {
-            [progress.Uri] = progress
+            [progress.Uri] = progress,
+            [normalizedUri] = progress
         };
+        if (!string.IsNullOrWhiteSpace(aliasUri))
+            updated[aliasUri] = progress;
 
         _cachedPodcastEpisodeProgress = updated;
         _podcastProgressFetchedAt = DateTimeOffset.UtcNow;
@@ -855,7 +819,7 @@ public sealed class LibraryDataService : ILibraryDataService
             AlbumName = showName,
             AlbumId = show?.Uri ?? "",
             ImageUrl = BestImageUrl(episode.CoverArt?.Sources) ?? BestImageUrl(show?.CoverArt?.Sources),
-            Description = episode.Description,
+            Description = episode.HtmlDescription ?? episode.Description,
             Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration?.TotalMilliseconds ?? 0)),
             ReleaseDate = ParseDate(episode.ReleaseDate?.IsoString),
             ShareUrl = episode.SharingInfo?.ShareUrl,
@@ -1445,6 +1409,7 @@ public sealed class LibraryDataService : ILibraryDataService
             ImageUrl = BestImageUrl(episode.CoverArt?.Sources) ?? BestImageUrl(show?.CoverArt?.Sources),
             ShowImageUrl = BestImageUrl(show?.CoverArt?.Sources) ?? BestImageUrl(episode.CoverArt?.Sources),
             Description = episode.Description,
+            HtmlDescription = episode.HtmlDescription,
             Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration?.TotalMilliseconds ?? 0)),
             ReleaseDate = ParseDate(episode.ReleaseDate?.IsoString),
             AddedAt = DateTime.Now,
@@ -1453,14 +1418,35 @@ public sealed class LibraryDataService : ILibraryDataService
             IsPaywalled = episode.Restrictions?.PaywallContent ?? false,
             ShareUrl = episode.SharingInfo?.ShareUrl,
             PreviewUrl = episode.PreviewPlayback?.AudioPreview?.CdnUrl,
-            PlayedState = episode.PlayedState?.State,
-            PlayedPosition = TimeSpan.FromMilliseconds(Math.Max(0, episode.PlayedState?.PlayPositionMilliseconds ?? 0)),
             MediaTypes = DistinctNonEmpty(episode.MediaTypes),
             TranscriptLanguages = DistinctNonEmpty(episode.Transcripts?.Items?.Select(static t => t.Language)),
             Recommendations = MapEpisodeRecommendations(recommendations),
             Comments = MapEpisodeComments(comments),
             CommentsNextPageToken = commentsPage?.NextPageToken,
             CommentsTotalCount = commentsPage?.TotalCount ?? 0
+        };
+    }
+
+    private static PodcastEpisodeDetailDto ApplyPodcastProgress(
+        PodcastEpisodeDetailDto detail,
+        PodcastEpisodeProgressDto? progress)
+    {
+        if (progress is null ||
+            string.Equals(progress.PlayedState, PodcastEpisodeProgressDto.ErrorState, StringComparison.Ordinal))
+        {
+            return detail;
+        }
+
+        var playedState = string.IsNullOrWhiteSpace(progress.PlayedState)
+            ? (progress.PlayedPosition > TimeSpan.Zero ? "IN_PROGRESS" : "NOT_STARTED")
+            : progress.PlayedState;
+
+        return detail with
+        {
+            PlayedState = playedState,
+            PlayedPosition = progress.PlayedPosition < TimeSpan.Zero
+                ? TimeSpan.Zero
+                : progress.PlayedPosition
         };
     }
 
@@ -1517,6 +1503,11 @@ public sealed class LibraryDataService : ILibraryDataService
 
     private static DateTimeOffset GetProgressSortDate(PodcastEpisodeProgressDto progress)
         => progress.UpdatedAt ?? progress.CreatedAt ?? DateTimeOffset.UtcNow;
+
+    private static string NormalizeEpisodeUri(string episodeUri)
+        => episodeUri.StartsWith("spotify:episode:", StringComparison.Ordinal)
+            ? episodeUri
+            : $"spotify:episode:{episodeUri}";
 
     private static DateTimeOffset? ToDateTimeOffset(Google.Protobuf.WellKnownTypes.Timestamp? timestamp)
     {

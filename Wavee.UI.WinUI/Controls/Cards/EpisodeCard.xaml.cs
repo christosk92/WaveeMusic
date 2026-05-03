@@ -291,14 +291,34 @@ public sealed partial class EpisodeCard : UserControl
             return;
         }
 
-        // Episodes route to PlayEpisode; shows route to OpenShow. The card
-        // itself owns the dispatch so it doesn't depend on the ContentCard
-        // path — both stubs log a TODO until dedicated pages land.
+        // Episodes navigate to the dedicated detail page (the always-visible
+        // PlayChip overlay starts playback for one-click play). Shows route
+        // to ShowPage. Both stubs are owned here so the card doesn't depend
+        // on ContentCard's dispatch.
         if (uri.Contains(":episode:", StringComparison.Ordinal))
-            NavigationHelpers.PlayEpisode(uri);
+        {
+            NavigationHelpers.OpenEpisode(
+                uri,
+                item?.Title,
+                item?.ImageUrl,
+                openInNewTab: NavigationHelpers.IsCtrlPressed());
+        }
         else if (uri.Contains(":show:", StringComparison.Ordinal))
+        {
             NavigationHelpers.OpenShow(uri, item?.Title ?? string.Empty, NavigationHelpers.IsCtrlPressed());
+        }
 
+        e.Handled = true;
+    }
+
+    private void PlayChip_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        var uri = _boundItem?.Uri;
+        if (!string.IsNullOrEmpty(uri) && uri!.Contains(":episode:", StringComparison.Ordinal))
+            NavigationHelpers.PlayEpisode(uri);
+
+        // Stop the tap from bubbling to CardRoot_Tapped, which would otherwise
+        // immediately navigate to the detail page on top of starting playback.
         e.Handled = true;
     }
 }

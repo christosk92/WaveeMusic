@@ -17,6 +17,8 @@ public static class ConnectedAnimationHelper
     public const string AlbumArt = "albumArt";
     public const string ArtistImage = "artistImage";
     public const string PlaylistArt = "playlistArt";
+    public const string PodcastArt = "podcastArt";
+    public const string PodcastEpisodeArt = "podcastEpisodeArt";
     private static readonly HashSet<string> PendingKeys = [];
     private static readonly TimeSpan ConnectedAnimationDuration = TimeSpan.FromMilliseconds(300);
     private static readonly Vector2 ConnectedAnimationEaseControlPoint1 = new(0.37f, 0.0f);
@@ -106,9 +108,13 @@ public static class ConnectedAnimationHelper
         service.GetAnimation(AlbumArt)?.Cancel();
         service.GetAnimation(ArtistImage)?.Cancel();
         service.GetAnimation(PlaylistArt)?.Cancel();
+        service.GetAnimation(PodcastArt)?.Cancel();
+        service.GetAnimation(PodcastEpisodeArt)?.Cancel();
         PendingKeys.Remove(AlbumArt);
         PendingKeys.Remove(ArtistImage);
         PendingKeys.Remove(PlaylistArt);
+        PendingKeys.Remove(PodcastArt);
+        PendingKeys.Remove(PodcastEpisodeArt);
     }
 
     /// <summary>

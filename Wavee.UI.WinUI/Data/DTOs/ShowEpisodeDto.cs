@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace Wavee.UI.WinUI.Data.DTOs;
 
@@ -10,6 +11,8 @@ namespace Wavee.UI.WinUI.Data.DTOs;
 /// </summary>
 public sealed class ShowEpisodeDto
 {
+    private const long NearEndThresholdMs = 90_000;
+
     public string Uri { get; init; } = "";
     public string Title { get; init; } = "";
     public string? DescriptionPreview { get; init; }
@@ -24,6 +27,23 @@ public sealed class ShowEpisodeDto
     public bool IsExplicit { get; init; }
     public bool IsVideo { get; init; }
     public bool IsPlayable { get; init; } = true;
+
+    /// <summary>Parent show URI (<c>spotify:show:{id}</c>), populated when the episode
+    /// protobuf carries show metadata. Null on rows materialised purely from progress
+    /// snapshots — the show page doesn't need it (the page already knows the show)
+    /// but the episode detail page uses it to seed the breadcrumb without a refetch.</summary>
+    public string? ShowUri { get; init; }
+    public string? ShowName { get; init; }
+    public string? ShowImageUrl { get; init; }
+
+    /// <summary>Full episode description after HTML strip (no first-paragraph trim).
+    /// Falls back to <see cref="DescriptionPreview"/> on episode detail surfaces that
+    /// want the long form.</summary>
+    public string? FullDescription { get; init; }
+
+    /// <summary>Raw provider description HTML. Detail surfaces pass this through
+    /// <c>HtmlTextBlock</c> so links and paragraph breaks survive.</summary>
+    public string? DescriptionHtml { get; init; }
 
     /// <summary>1-indexed chronological position over the show's full episode list, computed
     /// once by <c>ShowViewModel</c> after sorting. 0 means unset (DTO not yet placed in
@@ -61,4 +81,80 @@ public sealed class ShowEpisodeDto
 
     /// <summary>"2 hr 47 min" / "47 min" / "12 min left" — pre-formatted.</summary>
     public string DurationOrRemainingText { get; init; } = "";
+
+    public ShowEpisodeDto WithPlaybackProgress(long playedPositionMs, string? playedState)
+    {
+        var normalizedState = NormalizePlayedState(playedPositionMs, playedState);
+        var normalizedPosition = Math.Max(0, playedPositionMs);
+        if (DurationMs > 0)
+            normalizedPosition = Math.Min(normalizedPosition, DurationMs);
+
+        var durationOrRemaining = normalizedState switch
+        {
+            "COMPLETED" => "Played",
+            "IN_PROGRESS" when DurationMs > 0 && normalizedPosition > 0
+                => $"{FormatDuration(Math.Max(0, DurationMs - normalizedPosition))} left",
+            _ => FormatDuration(DurationMs),
+        };
+
+        var metaLine = string.Join(" | ", new[] { DateText, durationOrRemaining }
+            .Where(static s => !string.IsNullOrEmpty(s)));
+
+        return new ShowEpisodeDto
+        {
+            Uri = Uri,
+            Title = Title,
+            DescriptionPreview = DescriptionPreview,
+            CoverArtUrl = CoverArtUrl,
+            DurationMs = DurationMs,
+            ReleaseDate = ReleaseDate,
+            PlayedState = normalizedState,
+            PlayedPositionMs = normalizedPosition,
+            IsExplicit = IsExplicit,
+            IsVideo = IsVideo,
+            IsPlayable = IsPlayable,
+            EpisodeNumber = EpisodeNumber,
+            MetaLine = metaLine,
+            DateText = DateText,
+            DurationOrRemainingText = durationOrRemaining,
+            ShowUri = ShowUri,
+            ShowName = ShowName,
+            ShowImageUrl = ShowImageUrl,
+            FullDescription = FullDescription,
+            DescriptionHtml = DescriptionHtml,
+        };
+    }
+
+    private string NormalizePlayedState(long playedPositionMs, string? playedState)
+    {
+        if (string.Equals(playedState, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            return "COMPLETED";
+
+        var normalizedPosition = Math.Max(0, playedPositionMs);
+        if (DurationMs > 0 && normalizedPosition > 0 && DurationMs - normalizedPosition <= NearEndThresholdMs)
+            return "COMPLETED";
+
+        if (string.Equals(playedState, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase))
+            return "IN_PROGRESS";
+
+        if (normalizedPosition > 0)
+            return "IN_PROGRESS";
+
+        return "NOT_STARTED";
+    }
+
+    private static string FormatDuration(long durationMs)
+    {
+        if (durationMs <= 0) return "";
+        var ts = TimeSpan.FromMilliseconds(durationMs);
+        if (ts.TotalHours >= 1)
+        {
+            var hr = (int)ts.TotalHours;
+            var min = ts.Minutes;
+            return min > 0 ? $"{hr} hr {min} min" : $"{hr} hr";
+        }
+
+        var totalMin = Math.Max(1, (int)Math.Round(ts.TotalMinutes));
+        return $"{totalMin} min";
+    }
 }

@@ -13,6 +13,7 @@ public sealed record PodcastEpisodeDetailDto
     public string? ImageUrl { get; init; }
     public string? ShowImageUrl { get; init; }
     public string? Description { get; init; }
+    public string? HtmlDescription { get; init; }
     public TimeSpan Duration { get; init; }
     public DateTimeOffset? ReleaseDate { get; init; }
     public DateTime AddedAt { get; init; }
@@ -88,6 +89,7 @@ public sealed record PodcastEpisodeDetailDto
             ImageUrl = episode.ImageUrl,
             ShowImageUrl = episode.ImageUrl,
             Description = episode.Description,
+            HtmlDescription = episode.Description,
             Duration = episode.Duration,
             ReleaseDate = episode.ReleaseDate,
             AddedAt = episode.AddedAt,
@@ -115,13 +117,36 @@ public sealed record PodcastEpisodeDetailDto
 
 public sealed record PodcastEpisodeRecommendationDto
 {
-    public required string Uri { get; init; }
-    public required string Title { get; init; }
+    public string Uri { get; init; } = "";
+    public string Title { get; init; } = "";
     public string? ShowName { get; init; }
     public string? ImageUrl { get; init; }
     public TimeSpan Duration { get; init; }
     public DateTimeOffset? ReleaseDate { get; init; }
     public bool IsExplicit { get; init; }
+
+    public string DurationFormatted => Duration > TimeSpan.Zero
+        ? Duration.TotalHours >= 1
+            ? Duration.ToString(@"h\:mm\:ss")
+            : Duration.ToString(@"m\:ss")
+        : "";
+
+    public string ReleaseDateFormatted => ReleaseDate is DateTimeOffset release
+        ? release.LocalDateTime.ToString("MMM d, yyyy")
+        : "";
+
+    public string ShowAndDateText
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(ShowName))
+                parts.Add(ShowName!);
+            if (!string.IsNullOrWhiteSpace(ReleaseDateFormatted))
+                parts.Add(ReleaseDateFormatted);
+            return string.Join(" - ", parts);
+        }
+    }
 
     public string Subtitle
     {
@@ -130,10 +155,10 @@ public sealed record PodcastEpisodeRecommendationDto
             var parts = new List<string>();
             if (!string.IsNullOrWhiteSpace(ShowName))
                 parts.Add(ShowName!);
-            if (ReleaseDate is DateTimeOffset release)
-                parts.Add(release.LocalDateTime.ToString("MMM d, yyyy"));
-            if (Duration > TimeSpan.Zero)
-                parts.Add(Duration.TotalHours >= 1 ? Duration.ToString(@"h\:mm\:ss") : Duration.ToString(@"m\:ss"));
+            if (!string.IsNullOrWhiteSpace(ReleaseDateFormatted))
+                parts.Add(ReleaseDateFormatted);
+            if (!string.IsNullOrWhiteSpace(DurationFormatted))
+                parts.Add(DurationFormatted);
             return string.Join(" - ", parts);
         }
     }

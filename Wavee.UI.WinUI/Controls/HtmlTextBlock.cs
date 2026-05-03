@@ -68,16 +68,56 @@ public sealed partial class HtmlTextBlock : UserControl
 
         html = WebUtility.HtmlDecode(html);
 
-        var paragraph = new Paragraph();
-        var lines = html.Split('\n');
-
-        for (int lineIdx = 0; lineIdx < lines.Length; lineIdx++)
+        var matches = BlockRegex().Matches(html);
+        if (matches.Count == 0)
         {
-            if (lineIdx > 0)
-                paragraph.Inlines.Add(new LineBreak());
+            AddParagraph(html, isBullet: false);
+        }
+        else
+        {
+            var cursor = 0;
+            foreach (Match match in matches)
+            {
+                if (match.Index > cursor)
+                    AddParagraph(html[cursor..match.Index], isBullet: false);
 
+                var isBullet = match.Groups["li"].Success;
+                var fragment = isBullet ? match.Groups["li"].Value : match.Groups["p"].Value;
+                AddParagraph(fragment, isBullet);
+                cursor = match.Index + match.Length;
+            }
+
+            if (cursor < html.Length)
+                AddParagraph(html[cursor..], isBullet: false);
+        }
+
+        if (MaxLines > 0)
+            _richTextBlock.MaxLines = MaxLines;
+    }
+
+    private void AddParagraph(string htmlFragment, bool isBullet)
+    {
+        htmlFragment = NormalizeBlockHtml(htmlFragment);
+        if (string.IsNullOrWhiteSpace(htmlFragment)) return;
+
+        var paragraph = new Paragraph
+        {
+            Margin = new Thickness(0, 0, 0, isBullet ? 4 : 12)
+        };
+
+        if (isBullet)
+            paragraph.Inlines.Add(new Run { Text = "• " });
+
+        var lines = htmlFragment.Split('\n');
+        var wroteContent = false;
+
+        for (var lineIdx = 0; lineIdx < lines.Length; lineIdx++)
+        {
             var line = lines[lineIdx].Trim();
             if (string.IsNullOrEmpty(line)) continue;
+
+            if (wroteContent)
+                paragraph.Inlines.Add(new LineBreak());
 
             var pos = 0;
             foreach (Match match in LinkRegex().Matches(line))
@@ -101,6 +141,15 @@ public sealed partial class HtmlTextBlock : UserControl
                     hyperlink.Click += (_, _) => NavigateSpotifyUri(uri, linkText);
                     paragraph.Inlines.Add(hyperlink);
                 }
+                else if (Uri.TryCreate(href, UriKind.Absolute, out var uri))
+                {
+                    paragraph.Inlines.Add(new Hyperlink
+                    {
+                        NavigateUri = uri,
+                        UnderlineStyle = UnderlineStyle.None,
+                        Inlines = { new Run { Text = linkText } }
+                    });
+                }
                 else
                 {
                     paragraph.Inlines.Add(new Run { Text = linkText });
@@ -115,12 +164,12 @@ public sealed partial class HtmlTextBlock : UserControl
                 if (!string.IsNullOrEmpty(remaining))
                     paragraph.Inlines.Add(new Run { Text = remaining });
             }
+
+            wroteContent = true;
         }
 
-        _richTextBlock.Blocks.Add(paragraph);
-
-        if (MaxLines > 0)
-            _richTextBlock.MaxLines = MaxLines;
+        if (wroteContent)
+            _richTextBlock.Blocks.Add(paragraph);
     }
 
     private static void NavigateSpotifyUri(string uri, string title)
@@ -140,8 +189,40 @@ public sealed partial class HtmlTextBlock : UserControl
 
     private static string StripTags(string html) => TagRegex().Replace(html, "");
 
+    private static string NormalizeBlockHtml(string html)
+    {
+        html = BlockBreakRegex().Replace(html, "\n");
+        html = ParagraphBreakRegex().Replace(html, "\n");
+        html = ListContainerRegex().Replace(html, "");
+        html = NonAnchorTagRegex().Replace(html, "");
+        html = WhitespaceRegex().Replace(html, " ");
+        html = NewlineWhitespaceRegex().Replace(html, "\n");
+        return html.Trim();
+    }
+
+    [GeneratedRegex(@"<li\b[^>]*>(?<li>.*?)</li>|<p\b[^>]*>(?<p>.*?)</p>|<div\b[^>]*>(?<p>.*?)</div>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex BlockRegex();
+
     [GeneratedRegex(@"<a\s+href=""?([^"">\s]+)""?[^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex LinkRegex();
+
+    [GeneratedRegex(@"<br\s*/?>", RegexOptions.IgnoreCase)]
+    private static partial Regex BlockBreakRegex();
+
+    [GeneratedRegex(@"</(p|div|li|h[1-6])>", RegexOptions.IgnoreCase)]
+    private static partial Regex ParagraphBreakRegex();
+
+    [GeneratedRegex(@"</?(ul|ol)\b[^>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex ListContainerRegex();
+
+    [GeneratedRegex(@"<(?!/?a\b)[^>]+>", RegexOptions.IgnoreCase)]
+    private static partial Regex NonAnchorTagRegex();
+
+    [GeneratedRegex(@"[ \t\r\f\v]+")]
+    private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"\s*\n\s*")]
+    private static partial Regex NewlineWhitespaceRegex();
 
     [GeneratedRegex(@"<[^>]+>")]
     private static partial Regex TagRegex();

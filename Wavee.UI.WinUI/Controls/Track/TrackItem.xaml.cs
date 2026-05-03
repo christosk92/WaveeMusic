@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
@@ -614,9 +615,33 @@ public sealed partial class TrackItem : UserControl
         RowProgressText.Foreground = hasError
             ? (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
             : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-        RowProgressText.Text = string.IsNullOrWhiteSpace(track?.PlaybackProgressText)
+        var releaseText = track is LibraryEpisodeDto { ReleaseDate: DateTimeOffset releaseDate }
+            ? releaseDate.LocalDateTime.ToString("MMM d, yyyy")
+            : "";
+
+        RowPlayedText.Text = string.IsNullOrEmpty(releaseText)
+            ? "Played"
+            : $"Played · {releaseText}";
+
+        if (!string.IsNullOrEmpty(releaseText))
+            RowPlayedText.Text = $"Played - {releaseText}";
+
+        var progressText = string.IsNullOrWhiteSpace(track?.PlaybackProgressText)
             ? "Unplayed"
             : track.PlaybackProgressText;
+
+        if (!string.IsNullOrEmpty(releaseText))
+            progressText = $"{progressText} · {releaseText}";
+
+        if (!string.IsNullOrEmpty(releaseText))
+        {
+            var baseProgressText = string.IsNullOrWhiteSpace(track?.PlaybackProgressText)
+                ? "Unplayed"
+                : track.PlaybackProgressText;
+            progressText = $"{baseProgressText} - {releaseText}";
+        }
+
+        RowProgressText.Text = progressText;
     }
 
     private void ApplyCompactAlbumArt(string? imageUrl)
@@ -1175,8 +1200,10 @@ public sealed partial class TrackItem : UserControl
             // users previously complained about was driven by the per-row
             // drop shadow — that's been removed, and the card fill alone
             // reads cleanly in both themes.
-            RowRoot.Background = _useCardRow && !_isAlternateRow
-                ? (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"]
+            RowRoot.Background = _useCardRow
+                ? (_isAlternateRow
+                    ? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
+                    : DefaultBackground)
                 : _themeColors?.CardBackground
                   ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
         }
@@ -1192,7 +1219,7 @@ public sealed partial class TrackItem : UserControl
         // inner content by 1 px and producing the visible flicker the user
         // reported. Keep the geometry stable; only repaint.
         RowRoot.BorderThickness = new Thickness(1);
-        if (!nativePillShowing && (_useCardRow || _isAlternateRow))
+        if (!nativePillShowing && _isAlternateRow)
         {
             RowRoot.BorderBrush = _themeColors?.CardStroke
                 ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];

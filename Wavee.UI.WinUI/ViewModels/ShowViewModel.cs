@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -34,14 +35,23 @@ public enum ShowEpisodeSort { Newest, Oldest }
 /// </summary>
 public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, IDisposable
 {
+    private const long PodcastProgressUiDeltaMs = 5_000;
+    private const long PodcastCompletedThresholdMs = 90_000;
+
     private readonly IPodcastService _podcastService;
     private readonly ITrackLikeService? _likeService;
+    private readonly ILibraryDataService? _libraryDataService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
 
     private CancellationTokenSource? _loadCts;
+    private CancellationTokenSource? _progressRefreshCts;
     private bool _disposed;
+    private bool _playbackEpisodeRefreshScheduled;
+    private string? _playbackEpisodeUri;
+    private long _playbackEpisodePositionMs;
+    private long _playbackEpisodeDurationMs;
     private bool _isDarkTheme;
     private ShowDetailDto? _currentDetail;
 
@@ -96,6 +106,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         private set
         {
             this.RaiseAndSetIfChanged(ref _showName, value);
+            this.RaisePropertyChanged(nameof(BreadcrumbItems));
             UpdateTabTitle();
         }
     }
@@ -141,6 +152,15 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         private set => this.RaiseAndSetIfChanged(ref _recommendations, value);
     }
     public bool HasRecommendations => Recommendations.Count > 0;
+
+    public IReadOnlyList<string> BreadcrumbItems
+    {
+        get
+        {
+            var showName = string.IsNullOrWhiteSpace(ShowName) ? "Show" : ShowName;
+            return new[] { "Podcasts", showName };
+        }
+    }
 
     public IReadOnlyList<ShowEpisodeDto> FilteredEpisodes
     {
@@ -243,16 +263,22 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         IPodcastService podcastService,
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
+        ILibraryDataService? libraryDataService = null,
         ILogger<ShowViewModel>? logger = null)
     {
         _podcastService = podcastService ?? throw new ArgumentNullException(nameof(podcastService));
         _playbackStateService = playbackStateService ?? throw new ArgumentNullException(nameof(playbackStateService));
         _likeService = likeService;
+        _libraryDataService = libraryDataService;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
+
+        _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
+        if (_libraryDataService != null)
+            _libraryDataService.DataChanged += OnLibraryDataChanged;
     }
 
     /// <summary>Entry-point from <c>ShowPage.OnNavigatedTo</c>.</summary>
@@ -277,8 +303,30 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         _ = LoadAsync(showUri, _loadCts.Token);
     }
 
+    public void PrefillFrom(ContentNavigationParameter parameter)
+    {
+        if (parameter is null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(parameter.Title))
+            ShowName = parameter.Title;
+        if (!string.IsNullOrWhiteSpace(parameter.Subtitle))
+            PublisherName = parameter.Subtitle;
+        if (!string.IsNullOrWhiteSpace(parameter.ImageUrl))
+            CoverArtUrl = parameter.ImageUrl;
+        if (TabItemParameter != null && !string.IsNullOrWhiteSpace(parameter.Title))
+        {
+            TabItemParameter.Title = parameter.Title;
+            ContentChanged?.Invoke(this, TabItemParameter);
+        }
+    }
+
     private void ResetState(string showUri)
     {
+        _progressRefreshCts?.Cancel();
+        _progressRefreshCts?.Dispose();
+        _progressRefreshCts = null;
+
         ShowUri = showUri;
         ShowId = ExtractIdFromUri(showUri);
         ShowName = "";
@@ -368,6 +416,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
             {
                 _allEpisodes = episodes.ToList();
                 EpisodeCountLine = FormatEpisodeCount(_allEpisodes.Count, detail.TotalEpisodes);
+                ApplyPlaybackStateToEpisodes(rebuild: false);
                 UpdateListenNextEpisodes();
                 ApplyFilterAndSort();
 
@@ -553,6 +602,239 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         ArchiveSummaryLine = BuildArchiveSummaryLine(list.Count, _allEpisodes.Count);
     }
 
+    private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_disposed)
+            return;
+
+        if (e.PropertyName == nameof(IPlaybackStateService.CurrentTrackId) ||
+            e.PropertyName == nameof(IPlaybackStateService.CurrentContext) ||
+            e.PropertyName == nameof(IPlaybackStateService.CurrentAlbumId) ||
+            e.PropertyName == nameof(IPlaybackStateService.Position) ||
+            e.PropertyName == nameof(IPlaybackStateService.Duration) ||
+            e.PropertyName == nameof(IPlaybackStateService.IsPlaying))
+        {
+            SchedulePlaybackEpisodeRefresh();
+        }
+    }
+
+    private void SchedulePlaybackEpisodeRefresh()
+    {
+        if (_playbackEpisodeRefreshScheduled)
+            return;
+
+        _playbackEpisodeRefreshScheduled = true;
+        if (!_dispatcherQueue.TryEnqueue(() =>
+            {
+                _playbackEpisodeRefreshScheduled = false;
+                ApplyPlaybackStateToEpisodes();
+            }))
+        {
+            _playbackEpisodeRefreshScheduled = false;
+        }
+    }
+
+    private void OnLibraryDataChanged(object? sender, EventArgs e)
+    {
+        if (_disposed || _libraryDataService is null)
+            return;
+
+        _dispatcherQueue.TryEnqueue(StartEpisodeProgressRefresh);
+    }
+
+    private void StartEpisodeProgressRefresh()
+    {
+        if (_disposed || _libraryDataService is null || _allEpisodes.Count == 0)
+            return;
+
+        var showUri = _showUri;
+        var episodeUris = _allEpisodes
+            .Select(static e => e.Uri)
+            .Where(static uri => !string.IsNullOrEmpty(uri))
+            .ToList();
+        if (episodeUris.Count == 0)
+            return;
+
+        _progressRefreshCts?.Cancel();
+        _progressRefreshCts?.Dispose();
+        _progressRefreshCts = new CancellationTokenSource();
+        var cts = _progressRefreshCts;
+
+        _ = RefreshEpisodeProgressAsync(showUri, episodeUris, cts.Token);
+    }
+
+    private async Task RefreshEpisodeProgressAsync(
+        string showUri,
+        IReadOnlyList<string> episodeUris,
+        CancellationToken ct)
+    {
+        if (_libraryDataService is null)
+            return;
+
+        try
+        {
+            var updates = new List<(string Uri, long PositionMs, string? State)>();
+            foreach (var uri in episodeUris)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var progress = await _libraryDataService
+                    .GetPodcastEpisodeProgressAsync(uri, ct)
+                    .ConfigureAwait(false);
+                if (progress is null)
+                    continue;
+
+                var positionMs = (long)Math.Max(0, progress.PlayedPosition.TotalMilliseconds);
+                updates.Add((uri, positionMs, progress.PlayedState));
+                if (!string.IsNullOrEmpty(progress.Uri) &&
+                    !string.Equals(progress.Uri, uri, StringComparison.Ordinal))
+                {
+                    updates.Add((progress.Uri, positionMs, progress.PlayedState));
+                }
+            }
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || ct.IsCancellationRequested || !string.Equals(showUri, _showUri, StringComparison.Ordinal))
+                    return;
+
+                var changed = false;
+                foreach (var update in updates)
+                    changed |= TryUpdateEpisodeProgress(update.Uri, update.PositionMs, update.State, minPositionDeltaMs: 0);
+
+                changed |= ApplyPlaybackStateToEpisodes(rebuild: false);
+                if (changed)
+                    RebuildEpisodeViews();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when navigating away or when a newer progress refresh wins.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to refresh podcast progress for show {ShowUri}", showUri);
+        }
+    }
+
+    private bool ApplyPlaybackStateToEpisodes(bool rebuild = true)
+    {
+        var currentEpisodeUri = GetCurrentPlaybackEpisodeUri();
+        var currentPositionMs = NormalizePlaybackMilliseconds(_playbackStateService.Position);
+        var currentDurationMs = NormalizePlaybackMilliseconds(_playbackStateService.Duration);
+        var changed = false;
+
+        if (!string.IsNullOrEmpty(_playbackEpisodeUri) &&
+            !string.Equals(_playbackEpisodeUri, currentEpisodeUri, StringComparison.Ordinal))
+        {
+            var previousState = ResolvePlaybackOverlayState(
+                _playbackEpisodePositionMs,
+                _playbackEpisodeDurationMs,
+                isPlaying: false);
+            changed |= TryUpdateEpisodeProgress(
+                _playbackEpisodeUri,
+                _playbackEpisodePositionMs,
+                previousState,
+                minPositionDeltaMs: 0);
+        }
+
+        if (!string.IsNullOrEmpty(currentEpisodeUri))
+        {
+            var currentState = ResolvePlaybackOverlayState(
+                currentPositionMs,
+                currentDurationMs,
+                _playbackStateService.IsPlaying);
+            changed |= TryUpdateEpisodeProgress(
+                currentEpisodeUri,
+                currentPositionMs,
+                currentState,
+                PodcastProgressUiDeltaMs);
+        }
+
+        _playbackEpisodeUri = currentEpisodeUri;
+        _playbackEpisodePositionMs = currentPositionMs;
+        _playbackEpisodeDurationMs = currentDurationMs;
+
+        if (changed && rebuild)
+            RebuildEpisodeViews();
+
+        return changed;
+    }
+
+    private string? GetCurrentPlaybackEpisodeUri()
+    {
+        var trackId = _playbackStateService.CurrentTrackId;
+        if (!string.IsNullOrWhiteSpace(trackId))
+        {
+            if (trackId.StartsWith("spotify:episode:", StringComparison.Ordinal))
+                return trackId;
+
+            if (!trackId.Contains(':', StringComparison.Ordinal) &&
+                (_playbackStateService.CurrentContext?.Type is PlaybackContextType.Show or PlaybackContextType.Episode ||
+                 _playbackStateService.CurrentAlbumId?.StartsWith("spotify:show:", StringComparison.Ordinal) == true))
+            {
+                return $"spotify:episode:{trackId}";
+            }
+        }
+
+        var contextUri = _playbackStateService.CurrentContext?.ContextUri;
+        return contextUri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true
+            ? contextUri
+            : null;
+    }
+
+    private static long NormalizePlaybackMilliseconds(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            return 0;
+
+        return (long)Math.Max(0, value);
+    }
+
+    private static string ResolvePlaybackOverlayState(long positionMs, long durationMs, bool isPlaying)
+    {
+        if (durationMs > 0 && positionMs > 0 && durationMs - positionMs <= PodcastCompletedThresholdMs)
+            return "COMPLETED";
+
+        if (isPlaying || positionMs > 0)
+            return "IN_PROGRESS";
+
+        return "NOT_STARTED";
+    }
+
+    private bool TryUpdateEpisodeProgress(
+        string? episodeUri,
+        long positionMs,
+        string? playedState,
+        long minPositionDeltaMs)
+    {
+        if (string.IsNullOrEmpty(episodeUri) || _allEpisodes.Count == 0)
+            return false;
+
+        var index = _allEpisodes.FindIndex(e => string.Equals(e.Uri, episodeUri, StringComparison.Ordinal));
+        if (index < 0)
+            return false;
+
+        var current = _allEpisodes[index];
+        var updated = current.WithPlaybackProgress(positionMs, playedState);
+        var positionDelta = Math.Abs(current.PlayedPositionMs - updated.PlayedPositionMs);
+        if (string.Equals(current.PlayedState, updated.PlayedState, StringComparison.Ordinal) &&
+            positionDelta < minPositionDeltaMs &&
+            string.Equals(current.DurationOrRemainingText, updated.DurationOrRemainingText, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        _allEpisodes[index] = updated;
+        return true;
+    }
+
+    private void RebuildEpisodeViews()
+    {
+        UpdateListenNextEpisodes();
+        ApplyFilterAndSort();
+    }
+
     private void UpdateListenNextEpisodes()
     {
         if (_allEpisodes.Count == 0)
@@ -585,7 +867,13 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
 
         var listenNext = new List<ShowEpisodeDto>(4);
 
-        var resumeEpisode = newestFirst.FirstOrDefault(e =>
+        var activeEpisode = !string.IsNullOrEmpty(_playbackEpisodeUri)
+            ? chronological.FirstOrDefault(e =>
+                string.Equals(e.Uri, _playbackEpisodeUri, StringComparison.Ordinal) &&
+                !e.IsCompleted)
+            : null;
+
+        var resumeEpisode = activeEpisode ?? newestFirst.FirstOrDefault(e =>
             e.IsInProgress && e.Progress < nearCompleteProgressThreshold);
         AddUnique(listenNext, resumeEpisode);
 
@@ -868,9 +1156,15 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _loadCts = null;
+        _progressRefreshCts?.Cancel();
+        _progressRefreshCts?.Dispose();
+        _progressRefreshCts = null;
 
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
+        if (_libraryDataService != null)
+            _libraryDataService.DataChanged -= OnLibraryDataChanged;
 
         _allEpisodes.Clear();
         FilteredEpisodes = Array.Empty<ShowEpisodeDto>();

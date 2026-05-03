@@ -10,11 +10,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.TrackDataGrid;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -43,6 +47,8 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
     private bool _wideColumnsInitialized;
     private bool _applyingWideColumnWidths;
     private bool _disposed;
+    private double _expandedChromeTopInset;
+    private string? _embeddedDetailKey;
 
     public YourEpisodesViewModel ViewModel { get; }
 
@@ -61,11 +67,13 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateLayoutMode(preserveContext: false);
+        SyncEmbeddedDetailFrame();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateLayoutMode(preserveContext: _hasInitializedLayoutMode);
+        SyncEmbeddedDetailFrame();
     }
 
     private void UpdateLayoutMode(bool preserveContext)
@@ -210,13 +218,27 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
         flyout.ShowAt(target);
     }
 
+    private void OpenSelectedEpisodeDetails_Click(object sender, RoutedEventArgs e)
+    {
+        PrepareConnectedAnimationNear(sender as DependencyObject, "EpisodeDetailCoverContainer", ConnectedAnimationHelper.PodcastEpisodeArt);
+        if (ViewModel.OpenSelectedEpisodeDetailsCommand.CanExecute(null))
+            ViewModel.OpenSelectedEpisodeDetailsCommand.Execute(null);
+    }
+
+    private void OpenSelectedShowDetails_Click(object sender, RoutedEventArgs e)
+    {
+        PrepareConnectedAnimationNear(sender as DependencyObject, "SelectedShowCoverContainer", ConnectedAnimationHelper.PodcastArt);
+        if (ViewModel.OpenSelectedShowCommand.CanExecute(null))
+            ViewModel.OpenSelectedShowCommand.Execute(null);
+    }
+
     private void PodcastEpisodeScopeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PodcastEpisodeScopeSelector is null)
+        if (sender is not CommunityToolkit.WinUI.Controls.Segmented segmented)
             return;
 
         ViewModel.SetPodcastEpisodeScope(
-            PodcastEpisodeScopeSelector.SelectedIndex == 1
+            segmented.SelectedIndex == 1
                 ? PodcastEpisodeScope.Latest
                 : PodcastEpisodeScope.Saved);
     }
@@ -250,8 +272,41 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
         }
         else if (args.Index == 1)
         {
-            ViewModel.ShowSelectedShowEpisodes();
+            if (ViewModel.IsSelectedEpisodeDetailPageMode || ViewModel.IsSelectedShowDetailMode)
+                ViewModel.ShowSelectedShowDetail();
+            else
+                ViewModel.ShowSelectedShowEpisodes();
         }
+    }
+
+    public void SetExpandedChromeTopInset(double topInset)
+    {
+        _expandedChromeTopInset = Math.Max(0, topInset);
+        ApplyExpandedChromeTopInset();
+    }
+
+    private void ApplyExpandedChromeTopInset()
+    {
+        var expanded = ViewModel.IsSelectedShowDetailMode || ViewModel.IsSelectedEpisodeDetailPageMode;
+        var wideTop = expanded ? _expandedChromeTopInset + 8 : 0;
+        var narrowTop = expanded ? _expandedChromeTopInset + 8 : 0;
+
+        if (WideBreadcrumbContainer is not null)
+        {
+            WideBreadcrumbContainer.Margin = expanded
+                ? new Thickness(24, wideTop, 24, 12)
+                : new Thickness(0, 0, 0, 12);
+        }
+
+        if (NarrowBreadcrumbContainer is not null)
+        {
+            NarrowBreadcrumbContainer.Margin = expanded
+                ? new Thickness(24, narrowTop, 24, 16)
+                : new Thickness(0, 0, 0, 16);
+        }
+
+        ApplyEmbeddedPageChrome(EmbeddedDetailFrame.Content);
+        ApplyEmbeddedPageChrome(EmbeddedDetailFrameNarrow.Content);
     }
 
     private void EpisodeAboutBlock_Loaded(object sender, RoutedEventArgs e)
@@ -300,6 +355,17 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(YourEpisodesViewModel.IsSelectedShowDetailMode)
+            or nameof(YourEpisodesViewModel.IsSelectedEpisodeDetailPageMode)
+            or nameof(YourEpisodesViewModel.SelectedShow)
+            or nameof(YourEpisodesViewModel.SelectedEpisode)
+            or nameof(YourEpisodesViewModel.SelectedEpisodeDetail)
+            or nameof(YourEpisodesViewModel.UseNarrowLayout))
+        {
+            ApplyExpandedChromeTopInset();
+            SyncEmbeddedDetailFrame();
+        }
+
         if (e.PropertyName == nameof(YourEpisodesViewModel.SelectedEpisode))
         {
             ResetEpisodeDetailScrollState(scrollToTop: true);
@@ -316,6 +382,126 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
 
         _episodeAboutExpanded = false;
         ApplyEpisodeAboutExpandedState();
+    }
+
+    private void SyncEmbeddedDetailFrame()
+    {
+        if (_disposed)
+            return;
+
+        if (!ViewModel.IsSelectedShowDetailMode && !ViewModel.IsSelectedEpisodeDetailPageMode)
+        {
+            ClearEmbeddedFrame(EmbeddedDetailFrame);
+            ClearEmbeddedFrame(EmbeddedDetailFrameNarrow);
+            _embeddedDetailKey = null;
+            return;
+        }
+
+        var targetFrame = ViewModel.IsNarrowLayout ? EmbeddedDetailFrameNarrow : EmbeddedDetailFrame;
+        var otherFrame = ViewModel.IsNarrowLayout ? EmbeddedDetailFrame : EmbeddedDetailFrameNarrow;
+        ClearEmbeddedFrame(otherFrame);
+
+        Type pageType;
+        object parameter;
+        string key;
+
+        if (ViewModel.IsSelectedEpisodeDetailPageMode)
+        {
+            var episode = ViewModel.SelectedEpisode;
+            var detail = ViewModel.SelectedEpisodeDetail;
+            var episodeUri = detail?.Uri ?? episode?.Uri;
+            if (string.IsNullOrWhiteSpace(episodeUri))
+            {
+                ClearEmbeddedFrame(targetFrame);
+                _embeddedDetailKey = null;
+                return;
+            }
+
+            pageType = typeof(EpisodePage);
+            key = $"episode:{episodeUri}";
+            parameter = new EpisodeNavigationParameter
+            {
+                EpisodeUri = episodeUri,
+                EpisodeTitle = detail?.Title ?? episode?.Title,
+                EpisodeImageUrl = detail?.ImageUrl ?? episode?.ImageUrl,
+                ShowUri = detail?.ShowUri ?? episode?.AlbumId,
+                ShowTitle = detail?.ShowName ?? episode?.AlbumName,
+                ShowImageUrl = detail?.ShowImageUrl ?? episode?.ImageUrl
+            };
+        }
+        else
+        {
+            var show = ViewModel.SelectedShow;
+            if (show is null ||
+                string.IsNullOrWhiteSpace(show.Id) ||
+                !show.Id.StartsWith("spotify:show:", StringComparison.Ordinal))
+            {
+                ClearEmbeddedFrame(targetFrame);
+                _embeddedDetailKey = null;
+                return;
+            }
+
+            pageType = typeof(ShowPage);
+            key = $"show:{show.Id}";
+            parameter = new ContentNavigationParameter
+            {
+                Uri = show.Id,
+                Title = show.Name,
+                Subtitle = show.Publisher,
+                ImageUrl = show.ImageUrl
+            };
+        }
+
+        if (string.Equals(_embeddedDetailKey, key, StringComparison.Ordinal) &&
+            targetFrame.Content?.GetType() == pageType)
+        {
+            RefreshEmbeddedPage(targetFrame.Content, parameter);
+            ApplyEmbeddedPageChrome(targetFrame.Content);
+            return;
+        }
+
+        _embeddedDetailKey = key;
+        targetFrame.Navigate(pageType, parameter, new DrillInNavigationTransitionInfo());
+    }
+
+    private void EmbeddedDetailFrame_Navigated(object sender, NavigationEventArgs e)
+        => ApplyEmbeddedPageChrome(e.Content);
+
+    private void ApplyEmbeddedPageChrome(object? content)
+    {
+        switch (content)
+        {
+            case ShowPage showPage:
+                showPage.SetEmbeddedInLibrary(true, _expandedChromeTopInset);
+                showPage.SetEmbeddedBackdropOnly(false);
+                break;
+            case EpisodePage episodePage:
+                episodePage.SetEmbeddedInLibrary(true, _expandedChromeTopInset);
+                break;
+        }
+    }
+
+    private static void RefreshEmbeddedPage(object? content, object parameter)
+    {
+        switch (content)
+        {
+            case ShowPage showPage:
+                showPage.RefreshWithParameter(parameter);
+                break;
+            case EpisodePage episodePage:
+                episodePage.RefreshWithParameter(parameter);
+                break;
+        }
+    }
+
+    private static void ClearEmbeddedFrame(Frame frame)
+    {
+        if (frame.Content is IDisposable disposable)
+            disposable.Dispose();
+
+        frame.Content = null;
+        frame.BackStack.Clear();
+        frame.ForwardStack.Clear();
     }
 
     private void EpisodeDetailBodyHost_Loaded(object sender, RoutedEventArgs e)
@@ -608,6 +794,31 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
             var descendant = FindDescendantByName<T>(child, name);
             if (descendant is not null)
                 return descendant;
+        }
+
+        return null;
+    }
+
+    private static void PrepareConnectedAnimationNear(DependencyObject? origin, string sourceName, string key)
+    {
+        var source = FindNearestNamedDescendant<FrameworkElement>(origin, sourceName);
+        if (source is null)
+            return;
+
+        ConnectedAnimationHelper.PrepareAnimation(key, source);
+    }
+
+    private static T? FindNearestNamedDescendant<T>(DependencyObject? origin, string name)
+        where T : FrameworkElement
+    {
+        var current = origin;
+        while (current is not null)
+        {
+            var match = FindDescendantByName<T>(current, name);
+            if (match is not null)
+                return match;
+
+            current = VisualTreeHelper.GetParent(current);
         }
 
         return null;
@@ -1131,6 +1342,8 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
         Loaded -= OnLoaded;
         SizeChanged -= OnSizeChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ClearEmbeddedFrame(EmbeddedDetailFrame);
+        ClearEmbeddedFrame(EmbeddedDetailFrameNarrow);
         _episodeAboutBlocks.Clear();
         _episodeAboutShowMoreButtons.Clear();
         _episodeDetailShyHeaders.Clear();

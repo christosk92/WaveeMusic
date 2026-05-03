@@ -9,6 +9,7 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:appcontrols="using:Wavee.UI.WinUI.Controls"
     xmlns:comments="using:Wavee.UI.WinUI.Controls.Comments"
+    xmlns:showEpisode="using:Wavee.UI.WinUI.Controls.ShowEpisode"
     xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
@@ -156,47 +157,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="EpisodeRecommendationTemplate" x:DataType="dto:PodcastEpisodeRecommendationDto">
-            <Grid Padding="0,6" ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="44"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border
-                    Grid.Column="0"
-                    Width="44"
-                    Height="44"
-                    CornerRadius="6"
-                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Grid>
-                        <FontIcon
-                            Glyph="&#xEC05;"
-                            FontSize="18"
-                            Opacity="0.35"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"/>
-                        <Image
-                            Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='88'}"
-                            Stretch="UniformToFill"
-                            Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                            behaviors:ImageFallbackBehavior.HideOnError="True"
-                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                            behaviors:ImageFallbackBehavior.DecodePixelWidth="88"/>
-                    </Grid>
-                </Border>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock
-                        Text="{x:Bind Title}"
-                        Style="{StaticResource BodyTextBlockStyle}"
-                        TextTrimming="CharacterEllipsis"
-                        MaxLines="2"/>
-                    <TextBlock
-                        Text="{x:Bind Subtitle}"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextTrimming="CharacterEllipsis"
-                        MaxLines="1"/>
-                </StackPanel>
-            </Grid>
+            <showEpisode:PodcastEpisodeRecommendationCard Recommendation="{x:Bind}"/>
         </DataTemplate>
 
         <Style x:Key="EpisodeCommentReactionChipStyle" TargetType="Border">
@@ -480,6 +441,29 @@
                     Visibility="{x:Bind HasSelectedEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Spacing="18" Padding="0,0,2,0">
 
+                        <Border
+                            CornerRadius="14"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                            <Grid>
+                                <Border
+                                    CornerRadius="14"
+                                    Background="{x:Bind SelectedEpisodeDetailCardBrush, Mode=OneWay}"
+                                    IsHitTestVisible="False"/>
+                                <Border
+                                    CornerRadius="14"
+                                    BorderBrush="{x:Bind SelectedEpisodeDetailCardBorderBrush, Mode=OneWay}"
+                                    BorderThickness="1"
+                                    IsHitTestVisible="False"/>
+                                <Border
+                                    Width="4"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="14,0,0,14"
+                                    Background="{x:Bind SelectedEpisodeDetailAccentBrush, Mode=OneWay}"
+                                    IsHitTestVisible="False"/>
+                                <StackPanel Padding="14" Spacing="14">
+
                         <!-- Hero: artwork + title + show hyperlink + meta line -->
                         <Grid x:Name="EpisodeDetailHero" ColumnSpacing="14">
                             <Grid.ColumnDefinitions>
@@ -487,12 +471,16 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Border
+                                x:Name="EpisodeDetailCoverContainer"
                                 Grid.Column="0"
                                 Width="112"
                                 Height="112"
                                 CornerRadius="10"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                 <Grid>
+                                    <Border
+                                        Background="{x:Bind SelectedEpisodeDetailAccentSubtleBrush, Mode=OneWay}"
+                                        IsHitTestVisible="False"/>
                                     <FontIcon
                                         Glyph="&#xEC05;"
                                         FontSize="42"
@@ -556,11 +544,11 @@
                                 </StackPanel>
                             </Button>
                             <Button
-                                Command="{x:Bind OpenSelectedEpisodeShowCommand, Mode=OneWay}"
+                                Click="OpenSelectedEpisodeDetails_Click"
                                 Padding="12,6">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
-                                    <TextBlock Text="Show"/>
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
+                                    <TextBlock Text="View details"/>
                                 </StackPanel>
                             </Button>
                             <Button
@@ -643,6 +631,10 @@
                             </Border>
                         </controls:WrapPanel>
 
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
                         <Grid x:Name="EpisodeDetailBodyHost"
                               Loaded="EpisodeDetailBodyHost_Loaded"
                               Unloaded="EpisodeDetailBodyHost_Unloaded">
@@ -695,7 +687,7 @@
                                 ItemsSource="{x:Bind EpisodeRecommendations, Mode=OneWay}"
                                 ItemTemplate="{StaticResource EpisodeRecommendationTemplate}">
                                         <ItemsRepeater.Layout>
-                                            <StackLayout Orientation="Vertical" Spacing="0"/>
+                                            <StackLayout Orientation="Vertical" Spacing="10"/>
                                         </ItemsRepeater.Layout>
                                     </ItemsRepeater>
                                 </StackPanel>
@@ -1050,6 +1042,10 @@
             Loaded="WideLayoutRoot_Loaded"
             SizeChanged="WideLayoutRoot_SizeChanged"
             Visibility="{x:Bind ViewModel.IsWideLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="PodcastShowsColumn" Width="2*" MinWidth="220" MaxWidth="420"/>
                 <ColumnDefinition Width="Auto"/>
@@ -1058,7 +1054,30 @@
                 <ColumnDefinition x:Name="PodcastDetailsColumn" Width="3*" MinWidth="300"/>
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0">
+            <Border
+                x:Name="WideBreadcrumbContainer"
+                Grid.Row="0"
+                Grid.ColumnSpan="5"
+                Canvas.ZIndex="2"
+                Margin="0,0,0,12"
+                Padding="10,6"
+                HorizontalAlignment="Left"
+                CornerRadius="18"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xEC05;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <BreadcrumbBar
+                        ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
+                        ItemClicked="BreadcrumbBar_ItemClicked"/>
+                </StackPanel>
+            </Border>
+
+            <Grid
+                Grid.Row="1"
+                Grid.Column="0"
+                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -1097,29 +1116,61 @@
             </Grid>
 
             <appcontrols:GridSplitter
+                Grid.Row="1"
                 Grid.Column="1"
                 Width="12"
+                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 ResizeCompleted="WideColumnSplitter_ResizeCompleted"/>
 
-            <Grid Grid.Column="2">
+            <Grid
+                Grid.Row="1"
+                Grid.Column="2"
+                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" Margin="0,0,0,16" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="82"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+                <Border
+                    Grid.Row="0"
+                    Margin="0,0,0,16"
+                    CornerRadius="14"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                    <Grid>
+                        <Border
+                            CornerRadius="14"
+                            Background="{x:Bind ViewModel.SelectedShowCardBrush, Mode=OneWay}"
+                            IsHitTestVisible="False"/>
+                        <Border
+                            CornerRadius="14"
+                            BorderBrush="{x:Bind ViewModel.SelectedShowCardBorderBrush, Mode=OneWay}"
+                            BorderThickness="1"
+                            IsHitTestVisible="False"/>
+                        <Border
+                            Width="4"
+                            HorizontalAlignment="Left"
+                            CornerRadius="14,0,0,14"
+                            Background="{x:Bind ViewModel.SelectedShowAccentBrush, Mode=OneWay}"
+                            IsHitTestVisible="False"/>
+                        <Grid Padding="14" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="82"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
                     <Border
+                        x:Name="SelectedShowCoverContainer"
                         Grid.Column="0"
                         Width="82"
                         Height="82"
                         CornerRadius="8"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <Grid>
+                            <Border
+                                Background="{x:Bind ViewModel.SelectedShowAccentSubtleBrush, Mode=OneWay}"
+                                IsHitTestVisible="False"/>
                             <FontIcon
                                 Glyph="{x:Bind ViewModel.SelectedShowPlaceholderGlyph, Mode=OneWay}"
                                 FontSize="34"
@@ -1177,12 +1228,12 @@
                                 </StackPanel>
                             </Button>
                             <Button
-                                Command="{x:Bind ViewModel.OpenSelectedShowCommand, Mode=OneWay}"
+                                Click="OpenSelectedShowDetails_Click"
                                 Padding="12,6"
                                 Visibility="{x:Bind ViewModel.CanOpenSelectedShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
-                                    <TextBlock Text="View show"/>
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
+                                    <TextBlock Text="View details"/>
                                 </StackPanel>
                             </Button>
                             <controls:Segmented
@@ -1195,7 +1246,9 @@
                             </controls:Segmented>
                         </controls:WrapPanel>
                     </StackPanel>
-                </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
 
                 <Grid Grid.Row="1">
                     <ScrollView Visibility="{x:Bind ViewModel.IsSelectedShowArchiveLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
@@ -1254,18 +1307,33 @@
             </Grid>
 
             <appcontrols:GridSplitter
+                Grid.Row="1"
                 Grid.Column="3"
                 Width="12"
+                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 ResizeCompleted="WideColumnSplitter_ResizeCompleted"/>
 
             <ContentControl
+                Grid.Row="1"
                 Grid.Column="4"
                 Content="{x:Bind ViewModel}"
                 ContentTemplate="{StaticResource EpisodeDetailPanelTemplate}"
+                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 VerticalContentAlignment="Stretch"/>
+
+            <Frame
+                x:Name="EmbeddedDetailFrame"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.ColumnSpan="5"
+                Canvas.ZIndex="1"
+                Visibility="{x:Bind ViewModel.ShowWideExpandedDetail, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                Navigated="EmbeddedDetailFrame_Navigated"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"/>
         </Grid>
 
         <Grid
@@ -1276,6 +1344,7 @@
             </Grid.RowDefinitions>
 
             <Border
+                x:Name="NarrowBreadcrumbContainer"
                 Grid.Row="0"
                 Margin="0,0,0,16"
                 Padding="10,6"
@@ -1338,6 +1407,13 @@
                         HorizontalContentAlignment="Stretch"
                         VerticalContentAlignment="Stretch"/>
                 </Grid>
+
+                <Frame
+                    x:Name="EmbeddedDetailFrameNarrow"
+                    Visibility="{x:Bind ViewModel.ShowNarrowExpandedDetail, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Navigated="EmbeddedDetailFrame_Navigated"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"/>
             </Grid>
         </Grid>
     </Grid>

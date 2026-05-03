@@ -116,9 +116,9 @@ public sealed partial class PodcastChapterTimelineRail : UserControl
         var topProgress = IsFirst ? 0 : Math.Clamp(progress * 2, 0d, 1d);
         var bottomProgress = IsLast ? 0 : Math.Clamp((progress - 0.5d) * 2d, 0d, 1d);
 
-        TopTrack.Opacity = IsFirst ? 0 : 0.42;
+        TopTrack.Opacity = IsFirst ? 0 : 0.55;
         TopProgressFill.Opacity = IsFirst ? 0 : 1;
-        BottomTrack.Opacity = IsLast ? 0 : 0.42;
+        BottomTrack.Opacity = IsLast ? 0 : 0.55;
         BottomProgressFill.Opacity = IsLast ? 0 : 1;
 
         TopProgressFill.Height = Math.Max(0, TopTrack.ActualHeight);

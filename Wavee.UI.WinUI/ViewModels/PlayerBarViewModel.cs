@@ -398,9 +398,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             await Task.Yield();
 
             var progress = await _libraryDataService!
-                .GetPodcastEpisodeProgressAsync(
-                    episodeUri,
-                    allowEpisodeLookupFallback: true)
+                .GetPodcastEpisodeProgressAsync(episodeUri)
                 .ConfigureAwait(true);
 
             if (version != _podcastResumeProbeVersion)

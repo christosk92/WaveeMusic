@@ -131,8 +131,7 @@ public interface ILibraryDataService
     /// </summary>
     Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(
         string episodeUri,
-        CancellationToken ct = default,
-        bool allowEpisodeLookupFallback = false);
+        CancellationToken ct = default);
 
     /// <summary>
     /// Persists the user's podcast resume point to Spotify Herodotus. Pass

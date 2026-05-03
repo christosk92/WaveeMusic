@@ -335,7 +335,8 @@
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"/>
                                 </Border>
-                                <TextBlock Text="Played"
+                                <TextBlock x:Name="RowPlayedText"
+                                           Text="Played"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                            FontWeight="SemiBold"

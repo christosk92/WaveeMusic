@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls.ShowEpisode;
 
@@ -56,6 +57,10 @@ public sealed partial class ShowResumeBanner : UserControl
         set => SetValue(CoverArtUrlProperty, value);
     }
 
+    /// <summary>Fired when the banner body is tapped — should navigate to the episode detail page.</summary>
+    public event EventHandler<ShowEpisodeDto>? OpenRequested;
+
+    /// <summary>Fired when the explicit Resume button is tapped — should start playback.</summary>
     public event EventHandler<ShowEpisodeDto>? PlayRequested;
 
     public ShowResumeBanner()
@@ -257,7 +262,8 @@ public sealed partial class ShowResumeBanner : UserControl
         if (Episode is null) return;
         // Don't double-fire when the explicit Resume button handles its own click.
         if (e.OriginalSource is FrameworkElement fe && IsInsideResumeButton(fe)) return;
-        PlayRequested?.Invoke(this, Episode);
+        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, BackdropImage);
+        OpenRequested?.Invoke(this, Episode);
     }
 
     private bool IsInsideResumeButton(FrameworkElement element)

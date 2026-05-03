@@ -12,14 +12,14 @@
          show palette (CoverColorBrush DP) so each row state reads with the show's
          identity colour instead of a hardcoded Spotify green. -->
     <Border x:Name="RowContainer"
-            CornerRadius="8"
-            BorderThickness="1"
+            CornerRadius="6"
+            BorderThickness="0,0,0,1"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             Background="Transparent">
     <Grid x:Name="RowRoot"
           Background="Transparent"
-          Padding="12,10,12,10"
-          ColumnSpacing="14"
+          Padding="14,10,14,10"
+          ColumnSpacing="12"
           PointerEntered="RowRoot_PointerEntered"
           PointerExited="RowRoot_PointerExited"
           Tapped="RowRoot_Tapped">
@@ -40,17 +40,28 @@
         <Border x:Name="HoverFill"
                 Grid.ColumnSpan="3"
                 Grid.RowSpan="3"
-                CornerRadius="8"
+                CornerRadius="6"
                 Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                 Opacity="0"
+                IsHitTestVisible="False"/>
+
+        <Border x:Name="StateAccent"
+                Grid.Column="0"
+                Grid.RowSpan="3"
+                Width="3"
+                Margin="-14,-10,0,-10"
+                CornerRadius="2"
+                HorizontalAlignment="Left"
+                Visibility="Collapsed"
                 IsHitTestVisible="False"/>
 
         <!-- Cover thumbnail — 64×64, lazily loaded with a podcast-glyph
              placeholder so virtualised rows don't paint blank squares while
              the network image is in flight. -->
-        <Grid Grid.Column="0"
+        <Grid x:Name="CoverContainer"
+              Grid.Column="0"
               Grid.RowSpan="3"
-              Width="64" Height="64"
+              Width="58" Height="58"
               CornerRadius="6"
               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
               VerticalAlignment="Top">
@@ -123,6 +134,7 @@
                         Visibility="Collapsed"
                         Padding="7,1,7,2"
                         CornerRadius="10"
+                        BorderThickness="1"
                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                         VerticalAlignment="Center">
                     <TextBlock x:Name="StatusChipText"
@@ -199,13 +211,15 @@
               Grid.Column="1" Grid.ColumnSpan="2"
               Grid.Row="2"
               Visibility="Collapsed"
-              Margin="0,8,0,0"
+              Margin="0,9,0,0"
               VerticalAlignment="Bottom"
-              Height="2">
-            <Border Background="{ThemeResource CardStrokeColorDefaultBrush}" CornerRadius="1"/>
+              Height="3">
+            <Border x:Name="ProgressTrack"
+                    Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                    CornerRadius="2"/>
             <Border x:Name="ProgressFill"
                     HorizontalAlignment="Left"
-                    CornerRadius="1"
+                    CornerRadius="2"
                     Width="0"/>
         </Grid>
     </Grid>

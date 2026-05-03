@@ -465,7 +465,9 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                 var header = extData.Header;
 
                 // Determine TTL
-                var ttlSeconds = header?.CacheTtlInSeconds ?? arrayHeader?.CacheTtlInSeconds ?? DefaultTtlSeconds;
+                var ttlSeconds = ResolveCacheTtl(
+                    header?.CacheTtlInSeconds,
+                    arrayHeader?.CacheTtlInSeconds);
                 var etag = header?.Etag;
 
                 // Store in cache
@@ -567,6 +569,17 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             imageUrl: imageUrl,
             genre: tags,
             cancellationToken: cancellationToken);
+    }
+
+    private static long ResolveCacheTtl(long? entityTtlSeconds, long? arrayTtlSeconds)
+    {
+        if (entityTtlSeconds is > 0)
+            return entityTtlSeconds.Value;
+
+        if (arrayTtlSeconds is > 0)
+            return arrayTtlSeconds.Value;
+
+        return DefaultTtlSeconds;
     }
 
     private async Task StoreAlbumPropertiesAsync(string uri, Album album, CancellationToken cancellationToken)

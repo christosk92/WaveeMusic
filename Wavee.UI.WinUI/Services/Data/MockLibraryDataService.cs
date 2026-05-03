@@ -381,8 +381,7 @@ public sealed class MockLibraryDataService : ILibraryDataService
 
     public Task<PodcastEpisodeProgressDto?> GetPodcastEpisodeProgressAsync(
         string episodeUri,
-        CancellationToken ct = default,
-        bool allowEpisodeLookupFallback = false)
+        CancellationToken ct = default)
     {
         var episode = _mockYourEpisodes
             .Concat(_mockRecentlyPlayedPodcastEpisodes)

@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls.ShowEpisode;
 
@@ -43,6 +44,10 @@ public sealed partial class ShowUpNextCard : UserControl
         set => SetValue(CoverColorBrushProperty, value);
     }
 
+    /// <summary>Fired when the card body is tapped — should navigate to the episode detail page.</summary>
+    public event EventHandler<ShowEpisodeDto>? OpenRequested;
+
+    /// <summary>Fired when the explicit play button is tapped — should start playback.</summary>
     public event EventHandler<ShowEpisodeDto>? PlayRequested;
 
     private Brush _restingBorderBrush;
@@ -214,7 +219,8 @@ public sealed partial class ShowUpNextCard : UserControl
     {
         if (Episode is null) return;
         if (e.OriginalSource is FrameworkElement fe && IsInsidePlayButton(fe)) return;
-        PlayRequested?.Invoke(this, Episode);
+        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, CoverContainer);
+        OpenRequested?.Invoke(this, Episode);
     }
 
     private bool IsInsidePlayButton(FrameworkElement element)

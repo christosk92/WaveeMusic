@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Styles;
 
 namespace Wavee.UI.WinUI.Controls.ShowEpisode;
@@ -45,7 +46,10 @@ public sealed partial class ShowEpisodeRow : UserControl
         set => SetValue(CoverColorBrushProperty, value);
     }
 
-    /// <summary>Fired when the row body or play button is tapped.</summary>
+    /// <summary>Fired when the row body is tapped — should navigate to the episode detail page.</summary>
+    public event EventHandler<ShowEpisodeDto>? OpenRequested;
+
+    /// <summary>Fired when the dedicated play button is tapped — should start playback.</summary>
     public event EventHandler<ShowEpisodeDto>? PlayRequested;
 
     /// <summary>Fired when the heart button is tapped.</summary>
@@ -143,6 +147,7 @@ public sealed partial class ShowEpisodeRow : UserControl
             RowRoot.Opacity = 1.0;
             ProgressBar.Visibility = Visibility.Collapsed;
             EpisodeNumberChip.Visibility = Visibility.Collapsed;
+            StateAccent.Visibility = Visibility.Collapsed;
             StateGlyph.Visibility = Visibility.Collapsed;
             StatusChip.Visibility = Visibility.Collapsed;
             ProgressBar.SizeChanged -= ProgressBar_SizeChanged;
@@ -152,17 +157,21 @@ public sealed partial class ShowEpisodeRow : UserControl
         var coverColor = ResolveCoverColor();
         EpisodeNumberChip.Background = new SolidColorBrush(WithAlpha(coverColor, 0x2E));
         EpisodeNumberText.Foreground = new SolidColorBrush(coverColor);
+        StatusChip.BorderBrush = TransparentBrush;
 
         switch (episode.PlayedState)
         {
             case "IN_PROGRESS":
-                RowContainer.Background = new SolidColorBrush(WithAlpha(coverColor, 0x1A));
-                RowContainer.BorderBrush = new SolidColorBrush(WithAlpha(coverColor, 0x40));
+                RowContainer.Background = new SolidColorBrush(WithAlpha(coverColor, 0x0E));
+                RowContainer.BorderBrush = new SolidColorBrush(WithAlpha(coverColor, 0x24));
                 RowRoot.Opacity = 1.0;
+                StateAccent.Background = new SolidColorBrush(coverColor);
+                StateAccent.Visibility = Visibility.Visible;
 
                 if (episode.Progress > 0 && episode.Progress < 1)
                 {
                     ProgressBar.Visibility = Visibility.Visible;
+                    ProgressTrack.Background = new SolidColorBrush(WithAlpha(coverColor, 0x18));
                     ProgressFill.Background = new SolidColorBrush(coverColor);
                     UpdateProgressFill();
                     ProgressBar.SizeChanged -= ProgressBar_SizeChanged;
@@ -178,7 +187,8 @@ public sealed partial class ShowEpisodeRow : UserControl
                 StateGlyph.Foreground = new SolidColorBrush(coverColor);
                 StateGlyph.Visibility = Visibility.Visible;
 
-                StatusChip.Background = new SolidColorBrush(WithAlpha(coverColor, 0x33));
+                StatusChip.Background = new SolidColorBrush(WithAlpha(coverColor, 0x18));
+                StatusChip.BorderBrush = new SolidColorBrush(WithAlpha(coverColor, 0x26));
                 StatusChipText.Foreground = new SolidColorBrush(coverColor);
                 StatusChip.Visibility = Visibility.Visible;
                 break;
@@ -187,6 +197,7 @@ public sealed partial class ShowEpisodeRow : UserControl
                 RowContainer.Background = TransparentBrush;
                 RowContainer.BorderBrush = DefaultBorderBrush();
                 RowRoot.Opacity = 0.65;
+                StateAccent.Visibility = Visibility.Collapsed;
 
                 ProgressBar.Visibility = Visibility.Collapsed;
                 ProgressBar.SizeChanged -= ProgressBar_SizeChanged;
@@ -205,6 +216,7 @@ public sealed partial class ShowEpisodeRow : UserControl
                 RowContainer.Background = TransparentBrush;
                 RowContainer.BorderBrush = DefaultBorderBrush();
                 RowRoot.Opacity = 1.0;
+                StateAccent.Visibility = Visibility.Collapsed;
 
                 ProgressBar.Visibility = Visibility.Collapsed;
                 ProgressBar.SizeChanged -= ProgressBar_SizeChanged;
@@ -325,9 +337,10 @@ public sealed partial class ShowEpisodeRow : UserControl
         if (Episode is null) return;
         // Don't double-fire when the user taps an action button — those have
         // their own Click handlers and we'd otherwise both fire LikeRequested
-        // and PlayRequested on a single heart tap.
+        // and OpenRequested on a single heart/play tap.
         if (e.OriginalSource is FrameworkElement fe && IsInsideActionCluster(fe)) return;
-        PlayRequested?.Invoke(this, Episode);
+        ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, CoverContainer);
+        OpenRequested?.Invoke(this, Episode);
     }
 
     private bool IsInsideActionCluster(FrameworkElement element)

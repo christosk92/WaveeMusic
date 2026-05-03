@@ -510,14 +510,16 @@ public sealed class PodcastService : IPodcastService
 
         var coverUrl = ImageUrlFromCoverGroup(episode.CoverImage)
             ?? ImageUrlFromCoverGroup(episode.Show?.CoverImage);
+        var showImageUrl = ImageUrlFromCoverGroup(episode.Show?.CoverImage);
 
         var isVideo = episode.Video.Count > 0;
         var isExplicit = episode.Explicit;
 
         var dateText = release.HasValue ? release.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) : "";
         var durationText = FormatDuration(durationMs);
-        var description = StripHtml(episode.Description) ?? episode.Description;
-        description = TrimToFirstParagraph(description);
+        var descriptionHtml = episode.Description;
+        var fullDescription = StripHtml(descriptionHtml) ?? descriptionHtml;
+        var description = TrimToFirstParagraph(fullDescription);
 
         var playedState = progress.State ?? "NOT_STARTED";
         var playedPos = Math.Max(0, progress.PlayedPositionMs);
@@ -560,7 +562,26 @@ public sealed class PodcastService : IPodcastService
             DateText = dateText,
             DurationOrRemainingText = durationOrRemaining,
             MetaLine = metaLine,
+            ShowUri = ShowUriFromShow(episode.Show),
+            ShowName = episode.Show?.Name,
+            ShowImageUrl = showImageUrl,
+            FullDescription = fullDescription,
+            DescriptionHtml = descriptionHtml,
         };
+    }
+
+    private static string? ShowUriFromShow(Wavee.Protocol.Metadata.Show? show)
+    {
+        if (show?.Gid is not { Length: > 0 } gid)
+            return null;
+        try
+        {
+            return $"spotify:show:{Wavee.Core.Audio.SpotifyId.FromRaw(gid.Span, Wavee.Core.Audio.SpotifyIdType.Show).ToBase62()}";
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private bool TryParseEpisode(byte[] data, string uri, out Episode episode)

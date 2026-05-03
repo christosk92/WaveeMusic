@@ -25,7 +25,8 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0"
+            <Border x:Name="CoverContainer"
+                    Grid.Column="0"
                     Width="48"
                     Height="48"
                     CornerRadius="6"

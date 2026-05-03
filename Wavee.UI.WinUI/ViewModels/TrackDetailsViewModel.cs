@@ -520,6 +520,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
             ImageUrl = BestImageUrl(episode.CoverArt?.Sources) ?? BestImageUrl(show?.CoverArt?.Sources),
             ShowImageUrl = BestImageUrl(show?.CoverArt?.Sources) ?? BestImageUrl(episode.CoverArt?.Sources),
             Description = description,
+            HtmlDescription = episode.HtmlDescription,
             Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration?.TotalMilliseconds ?? 0)),
             ReleaseDate = ParseDate(episode.ReleaseDate?.IsoString),
             AddedAt = DateTime.Now,
@@ -528,8 +529,6 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
             IsPaywalled = episode.Restrictions?.PaywallContent ?? false,
             ShareUrl = episode.SharingInfo?.ShareUrl,
             PreviewUrl = episode.PreviewPlayback?.AudioPreview?.CdnUrl,
-            PlayedState = episode.PlayedState?.State,
-            PlayedPosition = TimeSpan.FromMilliseconds(Math.Max(0, episode.PlayedState?.PlayPositionMilliseconds ?? 0)),
             MediaTypes = DistinctNonEmpty(episode.MediaTypes),
             TranscriptLanguages = DistinctNonEmpty(episode.Transcripts?.Items?.Select(static transcript => transcript.Language))
         };

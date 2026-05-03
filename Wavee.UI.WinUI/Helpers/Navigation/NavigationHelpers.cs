@@ -167,14 +167,70 @@ public static class NavigationHelpers
         Navigate(typeof(LibraryPage), "podcasts", AppLocalization.GetString("Shell_SidebarPodcasts"), CreateIconSource(typeof(LibraryPage), "podcasts"), openInNewTab);
     }
 
+    public static void OpenPodcastBrowse(ContentNavigationParameter parameter, bool openInNewTab = false)
+    {
+        var header = string.IsNullOrWhiteSpace(parameter.Title)
+            ? "Podcasts"
+            : parameter.Title!;
+
+        Navigate(typeof(PodcastBrowsePage), parameter, header, CreateIconSource(typeof(PodcastBrowsePage), parameter), openInNewTab);
+    }
+
     /// <summary>
-    /// Open a podcast / show in the dedicated <see cref="ShowPage"/>. Accepts
-    /// either a <c>spotify:show:*</c> URI or a bare show id.
+    /// Open a podcast show as a drill-in inside the Podcasts library tab.
+    /// Accepts either a <c>spotify:show:*</c> URI or a bare show id.
     /// </summary>
     public static void OpenShow(string showUri, string title, bool openInNewTab = false)
     {
         if (string.IsNullOrWhiteSpace(showUri)) return;
-        Navigate(typeof(ShowPage), showUri, title, CreateIconSource(typeof(ShowPage), showUri), openInNewTab);
+        if (showUri.StartsWith("spotify:episode:", StringComparison.Ordinal))
+        {
+            OpenEpisode(showUri, title, openInNewTab: openInNewTab);
+            return;
+        }
+
+        var parameter = new PodcastLibraryNavigationParameter
+        {
+            Target = PodcastLibraryNavigationTarget.Show,
+            ShowUri = showUri,
+            ShowTitle = title
+        };
+
+        Navigate(typeof(LibraryPage), parameter, AppLocalization.GetString("Shell_SidebarPodcasts"), CreateIconSource(typeof(LibraryPage), "podcasts"), openInNewTab);
+    }
+
+    /// <summary>
+    /// Open a podcast episode detail page inside the Podcasts library surface. The
+    /// <paramref name="showUri"/> / <paramref name="showTitle"/> / <paramref name="showImageUrl"/>
+    /// fields seed the breadcrumb and hero before the network resolves; pass null
+    /// when the call site doesn't know the parent (Home cards, search hits) and
+    /// the page will derive them from the episode metadata. Local episode URIs
+    /// (<c>wavee:local:episode:</c>) are a no-op for now.
+    /// </summary>
+    public static void OpenEpisode(
+        string episodeUri,
+        string? episodeTitle = null,
+        string? episodeImageUrl = null,
+        string? showUri = null,
+        string? showTitle = null,
+        string? showImageUrl = null,
+        bool openInNewTab = false)
+    {
+        if (string.IsNullOrWhiteSpace(episodeUri)) return;
+        if (Wavee.Core.PlayableUri.IsLocal(episodeUri)) return;
+
+        var parameter = new PodcastLibraryNavigationParameter
+        {
+            Target = PodcastLibraryNavigationTarget.Episode,
+            EpisodeUri = episodeUri,
+            EpisodeTitle = episodeTitle,
+            EpisodeImageUrl = episodeImageUrl,
+            ShowUri = showUri,
+            ShowTitle = showTitle,
+            ShowImageUrl = showImageUrl,
+        };
+
+        Navigate(typeof(LibraryPage), parameter, AppLocalization.GetString("Shell_SidebarPodcasts"), CreateIconSource(typeof(LibraryPage), "podcasts"), openInNewTab);
     }
 
     /// <summary>
@@ -398,6 +454,12 @@ public static class NavigationHelpers
         if (pageType == typeof(ShowPage))
             return new FontIconSource { Glyph = "" };
 
+        if (pageType == typeof(EpisodePage))
+            return new FontIconSource { Glyph = "" };
+
+        if (pageType == typeof(PodcastBrowsePage))
+            return new FontIconSource { Glyph = "\uEC05" };
+
         if (pageType == typeof(LocalLibraryPage))
             return new SymbolIconSource { Symbol = Symbol.Folder };
 
@@ -423,6 +485,7 @@ public static class NavigationHelpers
                 "albums" => new SymbolIconSource { Symbol = Symbol.Audio },
                 "artists" => new SymbolIconSource { Symbol = Symbol.Contact },
                 "likedsongs" => new SymbolIconSource { Symbol = Symbol.Like },
+                PodcastLibraryNavigationParameter => new FontIconSource { Glyph = "\uEC05" },
                 "podcasts" or "yourepisodes" => new FontIconSource { Glyph = "\uEC05" },
                 _ => new SymbolIconSource { Symbol = Symbol.Library }
             };
@@ -454,6 +517,9 @@ public static class NavigationHelpers
         if (pageType == typeof(FeedbackPage))
             return "Feedback";
 
+        if (pageType == typeof(PodcastBrowsePage))
+            return (parameter as ContentNavigationParameter)?.Title ?? "Podcasts";
+
         if (pageType == typeof(LibraryPage))
         {
             return parameter switch
@@ -461,6 +527,7 @@ public static class NavigationHelpers
                 "albums" => AppLocalization.GetString("Shell_SidebarAlbums"),
                 "artists" => AppLocalization.GetString("Shell_SidebarArtists"),
                 "likedsongs" => AppLocalization.GetString("Shell_SidebarLikedSongs"),
+                PodcastLibraryNavigationParameter => AppLocalization.GetString("Shell_SidebarPodcasts"),
                 "podcasts" or "yourepisodes" => AppLocalization.GetString("Shell_SidebarPodcasts"),
                 _ => AppLocalization.GetString("Shell_SidebarYourLibrary")
             };

@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -37,6 +38,31 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
+
+    public void SetEmbeddedInLibrary(bool embedded, double chromeTopInset = 0)
+    {
+        var topInset = embedded ? chromeTopInset + 56 : 0;
+        if (ShowBreadcrumb is not null)
+            ShowBreadcrumb.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
+        if (ShimmerContainer is not null)
+            ShimmerContainer.Padding = embedded ? new Thickness(0, topInset, 0, 0) : new Thickness(40, 32, 40, 40);
+        if (ContentContainer is not null)
+            ContentContainer.Margin = embedded ? new Thickness(0, topInset, 0, 0) : new Thickness(0);
+    }
+
+    public void SetEmbeddedBackdropOnly(bool backdropOnly)
+    {
+        if (ContentContainer is not null)
+            ContentContainer.Visibility = backdropOnly ? Visibility.Collapsed : Visibility.Visible;
+
+        if (ShimmerContainer is not null)
+        {
+            if (backdropOnly)
+                ShimmerContainer.Visibility = Visibility.Collapsed;
+            else if (!_showingContent && ViewModel.IsLoading)
+                ShimmerContainer.Visibility = Visibility.Visible;
+        }
+    }
 
     public ShowPage()
     {
@@ -75,7 +101,17 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     private void OnActualThemeChanged(FrameworkElement sender, object args)
         => ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
 
-    private void ShowPage_Loaded(object sender, RoutedEventArgs e) { }
+    private void ShowPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        _isNavigatingAway = false;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        if (!ViewModel.IsLoading)
+            SnapCrossfadeToContent();
+
+        TryHandlePendingPodcastArtConnectedAnimation();
+    }
 
     private void ShowPage_Unloaded(object sender, RoutedEventArgs e)
     {
@@ -104,7 +140,12 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = true;
         await Task.Yield();
         await Task.Delay(16);
-        if (_isNavigatingAway || _showingContent) return;
+        if (_isNavigatingAway || _showingContent)
+        {
+            _crossfadeScheduled = false;
+            return;
+        }
+
         CrossfadeToContent();
     }
 
@@ -124,6 +165,15 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
 
         await Task.Delay(250);
         if (_showingContent) ShimmerContainer.Visibility = Visibility.Collapsed;
+    }
+
+    private void SnapCrossfadeToContent()
+    {
+        _showingContent = true;
+        _crossfadeScheduled = false;
+        ShimmerContainer.Visibility = Visibility.Collapsed;
+        ShimmerContainer.Opacity = 0;
+        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
     }
 
     private void ResetCrossfadeForNewLoad()
@@ -157,9 +207,10 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     {
         ResetCrossfadeForNewLoad();
 
+        ContentNavigationParameter? navigationParameter = null;
         var showUri = parameter switch
         {
-            ContentNavigationParameter nav => nav.Uri,
+            ContentNavigationParameter nav => (navigationParameter = nav).Uri,
             string raw => raw,
             _ => null,
         };
@@ -167,10 +218,35 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         if (string.IsNullOrWhiteSpace(showUri)) return;
 
         ViewModel.Activate(showUri);
+        if (navigationParameter is not null)
+            ViewModel.PrefillFrom(navigationParameter);
         RestoreShowPanelWidth(showUri);
+
+        TryHandlePendingPodcastArtConnectedAnimation();
+    }
+
+    private bool TryHandlePendingPodcastArtConnectedAnimation()
+    {
+        if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PodcastArt) ||
+            CoverContainer is null)
+        {
+            return false;
+        }
+
+        SnapCrossfadeToContent();
+        UpdateLayout();
+        return ConnectedAnimationHelper.TryStartAnimation(
+            ConnectedAnimationHelper.PodcastArt,
+            CoverContainer);
     }
 
     // ── Left-panel sizing ───────────────────────────────────────────────────
+
+    private void ShowBreadcrumb_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        if (args.Index == 0)
+            NavigationHelpers.OpenPodcasts(NavigationHelpers.IsCtrlPressed());
+    }
 
     private void RestoreShowPanelWidth(string showUri)
     {
@@ -220,6 +296,12 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     }
 
     // ── Episode row events ─────────────────────────────────────────────────
+    //
+    // Two distinct gestures per row/banner/card:
+    //   - PlayRequested: explicit play button → start playback in-place.
+    //   - OpenRequested: row body tap        → navigate to EpisodePage with
+    //     the parent show pre-filled so the breadcrumb and palette paint
+    //     before the network resolves.
 
     private void EpisodeRow_PlayRequested(object? sender, ShowEpisodeDto e)
         => ViewModel.PlayEpisodeCommand.Execute(e);
@@ -229,6 +311,25 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
 
     private void UpNextCard_PlayRequested(object? sender, ShowEpisodeDto e)
         => ViewModel.PlayEpisodeCommand.Execute(e);
+
+    private void EpisodeRow_OpenRequested(object? sender, ShowEpisodeDto e) => OpenEpisodeFromShow(e);
+
+    private void ResumeBanner_OpenRequested(object? sender, ShowEpisodeDto e) => OpenEpisodeFromShow(e);
+
+    private void UpNextCard_OpenRequested(object? sender, ShowEpisodeDto e) => OpenEpisodeFromShow(e);
+
+    private void OpenEpisodeFromShow(ShowEpisodeDto? e)
+    {
+        if (e is null || string.IsNullOrEmpty(e.Uri)) return;
+        NavigationHelpers.OpenEpisode(
+            e.Uri,
+            e.Title,
+            e.CoverArtUrl ?? ViewModel.CoverArtUrl,
+            ViewModel.ShowUri,
+            ViewModel.ShowName,
+            ViewModel.CoverArtUrl,
+            NavigationHelpers.IsCtrlPressed());
+    }
 
     private void EpisodeRow_LikeRequested(object? sender, ShowEpisodeDto e)
     {
@@ -252,6 +353,23 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     }
 
     // ── Share ──────────────────────────────────────────────────────────────
+
+    private void TopicToken_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not ShowTopicDto topic || string.IsNullOrWhiteSpace(topic.Title))
+            return;
+
+        var parameter = new ContentNavigationParameter
+        {
+            Uri = string.IsNullOrWhiteSpace(topic.Uri)
+                ? $"wavee:podcast-topic:{topic.Title}"
+                : topic.Uri!,
+            Title = topic.Title,
+            Subtitle = "Podcast genre"
+        };
+
+        NavigationHelpers.OpenPodcastBrowse(parameter, NavigationHelpers.IsCtrlPressed());
+    }
 
     private void Share_Click(object sender, RoutedEventArgs e)
     {
