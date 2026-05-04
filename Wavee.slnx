@@ -1,39 +1,111 @@
 <Solution>
   <!--
-    Solution platforms intentionally exclude "Any CPU": Wavee.UI.WinUI and
-    Wavee.Controls.Lyrics declare <Platforms>x86;x64;ARM64</Platforms> with
-    no AnyCPU variant, so a solution-level Any CPU triggers VS error
-    "specifies a project configuration that does not exist". The class-
-    library projects (Wavee, Wavee.UI, etc.) that ARE AnyCPU build fine
-    under x86/x64/ARM64 — msbuild promotes the platform automatically.
+    Solution-level configuration matrix:
+      4 build types × 3 platforms.
+      Debug / Release            → packaged MSIX flow.
+      Debug-Unpackaged /
+        Release-Unpackaged       → unpackaged SelfContained EXE for fast F5.
+      "Any CPU" intentionally absent — Wavee.UI.WinUI and Wavee.Controls.
+      Lyrics declare <Platforms>x86;x64;ARM64</Platforms> with no AnyCPU
+      variant, so a solution-level Any CPU has no project-platform to map
+      to. Mapping it to x64 disadvantages ARM64 dev machines, ARM64
+      disadvantages x64 dev machines — drop it instead so everyone picks
+      a real platform explicitly (matches WinUI Gallery's approach).
+
+      First-time clone: if VS shows stale "Any CPU" warnings, close VS,
+      delete the .vs/ cache directory, then reopen Wavee.slnx.
   -->
   <Configurations>
-    <Platform Name="x86" />
-    <Platform Name="x64" />
-    <Platform Name="ARM64" />
     <BuildType Name="Debug" />
+    <BuildType Name="Debug-Unpackaged" />
     <BuildType Name="Release" />
+    <BuildType Name="Release-Unpackaged" />
+    <Platform Name="ARM64" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
   </Configurations>
+
   <Folder Name="/src/">
+    <!-- WinUI app: native support for all 4 build types via its csproj
+         <Configurations> declaration. Platform mappings are explicit
+         (no AnyCPU project-platform exists) so VS doesn't try to send
+         the project a "*|Any CPU" config it can't resolve. -->
+    <Project Path="src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj">
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|x86" Project="x86" />
+      <Deploy Solution="Debug|ARM64" />
+    </Project>
+
+    <!-- AudioHost is x64-only by design (LoadLibrarys Spotify.dll which is
+         x86_64-native). Pin Project=x64 regardless of solution platform.
+         BuildType maps Unpackaged variants to plain Debug/Release. -->
     <Project Path="src/Wavee.AudioHost/Wavee.AudioHost.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
       <Platform Project="x64" />
     </Project>
-    <Project Path="src/Wavee.Console/Wavee.Console.csproj" />
-    <Project Path="src/Wavee.Controls.Lyrics/Wavee.Controls.Lyrics.csproj" />
-    <Project Path="src/Wavee.Playback.Contracts/Wavee.Playback.Contracts.csproj" />
-    <Project Path="src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj" />
-    <Project Path="src/Wavee.UI/Wavee.UI.csproj" />
-    <Project Path="src/Wavee/Wavee.csproj" />
+
+    <!-- AnyCPU class library — both BuildType remap and platform pass-through. -->
+    <Project Path="src/Wavee.Console/Wavee.Console.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
+    <!-- WinUI control library: declares x86;x64;ARM64 (no AnyCPU). Map
+         Unpackaged → packaged AND remap *|Any CPU → x64. -->
+    <Project Path="src/Wavee.Controls.Lyrics/Wavee.Controls.Lyrics.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+
+    <Project Path="src/Wavee.Playback.Contracts/Wavee.Playback.Contracts.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
+    <Project Path="src/Wavee.UI/Wavee.UI.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
+    <Project Path="src/Wavee/Wavee.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
   </Folder>
+
   <Folder Name="/test/">
+    <!-- PlayPlay tests: x64-only Exe harness. -->
     <Project Path="test/Wavee.PlayPlay.Tests/Wavee.PlayPlay.Tests.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
       <Platform Project="x64" />
     </Project>
-    <Project Path="test/Wavee.Tests/Wavee.Tests.csproj" />
-    <Project Path="test/Wavee.UI.Tests/Wavee.UI.Tests.csproj" />
+
+    <Project Path="test/Wavee.Tests/Wavee.Tests.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
+    <Project Path="test/Wavee.UI.Tests/Wavee.UI.Tests.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
   </Folder>
+
   <Folder Name="/vendor/">
-    <Project Path="vendor/Lyricify.Lyrics.Helper/Lyricify.Lyrics.Helper.csproj" />
-    <Project Path="vendor/NVorbis/NVorbis/NVorbis.csproj" />
+    <Project Path="vendor/Lyricify.Lyrics.Helper/Lyricify.Lyrics.Helper.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
+    <Project Path="vendor/NVorbis/NVorbis/NVorbis.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
   </Folder>
 </Solution>
