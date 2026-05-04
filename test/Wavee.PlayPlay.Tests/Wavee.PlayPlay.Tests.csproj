@@ -25,7 +25,7 @@
     holds the emulator class; tests exercise it in-process.
   -->
   <ItemGroup>
-    <ProjectReference Include="..\Wavee.AudioHost\Wavee.AudioHost.csproj" />
+    <ProjectReference Include="..\..\src\Wavee.AudioHost\Wavee.AudioHost.csproj" />
   </ItemGroup>
 
   <!-- Real test harness lives at Program.cs (gitignored — bundles the

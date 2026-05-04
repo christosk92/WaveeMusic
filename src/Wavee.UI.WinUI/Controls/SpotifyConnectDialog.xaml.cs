@@ -51,7 +51,6 @@ public sealed partial class SpotifyConnectDialog : ContentDialog
         {
             case nameof(SpotifyConnectViewModel.CurrentStep):
                 UpdatePanelVisibility();
-                UpdateStepBar();
                 break;
             case nameof(SpotifyConnectViewModel.IsDeviceCodeReady):
                 UpdateQrVisibility();
@@ -61,26 +60,13 @@ public sealed partial class SpotifyConnectDialog : ContentDialog
 
     private void UpdatePanelVisibility()
     {
+        // Three coarse panels: device-code/QR auth, live progress, error.
+        // Fine-grained phase detail lives in MainText/SubText/OverallProgress
+        // bound directly into ProgressPanel — no per-phase visibility needed.
         var step = ViewModel.CurrentStep;
         AuthPanel.Visibility = step == ConnectStep.Authenticate ? Visibility.Visible : Visibility.Collapsed;
-        ConnectingPanel.Visibility = step == ConnectStep.Connecting ? Visibility.Visible : Visibility.Collapsed;
-        SyncingPanel.Visibility = step == ConnectStep.Syncing ? Visibility.Visible : Visibility.Collapsed;
-        SuccessPanel.Visibility = step == ConnectStep.Complete ? Visibility.Visible : Visibility.Collapsed;
+        ProgressPanel.Visibility = step == ConnectStep.Progress ? Visibility.Visible : Visibility.Collapsed;
         ErrorPanel.Visibility = step == ConnectStep.Error ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void UpdateStepBar()
-    {
-        var step = ViewModel.CurrentStep;
-        (StepText.Text, StepProgress.Value) = step switch
-        {
-            ConnectStep.Authenticate => ("Step 1 of 3", 20),
-            ConnectStep.Connecting => ("Step 1 of 3", 33),
-            ConnectStep.Syncing => ("Step 2 of 3", 66),
-            ConnectStep.Complete => ("Step 3 of 3", 100),
-            ConnectStep.Error => ("Error", StepProgress.Value),
-            _ => ("Step 1 of 3", 20)
-        };
     }
 
     private void UpdateQrVisibility()

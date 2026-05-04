@@ -67,12 +67,16 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(IsInitialLoading))]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowEpisodesShimmer))]
+    [NotifyPropertyChangedFor(nameof(ShowLoadError))]
     private bool _isLoading;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowLoadError))]
+    [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
     private bool _hasError;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LoadErrorDescription))]
     private string? _errorMessage;
 
     [ObservableProperty]
@@ -95,6 +99,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private LibrarySortBy _sortBy = LibrarySortBy.RecentlyAdded;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEpisodeGroupHeaders))]
     private LibraryPodcastShowDto? _selectedShow;
 
     [ObservableProperty]
@@ -181,8 +186,22 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     public ObservableCollection<LibraryPodcastShowDto> PodcastShows { get; } = [];
     public ObservableCollection<LibraryPodcastShowDto> FilteredShows { get; } = [];
     public ObservableCollection<PodcastEpisodeGroupViewModel> EpisodeGroups { get; } = [];
+    public ObservableCollection<LibraryEpisodeDto> VisibleEpisodes { get; } = [];
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
     public ObservableCollection<ShowTopicDto> SelectedShowTopics { get; } = [];
+    public Func<ITrackItem, object?> PodcastEpisodeGroupKeySelector { get; } = static item =>
+        item is LibraryEpisodeDto episode ? EpisodeShowKey(episode) : null;
+    public Func<ITrackItem, object> PodcastEpisodeGroupHeaderSelector { get; } = static item =>
+    {
+        if (item is not LibraryEpisodeDto episode)
+            return "";
+
+        return new PodcastEpisodeHeaderRow(
+            EpisodeShowName(episode),
+            episode.ImageUrl);
+    };
+    public Func<int, string> PodcastEpisodeGroupCountFormatter { get; } = static count =>
+        count == 1 ? "1 episode" : $"{count:N0} episodes";
 
     public bool IsWideLayout => !UseNarrowLayout;
     public bool IsNarrowLayout => UseNarrowLayout;
@@ -190,14 +209,19 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     public bool ShowNarrowShowsStage => UseNarrowLayout && NarrowStage == PodcastLibraryStage.Shows;
     public bool ShowNarrowEpisodesStage => UseNarrowLayout && NarrowStage == PodcastLibraryStage.Episodes;
     public string SortDirectionGlyph => SortDirection == LibrarySortDirection.Ascending ? "\uE74A" : "\uE74B";
-    public bool HasEpisodeGroups => EpisodeGroups.Count > 0;
+    public bool HasEpisodeGroups => VisibleEpisodes.Count > 0;
+    public bool ShowEpisodeGroupHeaders => SelectedShow is { IsAllPodcasts: true } or { IsRecentlyPlayed: true };
     public bool HasSelectedEpisode => SelectedEpisode is not null;
     public bool HasSelectedShowTopics => SelectedShowTopics.Count > 0;
     public bool IsInitialLoading => IsLoading && PodcastShows.Count == 0;
     public bool ShowEpisodesShimmer => IsLoading || IsSelectedShowArchiveLoading;
+    public bool ShowLoadError => HasError && !IsLoading;
     public int PodcastEpisodeScopeIndex => _podcastEpisodeScope == PodcastEpisodeScope.Latest ? 1 : 0;
     public bool CanSwitchPodcastEpisodeScope => CanLoadArchiveForShow(SelectedShow);
-    public bool ShowEpisodeEmptyState => !HasEpisodeGroups && !IsSelectedShowArchiveLoading && !IsLoading;
+    public bool ShowEpisodeEmptyState => !HasError && !HasEpisodeGroups && !IsSelectedShowArchiveLoading && !IsLoading;
+    public string LoadErrorDescription => string.IsNullOrWhiteSpace(ErrorMessage)
+        ? "Podcasts could not be loaded. Try again in a moment."
+        : ErrorMessage;
     public string EpisodeEmptyTitle => IsSelectedShowArchiveLoading
         ? "Loading episodes"
         : CanSwitchPodcastEpisodeScope && _podcastEpisodeScope == PodcastEpisodeScope.Saved && SelectedShow is { HasSavedEpisodes: false }
@@ -446,7 +470,10 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private async Task LoadAsync()
     {
-        if (IsLoading || PodcastShows.Count > 0 || _allEpisodes.Count > 0 || _recentEpisodes.Count > 0)
+        if (IsLoading)
+            return;
+
+        if (!HasError && (PodcastShows.Count > 0 || _allEpisodes.Count > 0 || _recentEpisodes.Count > 0))
             return;
 
         await LoadDataAsync();
@@ -1006,6 +1033,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         var show = SelectedShow;
         if (show == null)
         {
+            VisibleEpisodes.Clear();
             EpisodeGroups.Clear();
             OnPropertyChanged(nameof(HasEpisodeGroups));
             OnPropertyChanged(nameof(ShowEpisodeEmptyState));
@@ -1013,64 +1041,49 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        IEnumerable<IGrouping<string, LibraryEpisodeDto>> grouped;
+        List<LibraryEpisodeDto> episodes;
         if (show.IsAllPodcasts)
         {
-            grouped = _allEpisodes.GroupBy(EpisodeShowKey, StringComparer.OrdinalIgnoreCase);
+            episodes = _allEpisodes
+                .OrderByDescending(static episode => episode.AddedAt)
+                .ThenBy(static episode => episode.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         else if (show.IsRecentlyPlayed)
         {
-            grouped = _recentEpisodes.GroupBy(EpisodeShowKey, StringComparer.OrdinalIgnoreCase);
+            episodes = _recentEpisodes
+                .OrderByDescending(static episode => episode.AddedAt)
+                .ThenBy(static episode => episode.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         else if (_podcastEpisodeScope == PodcastEpisodeScope.Latest && CanLoadArchiveForShow(show))
         {
-            grouped = Enumerable.Empty<IGrouping<string, LibraryEpisodeDto>>();
+            ShowArchivePreview? preview = null;
+            lock (_showArchivePreviewCacheGate)
+                _showArchivePreviewCache.TryGetValue(show.Id, out preview);
+
+            if (preview is not null)
+            {
+                ApplySelectedShowDetail(preview.Detail);
+                episodes = preview.Episodes.ToList();
+            }
+            else
+            {
+                episodes = [];
+            }
         }
         else
         {
             var selectedKey = PodcastShowKey(show);
-            grouped = _allEpisodes
+            episodes = _allEpisodes
                 .Where(episode => string.Equals(EpisodeShowKey(episode), selectedKey, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(EpisodeShowKey, StringComparer.OrdinalIgnoreCase);
+                .OrderByDescending(static episode => episode.AddedAt)
+                .ThenBy(static episode => episode.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
-        var groups = grouped
-            .Select(group =>
-            {
-                var episodes = group.OrderByDescending(static e => e.AddedAt).ToList();
-                var first = episodes[0];
-                var groupByShow = show.IsAllPodcasts || show.IsRecentlyPlayed;
-                var title = groupByShow ? EpisodeShowName(first) : show.Name;
-                var imageUrl = groupByShow ? first.ImageUrl : show.ImageUrl ?? first.ImageUrl;
-                return new PodcastEpisodeGroupViewModel(
-                    title,
-                    imageUrl,
-                    episodes,
-                    PlayEpisodeCommand,
-                    SelectEpisodeCommand,
-                    showHeader: groupByShow);
-            })
-            .OrderByDescending(static group => group.LastEpisodeAddedAt)
-            .ThenBy(static group => group.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        ShowArchivePreview? preview = null;
-        if (groups.Count == 0 && _podcastEpisodeScope == PodcastEpisodeScope.Latest && CanLoadArchiveForShow(show))
-        {
-            lock (_showArchivePreviewCacheGate)
-                _showArchivePreviewCache.TryGetValue(show.Id, out preview);
-        }
-
-        if (preview is not null)
-        {
-            ApplySelectedShowDetail(preview.Detail);
-            groups.Add(CreateArchivePreviewGroup(show, preview));
-        }
-
-        for (var i = 0; i < groups.Count; i++)
-            groups[i].IsExpanded = i < 2;
-
-        EpisodeGroups.ReplaceWith(groups);
+        VisibleEpisodes.ReplaceWith(episodes.Select((episode, index) => episode with { OriginalIndex = index + 1 }));
+        EpisodeGroups.Clear();
         OnPropertyChanged(nameof(HasEpisodeGroups));
         OnPropertyChanged(nameof(ShowEpisodeEmptyState));
         OnPropertyChanged(nameof(SelectedShowDetailArchiveSummary));
@@ -1244,7 +1257,8 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         if (!IsSelectedShow(show) || HasEpisodeGroups)
             return;
 
-        EpisodeGroups.ReplaceWith([CreateArchivePreviewGroup(show, preview)]);
+        VisibleEpisodes.ReplaceWith(preview.Episodes.Select((episode, index) => episode with { OriginalIndex = index + 1 }));
+        EpisodeGroups.Clear();
         OnPropertyChanged(nameof(HasEpisodeGroups));
         OnPropertyChanged(nameof(ShowEpisodeEmptyState));
         OnPropertyChanged(nameof(SelectedShowDetailArchiveSummary));
@@ -1323,7 +1337,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
            string.Equals(selected.Id, show.Id, StringComparison.Ordinal);
 
     private List<LibraryEpisodeDto> GetVisibleEpisodes()
-        => EpisodeGroups.SelectMany(static group => group.Episodes).ToList();
+        => VisibleEpisodes.ToList();
 
     private void BuildQueueAndPlay(int startIndex, bool shuffle)
     {
@@ -1410,7 +1424,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
     private void ApplyPodcastEpisodeProgress(PodcastEpisodeProgressChangedEventArgs e)
     {
-        foreach (var episode in _allEpisodes.Concat(_recentEpisodes))
+        foreach (var episode in _allEpisodes.Concat(_recentEpisodes).Concat(VisibleEpisodes))
         {
             if (e.Matches(episode.Uri))
                 episode.ApplyPlaybackProgress(e.Progress.PlayedPosition, e.Progress.PlayedState);
@@ -1556,3 +1570,7 @@ internal sealed record ShowArchivePreview(
     ShowDetailDto Detail,
     IReadOnlyList<LibraryEpisodeDto> Episodes,
     int TotalEpisodes);
+
+public sealed record PodcastEpisodeHeaderRow(
+    string Title,
+    string? ImageUrl);

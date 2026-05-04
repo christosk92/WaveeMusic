@@ -41,6 +41,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         _shellViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
         ViewModel = Ioc.Default.GetRequiredService<LibraryPageViewModel>();
         InitializeComponent();
+        Loaded += LibraryPage_Loaded;
     }
 
     public TabItemParameter? TabItemParameter => _tabItemParameter;
@@ -124,15 +125,23 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     {
         if (_disposed) return;
 
-        // Skip any spurious initial event before OnNavigatedTo applies the navigation
-        // is null until ShowTab runs for the first time — once OnNavigatedTo has wired
-        // parameter. ContentHost.Content is null until ShowTab runs for the first time.
-        if (ContentHost?.Content == null) return;
-
+        // ContentHost.Content can be null after navigation-cache trimming. A selected
+        // tab still needs to materialize its view when the page is reused.
         if (LibrarySelectorBar.SelectedItem is SegmentedItem selectedItem)
         {
             ShowTab(selectedItem);
         }
+    }
+
+    private void LibraryPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_disposed || ContentHost?.Content != null)
+            return;
+
+        var selectedItem = LibrarySelectorBar.SelectedItem as SegmentedItem
+                           ?? GetItemForTabKey(_trimmedSelectedTabKey);
+        SetSelectedItemSilently(selectedItem);
+        ShowTab(selectedItem);
     }
 
     /// <summary>
@@ -333,6 +342,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
 
         _disposed = true;
 
+        Loaded -= LibraryPage_Loaded;
         LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
         ContentHost.Content = null;
 

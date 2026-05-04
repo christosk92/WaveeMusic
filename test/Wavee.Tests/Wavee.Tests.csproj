@@ -35,8 +35,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Wavee.Controls.Lyrics\Wavee.Controls.Lyrics.csproj" />
-    <ProjectReference Include="..\Wavee\Wavee.csproj" />
+    <ProjectReference Include="..\..\src\Wavee.Controls.Lyrics\Wavee.Controls.Lyrics.csproj" />
+    <ProjectReference Include="..\..\src\Wavee\Wavee.csproj" />
   </ItemGroup>
 
   <!-- PlayPlay tests live in Wavee.PlayPlay.Tests (x64-only, isolated). -->

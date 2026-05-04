@@ -34,6 +34,11 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
     private readonly IMessenger _messenger;
     private readonly ILogger? _logger;
     private CancellationTokenSource? _enrichmentCts;
+    private readonly object _extendedTopTracksGate = new();
+    private readonly Dictionary<string, Task<List<ArtistTopTrackResult>>> _extendedTopTracksInFlight =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<ArtistTopTrackResult>> _extendedTopTracksCache =
+        new(StringComparer.Ordinal);
 
     public TrackMetadataEnricher(
         IExtendedMetadataClient metadataClient,
@@ -150,10 +155,55 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
     public void Receive(ExtendedTopTracksRequest message)
     {
-        message.Reply(GetExtendedTopTracksAsync(message.ArtistUri, message.CancellationToken));
+        message.Reply(GetOrLoadExtendedTopTracksAsync(message.ArtistUri, message.CancellationToken));
     }
 
-    private async Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(
+    private Task<List<ArtistTopTrackResult>> GetOrLoadExtendedTopTracksAsync(
+        string artistUri, CancellationToken ct)
+    {
+        lock (_extendedTopTracksGate)
+        {
+            if (_extendedTopTracksCache.TryGetValue(artistUri, out var cached))
+            {
+                _logger?.LogDebug("Extended top tracks served from in-memory artist cache for {Artist}: {Count} tracks",
+                    artistUri, cached.Count);
+                return Task.FromResult(cached.ToList());
+            }
+
+            if (_extendedTopTracksInFlight.TryGetValue(artistUri, out var inFlight))
+            {
+                _logger?.LogDebug("Extended top tracks joined in-flight request for {Artist}", artistUri);
+                return inFlight;
+            }
+
+            var task = LoadAndCacheExtendedTopTracksAsync(artistUri, ct);
+            _extendedTopTracksInFlight[artistUri] = task;
+            return task;
+        }
+    }
+
+    private async Task<List<ArtistTopTrackResult>> LoadAndCacheExtendedTopTracksAsync(
+        string artistUri, CancellationToken ct)
+    {
+        try
+        {
+            var result = await LoadExtendedTopTracksCoreAsync(artistUri, ct).ConfigureAwait(false);
+            if (result.Count > 0)
+            {
+                lock (_extendedTopTracksGate)
+                    _extendedTopTracksCache[artistUri] = result.ToList();
+            }
+
+            return result;
+        }
+        finally
+        {
+            lock (_extendedTopTracksGate)
+                _extendedTopTracksInFlight.Remove(artistUri);
+        }
+    }
+
+    private async Task<List<ArtistTopTrackResult>> LoadExtendedTopTracksCoreAsync(
         string artistUri, CancellationToken ct)
     {
         try
@@ -167,30 +217,40 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
             // 2. Check cache first
             var cached = await _cacheService.GetTracksAsync(uris, ct);
             var uncached = uris.Where(u => !cached.ContainsKey(u)).ToList();
+            _logger?.LogDebug(
+                "Extended top tracks entity cache check for {Artist}: cached={CachedCount} uncached={UncachedCount}",
+                artistUri,
+                cached.Count,
+                uncached.Count);
 
-            // 3. Fetch uncached via extended-metadata (batches of 500)
+            // 3. Fetch uncached via extended-metadata. The client chunks
+            //    POSTs at 500 internally, so we just hand it everything.
             if (uncached.Count > 0)
             {
                 _logger?.LogDebug("Fetching metadata for {Count} uncached tracks", uncached.Count);
-                const int batchSize = 500;
-                for (int i = 0; i < uncached.Count; i += batchSize)
+                try
                 {
-                    var batch = uncached.Skip(i).Take(batchSize)
+                    var batch = uncached
                         .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
-                    try
-                    {
-                        await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogWarning(ex, "Failed to fetch metadata batch at offset {Offset}", i);
-                    }
+                    await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to fetch metadata for {Count} tracks", uncached.Count);
                 }
 
                 // Re-read from cache (now populated by the metadata client)
                 var newCached = await _cacheService.GetTracksAsync(uncached, ct);
                 foreach (var (uri, entry) in newCached)
                     cached[uri] = entry;
+
+                var stillMissing = uncached.Where(u => !cached.ContainsKey(u)).ToList();
+                _logger?.LogDebug(
+                    "Extended top tracks entity cache after metadata fetch for {Artist}: filled={FilledCount} stillMissing={StillMissingCount} sample={Sample}",
+                    artistUri,
+                    newCached.Count,
+                    stillMissing.Count,
+                    string.Join(", ", stillMissing.Take(8)));
             }
 
             // 4. Map to ArtistTopTrackResult (preserving order)
@@ -307,19 +367,15 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                     _logger?.LogDebug("Queue enrichment: {CachedCount} cached, {UncachedCount} need fetch (missing or incomplete)",
                         cached.Count, uncached.Count);
 
-                    const int batchSize = 500;
-                    for (int i = 0; i < uncached.Count; i += batchSize)
+                    try
                     {
-                        var batch = uncached.Skip(i).Take(batchSize)
+                        var batch = uncached
                             .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
-                        try
-                        {
-                            await _metadataClient.GetBatchedExtensionsAsync(batch, CancellationToken.None);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger?.LogWarning(ex, "Queue enrichment batch failed at offset {Offset}", i);
-                        }
+                        await _metadataClient.GetBatchedExtensionsAsync(batch, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Queue enrichment failed for {Count} tracks", uncached.Count);
                     }
 
                     // Re-read from cache
@@ -386,19 +442,15 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
 
                 if (uncached.Count > 0)
                 {
-                    const int batchSize = 500;
-                    for (int i = 0; i < uncached.Count; i += batchSize)
+                    try
                     {
-                        var batch = uncached.Skip(i).Take(batchSize)
+                        var batch = uncached
                             .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
-                        try
-                        {
-                            await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger?.LogWarning(ex, "Track-image enrichment batch failed at offset {Offset}", i);
-                        }
+                        await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Track-image enrichment failed for {Count} URIs", uncached.Count);
                     }
 
                     var newCached = await _cacheService.GetTracksAsync(uncached, ct);
@@ -559,6 +611,11 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         _enrichmentCts?.Cancel();
         _enrichmentCts?.Dispose();
         _enrichmentCts = null;
+        lock (_extendedTopTracksGate)
+        {
+            _extendedTopTracksInFlight.Clear();
+            _extendedTopTracksCache.Clear();
+        }
         _messenger.UnregisterAll(this);
     }
 }

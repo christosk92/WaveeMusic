@@ -351,6 +351,11 @@ public sealed class LibraryDataService : ILibraryDataService
             .Take(limit)
             .ToList();
 
+        var unsavedProgress = orderedProgress
+            .Where(progress => !savedByUri.ContainsKey(progress.Uri))
+            .ToList();
+        var unsavedEpisodes = await FetchRecentPodcastEpisodesAsync(unsavedProgress, ct).ConfigureAwait(false);
+
         var results = new List<LibraryEpisodeDto>(orderedProgress.Count);
         var index = 1;
         foreach (var progress in orderedProgress)
@@ -360,8 +365,10 @@ public sealed class LibraryDataService : ILibraryDataService
             LibraryEpisodeDto? episode;
             if (savedByUri.TryGetValue(progress.Uri, out var savedEpisode))
                 episode = CreateRecentSavedEpisode(savedEpisode, progress, index);
+            else if (unsavedEpisodes.TryGetValue(NormalizeEpisodeUri(progress.Uri), out var metadataEpisode))
+                episode = CreateRecentUnsavedEpisode(metadataEpisode, progress, index);
             else
-                episode = await FetchRecentPodcastEpisodeAsync(progress, index, ct).ConfigureAwait(false);
+                episode = null;
 
             if (episode is null)
                 continue;
@@ -762,29 +769,102 @@ public sealed class LibraryDataService : ILibraryDataService
         PodcastEpisodeProgressChanged?.Invoke(this, new PodcastEpisodeProgressChangedEventArgs(progress, aliasUri));
     }
 
-    private async Task<LibraryEpisodeDto?> FetchRecentPodcastEpisodeAsync(
-        PodcastEpisodeProgressDto progress,
-        int index,
+    private async Task<IReadOnlyDictionary<string, Episode>> FetchRecentPodcastEpisodesAsync(
+        IReadOnlyList<PodcastEpisodeProgressDto> progresses,
         CancellationToken ct)
     {
-        try
-        {
-            var response = await _session.Pathfinder.GetEpisodeOrChapterAsync(progress.Uri, ct).ConfigureAwait(false);
-            var episode = response.Data?.EpisodeUnionV2;
-            if (episode is null)
-                return null;
+        if (progresses.Count == 0)
+            return new Dictionary<string, Episode>(StringComparer.Ordinal);
 
-            return CreateRecentUnsavedEpisode(episode, progress, index);
-        }
-        catch (OperationCanceledException)
+        var uris = progresses
+            .Select(progress => NormalizeEpisodeUri(progress.Uri))
+            .Where(static uri => uri.StartsWith("spotify:episode:", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (uris.Count == 0)
+            return new Dictionary<string, Episode>(StringComparer.Ordinal);
+
+        var episodes = new Dictionary<string, Episode>(uris.Count, StringComparer.Ordinal);
+
+        if (_extendedMetadataStore is not null)
         {
-            throw;
+            try
+            {
+                var response = await _extendedMetadataStore.GetManyAsync(
+                    uris.Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.EpisodeV4 })),
+                    ct).ConfigureAwait(false);
+
+                foreach (var (key, data) in response)
+                {
+                    if (key.Kind != ExtensionKind.EpisodeV4 || data.Length == 0)
+                        continue;
+
+                    try
+                    {
+                        episodes[key.Uri] = Episode.Parser.ParseFrom(data);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Failed to parse recent podcast EpisodeV4 metadata for {Uri}", key.Uri);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Recent podcast EpisodeV4 metadata store lookup failed for {Count} URIs", uris.Count);
+            }
         }
-        catch (Exception ex)
+
+        var missing = uris.Where(uri => !episodes.ContainsKey(uri)).ToList();
+        const int batchSize = 500;
+        for (var i = 0; i < missing.Count; i += batchSize)
         {
-            _logger?.LogDebug(ex, "Failed to enrich recently played podcast episode {EpisodeUri}", progress.Uri);
-            return null;
+            var batch = missing.Skip(i).Take(batchSize).ToList();
+            try
+            {
+                var response = await _metadataClient.GetBatchedExtensionsAsync(
+                    batch.Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.EpisodeV4 })),
+                    ct).ConfigureAwait(false);
+
+                foreach (var entry in response.GetAllExtensionData(ExtensionKind.EpisodeV4))
+                {
+                    if (string.IsNullOrWhiteSpace(entry.EntityUri))
+                        continue;
+
+                    try
+                    {
+                        var episode = entry.UnpackAs<Episode>();
+                        if (episode is not null)
+                        {
+                            episodes[entry.EntityUri] = episode;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Failed to unpack recent podcast EpisodeV4 metadata for {Uri}", entry.EntityUri);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Recent podcast EpisodeV4 batch fetch failed at offset {Offset}", i);
+            }
         }
+
+        _logger?.LogDebug(
+            "Hydrated {ResolvedCount}/{RequestedCount} recently played podcast episodes from EpisodeV4",
+            episodes.Count,
+            uris.Count);
+
+        return episodes;
     }
 
     private static LibraryEpisodeDto CreateRecentSavedEpisode(
@@ -802,33 +882,33 @@ public sealed class LibraryDataService : ILibraryDataService
     }
 
     private static LibraryEpisodeDto CreateRecentUnsavedEpisode(
-        PathfinderEpisode episode,
+        Episode episode,
         PodcastEpisodeProgressDto progress,
         int index)
     {
-        var show = episode.PodcastV2?.Data;
-        var uri = string.IsNullOrWhiteSpace(episode.Uri) ? progress.Uri : episode.Uri!;
+        var uri = NormalizeEpisodeUri(progress.Uri);
+        var show = episode.Show;
         var showName = show?.Name ?? "";
 
         var result = new LibraryEpisodeDto
         {
-            Id = episode.Id ?? ExtractBareId(uri, "spotify:episode:"),
+            Id = ExtractBareId(uri, "spotify:episode:"),
             Uri = uri,
-            Title = episode.Name ?? "Unknown episode",
+            Title = string.IsNullOrWhiteSpace(episode.Name) ? "Unknown episode" : episode.Name,
             ArtistName = showName,
             ArtistId = "",
             AlbumName = showName,
-            AlbumId = show?.Uri ?? "",
-            ImageUrl = BestImageUrl(episode.CoverArt?.Sources) ?? BestImageUrl(show?.CoverArt?.Sources),
-            Description = episode.HtmlDescription ?? episode.Description,
-            Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration?.TotalMilliseconds ?? 0)),
-            ReleaseDate = ParseDate(episode.ReleaseDate?.IsoString),
-            ShareUrl = episode.SharingInfo?.ShareUrl,
-            PreviewUrl = episode.PreviewPlayback?.AudioPreview?.CdnUrl,
-            MediaTypes = DistinctNonEmpty(episode.MediaTypes),
+            AlbumId = MetadataShowUri(show) ?? "",
+            ImageUrl = MetadataImageUrl(episode.CoverImage) ?? MetadataImageUrl(show?.CoverImage),
+            Description = episode.Description,
+            Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.Duration)),
+            ReleaseDate = MetadataDate(episode.PublishTime),
+            ShareUrl = null,
+            PreviewUrl = null,
+            MediaTypes = episode.Video.Count > 0 ? ["VIDEO"] : ["AUDIO"],
             AddedAt = GetProgressSortDate(progress).LocalDateTime,
-            IsExplicit = string.Equals(episode.ContentRating?.Label, "EXPLICIT", StringComparison.OrdinalIgnoreCase),
-            IsPlayable = episode.Playability?.Playable ?? true,
+            IsExplicit = episode.Explicit,
+            IsPlayable = true,
             OriginalIndex = index,
             IsLiked = false
         };
@@ -1698,6 +1778,58 @@ public sealed class LibraryDataService : ILibraryDataService
 
     private static DateTimeOffset? ParseDate(string? value)
         => DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
+
+    private static DateTimeOffset? MetadataDate(Wavee.Protocol.Metadata.Date? value)
+    {
+        if (value is null || value.Year <= 0)
+            return null;
+
+        try
+        {
+            return new DateTimeOffset(
+                value.Year,
+                Math.Max(1, value.Month),
+                Math.Max(1, value.Day),
+                0,
+                0,
+                0,
+                TimeSpan.Zero);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? MetadataShowUri(Wavee.Protocol.Metadata.Show? show)
+    {
+        if (show?.Gid is not { Length: > 0 } gid)
+            return null;
+
+        try
+        {
+            return $"spotify:show:{SpotifyId.FromRaw(gid.Span, SpotifyIdType.Show).ToBase62()}";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? MetadataImageUrl(ImageGroup? imageGroup)
+    {
+        if (imageGroup?.Image.Count is not > 0)
+            return null;
+
+        var image = imageGroup.Image
+            .OrderByDescending(static img => img.Size == Image.Types.Size.Default ? 2 :
+                                             img.Size == Image.Types.Size.Large ? 1 : 0)
+            .FirstOrDefault();
+        if (image?.FileId is not { Length: > 0 } fileId)
+            return null;
+
+        return $"https://i.scdn.co/image/{Convert.ToHexString(fileId.ToByteArray()).ToLowerInvariant()}";
+    }
 
     private static string? BestImageUrl(IReadOnlyList<ArtistImageSource>? sources)
         => sources?

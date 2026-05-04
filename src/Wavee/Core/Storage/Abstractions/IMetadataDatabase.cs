@@ -86,6 +86,15 @@ public interface IMetadataDatabase : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets cached extension data without enforcing expiry.
+    /// Used to satisfy conditional requests when Spotify replies 304 Not Modified.
+    /// </summary>
+    Task<(byte[] Data, string? Etag)?> GetStaleExtensionAsync(
+        string entityUri,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Bulk-reads cached extension data for many URIs in one connection.
     /// Includes zero-length blobs (used as a "known absent" negative cache marker).
     /// Omits URIs that are not present or expired.
@@ -93,6 +102,37 @@ public interface IMetadataDatabase : IAsyncDisposable
     Task<IReadOnlyDictionary<string, byte[]>> GetExtensionsBulkAsync(
         IReadOnlyList<string> entityUris,
         ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Bulk-reads cached extension rows classified into fresh / stale / missing,
+    /// returning etags so callers can issue conditional (If-None-Match style)
+    /// requests. One IN-clause query per chunk of 500.
+    /// </summary>
+    /// <returns>One entry per requested URI that has any row (fresh OR stale).
+    /// URIs with no row are absent from the result; callers infer "missing".</returns>
+    Task<IReadOnlyDictionary<string, CachedExtensionLookup>> GetExtensionsBulkWithEtagAsync(
+        IReadOnlyList<string> entityUris,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes many extension rows in a single transaction. Promotes each row
+    /// to the hot cache. If invoked inside a <see cref="BeginWriteBatchAsync"/>
+    /// scope, participates in the open scope's transaction without acquiring
+    /// the write lock.
+    /// </summary>
+    Task SetExtensionsBulkAsync(
+        IReadOnlyList<ExtensionWriteRecord> records,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Bulk-refreshes the expires_at timestamp for many extension rows.
+    /// Used by the 304 Not Modified path so we don't rewrite payloads.
+    /// </summary>
+    Task RefreshExtensionTtlBulkAsync(
+        IReadOnlyList<(string EntityUri, ExtensionKind Kind)> rows,
+        long ttlSeconds,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -119,6 +159,17 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// Invalidates all cached data for an entity.
     /// </summary>
     Task InvalidateEntityAsync(string entityUri, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens a write batch: acquires the write lock, opens a connection, and
+    /// begins a transaction. While the returned scope is alive, calls to
+    /// <see cref="UpsertEntityAsync"/>, <see cref="SetExtensionsBulkAsync"/>,
+    /// and <see cref="RefreshExtensionTtlBulkAsync"/> on the same async-flow
+    /// participate in the open transaction instead of self-locking. Disposing
+    /// the scope commits.
+    /// </summary>
+    /// <remarks>Nested scopes are not supported; the second call throws.</remarks>
+    Task<IAsyncDisposable> BeginWriteBatchAsync(CancellationToken cancellationToken = default);
 
     #endregion
 
@@ -509,6 +560,30 @@ public interface IMetadataDatabase : IAsyncDisposable
 
     #endregion
 }
+
+/// <summary>
+/// Result of a bulk extension lookup classified into fresh / stale.
+/// Missing URIs are absent from the lookup map; callers detect them by absence.
+/// </summary>
+/// <param name="EntityUri">The entity URI.</param>
+/// <param name="Data">Stored payload. Non-null for fresh and stale rows.</param>
+/// <param name="Etag">Etag for conditional requests, or null if the row had none.</param>
+/// <param name="IsFresh">True if expires_at is still in the future.</param>
+public sealed record CachedExtensionLookup(
+    string EntityUri,
+    byte[] Data,
+    string? Etag,
+    bool IsFresh);
+
+/// <summary>
+/// One row in a bulk extension write.
+/// </summary>
+public sealed record ExtensionWriteRecord(
+    string EntityUri,
+    ExtensionKind Kind,
+    byte[] Data,
+    string? Etag,
+    long TtlSeconds);
 
 /// <summary>
 /// Outbox operation type.

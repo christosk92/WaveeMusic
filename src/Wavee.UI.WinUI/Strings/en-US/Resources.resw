@@ -1864,4 +1864,48 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="MainWindow.Title" xml:space="preserve">
     <value>Wavee</value>
   </data>
+  <!-- SpotifyConnectDialog real-progress phase strings (added with the
+       message-driven progress refactor; see SpotifyConnectViewModel). -->
+  <data name="Connect_Authenticating" xml:space="preserve">
+    <value>Authenticating</value>
+  </data>
+  <data name="Connect_ExchangingAuthorizationCode" xml:space="preserve">
+    <value>Exchanging authorization code…</value>
+  </data>
+  <data name="Connect_ConnectingToSpotify" xml:space="preserve">
+    <value>Connecting to Spotify</value>
+  </data>
+  <data name="Connect_ReachingAccessPoint" xml:space="preserve">
+    <value>Reaching access point…</value>
+  </data>
+  <data name="Connect_StartingAudioEngine" xml:space="preserve">
+    <value>Starting audio engine…</value>
+  </data>
+  <data name="Connect_AudioEngineReady" xml:space="preserve">
+    <value>Audio engine ready</value>
+  </data>
+  <data name="Connect_LoadingLibrary" xml:space="preserve">
+    <value>Loading your library</value>
+  </data>
+  <data name="Connect_StartingLibrarySync" xml:space="preserve">
+    <value>Starting library sync…</value>
+  </data>
+  <data name="Connect_LibraryReady" xml:space="preserve">
+    <value>Library ready</value>
+  </data>
+  <data name="Connect_SyncingShows" xml:space="preserve">
+    <value>Syncing podcasts…</value>
+  </data>
+  <data name="Connect_SyncingListenLater" xml:space="preserve">
+    <value>Syncing listen-later queue…</value>
+  </data>
+  <data name="Connect_NoPlaylists" xml:space="preserve">
+    <value>No playlists to load</value>
+  </data>
+  <data name="Connect_PlaylistProgress" xml:space="preserve">
+    <value>{0}  ({1} / {2})</value>
+  </data>
+  <data name="Connect_AllSet" xml:space="preserve">
+    <value>You're all set</value>
+  </data>
 </root>

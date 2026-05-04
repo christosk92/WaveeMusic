@@ -123,6 +123,13 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private bool _isDarkTheme;
 
+    /// <summary>
+    /// Fires <see cref="HomeFeedLoadedMessage"/> at most once per VM
+    /// instance — drives the final phase of <c>SpotifyConnectDialog</c>'s
+    /// progress bar (and its auto-close).
+    /// </summary>
+    private bool _homeFeedLoadedFired;
+
     /// <summary>The original main chips (preserved for reverting from sub-chips).</summary>
     private List<HomeChipViewModel>? _mainChips;
 
@@ -220,6 +227,14 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     BeginBaselineEnrichment();
                     DispatchRecentsToService(ordered);
                     await RefreshLocalSectionAsync();
+                    if (!_homeFeedLoadedFired && Sections.Count > 0)
+                    {
+                        _homeFeedLoadedFired = true;
+                        var totalItems = 0;
+                        foreach (var s in Sections) totalItems += s.Items?.Count ?? 0;
+                        WeakReferenceMessenger.Default.Send(
+                            new Data.Messages.HomeFeedLoadedMessage(Sections.Count, totalItems));
+                    }
                     return;
                 }
             }
@@ -264,6 +279,18 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
             if (string.IsNullOrEmpty(Greeting))
                 UpdateGreeting();
+
+            // First successful home render — drives the sign-in dialog's
+            // auto-close. Fires at most once per VM instance; subsequent
+            // tab switches / refreshes are no-ops.
+            if (!_homeFeedLoadedFired && Sections.Count > 0)
+            {
+                _homeFeedLoadedFired = true;
+                var totalItems = 0;
+                foreach (var s in Sections) totalItems += s.Items?.Count ?? 0;
+                WeakReferenceMessenger.Default.Send(
+                    new Data.Messages.HomeFeedLoadedMessage(Sections.Count, totalItems));
+            }
         }
         catch (Exception ex)
         {

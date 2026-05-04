@@ -96,8 +96,9 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         }
 
         // Fetch from API
+        var etag = await _database.GetExtensionEtagAsync(entityUri, extensionKind, cancellationToken);
         var response = await FetchExtendedMetadataAsync(
-            new[] { (entityUri, (IEnumerable<ExtensionKind>)new[] { extensionKind }) },
+            new[] { (entityUri, (IEnumerable<(ExtensionKind Kind, string? Etag)>)new[] { (extensionKind, etag) }) },
             cancellationToken);
 
         // Extract and return the data
@@ -180,67 +181,99 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
     {
         var requestList = requests.ToList();
 
-        // Collect cached results and determine what needs fetching
-        var cachedData = new Dictionary<(string, ExtensionKind), byte[]>();
-        var uncachedRequests = new List<(string EntityUri, List<(ExtensionKind Kind, string? Etag)> Extensions)>();
-
-        foreach (var (entityUri, extensions) in requestList)
+        // Group all requested (uri, kind) pairs by kind so we issue exactly
+        // one bulk SQLite read per kind (chunked at 500 inside the database)
+        // instead of two reads per (uri, kind) pair.
+        var byKind = new Dictionary<ExtensionKind, List<string>>();
+        foreach (var (uri, exts) in requestList)
         {
-            var uncachedExtensions = new List<(ExtensionKind, string?)>();
-
-            foreach (var ext in extensions)
+            foreach (var kind in exts)
             {
-                var cached = await _database.GetExtensionAsync(entityUri, ext, cancellationToken);
-                if (cached.HasValue)
+                if (!byKind.TryGetValue(kind, out var list))
                 {
-                    cachedData[(entityUri, ext)] = cached.Value.Data;
+                    list = new List<string>();
+                    byKind[kind] = list;
                 }
-                else
-                {
-                    // Get etag for conditional request even if expired
-                    var etag = await _database.GetExtensionEtagAsync(entityUri, ext, cancellationToken);
-                    uncachedExtensions.Add((ext, etag));
-                }
-            }
-
-            if (uncachedExtensions.Count > 0)
-            {
-                uncachedRequests.Add((entityUri, uncachedExtensions));
+                list.Add(uri);
             }
         }
 
-        // Ensure cached entities have rows in SQLite entities table (required for FK constraints)
+        var cachedData = new Dictionary<(string, ExtensionKind), byte[]>();
+        // Per-uri (kind, etag) tuples that need to be sent to Spotify.
+        // Etag carries a stale row's etag for conditional fetch.
+        var forwardByUri = new Dictionary<string, List<(ExtensionKind Kind, string? Etag)>>(StringComparer.Ordinal);
+        int totalFresh = 0, totalStale = 0, totalMissing = 0;
+
+        foreach (var (kind, uris) in byKind)
+        {
+            var lookup = await _database.GetExtensionsBulkWithEtagAsync(uris, kind, cancellationToken);
+            foreach (var uri in uris)
+            {
+                if (!lookup.TryGetValue(uri, out var entry))
+                {
+                    AddForward(forwardByUri, uri, kind, null);
+                    totalMissing++;
+                }
+                else if (entry.IsFresh)
+                {
+                    cachedData[(uri, kind)] = entry.Data;
+                    totalFresh++;
+                }
+                else
+                {
+                    AddForward(forwardByUri, uri, kind, entry.Etag);
+                    totalStale++;
+                }
+            }
+        }
+
+        _logger?.LogDebug(
+            "metadata-cache lookup: kinds={KindCount} fresh={Fresh} stale={Stale} missing={Missing}",
+            byKind.Count,
+            totalFresh,
+            totalStale,
+            totalMissing);
+
+        // Ensure cached entities have rows in SQLite entities table (required for FK constraints).
         if (cachedData.Count > 0)
         {
             await EnsureEntitiesFromCacheAsync(cachedData, cancellationToken);
         }
 
-        // If everything is cached, return synthetic response
-        if (uncachedRequests.Count == 0)
+        if (forwardByUri.Count == 0)
         {
-            _logger?.LogDebug("All {Count} extensions served from cache",
-                requestList.Sum(r => r.Extensions.Count()));
-
             return BuildResponseFromCache(cachedData);
         }
 
-        // Fetch uncached data
-        var response = await FetchExtendedMetadataAsync(
-            uncachedRequests.Select(r => (r.EntityUri, r.Extensions.Select(e => e.Kind))),
-            cancellationToken);
+        var forwardRequests = forwardByUri
+            .Select(kvp => (kvp.Key, (IEnumerable<(ExtensionKind Kind, string? Etag)>)kvp.Value))
+            .ToList();
+
+        var response = await FetchExtendedMetadataAsync(forwardRequests, cancellationToken);
 
         // Merge cached entries into the response. Without this, a mixed batch
         // (some cached, some not) returns only the uncached entries — callers
-        // iterating response.GetExtensionData see nulls for the cached keys,
-        // so SQLite-persisted data never surfaces to the caller. With the
-        // ExtendedMetadataStore batching unrelated requests into the same
-        // 50ms window, this bug was firing on nearly every batch.
+        // iterating response.GetExtensionData see nulls for the cached keys.
         if (cachedData.Count > 0)
         {
             MergeCachedIntoResponse(response, cachedData);
         }
 
         return response;
+    }
+
+    private static void AddForward(
+        Dictionary<string, List<(ExtensionKind Kind, string? Etag)>> map,
+        string uri,
+        ExtensionKind kind,
+        string? etag)
+    {
+        if (!map.TryGetValue(uri, out var list))
+        {
+            list = new List<(ExtensionKind, string?)>();
+            map[uri] = list;
+        }
+        list.Add((kind, etag));
     }
 
     /// <summary>
@@ -261,8 +294,10 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
     #region Private Methods
 
+    private const int HttpChunkSize = 500;
+
     private async Task<BatchedExtensionResponse> FetchExtendedMetadataAsync(
-        IEnumerable<(string EntityUri, IEnumerable<ExtensionKind> Extensions)> requests,
+        IEnumerable<(string EntityUri, IEnumerable<(ExtensionKind Kind, string? Etag)> Extensions)> requests,
         CancellationToken cancellationToken)
     {
         var requestList = requests.ToList();
@@ -271,6 +306,53 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             return new BatchedExtensionResponse();
         }
 
+        if (requestList.Count <= HttpChunkSize)
+        {
+            return await FetchExtendedMetadataChunkAsync(requestList, cancellationToken);
+        }
+
+        // > 500 entities — split into HttpChunkSize-entity POSTs and merge the
+        // responses. Spotify's extended-metadata endpoint accepts more, but we
+        // cap to keep request bodies small and to bound 304-fallback work.
+        var merged = new BatchedExtensionResponse
+        {
+            Header = new BatchedExtensionResponseHeader()
+        };
+        for (int offset = 0; offset < requestList.Count; offset += HttpChunkSize)
+        {
+            var take = Math.Min(HttpChunkSize, requestList.Count - offset);
+            var chunk = requestList.GetRange(offset, take);
+            var chunkResponse = await FetchExtendedMetadataChunkAsync(chunk, cancellationToken);
+            MergeChunkResponseInto(merged, chunkResponse);
+        }
+        _logger?.LogDebug(
+            "extended-metadata chunked: totalEntities={Total} chunks={Chunks}",
+            requestList.Count,
+            (requestList.Count + HttpChunkSize - 1) / HttpChunkSize);
+        return merged;
+    }
+
+    private static void MergeChunkResponseInto(BatchedExtensionResponse target, BatchedExtensionResponse source)
+    {
+        foreach (var sourceArray in source.ExtendedMetadata)
+        {
+            var existing = target.ExtendedMetadata.FirstOrDefault(a => a.ExtensionKind == sourceArray.ExtensionKind);
+            if (existing is null)
+            {
+                target.ExtendedMetadata.Add(sourceArray);
+                continue;
+            }
+            foreach (var entry in sourceArray.ExtensionData)
+            {
+                existing.ExtensionData.Add(entry);
+            }
+        }
+    }
+
+    private async Task<BatchedExtensionResponse> FetchExtendedMetadataChunkAsync(
+        IReadOnlyList<(string EntityUri, IEnumerable<(ExtensionKind Kind, string? Etag)> Extensions)> requestList,
+        CancellationToken cancellationToken)
+    {
         // Get country and catalogue for header
         var countryCode = await _session.GetCountryCodeAsync(cancellationToken);
         var accountType = await _session.GetAccountTypeAsync(cancellationToken);
@@ -279,8 +361,8 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         var usesPlayerMetadata = requestList
             .SelectMany(static r => r.Extensions)
             .Any(static extension =>
-                (int)extension == AudioAssociationsExtensionKindValue ||
-                (int)extension == VideoAssociationsExtensionKindValue);
+                (int)extension.Kind == AudioAssociationsExtensionKindValue ||
+                (int)extension.Kind == VideoAssociationsExtensionKindValue);
 
         // Build request
         var request = new BatchedEntityRequest
@@ -296,9 +378,12 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         foreach (var (entityUri, extensions) in requestList)
         {
             var entityRequest = new EntityRequest { EntityUri = entityUri };
-            foreach (var ext in extensions)
+            foreach (var (kind, etag) in extensions)
             {
-                entityRequest.Query.Add(new ExtensionQuery { ExtensionKind = ext });
+                var query = new ExtensionQuery { ExtensionKind = kind };
+                if (!string.IsNullOrWhiteSpace(etag))
+                    query.Etag = etag;
+                entityRequest.Query.Add(query);
             }
             request.EntityRequest.Add(entityRequest);
         }
@@ -327,6 +412,11 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         // Send with retry
         var httpResponse = await SendWithRetryAsync(httpRequest, cancellationToken);
 
+        if (httpResponse.StatusCode == HttpStatusCode.NotModified)
+        {
+            return await BuildNotModifiedResponseFromCacheAsync(requestList, httpResponse, cancellationToken);
+        }
+
         switch (httpResponse.StatusCode)
         {
             case HttpStatusCode.NotFound:
@@ -349,10 +439,131 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         _logger?.LogDebug("Extended metadata response: {Count} extension arrays", response.ExtendedMetadata.Count);
 
+        await RehydrateNotModifiedPayloadsAsync(response, cancellationToken);
+
         // Cache the results
         await CacheResponseAsync(response, cancellationToken);
 
         return response;
+    }
+
+    private async Task<BatchedExtensionResponse> BuildNotModifiedResponseFromCacheAsync(
+        IReadOnlyCollection<(string EntityUri, IEnumerable<(ExtensionKind Kind, string? Etag)> Extensions)> requests,
+        HttpResponseMessage httpResponse,
+        CancellationToken cancellationToken)
+    {
+        var ttlSeconds = ResolveNotModifiedTtl(httpResponse);
+
+        // Group requested (uri, kind) pairs by kind so we issue one bulk
+        // SQLite read per kind instead of two reads (per-row + write) per pair.
+        var byKind = new Dictionary<ExtensionKind, List<string>>();
+        foreach (var (uri, exts) in requests)
+        {
+            foreach (var (kind, _) in exts)
+            {
+                if (!byKind.TryGetValue(kind, out var list))
+                {
+                    list = new List<string>();
+                    byKind[kind] = list;
+                }
+                list.Add(uri);
+            }
+        }
+
+        var cachedData = new Dictionary<(string, ExtensionKind), byte[]>();
+        var refreshRows = new List<(string EntityUri, ExtensionKind Kind)>();
+        var missing = 0;
+
+        foreach (var (kind, uris) in byKind)
+        {
+            var lookup = await _database.GetExtensionsBulkWithEtagAsync(uris, kind, cancellationToken);
+            foreach (var uri in uris)
+            {
+                if (!lookup.TryGetValue(uri, out var entry))
+                {
+                    missing++;
+                    continue;
+                }
+                cachedData[(uri, kind)] = entry.Data;
+                refreshRows.Add((uri, kind));
+            }
+        }
+
+        if (refreshRows.Count > 0)
+        {
+            await _database.RefreshExtensionTtlBulkAsync(refreshRows, ttlSeconds, cancellationToken);
+        }
+
+        _logger?.LogDebug(
+            "extended-metadata 304: requested={RequestedCount} refreshed={RefreshedCount} missingStale={MissingCount} ttl={Ttl}s",
+            requests.Sum(static r => r.Extensions.Count()),
+            refreshRows.Count,
+            missing,
+            ttlSeconds);
+
+        return BuildResponseFromCache(cachedData);
+    }
+
+    private async Task RehydrateNotModifiedPayloadsAsync(
+        BatchedExtensionResponse response,
+        CancellationToken cancellationToken)
+    {
+        // Collect entity-level 304 entries (extData.ExtensionData == null)
+        // grouped by kind so we can bulk-read the stale cache.
+        var byKind = new Dictionary<ExtensionKind, (List<string> Uris, List<EntityExtensionData> Targets)>();
+        foreach (var extArray in response.ExtendedMetadata)
+        {
+            var extensionKind = extArray.ExtensionKind;
+            foreach (var extData in extArray.ExtensionData)
+            {
+                if (extData.ExtensionData is not null || string.IsNullOrWhiteSpace(extData.EntityUri))
+                    continue;
+                if (!byKind.TryGetValue(extensionKind, out var pair))
+                {
+                    pair = (new List<string>(), new List<EntityExtensionData>());
+                    byKind[extensionKind] = pair;
+                }
+                pair.Uris.Add(extData.EntityUri);
+                pair.Targets.Add(extData);
+            }
+        }
+
+        if (byKind.Count == 0) return;
+
+        var rehydrated = 0;
+        var missing = 0;
+
+        foreach (var (kind, (uris, targets)) in byKind)
+        {
+            var lookup = await _database.GetExtensionsBulkWithEtagAsync(uris, kind, cancellationToken);
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var target = targets[i];
+                if (!lookup.TryGetValue(uris[i], out var entry))
+                {
+                    missing++;
+                    continue;
+                }
+                target.ExtensionData = new Google.Protobuf.WellKnownTypes.Any
+                {
+                    Value = ByteString.CopyFrom(entry.Data)
+                };
+                target.Header ??= new EntityExtensionDataHeader();
+                if (string.IsNullOrWhiteSpace(target.Header.Etag))
+                {
+                    target.Header.Etag = entry.Etag;
+                }
+                rehydrated++;
+            }
+        }
+
+        if (rehydrated > 0 || missing > 0)
+        {
+            _logger?.LogDebug(
+                "Rehydrated extended-metadata not-modified payloads from stale cache: rehydrated={RehydratedCount} missing={MissingCount}",
+                rehydrated,
+                missing);
+        }
     }
 
     internal static async Task<byte[]> ReadResponseBytesAsync(
@@ -451,6 +662,18 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
     private async Task CacheResponseAsync(BatchedExtensionResponse response, CancellationToken cancellationToken)
     {
+        // Pass 1: collect every extension write into one flat list and accumulate
+        // aggregate stats. We avoid per-row SetExtensionAsync/UpsertEntityAsync
+        // calls — those are replaced by SetExtensionsBulkAsync + a single
+        // BeginWriteBatchAsync transaction in pass 2.
+        var writes = new List<ExtensionWriteRecord>();
+        // Per-(uri, kind, data) triples that need queryable-property upserts
+        // routed through StoreXxxPropertiesAsync inside the batch scope.
+        var queryableJobs = new List<(string Uri, ExtensionKind Kind, byte[] Data)>();
+        var nullPayloads = 0;
+        long? minTtl = null;
+        long? maxTtl = null;
+
         foreach (var extArray in response.ExtendedMetadata)
         {
             var extensionKind = extArray.ExtensionKind;
@@ -459,54 +682,55 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             foreach (var extData in extArray.ExtensionData)
             {
                 if (extData.ExtensionData == null)
+                {
+                    nullPayloads++;
                     continue;
+                }
 
                 var entityUri = extData.EntityUri;
                 var header = extData.Header;
 
-                // Determine TTL
                 var ttlSeconds = ResolveCacheTtl(
                     header?.CacheTtlInSeconds,
                     arrayHeader?.CacheTtlInSeconds);
                 var etag = header?.Etag;
+                minTtl = minTtl.HasValue ? Math.Min(minTtl.Value, ttlSeconds) : ttlSeconds;
+                maxTtl = maxTtl.HasValue ? Math.Max(maxTtl.Value, ttlSeconds) : ttlSeconds;
 
-                // Store in cache
                 var data = extData.ExtensionData.Value.ToByteArray();
-                await _database.SetExtensionAsync(entityUri, extensionKind, data, etag, ttlSeconds, cancellationToken);
+                writes.Add(new ExtensionWriteRecord(entityUri, extensionKind, data, etag, ttlSeconds));
+                if (IsQueryablePropertyKind(extensionKind))
+                {
+                    queryableJobs.Add((entityUri, extensionKind, data));
+                }
+            }
+        }
 
-                // Store queryable properties for supported entity types
+        if (writes.Count == 0)
+        {
+            if (nullPayloads > 0)
+            {
+                _logger?.LogDebug(
+                    "metadata-cache: no rows to write (nullPayloads={NullPayloads})",
+                    nullPayloads);
+            }
+            return;
+        }
+
+        // Pass 2: bulk write extensions + queryable property upserts in a
+        // single SQLite transaction. SetExtensionsBulkAsync + Upsert*PropertiesAsync
+        // detect the active scope and participate without re-acquiring the lock.
+        var storedEntities = 0;
+        await using (await _database.BeginWriteBatchAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await _database.SetExtensionsBulkAsync(writes, cancellationToken).ConfigureAwait(false);
+
+            foreach (var (uri, kind, data) in queryableJobs)
+            {
                 try
                 {
-                    if (extensionKind == ExtensionKind.TrackV4)
-                    {
-                        var track = Track.Parser.ParseFrom(data);
-                        await StoreTrackPropertiesAsync(entityUri, track, cancellationToken);
-                    }
-                    else if (extensionKind == ExtensionKind.AlbumV4)
-                    {
-                        var album = Album.Parser.ParseFrom(data);
-                        await StoreAlbumPropertiesAsync(entityUri, album, cancellationToken);
-                    }
-                    else if (extensionKind == ExtensionKind.ArtistV4)
-                    {
-                        var artist = Artist.Parser.ParseFrom(data);
-                        await StoreArtistPropertiesAsync(entityUri, artist, cancellationToken);
-                    }
-                    else if (extensionKind == ExtensionKind.ShowV4)
-                    {
-                        var show = Show.Parser.ParseFrom(data);
-                        await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
-                    }
-                    else if (extensionKind == ExtensionKind.ShowV5)
-                    {
-                        var show = Show.Parser.ParseFrom(data);
-                        await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
-                    }
-                    else if (extensionKind == ExtensionKind.EpisodeV4)
-                    {
-                        var episode = Episode.Parser.ParseFrom(data);
-                        await StoreEpisodePropertiesAsync(entityUri, episode, cancellationToken);
-                    }
+                    await StoreQueryablePropertiesAsync(uri, kind, data, cancellationToken).ConfigureAwait(false);
+                    storedEntities++;
                 }
                 catch
                 {
@@ -514,6 +738,44 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
                 }
             }
         }
+
+        _logger?.LogDebug(
+            "Cached extended-metadata response: extensions={ExtensionCount} queryableEntities={EntityCount} nullPayloads={NullPayloads} minTtl={MinTtl}s maxTtl={MaxTtl}s arrays={ArrayCount}",
+            writes.Count,
+            storedEntities,
+            nullPayloads,
+            minTtl,
+            maxTtl,
+            response.ExtendedMetadata.Count);
+    }
+
+    private static bool IsQueryablePropertyKind(ExtensionKind kind) => kind switch
+    {
+        ExtensionKind.TrackV4 or
+        ExtensionKind.AlbumV4 or
+        ExtensionKind.ArtistV4 or
+        ExtensionKind.ShowV4 or
+        ExtensionKind.ShowV5 or
+        ExtensionKind.EpisodeV4 => true,
+        _ => false
+    };
+
+    private Task StoreQueryablePropertiesAsync(
+        string uri,
+        ExtensionKind kind,
+        byte[] data,
+        CancellationToken cancellationToken)
+    {
+        return kind switch
+        {
+            ExtensionKind.TrackV4 => StoreTrackPropertiesAsync(uri, Track.Parser.ParseFrom(data), cancellationToken),
+            ExtensionKind.AlbumV4 => StoreAlbumPropertiesAsync(uri, Album.Parser.ParseFrom(data), cancellationToken),
+            ExtensionKind.ArtistV4 => StoreArtistPropertiesAsync(uri, Artist.Parser.ParseFrom(data), cancellationToken),
+            ExtensionKind.ShowV4 => StoreShowPropertiesAsync(uri, Show.Parser.ParseFrom(data), cancellationToken),
+            ExtensionKind.ShowV5 => StoreShowPropertiesAsync(uri, Show.Parser.ParseFrom(data), cancellationToken),
+            ExtensionKind.EpisodeV4 => StoreEpisodePropertiesAsync(uri, Episode.Parser.ParseFrom(data), cancellationToken),
+            _ => Task.CompletedTask
+        };
     }
 
     private async Task StoreTrackPropertiesAsync(string uri, Track track, CancellationToken cancellationToken)
@@ -578,6 +840,17 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         if (arrayTtlSeconds is > 0)
             return arrayTtlSeconds.Value;
+
+        return DefaultTtlSeconds;
+    }
+
+    private static long ResolveNotModifiedTtl(HttpResponseMessage response)
+    {
+        var maxAge = response.Headers.CacheControl?.MaxAge;
+        if (maxAge is { TotalSeconds: > 0 })
+        {
+            return (long)Math.Ceiling(maxAge.Value.TotalSeconds);
+        }
 
         return DefaultTtlSeconds;
     }
@@ -724,50 +997,40 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         Dictionary<(string, ExtensionKind), byte[]> cachedData,
         CancellationToken cancellationToken)
     {
-        foreach (var ((entityUri, extensionKind), data) in cachedData)
-        {
-            // Check if entity already exists
-            var existingEntity = await _database.GetEntityAsync(entityUri, cancellationToken);
-            if (existingEntity != null)
-                continue;
+        if (cachedData.Count == 0) return;
 
-            // Entity doesn't exist - parse cached data and create it
-            try
+        // Bulk-load existing entity rows in one query rather than N per-row
+        // GetEntityAsync calls.
+        var allUris = cachedData.Keys
+            .Select(k => k.Item1)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var existing = await _database.GetEntitiesAsync(allUris, cancellationToken).ConfigureAwait(false);
+        var existingSet = new HashSet<string>(
+            existing.Select(e => e.Uri),
+            StringComparer.Ordinal);
+
+        var toCreate = cachedData
+            .Where(kvp => IsQueryablePropertyKind(kvp.Key.Item2)
+                          && !existingSet.Contains(kvp.Key.Item1))
+            .ToList();
+
+        if (toCreate.Count == 0) return;
+
+        // Single transaction for all upserts.
+        await using (await _database.BeginWriteBatchAsync(cancellationToken).ConfigureAwait(false))
+        {
+            foreach (var ((entityUri, extensionKind), data) in toCreate)
             {
-                if (extensionKind == ExtensionKind.TrackV4)
+                try
                 {
-                    var track = Track.Parser.ParseFrom(data);
-                    await StoreTrackPropertiesAsync(entityUri, track, cancellationToken);
+                    await StoreQueryablePropertiesAsync(entityUri, extensionKind, data, cancellationToken)
+                        .ConfigureAwait(false);
                 }
-                else if (extensionKind == ExtensionKind.AlbumV4)
+                catch
                 {
-                    var album = Album.Parser.ParseFrom(data);
-                    await StoreAlbumPropertiesAsync(entityUri, album, cancellationToken);
+                    // Ignore parse errors
                 }
-                else if (extensionKind == ExtensionKind.ArtistV4)
-                {
-                    var artist = Artist.Parser.ParseFrom(data);
-                    await StoreArtistPropertiesAsync(entityUri, artist, cancellationToken);
-                }
-                else if (extensionKind == ExtensionKind.ShowV4)
-                {
-                    var show = Show.Parser.ParseFrom(data);
-                    await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
-                }
-                else if (extensionKind == ExtensionKind.ShowV5)
-                {
-                    var show = Show.Parser.ParseFrom(data);
-                    await StoreShowPropertiesAsync(entityUri, show, cancellationToken);
-                }
-                else if (extensionKind == ExtensionKind.EpisodeV4)
-                {
-                    var episode = Episode.Parser.ParseFrom(data);
-                    await StoreEpisodePropertiesAsync(entityUri, episode, cancellationToken);
-                }
-            }
-            catch
-            {
-                // Ignore parse errors
             }
         }
     }

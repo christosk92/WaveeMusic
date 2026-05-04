@@ -333,7 +333,7 @@ public sealed partial class ShellPage : Page
 
     private static int _signInDialogOpen; // Interlocked flag — VM is AddTransient, no identity guard usable.
 
-    private async Task ShowSignInDialogAsync()
+    private async Task ShowSignInDialogAsync(bool deferred = false)
     {
         if (Interlocked.CompareExchange(ref _signInDialogOpen, 1, 0) != 0) return;
         try
@@ -341,7 +341,39 @@ public sealed partial class ShellPage : Page
             var xamlRoot = MainWindow.Instance?.Content?.XamlRoot;
             if (xamlRoot == null)
             {
-                _logger?.LogWarning("Cannot show sign-in dialog: MainWindow XamlRoot unavailable.");
+                if (deferred)
+                {
+                    // Already retried once — give up. The sign-in toolbar
+                    // button stays as a manual fallback path.
+                    _logger?.LogWarning("Cannot show sign-in dialog: MainWindow XamlRoot unavailable after defer.");
+                    return;
+                }
+
+                // Auth status can transition into LoggedOut during
+                // InitializeApplicationAsync — before ShellPage's first
+                // layout pass — so XamlRoot is null at this point. Hook
+                // Loaded once (or post a Low-priority dispatcher tick if
+                // already loaded but the root isn't primed yet) so the
+                // dialog surfaces as soon as the visual tree is realised.
+                Interlocked.Exchange(ref _signInDialogOpen, 0);
+                if (!IsLoaded)
+                {
+                    void OnLoaded(object _, RoutedEventArgs __)
+                    {
+                        Loaded -= OnLoaded;
+                        _ = ShowSignInDialogAsync(deferred: true);
+                    }
+                    Loaded += OnLoaded;
+                    _logger?.LogDebug("Sign-in dialog deferred until ShellPage Loaded.");
+                }
+                else
+                {
+                    var dq = DispatcherQueue ?? MainWindow.Instance?.DispatcherQueue;
+                    dq?.TryEnqueue(
+                        Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                        () => _ = ShowSignInDialogAsync(deferred: true));
+                    _logger?.LogDebug("Sign-in dialog deferred to next dispatcher tick.");
+                }
                 return;
             }
 
@@ -515,6 +547,23 @@ public sealed partial class ShellPage : Page
                     (int)(tabControlBounds.Height * scale));
 
                 nonClientSource.SetRegionRects(NonClientRegionKind.Passthrough, [passthroughRect]);
+            }
+
+            // Caption rect for the right-hand drag area. Caption regions are
+            // enforced by Windows at the non-client level, so they survive
+            // any WinUI overlay (ContentDialog smoke, popups, flyouts) that
+            // would otherwise block Window.SetTitleBar's compositor-side
+            // drag. Without this, opening a ContentDialog locked the user
+            // out of moving the window.
+            if (dragBounds.Width > 0 && dragBounds.Height > 0)
+            {
+                var captionRect = new RectInt32(
+                    (int)(dragBounds.X * scale),
+                    (int)(dragBounds.Y * scale),
+                    (int)(dragBounds.Width * scale),
+                    (int)(dragBounds.Height * scale));
+
+                nonClientSource.SetRegionRects(NonClientRegionKind.Caption, [captionRect]);
             }
         }
         catch (Exception ex)

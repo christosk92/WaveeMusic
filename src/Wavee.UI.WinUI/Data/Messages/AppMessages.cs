@@ -160,6 +160,46 @@ public sealed class LibrarySyncFailedMessage(string error)
     : ValueChangedMessage<string>(error);
 
 /// <summary>
+/// Per-collection progress fired by LibrarySyncOrchestrator while
+/// SyncAllAsync iterates tracks → albums → artists → shows → listen-later.
+/// Drives the live sub-text in SpotifyConnectDialog.
+/// Collection is one of: "tracks", "albums", "artists", "shows", "listen-later".
+/// </summary>
+public sealed class LibrarySyncProgressMessage(string collection, int done, int total)
+    : ValueChangedMessage<(string Collection, int Done, int Total)>((collection, done, total));
+
+/// <summary>
+/// Fired by PlaylistPrefetchService once it knows how many playlists
+/// it's about to warm. Drives the "Loading your playlists" phase
+/// transition in SpotifyConnectDialog.
+/// </summary>
+public sealed class PlaylistPrefetchStartedMessage(int total)
+    : ValueChangedMessage<int>(total);
+
+/// <summary>
+/// Fired per playlist as PlaylistPrefetchService completes each fetch.
+/// PlaylistName drives the sub-text; (done, total) drives the bar slice.
+/// </summary>
+public sealed class PlaylistPrefetchProgressMessage(string playlistName, int done, int total)
+    : ValueChangedMessage<(string PlaylistName, int Done, int Total)>((playlistName, done, total));
+
+/// <summary>
+/// Fired by HomeViewModel after the first successful Pathfinder home
+/// query has been parsed. Final phase of the sign-in dialog —
+/// dialog auto-closes when this arrives.
+/// </summary>
+public sealed class HomeFeedLoadedMessage(int sectionCount, int itemCount)
+    : ValueChangedMessage<(int Sections, int Items)>((sectionCount, itemCount));
+
+/// <summary>
+/// AudioProcessManager.StateChanged forwarded as a message so the
+/// SpotifyConnectViewModel can react without taking a direct
+/// dependency on the audio plumbing.
+/// </summary>
+public sealed class AudioProcessStateChangedMessage(string state, string? message)
+    : ValueChangedMessage<(string State, string? Message)>((state, message));
+
+/// <summary>
 /// Sent when library data changes (sync complete, Dealer delta, user action).
 /// </summary>
 public sealed class LibraryDataChangedMessage;

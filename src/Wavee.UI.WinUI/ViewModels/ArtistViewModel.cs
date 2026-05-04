@@ -36,6 +36,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly IPlaybackStateService _playbackStateService;
     private CompositeDisposable? _subscriptions;
     private string? _appliedOverviewFor;
+    private ArtistOverviewResult? _appliedOverview;
     private readonly IColorService _colorService;
     private readonly ITrackLikeService? _likeService;
     private readonly ISettingsService? _settingsService;
@@ -433,6 +434,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             ResetForNewArtist();
             _appliedOverviewFor = null;
+            _appliedOverview = null;
         }
 
         ArtistId = artistId;
@@ -523,7 +525,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 // we go down the EnsureHeroUrls path (cache-served re-show).
                 NoteTopTracksHaveVideo(ready.Value);
 
-                if (_appliedOverviewFor != expectedArtistId || ready.Freshness == Freshness.Fresh)
+                if (_appliedOverviewFor != expectedArtistId || !ReferenceEquals(_appliedOverview, ready.Value))
                 {
                     _ = LoadAsync(ready.Value, expectedArtistId);
                 }
@@ -711,6 +713,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         if (ArtistId != artistId) return;
         _appliedOverviewFor = artistId;
+        _appliedOverview = overview;
         IsLoading = true;
         HasError = false;
         ErrorMessage = null;
@@ -1210,6 +1213,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (!string.IsNullOrEmpty(ArtistId))
         {
             _appliedOverviewFor = null;
+            _appliedOverview = null;
             _artistStore.Invalidate(ArtistId);
         }
     }

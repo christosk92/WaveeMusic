@@ -3,6 +3,8 @@
     x:Class="Wavee.UI.WinUI.Controls.SpotifyConnectDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:branding="using:Wavee.UI.WinUI.Controls.Branding"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -19,7 +21,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Step 1: Authenticate (two-column layout with OR separator) -->
+        <!-- Step 1: Authenticate (two-column layout with OR separator).
+             Visible only while CurrentStep == Authenticate. -->
         <Grid x:Name="AuthPanel" Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -131,7 +134,7 @@
                     </Button>
                 </StackPanel>
 
-                <!-- Status text -->
+                <!-- Status text (device-code state, not phase progress) -->
                 <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                            TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"
@@ -139,38 +142,30 @@
             </StackPanel>
         </Grid>
 
-        <!-- Connecting to Spotify -->
-        <StackPanel x:Name="ConnectingPanel" Grid.Row="0" Visibility="Collapsed"
-                    Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <ProgressRing IsActive="True" Width="48" Height="48"/>
-            <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_9" Text="Connecting to Spotify..."
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       HorizontalAlignment="Center"/>
-        </StackPanel>
+        <!-- Step 2: Live progress panel — single bound layout that shows the
+             current phase as MainText, the live sub-text per phase, and an
+             overall weighted progress bar. Real signals only — no Task.Delay.
+             Visible while CurrentStep == Progress. -->
+        <Grid x:Name="ProgressPanel" Grid.Row="0" Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Spacing="20" MaxWidth="480" Padding="24">
+                <branding:WaveeLogo Width="96" Height="96"
+                                    HorizontalAlignment="Center"/>
 
-        <!-- Step 2: Syncing library -->
-        <StackPanel x:Name="SyncingPanel" Grid.Row="0" Visibility="Collapsed"
-                    Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    MaxWidth="400">
-            <FontIcon Glyph="&#xE895;" FontSize="36" Foreground="#1DB954"/>
-            <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_10" Text="Setting up your library..."
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       HorizontalAlignment="Center"/>
-            <TextBlock Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
-                       HorizontalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <ProgressBar Value="{x:Bind ViewModel.SyncProgress, Mode=OneWay}"
-                         Maximum="1.0" Height="4" CornerRadius="2"
-                         HorizontalAlignment="Stretch"/>
-        </StackPanel>
-
-        <!-- Step 3: Success -->
-        <StackPanel x:Name="SuccessPanel" Grid.Row="0" Visibility="Collapsed"
-                    Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <FontIcon Glyph="&#xE73E;" FontSize="48" Foreground="#1DB954"/>
-            <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_11" Text="Connected!" Style="{StaticResource SubtitleTextBlockStyle}"
-                       HorizontalAlignment="Center"/>
-        </StackPanel>
+                <StackPanel Spacing="6" HorizontalAlignment="Center">
+                    <ProgressRing IsActive="True" Width="32" Height="32"
+                                  HorizontalAlignment="Center"
+                                  Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
+                    <TextBlock Text="{x:Bind ViewModel.MainText, Mode=OneWay}"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Bind ViewModel.SubText, Mode=OneWay}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center" TextAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
 
         <!-- Error -->
         <StackPanel x:Name="ErrorPanel" Grid.Row="0" Visibility="Collapsed"
@@ -185,19 +180,19 @@
                     Command="{x:Bind ViewModel.RetryCommand}"/>
         </StackPanel>
 
-        <!-- Bottom bar: step indicator (Row 1, never overlaps content) -->
+        <!-- Bottom bar: progress bar bound to OverallProgress + close button.
+             Visible during all states (Auth shows it at 0; Progress drives it
+             to 100; Error stays where it left off). -->
         <Grid Grid.Row="1" Padding="32,12" BorderThickness="0,1,0,0"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Center">
-                <TextBlock x:Uid="Controls_SpotifyConnectDialog__TextBlock_13" x:Name="StepText" Text="Step 1 of 3"
-                           Style="{StaticResource CaptionTextBlockStyle}"/>
-                <ProgressBar x:Name="StepProgress" Value="33" Maximum="100"
-                             Height="4" CornerRadius="2"/>
-            </StackPanel>
+            <ProgressBar Grid.Column="0" VerticalAlignment="Center"
+                         Value="{x:Bind ViewModel.OverallProgress, Mode=OneWay}"
+                         Maximum="100"
+                         Height="4" CornerRadius="2"/>
             <Button x:Uid="Controls_SpotifyConnectDialog__Button_14" x:Name="CloseButton" Grid.Column="1" Content="Close"
                     MinWidth="120" Margin="24,0,0,0"
                     Command="{x:Bind ViewModel.CancelCommand}"/>

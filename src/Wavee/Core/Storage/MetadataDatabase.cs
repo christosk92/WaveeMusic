@@ -49,6 +49,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
     private readonly ConcurrentDictionary<string, CachedExtensionEntry> _hotCache = new();
     private readonly int _maxHotCacheSize;
     private readonly string _spotifyMetadataLocale;
+    // Active write-batch scope for the current async-flow. When set, write
+    // methods (UpsertEntityAsync, SetExtensionsBulkAsync, RefreshExtensionTtlBulkAsync)
+    // share the scope's open connection + transaction instead of self-locking.
+    private readonly AsyncLocal<WriteBatchScope?> _activeBatch = new();
     private bool _disposed;
 
     // Schema version for migrations - bump to force fresh start
@@ -970,123 +974,176 @@ public sealed class MetadataDatabase : IMetadataDatabase
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var useLocalizedTable = ShouldUseLocalizedSpotifyMetadata(sourceType);
 
+        // If we're inside a BeginWriteBatchAsync scope, share its connection
+        // and transaction. Otherwise self-acquire the write lock + connection.
+        var batch = _activeBatch.Value;
+        if (batch is not null)
+        {
+            await ExecuteUpsertEntityAsync(
+                batch.Connection, batch.Transaction,
+                uri, entityType, sourceType, title, artistName, albumName, albumUri,
+                durationMs, trackNumber, discNumber, releaseYear, imageUrl, genre,
+                trackCount, followerCount, publisher, episodeCount, description,
+                filePath, streamUrl, expiresAt, addedAt,
+                useLocalizedTable, now, cancellationToken);
+            return;
+        }
+
         await _writeLock.WaitAsync(cancellationToken);
         try
         {
             using var connection = CreateConnection();
             await connection.OpenAsync(cancellationToken);
-
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = useLocalizedTable
-                ? """
-                    INSERT INTO localized_entities (
-                        uri, locale, source_type, entity_type, title, artist_name, album_name, album_uri,
-                        duration_ms, track_number, disc_number, release_year, image_url, genre,
-                        track_count, follower_count, publisher, episode_count, description,
-                        file_path, stream_url, expires_at, added_at, created_at, updated_at
-                    ) VALUES (
-                        $uri, $locale, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
-                        $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
-                        $track_count, $follower_count, $publisher, $episode_count, $description,
-                        $file_path, $stream_url, $expires_at, $added_at, $now, $now
-                    )
-                    ON CONFLICT(uri, locale) DO UPDATE SET
-                        source_type = excluded.source_type,
-                        entity_type = excluded.entity_type,
-                        title = COALESCE(excluded.title, localized_entities.title),
-                        artist_name = COALESCE(excluded.artist_name, localized_entities.artist_name),
-                        album_name = COALESCE(excluded.album_name, localized_entities.album_name),
-                        album_uri = COALESCE(excluded.album_uri, localized_entities.album_uri),
-                        duration_ms = COALESCE(excluded.duration_ms, localized_entities.duration_ms),
-                        track_number = COALESCE(excluded.track_number, localized_entities.track_number),
-                        disc_number = COALESCE(excluded.disc_number, localized_entities.disc_number),
-                        release_year = COALESCE(excluded.release_year, localized_entities.release_year),
-                        image_url = COALESCE(excluded.image_url, localized_entities.image_url),
-                        genre = COALESCE(excluded.genre, localized_entities.genre),
-                        track_count = COALESCE(excluded.track_count, localized_entities.track_count),
-                        follower_count = COALESCE(excluded.follower_count, localized_entities.follower_count),
-                        publisher = COALESCE(excluded.publisher, localized_entities.publisher),
-                        episode_count = COALESCE(excluded.episode_count, localized_entities.episode_count),
-                        description = COALESCE(excluded.description, localized_entities.description),
-                        file_path = COALESCE(excluded.file_path, localized_entities.file_path),
-                        stream_url = COALESCE(excluded.stream_url, localized_entities.stream_url),
-                        expires_at = COALESCE(excluded.expires_at, localized_entities.expires_at),
-                        added_at = COALESCE(excluded.added_at, localized_entities.added_at),
-                        updated_at = $now;
-                    """
-                : """
-                    INSERT INTO entities (
-                        uri, source_type, entity_type, title, artist_name, album_name, album_uri,
-                        duration_ms, track_number, disc_number, release_year, image_url, genre,
-                        track_count, follower_count, publisher, episode_count, description,
-                        file_path, stream_url, expires_at, added_at, created_at, updated_at
-                    ) VALUES (
-                        $uri, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
-                        $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
-                        $track_count, $follower_count, $publisher, $episode_count, $description,
-                        $file_path, $stream_url, $expires_at, $added_at, $now, $now
-                    )
-                    ON CONFLICT(uri) DO UPDATE SET
-                        source_type = excluded.source_type,
-                        entity_type = excluded.entity_type,
-                        title = COALESCE(excluded.title, entities.title),
-                        artist_name = COALESCE(excluded.artist_name, entities.artist_name),
-                        album_name = COALESCE(excluded.album_name, entities.album_name),
-                        album_uri = COALESCE(excluded.album_uri, entities.album_uri),
-                        duration_ms = COALESCE(excluded.duration_ms, entities.duration_ms),
-                        track_number = COALESCE(excluded.track_number, entities.track_number),
-                        disc_number = COALESCE(excluded.disc_number, entities.disc_number),
-                        release_year = COALESCE(excluded.release_year, entities.release_year),
-                        image_url = COALESCE(excluded.image_url, entities.image_url),
-                        genre = COALESCE(excluded.genre, entities.genre),
-                        track_count = COALESCE(excluded.track_count, entities.track_count),
-                        follower_count = COALESCE(excluded.follower_count, entities.follower_count),
-                        publisher = COALESCE(excluded.publisher, entities.publisher),
-                        episode_count = COALESCE(excluded.episode_count, entities.episode_count),
-                        description = COALESCE(excluded.description, entities.description),
-                        file_path = COALESCE(excluded.file_path, entities.file_path),
-                        stream_url = COALESCE(excluded.stream_url, entities.stream_url),
-                        expires_at = COALESCE(excluded.expires_at, entities.expires_at),
-                        added_at = COALESCE(excluded.added_at, entities.added_at),
-                        updated_at = $now;
-                    """;
-
-            cmd.Parameters.AddWithValue("$uri", uri);
-            if (useLocalizedTable)
-            {
-                cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
-            }
-            cmd.Parameters.AddWithValue("$source_type", (int)sourceType);
-            cmd.Parameters.AddWithValue("$entity_type", (int)entityType);
-            cmd.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$artist_name", (object?)artistName ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$album_name", (object?)albumName ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$album_uri", (object?)albumUri ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$duration_ms", (object?)durationMs ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$track_number", (object?)trackNumber ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$disc_number", (object?)discNumber ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$release_year", (object?)releaseYear ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$image_url", (object?)imageUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$genre", (object?)genre ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$track_count", (object?)trackCount ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$follower_count", (object?)followerCount ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$publisher", (object?)publisher ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$episode_count", (object?)episodeCount ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$description", (object?)description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$file_path", (object?)filePath ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$stream_url", (object?)streamUrl ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$expires_at", (object?)expiresAt ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$added_at", (object?)addedAt ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$now", now);
-
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
-
-            _logger?.LogTrace("Upserted entity {Uri}", uri);
+            await ExecuteUpsertEntityAsync(
+                connection, null,
+                uri, entityType, sourceType, title, artistName, albumName, albumUri,
+                durationMs, trackNumber, discNumber, releaseYear, imageUrl, genre,
+                trackCount, followerCount, publisher, episodeCount, description,
+                filePath, streamUrl, expiresAt, addedAt,
+                useLocalizedTable, now, cancellationToken);
         }
         finally
         {
             _writeLock.Release();
         }
+    }
+
+    private async Task ExecuteUpsertEntityAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string uri,
+        EntityType entityType,
+        SourceType sourceType,
+        string? title,
+        string? artistName,
+        string? albumName,
+        string? albumUri,
+        int? durationMs,
+        int? trackNumber,
+        int? discNumber,
+        int? releaseYear,
+        string? imageUrl,
+        string? genre,
+        int? trackCount,
+        int? followerCount,
+        string? publisher,
+        int? episodeCount,
+        string? description,
+        string? filePath,
+        string? streamUrl,
+        long? expiresAt,
+        long? addedAt,
+        bool useLocalizedTable,
+        long now,
+        CancellationToken cancellationToken)
+    {
+        using var cmd = connection.CreateCommand();
+        if (transaction is not null) cmd.Transaction = transaction;
+        cmd.CommandText = useLocalizedTable
+            ? """
+                INSERT INTO localized_entities (
+                    uri, locale, source_type, entity_type, title, artist_name, album_name, album_uri,
+                    duration_ms, track_number, disc_number, release_year, image_url, genre,
+                    track_count, follower_count, publisher, episode_count, description,
+                    file_path, stream_url, expires_at, added_at, created_at, updated_at
+                ) VALUES (
+                    $uri, $locale, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
+                    $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
+                    $track_count, $follower_count, $publisher, $episode_count, $description,
+                    $file_path, $stream_url, $expires_at, $added_at, $now, $now
+                )
+                ON CONFLICT(uri, locale) DO UPDATE SET
+                    source_type = excluded.source_type,
+                    entity_type = excluded.entity_type,
+                    title = COALESCE(excluded.title, localized_entities.title),
+                    artist_name = COALESCE(excluded.artist_name, localized_entities.artist_name),
+                    album_name = COALESCE(excluded.album_name, localized_entities.album_name),
+                    album_uri = COALESCE(excluded.album_uri, localized_entities.album_uri),
+                    duration_ms = COALESCE(excluded.duration_ms, localized_entities.duration_ms),
+                    track_number = COALESCE(excluded.track_number, localized_entities.track_number),
+                    disc_number = COALESCE(excluded.disc_number, localized_entities.disc_number),
+                    release_year = COALESCE(excluded.release_year, localized_entities.release_year),
+                    image_url = COALESCE(excluded.image_url, localized_entities.image_url),
+                    genre = COALESCE(excluded.genre, localized_entities.genre),
+                    track_count = COALESCE(excluded.track_count, localized_entities.track_count),
+                    follower_count = COALESCE(excluded.follower_count, localized_entities.follower_count),
+                    publisher = COALESCE(excluded.publisher, localized_entities.publisher),
+                    episode_count = COALESCE(excluded.episode_count, localized_entities.episode_count),
+                    description = COALESCE(excluded.description, localized_entities.description),
+                    file_path = COALESCE(excluded.file_path, localized_entities.file_path),
+                    stream_url = COALESCE(excluded.stream_url, localized_entities.stream_url),
+                    expires_at = COALESCE(excluded.expires_at, localized_entities.expires_at),
+                    added_at = COALESCE(excluded.added_at, localized_entities.added_at),
+                    updated_at = $now;
+                """
+            : """
+                INSERT INTO entities (
+                    uri, source_type, entity_type, title, artist_name, album_name, album_uri,
+                    duration_ms, track_number, disc_number, release_year, image_url, genre,
+                    track_count, follower_count, publisher, episode_count, description,
+                    file_path, stream_url, expires_at, added_at, created_at, updated_at
+                ) VALUES (
+                    $uri, $source_type, $entity_type, $title, $artist_name, $album_name, $album_uri,
+                    $duration_ms, $track_number, $disc_number, $release_year, $image_url, $genre,
+                    $track_count, $follower_count, $publisher, $episode_count, $description,
+                    $file_path, $stream_url, $expires_at, $added_at, $now, $now
+                )
+                ON CONFLICT(uri) DO UPDATE SET
+                    source_type = excluded.source_type,
+                    entity_type = excluded.entity_type,
+                    title = COALESCE(excluded.title, entities.title),
+                    artist_name = COALESCE(excluded.artist_name, entities.artist_name),
+                    album_name = COALESCE(excluded.album_name, entities.album_name),
+                    album_uri = COALESCE(excluded.album_uri, entities.album_uri),
+                    duration_ms = COALESCE(excluded.duration_ms, entities.duration_ms),
+                    track_number = COALESCE(excluded.track_number, entities.track_number),
+                    disc_number = COALESCE(excluded.disc_number, entities.disc_number),
+                    release_year = COALESCE(excluded.release_year, entities.release_year),
+                    image_url = COALESCE(excluded.image_url, entities.image_url),
+                    genre = COALESCE(excluded.genre, entities.genre),
+                    track_count = COALESCE(excluded.track_count, entities.track_count),
+                    follower_count = COALESCE(excluded.follower_count, entities.follower_count),
+                    publisher = COALESCE(excluded.publisher, entities.publisher),
+                    episode_count = COALESCE(excluded.episode_count, entities.episode_count),
+                    description = COALESCE(excluded.description, entities.description),
+                    file_path = COALESCE(excluded.file_path, entities.file_path),
+                    stream_url = COALESCE(excluded.stream_url, entities.stream_url),
+                    expires_at = COALESCE(excluded.expires_at, entities.expires_at),
+                    added_at = COALESCE(excluded.added_at, entities.added_at),
+                    updated_at = $now;
+                """;
+
+        cmd.Parameters.AddWithValue("$uri", uri);
+        if (useLocalizedTable)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
+        cmd.Parameters.AddWithValue("$source_type", (int)sourceType);
+        cmd.Parameters.AddWithValue("$entity_type", (int)entityType);
+        cmd.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$artist_name", (object?)artistName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$album_name", (object?)albumName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$album_uri", (object?)albumUri ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$duration_ms", (object?)durationMs ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$track_number", (object?)trackNumber ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$disc_number", (object?)discNumber ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$release_year", (object?)releaseYear ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$image_url", (object?)imageUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$genre", (object?)genre ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$track_count", (object?)trackCount ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$follower_count", (object?)followerCount ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$publisher", (object?)publisher ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$episode_count", (object?)episodeCount ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$description", (object?)description ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$file_path", (object?)filePath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$stream_url", (object?)streamUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$expires_at", (object?)expiresAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$added_at", (object?)addedAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$now", now);
+
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+        _logger?.LogTrace("Upserted entity {Uri}", uri);
     }
 
     /// <summary>
@@ -1415,13 +1472,26 @@ public sealed class MetadataDatabase : IMetadataDatabase
         {
             if (hotEntry.ExpiresAt > now)
             {
-                _logger?.LogTrace("Hot cache hit for {Uri}:{Kind}", entityUri, extensionKind);
+                _logger?.LogTrace(
+                    "Extension hot hit: uri={Uri} kind={Kind} locale={Locale} ttlRemaining={TtlRemaining}s bytes={Bytes}",
+                    entityUri,
+                    extensionKind,
+                    _spotifyMetadataLocale ?? "<default>",
+                    hotEntry.ExpiresAt - now,
+                    hotEntry.Data.Length);
                 return (hotEntry.Data, hotEntry.Etag);
             }
             else
             {
                 // Expired, remove from hot cache
                 _hotCache.TryRemove(cacheKey, out _);
+                _logger?.LogDebug(
+                    "Extension hot expired: uri={Uri} kind={Kind} locale={Locale} expiredBy={ExpiredBy}s bytes={Bytes}",
+                    entityUri,
+                    extensionKind,
+                    _spotifyMetadataLocale ?? "<default>",
+                    now - hotEntry.ExpiresAt,
+                    hotEntry.Data.Length);
             }
         }
 
@@ -1458,9 +1528,30 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 // Promote to hot cache
                 PromoteToHotCache(cacheKey, data, etag, expiresAt);
 
-                _logger?.LogTrace("SQLite cache hit for {Uri}:{Kind}", entityUri, extensionKind);
+                _logger?.LogTrace(
+                    "Extension SQLite hit: uri={Uri} kind={Kind} locale={Locale} ttlRemaining={TtlRemaining}s bytes={Bytes}",
+                    entityUri,
+                    extensionKind,
+                    _spotifyMetadataLocale ?? "<default>",
+                    expiresAt - now,
+                    data.Length);
                 return (data, etag);
             }
+
+            _logger?.LogDebug(
+                "Extension SQLite expired: uri={Uri} kind={Kind} locale={Locale} expiredBy={ExpiredBy}s",
+                entityUri,
+                extensionKind,
+                _spotifyMetadataLocale ?? "<default>",
+                now - expiresAt);
+        }
+        else
+        {
+            _logger?.LogDebug(
+                "Extension SQLite miss: uri={Uri} kind={Kind} locale={Locale}",
+                entityUri,
+                extensionKind,
+                _spotifyMetadataLocale ?? "<default>");
         }
 
         return null;
@@ -1551,6 +1642,68 @@ public sealed class MetadataDatabase : IMetadataDatabase
     }
 
     /// <summary>
+    /// Gets cached extension data even when the row is expired.
+    /// </summary>
+    public async Task<(byte[] Data, string? Etag)?> GetStaleExtensionAsync(
+        string entityUri,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = GetExtensionCacheKey(entityUri, extensionKind, _spotifyMetadataLocale);
+
+        if (_hotCache.TryGetValue(cacheKey, out var hotEntry))
+        {
+            return (hotEntry.Data, hotEntry.Etag);
+        }
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = HasLocalizedSpotifyMetadata
+            ? """
+                SELECT data, etag, expires_at FROM localized_extension_cache
+                WHERE entity_uri = $entity_uri AND locale = $locale AND extension_kind = $extension_kind;
+                """
+            : """
+                SELECT data, etag, expires_at FROM extension_cache
+                WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;
+                """;
+        cmd.Parameters.AddWithValue("$entity_uri", entityUri);
+        if (HasLocalizedSpotifyMetadata)
+        {
+            cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+        }
+        cmd.Parameters.AddWithValue("$extension_kind", (int)extensionKind);
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            _logger?.LogDebug(
+                "Stale extension miss: uri={Uri} kind={Kind} locale={Locale}",
+                entityUri,
+                extensionKind,
+                _spotifyMetadataLocale ?? "<default>");
+            return null;
+        }
+
+        var data = (byte[])reader.GetValue(0);
+        var etag = reader.IsDBNull(1) ? null : reader.GetString(1);
+        var expiresAt = reader.GetInt64(2);
+
+        _logger?.LogDebug(
+            "Stale extension hit: uri={Uri} kind={Kind} locale={Locale} expiredBy={ExpiredBy}s bytes={Bytes} hasEtag={HasEtag}",
+            entityUri,
+            extensionKind,
+            _spotifyMetadataLocale ?? "<default>",
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds() - expiresAt,
+            data.Length,
+            !string.IsNullOrEmpty(etag));
+
+        return (data, etag);
+    }
+
+    /// <summary>
     /// Gets the etag for cached extension data (for conditional requests).
     /// Returns etag even if data is expired.
     /// </summary>
@@ -1574,11 +1727,11 @@ public sealed class MetadataDatabase : IMetadataDatabase
         using var cmd = connection.CreateCommand();
         cmd.CommandText = HasLocalizedSpotifyMetadata
             ? """
-                SELECT etag FROM localized_extension_cache
+                SELECT etag, expires_at FROM localized_extension_cache
                 WHERE entity_uri = $entity_uri AND locale = $locale AND extension_kind = $extension_kind;
                 """
             : """
-                SELECT etag FROM extension_cache
+                SELECT etag, expires_at FROM extension_cache
                 WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;
                 """;
         cmd.Parameters.AddWithValue("$entity_uri", entityUri);
@@ -1588,8 +1741,28 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
         cmd.Parameters.AddWithValue("$extension_kind", (int)extensionKind);
 
-        var result = await cmd.ExecuteScalarAsync(cancellationToken);
-        return result as string;
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            _logger?.LogDebug(
+                "Extension etag miss: uri={Uri} kind={Kind} locale={Locale}",
+                entityUri,
+                extensionKind,
+                _spotifyMetadataLocale ?? "<default>");
+            return null;
+        }
+
+        var etag = reader.IsDBNull(0) ? null : reader.GetString(0);
+        var expiresAt = reader.GetInt64(1);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        _logger?.LogDebug(
+            "Extension etag found: uri={Uri} kind={Kind} locale={Locale} hasEtag={HasEtag} ttlRemaining={TtlRemaining}s",
+            entityUri,
+            extensionKind,
+            _spotifyMetadataLocale ?? "<default>",
+            !string.IsNullOrEmpty(etag),
+            expiresAt - now);
+        return etag;
     }
 
     /// <summary>
@@ -1649,11 +1822,291 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger?.LogTrace("Cached extension {Uri}:{Kind} with TTL={TTL}s", entityUri, extensionKind, ttlSeconds);
+            _logger?.LogDebug(
+                "Cached extension: uri={Uri} kind={Kind} locale={Locale} ttl={TTL}s expiresAt={ExpiresAt} bytes={Bytes} hasEtag={HasEtag}",
+                entityUri,
+                extensionKind,
+                _spotifyMetadataLocale ?? "<default>",
+                ttlSeconds,
+                expiresAt,
+                data.Length,
+                !string.IsNullOrEmpty(etag));
         }
         finally
         {
             _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, CachedExtensionLookup>> GetExtensionsBulkWithEtagAsync(
+        IReadOnlyList<string> entityUris,
+        ExtensionKind extensionKind,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, CachedExtensionLookup>(entityUris.Count, StringComparer.Ordinal);
+        if (entityUris.Count == 0) return result;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var kind = (int)extensionKind;
+
+        // Hot-cache pass — resolves rows without touching SQLite. The hot
+        // entry already carries data + etag + expiresAt, so we can classify
+        // it without a SELECT.
+        var pendingDb = new List<string>(entityUris.Count);
+        foreach (var uri in entityUris)
+        {
+            if (string.IsNullOrEmpty(uri)) continue;
+            var cacheKey = GetExtensionCacheKey(uri, extensionKind, _spotifyMetadataLocale);
+            if (_hotCache.TryGetValue(cacheKey, out var hot))
+            {
+                result[uri] = new CachedExtensionLookup(uri, hot.Data, hot.Etag, hot.ExpiresAt > now);
+                continue;
+            }
+            pendingDb.Add(uri);
+        }
+
+        if (pendingDb.Count == 0) return result;
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        const int chunkSize = 500;
+        var useLocalized = HasLocalizedSpotifyMetadata;
+
+        for (int offset = 0; offset < pendingDb.Count; offset += chunkSize)
+        {
+            var take = Math.Min(chunkSize, pendingDb.Count - offset);
+
+            using var cmd = connection.CreateCommand();
+            var sb = new System.Text.StringBuilder();
+            sb.Append(useLocalized
+                ? "SELECT entity_uri, data, etag, expires_at FROM localized_extension_cache WHERE locale = $locale AND extension_kind = $kind AND entity_uri IN ("
+                : "SELECT entity_uri, data, etag, expires_at FROM extension_cache WHERE extension_kind = $kind AND entity_uri IN (");
+
+            for (int i = 0; i < take; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var name = $"$u{i}";
+                sb.Append(name);
+                cmd.Parameters.AddWithValue(name, pendingDb[offset + i]);
+            }
+            sb.Append(");");
+
+            cmd.CommandText = sb.ToString();
+            cmd.Parameters.AddWithValue("$kind", kind);
+            if (useLocalized) cmd.Parameters.AddWithValue("$locale", _spotifyMetadataLocale);
+
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var uri = reader.GetString(0);
+                var data = (byte[])reader.GetValue(1);
+                var etag = reader.IsDBNull(2) ? null : reader.GetString(2);
+                var expiresAt = reader.GetInt64(3);
+                var isFresh = expiresAt > now;
+
+                result[uri] = new CachedExtensionLookup(uri, data, etag, isFresh);
+                if (isFresh)
+                {
+                    var cacheKey = GetExtensionCacheKey(uri, extensionKind, _spotifyMetadataLocale);
+                    PromoteToHotCache(cacheKey, data, etag, expiresAt);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task SetExtensionsBulkAsync(
+        IReadOnlyList<ExtensionWriteRecord> records,
+        CancellationToken cancellationToken = default)
+    {
+        if (records.Count == 0) return;
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        var batch = _activeBatch.Value;
+        if (batch is not null)
+        {
+            await ExecuteSetExtensionsBulkAsync(batch.Connection, batch.Transaction, records, now, cancellationToken);
+            return;
+        }
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+            using var tx = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await ExecuteSetExtensionsBulkAsync(connection, tx, records, now, cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private async Task ExecuteSetExtensionsBulkAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        IReadOnlyList<ExtensionWriteRecord> records,
+        long now,
+        CancellationToken cancellationToken)
+    {
+        var useLocalized = HasLocalizedSpotifyMetadata;
+        using var cmd = connection.CreateCommand();
+        if (transaction is not null) cmd.Transaction = transaction;
+        cmd.CommandText = useLocalized
+            ? """
+                INSERT INTO localized_extension_cache (entity_uri, locale, extension_kind, data, etag, expires_at, created_at)
+                VALUES ($entity_uri, $locale, $extension_kind, $data, $etag, $expires_at, $now)
+                ON CONFLICT(entity_uri, locale, extension_kind) DO UPDATE SET
+                    data = excluded.data,
+                    etag = excluded.etag,
+                    expires_at = excluded.expires_at;
+                """
+            : """
+                INSERT INTO extension_cache (entity_uri, extension_kind, data, etag, expires_at, created_at)
+                VALUES ($entity_uri, $extension_kind, $data, $etag, $expires_at, $now)
+                ON CONFLICT(entity_uri, extension_kind) DO UPDATE SET
+                    data = excluded.data,
+                    etag = excluded.etag,
+                    expires_at = excluded.expires_at;
+                """;
+
+        // Bind once, reuse parameters for each row — avoids reparsing the
+        // statement and re-allocating the parameter collection per row.
+        var pUri = cmd.Parameters.Add("$entity_uri", SqliteType.Text);
+        SqliteParameter? pLocale = null;
+        if (useLocalized)
+        {
+            pLocale = cmd.Parameters.Add("$locale", SqliteType.Text);
+            pLocale.Value = _spotifyMetadataLocale;
+        }
+        var pKind = cmd.Parameters.Add("$extension_kind", SqliteType.Integer);
+        var pData = cmd.Parameters.Add("$data", SqliteType.Blob);
+        var pEtag = cmd.Parameters.Add("$etag", SqliteType.Text);
+        var pExpires = cmd.Parameters.Add("$expires_at", SqliteType.Integer);
+        var pNow = cmd.Parameters.Add("$now", SqliteType.Integer);
+        pNow.Value = now;
+
+        foreach (var record in records)
+        {
+            var expiresAt = now + record.TtlSeconds;
+            var cacheKey = GetExtensionCacheKey(record.EntityUri, record.Kind, _spotifyMetadataLocale);
+            PromoteToHotCache(cacheKey, record.Data, record.Etag, expiresAt);
+
+            pUri.Value = record.EntityUri;
+            pKind.Value = (int)record.Kind;
+            pData.Value = record.Data;
+            pEtag.Value = (object?)record.Etag ?? DBNull.Value;
+            pExpires.Value = expiresAt;
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task RefreshExtensionTtlBulkAsync(
+        IReadOnlyList<(string EntityUri, ExtensionKind Kind)> rows,
+        long ttlSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        if (rows.Count == 0) return;
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var newExpiresAt = now + ttlSeconds;
+
+        var batch = _activeBatch.Value;
+        if (batch is not null)
+        {
+            await ExecuteRefreshExtensionTtlBulkAsync(batch.Connection, batch.Transaction, rows, newExpiresAt, cancellationToken);
+            return;
+        }
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+            using var tx = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await ExecuteRefreshExtensionTtlBulkAsync(connection, tx, rows, newExpiresAt, cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private async Task ExecuteRefreshExtensionTtlBulkAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        IReadOnlyList<(string EntityUri, ExtensionKind Kind)> rows,
+        long newExpiresAt,
+        CancellationToken cancellationToken)
+    {
+        var useLocalized = HasLocalizedSpotifyMetadata;
+        using var cmd = connection.CreateCommand();
+        if (transaction is not null) cmd.Transaction = transaction;
+        cmd.CommandText = useLocalized
+            ? "UPDATE localized_extension_cache SET expires_at = $expires_at WHERE entity_uri = $entity_uri AND locale = $locale AND extension_kind = $extension_kind;"
+            : "UPDATE extension_cache SET expires_at = $expires_at WHERE entity_uri = $entity_uri AND extension_kind = $extension_kind;";
+
+        var pUri = cmd.Parameters.Add("$entity_uri", SqliteType.Text);
+        SqliteParameter? pLocale = null;
+        if (useLocalized)
+        {
+            pLocale = cmd.Parameters.Add("$locale", SqliteType.Text);
+            pLocale.Value = _spotifyMetadataLocale;
+        }
+        var pKind = cmd.Parameters.Add("$extension_kind", SqliteType.Integer);
+        var pExpires = cmd.Parameters.Add("$expires_at", SqliteType.Integer);
+        pExpires.Value = newExpiresAt;
+
+        foreach (var (uri, kind) in rows)
+        {
+            pUri.Value = uri;
+            pKind.Value = (int)kind;
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            // Refresh hot cache entry's TTL too so future hot-cache hits are
+            // classified as fresh.
+            var cacheKey = GetExtensionCacheKey(uri, kind, _spotifyMetadataLocale);
+            if (_hotCache.TryGetValue(cacheKey, out var hot))
+            {
+                _hotCache[cacheKey] = new CachedExtensionEntry(hot.Data, hot.Etag, newExpiresAt);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IAsyncDisposable> BeginWriteBatchAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeBatch.Value is not null)
+        {
+            throw new InvalidOperationException("BeginWriteBatchAsync cannot be nested in the same async-flow.");
+        }
+
+        await _writeLock.WaitAsync(cancellationToken);
+        SqliteConnection? connection = null;
+        SqliteTransaction? transaction = null;
+        try
+        {
+            connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+            transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            var scope = new WriteBatchScope(this, connection, transaction);
+            _activeBatch.Value = scope;
+            return scope;
+        }
+        catch
+        {
+            if (transaction is not null) await transaction.DisposeAsync().ConfigureAwait(false);
+            if (connection is not null) await connection.DisposeAsync().ConfigureAwait(false);
+            _writeLock.Release();
+            throw;
         }
     }
 
@@ -3659,6 +4112,44 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// In-memory cache entry for hot extension data.
     /// </summary>
     private sealed record CachedExtensionEntry(byte[] Data, string? Etag, long ExpiresAt);
+
+    /// <summary>
+    /// Open write-batch scope: holds the write lock + a SQLite transaction
+    /// for the lifetime of the using-block. Disposing commits.
+    /// </summary>
+    private sealed class WriteBatchScope : IAsyncDisposable
+    {
+        private readonly MetadataDatabase _owner;
+        private bool _disposed;
+
+        public SqliteConnection Connection { get; }
+        public SqliteTransaction Transaction { get; }
+
+        public WriteBatchScope(MetadataDatabase owner, SqliteConnection connection, SqliteTransaction transaction)
+        {
+            _owner = owner;
+            Connection = connection;
+            Transaction = transaction;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            try
+            {
+                await Transaction.CommitAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await Transaction.DisposeAsync().ConfigureAwait(false);
+                await Connection.DisposeAsync().ConfigureAwait(false);
+                _owner._activeBatch.Value = null;
+                _owner._writeLock.Release();
+            }
+        }
+    }
 }
 
 

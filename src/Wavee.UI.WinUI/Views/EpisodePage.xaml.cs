@@ -273,9 +273,14 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
 
     private void EpisodeBreadcrumb_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
-        // Root index 0 is only the show when there *is* a parent show; otherwise
-        // the breadcrumb only has one item ("Episode") and the click is a no-op.
-        if (args.Index != 0 || !ViewModel.HasParentShow) return;
+        if (args.Index == 0)
+        {
+            NavigationHelpers.OpenPodcasts(NavigationHelpers.IsCtrlPressed());
+            return;
+        }
+
+        if (args.Index != 1 || !ViewModel.HasParentShow)
+            return;
 
         // Prefer back-navigation when the immediate previous page is the same
         // ShowPage we'd be opening — preserves scroll position and avoids a

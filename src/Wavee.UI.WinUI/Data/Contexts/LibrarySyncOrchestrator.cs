@@ -9,6 +9,7 @@ using Wavee.Core.Library.Spotify;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -26,6 +27,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
     private readonly INotificationService? _notificationService;
     private readonly DispatcherQueue? _dispatcher;
     private readonly ILogger? _logger;
+    private readonly Func<Task>? _playlistPrefetchTrigger;
     private IDisposable? _dealerSubscription;
     private bool _dealerWired;
 
@@ -36,7 +38,8 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         INotificationService? notificationService = null,
         DispatcherQueue? dispatcher = null,
         IAuthState? authState = null,
-        ILogger<LibrarySyncOrchestrator>? logger = null)
+        ILogger<LibrarySyncOrchestrator>? logger = null,
+        IPlaylistPrefetcher? playlistPrefetcher = null)
     {
         _messenger = messenger;
         _libraryService = libraryService;
@@ -44,6 +47,12 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         _notificationService = notificationService;
         _dispatcher = dispatcher;
         _logger = logger;
+        // Prefetcher injected as optional; keeping it through a delegate
+        // means we don't take a strong dependency and can no-op cleanly
+        // if DI hasn't registered it (e.g. integration tests).
+        _playlistPrefetchTrigger = playlistPrefetcher is null
+            ? null
+            : () => playlistPrefetcher.PrefetchAllAsync();
 
         // React to auth status — trigger sync when Authenticated, drop the in-memory
         // save cache when the user signs out so the next account doesn't inherit hearts.
@@ -113,7 +122,33 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             string? partialReason = null;
             try
             {
-                await _libraryService.SyncAllAsync().ConfigureAwait(false);
+                // Inlined SyncAllAsync to emit per-collection progress to the
+                // sign-in dialog. The 5 collections below mirror the body of
+                // SpotifyLibraryService.SyncAllAsync 1:1.
+                var collections = new (string Name, Func<CancellationToken, Task> Run)[]
+                {
+                    ("tracks",        ct => _libraryService.SyncTracksAsync(ct)),
+                    ("albums",        ct => _libraryService.SyncAlbumsAsync(ct)),
+                    ("artists",       ct => _libraryService.SyncArtistsAsync(ct)),
+                    ("shows",         ct => _libraryService.SyncShowsAsync(ct)),
+                    ("listen-later",  ct => _libraryService.SyncListenLaterAsync(ct)),
+                };
+                for (int i = 0; i < collections.Length; i++)
+                {
+                    var (name, run) = collections[i];
+                    _messenger.Send(new LibrarySyncProgressMessage(name, i, collections.Length));
+                    try
+                    {
+                        await run(default).ConfigureAwait(false);
+                    }
+                    catch (Exception colEx)
+                    {
+                        hadPartialFailure = true;
+                        partialReason ??= $"{name}: {colEx.Message}";
+                        _logger?.LogWarning(colEx, "Library sync collection {Name} failed", name);
+                    }
+                }
+                _messenger.Send(new LibrarySyncProgressMessage("done", collections.Length, collections.Length));
                 _logger?.LogInformation("Library sync completed");
             }
             catch (Exception syncEx)
@@ -207,6 +242,20 @@ public sealed class LibrarySyncOrchestrator : IDisposable
 
             // Wire Dealer real-time changes → IMessenger (once)
             WireDealerChanges(_libraryService);
+
+            // Kick off playlist prefetch in the background so the sign-in
+            // dialog can show "Loading your playlists" progress and the
+            // first click on any sidebar playlist is a cache hit. Fire-
+            // and-forget — the prefetcher is responsible for its own error
+            // handling and message emission.
+            if (_playlistPrefetchTrigger is not null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await _playlistPrefetchTrigger().ConfigureAwait(false); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "Playlist prefetch failed"); }
+                });
+            }
         }
         catch (Exception ex)
         {

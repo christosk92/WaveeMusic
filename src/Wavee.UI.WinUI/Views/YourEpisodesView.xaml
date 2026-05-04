@@ -82,6 +82,50 @@
             </Grid>
         </DataTemplate>
 
+        <DataTemplate x:Key="PodcastEpisodeHeaderTemplate">
+            <Grid Padding="8,12,8,6" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border
+                    Grid.Column="0"
+                    Width="36"
+                    Height="36"
+                    CornerRadius="5"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Grid>
+                        <FontIcon
+                            Glyph="&#xEC05;"
+                            FontSize="15"
+                            Opacity="0.35"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                        <Image
+                            Source="{Binding Header.ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='72'}"
+                            Stretch="UniformToFill"
+                            Visibility="{Binding Header.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
+                            behaviors:ImageFallbackBehavior.HideOnError="True"
+                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                            behaviors:ImageFallbackBehavior.DecodePixelWidth="72"/>
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock
+                        Text="{Binding Header.Title}"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        TextTrimming="CharacterEllipsis"
+                        MaxLines="1"/>
+                    <TextBlock
+                        Text="{Binding CountText}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextTrimming="CharacterEllipsis"
+                        MaxLines="1"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
         <DataTemplate x:Key="EpisodeGroupTemplate" x:DataType="vm:PodcastEpisodeGroupViewModel">
             <StackPanel Spacing="8">
                 <Button
@@ -607,15 +651,23 @@
                 </Border>
 
                 <Grid Grid.Row="1">
-                    <ScrollView Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                        <ItemsRepeater
-                            ItemsSource="{x:Bind ViewModel.EpisodeGroups, Mode=OneWay}"
-                            ItemTemplate="{StaticResource EpisodeGroupTemplate}">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Orientation="Vertical" Spacing="22"/>
-                            </ItemsRepeater.Layout>
-                        </ItemsRepeater>
-                    </ScrollView>
+                    <tdg:TrackDataGrid
+                        PageKey="podcasts"
+                        ShowToolbar="False"
+                        UseCardRows="True"
+                        AllowHorizontalRowScroll="False"
+                        ItemsSource="{x:Bind ViewModel.VisibleEpisodes, Mode=OneWay}"
+                        PlayCommand="{x:Bind ViewModel.PlayEpisodeCommand, Mode=OneWay}"
+                        SelectionChangedCommand="{x:Bind ViewModel.SelectEpisodeCommand, Mode=OneWay}"
+                        IsGrouped="{x:Bind ViewModel.ShowEpisodeGroupHeaders, Mode=OneWay}"
+                        GroupKeySelector="{x:Bind ViewModel.PodcastEpisodeGroupKeySelector, Mode=OneWay}"
+                        GroupHeaderSelector="{x:Bind ViewModel.PodcastEpisodeGroupHeaderSelector, Mode=OneWay}"
+                        GroupCountFormatter="{x:Bind ViewModel.PodcastEpisodeGroupCountFormatter, Mode=OneWay}"
+                        GroupHeaderTemplate="{StaticResource PodcastEpisodeHeaderTemplate}"
+                        AreStickyGroupHeadersEnabled="False"
+                        Loaded="EpisodeGroupGrid_Loaded"
+                        Unloaded="EpisodeGroupGrid_Unloaded"
+                        Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
                     <StackPanel
                         Spacing="12"
@@ -784,18 +836,63 @@
 
                 <Grid
                     Visibility="{x:Bind ViewModel.ShowNarrowEpisodesStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <ScrollView>
-                        <ItemsRepeater
-                            ItemsSource="{x:Bind ViewModel.EpisodeGroups, Mode=OneWay}"
-                            ItemTemplate="{StaticResource EpisodeGroupTemplate}">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Orientation="Vertical" Spacing="22"/>
-                            </ItemsRepeater.Layout>
-                        </ItemsRepeater>
-                    </ScrollView>
+                    <tdg:TrackDataGrid
+                        PageKey="podcasts"
+                        ShowToolbar="False"
+                        UseCardRows="True"
+                        AllowHorizontalRowScroll="False"
+                        ItemsSource="{x:Bind ViewModel.VisibleEpisodes, Mode=OneWay}"
+                        PlayCommand="{x:Bind ViewModel.PlayEpisodeCommand, Mode=OneWay}"
+                        SelectionChangedCommand="{x:Bind ViewModel.SelectEpisodeCommand, Mode=OneWay}"
+                        IsGrouped="{x:Bind ViewModel.ShowEpisodeGroupHeaders, Mode=OneWay}"
+                        GroupKeySelector="{x:Bind ViewModel.PodcastEpisodeGroupKeySelector, Mode=OneWay}"
+                        GroupHeaderSelector="{x:Bind ViewModel.PodcastEpisodeGroupHeaderSelector, Mode=OneWay}"
+                        GroupCountFormatter="{x:Bind ViewModel.PodcastEpisodeGroupCountFormatter, Mode=OneWay}"
+                        GroupHeaderTemplate="{StaticResource PodcastEpisodeHeaderTemplate}"
+                        AreStickyGroupHeadersEnabled="False"
+                        Loaded="EpisodeGroupGrid_Loaded"
+                        Unloaded="EpisodeGroupGrid_Unloaded"/>
                 </Grid>
 
             </Grid>
         </Grid>
+
+        <Border
+            Padding="24"
+            Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+            Visibility="{x:Bind ViewModel.ShowLoadError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel
+                Spacing="12"
+                MaxWidth="420"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+                <FontIcon
+                    Glyph="&#xE783;"
+                    FontSize="36"
+                    Opacity="0.45"
+                    HorizontalAlignment="Center"/>
+                <TextBlock
+                    Text="Podcasts could not load"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    TextAlignment="Center"
+                    HorizontalAlignment="Center"/>
+                <TextBlock
+                    Text="{x:Bind ViewModel.LoadErrorDescription, Mode=OneWay}"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextAlignment="Center"
+                    TextWrapping="WrapWholeWords"
+                    HorizontalAlignment="Center"/>
+                <Button
+                    Command="{x:Bind ViewModel.LoadCommand, Mode=OneWay}"
+                    HorizontalAlignment="Center"
+                    Padding="14,7">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE72C;" FontSize="13"/>
+                        <TextBlock Text="Retry"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

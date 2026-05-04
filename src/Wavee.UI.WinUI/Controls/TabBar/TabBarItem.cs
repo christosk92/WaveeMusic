@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Diagnostics;
 
@@ -433,7 +434,9 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         else
             TrimActiveContentForNavigationCache();
 
-        _contentPendingDisposal = ContentFrame.Content as IDisposable;
+        _contentPendingDisposal = ShouldDisposeAfterNavigation(ContentFrame.Content)
+            ? ContentFrame.Content as IDisposable
+            : null;
     }
 
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -488,6 +491,14 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         _navigationParameter = e;
         ContentChanged?.Invoke(this, e);
+    }
+
+    private static bool ShouldDisposeAfterNavigation(object? content)
+    {
+        // The Frame can keep pages with Enabled/Required navigation caching alive in
+        // its cache/back stack. Disposing those pages here leaves the cached instance
+        // present but unusable when the user navigates back to it.
+        return content is not Page { NavigationCacheMode: not NavigationCacheMode.Disabled };
     }
 
     public void Dispose()

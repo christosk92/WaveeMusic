@@ -13,30 +13,66 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using QRCoder;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Services;
 using Windows.Storage.Streams;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+/// <summary>
+/// Coarse phase the dialog is in. Drives panel visibility (Auth / Progress
+/// / Error). The fine-grained phase tracking inside Progress is private to
+/// the VM and surfaced through <see cref="MainText"/>/<see cref="SubText"/>/
+/// <see cref="OverallProgress"/>.
+/// </summary>
 public enum ConnectStep
 {
     Authenticate,
-    Connecting,
-    Syncing,
-    Complete,
+    Progress,
     Error
 }
 
-public sealed partial class SpotifyConnectViewModel : ObservableObject
+/// <summary>
+/// Backs <c>SpotifyConnectDialog</c>. Replaces the prior fake-progress
+/// implementation (six hardcoded stages with <c>Task.Delay</c>s) with live
+/// subscriptions to real backend signals:
+///
+///   AuthStatusChangedMessage          — auth phase
+///   AudioProcessStateChangedMessage   — audio engine sub-text
+///   LibrarySyncStartedMessage         — library phase entry
+///   LibrarySyncProgressMessage        — per-collection sub-text
+///   LibrarySyncCompletedMessage       — library phase exit
+///   LibrarySyncFailedMessage          — error template
+///   PlaylistPrefetchStartedMessage    — playlist phase entry
+///   PlaylistPrefetchProgressMessage   — per-playlist sub-text
+///   HomeFeedLoadedMessage             — auto-close trigger
+///
+/// Five user-visible weighted phases (Authenticating 10% / Connecting 10%
+/// / Library 25% / Playlists 35% / Home 20%) sum to 100%; the bar is the
+/// weighted sum of each phase's internal progress so it advances smoothly
+/// rather than in big jumps.
+/// </summary>
+public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposable
 {
-    private const int ConnectingDwellDelayMs = 1500;
-    private const int FinishingUpDelayMs = 400;
-    private const int CompleteStepDelayMs = 800;
-
     private readonly IAuthState _authState;
+    private readonly IMessenger _messenger;
     private readonly DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _deviceCodeCts;
     private CancellationTokenSource? _browserCts;
+
+    // ---- Phase weighting (percentages, must sum to 100) ----
+    private const double WAuth      = 10;
+    private const double WConnect   = 10;
+    private const double WLibrary   = 25;
+    private const double WPlaylists = 35;
+    private const double WHome      = 20;
+
+    // ---- Per-phase 0..1 progress, mutated by message handlers ----
+    private double _phaseAuth;
+    private double _phaseConnect;
+    private double _phaseLibrary;
+    private double _phasePlaylists;
+    private double _phaseHome;
 
     [ObservableProperty]
     private ConnectStep _currentStep = ConnectStep.Authenticate;
@@ -54,10 +90,14 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
     private string? _statusMessage = AppLocalization.GetString("Connect_RequestingPairingCode");
 
     [ObservableProperty]
-    private string? _syncStatus;
+    private string? _mainText;
 
     [ObservableProperty]
-    private double _syncProgress;
+    private string? _subText;
+
+    /// <summary>0..100 — sum of weighted phase progresses. Bound to the dialog's progress bar.</summary>
+    [ObservableProperty]
+    private double _overallProgress;
 
     [ObservableProperty]
     private bool _isDeviceCodeReady;
@@ -72,10 +112,43 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
 
     public event Action? RequestClose;
 
-    public SpotifyConnectViewModel(IAuthState authState)
+    public SpotifyConnectViewModel(IAuthState authState, IMessenger? messenger = null)
     {
         _authState = authState;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        WireMessageSubscriptions();
+    }
+
+    private void WireMessageSubscriptions()
+    {
+        _messenger.Register<SpotifyConnectViewModel, AuthStatusChangedMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnAuthStatusChanged(m.Value)));
+
+        _messenger.Register<SpotifyConnectViewModel, AudioProcessStateChangedMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnAudioStateChanged(m.Value.State, m.Value.Message)));
+
+        _messenger.Register<SpotifyConnectViewModel, LibrarySyncStartedMessage>(this, (r, _) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnLibrarySyncStarted()));
+
+        _messenger.Register<SpotifyConnectViewModel, LibrarySyncProgressMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnLibrarySyncProgress(m.Value.Collection, m.Value.Done, m.Value.Total)));
+
+        _messenger.Register<SpotifyConnectViewModel, LibrarySyncCompletedMessage>(this, (r, _) =>
+            r._dispatcherQueue.TryEnqueue(r.OnLibrarySyncCompleted));
+
+        _messenger.Register<SpotifyConnectViewModel, LibrarySyncFailedMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnLibrarySyncFailed(m.Value)));
+
+        _messenger.Register<SpotifyConnectViewModel, PlaylistPrefetchStartedMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnPlaylistPrefetchStarted(m.Value)));
+
+        _messenger.Register<SpotifyConnectViewModel, PlaylistPrefetchProgressMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnPlaylistPrefetchProgress(m.Value.PlaylistName, m.Value.Done, m.Value.Total)));
+
+        _messenger.Register<SpotifyConnectViewModel, HomeFeedLoadedMessage>(this, (r, _) =>
+            r._dispatcherQueue.TryEnqueue(r.OnHomeFeedLoaded));
     }
 
     /// <summary>
@@ -87,7 +160,6 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         _deviceCodeCts = new CancellationTokenSource();
         StatusMessage = AppLocalization.GetString("Connect_RequestingPairingCode");
 
-        // Fire-and-forget: start device code flow in background
         _ = RunDeviceCodeFlowAsync(_deviceCodeCts.Token);
     }
 
@@ -96,17 +168,9 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         try
         {
             await _authState.LoginWithDeviceCodeAsync(OnDeviceCodeReceived, ct);
-
-            // Show "Connecting..." step with artificial dwell
-            _dispatcherQueue.TryEnqueue(() => CurrentStep = ConnectStep.Connecting);
-            await Task.Delay(ConnectingDwellDelayMs, CancellationToken.None);
-
-            await RunSyncAsync(CancellationToken.None);
+            // Auth completion is signalled via AuthStatusChangedMessage; no Task.Delay here.
         }
-        catch (OperationCanceledException)
-        {
-            // Cancelled (user clicked browser login or closed dialog)
-        }
+        catch (OperationCanceledException) { /* user switched to browser flow or closed dialog */ }
         catch (Exception ex)
         {
             var msg = GetFriendlyError(ex);
@@ -127,17 +191,18 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
             StatusMessage = AppLocalization.GetString("Connect_ReadyToAuthenticate");
             IsDeviceCodeReady = true;
 
+            // Auth phase progresses to ~30% as soon as the pairing code is ready.
+            _phaseAuth = 0.3;
+            RecalcProgress();
+
             if (!string.IsNullOrEmpty(info.VerificationUriComplete))
-            {
                 QrCodeImage = await GenerateQrCodeAsync(info.VerificationUriComplete);
-            }
         });
     }
 
     [RelayCommand]
     private async Task ConnectWithBrowserAsync()
     {
-        // Cancel device code flow since user chose browser
         _deviceCodeCts?.Cancel();
         _browserCts?.Cancel();
         _browserCts = new CancellationTokenSource();
@@ -145,17 +210,9 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         try
         {
             await _authState.LoginWithAuthorizationCodeAsync(_browserCts.Token);
-
-            // Show "Connecting..." step with artificial dwell
-            CurrentStep = ConnectStep.Connecting;
-            await Task.Delay(ConnectingDwellDelayMs);
-
-            await RunSyncAsync(CancellationToken.None);
+            // Same as device-code: AuthStatusChangedMessage drives the phase advance.
         }
-        catch (OperationCanceledException)
-        {
-            // User cancelled
-        }
+        catch (OperationCanceledException) { /* user cancelled */ }
         catch (Exception ex)
         {
             ErrorMessage = GetFriendlyError(ex);
@@ -175,8 +232,10 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
     private void Retry()
     {
         ErrorMessage = null;
-        SyncStatus = null;
-        SyncProgress = 0;
+        SubText = null;
+        MainText = null;
+        OverallProgress = 0;
+        _phaseAuth = _phaseConnect = _phaseLibrary = _phasePlaylists = _phaseHome = 0;
         CurrentStep = ConnectStep.Authenticate;
         IsDeviceCodeReady = false;
         QrCodeImage = null;
@@ -197,62 +256,160 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
         }
     }
 
-    private async Task RunSyncAsync(CancellationToken ct)
+    // ---- Message handlers (dispatcher-thread) ----
+
+    private void OnAuthStatusChanged(AuthStatus status)
     {
-        _dispatcherQueue.TryEnqueue(() =>
+        switch (status)
         {
-            CurrentStep = ConnectStep.Syncing;
-            SyncStatus = AppLocalization.GetString("Connect_FetchingProfile");
-            SyncProgress = 0;
-        });
+            case AuthStatus.Authenticating:
+                CurrentStep = ConnectStep.Progress;
+                MainText = AppLocalization.GetString("Connect_Authenticating");
+                SubText = AppLocalization.GetString("Connect_ExchangingAuthorizationCode");
+                _phaseAuth = 0.7;
+                RecalcProgress();
+                break;
 
-        var syncStart = DateTimeOffset.UtcNow;
+            case AuthStatus.Authenticated:
+                CurrentStep = ConnectStep.Progress;
+                MainText = AppLocalization.GetString("Connect_ConnectingToSpotify");
+                SubText = AppLocalization.GetString("Connect_ReachingAccessPoint");
+                _phaseAuth = 1.0;
+                _phaseConnect = 0.4; // dealer + connect already done by the time Authenticated fires
+                RecalcProgress();
+                break;
 
-        // Artificial progress stages to feel responsive even if sync is fast
-        var stages = new (string Message, double Progress, int DelayMs)[]
-        {
-            (AppLocalization.GetString("Connect_FetchingProfile"), 0.1, 600),
-            (AppLocalization.GetString("Connect_LoadingPlaylists"), 0.25, 800),
-            (AppLocalization.GetString("Connect_SyncingLikedSongs"), 0.45, 700),
-            (AppLocalization.GetString("Connect_SyncingAlbums"), 0.6, 600),
-            (AppLocalization.GetString("Connect_SyncingArtists"), 0.75, 500),
-        };
-
-        // Library sync is handled by LibrarySyncOrchestrator — reacts to AuthStatusChangedMessage
-        // No sync code here. Just animate the loading stages.
-
-        // Animate through stages regardless of real sync speed
-        foreach (var (message, progress, delayMs) in stages)
-        {
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                SyncStatus = message;
-                SyncProgress = progress;
-            });
-            await Task.Delay(delayMs, CancellationToken.None);
+            case AuthStatus.Error:
+                ErrorMessage = _authState.ConnectionError ?? AppLocalization.Format("Connect_ErrorGeneric", "");
+                CurrentStep = ConnectStep.Error;
+                break;
         }
-
-        // Sync runs in background via LibrarySyncOrchestrator (no awaiting here)
-
-        // Final stage
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            SyncStatus = AppLocalization.GetString("Connect_FinishingUp");
-            SyncProgress = 0.95;
-        });
-        await Task.Delay(FinishingUpDelayMs, CancellationToken.None);
-
-        _dispatcherQueue.TryEnqueue(() => CurrentStep = ConnectStep.Complete);
-        await Task.Delay(CompleteStepDelayMs, CancellationToken.None);
-        _dispatcherQueue.TryEnqueue(() => RequestClose?.Invoke());
     }
+
+    private void OnAudioStateChanged(string state, string? message)
+    {
+        // Only refine sub-text while we're in the Connecting phase. Once
+        // library sync starts, the audio init is no longer the user's
+        // mental model of what's happening.
+        if (_phaseConnect >= 1.0) return;
+
+        if (string.Equals(state, "Connecting", StringComparison.OrdinalIgnoreCase))
+        {
+            SubText = AppLocalization.GetString("Connect_StartingAudioEngine");
+            _phaseConnect = Math.Max(_phaseConnect, 0.6);
+        }
+        else if (string.Equals(state, "Connected", StringComparison.OrdinalIgnoreCase))
+        {
+            SubText = AppLocalization.GetString("Connect_AudioEngineReady");
+            _phaseConnect = 1.0;
+        }
+        RecalcProgress();
+    }
+
+    private void OnLibrarySyncStarted()
+    {
+        CurrentStep = ConnectStep.Progress;
+        MainText = AppLocalization.GetString("Connect_LoadingLibrary");
+        SubText = AppLocalization.GetString("Connect_StartingLibrarySync");
+        _phaseConnect = 1.0;
+        _phaseLibrary = 0.05;
+        RecalcProgress();
+    }
+
+    private void OnLibrarySyncProgress(string collection, int done, int total)
+    {
+        if (total <= 0) return;
+        _phaseLibrary = Math.Clamp(done / (double)total, 0, 1);
+
+        // Map collection key → human label for sub-text
+        SubText = collection switch
+        {
+            "tracks"        => AppLocalization.GetString("Connect_SyncingLikedSongs"),
+            "albums"        => AppLocalization.GetString("Connect_SyncingAlbums"),
+            "artists"       => AppLocalization.GetString("Connect_SyncingArtists"),
+            "shows"         => AppLocalization.GetString("Connect_SyncingShows"),
+            "listen-later"  => AppLocalization.GetString("Connect_SyncingListenLater"),
+            "done"          => AppLocalization.GetString("Connect_LibraryReady"),
+            _               => collection
+        };
+        RecalcProgress();
+    }
+
+    private void OnLibrarySyncCompleted()
+    {
+        _phaseLibrary = 1.0;
+        // Sub-text is briefly "Library ready" until prefetch start arrives.
+        SubText = AppLocalization.GetString("Connect_LibraryReady");
+        RecalcProgress();
+    }
+
+    private void OnLibrarySyncFailed(string error)
+    {
+        ErrorMessage = error;
+        CurrentStep = ConnectStep.Error;
+    }
+
+    private int _playlistTotal;
+
+    private void OnPlaylistPrefetchStarted(int total)
+    {
+        _playlistTotal = total;
+        CurrentStep = ConnectStep.Progress;
+        MainText = AppLocalization.GetString("Connect_LoadingPlaylists");
+        if (total <= 0)
+        {
+            // Skip phase entirely if the user has zero playlists.
+            _phasePlaylists = 1.0;
+            SubText = AppLocalization.GetString("Connect_NoPlaylists");
+        }
+        else
+        {
+            _phasePlaylists = 0.02;
+            SubText = AppLocalization.Format("Connect_PlaylistProgress", "…", "0", total.ToString());
+        }
+        RecalcProgress();
+    }
+
+    private void OnPlaylistPrefetchProgress(string playlistName, int done, int total)
+    {
+        if (total <= 0) return;
+        _phasePlaylists = Math.Clamp(done / (double)total, 0, 1);
+        SubText = AppLocalization.Format("Connect_PlaylistProgress", playlistName, done.ToString(), total.ToString());
+        RecalcProgress();
+    }
+
+    private void OnHomeFeedLoaded()
+    {
+        _phaseHome = 1.0;
+        // If playlist phase is still in flight, force it complete here so
+        // the bar reaches 100% — playlist prefetch can outlive the home
+        // load on slow connections, but we don't keep the dialog open
+        // for that.
+        if (_phasePlaylists < 1.0) _phasePlaylists = 1.0;
+        MainText = AppLocalization.GetString("Connect_AllSet");
+        SubText = null;
+        RecalcProgress();
+        // Auto-close on next dispatcher tick so the 100% bar paints once.
+        _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => RequestClose?.Invoke());
+    }
+
+    private void RecalcProgress()
+    {
+        var pct = _phaseAuth * WAuth
+                + _phaseConnect * WConnect
+                + _phaseLibrary * WLibrary
+                + _phasePlaylists * WPlaylists
+                + _phaseHome * WHome;
+        OverallProgress = Math.Clamp(pct, 0, 100);
+    }
+
+    // ---- helpers (unchanged from prior implementation) ----
 
     private async Task<WriteableBitmap> GenerateQrCodeAsync(string url)
     {
         var qrGenerator = new QRCodeGenerator();
         var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.H);
         var qrCode = new PngByteQRCode(qrCodeData);
-        // Darken accent color for better contrast on white
         var c = AccentColor;
         var r = (byte)(c.R * 0.55);
         var g = (byte)(c.G * 0.55);
@@ -281,5 +438,12 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject
             return AppLocalization.GetString("Connect_ErrorNetwork");
 
         return AppLocalization.Format("Connect_ErrorGeneric", ex.Message);
+    }
+
+    public void Dispose()
+    {
+        _messenger.UnregisterAll(this);
+        _deviceCodeCts?.Dispose();
+        _browserCts?.Dispose();
     }
 }

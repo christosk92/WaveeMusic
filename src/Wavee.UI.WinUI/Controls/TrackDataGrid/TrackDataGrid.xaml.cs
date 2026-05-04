@@ -36,6 +36,8 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 public sealed partial class TrackDataGrid : UserControl, IDisposable
 {
     private readonly ObservableCollection<ITrackItem> _visibleRows = new();
+    private readonly ObservableCollection<TrackDataGridGroup> _visibleGroups = new();
+    private readonly CollectionViewSource _groupedRowsViewSource = new() { IsSourceGrouped = true };
     private IReadOnlyList<ITrackItem> _sourceSnapshot = Array.Empty<ITrackItem>();
     private INotifyCollectionChanged? _subscribedSource;
     private ISettingsService? _settingsService;
@@ -53,6 +55,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     public TrackDataGrid()
     {
         InitializeComponent();
+        _groupedRowsViewSource.ItemsPath = new PropertyPath(nameof(TrackDataGridGroup.Items));
+        ApplyGroupHeaderTemplate();
         RowsList.ItemsSource = _visibleRows;
         RowsItemsView.ItemsSource = _visibleRows;
         RowsList.ContainerContentChanging += RowsList_ContainerContentChanging;
@@ -714,6 +718,72 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         set => SetValue(ItemsSourceProperty, value);
     }
 
+    public static readonly DependencyProperty IsGroupedProperty =
+        DependencyProperty.Register(nameof(IsGrouped), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnGroupingChanged));
+
+    public bool IsGrouped
+    {
+        get => (bool)GetValue(IsGroupedProperty);
+        set => SetValue(IsGroupedProperty, value);
+    }
+
+    public static readonly DependencyProperty GroupKeySelectorProperty =
+        DependencyProperty.Register(nameof(GroupKeySelector), typeof(Func<ITrackItem, object?>), typeof(TrackDataGrid),
+            new PropertyMetadata(null, OnGroupingChanged));
+
+    public Func<ITrackItem, object?>? GroupKeySelector
+    {
+        get => (Func<ITrackItem, object?>?)GetValue(GroupKeySelectorProperty);
+        set => SetValue(GroupKeySelectorProperty, value);
+    }
+
+    public static readonly DependencyProperty GroupHeaderSelectorProperty =
+        DependencyProperty.Register(nameof(GroupHeaderSelector), typeof(Func<ITrackItem, object>), typeof(TrackDataGrid),
+            new PropertyMetadata(null, OnGroupingChanged));
+
+    public Func<ITrackItem, object>? GroupHeaderSelector
+    {
+        get => (Func<ITrackItem, object>?)GetValue(GroupHeaderSelectorProperty);
+        set => SetValue(GroupHeaderSelectorProperty, value);
+    }
+
+    public static readonly DependencyProperty GroupCountFormatterProperty =
+        DependencyProperty.Register(nameof(GroupCountFormatter), typeof(Func<int, string>), typeof(TrackDataGrid),
+            new PropertyMetadata(null, OnGroupingChanged));
+
+    public Func<int, string>? GroupCountFormatter
+    {
+        get => (Func<int, string>?)GetValue(GroupCountFormatterProperty);
+        set => SetValue(GroupCountFormatterProperty, value);
+    }
+
+    public static readonly DependencyProperty GroupHeaderTemplateProperty =
+        DependencyProperty.Register(nameof(GroupHeaderTemplate), typeof(DataTemplate), typeof(TrackDataGrid),
+            new PropertyMetadata(null, OnGroupHeaderTemplateChanged));
+
+    public DataTemplate? GroupHeaderTemplate
+    {
+        get => (DataTemplate?)GetValue(GroupHeaderTemplateProperty);
+        set => SetValue(GroupHeaderTemplateProperty, value);
+    }
+
+    public static readonly DependencyProperty AreStickyGroupHeadersEnabledProperty =
+        DependencyProperty.Register(nameof(AreStickyGroupHeadersEnabled), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false));
+
+    public bool AreStickyGroupHeadersEnabled
+    {
+        get => (bool)GetValue(AreStickyGroupHeadersEnabledProperty);
+        set => SetValue(AreStickyGroupHeadersEnabledProperty, value);
+    }
+
+    private static void OnGroupHeaderTemplateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ApplyGroupHeaderTemplate();
+    }
+
     public static readonly DependencyProperty PlayCommandProperty =
         DependencyProperty.Register(nameof(PlayCommand), typeof(ICommand), typeof(TrackDataGrid),
             new PropertyMetadata(null));
@@ -1087,6 +1157,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         grid.ReprojectRows();
     }
 
+    private static void OnGroupingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ReprojectRows();
+    }
+
     private void SubscribeColumns(TrackDataGridColumns columns)
     {
         columns.SortChanged += OnSortChanged;
@@ -1313,8 +1389,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private void ReprojectRows()
     {
         _visibleRows.Clear();
+        _visibleGroups.Clear();
         var source = _sourceSnapshot;
-        if (source.Count == 0) return;
+        if (source.Count == 0)
+        {
+            ApplyRowsItemsSource();
+            return;
+        }
 
         IEnumerable<ITrackItem> pipeline = source;
 
@@ -1334,7 +1415,51 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 : pipeline.OrderByDescending(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects));
         }
 
-        _visibleRows.ReplaceWith(pipeline);
+        var rows = pipeline.ToList();
+        _visibleRows.ReplaceWith(rows);
+        RebuildGroups(rows);
+        ApplyRowsItemsSource();
+    }
+
+    private void ApplyRowsItemsSource()
+    {
+        if (IsGrouped && GroupKeySelector is not null)
+        {
+            if (!ReferenceEquals(_groupedRowsViewSource.Source, _visibleGroups))
+                _groupedRowsViewSource.Source = _visibleGroups;
+            if (!ReferenceEquals(RowsList.ItemsSource, _groupedRowsViewSource.View))
+                RowsList.ItemsSource = _groupedRowsViewSource.View;
+            RowsItemsView.ItemsSource = _visibleRows;
+            return;
+        }
+
+        if (!ReferenceEquals(RowsList.ItemsSource, _visibleRows))
+            RowsList.ItemsSource = _visibleRows;
+        RowsItemsView.ItemsSource = _visibleRows;
+    }
+
+    private void ApplyGroupHeaderTemplate()
+    {
+        if (RowsList?.GroupStyle is null || RowsList.GroupStyle.Count == 0)
+            return;
+
+        RowsList.GroupStyle[0].HeaderTemplate = GroupHeaderTemplate;
+    }
+
+    private void RebuildGroups(IReadOnlyList<ITrackItem> rows)
+    {
+        if (!IsGrouped || GroupKeySelector is null)
+            return;
+
+        foreach (var group in rows.GroupBy(
+                     item => GroupKeySelector(item)?.ToString() ?? string.Empty,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            var items = group.ToList();
+            var header = GroupHeaderSelector?.Invoke(items[0]) ?? group.Key;
+            var countText = GroupCountFormatter?.Invoke(items.Count) ?? (items.Count == 1 ? "1 item" : $"{items.Count:N0} items");
+            _visibleGroups.Add(new TrackDataGridGroup(group.Key, header, items, countText));
+        }
     }
 
     private static object? SortValue(ITrackItem item, string sortKey) => sortKey switch
@@ -1637,9 +1762,30 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         DateAddedFormatter = null;
         PlayCountFormatter = null;
         AddedByFormatter = null;
+        GroupKeySelector = null;
+        GroupHeaderSelector = null;
+        GroupCountFormatter = null;
+        GroupHeaderTemplate = null;
         FooterContent = null;
         ToolbarLeftContent = null;
         FilterBarContent = null;
         DataContext = null;
     }
+}
+
+public sealed class TrackDataGridGroup
+{
+    public TrackDataGridGroup(string key, object header, IReadOnlyList<ITrackItem> items, string countText)
+    {
+        Key = key;
+        Header = header;
+        Items = items;
+        CountText = countText;
+    }
+
+    public string Key { get; }
+    public object Header { get; }
+    public IReadOnlyList<ITrackItem> Items { get; }
+    public int Count => Items.Count;
+    public string CountText { get; }
 }

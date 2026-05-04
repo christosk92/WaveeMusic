@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <!-- Only references Wavee.UI — no Wavee.UI.WinUI dependency. -->
-    <ProjectReference Include="..\Wavee.UI\Wavee.UI.csproj" />
+    <ProjectReference Include="..\..\src\Wavee.UI\Wavee.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

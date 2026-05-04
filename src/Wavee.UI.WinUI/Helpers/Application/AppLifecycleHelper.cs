@@ -458,6 +458,11 @@ public static class AppLifecycleHelper
 
                 // App initialization
                 .AddSingleton<AppInitializationService>()
+                .AddSingleton<IPlaylistPrefetcher>(sp =>
+                    new PlaylistPrefetchService(
+                        sp.GetRequiredService<ILibraryDataService>(),
+                        sp.GetRequiredService<IMessenger>(),
+                        sp.GetService<ILogger<PlaylistPrefetchService>>()))
                 .AddSingleton(sp =>
                     new Data.Contexts.LibrarySyncOrchestrator(
                         sp.GetRequiredService<IMessenger>(),
@@ -466,7 +471,8 @@ public static class AppLifecycleHelper
                         sp.GetService<INotificationService>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<IAuthState>(),
-                        sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>()))
+                        sp.GetService<ILogger<Data.Contexts.LibrarySyncOrchestrator>>(),
+                        sp.GetService<IPlaylistPrefetcher>()))
                 .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
                 .AddSingleton<IFriendsFeedService, Data.Contexts.FriendsFeedService>()
 
@@ -948,6 +954,18 @@ public static class AppLifecycleHelper
             _audioStateChangedHandler = (state, message) =>
             {
                 logger?.LogInformation("Audio process: {State} — {Message}", state, message);
+
+                // Forward to the messenger so the SpotifyConnectViewModel
+                // can drive the "Starting audio engine…" sub-text in the
+                // sign-in dialog without taking a direct dependency on
+                // AudioProcessManager.
+                try
+                {
+                    Ioc.Default.GetService<CommunityToolkit.Mvvm.Messaging.IMessenger>()?
+                        .Send(new Data.Messages.AudioProcessStateChangedMessage(state.ToString(), message));
+                }
+                catch { /* best-effort broadcast */ }
+
                 notifDispatcher?.TryEnqueue(() =>
                 {
                     var notifService = Ioc.Default.GetService<INotificationService>();

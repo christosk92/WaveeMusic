@@ -50,17 +50,13 @@ public class ExtendedMetadataClientRequestHeadersTests
         using var httpClient = new HttpClient(handler.Object);
         var database = new Mock<IMetadataDatabase>(MockBehavior.Strict);
         database
-            .Setup(x => x.GetExtensionAsync(
-                "spotify:track:test-track-id",
+            .Setup(x => x.GetExtensionsBulkWithEtagAsync(
+                It.Is<IReadOnlyList<string>>(uris =>
+                    uris.Count == 1 && uris[0] == "spotify:track:test-track-id"),
                 ExtensionKind.TrackV4,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(((byte[] Data, string? Etag)?)null);
-        database
-            .Setup(x => x.GetExtensionEtagAsync(
-                "spotify:track:test-track-id",
-                ExtensionKind.TrackV4,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .ReturnsAsync((IReadOnlyDictionary<string, CachedExtensionLookup>)
+                new Dictionary<string, CachedExtensionLookup>(StringComparer.Ordinal));
 
         var client = new ExtendedMetadataClient(
             CreateSession().Object,
